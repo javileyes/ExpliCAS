@@ -2672,6 +2672,7 @@ fn prove_zero_from_engine_texts(lhs: &str, rhs: &str) -> bool {
 
 fn prove_zero_from_engine_texts_child_hint(lhs: &str, rhs: &str) -> bool {
     three_linear_shift_anchor_partner_identity_matches(lhs, rhs)
+        || small_pow_anchor_partner_identity_matches(lhs, rhs)
         || sum_of_squares_anchor_partner_identity_matches(lhs, rhs)
         || prove_zero_via_wire_eval(lhs, rhs)
         || prove_equiv_expr_texts_fresh(lhs, rhs)
@@ -3495,6 +3496,81 @@ fn three_linear_shift_anchor_partner_identity_matches(lhs_text: &str, rhs_text: 
 
         matches_double_angle_arcsin_partner_text(&factored_partner, &expanded_partner)
             || matches_small_radical_product_partner_text(&factored_partner, &expanded_partner)
+    }
+
+    let lhs = normalize_metamorphic_text(lhs_text);
+    let rhs = normalize_metamorphic_text(rhs_text);
+    side_matches(&lhs, &rhs) || side_matches(&rhs, &lhs)
+}
+
+fn small_pow_anchor_partner_identity_matches(lhs_text: &str, rhs_text: &str) -> bool {
+    fn side_matches(factored_side: &str, expanded_side: &str) -> bool {
+        let factored_factors =
+            split_top_level_mul_factors_text(strip_wrapping_parens(factored_side));
+        let expanded_factors =
+            split_top_level_mul_factors_text(strip_wrapping_parens(expanded_side));
+        if factored_factors.len() != 2 || expanded_factors.len() < 2 {
+            return false;
+        }
+
+        for factored_anchor_index in 0..factored_factors.len() {
+            let factored_anchor = strip_wrapping_parens(factored_factors[factored_anchor_index]);
+            let factored_partner =
+                strip_wrapping_parens(factored_factors[1 - factored_anchor_index]);
+
+            for expanded_anchor_index in 0..expanded_factors.len() {
+                let expanded_anchor =
+                    strip_wrapping_parens(expanded_factors[expanded_anchor_index]);
+                let remaining_partner_factors = expanded_factors
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, factor)| {
+                        (index != expanded_anchor_index).then_some(strip_wrapping_parens(factor))
+                    })
+                    .collect::<Vec<_>>();
+                if remaining_partner_factors.is_empty() {
+                    continue;
+                }
+                let expanded_partner = if remaining_partner_factors.len() == 1 {
+                    remaining_partner_factors[0].to_string()
+                } else {
+                    remaining_partner_factors.join("*")
+                };
+
+                let anchors_match =
+                    prove_zero_from_curated_pair_corpus_text(factored_anchor, expanded_anchor)
+                        || prove_zero_from_residual_pair_corpus_text(
+                            factored_anchor,
+                            expanded_anchor,
+                        )
+                        || prove_equiv_expr_texts_fresh(factored_anchor, expanded_anchor)
+                        || prove_zero_via_wire_eval(factored_anchor, expanded_anchor);
+                if !anchors_match {
+                    continue;
+                }
+
+                let partners_match =
+                    matches_double_angle_arcsin_partner_text(factored_partner, &expanded_partner)
+                        || matches_small_radical_product_partner_text(
+                            factored_partner,
+                            &expanded_partner,
+                        )
+                        || prove_zero_from_curated_pair_corpus_text(
+                            factored_partner,
+                            &expanded_partner,
+                        )
+                        || prove_zero_from_residual_pair_corpus_text(
+                            factored_partner,
+                            &expanded_partner,
+                        )
+                        || prove_zero_via_wire_eval(factored_partner, &expanded_partner);
+                if partners_match {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 
     let lhs = normalize_metamorphic_text(lhs_text);
@@ -5041,6 +5117,14 @@ fn three_linear_shift_anchor_partner_identity_matches_small_radical_product_pair
 }
 
 #[test]
+fn small_pow_anchor_partner_identity_matches_double_angle_inverse_trig_pair() {
+    let lhs = "((x-1)^5) * (sin(2*arcsin(u)))";
+    let rhs = "(x^5 - 5*x^4 + 10*x^3 - 10*x^2 + 5*x - 1) * (2*u*sqrt(1-u^2))";
+    assert!(small_pow_anchor_partner_identity_matches(lhs, rhs));
+    assert!(small_pow_anchor_partner_identity_matches(rhs, lhs));
+}
+
+#[test]
 fn sum_of_squares_anchor_partner_identity_matches_sum_of_cubes_pair() {
     let lhs = "((x^2 + y^2)*(a^2 + b^2)) * (u^3 + v^3)";
     let rhs = "((x*a + y*b)^2 + (x*b - y*a)^2) * ((u+v)*(u^2-u*v+v^2))";
@@ -5068,6 +5152,13 @@ fn sum_of_squares_anchor_partner_identity_matches_identical_partner_pair() {
 fn child_hint_uses_three_linear_shift_partner_identity_matcher() {
     let lhs = "((x+1)*(x+2)*(x+3)) * (sin(2*arcsin(u)))";
     let rhs = "(x^3 + 6*x^2 + 11*x + 6) * (2*u*sqrt(1-u^2))";
+    assert!(prove_zero_from_engine_texts_child_hint(lhs, rhs));
+}
+
+#[test]
+fn child_hint_uses_small_pow_anchor_partner_identity_matcher() {
+    let lhs = "((x-1)^5) * (sin(2*arcsin(u)))";
+    let rhs = "(x^5 - 5*x^4 + 10*x^3 - 10*x^2 + 5*x - 1) * (2*u*sqrt(1-u^2))";
     assert!(prove_zero_from_engine_texts_child_hint(lhs, rhs));
 }
 

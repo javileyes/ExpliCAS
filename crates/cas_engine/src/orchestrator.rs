@@ -36,8 +36,9 @@ use cas_math::root_forms::{
 };
 use cas_math::semantic_equality::SemanticEqualityChecker;
 use cas_math::trig_canonicalization_support::{
+    try_rewrite_cot_to_csc_pythagorean_identity_expr,
     try_rewrite_csc_cot_pythagorean_identity_expr, try_rewrite_sec_tan_pythagorean_identity_expr,
-    try_rewrite_tan_to_sin_cos_function_expr,
+    try_rewrite_tan_to_sec_pythagorean_identity_expr, try_rewrite_tan_to_sin_cos_function_expr,
 };
 use cas_math::trig_contraction_support::try_rewrite_angle_sum_fraction_to_tan_expr;
 use cas_math::trig_core_identity_support::{
@@ -1125,6 +1126,23 @@ fn extract_direct_sqrt_abs_trig_half_angle_target_root(
     };
 
     saw_positive_one.then_some((trig_fn, cos_arg?))
+}
+
+fn build_direct_sqrt_abs_trig_half_angle_target_root(
+    ctx: &mut Context,
+    trig_fn: BuiltinFn,
+    full_arg: ExprId,
+) -> ExprId {
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let cos_expr = ctx.call_builtin(BuiltinFn::Cos, vec![full_arg]);
+    let numerator = match trig_fn {
+        BuiltinFn::Sin => ctx.add(Expr::Sub(one, cos_expr)),
+        BuiltinFn::Cos => ctx.add(Expr::Add(one, cos_expr)),
+        _ => unreachable!("only sin/cos half-angle absolutes are supported"),
+    };
+    let radicand = ctx.add(Expr::Div(numerator, two));
+    ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand])
 }
 
 fn matches_direct_abs_trig_half_angle_pair_root(
@@ -3923,6 +3941,35 @@ fn matches_direct_sec_tan_pythagorean_pair_root(
     false
 }
 
+fn matches_direct_tan_to_sec_pythagorean_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    for (source_expr, target_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some(rewrite) = try_rewrite_tan_to_sec_pythagorean_identity_expr(ctx, source_expr)
+        else {
+            continue;
+        };
+        if compare_expr(ctx, rewrite.rewritten, target_expr) == Ordering::Equal {
+            return true;
+        }
+        if cas_ast::count_nodes(ctx, rewrite.rewritten) <= 24
+            && cas_ast::count_nodes(ctx, target_expr) <= 24
+            && isolated_simplify_rewrites_to_target(
+                &crate::phase::SimplifyOptions::default(),
+                ctx,
+                rewrite.rewritten,
+                target_expr,
+            )
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
 fn extract_direct_quartic_gcf_base_expanded_root(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let Expr::Sub(lhs, rhs) = ctx.get(expr) else {
         return None;
@@ -4003,6 +4050,35 @@ fn matches_direct_csc_cot_pythagorean_pair_root(
 ) -> bool {
     for (source_expr, target_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
         let Some(rewrite) = try_rewrite_csc_cot_pythagorean_identity_expr(ctx, source_expr) else {
+            continue;
+        };
+        if compare_expr(ctx, rewrite.rewritten, target_expr) == Ordering::Equal {
+            return true;
+        }
+        if cas_ast::count_nodes(ctx, rewrite.rewritten) <= 24
+            && cas_ast::count_nodes(ctx, target_expr) <= 24
+            && isolated_simplify_rewrites_to_target(
+                &crate::phase::SimplifyOptions::default(),
+                ctx,
+                rewrite.rewritten,
+                target_expr,
+            )
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn matches_direct_cot_to_csc_pythagorean_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    for (source_expr, target_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some(rewrite) = try_rewrite_cot_to_csc_pythagorean_identity_expr(ctx, source_expr)
+        else {
             continue;
         };
         if compare_expr(ctx, rewrite.rewritten, target_expr) == Ordering::Equal {
@@ -5635,7 +5711,9 @@ fn matches_known_direct_pair_root(ctx: &mut Context, lhs_core: ExprId, rhs_core:
         || matches_direct_three_linear_shift_product_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_difference_of_squares_quotient_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_sum_diff_cubes_quotient_pair_root(ctx, lhs_core, rhs_core)
+        || matches_direct_tan_to_sec_pythagorean_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_sec_tan_pythagorean_pair_root(ctx, lhs_core, rhs_core)
+        || matches_direct_cot_to_csc_pythagorean_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_csc_cot_pythagorean_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_hyperbolic_pythagorean_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_reciprocal_trig_product_one_pair_root(ctx, lhs_core, rhs_core)
@@ -10362,6 +10440,11 @@ fn canonicalize_direct_pair_factor_root(ctx: &mut Context, expr: ExprId) -> Opti
     if let Some(rewrite) = try_rewrite_exponential_log_inverse_expr(ctx, expr) {
         return Some(strip_multiplicative_one_root(ctx, rewrite.rewritten));
     }
+    if let Some((trig_fn, full_arg)) = extract_direct_abs_trig_half_angle_target_root(ctx, expr) {
+        return Some(build_direct_sqrt_abs_trig_half_angle_target_root(
+            ctx, trig_fn, full_arg,
+        ));
+    }
     if let Some(log_inverse_match) =
         cas_math::logarithm_inverse_support::try_match_log_exp_inverse_expr(ctx, expr)
     {
@@ -11264,19 +11347,61 @@ fn try_standard_special_angle_exact_value_factor_shortcut(
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
+    fn canonicalize_special_angle_partner_root(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+        factor_sum_diff_cubes_partner_root(ctx, expr)
+            .or_else(|| factor_higher_degree_difference_partner_root(ctx, expr))
+            .or_else(|| factor_sophie_germain_partner_root(ctx, expr))
+            .or_else(|| factor_known_small_polynomial_partner_root(ctx, expr))
+            .or_else(|| canonicalize_direct_pair_factor_root(ctx, expr))
+    }
+
+    fn split_fractional_constant_factor_root(
+        ctx: &mut Context,
+        expr: ExprId,
+    ) -> Option<Vec<ExprId>> {
+        let Expr::Div(numerator, denominator) = ctx.get(expr).clone() else {
+            return None;
+        };
+        if !is_pure_arithmetic_constant_expr_root(ctx, denominator) {
+            return None;
+        }
+        let one = ctx.num(1);
+        let reciprocal = ctx.add(Expr::Div(one, denominator));
+        Some(vec![reciprocal, numerator])
+    }
+
+    fn build_remaining_partner_root(
+        ctx: &mut Context,
+        factors: &[ExprId],
+        excluded_index: usize,
+    ) -> Option<ExprId> {
+        let remaining_factors: Vec<_> = factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(index, factor)| (index != excluded_index).then_some(factor))
+            .collect();
+        (!remaining_factors.is_empty())
+            .then(|| build_mul_expr_from_factors_root(ctx, &remaining_factors))
+    }
+
     let factors = flatten_mul_chain(ctx, expr);
     if factors.len() < 2 {
         return None;
     }
 
-    for (special_index, partner_index) in [(0usize, 1usize), (1usize, 0usize)] {
+    for special_index in 0..factors.len() {
         let Some(special_value) =
             extract_special_angle_exact_value_root(ctx, factors[special_index])
         else {
             continue;
         };
+        let Some(combined_partner) = build_remaining_partner_root(ctx, &factors, special_index)
+        else {
+            continue;
+        };
         let Some(double_angle_arg) =
-            extract_positive_cos_double_angle_arg_root(ctx, factors[partner_index])
+            extract_positive_cos_double_angle_arg_root(ctx, combined_partner)
         else {
             continue;
         };
@@ -11284,11 +11409,7 @@ fn try_standard_special_angle_exact_value_factor_shortcut(
             continue;
         }
 
-        let rewritten_factors = if special_index == 0 {
-            [special_value, factors[partner_index]]
-        } else {
-            [factors[partner_index], special_value]
-        };
+        let rewritten_factors = [special_value, combined_partner];
         let rewritten = build_nonexpanding_locally_simplified_mul_expr_from_factors_root(
             ctx,
             &rewritten_factors,
@@ -11306,23 +11427,120 @@ fn try_standard_special_angle_exact_value_factor_shortcut(
         return Some((rewritten, shortcut_steps));
     }
 
-    for (special_index, partner_index) in [(0usize, 1usize), (1usize, 0usize)] {
+    for special_index in 0..factors.len() {
         let Some(special_value) =
             extract_special_angle_exact_value_root(ctx, factors[special_index])
         else {
             continue;
         };
-        let Some(partner_factored) =
-            factor_known_small_polynomial_partner_root(ctx, factors[partner_index])
+        let Some(combined_partner) = build_remaining_partner_root(ctx, &factors, special_index)
+        else {
+            continue;
+        };
+        let Some((trig_fn, full_arg)) =
+            extract_direct_scaled_half_angle_pow2_source_root(ctx, combined_partner)
         else {
             continue;
         };
 
-        let rewritten = if special_index == 0 {
-            build_mul_expr_from_factors_root(ctx, &[special_value, partner_factored])
+        let partner_target = build_scaled_half_angle_target_root(ctx, trig_fn, full_arg);
+        let rewritten_factors = [special_value, partner_target];
+        let rewritten = build_nonexpanding_locally_simplified_mul_expr_from_factors_root(
+            ctx,
+            &rewritten_factors,
+        );
+        let shortcut_steps = if collect_steps {
+            vec![build_root_shortcut_compact_step(
+                expr,
+                rewritten,
+                "Canonizar producto con factor exacto de ángulo especial y partner de medio ángulo escalado",
+                "Special Angle Direct Pair Product",
+            )]
         } else {
-            build_mul_expr_from_factors_root(ctx, &[partner_factored, special_value])
+            Vec::new()
         };
+        return Some((rewritten, shortcut_steps));
+    }
+
+    for special_index in 0..factors.len() {
+        let Some(special_value) =
+            extract_special_angle_exact_value_root(ctx, factors[special_index])
+        else {
+            continue;
+        };
+        let Some(combined_partner) = build_remaining_partner_root(ctx, &factors, special_index)
+        else {
+            continue;
+        };
+        let partner_canonical = canonicalize_special_angle_partner_root(ctx, combined_partner)
+            .unwrap_or(combined_partner);
+        let partner_canonical = if cas_ast::count_nodes(ctx, partner_canonical) <= 20
+            && extract_direct_scaled_half_angle_pow2_source_root(ctx, partner_canonical).is_none()
+        {
+            isolated_simplify_expr_if_changed(options, ctx, partner_canonical)
+                .unwrap_or(partner_canonical)
+        } else {
+            partner_canonical
+        };
+        let mut rewritten_factors = if matches!(
+            ctx.get(partner_canonical),
+            Expr::Add(_, _) | Expr::Sub(_, _)
+        ) {
+            vec![special_value]
+        } else {
+            let Some(split_factors) = split_fractional_constant_factor_root(ctx, special_value)
+            else {
+                continue;
+            };
+            split_factors
+        };
+        rewritten_factors.push(partner_canonical);
+        let rewritten_raw = build_nonexpanding_locally_simplified_mul_expr_from_factors_root(
+            ctx,
+            &rewritten_factors,
+        );
+        let rewritten_raw = strip_multiplicative_one_root(ctx, rewritten_raw);
+        let defer_nested_simplify = rewritten_factors.iter().copied().any(|factor| {
+            extract_positive_cos_double_angle_arg_root(ctx, factor)
+                .is_some_and(|arg| !cas_ast::collect_variables(ctx, arg).is_empty())
+                || extract_direct_positive_double_cos_square_diff_target_root(ctx, factor)
+                    .is_some_and(|arg| !cas_ast::collect_variables(ctx, arg).is_empty())
+        });
+        let rewritten = if defer_nested_simplify {
+            rewritten_raw
+        } else {
+            isolated_simplify_expr_if_changed(options, ctx, rewritten_raw).unwrap_or(rewritten_raw)
+        };
+        let shortcut_steps = if collect_steps {
+            vec![build_root_shortcut_compact_step(
+                expr,
+                rewritten,
+                "Canonizar producto con factor exacto fraccional de ángulo especial y partner equivalente",
+                "Special Angle Fractional Exact Product",
+            )]
+        } else {
+            Vec::new()
+        };
+        return Some((rewritten, shortcut_steps));
+    }
+
+    for special_index in 0..factors.len() {
+        let Some(special_value) =
+            extract_special_angle_exact_value_root(ctx, factors[special_index])
+        else {
+            continue;
+        };
+        let Some(combined_partner) = build_remaining_partner_root(ctx, &factors, special_index)
+        else {
+            continue;
+        };
+        let Some(partner_factored) =
+            factor_known_small_polynomial_partner_root(ctx, combined_partner)
+        else {
+            continue;
+        };
+
+        let rewritten = build_mul_expr_from_factors_root(ctx, &[special_value, partner_factored]);
         let shortcut_steps = if collect_steps {
             vec![build_root_shortcut_compact_step(
                 expr,
@@ -11584,6 +11802,7 @@ fn is_safe_direct_pair_anchor_target_root(ctx: &mut Context, expr: ExprId) -> bo
     (cas_ast::collect_variables(ctx, expr).is_empty() && cas_ast::count_nodes(ctx, expr) <= 16)
         || extract_plain_sinh_or_cosh_arg_root(ctx, expr).is_some()
         || extract_unary_builtin_arg_root(ctx, expr, BuiltinFn::Tanh).is_some()
+        || extract_direct_tangent_addition_fraction_target_root(ctx, expr).is_some()
 }
 
 fn is_pure_arithmetic_constant_expr_root(ctx: &Context, expr: ExprId) -> bool {
@@ -11636,6 +11855,18 @@ fn canonicalize_safe_anchor_direct_partner_root(ctx: &mut Context, expr: ExprId)
                 ctx, trig_fn, full_arg,
             ));
         }
+    }
+
+    if let Some((trig_fn, full_arg)) = extract_direct_abs_trig_half_angle_target_root(ctx, expr) {
+        return Some(build_direct_sqrt_abs_trig_half_angle_target_root(
+            ctx, trig_fn, full_arg,
+        ));
+    }
+
+    if let Some(base) = extract_addition_of_successive_unit_fractions_arg_root(ctx, expr) {
+        return Some(build_collapsed_successive_unit_fractions_expr_root(
+            ctx, base,
+        ));
     }
 
     if matches!(ctx.get(expr), Expr::Function(_, _)) {
@@ -12307,6 +12538,88 @@ fn try_standard_safe_anchor_direct_partner_shortcut(
             Vec::new()
         };
         return Some((rewritten, shortcut_steps));
+    }
+
+    None
+}
+
+fn try_standard_scaled_half_angle_anchor_direct_partner_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    fn canonicalize_scaled_half_angle_partner_root(
+        ctx: &mut Context,
+        expr: ExprId,
+    ) -> Option<ExprId> {
+        factor_sum_diff_cubes_partner_root(ctx, expr)
+            .or_else(|| factor_higher_degree_difference_partner_root(ctx, expr))
+            .or_else(|| factor_sophie_germain_partner_root(ctx, expr))
+            .or_else(|| factor_known_small_polynomial_partner_root(ctx, expr))
+            .or_else(|| canonicalize_direct_pair_factor_root(ctx, expr))
+    }
+
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() < 3 {
+        return None;
+    }
+
+    for left_index in 0..factors.len() {
+        for right_index in (left_index + 1)..factors.len() {
+            let anchor_source =
+                build_mul_expr_from_factors_root(ctx, &[factors[left_index], factors[right_index]]);
+            let Some((trig_fn, full_arg)) =
+                extract_direct_scaled_half_angle_pow2_source_root(ctx, anchor_source)
+            else {
+                continue;
+            };
+
+            let partner_factors: Vec<_> = factors
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, factor)| {
+                    (index != left_index && index != right_index).then_some(factor)
+                })
+                .collect();
+            if partner_factors.is_empty() {
+                continue;
+            }
+
+            let partner_expr = build_mul_expr_from_factors_root(ctx, &partner_factors);
+            if cas_ast::collect_variables(ctx, partner_expr).is_empty() {
+                continue;
+            }
+            if is_safe_direct_pair_anchor_target_root(ctx, partner_expr) {
+                continue;
+            }
+            let partner_canonical = canonicalize_scaled_half_angle_partner_root(ctx, partner_expr)
+                .unwrap_or(partner_expr);
+            if is_safe_direct_pair_anchor_target_root(ctx, partner_canonical) {
+                continue;
+            }
+            let canonical_arg =
+                isolated_simplify_expr_if_changed(options, ctx, full_arg).unwrap_or(full_arg);
+            let anchor_target = build_scaled_half_angle_target_root(ctx, trig_fn, canonical_arg);
+            let rewritten =
+                build_mul_expr_from_factors_root(ctx, &[anchor_target, partner_canonical]);
+            if compare_expr(ctx, rewritten, expr) == Ordering::Equal
+                && compare_expr(ctx, partner_canonical, partner_expr) == Ordering::Equal
+            {
+                continue;
+            }
+
+            return Some(run_named_rebuilt_root_shortcut_simplify(
+                options,
+                ctx,
+                expr,
+                rewritten,
+                "Scaled Half-Angle Anchor Direct Partner",
+                "Scaled Half-Angle Anchor Direct Partner",
+                collect_steps,
+            ));
+        }
     }
 
     None
@@ -16472,6 +16785,20 @@ impl Orchestrator {
                 }
                 if let Some((result, shortcut_steps)) =
                     try_standard_safe_anchor_small_polynomial_partner_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_scaled_half_angle_anchor_direct_partner_shortcut(
                         &self.options,
                         &mut simplifier.context,
                         expr,
@@ -21624,12 +21951,32 @@ mod tests {
     }
 
     #[test]
+    fn detects_direct_tan_to_sec_pythagorean_pair_regression() {
+        let mut ctx = Context::new();
+        let lhs = parse("1 + tan(z)^2", &mut ctx).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let rhs = parse("sec(z)^2", &mut ctx).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(super::matches_direct_tan_to_sec_pythagorean_pair_root(
+            &mut ctx, lhs, rhs
+        ));
+    }
+
+    #[test]
     fn detects_direct_csc_cot_pythagorean_pair_regression() {
         let mut ctx = Context::new();
         let lhs = parse("csc(z)^2 - cot(z)^2", &mut ctx)
             .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         let rhs = parse("1", &mut ctx).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         assert!(super::matches_direct_csc_cot_pythagorean_pair_root(
+            &mut ctx, lhs, rhs
+        ));
+    }
+
+    #[test]
+    fn detects_direct_cot_to_csc_pythagorean_pair_regression() {
+        let mut ctx = Context::new();
+        let lhs = parse("1 + cot(z)^2", &mut ctx).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let rhs = parse("csc(z)^2", &mut ctx).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(super::matches_direct_cot_to_csc_pythagorean_pair_root(
             &mut ctx, lhs, rhs
         ));
     }
@@ -21959,6 +22306,208 @@ mod tests {
     }
 
     #[test]
+    fn simplify_pipeline_aligns_fractional_special_angle_with_short_geometric_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse(
+            "(cos(3*pi/8)) * (u^3 + u^2 + u + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "((sqrt(2 - sqrt(2))/2) * ((u+1)*(u^2+1)))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        assert_eq!(
+            render(&simplifier.context, source_nf),
+            render(&simplifier.context, target_nf)
+        );
+    }
+
+    #[test]
+    fn simplify_pipeline_aligns_fractional_special_angle_with_shifted_square_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(cos(3*pi/8)) * (u^2 + 2*u)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "((sqrt(2 - sqrt(2))/2) * ((u+1)^2 - 1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        assert_eq!(
+            render(&simplifier.context, source_nf),
+            render(&simplifier.context, target_nf)
+        );
+    }
+
+    #[test]
+    fn simplify_pipeline_aligns_fractional_special_angle_with_difference_of_squares_partner_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(cos(3*pi/8)) * (u^2 - 4)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "((sqrt(2 - sqrt(2))/2) * ((u-2)*(u+2)))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        assert_eq!(
+            render(&simplifier.context, source_nf),
+            render(&simplifier.context, target_nf)
+        );
+    }
+
+    #[test]
+    fn simplify_pipeline_aligns_fractional_special_angle_with_difference_of_cubes_partner_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(cos(3*pi/8)) * (u^3 - 1)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "((sqrt(2 - sqrt(2))/2) * ((u-1)*(u^2 + u + 1)))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        assert_eq!(
+            render(&simplifier.context, source_nf),
+            render(&simplifier.context, target_nf)
+        );
+    }
+
+    #[test]
+    fn simplify_pipeline_aligns_fractional_special_angle_with_sum_of_squares_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(cos(3*pi/8)) * (u^2 + v^2)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "((sqrt(2 - sqrt(2))/2) * ((u+v)^2 - 2*u*v))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        assert_eq!(
+            render(&simplifier.context, source_nf),
+            render(&simplifier.context, target_nf)
+        );
+    }
+
+    #[test]
+    fn simplify_pipeline_aligns_fractional_special_angle_with_abs_half_angle_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(cos(3*pi/8)) * (abs(sin(u/2)))", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "((sqrt(2 - sqrt(2))/2) * (sqrt((1-cos(u))/2)))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        assert_eq!(
+            render(&simplifier.context, source_nf),
+            render(&simplifier.context, target_nf)
+        );
+    }
+
+    #[test]
+    fn simplify_pipeline_aligns_phi_with_abs_half_angle_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(phi^2) * (abs(sin(u/2)))", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "((phi + 1) * (sqrt((1-cos(u))/2)))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        assert_eq!(
+            render(&simplifier.context, source_nf),
+            render(&simplifier.context, target_nf)
+        );
+    }
+
+    #[test]
+    fn simplify_pipeline_preserves_scaled_half_angle_partner_inside_fractional_special_angle_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(cos(3*pi/8)) * (2*cos(u/2)^2)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "((sqrt(2 - sqrt(2))/2) * (1 + cos(u)))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        let rendered = render(&simplifier.context, source_nf);
+        assert!(rendered.contains("cos(u)"));
+        let diff = simplifier.context.add(Expr::Sub(source_nf, target_nf));
+        assert!(super::isolated_simplify_rewrites_to_zero(
+            &crate::phase::SimplifyOptions::default(),
+            &mut simplifier.context,
+            diff
+        ));
+    }
+
+    #[test]
+    fn simplify_pipeline_aligns_fractional_special_angle_with_duplicate_sum_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(cos(3*pi/8)) * (u+u)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse("((sqrt(2 - sqrt(2))/2) * (2*u))", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        let diff = simplifier.context.add(Expr::Sub(source_nf, target_nf));
+        assert!(super::isolated_simplify_rewrites_to_zero(
+            &crate::phase::SimplifyOptions::default(),
+            &mut simplifier.context,
+            diff
+        ));
+    }
+
+    #[test]
+    fn simplify_pipeline_aligns_fractional_special_angle_with_partition_of_unity_partner_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse(
+            "(cos(3*pi/8)) * (exp(u)/(exp(u) + 1) + 1/(exp(u) + 1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse("((sqrt(2 - sqrt(2))/2) * 1)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        let diff = simplifier.context.add(Expr::Sub(source_nf, target_nf));
+        assert!(super::isolated_simplify_rewrites_to_zero(
+            &crate::phase::SimplifyOptions::default(),
+            &mut simplifier.context,
+            diff
+        ));
+    }
+
+    #[test]
     fn simplify_pipeline_handles_special_angle_tan_times_two_linear_shift_partner_regression() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse("(tan(5*pi/12)) * (u^2 + 5*u + 6)", &mut simplifier.context)
@@ -22102,11 +22651,116 @@ mod tests {
     }
 
     #[test]
+    fn simplify_pipeline_aligns_safe_anchor_with_successive_unit_fraction_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(phi + 1) * (1/u + 1/(u+1))", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "((phi + 1) * ((2*u + 1)/(u*(u+1))))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        assert_eq!(
+            render(&simplifier.context, source_nf),
+            render(&simplifier.context, target_nf)
+        );
+    }
+
+    #[test]
+    fn simplify_pipeline_aligns_safe_anchor_with_abs_half_angle_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(phi + 1) * (abs(cos(u/2)))", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "((phi + 1) * (sqrt((1+cos(u))/2)))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        assert_eq!(
+            render(&simplifier.context, source_nf),
+            render(&simplifier.context, target_nf)
+        );
+    }
+
+    #[test]
     fn simplify_pipeline_handles_safe_anchor_times_positive_scaled_half_angle_partner_regression() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse("(2*sqrt(2)) * (1 + cos(u))", &mut simplifier.context)
             .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         let expected = parse("(2*sqrt(2)) * (2*cos(u/2)^2)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        let diff_expr = simplifier.context.add(Expr::Sub(rewritten, expected));
+        let (diff, _steps, _stats) = orchestrator.simplify_pipeline(diff_expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, diff), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_aligns_scaled_half_angle_anchor_with_sum_diff_cubes_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(2*cos(x/2)^2) * (u^3 + v^3)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "(1 + cos(x)) * ((u+v)*(u^2 - u*v + v^2))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        assert_eq!(
+            render(&simplifier.context, source_nf),
+            render(&simplifier.context, target_nf)
+        );
+    }
+
+    #[test]
+    fn simplify_pipeline_aligns_scaled_half_angle_anchor_with_higher_degree_difference_partner_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = parse("(2*cos(x/2)^2) * (u^6 - 1)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let target = parse(
+            "(1 + cos(x)) * ((u^2+u+1)*(u^2-u+1)*(u+1)*(u-1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
+        let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
+        assert_eq!(
+            render(&simplifier.context, source_nf),
+            render(&simplifier.context, target_nf)
+        );
+    }
+
+    #[test]
+    fn simplify_pipeline_avoids_scaled_half_angle_anchor_loop_with_safe_anchor_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("(2*sqrt(2)) * (1 + cos(u))", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let expected = parse("(2*sqrt(2)) * (2*cos(u/2)^2)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        let diff_expr = simplifier.context.add(Expr::Sub(rewritten, expected));
+        let (diff, _steps, _stats) = orchestrator.simplify_pipeline(diff_expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, diff), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_avoids_scaled_half_angle_anchor_loop_with_constant_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("(2*cos(x/2)^2) * 2", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let expected = parse("(1 + cos(x)) * 2", &mut simplifier.context)
             .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         let mut orchestrator = Orchestrator::new();
         let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
@@ -22238,6 +22892,32 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
             "((sec(u)^2 - tan(u)^2) * (cos(2*u))) - ((1) * (2*cos(u)^2 - 1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn detects_two_factor_product_pair_zero_difference_cot_to_csc_chebyshev_regression() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((1 + cot(u)^2) * (cos(2*u))) - (((csc(u)^2)) * (2*cos(u)^2 - 1))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(matches_direct_two_factor_product_pair_zero_difference_root(
+            &mut ctx, expr
+        ));
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_cot_to_csc_pythagorean_times_chebyshev_zero_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((1 + cot(u)^2) * (cos(2*u))) - (((csc(u)^2)) * (2*cos(u)^2 - 1))",
             &mut simplifier.context,
         )
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
@@ -23935,6 +24615,49 @@ mod tests {
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         let expected = parse(
             "(u^3 + 6*u^2 + 11*u + 6) * (sin(x+y)/(cos(x)*cos(y)))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        let difference = simplifier.context.add(Expr::Sub(rewritten, expected));
+        assert!(super::isolated_simplify_rewrites_to_zero(
+            &crate::phase::SimplifyOptions::default(),
+            &mut simplifier.context,
+            difference
+        ));
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_tangent_addition_anchor_times_sum_diff_cubes_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("(tan(x) + tan(y)) * (u^3 - 1)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let expected = parse(
+            "(sin(x+y)/(cos(x)*cos(y))) * ((u-1)*(u^2 + u + 1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        let difference = simplifier.context.add(Expr::Sub(rewritten, expected));
+        assert!(super::isolated_simplify_rewrites_to_zero(
+            &crate::phase::SimplifyOptions::default(),
+            &mut simplifier.context,
+            difference
+        ));
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_tangent_addition_anchor_times_log_split_partner_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(tan(x) + tan(y)) * (ln(sqrt(u)*v))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let expected = parse(
+            "(sin(x+y)/(cos(x)*cos(y))) * (ln(u)/2 + ln(v))",
             &mut simplifier.context,
         )
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
