@@ -112,6 +112,7 @@ Useful signals:
 - cumulative wall time per shortcut
 - average wall time per call
 - expressions or shape buckets associated with worst hotspots
+- embedded scorecard runtime deltas against a recent baseline
 
 This does not have to become user-facing product output.
 It is an engine-maintenance tool.
@@ -199,6 +200,9 @@ Minimum validation:
 
 If the refactor changes broad routing or hot-path matcher placement, then
 `embedded` runtime is a required metric, not optional context.
+
+That metric should be read from the scorecard with a baseline comparison, not
+only from ad hoc shell notes after the run.
 
 That means a refactor can fail even if:
 

@@ -157,6 +157,9 @@ sake.
 `embedded_equivalence_context_corpus.csv` should also be tracked as an elapsed
 time metric.
 
+That runtime should appear in the scorecard as a first-class guardrail with
+baseline comparison, not just as a manually copied observation.
+
 A meaningful slowdown in this corpus should be treated as a regression unless
 there is a strong, explicit justification such as:
 
@@ -170,6 +173,9 @@ In other words:
 - elapsed time still matters
 - a slower embedded corpus is acceptable only when the functional or robustness
   gain is clearly worth it
+
+The default workflow should therefore compare each meaningful run against a
+recent baseline and make the delta visible in the generated scorecard.
 
 ## Corpus 2: Orientation, Sign, And Canonicalization Robustness
 

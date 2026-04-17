@@ -30,6 +30,8 @@ from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = ROOT / "docs" / "generated" / "engine_improvement_scorecard.json"
+EMBEDDED_RUNTIME_DELTA_RATIO_THRESHOLD = 0.10
+EMBEDDED_RUNTIME_DELTA_SECONDS_THRESHOLD = 5.0
 
 
 @dataclass(frozen=True)
@@ -311,7 +313,23 @@ def parse_corpus(output: str) -> dict[str, Any]:
     match = re.search(r"Elapsed:\s+([0-9.]+)([a-z]+)", output)
     if match:
         metrics["reported_elapsed"] = f"{match.group(1)}{match.group(2)}"
+        metrics["reported_elapsed_seconds"] = duration_to_seconds(
+            float(match.group(1)), match.group(2)
+        )
     return metrics
+
+
+def duration_to_seconds(value: float, unit: str) -> float:
+    scale = {
+        "s": 1.0,
+        "ms": 1e-3,
+        "us": 1e-6,
+        "µs": 1e-6,
+        "ns": 1e-9,
+    }.get(unit)
+    if scale is None:
+        raise ValueError(f"unsupported duration unit: {unit}")
+    return value * scale
 
 
 def parse_derive(output: str) -> dict[str, Any]:
@@ -487,11 +505,13 @@ def compute_deltas(
     baseline_data: dict[str, Any] | None,
     suite_name: str,
     metrics: dict[str, Any],
+    elapsed_seconds: float,
 ) -> dict[str, Any]:
     if not baseline_data:
         return {}
     suites = baseline_data.get("suites", {})
-    previous = suites.get(suite_name, {}).get("metrics", {})
+    previous_suite = suites.get(suite_name, {})
+    previous = previous_suite.get("metrics", {})
     deltas: dict[str, Any] = {}
     for key, value in metrics.items():
         if key == "suite_rows" or key == "proved_breakdown":
@@ -499,7 +519,62 @@ def compute_deltas(
         delta = numeric_delta(value, previous.get(key))
         if delta is not None and delta != 0:
             deltas[key] = delta
+    elapsed_delta = numeric_delta(elapsed_seconds, previous_suite.get("elapsed_seconds"))
+    if elapsed_delta is not None and elapsed_delta != 0:
+        deltas["elapsed_seconds"] = round(elapsed_delta, 3)
     return deltas
+
+
+def compute_embedded_runtime_guardrail(
+    baseline_data: dict[str, Any] | None,
+    suite_name: str,
+    elapsed_seconds: float,
+) -> dict[str, Any] | None:
+    if suite_name != "embedded_equivalence_context" or not baseline_data:
+        return None
+
+    baseline_suite = baseline_data.get("suites", {}).get(suite_name, {})
+    baseline_elapsed = baseline_suite.get("elapsed_seconds")
+    if not isinstance(baseline_elapsed, (int, float)) or baseline_elapsed <= 0:
+        return None
+
+    delta_seconds = elapsed_seconds - baseline_elapsed
+    delta_ratio = delta_seconds / baseline_elapsed
+    threshold_seconds = max(
+        EMBEDDED_RUNTIME_DELTA_SECONDS_THRESHOLD,
+        baseline_elapsed * EMBEDDED_RUNTIME_DELTA_RATIO_THRESHOLD,
+    )
+
+    assessment = "stable"
+    if delta_seconds >= threshold_seconds:
+        assessment = "regression"
+    elif delta_seconds <= -threshold_seconds:
+        assessment = "improvement"
+
+    return {
+        "assessment": assessment,
+        "baseline_elapsed_seconds": round(baseline_elapsed, 3),
+        "delta_seconds": round(delta_seconds, 3),
+        "delta_ratio": round(delta_ratio, 4),
+        "threshold_seconds": round(threshold_seconds, 3),
+    }
+
+
+def format_elapsed_with_delta(
+    elapsed_seconds: float, suite_delta: dict[str, Any]
+) -> str:
+    summary = f"{elapsed_seconds:.2f}s"
+    delta = suite_delta.get("elapsed_seconds")
+    if isinstance(delta, (int, float)):
+        summary += f" (Δ {delta:+.2f}s)"
+    return summary
+
+
+def effective_elapsed_seconds(metrics: dict[str, Any], process_elapsed_seconds: float) -> float:
+    reported = metrics.get("reported_elapsed_seconds")
+    if isinstance(reported, (int, float)):
+        return float(reported)
+    return process_elapsed_seconds
 
 
 def render_markdown(scorecard: dict[str, Any]) -> str:
@@ -511,13 +586,44 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
         f"- Git commit: `{scorecard['git']['commit']}`",
         f"- Profile: `{scorecard['profile']}`",
         "",
-        "| Suite | Status | Key metrics |",
-        "| --- | --- | --- |",
     ]
+
+    embedded_suite = scorecard["suites"].get("embedded_equivalence_context")
+    if embedded_suite:
+        lines.extend(
+            [
+                "## Embedded Runtime Guardrail",
+                "",
+                f"- Elapsed: {embedded_suite['elapsed_seconds']:.2f}s",
+            ]
+        )
+        embedded_guardrail = embedded_suite.get("guardrail")
+        if embedded_guardrail:
+            lines.extend(
+                [
+                    f"- Baseline: {embedded_guardrail['baseline_elapsed_seconds']:.2f}s",
+                    (
+                        "- Assessment: "
+                        f"`{embedded_guardrail['assessment']}` "
+                        f"(Δ {embedded_guardrail['delta_seconds']:+.2f}s, "
+                        f"{embedded_guardrail['delta_ratio']:+.1%}, "
+                        f"threshold {embedded_guardrail['threshold_seconds']:.2f}s)"
+                    ),
+                ]
+            )
+        lines.append("")
+
+    lines.extend(
+        [
+            "| Suite | Status | Elapsed | Key metrics |",
+            "| --- | --- | --- | --- |",
+        ]
+    )
 
     for name, suite in scorecard["suites"].items():
         metrics = suite["metrics"]
         status = suite["status"]
+        delta = suite.get("delta", {})
         if "parse_error" in metrics:
             summary = f"parse_error={metrics['parse_error']}"
         elif "total_cases" in metrics:
@@ -550,7 +656,10 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 f"numeric={metrics['numeric_only']} inconclusive={metrics['inconclusive']} "
                 f"timeouts={metrics['timeouts']}"
             )
-        lines.append(f"| `{name}` | `{status}` | {summary} |")
+        elapsed_summary = format_elapsed_with_delta(suite["elapsed_seconds"], delta)
+        lines.append(
+            f"| `{name}` | `{status}` | {elapsed_summary} | {summary} |"
+        )
 
     return "\n".join(lines) + "\n"
 
@@ -606,18 +715,28 @@ def main() -> int:
             overall_exit = 1
         else:
             status = suite_status(spec.name, metrics, returncode)
-            if status == "fail":
-                overall_exit = 1
+        measured_elapsed = effective_elapsed_seconds(metrics, elapsed)
+        guardrail = compute_embedded_runtime_guardrail(
+            baseline_data, spec.name, measured_elapsed
+        )
+        if guardrail and guardrail["assessment"] == "regression" and status == "pass":
+            status = "warn"
+        if status == "fail":
+            overall_exit = 1
 
         scorecard["suites"][spec.name] = {
             "category": spec.category,
             "status": status,
             "returncode": returncode,
-            "elapsed_seconds": round(elapsed, 3),
+            "elapsed_seconds": round(measured_elapsed, 3),
+            "process_elapsed_seconds": round(elapsed, 3),
             "command": spec.command,
             "env": spec.env,
             "metrics": metrics,
-            "delta": compute_deltas(baseline_data, spec.name, metrics),
+            "delta": compute_deltas(
+                baseline_data, spec.name, metrics, measured_elapsed
+            ),
+            "guardrail": guardrail,
         }
 
     output_path.parent.mkdir(parents=True, exist_ok=True)

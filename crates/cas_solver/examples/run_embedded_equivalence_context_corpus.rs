@@ -3,6 +3,10 @@ use cas_api_models::{
     EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalStepsMode,
     EvalValueDomain,
 };
+use cas_engine::{
+    clear_orchestrator_shortcut_profile, orchestrator_shortcut_profile_report,
+    orchestrator_shortcut_profiling_enabled,
+};
 use cas_session::eval::{evaluate_eval_command_with_session, EvalCommandConfig};
 use std::collections::BTreeMap;
 use std::env;
@@ -64,6 +68,10 @@ fn main() {
 }
 
 fn run(config: RunnerConfig) -> i32 {
+    if orchestrator_shortcut_profiling_enabled() {
+        clear_orchestrator_shortcut_profile();
+    }
+
     let mut cases = load_cases(&config.csv_path);
     if let Some(wrapper) = &config.wrapper_filter {
         cases.retain(|case| &case.wrapper == wrapper);
@@ -137,7 +145,7 @@ fn run(config: RunnerConfig) -> i32 {
         );
     }
 
-    if failures.is_empty() {
+    let status_code = if failures.is_empty() {
         0
     } else {
         println!();
@@ -156,7 +164,14 @@ fn run(config: RunnerConfig) -> i32 {
             }
         }
         1
+    };
+
+    if orchestrator_shortcut_profiling_enabled() {
+        eprintln!();
+        eprintln!("{}", orchestrator_shortcut_profile_report());
     }
+
+    status_code
 }
 
 fn parse_args() -> RunnerConfig {

@@ -64,6 +64,7 @@ mod matrix_rule_support;
 mod meta_functions_support;
 pub(crate) mod options;
 pub(crate) mod orchestrator;
+pub(crate) mod orchestrator_shortcut_profiler;
 pub(crate) mod parent_context;
 #[cfg(test)]
 mod parent_context_tests;
@@ -237,6 +238,10 @@ pub use options::{
     StepsMode,
 };
 pub use orchestrator::Orchestrator;
+pub use orchestrator_shortcut_profiler::{
+    clear_orchestrator_shortcut_profile, orchestrator_shortcut_profile_report,
+    orchestrator_shortcut_profiling_enabled,
+};
 pub use parent_context::ParentContext;
 pub use phase::{
     ExpandBudget, ExpandPolicy, PhaseBudgets, PhaseMask, PhaseStats, PipelineStats,

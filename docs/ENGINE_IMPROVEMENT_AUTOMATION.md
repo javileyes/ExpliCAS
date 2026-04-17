@@ -47,6 +47,13 @@ Outputs:
 - JSON scorecard at [docs/generated/engine_improvement_scorecard.json](/Users/javiergimenezmoya/developer/math/docs/generated/engine_improvement_scorecard.json)
 - Markdown summary at [docs/generated/engine_improvement_scorecard.md](/Users/javiergimenezmoya/developer/math/docs/generated/engine_improvement_scorecard.md)
 
+When a previous scorecard is passed through `--baseline`, the runner should also
+surface:
+
+- suite elapsed deltas
+- explicit `embedded` runtime assessment vs baseline
+- a warning state when `embedded` regresses materially in elapsed time
+
 ## Why These Lanes Exist
 
 `strict` and `nf-first` are not the same measurement.
@@ -100,6 +107,9 @@ That makes it a good detector of changes that:
 So the automation should treat embedded runtime as a first-class scorecard
 dimension, not just pass/fail.
 
+That should be visible in the scorecard itself, not only in manual notes after a
+benchmark run.
+
 ### Policy
 
 A change that makes embedded runtime materially worse should usually be rejected,
@@ -119,6 +129,13 @@ Even then, the burden of proof is on the change:
 - the new functionality must be real and reusable
 - the runtime regression must be measured explicitly
 - the slowdown should be reduced as much as possible before the change is retained
+
+Operationally, the default comparison loop should be:
+
+1. keep a recent scorecard JSON as baseline
+2. rerun the relevant profile or suite
+3. inspect the embedded runtime delta in the scorecard output itself
+4. reject or justify the change before retaining it
 
 ## Why The Embedded Context Corpus Must Keep Growing
 
