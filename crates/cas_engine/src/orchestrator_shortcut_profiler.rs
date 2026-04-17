@@ -44,19 +44,19 @@ impl ShortcutProfiler {
 
     fn report(&self) -> String {
         if self.stats.is_empty() {
-            return "No orchestrator shortcuts have been profiled yet.".to_string();
+            return "No orchestrator sections have been profiled yet.".to_string();
         }
 
         let mut rows: Vec<_> = self.stats.iter().collect();
         rows.sort_by_key(|(_, stats)| Reverse(stats.total_duration));
 
-        let mut report = String::from("Orchestrator Shortcut Profiling Report\n");
+        let mut report = String::from("Orchestrator Profiling Report\n");
         report.push_str(
             "──────────────────────────────────────────────────────────────────────────────────────────────\n",
         );
         report.push_str(&format!(
             "{:48} {:>8} {:>8} {:>8} {:>12} {:>12}\n",
-            "Shortcut", "Attempts", "Hits", "Misses", "Total ms", "Avg us"
+            "Section", "Attempts", "Hits", "Misses", "Total ms", "Avg us"
         ));
         report.push_str(
             "──────────────────────────────────────────────────────────────────────────────────────────────\n",
@@ -162,7 +162,8 @@ pub fn record_orchestrator_shortcut_sample(name: &'static str, sample: String) {
 
 pub fn orchestrator_shortcut_profile_report() -> String {
     if !orchestrator_shortcut_profiling_enabled() {
-        return "Orchestrator shortcut profiling not enabled. Set CAS_PROFILE_ORCHESTRATOR_SHORTCUTS=1.".to_string();
+        return "Orchestrator profiling not enabled. Set CAS_PROFILE_ORCHESTRATOR_SHORTCUTS=1."
+            .to_string();
     }
     ORCHESTRATOR_SHORTCUT_PROFILER.with(|profiler| profiler.borrow().report())
 }
@@ -212,7 +213,7 @@ mod tests {
         assert!(profiler.stats.is_empty());
         assert_eq!(
             profiler.report(),
-            "No orchestrator shortcuts have been profiled yet."
+            "No orchestrator sections have been profiled yet."
         );
     }
 

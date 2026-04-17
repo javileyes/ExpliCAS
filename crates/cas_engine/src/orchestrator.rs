@@ -166,6 +166,53 @@ fn run_profiled_root_shortcut<T>(name: &'static str, run: impl FnOnce() -> Optio
     result
 }
 
+fn run_profiled_orchestrator_section<T>(
+    name: &'static str,
+    sample: Option<String>,
+    run: impl FnOnce() -> T,
+) -> T {
+    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        return run();
+    }
+
+    if let Some(sample) = sample {
+        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(name, sample);
+    }
+
+    let start = std::time::Instant::now();
+    let result = run();
+    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_attempt(
+        name,
+        true,
+        start.elapsed(),
+    );
+    result
+}
+
+fn run_profiled_orchestrator_bool_section(name: &'static str, run: impl FnOnce() -> bool) -> bool {
+    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        return run();
+    }
+
+    let start = std::time::Instant::now();
+    let result = run();
+    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_attempt(
+        name,
+        result,
+        start.elapsed(),
+    );
+    result
+}
+
+fn pipeline_phase_profile_label(phase: SimplifyPhase) -> &'static str {
+    match phase {
+        SimplifyPhase::Core => "pipeline.phase.core",
+        SimplifyPhase::Transform => "pipeline.phase.transform",
+        SimplifyPhase::Rationalize => "pipeline.phase.rationalize",
+        SimplifyPhase::PostCleanup => "pipeline.phase.post_cleanup",
+    }
+}
+
 fn is_terminal_after_core(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => true,
@@ -457,6 +504,29 @@ fn is_direct_small_zero_composition_candidate_root(ctx: &mut Context, expr: Expr
             matches_direct_small_zero_pair_root(ctx, *lhs, *rhs)
         }
         _ => false,
+    }
+}
+
+fn expr_contains_pi_constant_local(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Constant(Constant::Pi) => true,
+        Expr::Add(lhs, rhs)
+        | Expr::Sub(lhs, rhs)
+        | Expr::Mul(lhs, rhs)
+        | Expr::Div(lhs, rhs)
+        | Expr::Pow(lhs, rhs) => {
+            expr_contains_pi_constant_local(ctx, *lhs) || expr_contains_pi_constant_local(ctx, *rhs)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_pi_constant_local(ctx, *inner),
+        Expr::Function(_, args) => args
+            .iter()
+            .copied()
+            .any(|arg| expr_contains_pi_constant_local(ctx, arg)),
+        Expr::Matrix { data, .. } => data
+            .iter()
+            .copied()
+            .any(|arg| expr_contains_pi_constant_local(ctx, arg)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
     }
 }
 
@@ -4287,18 +4357,60 @@ fn matches_direct_hyperbolic_triple_angle_pair_root(
 }
 
 fn extract_special_angle_exact_value_root(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    let Expr::Function(fn_id, args) = ctx.get(expr) else {
-        return None;
+    let (builtin_name, arg) = {
+        let Expr::Function(fn_id, args) = ctx.get(expr) else {
+            return None;
+        };
+        if args.len() != 1 {
+            return None;
+        }
+        let builtin = ctx.builtin_of(*fn_id)?;
+        (builtin.name(), args[0])
     };
-    if args.len() != 1 {
-        return None;
+    let profiling =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    if profiling {
+        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+            "root.special_angle.lookup_trig_or_inverse",
+            render_expr(ctx, expr),
+        );
+        if let Some(hit) =
+            run_profiled_root_shortcut("root.special_angle.lookup_trig_or_inverse", || {
+                lookup_trig_or_inverse(ctx, builtin_name, arg).map(|hit| hit.value.to_expr(ctx))
+            })
+        {
+            return Some(hit);
+        }
+
+        let detected_angle = run_profiled_orchestrator_section(
+            "root.special_angle.detect_special_angle",
+            None,
+            || detect_special_angle(ctx, arg),
+        );
+        if let Some(angle) = detected_angle {
+            if let Some(value) =
+                run_profiled_root_shortcut("root.special_angle.lookup_trig_value", || {
+                    lookup_trig_value(builtin_name, angle).map(|value| value.to_expr(ctx))
+                })
+            {
+                return Some(value);
+            }
+        }
+
+        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+            "root.special_angle.legacy_eval",
+            render_expr(ctx, expr),
+        );
+        return run_profiled_root_shortcut("root.special_angle.legacy_eval", || {
+            try_rewrite_legacy_evaluate_trig_expr(ctx, expr).map(|rewrite| rewrite.rewritten)
+        });
     }
-    let builtin = ctx.builtin_of(*fn_id)?;
-    if let Some(hit) = lookup_trig_or_inverse(ctx, builtin.name(), args[0]) {
+
+    if let Some(hit) = lookup_trig_or_inverse(ctx, builtin_name, arg) {
         return Some(hit.value.to_expr(ctx));
     }
-    if let Some(angle) = detect_special_angle(ctx, args[0]) {
-        if let Some(value) = lookup_trig_value(builtin.name(), angle) {
+    if let Some(angle) = detect_special_angle(ctx, arg) {
+        if let Some(value) = lookup_trig_value(builtin_name, angle) {
             return Some(value.to_expr(ctx));
         }
     }
@@ -7156,6 +7268,44 @@ fn matches_direct_general_phase_shift_zero_identity_root(ctx: &mut Context, expr
     let Some(rewrite) = crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx) else {
         return false;
     };
+    let zero = ctx.num(0);
+    compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal
+}
+
+fn matches_direct_three_term_phase_shift_zero_subset_root(ctx: &mut Context, expr: ExprId) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 3
+        || !expr_contains_trig_builtin_local(ctx, expr)
+        || (!expr_contains_any_builtin_local(ctx, expr, &[BuiltinFn::Atan, BuiltinFn::Arctan])
+            && !expr_contains_pi_constant_local(ctx, expr))
+    {
+        return false;
+    }
+
+    let parent_ctx = crate::ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
+    let rule = crate::rules::arithmetic::CollapseExactZeroThreeTermSubsetRule;
+    let profiling =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    let rewrite = if profiling {
+        run_profiled_orchestrator_section(
+            "root.div.03g1a.phase_shift_zero.rule_apply",
+            None,
+            || crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx),
+        )
+    } else {
+        crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx)
+    };
+    let Some(rewrite) = rewrite else {
+        return false;
+    };
+    if profiling {
+        let description_label = if rewrite.description == "Phase Shift Identity" {
+            "root.div.03g1b.phase_shift_zero.phase_shift_identity_rewrite"
+        } else {
+            "root.div.03g1c.phase_shift_zero.other_rewrite_kind"
+        };
+        run_profiled_root_shortcut(description_label, || Some(rewrite.new_expr));
+    }
     let zero = ctx.num(0);
     compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal
 }
@@ -12514,6 +12664,15 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
 ) -> Option<(ExprId, Vec<Step>)> {
     let profiling =
         crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    macro_rules! profiled_two_factor_bool {
+        ($name:literal, $body:expr) => {{
+            if profiling {
+                run_profiled_orchestrator_bool_section($name, || $body)
+            } else {
+                $body
+            }
+        }};
+    }
 
     fn canonicalize_small_constant_like_direct_pair_anchor_root(
         ctx: &mut Context,
@@ -12521,6 +12680,18 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
     ) -> Option<ExprId> {
         let profiling =
             crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+
+        let sqrt_function = if profiling {
+            run_profiled_root_shortcut(
+                "root.mul.14c0.constant_like.sqrt_function_fast_path",
+                || try_rewrite_small_constant_sqrt_function_wrapper_root(ctx, expr),
+            )
+        } else {
+            try_rewrite_small_constant_sqrt_function_wrapper_root(ctx, expr)
+        };
+        if let Some(rewritten) = sqrt_function {
+            return Some(rewritten);
+        }
 
         let special_angle = if profiling {
             run_profiled_root_shortcut(
@@ -12605,17 +12776,6 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
         if let Some(rewritten) = wrapped_constant_function {
             return Some(rewritten);
         }
-        let sqrt_function = if profiling {
-            run_profiled_root_shortcut(
-                "root.mul.14c5b.constant_like.sqrt_function_to_half_power",
-                || try_rewrite_small_constant_sqrt_function_wrapper_root(ctx, expr),
-            )
-        } else {
-            try_rewrite_small_constant_sqrt_function_wrapper_root(ctx, expr)
-        };
-        if let Some(rewritten) = sqrt_function {
-            return Some(rewritten);
-        }
         let isolated = if profiling {
             let label = constant_like_isolated_simplify_profile_label_root(ctx, expr);
             if label.starts_with("root.mul.14c6") {
@@ -12652,6 +12812,22 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
     ) -> bool {
         matches!(ctx.get(expr), Expr::Variable(_) | Expr::Constant(_))
             || is_additive_sin_or_cos_partner_root(ctx, expr)
+    }
+
+    fn is_special_angle_exact_value_function_builtin_root(ctx: &Context, expr: ExprId) -> bool {
+        let Expr::Function(fn_id, args) = ctx.get(expr) else {
+            return false;
+        };
+        args.len() == 1
+            && (ctx.is_builtin(*fn_id, BuiltinFn::Sin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Cos)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Tan)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Asin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Acos)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Atan)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Arcsin)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Arccos)
+                || ctx.is_builtin(*fn_id, BuiltinFn::Arctan))
     }
 
     fn canonicalize_two_factor_partner_root(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
@@ -12797,32 +12973,76 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
 
     for anchor_index in 0..2 {
         let partner_index = 1 - anchor_index;
-        if !is_potential_direct_pair_anchor_source_root(ctx, factors[anchor_index]) {
+        if !profiled_two_factor_bool!(
+            "root.mul.14g.two_factor.anchor_candidate_gate",
+            is_potential_direct_pair_anchor_source_root(ctx, factors[anchor_index])
+        ) {
             continue;
         }
-        if !is_potential_direct_pair_partner_source_root(ctx, factors[partner_index]) {
+        if !profiled_two_factor_bool!(
+            "root.mul.14h.two_factor.partner_candidate_gate",
+            is_potential_direct_pair_partner_source_root(ctx, factors[partner_index])
+        ) {
             continue;
         }
-        if matches!(ctx.get(factors[anchor_index]), Expr::Function(_, _))
-            && extract_special_angle_exact_value_root(ctx, factors[anchor_index]).is_some()
-        {
+        let function_special_angle_skip =
+            profiled_two_factor_bool!("root.mul.14i.two_factor.function_special_angle_skip", {
+                if profiling
+                    && is_special_angle_exact_value_function_builtin_root(
+                        ctx,
+                        factors[anchor_index],
+                    )
+                {
+                    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                        "root.mul.14i.two_factor.function_special_angle_skip",
+                        render_expr(ctx, factors[anchor_index]),
+                    );
+                }
+                is_special_angle_exact_value_function_builtin_root(ctx, factors[anchor_index])
+                    && extract_special_angle_exact_value_root(ctx, factors[anchor_index]).is_some()
+            });
+        if function_special_angle_skip {
             continue;
         }
-        if is_pure_arithmetic_constant_expr_root(ctx, factors[anchor_index])
-            || is_pure_arithmetic_constant_expr_root(ctx, factors[partner_index])
-        {
+        let arithmetic_constant_skip = profiled_two_factor_bool!(
+            "root.mul.14j.two_factor.arithmetic_constant_skip",
+            is_pure_arithmetic_constant_expr_root(ctx, factors[anchor_index])
+                || is_pure_arithmetic_constant_expr_root(ctx, factors[partner_index])
+        );
+        if arithmetic_constant_skip {
             continue;
         }
-        let anchor_canonical = canonicalize_two_factor_anchor_root(ctx, factors[anchor_index])
-            .unwrap_or(factors[anchor_index]);
+        let anchor_canonical = if profiling {
+            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                "root.mul.14k.two_factor.anchor_canonicalize",
+                render_expr(ctx, factors[anchor_index]),
+            );
+            run_profiled_root_shortcut("root.mul.14k.two_factor.anchor_canonicalize", || {
+                canonicalize_two_factor_anchor_root(ctx, factors[anchor_index])
+            })
+            .unwrap_or(factors[anchor_index])
+        } else {
+            canonicalize_two_factor_anchor_root(ctx, factors[anchor_index])
+                .unwrap_or(factors[anchor_index])
+        };
         let anchor_changed =
             compare_expr(ctx, anchor_canonical, factors[anchor_index]) != Ordering::Equal;
-        if !anchor_changed || !is_safe_direct_pair_anchor_target_root(ctx, anchor_canonical) {
+        if !profiled_two_factor_bool!(
+            "root.mul.14m.two_factor.anchor_safe_target_gate",
+            anchor_changed && is_safe_direct_pair_anchor_target_root(ctx, anchor_canonical)
+        ) {
             continue;
         }
 
-        let partner_canonical = canonicalize_two_factor_partner_root(ctx, factors[partner_index])
-            .unwrap_or(factors[partner_index]);
+        let partner_canonical = if profiling {
+            run_profiled_root_shortcut("root.mul.14l.two_factor.partner_canonicalize", || {
+                canonicalize_two_factor_partner_root(ctx, factors[partner_index])
+            })
+            .unwrap_or(factors[partner_index])
+        } else {
+            canonicalize_two_factor_partner_root(ctx, factors[partner_index])
+                .unwrap_or(factors[partner_index])
+        };
         let stable_constant_anchor =
             is_stable_small_constant_like_exact_anchor_root(ctx, anchor_canonical);
         let partner_pre_simplified = if stable_constant_anchor
@@ -16125,6 +16345,19 @@ fn has_numeric_pythagorean_complement_pair(ctx: &Context, expr: ExprId) -> bool 
         )
 }
 
+fn is_small_positive_additive_trig_passthrough_core_root(ctx: &mut Context, expr: ExprId) -> bool {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let terms = AddView::from_expr(ctx, expr).terms;
+    (2..=4).contains(&terms.len())
+        && terms.iter().all(|(_, sign)| *sign == Sign::Pos)
+        && expr_contains_trig_builtin_local(ctx, expr)
+        && !matches_direct_small_zero_identity_root(ctx, expr)
+        && !is_potential_small_trig_zero_identity_root(ctx, expr)
+}
+
 fn try_standard_shifted_quotient_exact_one_shortcut(
     options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
@@ -16433,6 +16666,18 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
+    let profile_nested_zero =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    macro_rules! profiled_nested_zero_bool {
+        ($name:literal, $body:expr) => {{
+            if profile_nested_zero {
+                run_profiled_orchestrator_bool_section($name, || $body)
+            } else {
+                $body
+            }
+        }};
+    }
+
     let Expr::Div(numerator, denominator) = ctx.get(expr) else {
         return None;
     };
@@ -16444,46 +16689,63 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
     let denominator_core = strip_positive_one_passthrough_root(ctx, denominator);
 
     if let (Some(numerator_core), Some(denominator_core)) = (numerator_core, denominator_core) {
-        if matches_direct_trig_product_to_sum_sin_sin_pair_root(
-            ctx,
-            numerator_core,
-            denominator_core,
-        ) || matches_direct_trig_product_to_sum_sin_cos_pair_root(
-            ctx,
-            numerator_core,
-            denominator_core,
-        ) || matches_direct_trig_product_to_sum_cos_cos_pair_root(
-            ctx,
-            numerator_core,
-            denominator_core,
-        ) || matches_direct_nested_fraction_simplified_pair_root(
-            ctx,
-            numerator_core,
-            denominator_core,
-        ) || matches_direct_hyperbolic_sinh_sum_to_product_pair_root(
-            ctx,
-            numerator_core,
-            denominator_core,
-        ) || matches_direct_hyperbolic_cosh_sum_to_product_pair_root(
-            ctx,
-            numerator_core,
-            denominator_core,
-        ) || matches_direct_hyperbolic_cosh_difference_to_product_pair_root(
-            ctx,
-            numerator_core,
-            denominator_core,
-        ) || matches_direct_recursive_hyperbolic_sinh_sum_pair_root(
-            ctx,
-            numerator_core,
-            denominator_core,
-        ) || matches_direct_recursive_hyperbolic_cosh_sum_pair_root(
-            ctx,
-            numerator_core,
-            denominator_core,
-        ) || matches_direct_cos_square_diff_pair_root(ctx, numerator_core, denominator_core)
-            || matches_direct_trig_binomial_square_pair_root(ctx, numerator_core, denominator_core)
-            || matches_direct_angle_sum_diff_pair_root(ctx, numerator_core, denominator_core)
+        if is_small_positive_additive_trig_passthrough_core_root(ctx, numerator_core)
+            && is_small_positive_additive_trig_passthrough_core_root(ctx, denominator_core)
         {
+            return None;
+        }
+
+        let direct_pair_family =
+            profiled_nested_zero_bool!("root.div.03a.nested_zero.direct_pair_family", {
+                matches_direct_trig_product_to_sum_sin_sin_pair_root(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                ) || matches_direct_trig_product_to_sum_sin_cos_pair_root(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                ) || matches_direct_trig_product_to_sum_cos_cos_pair_root(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                ) || matches_direct_nested_fraction_simplified_pair_root(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                ) || matches_direct_hyperbolic_sinh_sum_to_product_pair_root(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                ) || matches_direct_hyperbolic_cosh_sum_to_product_pair_root(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                ) || matches_direct_hyperbolic_cosh_difference_to_product_pair_root(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                ) || matches_direct_recursive_hyperbolic_sinh_sum_pair_root(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                ) || matches_direct_recursive_hyperbolic_cosh_sum_pair_root(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                ) || matches_direct_cos_square_diff_pair_root(ctx, numerator_core, denominator_core)
+                    || matches_direct_trig_binomial_square_pair_root(
+                        ctx,
+                        numerator_core,
+                        denominator_core,
+                    )
+                    || matches_direct_angle_sum_diff_pair_root(
+                        ctx,
+                        numerator_core,
+                        denominator_core,
+                    )
+            });
+        if direct_pair_family {
             return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
                 options,
                 ctx,
@@ -16493,9 +16755,12 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
             ));
         }
 
-        if matches_direct_small_zero_identity_root(ctx, numerator_core)
-            && matches_direct_small_zero_identity_root(ctx, denominator_core)
-        {
+        let both_direct_small_zero =
+            profiled_nested_zero_bool!("root.div.03b.nested_zero.both_direct_small_zero", {
+                matches_direct_small_zero_identity_root(ctx, numerator_core)
+                    && matches_direct_small_zero_identity_root(ctx, denominator_core)
+            });
+        if both_direct_small_zero {
             return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
                 options,
                 ctx,
@@ -16505,13 +16770,18 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
             ));
         }
 
-        if ((expr_contains_reciprocal_trig_builtin_local(ctx, numerator_core)
-            && expr_contains_trig_or_hyperbolic_builtin_local(ctx, denominator_core))
-            || (expr_contains_reciprocal_trig_builtin_local(ctx, denominator_core)
-                && expr_contains_trig_or_hyperbolic_builtin_local(ctx, numerator_core)))
-            && child_isolated_exact_zero(options, ctx, numerator_core)
-            && child_isolated_exact_zero(options, ctx, denominator_core)
-        {
+        let reciprocal_trig_both_child_zero = profiled_nested_zero_bool!(
+            "root.div.03c.nested_zero.reciprocal_trig_both_child_zero",
+            {
+                ((expr_contains_reciprocal_trig_builtin_local(ctx, numerator_core)
+                    && expr_contains_trig_or_hyperbolic_builtin_local(ctx, denominator_core))
+                    || (expr_contains_reciprocal_trig_builtin_local(ctx, denominator_core)
+                        && expr_contains_trig_or_hyperbolic_builtin_local(ctx, numerator_core)))
+                    && child_isolated_exact_zero(options, ctx, numerator_core)
+                    && child_isolated_exact_zero(options, ctx, denominator_core)
+            }
+        );
+        if reciprocal_trig_both_child_zero {
             return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
                 options,
                 ctx,
@@ -16521,13 +16791,30 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
             ));
         }
 
-        if (expr_contains_trig_or_hyperbolic_builtin_local(ctx, numerator_core)
-            && child_matches_direct_or_isolated_exact_zero(options, ctx, numerator_core)
-            && supported_nested_zero_partner_rewrites_to_zero(options, ctx, denominator_core))
-            || (expr_contains_trig_or_hyperbolic_builtin_local(ctx, denominator_core)
-                && child_matches_direct_or_isolated_exact_zero(options, ctx, denominator_core)
-                && supported_nested_zero_partner_rewrites_to_zero(options, ctx, numerator_core))
-        {
+        let zero_child_supported_partner =
+            profiled_nested_zero_bool!("root.div.03d.nested_zero.zero_child_supported_partner", {
+                (expr_contains_trig_or_hyperbolic_builtin_local(ctx, numerator_core)
+                    && is_supported_nested_zero_child_partner(ctx, denominator_core)
+                    && child_matches_direct_or_isolated_exact_zero(options, ctx, numerator_core)
+                    && supported_nested_zero_partner_rewrites_to_zero(
+                        options,
+                        ctx,
+                        denominator_core,
+                    ))
+                    || (expr_contains_trig_or_hyperbolic_builtin_local(ctx, denominator_core)
+                        && is_supported_nested_zero_child_partner(ctx, numerator_core)
+                        && child_matches_direct_or_isolated_exact_zero(
+                            options,
+                            ctx,
+                            denominator_core,
+                        )
+                        && supported_nested_zero_partner_rewrites_to_zero(
+                            options,
+                            ctx,
+                            numerator_core,
+                        ))
+            });
+        if zero_child_supported_partner {
             return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
                 options,
                 ctx,
@@ -16537,17 +16824,28 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
             ));
         }
 
-        if (matches_narrow_trig_mixed_double_angle_zero_candidate_root(ctx, numerator_core)
-            && child_isolated_exact_zero(options, ctx, numerator_core)
-            && (matches_direct_small_zero_identity_root(ctx, denominator_core)
-                || (is_small_trig_or_hyperbolic_zero_child(options, ctx, denominator_core)
-                    && child_isolated_exact_zero(options, ctx, denominator_core))))
-            || (matches_narrow_trig_mixed_double_angle_zero_candidate_root(ctx, denominator_core)
-                && child_isolated_exact_zero(options, ctx, denominator_core)
-                && (matches_direct_small_zero_identity_root(ctx, numerator_core)
-                    || (is_small_trig_or_hyperbolic_zero_child(options, ctx, numerator_core)
-                        && child_isolated_exact_zero(options, ctx, numerator_core))))
-        {
+        let narrow_mixed_double_angle =
+            profiled_nested_zero_bool!("root.div.03e.nested_zero.narrow_mixed_double_angle", {
+                (matches_narrow_trig_mixed_double_angle_zero_candidate_root(ctx, numerator_core)
+                    && child_isolated_exact_zero(options, ctx, numerator_core)
+                    && (matches_direct_small_zero_identity_root(ctx, denominator_core)
+                        || (is_small_trig_or_hyperbolic_zero_child(
+                            options,
+                            ctx,
+                            denominator_core,
+                        ) && child_isolated_exact_zero(options, ctx, denominator_core))))
+                    || (matches_narrow_trig_mixed_double_angle_zero_candidate_root(
+                        ctx,
+                        denominator_core,
+                    ) && child_isolated_exact_zero(options, ctx, denominator_core)
+                        && (matches_direct_small_zero_identity_root(ctx, numerator_core)
+                            || (is_small_trig_or_hyperbolic_zero_child(
+                                options,
+                                ctx,
+                                numerator_core,
+                            ) && child_isolated_exact_zero(options, ctx, numerator_core))))
+            });
+        if narrow_mixed_double_angle {
             return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
                 options,
                 ctx,
@@ -16570,6 +16868,10 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
                         && matches_direct_small_zero_identity_root(ctx, numerator_core))
                         || (is_small_trig_or_hyperbolic_zero_child(options, ctx, numerator_core)
                             && child_isolated_exact_zero(options, ctx, numerator_core))));
+        let narrow_small_trig_zero_pair = profiled_nested_zero_bool!(
+            "root.div.03f.nested_zero.narrow_small_trig_pair",
+            narrow_small_trig_zero_pair
+        );
         if narrow_small_trig_zero_pair {
             return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
                 options,
@@ -16584,7 +16886,36 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
             && expr_contains_trig_or_hyperbolic_builtin_local(ctx, denominator_core)
         {
             let residual_difference = ctx.add(Expr::Sub(numerator_core, denominator_core));
-            if child_isolated_exact_zero(options, ctx, residual_difference) {
+            if profile_nested_zero {
+                let residual_sample = render_expr(ctx, residual_difference);
+                crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                    "root.div.03g1.nested_zero.residual_difference_phase_shift_zero",
+                    residual_sample.clone(),
+                );
+                crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                    "root.div.03g2.nested_zero.residual_difference_isolated_zero_fallback",
+                    residual_sample,
+                );
+            }
+            let residual_difference_phase_shift_zero = profiled_nested_zero_bool!(
+                "root.div.03g1.nested_zero.residual_difference_phase_shift_zero",
+                matches_direct_three_term_phase_shift_zero_subset_root(ctx, residual_difference)
+            );
+            if residual_difference_phase_shift_zero {
+                return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
+                    options,
+                    ctx,
+                    expr,
+                    one,
+                    collect_steps,
+                ));
+            }
+
+            let residual_difference_isolated_zero = profiled_nested_zero_bool!(
+                "root.div.03g2.nested_zero.residual_difference_isolated_zero_fallback",
+                child_isolated_exact_zero(options, ctx, residual_difference)
+            );
+            if residual_difference_isolated_zero {
                 return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
                     options,
                     ctx,
@@ -16597,17 +16928,21 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
     }
 
     let new_numerator = numerator_core.and_then(|core| {
-        (expr_contains_trig_or_hyperbolic_builtin_local(ctx, core)
-            && denominator_core
-                .is_some_and(|other| is_supported_nested_zero_child_partner(ctx, other))
-            && child_isolated_exact_zero(options, ctx, core))
+        profiled_nested_zero_bool!("root.div.03h.nested_zero.new_numerator_rewrite_to_one", {
+            expr_contains_trig_or_hyperbolic_builtin_local(ctx, core)
+                && denominator_core
+                    .is_some_and(|other| is_supported_nested_zero_child_partner(ctx, other))
+                && child_isolated_exact_zero(options, ctx, core)
+        })
         .then_some(one)
     });
     let new_denominator = denominator_core.and_then(|core| {
-        (expr_contains_trig_or_hyperbolic_builtin_local(ctx, core)
-            && numerator_core
-                .is_some_and(|other| is_supported_nested_zero_child_partner(ctx, other))
-            && child_isolated_exact_zero(options, ctx, core))
+        profiled_nested_zero_bool!("root.div.03i.nested_zero.new_denominator_rewrite_to_one", {
+            expr_contains_trig_or_hyperbolic_builtin_local(ctx, core)
+                && numerator_core
+                    .is_some_and(|other| is_supported_nested_zero_child_partner(ctx, other))
+                && child_isolated_exact_zero(options, ctx, core)
+        })
         .then_some(one)
     });
 
@@ -17407,177 +17742,184 @@ impl Orchestrator {
         phase: SimplifyPhase,
         max_iters: usize,
     ) -> (ExprId, Vec<Step>, crate::phase::PhaseStats) {
-        use crate::phase::PhaseStats;
+        let phase_label = pipeline_phase_profile_label(phase);
+        let sample =
+            crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled()
+                .then(|| render_expr(&simplifier.context, start));
+        run_profiled_orchestrator_section(phase_label, sample, || {
+            use crate::phase::PhaseStats;
 
-        let mut current = start;
-        let mut all_steps = Vec::new();
-        let mut seen_hashes: HashSet<u64> = HashSet::new();
-        let mut stats = PhaseStats::new(phase);
+            let mut current = start;
+            let mut all_steps = Vec::new();
+            let mut seen_hashes: HashSet<u64> = HashSet::new();
+            let mut stats = PhaseStats::new(phase);
 
-        tracing::debug!(
-            target: "simplify",
-            phase = %phase,
-            budget = max_iters,
-            "phase_start"
-        );
+            tracing::debug!(
+                target: "simplify",
+                phase = %phase,
+                budget = max_iters,
+                "phase_start"
+            );
 
-        for iter in 0..max_iters {
-            let is_solve_mode =
-                self.options.shared.context_mode == crate::options::ContextMode::Solve;
-            if self.pattern_marks_expr != Some(current) {
-                self.pattern_marks = crate::pattern_marks::PatternMarks::new();
-                crate::pattern_scanner::scan_and_mark_patterns(
-                    &simplifier.context,
-                    current,
-                    &mut self.pattern_marks,
-                );
-
-                // Auto-expand scanner: mark cancellation contexts (difference quotients)
-                // Only skip in Solve mode (which should never auto-expand to preserve structure)
-                // The scanner has its own strict budgets (n=2, base_terms<=3) so it's safe to always run
-                if !is_solve_mode {
-                    let math_budget =
-                        to_math_auto_expand_budget(&self.options.shared.expand_budget);
-                    cas_math::auto_expand_scan::mark_auto_expand_candidates(
+            for iter in 0..max_iters {
+                let is_solve_mode =
+                    self.options.shared.context_mode == crate::options::ContextMode::Solve;
+                if self.pattern_marks_expr != Some(current) {
+                    self.pattern_marks = crate::pattern_marks::PatternMarks::new();
+                    crate::pattern_scanner::scan_and_mark_patterns(
                         &simplifier.context,
                         current,
-                        &math_budget,
                         &mut self.pattern_marks,
                     );
+
+                    // Auto-expand scanner: mark cancellation contexts (difference quotients)
+                    // Only skip in Solve mode (which should never auto-expand to preserve structure)
+                    // The scanner has its own strict budgets (n=2, base_terms<=3) so it's safe to always run
+                    if !is_solve_mode {
+                        let math_budget =
+                            to_math_auto_expand_budget(&self.options.shared.expand_budget);
+                        cas_math::auto_expand_scan::mark_auto_expand_candidates(
+                            &simplifier.context,
+                            current,
+                            &math_budget,
+                            &mut self.pattern_marks,
+                        );
+                    }
+                    self.pattern_marks_expr = Some(current);
                 }
-                self.pattern_marks_expr = Some(current);
-            }
-            let global_auto_expand = self.options.shared.expand_policy
-                == crate::phase::ExpandPolicy::Auto
-                && !is_solve_mode;
-            let config = crate::engine::LoopConfig {
-                phase,
-                expand_mode: self.options.expand_mode,
-                auto_expand: global_auto_expand,
-                expand_budget: self.options.shared.expand_budget,
-                domain_mode: self.options.shared.semantics.domain_mode,
-                inv_trig: self.options.shared.semantics.inv_trig,
-                value_domain: self.options.shared.semantics.value_domain,
-                goal: self.options.goal,
-                simplify_purpose: self.options.simplify_purpose,
-                context_mode: self.options.shared.context_mode,
-                autoexpand_binomials: self.options.shared.autoexpand_binomials,
-                heuristic_poly: self.options.shared.heuristic_poly,
-                suppress_depth_overflow_warnings: self.options.suppress_depth_overflow_warnings,
-            };
-            let (next, steps, pass_stats) =
-                simplifier.apply_rules_loop_with_config(current, &self.pattern_marks, &config);
+                let global_auto_expand = self.options.shared.expand_policy
+                    == crate::phase::ExpandPolicy::Auto
+                    && !is_solve_mode;
+                let config = crate::engine::LoopConfig {
+                    phase,
+                    expand_mode: self.options.expand_mode,
+                    auto_expand: global_auto_expand,
+                    expand_budget: self.options.shared.expand_budget,
+                    domain_mode: self.options.shared.semantics.domain_mode,
+                    inv_trig: self.options.shared.semantics.inv_trig,
+                    value_domain: self.options.shared.semantics.value_domain,
+                    goal: self.options.goal,
+                    simplify_purpose: self.options.simplify_purpose,
+                    context_mode: self.options.shared.context_mode,
+                    autoexpand_binomials: self.options.shared.autoexpand_binomials,
+                    heuristic_poly: self.options.shared.heuristic_poly,
+                    suppress_depth_overflow_warnings: self.options.suppress_depth_overflow_warnings,
+                };
+                let (next, steps, pass_stats) =
+                    simplifier.apply_rules_loop_with_config(current, &self.pattern_marks, &config);
 
-            // Log budget stats for this iteration (actual charging done by caller if Budget provided)
-            if pass_stats.rewrite_count > 0 || pass_stats.nodes_delta > 0 {
-                tracing::trace!(
-                    target: "budget",
-                    op = %pass_stats.op,
-                    rewrites = pass_stats.rewrite_count,
-                    nodes_delta = pass_stats.nodes_delta,
-                    "pass_budget_stats"
-                );
-            }
+                // Log budget stats for this iteration (actual charging done by caller if Budget provided)
+                if pass_stats.rewrite_count > 0 || pass_stats.nodes_delta > 0 {
+                    tracing::trace!(
+                        target: "budget",
+                        op = %pass_stats.op,
+                        rewrites = pass_stats.rewrite_count,
+                        nodes_delta = pass_stats.nodes_delta,
+                        "pass_budget_stats"
+                    );
+                }
 
-            // Warn user when budget limit was reached (best-effort mode)
-            if let Some(ref exceeded) = pass_stats.stop_reason {
-                tracing::warn!(
-                    target: "budget",
-                    op = %exceeded.op,
-                    metric = %exceeded.metric,
-                    used = exceeded.used,
-                    limit = exceeded.limit,
-                    "Budget limit reached: {}/{} (used {}, limit {}). Returned partial result.",
-                    exceeded.op,
-                    exceeded.metric,
-                    exceeded.used,
-                    exceeded.limit
-                );
-            }
+                // Warn user when budget limit was reached (best-effort mode)
+                if let Some(ref exceeded) = pass_stats.stop_reason {
+                    tracing::warn!(
+                        target: "budget",
+                        op = %exceeded.op,
+                        metric = %exceeded.metric,
+                        used = exceeded.used,
+                        limit = exceeded.limit,
+                        "Budget limit reached: {}/{} (used {}, limit {}). Returned partial result.",
+                        exceeded.op,
+                        exceeded.metric,
+                        exceeded.used,
+                        exceeded.limit
+                    );
+                }
 
-            stats.rewrites_used += steps.len();
-            all_steps.extend(steps);
+                stats.rewrites_used += steps.len();
+                all_steps.extend(steps);
 
-            // Hidden solve fast path: once Core collapses to a terminal value or a
-            // plain symbolic closed form, another full Core pass is only paying the
-            // fixed-point check. Later pipeline decisions are still made by the
-            // caller after this phase returns.
-            if phase == SimplifyPhase::Core
-                && !self.options.collect_steps
-                && is_solve_mode
-                && next != current
-                && (is_terminal_after_core(&simplifier.context, next)
-                    || is_plain_symbolic_binomial_after_core(&simplifier.context, next)
-                    || is_plain_symbolic_cube_trinomial_after_core(&simplifier.context, next)
-                    || (!self.options.shared.semantics.domain_mode.is_strict()
-                        && matches!(simplifier.context.get(current), Expr::Div(_, _))
-                        && is_plain_symbolic_power_after_core(&simplifier.context, next)))
-            {
+                // Hidden solve fast path: once Core collapses to a terminal value or a
+                // plain symbolic closed form, another full Core pass is only paying the
+                // fixed-point check. Later pipeline decisions are still made by the
+                // caller after this phase returns.
+                if phase == SimplifyPhase::Core
+                    && !self.options.collect_steps
+                    && is_solve_mode
+                    && next != current
+                    && (is_terminal_after_core(&simplifier.context, next)
+                        || is_plain_symbolic_binomial_after_core(&simplifier.context, next)
+                        || is_plain_symbolic_cube_trinomial_after_core(&simplifier.context, next)
+                        || (!self.options.shared.semantics.domain_mode.is_strict()
+                            && matches!(simplifier.context.get(current), Expr::Div(_, _))
+                            && is_plain_symbolic_power_after_core(&simplifier.context, next)))
+                {
+                    current = next;
+                    stats.iters_used = iter + 1;
+                    tracing::debug!(
+                        target: "simplify",
+                        phase = %phase,
+                        iters = stats.iters_used,
+                        rewrites = stats.rewrites_used,
+                        "phase_early_exit_after_closed_form"
+                    );
+                    break;
+                }
+
+                // Fixed point check
+                if next == current {
+                    stats.iters_used = iter + 1;
+                    tracing::debug!(
+                        target: "simplify",
+                        phase = %phase,
+                        iters = stats.iters_used,
+                        rewrites = stats.rewrites_used,
+                        "phase_fixed_point"
+                    );
+                    break;
+                }
+
+                // Cycle detection: HashSet catches cycles of any period
+                let hash =
+                    cas_math::expr_semantic_hash::semantic_hash(&simplifier.context, current);
+                if !seen_hashes.insert(hash) {
+                    // Emit cycle event for the registry
+                    cas_solver_core::cycle_event_registry::register_cycle_event_for_expr(
+                        &simplifier.context,
+                        current,
+                        phase,
+                        0, // unknown period at inter-iteration level
+                        cas_solver_core::cycle_models::CycleLevel::InterIteration,
+                        "(inter-iteration)",
+                        hash,
+                        iter,
+                    );
+                    stats.iters_used = iter + 1;
+                    tracing::warn!(
+                        target: "simplify",
+                        phase = %phase,
+                        iters = stats.iters_used,
+                        "cycle_detected"
+                    );
+                    break;
+                }
+
                 current = next;
                 stats.iters_used = iter + 1;
-                tracing::debug!(
-                    target: "simplify",
-                    phase = %phase,
-                    iters = stats.iters_used,
-                    rewrites = stats.rewrites_used,
-                    "phase_early_exit_after_closed_form"
-                );
-                break;
             }
 
-            // Fixed point check
-            if next == current {
-                stats.iters_used = iter + 1;
-                tracing::debug!(
-                    target: "simplify",
-                    phase = %phase,
-                    iters = stats.iters_used,
-                    rewrites = stats.rewrites_used,
-                    "phase_fixed_point"
-                );
-                break;
-            }
+            stats.changed = current != start;
 
-            // Cycle detection: HashSet catches cycles of any period
-            let hash = cas_math::expr_semantic_hash::semantic_hash(&simplifier.context, current);
-            if !seen_hashes.insert(hash) {
-                // Emit cycle event for the registry
-                cas_solver_core::cycle_event_registry::register_cycle_event_for_expr(
-                    &simplifier.context,
-                    current,
-                    phase,
-                    0, // unknown period at inter-iteration level
-                    cas_solver_core::cycle_models::CycleLevel::InterIteration,
-                    "(inter-iteration)",
-                    hash,
-                    iter,
-                );
-                stats.iters_used = iter + 1;
-                tracing::warn!(
-                    target: "simplify",
-                    phase = %phase,
-                    iters = stats.iters_used,
-                    "cycle_detected"
-                );
-                break;
-            }
+            tracing::debug!(
+                target: "simplify",
+                phase = %phase,
+                iters = stats.iters_used,
+                rewrites = stats.rewrites_used,
+                changed = stats.changed,
+                "phase_end"
+            );
 
-            current = next;
-            stats.iters_used = iter + 1;
-        }
-
-        stats.changed = current != start;
-
-        tracing::debug!(
-            target: "simplify",
-            phase = %phase,
-            iters = stats.iters_used,
-            rewrites = stats.rewrites_used,
-            changed = stats.changed,
-            "phase_end"
-        );
-
-        (current, all_steps, stats)
+            (current, all_steps, stats)
+        })
     }
 
     /// Simplify using explicit phase pipeline.
@@ -18509,145 +18851,160 @@ impl Orchestrator {
                     Expr::Div(numerator, denominator) => Some((*numerator, *denominator)),
                     _ => None,
                 };
-                let try_exact_one_first = div_pair.is_some_and(|(numerator, denominator)| {
-                    strip_positive_one_passthrough_root(&mut simplifier.context, numerator)
-                        .zip(strip_positive_one_passthrough_root(
-                            &mut simplifier.context,
-                            denominator,
-                        ))
-                        .is_some_and(|(numerator_core, denominator_core)| {
-                            let shared_passthrough_direct_pair =
-                                extract_shared_additive_passthrough_pair_cores_root(
+                let try_exact_one_first = run_profiled_orchestrator_bool_section(
+                    "root.div.01.shifted_quotient_exact_one_gate",
+                    || {
+                        div_pair.is_some_and(|(numerator, denominator)| {
+                            strip_positive_one_passthrough_root(&mut simplifier.context, numerator)
+                                .zip(strip_positive_one_passthrough_root(
                                     &mut simplifier.context,
-                                    numerator_core,
-                                    denominator_core,
-                                )
-                                .is_some_and(|(numerator_residual, denominator_residual)| {
-                                    matches_direct_trig_product_to_sum_sin_sin_pair_root(
+                                    denominator,
+                                ))
+                                .is_some_and(|(numerator_core, denominator_core)| {
+                                    let shared_passthrough_direct_pair =
+                                        extract_shared_additive_passthrough_pair_cores_root(
+                                            &mut simplifier.context,
+                                            numerator_core,
+                                            denominator_core,
+                                        )
+                                        .is_some_and(|(numerator_residual, denominator_residual)| {
+                                            matches_direct_trig_product_to_sum_sin_sin_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_trig_product_to_sum_sin_cos_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_trig_product_to_sum_cos_cos_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_nested_fraction_simplified_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_hyperbolic_sinh_sum_to_product_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_hyperbolic_cosh_sum_to_product_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_hyperbolic_cosh_difference_to_product_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_recursive_hyperbolic_sinh_sum_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_recursive_hyperbolic_cosh_sum_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_trig_mixed_double_angle_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_trig_cubic_cosine_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_cos_square_diff_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            ) || matches_direct_angle_sum_diff_pair_root(
+                                                &mut simplifier.context,
+                                                numerator_residual,
+                                                denominator_residual,
+                                            )
+                                        });
+                                    matches_known_direct_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
+                                    ) || matches_direct_half_angle_binomial_square_pair_root(
+                                        &mut simplifier.context,
+                                        numerator_core,
+                                        denominator_core,
+                                    ) || matches_direct_trig_phase_shift_pair_root(
+                                        &mut simplifier.context,
+                                        numerator_core,
+                                        denominator_core,
+                                    ) || matches_direct_pythagorean_factor_form_pair_root(
+                                        &mut simplifier.context,
+                                        numerator_core,
+                                        denominator_core,
+                                    ) || matches_direct_trig_product_to_sum_sin_sin_pair_root(
+                                        &mut simplifier.context,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_trig_product_to_sum_sin_cos_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_trig_product_to_sum_cos_cos_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_nested_fraction_simplified_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_hyperbolic_sinh_sum_to_product_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_hyperbolic_cosh_sum_to_product_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_hyperbolic_cosh_difference_to_product_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_recursive_hyperbolic_sinh_sum_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_recursive_hyperbolic_cosh_sum_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_trig_mixed_double_angle_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_trig_cubic_cosine_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_cos_square_diff_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
+                                        numerator_core,
+                                        denominator_core,
                                     ) || matches_direct_angle_sum_diff_pair_root(
                                         &mut simplifier.context,
-                                        numerator_residual,
-                                        denominator_residual,
-                                    )
-                                });
-                            matches_direct_half_angle_binomial_square_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_pythagorean_factor_form_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_trig_product_to_sum_sin_sin_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_trig_product_to_sum_sin_cos_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_trig_product_to_sum_cos_cos_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_nested_fraction_simplified_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_hyperbolic_sinh_sum_to_product_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_hyperbolic_cosh_sum_to_product_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_hyperbolic_cosh_difference_to_product_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_recursive_hyperbolic_sinh_sum_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_recursive_hyperbolic_cosh_sum_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_trig_mixed_double_angle_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_trig_cubic_cosine_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_cos_square_diff_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || matches_direct_angle_sum_diff_pair_root(
-                                &mut simplifier.context,
-                                numerator_core,
-                                denominator_core,
-                            ) || shared_passthrough_direct_pair
+                                        numerator_core,
+                                        denominator_core,
+                                    ) || shared_passthrough_direct_pair
+                                })
                         })
-                });
+                    },
+                );
                 if try_exact_one_first {
                     if let Some((result, shortcut_steps)) =
-                        try_standard_shifted_quotient_exact_one_shortcut(
-                            &self.options,
-                            &mut simplifier.context,
-                            expr,
-                            collect_steps,
-                        )
+                        run_profiled_root_shortcut("root.div.02.shifted_quotient_exact_one", || {
+                            try_standard_shifted_quotient_exact_one_shortcut(
+                                &self.options,
+                                &mut simplifier.context,
+                                expr,
+                                collect_steps,
+                            )
+                        })
                     {
                         return (
                             result,
@@ -18656,14 +19013,17 @@ impl Orchestrator {
                         );
                     }
                 }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_shifted_quotient_nested_zero_core_shortcut(
-                        &self.options,
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
+                if let Some((result, shortcut_steps)) = run_profiled_root_shortcut(
+                    "root.div.03.shifted_quotient_nested_zero_core",
+                    || {
+                        try_standard_shifted_quotient_nested_zero_core_shortcut(
+                            &self.options,
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    },
+                ) {
                     return (
                         result,
                         shortcut_steps,
@@ -21257,6 +21617,74 @@ mod tests {
         let mut orchestrator = Orchestrator::new();
         let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
         assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_shifted_sine_pair_sum_shifted_quotient_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((sin(x)+cos(x)+sin(y)+cos(y)) + 1)/((sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_shifted_sine_pair_sum_shifted_quotient_reverse_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)) + 1)/((sin(x)+cos(x)+sin(y)+cos(y)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn matches_direct_three_term_phase_shift_zero_subset_root_handles_positive_quarter_shift() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "sin(x) + cos(x) - sqrt(2)*sin(x + pi/4)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(matches_direct_three_term_phase_shift_zero_subset_root(
+            &mut simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
+    fn matches_direct_three_term_phase_shift_zero_subset_root_handles_negative_quarter_shift() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "sin(x) - cos(x) - sqrt(2)*sin(x - pi/4)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(matches_direct_three_term_phase_shift_zero_subset_root(
+            &mut simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
+    fn matches_direct_three_term_phase_shift_zero_subset_root_handles_weighted_third_shift() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "2*sin(x) + 2*sqrt(3)*cos(x) - 4*sin(pi/3 + x)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(matches_direct_three_term_phase_shift_zero_subset_root(
+            &mut simplifier.context,
+            expr
+        ));
     }
 
     #[test]
@@ -25397,6 +25825,23 @@ mod tests {
     }
 
     #[test]
+    fn detects_two_factor_product_pair_zero_difference_product_to_sum_inverse_trig_alias_constant_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((2*sin(x)*cos(2*x)) * (atan(1))) - ((sin(3*x) - sin(x)) * (pi/4))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(
+            super::matches_direct_two_factor_product_pair_zero_difference_root(
+                &mut simplifier.context,
+                expr
+            )
+        );
+    }
+
+    #[test]
     fn detects_two_factor_product_pair_zero_difference_product_to_sum_special_angle_constant_regression(
     ) {
         let mut simplifier = crate::Simplifier::with_default_rules();
@@ -25696,6 +26141,19 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
             "((2*sin(x)*cos(2*x)) * ((w^2 + p^2)*(u^2 + v^2))) - ((sin(3*x) - sin(x)) * ((w*u + p*v)^2 + (w*v - p*u)^2))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_product_to_sum_inverse_trig_alias_constant_zero_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((2*sin(x)*cos(2*x)) * (atan(1))) - ((sin(3*x) - sin(x)) * (pi/4))",
             &mut simplifier.context,
         )
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
