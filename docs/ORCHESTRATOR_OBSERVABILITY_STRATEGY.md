@@ -6,6 +6,13 @@ Improve the engine by making
 [orchestrator.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs)
 more observable, more locally understandable, and safer to evolve.
 
+This document is a derived strategy under
+[ENGINE_IMPROVEMENT_AUTOMATION.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_IMPROVEMENT_AUTOMATION.md).
+
+It should lead an iteration only when the ROI selector chooses
+`observability` or when orchestrator observability is the cheapest way to
+unlock a higher-confidence `runtime`, `coverage`, or `combination` change.
+
 The target is not cosmetic refactoring.
 
 The target is to reduce three real risks:
@@ -60,6 +67,15 @@ In practice that means:
 - measure hot paths before generalizing a matcher
 - separate cheap detection from expensive rewrite work
 - preserve ordering semantics unless there is measured evidence to change them
+
+This is not the primary strategy for the engine campaign.
+
+It is the way the campaign should operate when:
+
+- recent local wins fail the global guardrail and we still do not know why
+- a broad orchestrator family is clearly hot, but the internal winner/loser
+  routes are still opaque
+- we need to decide whether the next best ROI is `runtime` or `combination`
 
 ## What Good Looks Like
 
@@ -116,6 +132,24 @@ Useful signals:
 
 This does not have to become user-facing product output.
 It is an engine-maintenance tool.
+
+Observability work should also record *failed-but-informative* runtime ideas.
+
+When a change produces a strong local win but regresses `embedded`, do not just
+discard the idea silently.
+
+Record it in
+[ENGINE_COMBINATION_LEDGER.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COMBINATION_LEDGER.md)
+with:
+
+- the hotspot labels
+- the local delta
+- the embedded delta
+- the likely cause of the regression
+- the kind of complementary change that might make it safe later
+
+That keeps the team from rediscovering the same local win repeatedly, and makes
+future combination work evidence-driven instead of anecdotal.
 
 ### Phase 3: Extract By Family, Not By Layer
 
@@ -188,6 +222,14 @@ Each retained refactor should ideally improve at least one of:
 - hotspot observability
 - ability to benchmark a family in isolation
 
+Each rejected-but-locally-strong refactor should ideally leave behind:
+
+- one new observability cut, or
+- one ledger entry in
+  [ENGINE_COMBINATION_LEDGER.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COMBINATION_LEDGER.md)
+
+Otherwise the team loses the reasoning that justified the experiment.
+
 ## Validation Policy
 
 Every orchestrator refactor must be treated as engine work, not formatting work.
@@ -210,6 +252,61 @@ That means a refactor can fail even if:
 - local targeted tests improve
 
 if it causes a meaningful unforced slowdown in `embedded`.
+
+When that happens, the default action is:
+
+1. revert the runtime change
+2. keep any safe observability that helped localize the issue
+3. log the case in
+   [ENGINE_COMBINATION_LEDGER.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COMBINATION_LEDGER.md)
+4. only revisit it later with a concrete complementary hypothesis such as:
+   - a cheap gate
+   - a call-site restriction
+   - signature reuse or cache
+   - a second patch that removes the new broad traffic cost
+
+## Benchmark Roles For Orchestrator Work
+
+Orchestrator work should be read against three benchmark roles, not one moving
+number:
+
+- `frozen`
+  - a small representative suite snapshot that does not normally change
+  - measures baseline overhead tax on already-known traffic
+- `live`
+  - the current representative guardrail workload
+  - measures performance on the traffic we actually care about now
+- `stress`
+  - larger or more combinatorial expressions
+  - measures scaling risk and asymptotic mistakes
+
+### Why This Split Matters
+
+Without this split, a slowdown is ambiguous:
+
+- maybe the orchestrator got worse
+- maybe the corpus simply got broader
+- maybe the engine got more complete and the extra cost is justified
+
+With the split:
+
+- `frozen` tells us how much general tax we added
+- `live` tells us whether that tax buys value on current workload
+- `stress` tells us whether the change creates a scaling cliff
+
+### Validation Use
+
+For broad routing changes, the preferred reading order is:
+
+1. `frozen` overhead
+2. `live` workload delta
+3. `stress` scaling delta
+
+When discussing runtime, always say which role produced the number:
+
+- frozen baseline
+- live workload
+- stress scaling
 
 ## How This Connects To Engine Improvement Strategy
 

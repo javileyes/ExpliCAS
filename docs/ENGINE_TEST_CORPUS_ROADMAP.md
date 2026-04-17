@@ -1,5 +1,11 @@
 # Engine Test Corpus Roadmap
 
+This document is a derived strategy under
+[ENGINE_IMPROVEMENT_AUTOMATION.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_IMPROVEMENT_AUTOMATION.md).
+
+It should drive an iteration when the ROI selector chooses `coverage`, or when
+corpus work is the right vehicle for a `robustness` iteration.
+
 This document proposes the next high-ROI test corpora to improve the
 simplification engine itself, not only the didactic layer.
 
@@ -34,6 +40,14 @@ Use generated corpora to discover missing engine capabilities, especially when:
 - the engine depends too much on sign orientation or canonical order
 - semantic correctness changes across domain modes
 - the simplifier reaches the right result but via low-quality or unstable paths
+
+Corpus work is therefore not just “more tests”.
+
+It is the main mechanism for:
+
+- growing the `live` workload intentionally
+- preserving a small stable `frozen` ruler
+- separating useful completeness growth from accidental runtime tax
 
 ## Why Corpus-Driven Testing Matters
 
@@ -73,6 +87,48 @@ For the orchestrator-specific side of that work, see
 [ORCHESTRATOR_OBSERVABILITY_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/ORCHESTRATOR_OBSERVABILITY_STRATEGY.md).
 
 That is the model to repeat.
+
+## Corpus Roles: Frozen, Live, Stress
+
+Not every corpus should play the same role.
+
+We need three distinct roles:
+
+- `frozen`
+  - a small representative benchmark snapshot
+  - intentionally stable across normal engine work
+  - used to track baseline overhead tax on already-known traffic
+- `live`
+  - the current representative guardrail corpus
+  - grows as new mathematical families and wrappers become product-relevant
+- `stress`
+  - larger, deeper, or more combinatorial expressions
+  - used to expose scaling cliffs and performance instability
+
+### Why The Split Matters
+
+If the only corpus we keep is the growing current workload, elapsed time becomes
+hard to interpret:
+
+- maybe the engine got slower
+- maybe the corpus simply got broader
+- maybe the engine got more complete and that extra cost is worth paying
+
+Keeping a `frozen` corpus gives us a stable ruler for overhead.
+
+Keeping a `live` corpus preserves relevance.
+
+Keeping a `stress` corpus preserves scale awareness.
+
+### Promotion And Placement Policy
+
+Preferred path:
+
+1. explore in targeted regressions or local pressure slices
+2. promote to `live` once the family is stable and representative
+3. promote only a small durable subset to `frozen` when the goal is long-term
+   overhead tracking
+4. add larger or more entangled variants to `stress`, not to `frozen`
 
 ## Corpus 1: Embedded Equivalence In Context
 
@@ -174,8 +230,33 @@ In other words:
 - a slower embedded corpus is acceptable only when the functional or robustness
   gain is clearly worth it
 
+That runtime should also be interpreted by suite role:
+
+- `frozen`
+  - baseline tax
+- `live`
+  - current representative workload
+- `stress`
+  - scaling behavior
+
 The default workflow should therefore compare each meaningful run against a
 recent baseline and make the delta visible in the generated scorecard.
+
+When a corpus slice exposes a strong local runtime win that still loses on the
+global embedded guardrail, that case should be recorded as a combination
+candidate, not forgotten.
+
+Use
+[ENGINE_COMBINATION_LEDGER.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COMBINATION_LEDGER.md)
+to capture:
+
+- which slice improved
+- which global corpus regressed
+- which shapes dominated the local hotspot
+- what extra scoping or reuse might make the idea safe later
+
+That ledger is especially useful for corpus-guided work because many
+performance-sensitive ideas are only wrong in *placement*, not in mathematics.
 
 ## Corpus 2: Orientation, Sign, And Canonicalization Robustness
 

@@ -7282,10 +7282,10 @@ fn matches_direct_three_term_phase_shift_zero_subset_root(ctx: &mut Context, exp
         return false;
     }
 
-    let parent_ctx = crate::ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
-    let rule = crate::rules::arithmetic::CollapseExactZeroThreeTermSubsetRule;
     let profiling =
         crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    let parent_ctx = crate::ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
+    let rule = crate::rules::arithmetic::CollapseExactZeroThreeTermSubsetRule;
     let rewrite = if profiling {
         run_profiled_orchestrator_section(
             "root.div.03g1a.phase_shift_zero.rule_apply",
@@ -7305,6 +7305,23 @@ fn matches_direct_three_term_phase_shift_zero_subset_root(ctx: &mut Context, exp
             "root.div.03g1c.phase_shift_zero.other_rewrite_kind"
         };
         run_profiled_root_shortcut(description_label, || Some(rewrite.new_expr));
+        let mode_label = match rewrite
+            .substeps
+            .first()
+            .map(|substep| substep.title.as_str())
+        {
+            Some("Reescribir la combinación lineal") => {
+                "root.div.03g1d.phase_shift_zero.linear_to_shifted"
+            }
+            Some("Expandir el término desplazado") => {
+                "root.div.03g1e.phase_shift_zero.shifted_to_linear"
+            }
+            Some("Reescribir el término desplazado") => {
+                "root.div.03g1f.phase_shift_zero.shifted_to_shifted"
+            }
+            _ => "root.div.03g1g.phase_shift_zero.unknown_mode",
+        };
+        run_profiled_root_shortcut(mode_label, || Some(rewrite.new_expr));
     }
     let zero = ctx.num(0);
     compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal

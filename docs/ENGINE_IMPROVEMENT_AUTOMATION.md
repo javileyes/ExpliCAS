@@ -23,6 +23,93 @@ A real engine improvement may come from:
 The system should reward all of those, but only if they preserve the global
 guardrails.
 
+## Primary Strategy: ROI-Directed Iteration Selection
+
+This is the main strategy for automatic engine improvement.
+
+The rest of the campaign policies should derive from it:
+
+- orchestrator observability is the strategy for `observability` iterations
+- corpus growth is the strategy for `coverage` and part of `robustness`
+- the combination ledger is the strategy for `combination` iterations
+
+Each iteration should choose one primary investment class before touching code:
+
+- `runtime`
+  - reduce hot-path cost or broad no-match traffic
+- `coverage`
+  - add or unlock mathematically useful families
+- `robustness`
+  - reduce timeout, loop, overflow, or brittle routing risk
+- `observability`
+  - improve signal when the next profitable move is still ambiguous
+- `combination`
+  - revisit a documented `local win / global fail` only when a complementary
+    hypothesis is now available
+
+### Expected ROI
+
+The selector should not optimize for local speedup alone.
+
+It should choose the next iteration by expected retained value:
+
+`expected_roi ~= impact * breadth * confidence * retention_probability / implementation_cost`
+
+Interpretation:
+
+- `impact`
+  - expected gain in runtime, coverage, or robustness
+- `breadth`
+  - how much real traffic or mathematical surface area it affects
+- `confidence`
+  - how clear the causal hypothesis is
+- `retention_probability`
+  - probability that the change survives the global guardrails
+- `implementation_cost`
+  - code complexity, risk, and validation cost
+
+This matters because the campaign repeatedly encounters ideas with:
+
+- high local impact
+- low retention probability
+- poor actual ROI
+
+### Default Selection Rules
+
+Prefer:
+
+- `runtime`
+  - when `frozen` or `live` shows a broad hotspot with real traffic
+- `coverage`
+  - when a reusable family fails repeatedly and has good mathematical value
+- `robustness`
+  - when there is timeout, nontermination, overflow, or path fragility
+- `observability`
+  - when recent iterations produce `local win / global fail` or the hotspot is
+    still ambiguous
+- `combination`
+  - only when the ledger already contains a compatible pair:
+    - expensive win + cheap gate
+    - repeated extraction + reuse/cache
+    - local win in shared helper + move to exact call-site
+    - hotspot shift + follow-up patch for the shifted hotspot
+
+Avoid selecting `combination` just because multiple ideas looked good locally.
+
+### Per-Iteration Loop
+
+Each automatic iteration should do this in order:
+
+1. read the latest scorecard and profiler evidence
+2. classify candidate work into `runtime`, `coverage`, `robustness`,
+   `observability`, or `combination`
+3. estimate expected ROI for the top candidates
+4. choose one primary class for the iteration
+5. write down the success condition before editing code
+6. validate against the relevant benchmark roles
+7. if the change fails global retention, revert the runtime change and preserve
+   the learning in observability and/or the combination ledger
+
 ## Current Automation Base
 
 Use [engine_improvement_scorecard.py](/Users/javiergimenezmoya/developer/math/scripts/engine_improvement_scorecard.py) as the unified runner.
@@ -53,6 +140,36 @@ surface:
 - suite elapsed deltas
 - explicit `embedded` runtime assessment vs baseline
 - a warning state when `embedded` regresses materially in elapsed time
+
+## Benchmark Stratification
+
+The automation loop should reason about three benchmark roles:
+
+- `frozen`
+  - a small representative suite snapshot
+  - intentionally stable across normal engine work
+  - measures baseline engine overhead on known traffic
+- `live`
+  - the current representative guardrail workload
+  - grows as new families become real product traffic
+  - measures current usefulness
+- `stress`
+  - larger, deeper, or more combinatorial expressions
+  - measures scaling behavior and complexity cliffs
+
+### Why The Split Is Required
+
+If we only keep one growing benchmark, elapsed time becomes ambiguous:
+
+- maybe the engine got slower
+- maybe the suite simply got larger
+- maybe the engine got more complete and the cost is acceptable
+
+The split removes that ambiguity:
+
+- `frozen` measures tax
+- `live` measures current value
+- `stress` measures scaling
 
 ## Why These Lanes Exist
 
@@ -136,6 +253,34 @@ Operationally, the default comparison loop should be:
 2. rerun the relevant profile or suite
 3. inspect the embedded runtime delta in the scorecard output itself
 4. reject or justify the change before retaining it
+
+When possible, that comparison should explicitly name the benchmark role:
+
+- frozen delta
+- live delta
+- stress delta
+
+Immediate campaign policy:
+
+1. run the narrow local slice
+2. compare against the latest `live` baseline
+3. check `frozen` if the change affects broad routing or common hot paths
+4. check `stress` if the change could alter scaling on larger embedded terms
+
+When the answer is “reject”, the work should still produce a durable artifact if
+the local win was real.
+
+Use
+[ENGINE_COMBINATION_LEDGER.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COMBINATION_LEDGER.md)
+to record:
+
+- the local profiler win
+- the global guardrail loss
+- the suspected reason the idea did not scale
+- the specific complementary change that could make it viable later
+
+This prevents the campaign from forgetting good local hypotheses that only need
+better scoping.
 
 ## Why The Embedded Context Corpus Must Keep Growing
 
@@ -287,6 +432,11 @@ This is especially relevant for orchestrator work:
 7. If the change touches broad orchestration or hot-path matching, rerun
    `embedded` and compare elapsed time, not just pass/fail.
 8. Promote the new family into an embedded corpus once the behavior is stable.
+
+If step 7 fails but step 2 or the local profiler clearly improved, add a ledger
+entry instead of treating the iteration as wasted work:
+
+- [ENGINE_COMBINATION_LEDGER.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COMBINATION_LEDGER.md)
 
 This loop is intentionally not the same as running full CI every time.
 
@@ -549,6 +699,26 @@ The automation should reject a candidate if any of these happen:
 - the improvement only changes printed order or one isolated benchmark anecdote
 - the change pushes the system toward benchmark-specific overfitting
 
+Read those decisions as a tradeoff table, not a single elapsed number:
+
+- `frozen`
+  - baseline overhead tax
+- `live`
+  - current workload value
+- `stress`
+  - scaling risk
+- correctness / robustness
+  - new passes, fewer timeouts, fewer overflows, better derive reachability
+
+`frozen` must remain frozen.
+
+Do not casually add new cases to it during routine engine work.
+
+By contrast:
+
+- `live` is expected to grow
+- `stress` is expected to grow in size and difficulty
+
 ## Practical Policy For Engine Campaigns
 
 A good campaign should usually look like this:
@@ -574,6 +744,7 @@ That is the key strategic point:
 
 Next expansions that make sense:
 
+- formalize explicit `frozen / live / stress` profiles in the scorecard runner
 - add an equation metamorphic lane from [metamorphic_equation_tests.rs](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_equation_tests.rs)
 - split `derive` scorecard into:
   - reachability
