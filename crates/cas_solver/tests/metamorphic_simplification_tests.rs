@@ -5497,6 +5497,59 @@ fn classify_numeric_equiv_for_vars(
     }
 }
 
+fn parse_text_probe(text: &str) -> Result<(), String> {
+    let mut simplifier = Simplifier::with_default_rules();
+    parse(text, &mut simplifier.context)
+        .map(|_| ())
+        .map_err(|err| format!("{err:?}"))
+}
+
+struct NfFirstMulDivSkipExample<'a> {
+    op_name: &'a str,
+    pair1: &'a IdentityPair,
+    pair2: &'a IdentityPair,
+    pair2_exp: &'a str,
+    pair2_simp: &'a str,
+    combined_exp: &'a str,
+    combined_simp: &'a str,
+}
+
+fn push_nf_first_mul_div_skip_example(
+    examples: &mut Vec<String>,
+    max_examples: usize,
+    details: NfFirstMulDivSkipExample<'_>,
+) {
+    if examples.len() >= max_examples {
+        return;
+    }
+
+    let diagnose = |label: &str, text: &str| match parse_text_probe(text) {
+        Ok(()) => format!("{label}: OK"),
+        Err(err) => format!("{label}: ERR {err} :: {text}"),
+    };
+
+    let lines = [
+        format!(
+            "[{}] [{}] ({}) * [{}] ({})",
+            details.op_name,
+            details.pair1.family,
+            details.pair1.exp,
+            details.pair2.family,
+            details.pair2.exp
+        ),
+        diagnose("pair1.exp", &details.pair1.exp),
+        diagnose("pair1.simp", &details.pair1.simp),
+        diagnose("pair2.exp.orig", &details.pair2.exp),
+        diagnose("pair2.simp.orig", &details.pair2.simp),
+        diagnose("pair2.exp.renamed", details.pair2_exp),
+        diagnose("pair2.simp.renamed", details.pair2_simp),
+        diagnose("combined.exp", details.combined_exp),
+        diagnose("combined.simp", details.combined_simp),
+    ];
+
+    examples.push(lines.join("\n        "));
+}
+
 fn numeric_only_cause_for_vars(
     ctx: &Context,
     a: ExprId,
@@ -6894,6 +6947,59 @@ where
 /// Supports two formats:
 /// - Legacy 4-col: exp,simp,vars,mode (bucket=conditional_requires, branch=principal_strict)
 /// - Extended 7-col: exp,simp,vars,domain_mode,bucket,branch_mode,filter
+fn parse_identity_pair_csv_fields(line_num: usize, line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut current = String::new();
+    let mut chars = line.chars().peekable();
+    let mut in_quotes = false;
+
+    while let Some(ch) = chars.next() {
+        match ch {
+            '"' => {
+                if in_quotes {
+                    if matches!(chars.peek(), Some('"')) {
+                        current.push('"');
+                        chars.next();
+                    } else {
+                        in_quotes = false;
+                    }
+                } else if current.trim().is_empty() {
+                    current.clear();
+                    in_quotes = true;
+                } else {
+                    panic!(
+                        "identity_pairs.csv:{} invalid quote placement :: {}",
+                        line_num, line
+                    );
+                }
+            }
+            ',' if !in_quotes => {
+                fields.push(current.trim().to_string());
+                current.clear();
+            }
+            _ => current.push(ch),
+        }
+    }
+
+    assert!(
+        !in_quotes,
+        "identity_pairs.csv:{} unterminated quote :: {}",
+        line_num, line
+    );
+    fields.push(current.trim().to_string());
+    fields
+}
+
+fn validate_identity_pair_text(label: &str, text: &str, line_num: usize) {
+    let mut simplifier = Simplifier::with_default_rules();
+    if let Err(err) = parse(text, &mut simplifier.context) {
+        panic!(
+            "identity_pairs.csv:{} invalid {} parse: {:?} :: {}",
+            line_num, label, err, text
+        );
+    }
+}
+
 fn load_identity_pairs() -> Vec<IdentityPair> {
     let csv_path = find_test_data_file("identity_pairs.csv");
     let content = std::fs::read_to_string(csv_path).expect("Failed to read identity_pairs.csv");
@@ -6921,8 +7027,7 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
             continue;
         }
 
-        // Count columns to determine format
-        let parts: Vec<&str> = line.split(',').collect();
+        let parts = parse_identity_pair_csv_fields(line_num, line);
 
         if parts.len() >= 7 {
             // Extended 7-column format: exp,simp,vars,domain_mode,bucket,branch_mode,filter
@@ -6937,7 +7042,7 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
             let branch_mode = parse_branch_mode(parts[5].trim());
             let filter_spec = parse_filter_spec(parts[6].trim(), line_num);
 
-            pairs.push(IdentityPair {
+            let pair = IdentityPair {
                 exp: parts[0].trim().to_string(),
                 simp: parts[1].trim().to_string(),
                 vars,
@@ -6946,7 +7051,10 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
                 branch_mode,
                 filter_spec,
                 family: current_family.clone(),
-            });
+            };
+            validate_identity_pair_text("exp", &pair.exp, line_num);
+            validate_identity_pair_text("simp", &pair.simp, line_num);
+            pairs.push(pair);
         } else if parts.len() >= 3 {
             // Legacy 4-column format: exp,simp,vars,mode
             let vars: Vec<String> = parts[2]
@@ -6961,7 +7069,7 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
                 DomainRequirement::Generic
             };
 
-            pairs.push(IdentityPair {
+            let pair = IdentityPair {
                 exp: parts[0].trim().to_string(),
                 simp: parts[1].trim().to_string(),
                 vars,
@@ -6970,7 +7078,17 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
                 branch_mode: BranchMode::default(),
                 filter_spec: FilterSpec::None,
                 family: current_family.clone(),
-            });
+            };
+            validate_identity_pair_text("exp", &pair.exp, line_num);
+            validate_identity_pair_text("simp", &pair.simp, line_num);
+            pairs.push(pair);
+        } else {
+            panic!(
+                "identity_pairs.csv:{} malformed row with {} columns :: {}",
+                line_num,
+                parts.len(),
+                line
+            );
         }
     }
 
@@ -8045,6 +8163,7 @@ fn run_csv_combination_tests_with_shortcut_mode(
         Vec::new(); // (LHS, RHS, simp1, simp2, diff_residual, shape, cause)
     let mut domain_frontier = 0usize;
     let mut domain_frontier_examples: Vec<(String, String, String)> = Vec::new();
+    let mut skip_examples: Vec<String> = Vec::new();
     let mut skipped = 0;
     let mut timeouts = 0;
     let mut cycle_events_total: usize = 0;
@@ -8356,6 +8475,21 @@ fn run_csv_combination_tests_with_shortcut_mode(
                     }
                     NfFirstMulDivChildOutcome::Skip => {
                         skipped += 1;
+                        if verbose {
+                            push_nf_first_mul_div_skip_example(
+                                &mut skip_examples,
+                                max_examples,
+                                NfFirstMulDivSkipExample {
+                                    op_name: op.name(),
+                                    pair1,
+                                    pair2,
+                                    pair2_exp: &pair2_exp,
+                                    pair2_simp: &pair2_simp,
+                                    combined_exp: &combined_exp,
+                                    combined_simp: &combined_simp,
+                                },
+                            );
+                        }
                     }
                     NfFirstMulDivChildOutcome::Timeout => {
                         timeouts += 1;
@@ -9287,6 +9421,20 @@ fn run_csv_combination_tests_with_shortcut_mode(
             eprintln!("  LHS: {}", lhs);
             eprintln!("  RHS: {}", rhs);
             eprintln!("  Reason: {}", reason);
+            eprintln!();
+        }
+    }
+    if verbose && !skip_examples.is_empty() {
+        eprintln!("\n🧪 Skip/Parse-err diagnostics:");
+        for (i, example) in skip_examples.iter().enumerate() {
+            eprintln!("   {:2}. {}", i + 1, example);
+            eprintln!();
+        }
+        if skipped > skip_examples.len() {
+            eprintln!(
+                "   ... and {} more skip cases (set METATEST_MAX_EXAMPLES=N to show more)",
+                skipped - skip_examples.len()
+            );
             eprintln!();
         }
     }

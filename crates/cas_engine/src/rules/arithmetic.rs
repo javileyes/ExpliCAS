@@ -16248,57 +16248,83 @@ fn try_build_exact_zero_shared_passthrough_difference_rewrite(
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
     let (lhs_core, rhs_core) = extract_shared_additive_passthrough_difference_cores(ctx, expr)?;
+    let profiling =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    let pair_sample = profiling.then(|| {
+        format!(
+            "{}  ||  {}",
+            render_expr_for_orchestrator_profile(ctx, lhs_core),
+            render_expr_for_orchestrator_profile(ctx, rhs_core)
+        )
+    });
+    let profile_route = |label: &'static str| {
+        if profiling {
+            let _ =
+                run_profiled_orchestrator_option_section(label, pair_sample.clone(), || Some(()));
+        }
+    };
     let residual_expr = ctx.add(Expr::Sub(lhs_core, rhs_core));
     if let Some(rewrite) =
         try_build_direct_sub_fraction_combination_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.shared_passthrough.route.sub_fraction");
         return Some(rewrite);
     }
     if let Some(rewrite) =
         try_build_direct_tanh_exp_definition_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.shared_passthrough.route.tanh_exp");
         return Some(rewrite);
     }
     if let Some(rewrite) =
         try_build_direct_trig_product_to_sum_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.shared_passthrough.route.trig_product_to_sum");
         return Some(rewrite);
     }
     if let Some(rewrite) =
         try_build_direct_trig_sum_to_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.shared_passthrough.route.trig_sum_to_product");
         return Some(rewrite);
     }
     if let Some(rewrite) = try_build_direct_trig_square_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.shared_passthrough.route.trig_square");
         return Some(rewrite);
     }
     if let Some(rewrite) = try_build_direct_hyperbolic_sinh_cubic_polynomial_equivalence_rewrite(
         ctx, lhs_core, rhs_core,
     ) {
+        profile_route("rule.shared_passthrough.route.sinh_cubic");
         return Some(rewrite);
     }
     if let Some(rewrite) = try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
     {
+        profile_route("rule.shared_passthrough.route.repeated_phase_shift_pair");
         return Some(rewrite);
     }
     if let Some(rewrite) = try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
         ctx, lhs_core, rhs_core,
     ) {
+        profile_route("rule.shared_passthrough.route.phase_shift_quarter_pair");
         return Some(rewrite);
     }
     if let Some(rewrite) =
         try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.shared_passthrough.route.safe_hyperbolic");
         return Some(rewrite);
     }
     if let Some(rewrite) = try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
     {
+        profile_route("rule.shared_passthrough.route.repeated_phase_shift_pair_late");
         return Some(rewrite);
     }
     if let Some(rewrite) = try_build_exact_zero_identity_rewrite_direct(ctx, residual_expr) {
         let zero = ctx.num(0);
         if compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal {
+            profile_route("rule.shared_passthrough.route.direct_identity");
             return Some(rewrite);
         }
     }
@@ -16306,23 +16332,70 @@ fn try_build_exact_zero_shared_passthrough_difference_rewrite(
 
     let child_rewrite =
         try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_expr)
+            .inspect(|_| {
+                profile_route("rule.shared_passthrough.route.tail_fast_multiterm_hyperbolic");
+            })
             .or_else(|| {
                 try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
+                    .inspect(|_| {
+                        profile_route("rule.shared_passthrough.route.tail_safe_hyperbolic");
+                    })
             })
-            .or_else(|| try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_expr))
+            .or_else(|| {
+                try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_expr).inspect(
+                    |_| {
+                        profile_route("rule.shared_passthrough.route.tail_stripped_zero_log");
+                    },
+                )
+            })
             .or_else(|| {
                 try_build_stripped_zero_log_identity_child_rewrite(ctx, normalized_residual)
+                    .inspect(|_| {
+                        profile_route(
+                            "rule.shared_passthrough.route.tail_stripped_zero_log_normalized",
+                        );
+                    })
             })
-            .or_else(|| try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_expr))
+            .or_else(|| {
+                try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_expr).inspect(
+                    |_| {
+                        profile_route("rule.shared_passthrough.route.tail_fast_trig_residual");
+                    },
+                )
+            })
             .or_else(|| {
                 try_build_fast_trig_residual_identity_child_rewrite(ctx, normalized_residual)
+                    .inspect(|_| {
+                        profile_route(
+                            "rule.shared_passthrough.route.tail_fast_trig_residual_normalized",
+                        );
+                    })
             })
-            .or_else(|| try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_expr))
+            .or_else(|| {
+                try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_expr).inspect(
+                    |_| {
+                        profile_route("rule.shared_passthrough.route.tail_fast_small_polynomial");
+                    },
+                )
+            })
             .or_else(|| {
                 try_build_fast_small_polynomial_residual_child_rewrite(ctx, normalized_residual)
+                    .inspect(|_| {
+                        profile_route(
+                            "rule.shared_passthrough.route.tail_fast_small_polynomial_normalized",
+                        );
+                    })
             })
-            .or_else(|| try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core))
-            .or_else(|| try_build_exact_zero_identity_rewrite(ctx, residual_expr))?;
+            .or_else(|| {
+                try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core).inspect(|_| {
+                    profile_route("rule.shared_passthrough.route.tail_direct_core_equivalence");
+                })
+            })
+            .or_else(|| {
+                try_build_exact_zero_identity_rewrite(ctx, residual_expr).inspect(|_| {
+                    profile_route("rule.shared_passthrough.route.tail_exact_zero_identity");
+                })
+            })?;
     let zero = ctx.num(0);
 
     (compare_expr(ctx, child_rewrite.final_expr(), zero) == Ordering::Equal)
