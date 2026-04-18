@@ -234,6 +234,33 @@ fn expr_contains_any_builtin(
     false
 }
 
+fn expr_contains_symbolic_atom_for_cancellation(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+) -> bool {
+    let mut stack = vec![root];
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Variable(_) | Expr::SessionRef(_) => return true,
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) => {}
+        }
+    }
+
+    false
+}
+
 fn maybe_trig_sum_to_product_zero_candidate(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
     let term_count = AddView::from_expr(ctx, expr).terms.len();
     (3..=6).contains(&term_count)
@@ -3849,14 +3876,205 @@ fn exact_phase_shift_args_match_for_cancellation(
     left_arg: cas_ast::ExprId,
     right_arg: cas_ast::ExprId,
 ) -> bool {
-    compare_expr(ctx, left_arg, right_arg) == Ordering::Equal
-        || exprs_match_for_cancellation(ctx, left_arg, right_arg)
+    if compare_expr(ctx, left_arg, right_arg) == Ordering::Equal {
+        return true;
+    }
+
+    if matches!(
+        (ctx.get(left_arg), ctx.get(right_arg)),
+        (Expr::Variable(_), Expr::Variable(_))
+            | (Expr::Variable(_), Expr::SessionRef(_))
+            | (Expr::SessionRef(_), Expr::Variable(_))
+            | (Expr::SessionRef(_), Expr::SessionRef(_))
+    ) {
+        return false;
+    }
+
+    exprs_match_for_cancellation_leaf(ctx, left_arg, right_arg)
 }
 
 fn maybe_trig_phase_shift_zero_candidate(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
     expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Sin, BuiltinFn::Cos])
         && (expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Atan, BuiltinFn::Arctan])
             || expr_contains_pi_constant(ctx, expr))
+}
+
+fn is_surface_plain_algebraic_term_for_phase_shift(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => {}
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Mul(lhs, rhs) | Expr::Div(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn binary_add_pair_has_trig_phase_shift_shape_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+    sample: Option<String>,
+) -> bool {
+    let lhs_has_trig = expr_contains_any_builtin(ctx, lhs, &[BuiltinFn::Sin, BuiltinFn::Cos]);
+    let rhs_has_trig = expr_contains_any_builtin(ctx, rhs, &[BuiltinFn::Sin, BuiltinFn::Cos]);
+
+    if crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        let label = match (lhs_has_trig, rhs_has_trig) {
+            (true, true) => "rule.phase_shift.binary_add_match.pair_shape.both_trig",
+            (true, false) => "rule.phase_shift.binary_add_match.pair_shape.rhs_non_trig",
+            (false, true) => "rule.phase_shift.binary_add_match.pair_shape.lhs_non_trig",
+            (false, false) => "rule.phase_shift.binary_add_match.pair_shape.both_non_trig",
+        };
+        let _ = run_profiled_orchestrator_option_section(label, sample, || Some(()));
+    }
+
+    lhs_has_trig && rhs_has_trig
+}
+
+fn profile_binary_add_surface_pair_shape_for_phase_shift(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+    sample: Option<String>,
+) {
+    let lhs_plain_algebraic = is_surface_plain_algebraic_term_for_phase_shift(ctx, lhs);
+    let rhs_plain_algebraic = is_surface_plain_algebraic_term_for_phase_shift(ctx, rhs);
+
+    if crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        let label = match (lhs_plain_algebraic, rhs_plain_algebraic) {
+            (true, true) => {
+                "rule.phase_shift.binary_add_match.surface_pair_shape.both_plain_algebraic"
+            }
+            (true, false) => {
+                "rule.phase_shift.binary_add_match.surface_pair_shape.lhs_plain_algebraic"
+            }
+            (false, true) => {
+                "rule.phase_shift.binary_add_match.surface_pair_shape.rhs_plain_algebraic"
+            }
+            (false, false) => {
+                "rule.phase_shift.binary_add_match.surface_pair_shape.neither_plain_algebraic"
+            }
+        };
+        let _ = run_profiled_orchestrator_option_section(label, sample, || Some(()));
+    }
+}
+
+fn classify_binary_add_term_family_for_phase_shift(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> &'static str {
+    if let Some((trig_fn, arg, _, _)) = extract_surface_scaled_trig_term_for_phase_shift(ctx, expr)
+    {
+        if extract_supported_phase_shift_argument_for_cancellation(ctx, trig_fn, arg).is_some() {
+            return "exact_shifted_surface";
+        }
+        if extract_general_phase_shift_argument_for_cancellation(ctx, arg).is_some() {
+            return "general_shifted_surface";
+        }
+        return "plain_surface_trig";
+    }
+
+    if expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Sin, BuiltinFn::Cos]) {
+        "other_trig"
+    } else {
+        "non_trig"
+    }
+}
+
+fn profile_binary_add_term_family_pair_for_phase_shift(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+    sample: Option<String>,
+) {
+    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        return;
+    }
+
+    let lhs_family = classify_binary_add_term_family_for_phase_shift(ctx, lhs);
+    let rhs_family = classify_binary_add_term_family_for_phase_shift(ctx, rhs);
+    let label = match (lhs_family, rhs_family) {
+        ("exact_shifted_surface", "exact_shifted_surface") => {
+            "rule.phase_shift.binary_add_match.term_family.exact_exact"
+        }
+        ("exact_shifted_surface", "general_shifted_surface") => {
+            "rule.phase_shift.binary_add_match.term_family.exact_general"
+        }
+        ("general_shifted_surface", "exact_shifted_surface") => {
+            "rule.phase_shift.binary_add_match.term_family.general_exact"
+        }
+        ("exact_shifted_surface", "plain_surface_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.exact_plain"
+        }
+        ("plain_surface_trig", "exact_shifted_surface") => {
+            "rule.phase_shift.binary_add_match.term_family.plain_exact"
+        }
+        ("exact_shifted_surface", "other_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.exact_other_trig"
+        }
+        ("other_trig", "exact_shifted_surface") => {
+            "rule.phase_shift.binary_add_match.term_family.other_trig_exact"
+        }
+        ("exact_shifted_surface", "non_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.exact_non_trig"
+        }
+        ("non_trig", "exact_shifted_surface") => {
+            "rule.phase_shift.binary_add_match.term_family.non_trig_exact"
+        }
+        ("general_shifted_surface", "general_shifted_surface") => {
+            "rule.phase_shift.binary_add_match.term_family.general_general"
+        }
+        ("general_shifted_surface", "plain_surface_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.general_plain"
+        }
+        ("plain_surface_trig", "general_shifted_surface") => {
+            "rule.phase_shift.binary_add_match.term_family.plain_general"
+        }
+        ("general_shifted_surface", "non_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.general_non_trig"
+        }
+        ("non_trig", "general_shifted_surface") => {
+            "rule.phase_shift.binary_add_match.term_family.non_trig_general"
+        }
+        ("plain_surface_trig", "plain_surface_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.plain_plain"
+        }
+        ("plain_surface_trig", "other_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.plain_other_trig"
+        }
+        ("other_trig", "plain_surface_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.other_trig_plain"
+        }
+        ("plain_surface_trig", "non_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.plain_non_trig"
+        }
+        ("non_trig", "plain_surface_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.non_trig_plain"
+        }
+        ("other_trig", "other_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.other_trig_other_trig"
+        }
+        ("other_trig", "non_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.other_trig_non_trig"
+        }
+        ("non_trig", "other_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.non_trig_other_trig"
+        }
+        ("non_trig", "non_trig") => {
+            "rule.phase_shift.binary_add_match.term_family.non_trig_non_trig"
+        }
+        _ => "rule.phase_shift.binary_add_match.term_family.other",
+    };
+    let _ = run_profiled_orchestrator_option_section(label, sample, || Some(()));
 }
 
 fn profile_generated_candidate_target_shape_for_phase_shift(
@@ -4315,6 +4533,9 @@ fn is_sqrt_two_for_cancellation(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -
         {
             extract_i64_integer(ctx, args[0]) == Some(2)
         }
+        Expr::Pow(base, exp) => {
+            extract_i64_integer(ctx, *base) == Some(2) && is_positive_one_half_expr(ctx, *exp)
+        }
         _ => false,
     }
 }
@@ -4361,6 +4582,68 @@ fn split_out_small_integer_factor_for_cancellation(
     None
 }
 
+fn divide_by_sqrt_two_fast_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let two = ctx.num(2);
+    let sqrt_two = ctx.call_builtin(BuiltinFn::Sqrt, vec![two]);
+
+    if extract_i64_integer(ctx, expr) == Some(1) {
+        return Some(ctx.add(Expr::Div(sqrt_two, two)));
+    }
+
+    if let Some(stripped) = split_out_small_integer_factor_for_cancellation(ctx, expr, 2) {
+        return Some(smart_mul(ctx, stripped, sqrt_two));
+    }
+
+    let scaled = smart_mul(ctx, expr, sqrt_two);
+    Some(ctx.add(Expr::Div(scaled, two)))
+}
+
+fn extract_surface_pi_shift_denominator_for_cancellation(
+    ctx: &cas_ast::Context,
+    shift: cas_ast::ExprId,
+) -> Option<i64> {
+    match ctx.get(shift) {
+        Expr::Div(left, right) => {
+            if matches!(ctx.get(*left), Expr::Constant(cas_ast::Constant::Pi)) {
+                extract_i64_integer(ctx, *right)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn matches_surface_phase_shift_constant_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    shift: cas_ast::ExprId,
+) -> bool {
+    if compare_expr(ctx, expr, shift) == Ordering::Equal {
+        return true;
+    }
+
+    let Some(denominator) = extract_surface_pi_shift_denominator_for_cancellation(ctx, shift)
+    else {
+        return false;
+    };
+    let pi = ctx.add(Expr::Constant(cas_ast::Constant::Pi));
+    let unit_fraction = ctx.add(Expr::Number(BigRational::new(1.into(), denominator.into())));
+
+    match ctx.get(expr) {
+        Expr::Mul(left, right) => {
+            (compare_expr(ctx, *left, pi) == Ordering::Equal
+                && compare_expr(ctx, *right, unit_fraction) == Ordering::Equal)
+                || (compare_expr(ctx, *right, pi) == Ordering::Equal
+                    && compare_expr(ctx, *left, unit_fraction) == Ordering::Equal)
+        }
+        _ => false,
+    }
+}
+
 fn extract_surface_supported_phase_shift_argument_for_cancellation(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -4368,16 +4651,17 @@ fn extract_surface_supported_phase_shift_argument_for_cancellation(
 ) -> Option<(cas_ast::ExprId, bool)> {
     match ctx.get(expr).clone() {
         Expr::Add(left, right) => {
-            if compare_expr(ctx, left, shift) == Ordering::Equal {
+            if matches_surface_phase_shift_constant_for_cancellation(ctx, left, shift) {
                 Some((right, false))
-            } else if compare_expr(ctx, right, shift) == Ordering::Equal {
+            } else if matches_surface_phase_shift_constant_for_cancellation(ctx, right, shift) {
                 Some((left, false))
             } else {
                 None
             }
         }
         Expr::Sub(left, right) => {
-            (compare_expr(ctx, right, shift) == Ordering::Equal).then_some((left, true))
+            matches_surface_phase_shift_constant_for_cancellation(ctx, right, shift)
+                .then_some((left, true))
         }
         _ => None,
     }
@@ -4955,18 +5239,43 @@ fn extract_exact_phase_shift_term_data_for_cancellation(
                     sample.clone(),
                     || {
                         if has_sqrt_two {
-                            coeff_expr
+                            run_profiled_orchestrator_section(
+                                "rule.phase_shift.exact_target_extract.coeff_normalize.quarter.sqrt_two_passthrough",
+                                sample.clone(),
+                                || coeff_expr,
+                                |_| true,
+                            )
+                        } else if let Some(fast_divided) =
+                            divide_by_sqrt_two_fast_for_cancellation(ctx, coeff_expr)
+                        {
+                            run_profiled_orchestrator_section(
+                                "rule.phase_shift.exact_target_extract.coeff_normalize.quarter.fast_divide_by_sqrt_two",
+                                sample.clone(),
+                                || fast_divided,
+                                |_| true,
+                            )
                         } else {
-                            let two = ctx.num(2);
-                            let sqrt_two = ctx.call_builtin(BuiltinFn::Sqrt, vec![two]);
-                            let divided = ctx.add(Expr::Div(coeff_expr, sqrt_two));
-                            run_default_simplify(ctx, divided)
+                            run_profiled_orchestrator_section(
+                                "rule.phase_shift.exact_target_extract.coeff_normalize.quarter.divide_sqrt_two_fallback",
+                                sample.clone(),
+                                || {
+                                    let two = ctx.num(2);
+                                    let sqrt_two = ctx.call_builtin(BuiltinFn::Sqrt, vec![two]);
+                                    let divided = ctx.add(Expr::Div(coeff_expr, sqrt_two));
+                                    run_default_simplify(ctx, divided)
+                                },
+                                |_| true,
+                            )
                         }
                     },
                     |_| true,
                 )
             } else if has_sqrt_two {
                 coeff_expr
+            } else if let Some(fast_divided) =
+                divide_by_sqrt_two_fast_for_cancellation(ctx, coeff_expr)
+            {
+                fast_divided
             } else {
                 let two = ctx.num(2);
                 let sqrt_two = ctx.call_builtin(BuiltinFn::Sqrt, vec![two]);
@@ -4978,16 +5287,28 @@ fn extract_exact_phase_shift_term_data_for_cancellation(
             if profiling {
                 run_profiled_orchestrator_section(
                     "rule.phase_shift.exact_target_extract.coeff_normalize.third_or_sixth",
-                    sample,
+                    sample.clone(),
                     || {
                         if let Some(stripped) =
                             split_out_small_integer_factor_for_cancellation(ctx, coeff_expr, 2)
                         {
-                            stripped
+                            run_profiled_orchestrator_section(
+                                "rule.phase_shift.exact_target_extract.coeff_normalize.third_or_sixth.integer_factor_strip",
+                                sample.clone(),
+                                || stripped,
+                                |_| true,
+                            )
                         } else {
-                            let two = ctx.num(2);
-                            let divided = ctx.add(Expr::Div(coeff_expr, two));
-                            run_default_simplify(ctx, divided)
+                            run_profiled_orchestrator_section(
+                                "rule.phase_shift.exact_target_extract.coeff_normalize.third_or_sixth.divide_by_two_fallback",
+                                sample.clone(),
+                                || {
+                                    let two = ctx.num(2);
+                                    let divided = ctx.add(Expr::Div(coeff_expr, two));
+                                    run_default_simplify(ctx, divided)
+                                },
+                                |_| true,
+                            )
                         }
                     },
                     |_| true,
@@ -5608,19 +5929,7 @@ fn extract_general_phase_shift_linear_signature_for_cancellation(
     ctx: &mut cas_ast::Context,
     data: GeneralPhaseShiftTermData,
 ) -> Option<(cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId, i8, i8)> {
-    let Expr::Function(atan_fn, atan_args) = ctx.get(data.ratio) else {
-        return None;
-    };
-    if atan_args.len() != 1
-        || !matches!(
-            ctx.builtin_of(*atan_fn),
-            Some(BuiltinFn::Atan | BuiltinFn::Arctan)
-        )
-    {
-        return None;
-    }
-
-    let ratio_arg = atan_args[0];
+    let ratio_arg = extract_atan_ratio_arg_for_phase_shift(ctx, data.ratio)?;
     let numeric_ratio = match ctx.get(ratio_arg) {
         Expr::Number(ratio) => Some(ratio.clone()),
         _ => None,
@@ -5629,13 +5938,7 @@ fn extract_general_phase_shift_linear_signature_for_cancellation(
         Expr::Number(coeff) => Some(coeff.clone()),
         _ => None,
     };
-    let (sin_sign, cos_sign) = match (data.trig_fn, data.subtract_shift) {
-        (BuiltinFn::Sin, false) => (data.global_sign, data.global_sign),
-        (BuiltinFn::Sin, true) => (data.global_sign, -data.global_sign),
-        (BuiltinFn::Cos, false) => (-data.global_sign, data.global_sign),
-        (BuiltinFn::Cos, true) => (data.global_sign, data.global_sign),
-        _ => return None,
-    };
+    let (sin_sign, cos_sign) = general_phase_shift_linear_signs_for_cancellation(data)?;
     if let (Some(ratio), Some(coeff)) = (numeric_ratio, numeric_coeff) {
         let hyp_sq = BigRational::one() + ratio.clone() * ratio.clone();
         if let Some(hyp) = rational_sqrt(&hyp_sq) {
@@ -5660,6 +5963,33 @@ fn extract_general_phase_shift_linear_signature_for_cancellation(
     let cos_coeff = run_default_simplify(ctx, cos_coeff_raw);
 
     Some((data.base_arg, sin_coeff, cos_coeff, sin_sign, cos_sign))
+}
+
+fn extract_atan_ratio_arg_for_phase_shift(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    (args.len() == 1
+        && matches!(
+            ctx.builtin_of(*fn_id),
+            Some(BuiltinFn::Atan | BuiltinFn::Arctan)
+        ))
+    .then_some(args[0])
+}
+
+fn general_phase_shift_linear_signs_for_cancellation(
+    data: GeneralPhaseShiftTermData,
+) -> Option<(i8, i8)> {
+    match (data.trig_fn, data.subtract_shift) {
+        (BuiltinFn::Sin, false) => Some((data.global_sign, data.global_sign)),
+        (BuiltinFn::Sin, true) => Some((data.global_sign, -data.global_sign)),
+        (BuiltinFn::Cos, false) => Some((-data.global_sign, data.global_sign)),
+        (BuiltinFn::Cos, true) => Some((data.global_sign, data.global_sign)),
+        _ => None,
+    }
 }
 
 fn build_general_phase_shift_linear_combination_for_cancellation(
@@ -5769,6 +6099,36 @@ fn generate_general_phase_shift_term_candidates_for_cancellation(
     candidates
 }
 
+fn profile_shifted_generated_candidate_target_family_for_phase_shift(
+    ctx: &mut cas_ast::Context,
+    target_expr: cas_ast::ExprId,
+    sample: Option<String>,
+) {
+    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        return;
+    }
+
+    let label = if let Some(data) =
+        extract_general_phase_shift_term_data_for_cancellation(ctx, target_expr)
+    {
+        match data.trig_fn {
+            BuiltinFn::Sin => {
+                "rule.phase_shift.route.shifted_try.generated_candidate.target_general_sin"
+            }
+            BuiltinFn::Cos => {
+                "rule.phase_shift.route.shifted_try.generated_candidate.target_general_cos"
+            }
+            _ => "rule.phase_shift.route.shifted_try.generated_candidate.target_other",
+        }
+    } else if expr_contains_any_builtin(ctx, target_expr, &[BuiltinFn::Sin, BuiltinFn::Cos]) {
+        "rule.phase_shift.route.shifted_try.generated_candidate.target_other_trig"
+    } else {
+        "rule.phase_shift.route.shifted_try.generated_candidate.target_non_trig"
+    };
+
+    let _ = run_profiled_orchestrator_option_section(label, sample, || Some(()));
+}
+
 fn linear_focus_phase_shift_compare_profile_label(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -5805,82 +6165,82 @@ fn linear_focus_phase_shift_compare_profile_label(
 
     match (target_is_negated, trig_fn, kind, subtract_shift) {
         (false, BuiltinFn::Sin, PhaseShiftKindForCancellation::Quarter, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.sin_quarter_add"
+            "rule.phase_shift.linear_focus.dir.sin_q_add"
         }
         (false, BuiltinFn::Sin, PhaseShiftKindForCancellation::Quarter, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.sin_quarter_sub"
+            "rule.phase_shift.linear_focus.dir.sin_q_sub"
         }
         (false, BuiltinFn::Cos, PhaseShiftKindForCancellation::Quarter, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.cos_quarter_add"
+            "rule.phase_shift.linear_focus.dir.cos_q_add"
         }
         (false, BuiltinFn::Cos, PhaseShiftKindForCancellation::Quarter, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.cos_quarter_sub"
+            "rule.phase_shift.linear_focus.dir.cos_q_sub"
         }
         (false, BuiltinFn::Sin, PhaseShiftKindForCancellation::Third, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.sin_third_add"
+            "rule.phase_shift.linear_focus.dir.sin_t_add"
         }
         (false, BuiltinFn::Sin, PhaseShiftKindForCancellation::Third, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.sin_third_sub"
+            "rule.phase_shift.linear_focus.dir.sin_t_sub"
         }
         (false, BuiltinFn::Cos, PhaseShiftKindForCancellation::Third, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.cos_third_add"
+            "rule.phase_shift.linear_focus.dir.cos_t_add"
         }
         (false, BuiltinFn::Cos, PhaseShiftKindForCancellation::Third, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.cos_third_sub"
+            "rule.phase_shift.linear_focus.dir.cos_t_sub"
         }
         (false, BuiltinFn::Sin, PhaseShiftKindForCancellation::Sixth, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.sin_sixth_add"
+            "rule.phase_shift.linear_focus.dir.sin_s_add"
         }
         (false, BuiltinFn::Sin, PhaseShiftKindForCancellation::Sixth, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.sin_sixth_sub"
+            "rule.phase_shift.linear_focus.dir.sin_s_sub"
         }
         (false, BuiltinFn::Cos, PhaseShiftKindForCancellation::Sixth, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.cos_sixth_add"
+            "rule.phase_shift.linear_focus.dir.cos_s_add"
         }
         (false, BuiltinFn::Cos, PhaseShiftKindForCancellation::Sixth, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.direct.cos_sixth_sub"
+            "rule.phase_shift.linear_focus.dir.cos_s_sub"
         }
         (true, BuiltinFn::Sin, PhaseShiftKindForCancellation::Quarter, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.sin_quarter_add"
+            "rule.phase_shift.linear_focus.neg.sin_q_add"
         }
         (true, BuiltinFn::Sin, PhaseShiftKindForCancellation::Quarter, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.sin_quarter_sub"
+            "rule.phase_shift.linear_focus.neg.sin_q_sub"
         }
         (true, BuiltinFn::Cos, PhaseShiftKindForCancellation::Quarter, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.cos_quarter_add"
+            "rule.phase_shift.linear_focus.neg.cos_q_add"
         }
         (true, BuiltinFn::Cos, PhaseShiftKindForCancellation::Quarter, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.cos_quarter_sub"
+            "rule.phase_shift.linear_focus.neg.cos_q_sub"
         }
         (true, BuiltinFn::Sin, PhaseShiftKindForCancellation::Third, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.sin_third_add"
+            "rule.phase_shift.linear_focus.neg.sin_t_add"
         }
         (true, BuiltinFn::Sin, PhaseShiftKindForCancellation::Third, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.sin_third_sub"
+            "rule.phase_shift.linear_focus.neg.sin_t_sub"
         }
         (true, BuiltinFn::Cos, PhaseShiftKindForCancellation::Third, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.cos_third_add"
+            "rule.phase_shift.linear_focus.neg.cos_t_add"
         }
         (true, BuiltinFn::Cos, PhaseShiftKindForCancellation::Third, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.cos_third_sub"
+            "rule.phase_shift.linear_focus.neg.cos_t_sub"
         }
         (true, BuiltinFn::Sin, PhaseShiftKindForCancellation::Sixth, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.sin_sixth_add"
+            "rule.phase_shift.linear_focus.neg.sin_s_add"
         }
         (true, BuiltinFn::Sin, PhaseShiftKindForCancellation::Sixth, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.sin_sixth_sub"
+            "rule.phase_shift.linear_focus.neg.sin_s_sub"
         }
         (true, BuiltinFn::Cos, PhaseShiftKindForCancellation::Sixth, false) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.cos_sixth_add"
+            "rule.phase_shift.linear_focus.neg.cos_s_add"
         }
         (true, BuiltinFn::Cos, PhaseShiftKindForCancellation::Sixth, true) => {
-            "rule.phase_shift.linear_focus.compare_candidate.negated.cos_sixth_sub"
+            "rule.phase_shift.linear_focus.neg.cos_s_sub"
         }
         _ => {
             if target_is_negated {
-                "rule.phase_shift.linear_focus.compare_candidate.negated.other"
+                "rule.phase_shift.linear_focus.neg.other"
             } else {
-                "rule.phase_shift.linear_focus.compare_candidate.direct.other"
+                "rule.phase_shift.linear_focus.dir.other"
             }
         }
     }
@@ -6008,6 +6368,111 @@ fn resolve_surface_scaled_trig_candidate_vs_negated_target_for_phase_shift(
     .then_some(false)
 }
 
+fn resolve_surface_shifted_candidate_vs_plain_trig_target_for_phase_shift(
+    ctx: &mut cas_ast::Context,
+    candidate: cas_ast::ExprId,
+    target_expr: cas_ast::ExprId,
+) -> Option<bool> {
+    let (candidate_fn, candidate_arg, _, _) =
+        extract_surface_scaled_trig_term_for_phase_shift(ctx, candidate)?;
+    let (target_fn, target_arg, _, _) =
+        extract_surface_scaled_trig_term_for_phase_shift(ctx, target_expr)?;
+    let (candidate_base, candidate_kind, _) =
+        extract_supported_phase_shift_argument_for_cancellation(ctx, candidate_fn, candidate_arg)?;
+    if extract_supported_phase_shift_argument_for_cancellation(ctx, target_fn, target_arg).is_some()
+    {
+        return None;
+    }
+
+    if candidate_fn != target_fn {
+        if candidate_fn == BuiltinFn::Cos
+            && target_fn == BuiltinFn::Sin
+            && candidate_kind == PhaseShiftKindForCancellation::Quarter
+            && !expr_contains_pi_constant(ctx, target_arg)
+            && matches!(
+                (ctx.get(candidate_base), ctx.get(target_arg)),
+                (Expr::Variable(_), Expr::Variable(_))
+                    | (Expr::Variable(_), Expr::SessionRef(_))
+                    | (Expr::SessionRef(_), Expr::Variable(_))
+                    | (Expr::SessionRef(_), Expr::SessionRef(_))
+            )
+            && !exact_phase_shift_args_match_for_cancellation(ctx, candidate_base, target_arg)
+        {
+            return Some(false);
+        }
+        return None;
+    }
+
+    if expr_contains_pi_constant(ctx, target_arg)
+        || !expr_contains_symbolic_atom_for_cancellation(ctx, candidate_base)
+        || !expr_contains_symbolic_atom_for_cancellation(ctx, target_arg)
+    {
+        return None;
+    }
+
+    Some(false)
+}
+
+fn profile_linear_focus_negated_fallback_target_relation_for_phase_shift(
+    ctx: &mut cas_ast::Context,
+    candidate: cas_ast::ExprId,
+    target_expr: cas_ast::ExprId,
+    sample: Option<String>,
+) {
+    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        return;
+    }
+
+    let label = if let Some((target_fn, target_arg, _, _)) =
+        extract_surface_scaled_trig_term_for_phase_shift(ctx, target_expr)
+    {
+        if extract_supported_phase_shift_argument_for_cancellation(ctx, target_fn, target_arg)
+            .is_some()
+        {
+            "rule.phase_shift.linear_focus.compare_candidate.negated.fallback.target.exact_shifted"
+        } else if expr_contains_pi_constant(ctx, target_arg) {
+            "rule.phase_shift.linear_focus.compare_candidate.negated.fallback.target.plain_with_pi"
+        } else if let Some((candidate_fn, candidate_arg, _, _)) =
+            extract_surface_scaled_trig_term_for_phase_shift(ctx, candidate)
+        {
+            if let Some((candidate_base, _, _)) =
+                extract_supported_phase_shift_argument_for_cancellation(
+                    ctx,
+                    candidate_fn,
+                    candidate_arg,
+                )
+            {
+                let base_arg_matches =
+                    exact_phase_shift_args_match_for_cancellation(ctx, candidate_base, target_arg);
+                match (candidate_fn == target_fn, base_arg_matches) {
+                    (true, true) => {
+                        "rule.phase_shift.linear_focus.compare_candidate.negated.fallback.target.plain_same_fn_base_arg_match"
+                    }
+                    (true, false) => {
+                        "rule.phase_shift.linear_focus.compare_candidate.negated.fallback.target.plain_same_fn_base_arg_mismatch"
+                    }
+                    (false, true) => {
+                        "rule.phase_shift.linear_focus.compare_candidate.negated.fallback.target.plain_cross_fn_base_arg_match"
+                    }
+                    (false, false) => {
+                        "rule.phase_shift.linear_focus.compare_candidate.negated.fallback.target.plain_cross_fn_base_arg_mismatch"
+                    }
+                }
+            } else {
+                "rule.phase_shift.linear_focus.compare_candidate.negated.fallback.target.other_trig"
+            }
+        } else {
+            "rule.phase_shift.linear_focus.compare_candidate.negated.fallback.target.other_trig"
+        }
+    } else if expr_contains_any_builtin(ctx, target_expr, &[BuiltinFn::Sin, BuiltinFn::Cos]) {
+        "rule.phase_shift.linear_focus.compare_candidate.negated.fallback.target.other_trig"
+    } else {
+        "rule.phase_shift.linear_focus.compare_candidate.negated.fallback.target.non_trig"
+    };
+
+    let _ = run_profiled_orchestrator_option_section(label, sample, || Some(()));
+}
+
 fn linear_focus_phase_shift_candidate_matches_target(
     ctx: &mut cas_ast::Context,
     focus_expr: cas_ast::ExprId,
@@ -6022,6 +6487,15 @@ fn linear_focus_phase_shift_candidate_matches_target(
         if target_is_negated {
             if expr_matches_negation_for_cancellation(ctx, candidate, target_expr) {
                 return true;
+            }
+            if let Some(false) =
+                resolve_surface_shifted_candidate_vs_plain_trig_target_for_phase_shift(
+                    ctx,
+                    candidate,
+                    target_expr,
+                )
+            {
+                return false;
             }
             if let Some(resolution) =
                 resolve_surface_scaled_trig_candidate_vs_negated_target_for_phase_shift(
@@ -6071,6 +6545,20 @@ fn linear_focus_phase_shift_candidate_matches_target(
         }
 
         if let Some(resolution) = run_profiled_orchestrator_option_section(
+            "rule.phase_shift.linear_focus.compare_candidate.negated.surface_plain_trig_reject",
+            compare_sample.clone(),
+            || {
+                resolve_surface_shifted_candidate_vs_plain_trig_target_for_phase_shift(
+                    ctx,
+                    candidate,
+                    target_expr,
+                )
+            },
+        ) {
+            return resolution;
+        }
+
+        if let Some(resolution) = run_profiled_orchestrator_option_section(
             "rule.phase_shift.linear_focus.compare_candidate.negated.surface_scaled_trig_resolution",
             compare_sample.clone(),
             || {
@@ -6083,6 +6571,13 @@ fn linear_focus_phase_shift_candidate_matches_target(
         ) {
             return resolution;
         }
+
+        profile_linear_focus_negated_fallback_target_relation_for_phase_shift(
+            ctx,
+            candidate,
+            target_expr,
+            compare_sample.clone(),
+        );
 
         run_profiled_orchestrator_option_section(
             "rule.phase_shift.linear_focus.compare_candidate.negated.default_simplify_fallback",
@@ -6608,6 +7103,15 @@ fn try_find_trig_phase_shift_cancellation_match(
                 return None;
             }
 
+            let target_contains_trig = if target_exact.is_some() {
+                true
+            } else {
+                expr_contains_any_builtin(ctx, target_expr, &[BuiltinFn::Sin, BuiltinFn::Cos])
+            };
+            if !target_contains_trig && expr_contains_symbolic_atom_for_cancellation(ctx, arg) {
+                return None;
+            }
+
             let expanded = build_phase_shift_linear_combination_for_cancellation(
                 ctx, coeff, arg, kind, sin_sign, cos_sign,
             );
@@ -6685,7 +7189,28 @@ fn try_find_trig_phase_shift_cancellation_match(
                 } else {
                     true
                 };
-                let generated_candidate = if !generated_target_arg_compatible {
+                let generated_target_contains_trig = if !generated_target_arg_compatible {
+                    false
+                } else if target_contains_trig {
+                    true
+                } else if profiling {
+                    run_profiled_orchestrator_option_section(
+                        "rule.phase_shift.route.exact_try.generated_candidate.target_trig_gate",
+                        pair_sample.clone(),
+                        || {
+                            expr_contains_any_builtin(
+                                ctx,
+                                target_expr,
+                                &[BuiltinFn::Sin, BuiltinFn::Cos],
+                            )
+                            .then_some(())
+                        },
+                    )
+                    .is_some()
+                } else {
+                    expr_contains_any_builtin(ctx, target_expr, &[BuiltinFn::Sin, BuiltinFn::Cos])
+                };
+                let generated_candidate = if !generated_target_contains_trig {
                     None
                 } else if profiling {
                     run_profiled_orchestrator_option_section(
@@ -6768,57 +7293,59 @@ fn try_find_trig_phase_shift_cancellation_match(
                     });
                 }
 
-                let linear_reexpanded = build_phase_shift_linear_combination_for_cancellation(
-                    ctx,
-                    linear_coeff,
-                    linear_arg,
-                    linear_kind,
-                    linear_sin_sign,
-                    linear_cos_sign,
-                );
-                let matches = if profiling {
-                    run_profiled_orchestrator_section(
-                        "rule.phase_shift.route.exact_try.reexpanded_target_compare",
-                        pair_sample.clone(),
-                        || {
-                            if target_is_negated {
-                                expr_matches_negation_after_default_simplify(
-                                    ctx,
-                                    linear_reexpanded,
-                                    target_expr,
-                                )
-                            } else {
-                                exprs_match_after_default_simplify(
-                                    ctx,
-                                    linear_reexpanded,
-                                    target_expr,
-                                )
-                            }
-                        },
-                        |matched| *matched,
-                    )
-                } else if target_is_negated {
-                    expr_matches_negation_after_default_simplify(
+                if generated_target_contains_trig {
+                    let linear_reexpanded = build_phase_shift_linear_combination_for_cancellation(
                         ctx,
-                        linear_reexpanded,
-                        target_expr,
-                    )
-                } else {
-                    exprs_match_after_default_simplify(ctx, linear_reexpanded, target_expr)
-                };
-                if matches {
-                    if profiling {
-                        let _ = run_profiled_orchestrator_option_section(
-                            "rule.phase_shift.route.exact_reexpanded_linear",
+                        linear_coeff,
+                        linear_arg,
+                        linear_kind,
+                        linear_sin_sign,
+                        linear_cos_sign,
+                    );
+                    let matches = if profiling {
+                        run_profiled_orchestrator_section(
+                            "rule.phase_shift.route.exact_try.reexpanded_target_compare",
                             pair_sample.clone(),
-                            || Some(()),
-                        );
+                            || {
+                                if target_is_negated {
+                                    expr_matches_negation_after_default_simplify(
+                                        ctx,
+                                        linear_reexpanded,
+                                        target_expr,
+                                    )
+                                } else {
+                                    exprs_match_after_default_simplify(
+                                        ctx,
+                                        linear_reexpanded,
+                                        target_expr,
+                                    )
+                                }
+                            },
+                            |matched| *matched,
+                        )
+                    } else if target_is_negated {
+                        expr_matches_negation_after_default_simplify(
+                            ctx,
+                            linear_reexpanded,
+                            target_expr,
+                        )
+                    } else {
+                        exprs_match_after_default_simplify(ctx, linear_reexpanded, target_expr)
+                    };
+                    if matches {
+                        if profiling {
+                            let _ = run_profiled_orchestrator_option_section(
+                                "rule.phase_shift.route.exact_reexpanded_linear",
+                                pair_sample.clone(),
+                                || Some(()),
+                            );
+                        }
+                        return Some(TrigPhaseShiftCancellationMatch {
+                            local_before: focus_expr,
+                            local_after: target_expr,
+                            mode: TrigPhaseShiftCancellationMode::ShiftedToShifted,
+                        });
                     }
-                    return Some(TrigPhaseShiftCancellationMatch {
-                        local_before: focus_expr,
-                        local_after: target_expr,
-                        mode: TrigPhaseShiftCancellationMode::ShiftedToShifted,
-                    });
                 }
             }
         }
@@ -6838,20 +7365,121 @@ fn try_find_trig_phase_shift_cancellation_match(
     }
 
     let mut try_shifted_route = || -> Option<TrigPhaseShiftCancellationMatch> {
-        if let Some(data) = extract_general_phase_shift_term_data_for_cancellation(ctx, focus_expr)
-        {
-            if let Some((linear_arg, sin_coeff, cos_coeff, sin_sign, cos_sign)) =
+        let focus_general = if profiling {
+            run_profiled_orchestrator_option_section(
+                "rule.phase_shift.route.shifted_try.focus_general_extract",
+                pair_sample.clone(),
+                || extract_general_phase_shift_term_data_for_cancellation(ctx, focus_expr),
+            )
+        } else {
+            extract_general_phase_shift_term_data_for_cancellation(ctx, focus_expr)
+        };
+        if let Some(data) = focus_general {
+            let linear_signature = if profiling {
+                run_profiled_orchestrator_option_section(
+                    "rule.phase_shift.route.shifted_try.focus_linear_signature",
+                    pair_sample.clone(),
+                    || extract_general_phase_shift_linear_signature_for_cancellation(ctx, data),
+                )
+            } else {
                 extract_general_phase_shift_linear_signature_for_cancellation(ctx, data)
-            {
-                if matches_weighted_phase_shift_linear_combination_target(
-                    ctx,
-                    target_expr,
-                    target_is_negated,
-                    linear_arg,
-                    sin_coeff,
-                    cos_coeff,
-                    (sin_sign, cos_sign),
-                ) {
+            };
+            if let Some((linear_arg, sin_coeff, cos_coeff, sin_sign, cos_sign)) = linear_signature {
+                if profiling {
+                    let target_general = run_profiled_orchestrator_option_section(
+                        "rule.phase_shift.route.shifted_try.target_general_extract",
+                        pair_sample.clone(),
+                        || extract_general_phase_shift_term_data_for_cancellation(ctx, target_expr),
+                    );
+                    if let Some(target_data) = target_general {
+                        let target_linear_signature = run_profiled_orchestrator_option_section(
+                            "rule.phase_shift.route.shifted_try.target_shifted_signature",
+                            pair_sample.clone(),
+                            || {
+                                extract_general_phase_shift_linear_signature_for_cancellation(
+                                    ctx,
+                                    target_data,
+                                )
+                            },
+                        );
+                        if let Some((
+                            target_arg,
+                            target_sin_coeff,
+                            target_cos_coeff,
+                            target_sin_sign,
+                            target_cos_sign,
+                        )) = target_linear_signature
+                        {
+                            let expected_sin_sign = if target_is_negated {
+                                -sin_sign
+                            } else {
+                                sin_sign
+                            };
+                            let expected_cos_sign = if target_is_negated {
+                                -cos_sign
+                            } else {
+                                cos_sign
+                            };
+                            let _ = run_profiled_orchestrator_option_section(
+                                "rule.phase_shift.route.shifted_signature_probe",
+                                pair_sample.clone(),
+                                || {
+                                    (compare_expr(ctx, target_arg, linear_arg) == Ordering::Equal
+                                        && target_sin_sign == expected_sin_sign
+                                        && target_cos_sign == expected_cos_sign
+                                        && exprs_match_for_cancellation(
+                                            ctx,
+                                            target_sin_coeff,
+                                            sin_coeff,
+                                        )
+                                        && exprs_match_for_cancellation(
+                                            ctx,
+                                            target_cos_coeff,
+                                            cos_coeff,
+                                        ))
+                                    .then_some(())
+                                },
+                            );
+                        }
+                    }
+                }
+
+                let target_linear_match = if profiling {
+                    run_profiled_orchestrator_section(
+                        "rule.phase_shift.route.shifted_try.target_linear_match",
+                        pair_sample.clone(),
+                        || {
+                            matches_weighted_phase_shift_linear_combination_target(
+                                ctx,
+                                target_expr,
+                                target_is_negated,
+                                linear_arg,
+                                sin_coeff,
+                                cos_coeff,
+                                (sin_sign, cos_sign),
+                            )
+                        },
+                        |matched| *matched,
+                    )
+                } else {
+                    matches_weighted_phase_shift_linear_combination_target(
+                        ctx,
+                        target_expr,
+                        target_is_negated,
+                        linear_arg,
+                        sin_coeff,
+                        cos_coeff,
+                        (sin_sign, cos_sign),
+                    )
+                };
+                if target_linear_match {
+                    if profiling {
+                        let _ = run_profiled_orchestrator_option_section(
+                            "rule.phase_shift.route.shifted_linear_signature_match",
+                            pair_sample.clone(),
+                            || Some(()),
+                        );
+                    }
                     return Some(TrigPhaseShiftCancellationMatch {
                         local_before: focus_expr,
                         local_after: target_expr,
@@ -6864,7 +7492,24 @@ fn try_find_trig_phase_shift_cancellation_match(
                 );
                 let expanded = run_default_simplify(ctx, expanded);
 
-                if matches_target(ctx, expanded) {
+                let expanded_matches_target = if profiling {
+                    run_profiled_orchestrator_section(
+                        "rule.phase_shift.route.shifted_try.expanded_target_compare",
+                        pair_sample.clone(),
+                        || matches_target(ctx, expanded),
+                        |matched| *matched,
+                    )
+                } else {
+                    matches_target(ctx, expanded)
+                };
+                if expanded_matches_target {
+                    if profiling {
+                        let _ = run_profiled_orchestrator_option_section(
+                            "rule.phase_shift.route.shifted_expanded_linear",
+                            pair_sample.clone(),
+                            || Some(()),
+                        );
+                    }
                     return Some(TrigPhaseShiftCancellationMatch {
                         local_before: focus_expr,
                         local_after: expanded,
@@ -6872,16 +7517,67 @@ fn try_find_trig_phase_shift_cancellation_match(
                     });
                 }
 
-                for candidate in generate_general_phase_shift_term_candidates_for_cancellation(
-                    ctx, linear_arg, sin_coeff, cos_coeff, sin_sign, cos_sign,
-                ) {
-                    if matches_target(ctx, candidate) {
-                        return Some(TrigPhaseShiftCancellationMatch {
-                            local_before: focus_expr,
-                            local_after: candidate,
-                            mode: TrigPhaseShiftCancellationMode::ShiftedToShifted,
-                        });
+                let generated_candidate = if profiling {
+                    run_profiled_orchestrator_option_section(
+                        "rule.phase_shift.route.shifted_try.generated_candidate_match",
+                        pair_sample.clone(),
+                        || {
+                            profile_shifted_generated_candidate_target_family_for_phase_shift(
+                                ctx,
+                                target_expr,
+                                pair_sample.clone(),
+                            );
+                            for (candidate_index, candidate) in
+                                generate_general_phase_shift_term_candidates_for_cancellation(
+                                    ctx, linear_arg, sin_coeff, cos_coeff, sin_sign, cos_sign,
+                                )
+                                .into_iter()
+                                .enumerate()
+                            {
+                                let candidate_label = match candidate_index {
+                                    0 => {
+                                        "rule.phase_shift.route.shifted_try.generated_candidate.sine_candidate"
+                                    }
+                                    1 => {
+                                        "rule.phase_shift.route.shifted_try.generated_candidate.cosine_candidate"
+                                    }
+                                    _ => {
+                                        "rule.phase_shift.route.shifted_try.generated_candidate.other_candidate"
+                                    }
+                                };
+                                if let Some(matched_candidate) =
+                                    run_profiled_orchestrator_option_section(
+                                        candidate_label,
+                                        pair_sample.clone(),
+                                        || matches_target(ctx, candidate).then_some(candidate),
+                                    )
+                                {
+                                    return Some(matched_candidate);
+                                }
+                            }
+                            None
+                        },
+                    )
+                } else {
+                    generate_general_phase_shift_term_candidates_for_cancellation(
+                        ctx, linear_arg, sin_coeff, cos_coeff, sin_sign, cos_sign,
+                    )
+                    .into_iter()
+                    .find(|candidate| matches_target(ctx, *candidate))
+                };
+                if let Some(candidate) = generated_candidate {
+                    if profiling {
+                        let _ = run_profiled_orchestrator_option_section(
+                            "rule.phase_shift.route.shifted_generated_candidate",
+                            pair_sample.clone(),
+                            || Some(()),
+                        );
                     }
+                    return Some(TrigPhaseShiftCancellationMatch {
+                        local_before: focus_expr,
+                        local_after: candidate,
+                        mode: TrigPhaseShiftCancellationMode::ShiftedToShifted,
+                    });
                 }
             }
         }
@@ -9470,6 +10166,48 @@ define_rule!(
                         render_expr_for_orchestrator_profile(ctx, lhs),
                         render_expr_for_orchestrator_profile(ctx, rhs)
                     ));
+                    let _ = run_profiled_orchestrator_option_section(
+                        "rule.phase_shift.binary_add_match.trig_pair_gate",
+                        pair_sample.clone(),
+                        || {
+                            binary_add_pair_has_trig_phase_shift_shape_for_cancellation(
+                                ctx,
+                                lhs,
+                                rhs,
+                                pair_sample.clone(),
+                            )
+                            .then_some(())
+                        },
+                    )
+                    .is_some();
+                    let _ = run_profiled_orchestrator_option_section(
+                        "rule.phase_shift.binary_add_match.surface_plain_algebraic_gate",
+                        pair_sample.clone(),
+                        || {
+                            profile_binary_add_surface_pair_shape_for_phase_shift(
+                                ctx,
+                                lhs,
+                                rhs,
+                                pair_sample.clone(),
+                            );
+                            Some(())
+                        },
+                    )
+                    .is_some();
+                    let _ = run_profiled_orchestrator_option_section(
+                        "rule.phase_shift.binary_add_match.term_family_gate",
+                        pair_sample.clone(),
+                        || {
+                            profile_binary_add_term_family_pair_for_phase_shift(
+                                ctx,
+                                lhs,
+                                rhs,
+                                pair_sample.clone(),
+                            );
+                            Some(())
+                        },
+                    )
+                    .is_some();
                     run_profiled_orchestrator_option_section(
                         "rule.phase_shift.binary_add_match",
                         pair_sample.clone(),
@@ -10941,7 +11679,18 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
+    let profiling =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    let expr_sample = profiling.then(|| render_expr_for_orchestrator_profile(ctx, expr));
+    let profile_route = |label: &'static str| {
+        if profiling {
+            let _ =
+                run_profiled_orchestrator_option_section(label, expr_sample.clone(), || Some(()));
+        }
+    };
+
     if let Some(rewrite) = try_build_exact_zero_same_denominator_rewrite(ctx, expr) {
+        profile_route("rule.common_scale_zero.route.same_denominator");
         return Some(rewrite);
     }
 
@@ -10952,6 +11701,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
         if let Some(child_rewrite) =
             try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
         {
+            profile_route("rule.common_scale_zero.route.focused_phase_shift_pair");
             return Some(build_common_scale_exact_zero_rewrite(
                 ctx,
                 expr,
@@ -10963,6 +11713,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
         if let Some(child_rewrite) =
             try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, residual_expr)
         {
+            profile_route("rule.common_scale_zero.route.focused_shared_passthrough");
             return Some(build_common_scale_exact_zero_rewrite(
                 ctx,
                 expr,
@@ -10974,6 +11725,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
         if let Some(child_rewrite) =
             try_build_direct_tanh_exp_definition_equivalence_rewrite(ctx, lhs_core, rhs_core)
         {
+            profile_route("rule.common_scale_zero.route.focused_tanh_exp");
             return Some(build_common_scale_exact_zero_rewrite(
                 ctx,
                 expr,
@@ -10985,6 +11737,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
         if let Some(child_rewrite) =
             try_build_direct_trig_square_equivalence_rewrite(ctx, lhs_core, rhs_core)
         {
+            profile_route("rule.common_scale_zero.route.focused_trig_square");
             return Some(build_common_scale_exact_zero_rewrite(
                 ctx,
                 expr,
@@ -10998,6 +11751,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
                 ctx, lhs_core, rhs_core,
             )
         {
+            profile_route("rule.common_scale_zero.route.focused_sinh_cubic");
             return Some(build_common_scale_exact_zero_rewrite(
                 ctx,
                 expr,
@@ -11011,6 +11765,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
                 ctx, lhs_core, rhs_core,
             )
         {
+            profile_route("rule.common_scale_zero.route.focused_phase_shift_quarter_pair");
             return Some(build_common_scale_exact_zero_rewrite(
                 ctx,
                 expr,
@@ -11022,6 +11777,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
         if let Some(child_rewrite) =
             try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
         {
+            profile_route("rule.common_scale_zero.route.focused_safe_hyperbolic");
             return Some(build_common_scale_exact_zero_rewrite(
                 ctx,
                 expr,
@@ -11039,6 +11795,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
             if let Some(child_rewrite) =
                 try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
             {
+                profile_route("rule.common_scale_zero.route.residual_direct_core_equivalence");
                 return Some(build_common_scale_exact_zero_rewrite(
                     ctx,
                     expr,
@@ -11052,6 +11809,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
     if let Some(child_rewrite) =
         try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
     {
+        profile_route("rule.common_scale_zero.route.residual_phase_shift_pair");
         return Some(build_common_scale_exact_zero_rewrite(
             ctx,
             expr,
@@ -11063,6 +11821,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
     if let Some(child_rewrite) =
         try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, residual_expr)
     {
+        profile_route("rule.common_scale_zero.route.residual_shared_passthrough");
         return Some(build_common_scale_exact_zero_rewrite(
             ctx,
             expr,
@@ -11077,6 +11836,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
         {
             let zero = ctx.num(0);
             if compare_expr(ctx, child_rewrite.final_expr(), zero) == Ordering::Equal {
+                profile_route("rule.common_scale_zero.route.residual_direct_identity");
                 return Some(build_common_scale_exact_zero_rewrite(
                     ctx,
                     expr,
@@ -11092,6 +11852,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
             try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_expr)
         })
     {
+        profile_route("rule.common_scale_zero.route.residual_log_or_multiterm_hyperbolic");
         return Some(build_common_scale_exact_zero_rewrite(
             ctx,
             expr,
@@ -11104,6 +11865,7 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
         if let Some(child_rewrite) =
             try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
         {
+            profile_route("rule.common_scale_zero.route.residual_safe_hyperbolic");
             return Some(build_common_scale_exact_zero_rewrite(
                 ctx,
                 expr,
@@ -11116,15 +11878,51 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
 
     let normalized_residual = normalize_additive_scope_expr(ctx, residual_expr);
     let child_rewrite = try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_expr)
-        .or_else(|| try_build_fast_trig_residual_identity_child_rewrite(ctx, normalized_residual))
-        .or_else(|| try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, residual_expr))
-        .or_else(|| try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_expr))
+        .inspect(|_| {
+            profile_route("rule.common_scale_zero.route.tail_fast_trig_raw");
+        })
+        .or_else(|| {
+            try_build_fast_trig_residual_identity_child_rewrite(ctx, normalized_residual).inspect(
+                |_| {
+                    profile_route("rule.common_scale_zero.route.tail_fast_trig_normalized");
+                },
+            )
+        })
+        .or_else(|| {
+            try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, residual_expr).inspect(
+                |_| {
+                    profile_route("rule.common_scale_zero.route.tail_shared_passthrough");
+                },
+            )
+        })
+        .or_else(|| {
+            try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_expr).inspect(
+                |_| {
+                    profile_route("rule.common_scale_zero.route.tail_fast_small_poly_raw");
+                },
+            )
+        })
         .or_else(|| {
             try_build_fast_small_polynomial_residual_child_rewrite(ctx, normalized_residual)
+                .inspect(|_| {
+                    profile_route("rule.common_scale_zero.route.tail_fast_small_poly_normalized");
+                })
         })
-        .or_else(|| try_build_two_term_core_equivalence_rewrite(ctx, residual_expr))
-        .or_else(|| try_build_exact_zero_identity_rewrite(ctx, residual_expr))
-        .or_else(|| try_build_exact_zero_identity_rewrite(ctx, normalized_residual))?;
+        .or_else(|| {
+            try_build_two_term_core_equivalence_rewrite(ctx, residual_expr).inspect(|_| {
+                profile_route("rule.common_scale_zero.route.tail_two_term_core_equivalence");
+            })
+        })
+        .or_else(|| {
+            try_build_exact_zero_identity_rewrite(ctx, residual_expr).inspect(|_| {
+                profile_route("rule.common_scale_zero.route.tail_exact_zero_identity_raw");
+            })
+        })
+        .or_else(|| {
+            try_build_exact_zero_identity_rewrite(ctx, normalized_residual).inspect(|_| {
+                profile_route("rule.common_scale_zero.route.tail_exact_zero_identity_normalized");
+            })
+        })?;
     Some(build_common_scale_exact_zero_rewrite(
         ctx,
         expr,
@@ -11619,6 +12417,43 @@ fn try_build_direct_trig_double_angle_contraction_equivalence_rewrite(
     None
 }
 
+fn try_build_direct_trig_reciprocal_equivalence_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Expr::Div(numerator, denominator) = ctx.get(source).clone() else {
+            continue;
+        };
+        if extract_i64_integer(ctx, numerator) != Some(1) {
+            continue;
+        }
+
+        for (builtin, reciprocal_name) in [
+            (BuiltinFn::Cos, BuiltinFn::Sec),
+            (BuiltinFn::Sin, BuiltinFn::Csc),
+        ] {
+            let Some(base_arg) = extract_unary_builtin_arg(ctx, denominator, builtin) else {
+                continue;
+            };
+            let reciprocal = ctx.call_builtin(reciprocal_name, vec![base_arg]);
+            if exprs_match_for_cancellation(ctx, reciprocal, target)
+                || exprs_match_after_default_simplify(ctx, reciprocal, target)
+            {
+                return Some(Rewrite::with_local(
+                    ctx.num(0),
+                    "Reciprocal Quotient Identity",
+                    lhs_core,
+                    rhs_core,
+                ));
+            }
+        }
+    }
+
+    None
+}
+
 fn try_build_direct_trig_double_angle_cos_variant_equivalence_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
@@ -11827,6 +12662,106 @@ fn try_rewrite_trig_cos_double_angle_times_sin_polynomial_expr(
     let four_cos_sq_sin = smart_mul(ctx, four, cos_sq_sin);
     let two_sin = smart_mul(ctx, two, sin_base);
     Some(ctx.add(Expr::Sub(four_cos_sq_sin, two_sin)))
+}
+
+fn is_simple_symbolic_scale_factor_for_cancellation(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    match ctx.get(expr) {
+        Expr::Variable(_) | Expr::SessionRef(_) => true,
+        Expr::Pow(base, exp) => {
+            matches!(ctx.get(*base), Expr::Variable(_) | Expr::SessionRef(_))
+                && extract_i64_integer(ctx, *exp).is_some_and(|value| value > 0)
+        }
+        _ => false,
+    }
+}
+
+fn distribute_symbolic_scale_sum_term_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    scale_expr: cas_ast::ExprId,
+    term_expr: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    let Expr::Div(numerator, denominator) = ctx.get(term_expr).clone() else {
+        return smart_mul(ctx, scale_expr, term_expr);
+    };
+
+    if compare_expr(ctx, denominator, scale_expr) == Ordering::Equal {
+        numerator
+    } else {
+        smart_mul(ctx, scale_expr, term_expr)
+    }
+}
+
+fn try_rewrite_single_symbolic_scale_sum_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    let (scale_expr, sum_expr) =
+        if is_simple_symbolic_scale_factor_for_cancellation(ctx, factors[0])
+            && matches!(ctx.get(factors[1]), Expr::Add(_, _) | Expr::Sub(_, _))
+        {
+            (factors[0], factors[1])
+        } else if is_simple_symbolic_scale_factor_for_cancellation(ctx, factors[1])
+            && matches!(ctx.get(factors[0]), Expr::Add(_, _) | Expr::Sub(_, _))
+        {
+            (factors[1], factors[0])
+        } else {
+            return None;
+        };
+
+    let sum_terms = AddView::from_expr(ctx, sum_expr).terms;
+    if !(2..=4).contains(&sum_terms.len()) {
+        return None;
+    }
+
+    let distributed_terms: Vec<_> = sum_terms
+        .into_iter()
+        .map(|(term_expr, term_sign)| {
+            let distributed_term =
+                distribute_symbolic_scale_sum_term_for_cancellation(ctx, scale_expr, term_expr);
+            let (normalized_expr, normalized_sign) =
+                normalize_signed_add_term(ctx, distributed_term, Sign::Pos);
+            let combined_sign = match term_sign {
+                Sign::Pos => normalized_sign,
+                Sign::Neg => normalized_sign.negate(),
+            };
+            (normalized_expr, combined_sign)
+        })
+        .collect();
+
+    let distributed_expr = build_signed_sum_expr(ctx, &distributed_terms);
+    (compare_expr(ctx, distributed_expr, expr) != Ordering::Equal).then_some(distributed_expr)
+}
+
+fn try_rewrite_simple_symbolic_scale_sum_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    if let Some(rewritten) = try_rewrite_single_symbolic_scale_sum_for_cancellation(ctx, expr) {
+        return Some(rewritten);
+    }
+
+    let sum_terms = AddView::from_expr(ctx, expr).terms;
+    if !(2..=4).contains(&sum_terms.len()) {
+        return None;
+    }
+
+    let mut rewritten_terms = Vec::with_capacity(sum_terms.len());
+    for (term_expr, term_sign) in sum_terms {
+        let rewritten_term =
+            try_rewrite_single_symbolic_scale_sum_for_cancellation(ctx, term_expr)?;
+        rewritten_terms.push(normalize_signed_add_term(ctx, rewritten_term, term_sign));
+    }
+
+    let rewritten_expr = build_signed_sum_expr(ctx, &rewritten_terms);
+    (compare_expr(ctx, rewritten_expr, expr) != Ordering::Equal).then_some(rewritten_expr)
 }
 
 pub(crate) fn try_build_direct_trig_cos_double_angle_polynomial_equivalence_rewrite(
@@ -13492,30 +14427,51 @@ fn try_build_direct_core_equivalence_rewrite(
     lhs_core: cas_ast::ExprId,
     rhs_core: cas_ast::ExprId,
 ) -> Option<Rewrite> {
+    let profiling =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    let pair_sample = profiling.then(|| {
+        format!(
+            "{}  ||  {}",
+            render_expr_for_orchestrator_profile(ctx, lhs_core),
+            render_expr_for_orchestrator_profile(ctx, rhs_core)
+        )
+    });
+    let profile_route = |label: &'static str| {
+        if profiling {
+            let _ =
+                run_profiled_orchestrator_option_section(label, pair_sample.clone(), || Some(()));
+        }
+    };
+
     if let Some(rewrite) =
         try_build_direct_tanh_exp_definition_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.tanh_exp");
         return Some(rewrite);
     }
 
     if let Some(rewrite) = try_build_direct_trig_square_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.trig_square");
         return Some(rewrite);
     }
     if let Some(rewrite) =
         try_build_direct_trig_product_to_sum_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.trig_product_to_sum");
         return Some(rewrite);
     }
     if let Some(rewrite) =
         try_build_direct_trig_sum_to_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.trig_sum_to_product");
         return Some(rewrite);
     }
 
     if let Some(rewrite) = try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
         ctx, lhs_core, rhs_core,
     ) {
+        profile_route("rule.direct_core_equivalence.route.phase_shift_pair");
         return Some(rewrite);
     }
 
@@ -13533,6 +14489,7 @@ fn try_build_direct_core_equivalence_rewrite(
         if let Some(rewrite) =
             try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
         {
+            profile_route("rule.direct_core_equivalence.route.repeated_phase_shift_pair");
             return Some(rewrite);
         }
     }
@@ -13543,11 +14500,13 @@ fn try_build_direct_core_equivalence_rewrite(
         if let Some(rewrite) =
             try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
         {
+            profile_route("rule.direct_core_equivalence.route.safe_hyperbolic");
             return Some(rewrite);
         }
     }
 
     if exprs_match_for_cancellation(ctx, lhs_core, rhs_core) {
+        profile_route("rule.direct_core_equivalence.route.direct_match");
         return Some(Rewrite::with_local(
             ctx.num(0),
             "Equivalent Residual Cancellation",
@@ -13559,12 +14518,14 @@ fn try_build_direct_core_equivalence_rewrite(
     if let Some(rewrite) = try_build_direct_trig_cos_diff_sin_diff_quotient_equivalence_rewrite(
         ctx, lhs_core, rhs_core,
     ) {
+        profile_route("rule.direct_core_equivalence.route.cos_diff_sin_diff_quotient");
         return Some(rewrite);
     }
 
     if let Some(rewrite) =
         try_build_direct_sum_diff_cubes_quotient_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.sum_diff_cubes_quotient");
         return Some(rewrite);
     }
 
@@ -13572,6 +14533,7 @@ fn try_build_direct_core_equivalence_rewrite(
         .or_else(|| try_find_trig_phase_shift_cancellation_match(ctx, rhs_core, lhs_core, false))
         .is_some()
     {
+        profile_route("rule.direct_core_equivalence.route.phase_shift_identity");
         return Some(Rewrite::with_local(
             ctx.num(0),
             "Phase Shift Identity",
@@ -13583,64 +14545,76 @@ fn try_build_direct_core_equivalence_rewrite(
     let residual_expr = ctx.add(Expr::Sub(lhs_core, rhs_core));
     if let Some(rewrite) = try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
     {
+        profile_route("rule.direct_core_equivalence.route.repeated_phase_shift_residual");
         return Some(rewrite);
     }
 
     if let Some(rewrite) =
         try_build_direct_cos_product_telescoping_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.cos_product_telescoping");
         return Some(rewrite);
     }
 
     if let Some(rewrite) =
         try_build_direct_dirichlet_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.dirichlet");
         return Some(rewrite);
     }
 
     if let Some(rewrite) =
         try_build_direct_finite_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.finite_product");
         return Some(rewrite);
     }
 
     if let Some(rewrite) =
         try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.trig_power_reduction");
         return Some(rewrite);
     }
     if let Some(rewrite) =
         try_build_direct_trig_double_angle_contraction_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.double_angle_contraction");
         return Some(rewrite);
     }
     if let Some(rewrite) = try_build_direct_trig_cos_double_angle_polynomial_equivalence_rewrite(
         ctx, lhs_core, rhs_core,
     ) {
+        profile_route("rule.direct_core_equivalence.route.cos_double_angle_poly");
         return Some(rewrite);
     }
     if let Some(rewrite) = try_build_direct_trig_mixed_double_angle_polynomial_equivalence_rewrite(
         ctx, lhs_core, rhs_core,
     ) {
+        profile_route("rule.direct_core_equivalence.route.mixed_double_angle_poly");
         return Some(rewrite);
     }
     if let Some(rewrite) =
         try_build_direct_trig_double_angle_cos_variant_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.double_angle_cos_variant");
         return Some(rewrite);
     }
     if let Some(rewrite) = try_build_direct_trig_embedded_double_angle_expansion_equivalence_rewrite(
         ctx, lhs_core, rhs_core,
     ) {
+        profile_route("rule.direct_core_equivalence.route.embedded_double_angle");
         return Some(rewrite);
     }
     if let Some(rewrite) = try_build_direct_multi_angle_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.multi_angle");
         return Some(rewrite);
     }
     if let Some(rewrite) =
         try_build_direct_recursive_trig_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.direct_core_equivalence.route.recursive_trig");
         return Some(rewrite);
     }
 
@@ -13650,6 +14624,7 @@ fn try_build_direct_core_equivalence_rewrite(
         if exprs_match_for_cancellation(ctx, rewritten, rhs_core)
             || exprs_match_after_default_simplify(ctx, rewritten, rhs_core)
         {
+            profile_route("rule.direct_core_equivalence.route.exact_trig_lhs");
             return Some(Rewrite::with_local(
                 ctx.num(0),
                 description,
@@ -13664,6 +14639,7 @@ fn try_build_direct_core_equivalence_rewrite(
         if exprs_match_for_cancellation(ctx, rewritten, lhs_core)
             || exprs_match_after_default_simplify(ctx, rewritten, lhs_core)
         {
+            profile_route("rule.direct_core_equivalence.route.exact_trig_rhs");
             return Some(Rewrite::with_local(
                 ctx.num(0),
                 description,
@@ -13682,6 +14658,7 @@ fn try_build_direct_core_equivalence_rewrite(
             if exprs_match_for_cancellation(ctx, rewritten, rhs_core)
                 || exprs_match_after_default_simplify(ctx, rewritten, rhs_core)
             {
+                profile_route("rule.direct_core_equivalence.route.hyperbolic_lhs_tanh");
                 return Some(Rewrite::with_local(
                     ctx.num(0),
                     description,
@@ -13696,6 +14673,7 @@ fn try_build_direct_core_equivalence_rewrite(
             if exprs_match_for_cancellation(ctx, rewritten, lhs_core)
                 || exprs_match_after_default_simplify(ctx, rewritten, lhs_core)
             {
+                profile_route("rule.direct_core_equivalence.route.hyperbolic_rhs_tanh");
                 return Some(Rewrite::with_local(
                     ctx.num(0),
                     description,
@@ -13706,7 +14684,39 @@ fn try_build_direct_core_equivalence_rewrite(
         }
     }
 
+    if let Some(rewritten) = try_rewrite_simple_symbolic_scale_sum_for_cancellation(ctx, lhs_core) {
+        if exprs_match_for_cancellation(ctx, rewritten, rhs_core) {
+            profile_route("rule.direct_core_equivalence.route.symbolic_scale_sum_lhs");
+            return Some(Rewrite::with_local(
+                ctx.num(0),
+                "Equivalent Residual Cancellation",
+                lhs_core,
+                rhs_core,
+            ));
+        }
+    }
+
+    if let Some(rewritten) = try_rewrite_simple_symbolic_scale_sum_for_cancellation(ctx, rhs_core) {
+        if exprs_match_for_cancellation(ctx, rewritten, lhs_core) {
+            profile_route("rule.direct_core_equivalence.route.symbolic_scale_sum_rhs");
+            return Some(Rewrite::with_local(
+                ctx.num(0),
+                "Equivalent Residual Cancellation",
+                lhs_core,
+                rhs_core,
+            ));
+        }
+    }
+
+    if let Some(rewrite) =
+        try_build_direct_trig_reciprocal_equivalence_rewrite(ctx, lhs_core, rhs_core)
+    {
+        profile_route("rule.direct_core_equivalence.route.trig_reciprocal");
+        return Some(rewrite);
+    }
+
     if exprs_match_after_default_simplify(ctx, lhs_core, rhs_core) {
+        profile_route("rule.direct_core_equivalence.route.default_simplify_match");
         return Some(Rewrite::with_local(
             ctx.num(0),
             "Equivalent Residual Cancellation",
@@ -13722,6 +14732,7 @@ fn try_build_direct_core_equivalence_rewrite(
             if exprs_match_for_cancellation(ctx, rewritten, rhs_core)
                 || exprs_match_after_default_simplify(ctx, rewritten, rhs_core)
             {
+                profile_route("rule.direct_core_equivalence.route.hyperbolic_lhs");
                 return Some(Rewrite::with_local(
                     ctx.num(0),
                     description,
@@ -13736,6 +14747,7 @@ fn try_build_direct_core_equivalence_rewrite(
             if exprs_match_for_cancellation(ctx, rewritten, lhs_core)
                 || exprs_match_after_default_simplify(ctx, rewritten, lhs_core)
             {
+                profile_route("rule.direct_core_equivalence.route.hyperbolic_rhs");
                 return Some(Rewrite::with_local(
                     ctx.num(0),
                     description,
@@ -13747,6 +14759,183 @@ fn try_build_direct_core_equivalence_rewrite(
     }
 
     None
+}
+
+#[derive(Clone, Copy)]
+enum DirectCoreEquivalenceProfileFamily {
+    DirectMatch,
+    SymbolicScaleSumLhs,
+    SymbolicScaleSumRhs,
+    TrigReciprocal,
+    CosDiffSinDiffQuotient,
+    SumDiffCubesQuotient,
+    PhaseShiftIdentity,
+    CosProductTelescoping,
+    TrigPowerReduction,
+    DoubleAngleContraction,
+    DefaultSimplify,
+    Other,
+}
+
+fn classify_direct_core_equivalence_profile_family(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> DirectCoreEquivalenceProfileFamily {
+    if exprs_match_for_cancellation(ctx, lhs_core, rhs_core) {
+        DirectCoreEquivalenceProfileFamily::DirectMatch
+    } else if try_rewrite_simple_symbolic_scale_sum_for_cancellation(ctx, lhs_core)
+        .map(|rewritten| exprs_match_for_cancellation(ctx, rewritten, rhs_core))
+        .unwrap_or(false)
+    {
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumLhs
+    } else if try_rewrite_simple_symbolic_scale_sum_for_cancellation(ctx, rhs_core)
+        .map(|rewritten| exprs_match_for_cancellation(ctx, rewritten, lhs_core))
+        .unwrap_or(false)
+    {
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumRhs
+    } else if try_build_direct_trig_reciprocal_equivalence_rewrite(ctx, lhs_core, rhs_core)
+        .is_some()
+    {
+        DirectCoreEquivalenceProfileFamily::TrigReciprocal
+    } else if try_build_direct_trig_cos_diff_sin_diff_quotient_equivalence_rewrite(
+        ctx, lhs_core, rhs_core,
+    )
+    .is_some()
+    {
+        DirectCoreEquivalenceProfileFamily::CosDiffSinDiffQuotient
+    } else if try_build_direct_sum_diff_cubes_quotient_equivalence_rewrite(ctx, lhs_core, rhs_core)
+        .is_some()
+    {
+        DirectCoreEquivalenceProfileFamily::SumDiffCubesQuotient
+    } else if try_find_trig_phase_shift_cancellation_match(ctx, lhs_core, rhs_core, false)
+        .or_else(|| try_find_trig_phase_shift_cancellation_match(ctx, rhs_core, lhs_core, false))
+        .is_some()
+    {
+        DirectCoreEquivalenceProfileFamily::PhaseShiftIdentity
+    } else if try_build_direct_cos_product_telescoping_equivalence_rewrite(ctx, lhs_core, rhs_core)
+        .is_some()
+    {
+        DirectCoreEquivalenceProfileFamily::CosProductTelescoping
+    } else if try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core)
+        .is_some()
+    {
+        DirectCoreEquivalenceProfileFamily::TrigPowerReduction
+    } else if try_build_direct_trig_double_angle_contraction_equivalence_rewrite(
+        ctx, lhs_core, rhs_core,
+    )
+    .is_some()
+    {
+        DirectCoreEquivalenceProfileFamily::DoubleAngleContraction
+    } else if exprs_match_after_default_simplify(ctx, lhs_core, rhs_core) {
+        DirectCoreEquivalenceProfileFamily::DefaultSimplify
+    } else {
+        DirectCoreEquivalenceProfileFamily::Other
+    }
+}
+
+fn profile_same_denominator_tail_direct_core_equivalence_family(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+    sample: Option<String>,
+) {
+    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        return;
+    }
+
+    let label = match classify_direct_core_equivalence_profile_family(ctx, lhs_core, rhs_core) {
+        DirectCoreEquivalenceProfileFamily::DirectMatch => {
+            "rule.same_denominator_zero.tail_direct_core.family.direct_match"
+        }
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumLhs => {
+            "rule.same_denominator_zero.tail_direct_core.family.symbolic_scale_sum_lhs"
+        }
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumRhs => {
+            "rule.same_denominator_zero.tail_direct_core.family.symbolic_scale_sum_rhs"
+        }
+        DirectCoreEquivalenceProfileFamily::TrigReciprocal => {
+            "rule.same_denominator_zero.tail_direct_core.family.trig_reciprocal"
+        }
+        DirectCoreEquivalenceProfileFamily::CosDiffSinDiffQuotient => {
+            "rule.same_denominator_zero.tail_direct_core.family.cos_diff_sin_diff_quotient"
+        }
+        DirectCoreEquivalenceProfileFamily::SumDiffCubesQuotient => {
+            "rule.same_denominator_zero.tail_direct_core.family.sum_diff_cubes_quotient"
+        }
+        DirectCoreEquivalenceProfileFamily::PhaseShiftIdentity => {
+            "rule.same_denominator_zero.tail_direct_core.family.phase_shift_identity"
+        }
+        DirectCoreEquivalenceProfileFamily::CosProductTelescoping => {
+            "rule.same_denominator_zero.tail_direct_core.family.cos_product_telescoping"
+        }
+        DirectCoreEquivalenceProfileFamily::TrigPowerReduction => {
+            "rule.same_denominator_zero.tail_direct_core.family.trig_power_reduction"
+        }
+        DirectCoreEquivalenceProfileFamily::DoubleAngleContraction => {
+            "rule.same_denominator_zero.tail_direct_core.family.double_angle_contraction"
+        }
+        DirectCoreEquivalenceProfileFamily::DefaultSimplify => {
+            "rule.same_denominator_zero.tail_direct_core.family.default_simplify"
+        }
+        DirectCoreEquivalenceProfileFamily::Other => {
+            "rule.same_denominator_zero.tail_direct_core.family.other"
+        }
+    };
+
+    let _ = run_profiled_orchestrator_option_section(label, sample, || Some(()));
+}
+
+fn profile_shifted_quotient_exact_one_direct_core_equivalence_family(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+    sample: Option<String>,
+) {
+    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        return;
+    }
+
+    let label = match classify_direct_core_equivalence_profile_family(ctx, lhs_core, rhs_core) {
+        DirectCoreEquivalenceProfileFamily::DirectMatch => {
+            "rule.shifted_quotient.exact_one.direct_core.family.direct_match"
+        }
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumLhs => {
+            "rule.shifted_quotient.exact_one.direct_core.family.symbolic_scale_sum_lhs"
+        }
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumRhs => {
+            "rule.shifted_quotient.exact_one.direct_core.family.symbolic_scale_sum_rhs"
+        }
+        DirectCoreEquivalenceProfileFamily::TrigReciprocal => {
+            "rule.shifted_quotient.exact_one.direct_core.family.trig_reciprocal"
+        }
+        DirectCoreEquivalenceProfileFamily::CosDiffSinDiffQuotient => {
+            "rule.shifted_quotient.exact_one.direct_core.family.cos_diff_sin_diff_quotient"
+        }
+        DirectCoreEquivalenceProfileFamily::SumDiffCubesQuotient => {
+            "rule.shifted_quotient.exact_one.direct_core.family.sum_diff_cubes_quotient"
+        }
+        DirectCoreEquivalenceProfileFamily::PhaseShiftIdentity => {
+            "rule.shifted_quotient.exact_one.direct_core.family.phase_shift_identity"
+        }
+        DirectCoreEquivalenceProfileFamily::CosProductTelescoping => {
+            "rule.shifted_quotient.exact_one.direct_core.family.cos_product_telescoping"
+        }
+        DirectCoreEquivalenceProfileFamily::TrigPowerReduction => {
+            "rule.shifted_quotient.exact_one.direct_core.family.trig_power_reduction"
+        }
+        DirectCoreEquivalenceProfileFamily::DoubleAngleContraction => {
+            "rule.shifted_quotient.exact_one.direct_core.family.double_angle_contraction"
+        }
+        DirectCoreEquivalenceProfileFamily::DefaultSimplify => {
+            "rule.shifted_quotient.exact_one.direct_core.family.default_simplify"
+        }
+        DirectCoreEquivalenceProfileFamily::Other => {
+            "rule.shifted_quotient.exact_one.direct_core.family.other"
+        }
+    };
+
+    let _ = run_profiled_orchestrator_option_section(label, sample, || Some(()));
 }
 
 fn try_build_fast_trig_residual_identity_child_rewrite(
@@ -13884,9 +15073,26 @@ fn try_build_exact_zero_same_denominator_rewrite(
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
     let (den, lhs_core, rhs_core) = extract_same_denominator_residual_cores(ctx, expr)?;
+    let profiling =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    let pair_sample = profiling.then(|| {
+        format!(
+            "{}  ||  {}",
+            render_expr_for_orchestrator_profile(ctx, lhs_core),
+            render_expr_for_orchestrator_profile(ctx, rhs_core)
+        )
+    });
+    let profile_route = |label: &'static str| {
+        if profiling {
+            let _ =
+                run_profiled_orchestrator_option_section(label, pair_sample.clone(), || Some(()));
+        }
+    };
+
     if let Some(child_rewrite) =
         try_build_direct_sub_fraction_combination_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.same_denominator_zero.route.sub_fraction");
         let mut rewrite = Rewrite::with_local(
             ctx.num(0),
             child_rewrite.description.clone(),
@@ -13907,6 +15113,7 @@ fn try_build_exact_zero_same_denominator_rewrite(
     if let Some(child_rewrite) =
         try_build_direct_tanh_exp_definition_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.same_denominator_zero.route.tanh_exp");
         let mut rewrite = Rewrite::with_local(
             ctx.num(0),
             child_rewrite.description.clone(),
@@ -13927,6 +15134,7 @@ fn try_build_exact_zero_same_denominator_rewrite(
     if let Some(child_rewrite) =
         try_build_direct_trig_square_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.same_denominator_zero.route.trig_square");
         let mut rewrite = Rewrite::with_local(
             ctx.num(0),
             child_rewrite.description.clone(),
@@ -13949,6 +15157,7 @@ fn try_build_exact_zero_same_denominator_rewrite(
             ctx, lhs_core, rhs_core,
         )
     {
+        profile_route("rule.same_denominator_zero.route.sinh_cubic");
         let mut rewrite = Rewrite::with_local(
             ctx.num(0),
             child_rewrite.description.clone(),
@@ -13971,6 +15180,7 @@ fn try_build_exact_zero_same_denominator_rewrite(
             ctx, lhs_core, rhs_core,
         )
     {
+        profile_route("rule.same_denominator_zero.route.phase_shift_quarter_pair");
         let mut rewrite = Rewrite::with_local(
             ctx.num(0),
             child_rewrite.description.clone(),
@@ -13991,6 +15201,7 @@ fn try_build_exact_zero_same_denominator_rewrite(
     if let Some(child_rewrite) =
         try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
+        profile_route("rule.same_denominator_zero.route.safe_hyperbolic");
         let mut rewrite = Rewrite::with_local(
             ctx.num(0),
             child_rewrite.description.clone(),
@@ -14012,6 +15223,7 @@ fn try_build_exact_zero_same_denominator_rewrite(
     if let Some(child_rewrite) =
         try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, residual_expr)
     {
+        profile_route("rule.same_denominator_zero.route.shared_passthrough");
         let mut rewrite = Rewrite::with_local(
             ctx.num(0),
             child_rewrite.description.clone(),
@@ -14036,6 +15248,7 @@ fn try_build_exact_zero_same_denominator_rewrite(
         {
             let zero = ctx.num(0);
             if compare_expr(ctx, child_rewrite.final_expr(), zero) == Ordering::Equal {
+                profile_route("rule.same_denominator_zero.route.direct_identity");
                 let mut rewrite = Rewrite::with_local(
                     zero,
                     child_rewrite.description.clone(),
@@ -14056,16 +15269,64 @@ fn try_build_exact_zero_same_denominator_rewrite(
         }
     }
     let child_rewrite = try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
-        .or_else(|| try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_expr))
-        .or_else(|| try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_expr))
+        .inspect(|_| {
+            profile_route("rule.same_denominator_zero.route.tail_phase_shift_pair");
+        })
+        .or_else(|| {
+            try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_expr).inspect(|_| {
+                profile_route("rule.same_denominator_zero.route.tail_stripped_zero_log");
+            })
+        })
+        .or_else(|| {
+            try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_expr).inspect(
+                |_| {
+                    profile_route(
+                        "rule.same_denominator_zero.route.tail_fast_multiterm_hyperbolic",
+                    );
+                },
+            )
+        })
         .or_else(|| {
             try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
+                .inspect(|_| {
+                    profile_route("rule.same_denominator_zero.route.tail_safe_hyperbolic");
+                })
         })
-        .or_else(|| try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, residual_expr))
-        .or_else(|| try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_expr))
-        .or_else(|| try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_expr))
-        .or_else(|| try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core))
-        .or_else(|| try_build_exact_zero_identity_rewrite(ctx, residual_expr))?;
+        .or_else(|| {
+            try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, residual_expr).inspect(
+                |_| {
+                    profile_route("rule.same_denominator_zero.route.tail_shared_passthrough");
+                },
+            )
+        })
+        .or_else(|| {
+            try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_expr).inspect(|_| {
+                profile_route("rule.same_denominator_zero.route.tail_fast_trig_residual");
+            })
+        })
+        .or_else(|| {
+            try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_expr).inspect(
+                |_| {
+                    profile_route("rule.same_denominator_zero.route.tail_fast_small_polynomial");
+                },
+            )
+        })
+        .or_else(|| {
+            try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core).inspect(|_| {
+                profile_route("rule.same_denominator_zero.route.tail_direct_core_equivalence");
+                profile_same_denominator_tail_direct_core_equivalence_family(
+                    ctx,
+                    lhs_core,
+                    rhs_core,
+                    pair_sample.clone(),
+                );
+            })
+        })
+        .or_else(|| {
+            try_build_exact_zero_identity_rewrite(ctx, residual_expr).inspect(|_| {
+                profile_route("rule.same_denominator_zero.route.tail_exact_zero_identity");
+            })
+        })?;
 
     let mut rewrite = Rewrite::with_local(
         ctx.num(0),
@@ -14097,11 +15358,28 @@ fn try_build_shifted_quotient_exact_one_rewrite(
 
     let numerator_core = strip_positive_one_passthrough(ctx, numerator)?;
     let denominator_core = strip_positive_one_passthrough(ctx, denominator)?;
+    let profiling =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    let pair_sample = profiling.then(|| {
+        format!(
+            "{}  ||  {}",
+            render_expr_for_orchestrator_profile(ctx, numerator_core),
+            render_expr_for_orchestrator_profile(ctx, denominator_core)
+        )
+    });
+    let profile_route = |label: &'static str| {
+        if profiling {
+            let _ =
+                run_profiled_orchestrator_option_section(label, pair_sample.clone(), || Some(()));
+        }
+    };
+
     if let Some(child_rewrite) = try_build_direct_sub_fraction_combination_equivalence_rewrite(
         ctx,
         numerator_core,
         denominator_core,
     ) {
+        profile_route("rule.shifted_quotient.exact_one.route.sub_fraction");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
             numerator,
@@ -14114,6 +15392,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
         numerator_core,
         denominator_core,
     ) {
+        profile_route("rule.shifted_quotient.exact_one.route.tanh_exp");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
             numerator,
@@ -14124,6 +15403,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
     if let Some(child_rewrite) =
         try_build_direct_trig_square_equivalence_rewrite(ctx, numerator_core, denominator_core)
     {
+        profile_route("rule.shifted_quotient.exact_one.route.trig_square");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
             numerator,
@@ -14138,6 +15418,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
         numerator_core,
         denominator_core,
     ) {
+        profile_route("rule.shifted_quotient.exact_one.route.half_angle_binomial");
         return Some(rewrite);
     }
     if let Some(rewrite) = try_build_direct_small_zero_core_shifted_quotient_rewrite(
@@ -14147,6 +15428,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
         numerator_core,
         denominator_core,
     ) {
+        profile_route("rule.shifted_quotient.exact_one.route.small_zero_core");
         return Some(rewrite);
     }
     if let Some(child_rewrite) =
@@ -14156,6 +15438,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             denominator_core,
         )
     {
+        profile_route("rule.shifted_quotient.exact_one.route.sinh_cubic");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
             numerator,
@@ -14170,6 +15453,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             denominator_core,
         )
     {
+        profile_route("rule.shifted_quotient.exact_one.route.phase_shift_pair");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
             numerator,
@@ -14182,6 +15466,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
         numerator_core,
         denominator_core,
     ) {
+        profile_route("rule.shifted_quotient.exact_one.route.safe_hyperbolic");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
             numerator,
@@ -14193,6 +15478,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
     if let Some(child_rewrite) =
         try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_difference)
     {
+        profile_route("rule.shifted_quotient.exact_one.route.repeated_phase_shift_residual");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
             numerator,
@@ -14203,6 +15489,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
     if let Some(child_rewrite) =
         try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, residual_difference)
     {
+        profile_route("rule.shifted_quotient.exact_one.route.shared_passthrough_residual");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
             numerator,
@@ -14215,6 +15502,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
     {
         let zero = ctx.num(0);
         if compare_expr(ctx, child_rewrite.final_expr(), zero) == Ordering::Equal {
+            profile_route("rule.shifted_quotient.exact_one.route.exact_zero_direct_residual");
             return Some(build_shifted_quotient_exact_one_rewrite(
                 ctx,
                 numerator,
@@ -14223,7 +15511,53 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             ));
         }
     }
-    if let Some(child_rewrite) =
+    let residual_child_rewrite = if profiling {
+        if let Some(child_rewrite) =
+            try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_difference)
+        {
+            profile_route("rule.shifted_quotient.exact_one.route.stripped_zero_log_residual");
+            Some(child_rewrite)
+        } else if let Some(child_rewrite) =
+            try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_difference)
+        {
+            profile_route(
+                "rule.shifted_quotient.exact_one.route.fast_multiterm_hyperbolic_residual",
+            );
+            Some(child_rewrite)
+        } else if let Some(child_rewrite) =
+            try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
+                ctx,
+                numerator_core,
+                denominator_core,
+            )
+        {
+            profile_route("rule.shifted_quotient.exact_one.route.safe_hyperbolic_residual_pair");
+            Some(child_rewrite)
+        } else if let Some(child_rewrite) =
+            try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_difference)
+        {
+            profile_route("rule.shifted_quotient.exact_one.route.fast_trig_residual");
+            Some(child_rewrite)
+        } else if let Some(child_rewrite) =
+            try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_difference)
+        {
+            profile_route("rule.shifted_quotient.exact_one.route.fast_small_polynomial_residual");
+            Some(child_rewrite)
+        } else if let Some(child_rewrite) =
+            try_build_direct_core_equivalence_rewrite(ctx, numerator_core, denominator_core)
+        {
+            profile_route("rule.shifted_quotient.exact_one.route.direct_core_equivalence");
+            profile_shifted_quotient_exact_one_direct_core_equivalence_family(
+                ctx,
+                numerator_core,
+                denominator_core,
+                pair_sample.clone(),
+            );
+            Some(child_rewrite)
+        } else {
+            None
+        }
+    } else {
         try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_difference)
             .or_else(|| {
                 try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_difference)
@@ -14244,7 +15578,8 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             .or_else(|| {
                 try_build_direct_core_equivalence_rewrite(ctx, numerator_core, denominator_core)
             })
-    {
+    };
+    if let Some(child_rewrite) = residual_child_rewrite {
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
             numerator,
@@ -14254,6 +15589,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
     }
     let child_rewrite =
         if let Some(rewrite) = try_build_exact_zero_identity_rewrite(ctx, residual_difference) {
+            profile_route("rule.shifted_quotient.exact_one.route.exact_zero_identity");
             rewrite
         } else {
             let zero = ctx.num(0);
@@ -14261,6 +15597,7 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             if compare_expr(ctx, simplified_difference, zero) != Ordering::Equal {
                 return None;
             }
+            profile_route("rule.shifted_quotient.exact_one.route.default_simplify_residual_zero");
             Rewrite::with_local(
                 ctx.num(0),
                 "Equivalent Residual Cancellation",
@@ -17548,6 +18885,21 @@ mod tests {
     }
 
     #[test]
+    fn direct_trig_reciprocal_equivalence_rewrite_matches_sec() {
+        let mut ctx = Context::new();
+        let lhs = parse("1/cos(x)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("sec(x)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_direct_trig_reciprocal_equivalence_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(rewrite.description, "Reciprocal Quotient Identity");
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
     fn collapse_exact_zero_same_denominator_rule_matches_fraction_difference_combination_pair() {
         let mut ctx = Context::new();
         let expr = parse(
@@ -17569,6 +18921,28 @@ mod tests {
             ),
             "0"
         );
+    }
+
+    #[test]
+    fn collapse_exact_zero_same_denominator_rule_matches_trig_reciprocal_core() {
+        let mut ctx = Context::new();
+        let expr = parse("((1/cos(x))/q) - ((sec(x))/q)", &mut ctx)
+            .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_same_denominator_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Reciprocal Quotient Identity");
     }
 
     #[test]
@@ -18439,6 +19813,80 @@ mod tests {
     }
 
     #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_symbolic_scale_sum_distribution_core() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((a*x^2 + b*x + c) + 1)/((x*(c/x + a*x + b)) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.description, "Equivalent Residual Cancellation");
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_grouped_symbolic_scale_sum_distribution_core(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((a*x^2 + c*x^2 + e*x^2 + b*x + d*x) + 1)/((x*(b + d) + x^2*(a + c + e)) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.description, "Equivalent Residual Cancellation");
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_power_reciprocal_symbolic_scale_sum_distribution_core(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((a*x^4 + b*x^3 + c*x^2 + d) + 1)/((x^2*(d/x^2 + a*x^2 + b*x + c)) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.description, "Equivalent Residual Cancellation");
+    }
+
+    #[test]
     fn solve_prep_exact_additive_candidate_detects_complete_square_pair() {
         let mut ctx = Context::new();
         let expr = parse(
@@ -18716,6 +20164,33 @@ mod tests {
     }
 
     #[test]
+    fn expand_trig_phase_shift_to_enable_cancellation_rule_matches_complementary_general_shifted_cosine(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("5*sin(arctan(4/3) + x) - 5*cos(x - arctan(3/4))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandTrigPhaseShiftToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Phase Shift Identity");
+        assert_eq!(rewrite.substeps.len(), 2);
+    }
+
+    #[test]
     fn expand_trig_phase_shift_to_enable_cancellation_rule_matches_exact_sixth_shifted_sine() {
         let mut ctx = Context::new();
         let expr = parse("cos(x) + sqrt(3)*sin(x) - 2*sin(x + pi/6)", &mut ctx)
@@ -18739,6 +20214,157 @@ mod tests {
         );
         assert_eq!(rewrite.description, "Phase Shift Identity");
         assert_eq!(rewrite.substeps.len(), 2);
+    }
+
+    #[test]
+    fn expand_trig_phase_shift_to_enable_cancellation_rule_matches_exact_quarter_shifted_sine_mul_pi_fraction(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x) + cos(x) - sqrt(2)*sin(x + 1/4*pi)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandTrigPhaseShiftToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Phase Shift Identity");
+        assert_eq!(rewrite.substeps.len(), 2);
+    }
+
+    #[test]
+    fn expand_trig_phase_shift_to_enable_cancellation_rule_matches_exact_quarter_shifted_sine_pow_half_coeff(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x) + cos(x) - 2^(1/2)*sin(x + 1/4*pi)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandTrigPhaseShiftToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Phase Shift Identity");
+        assert_eq!(rewrite.substeps.len(), 2);
+    }
+
+    #[test]
+    fn expand_trig_phase_shift_to_enable_cancellation_rule_matches_exact_quarter_shifted_sine_unit_coeff(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "1/2*sqrt(2)*sin(x) + 1/2*sqrt(2)*cos(x) - sin(x + 1/4*pi)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandTrigPhaseShiftToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Phase Shift Identity");
+        assert_eq!(rewrite.substeps.len(), 2);
+    }
+
+    #[test]
+    fn expand_trig_phase_shift_to_enable_cancellation_rule_matches_exact_quarter_shifted_sine_symbolic_coeff(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "1/2*sqrt(2)*k*sin(x) + 1/2*sqrt(2)*k*cos(x) - k*sin(x + 1/4*pi)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandTrigPhaseShiftToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.description, "Phase Shift Identity");
+        assert_eq!(rewrite.substeps.len(), 2);
+    }
+
+    #[test]
+    fn trig_phase_shift_cancellation_match_rejects_variable_shifted_term_against_plain_algebraic_target(
+    ) {
+        let mut ctx = Context::new();
+        let focus_expr = parse("sqrt(2)*sin(x + 1/4*pi)", &mut ctx)
+            .unwrap_or_else(|err| panic!("focus parse: {err}"));
+        let target_expr = parse("a", &mut ctx).unwrap_or_else(|err| panic!("target parse: {err}"));
+
+        let rewrite_match = super::try_find_trig_phase_shift_cancellation_match(
+            &mut ctx,
+            focus_expr,
+            target_expr,
+            false,
+        );
+
+        assert!(rewrite_match.is_none());
+    }
+
+    #[test]
+    fn trig_phase_shift_cancellation_match_rejects_linear_focus_shifted_candidate_against_plain_trig_target(
+    ) {
+        let mut ctx = Context::new();
+        let focus_expr =
+            parse("sin(x) + cos(x)", &mut ctx).unwrap_or_else(|err| panic!("focus parse: {err}"));
+        let target_expr =
+            parse("sin(y)", &mut ctx).unwrap_or_else(|err| panic!("target parse: {err}"));
+
+        let rewrite_match = super::try_find_trig_phase_shift_cancellation_match(
+            &mut ctx,
+            focus_expr,
+            target_expr,
+            true,
+        );
+
+        assert!(rewrite_match.is_none());
     }
 
     #[test]

@@ -95,6 +95,98 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-04-18: Binary-Add Surface Plain-Algebraic Gate
+
+- area:
+  - [arithmetic.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/arithmetic.rs)
+  - `try_build_exact_trig_phase_shift_zero_scope_rewrite(...)`
+  - `Expr::Add(lhs, rhs)` branch feeding `rule.phase_shift.binary_add_match`
+- status:
+  - `candidate for combination`
+- local lane:
+  - `CAS_PROFILE_ORCHESTRATOR_SHORTCUTS=1 cargo run -q -p cas_solver --example run_embedded_equivalence_context_corpus`
+- attempted change:
+  - reject `binary_add_match` when either side is a surface plain algebraic term
+    (`a`, `-a`, `a*k`, `a/b`, etc.) before entering the full phase-shift matcher
+- profiler signal:
+  - `rule.phase_shift.binary_add_match`: `2336.640ms -> 1569.232ms`
+  - `rule.phase_shift.binary_add_match.forward_try`: `822.854ms -> 789.083ms`
+  - `rule.phase_shift.binary_add_match.reverse_try`: `1512.833ms -> 779.327ms`
+  - filtered pair count stayed aligned with the previous broad trig-presence gate:
+    - `516 -> 444`
+- useful retained signal:
+  - the surviving impossible traffic is concentrated in superficially plain
+    algebraic terms paired against exact shifted trigs
+  - the new surface classifier leaves a clearer split:
+    - `surface_pair_shape.lhs_plain_algebraic`
+    - `surface_pair_shape.rhs_plain_algebraic`
+    - `surface_pair_shape.neither_plain_algebraic`
+- global runtime result:
+  - clean release rerun:
+    - `cargo run --release -q -p cas_solver --example run_embedded_equivalence_context_corpus`
+    - `1116/1116`
+    - `0` fallos
+    - `Elapsed: 7.58s`
+  - retained baseline before the attempt:
+    - `6.98s`
+  - decision:
+    - rejected as runtime change
+- best current explanation:
+  - even the cheap surface classifier still adds enough hot-path work at the
+    binary-add call-site to lose globally
+  - the fact that it filters almost exactly the same `72` pairs as the broader
+    trig-presence gate suggests the real issue is not the screen cost alone, but
+    that this caller is not large enough to justify any extra runtime filtering
+- plausible combination later:
+  - reuse term-shape metadata already produced by the surrounding additive view
+    instead of recomputing per pair
+  - or push the screen into an upstream phase where pair construction is cheaper
+    and the same metadata is already materialized
+
+### 2026-04-18: Binary-Add Trig-Pair Gate
+
+- area:
+  - [arithmetic.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/arithmetic.rs)
+  - `try_build_exact_trig_phase_shift_zero_scope_rewrite(...)`
+  - `Expr::Add(lhs, rhs)` branch feeding `rule.phase_shift.binary_add_match`
+- status:
+  - `candidate for combination`
+- local lane:
+  - `CAS_PROFILE_ORCHESTRATOR_SHORTCUTS=1 cargo run -q -p cas_solver --example run_embedded_equivalence_context_corpus`
+- attempted change:
+  - require both binary-add terms to contain `sin/cos` before entering
+    `try_find_trig_phase_shift_cancellation_match(...)`
+- profiler signal:
+  - `rule.phase_shift.binary_add_match.trig_pair_gate`: `516` attempts, `444` hits, `72` misses
+  - `rule.phase_shift.binary_add_match`: `2336.640ms -> 1573.269ms`
+  - `rule.phase_shift.binary_add_match.forward_try`: `822.854ms -> 788.003ms`
+  - `rule.phase_shift.binary_add_match.reverse_try`: `1512.833ms -> 784.381ms`
+- useful retained signal:
+  - the filtered traffic is real and impossible:
+    - `a  ||  sin(x + 1/4*pi) * sqrt(2)`
+    - `-a  ||  -(sin(x + 1/4*pi) * sqrt(2))`
+    - `a*k  ||  k * sin(x + 1/4*pi) * sqrt(2)`
+  - so `binary_add_match` really is receiving non-trig terms that cannot
+    participate in phase-shift cancellation
+- global runtime result:
+  - clean release rerun:
+    - `cargo run --release -q -p cas_solver --example run_embedded_equivalence_context_corpus`
+    - `1116/1116`
+    - `0` fallos
+    - `Elapsed: 7.09s`
+  - retained baseline before the attempt:
+    - `6.98s`
+  - decision:
+    - rejected as runtime change
+- best current explanation:
+  - the gate cuts real dead traffic, but the recursive builtin scan at this
+    binary-add call-site still costs more than the saved matcher work in release
+- plausible combination later:
+  - reuse trig-shape metadata already known by the caller instead of rescanning
+    both terms
+  - or add a stronger O(1) syntactic screen for the specific non-trig families
+    that dominate the samples
+
 ### 2026-04-17: Direct-Core Trig Presence Gate
 
 - area:
@@ -370,3 +462,41 @@ The burden of proof stays the same:
   - compute exact target signature once in `exact_scope_pair_match` and reuse it
     across `linear_focus` and later compare stages
   - or add a cache keyed by the target term before it enters the extractor
+
+### 2026-04-18: Target-Exact Cache Inside Shared Matcher
+
+- area:
+  - [arithmetic.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/arithmetic.rs)
+  - `try_find_trig_phase_shift_cancellation_match(...)`
+  - `find_linear_focus_phase_shift_cancellation_match(...)`
+  - `final_linear_compare`
+- status:
+  - `candidate for combination`
+- attempted change:
+  - cache `extract_exact_phase_shift_term_data_for_cancellation(target_expr)` once
+    per matcher call and reuse it across:
+    - `linear_focus.exact_target_match`
+    - `exact_try.target_exact_extract`
+    - `final_linear_compare.target_exact_linear`
+- local lane:
+  - `CAS_PROFILE_ORCHESTRATOR_SHORTCUTS=1 cargo run -q -p cas_solver --example run_embedded_equivalence_context_corpus -- --family trig_contract --limit 24`
+  - result:
+    - `Elapsed: 1.21s -> 1.23s`
+    - no meaningful local win
+- global result:
+  - release rerun:
+    - `6.49s -> 6.70s`
+    - `1116/1116`, `0` fallos
+  - decision:
+    - rejected as runtime change
+- best current explanation:
+  - even scoped to the target side only, the extra cache plumbing inside the
+    shared matcher adds more overhead than the repeated target extraction it
+    removes
+  - this suggests the profitable reuse point is not “inside the matcher”, but
+    one layer above, where caller metadata can be passed in without reopening
+    more mutable state and branching in the hot path
+- plausible combination later:
+  - reuse an already materialized exact-target signature from the caller of
+    `exact_scope_pair_match`, instead of introducing cache logic inside
+    `try_find_trig_phase_shift_cancellation_match(...)`
