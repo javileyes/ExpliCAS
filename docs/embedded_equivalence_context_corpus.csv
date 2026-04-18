@@ -1115,3 +1115,12 @@ k*(5*sin(x+arctan(4/3))) - k*(5*cos(x-arctan(3/4))),0,scaled_difference_zero,con
 k*(5*sin(x+arctan(4/3))+a) - k*(5*cos(x-arctan(3/4))+a),0,scaled_difference_zero,contract_trig_phase_shift_general_shifted_terms_with_passthrough,trig_contract,5*sin(x+arctan(4/3))+a,5*cos(x-arctan(3/4))+a,contract trig
 ((5*sin(x+arctan(4/3))+a)/q) - ((5*cos(x-arctan(3/4))+a)/q),0,common_denominator_zero,contract_trig_phase_shift_general_shifted_terms_with_passthrough,trig_contract,5*sin(x+arctan(4/3))+a,5*cos(x-arctan(3/4))+a,contract trig
 ((5*sin(x+arctan(4/3))+a) + 1)/((5*cos(x-arctan(3/4))+a) + 1),1,shifted_quotient_one,contract_trig_phase_shift_general_shifted_terms_with_passthrough,trig_contract,5*sin(x+arctan(4/3))+a,5*cos(x-arctan(3/4))+a,contract trig
+(((x + x)^2) + m) - (((2*x)^2) + m),0,squared_passthrough_zero,combine_like_terms,simplify,x + x,2*x,combine like terms
+(((sin(x)^2 + cos(x)^2)^2) + m) - (((1)^2) + m),0,squared_passthrough_zero,pythagorean_identity,simplify,sin(x)^2 + cos(x)^2,1,rewrite trigs
+(((cosh(x)^2 - sinh(x)^2)^2) + m) - (((1)^2) + m),0,squared_passthrough_zero,hyperbolic_pythagorean_identity,simplify,cosh(x)^2 - sinh(x)^2,1,rewrite hyperbolics
+(((arctan(a)+arctan(1/a))^2) + m) - (((pi/2)^2) + m),0,squared_passthrough_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,rewrite inverse trigs
+(((1/cos(x))^2) + m) - (((sec(x))^2) + m),0,squared_passthrough_zero,contract_trig_sec_reciprocal,trig_contract,1/cos(x),sec(x),contract trig
+(((1/sin(x))^2) + m) - (((csc(x))^2) + m),0,squared_passthrough_zero,contract_trig_csc_reciprocal,trig_contract,1/sin(x),csc(x),contract trig
+(((a^2 - b^2)^2) + m) - ((((a - b)*(a + b))^2) + m),0,squared_passthrough_zero,factor_difference_squares,factor,a^2 - b^2,(a - b)*(a + b),factor
+(((x^4 + 4*y^4)^2) + m) - ((((x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2))^2) + m),0,squared_passthrough_zero,factor_sophie_germain,factor,x^4 + 4*y^4,(x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2),factor
+"(((sum(1/(k*(k+1)), k, 1, n))^2) + m) - (((1 - 1/(n+1))^2) + m)",0,squared_passthrough_zero,finite_telescoping_sum_basic,finite_telescoping,"sum(1/(k*(k+1)), k, 1, n)",1 - 1/(n+1),finite sums/products

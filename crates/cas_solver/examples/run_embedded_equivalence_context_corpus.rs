@@ -120,12 +120,23 @@ fn run(config: RunnerConfig) -> i32 {
 
     let passed = cases.len().saturating_sub(failures.len());
     let elapsed = start.elapsed();
+    let wrapper_names: Vec<_> = by_wrapper.keys().cloned().collect();
+    let largest_wrapper_cases = by_wrapper.values().map(|summary| summary.total).max().unwrap_or(0);
+    let largest_wrapper_share = if cases.is_empty() {
+        0.0
+    } else {
+        largest_wrapper_cases as f64 / cases.len() as f64
+    };
     println!("Corpus file: {}", config.csv_path.display());
     println!("Failures file: {}", config.failures_path.display());
     println!("Total cases: {}", cases.len());
     println!("Passed: {}", passed);
     println!("Failed: {}", failures.len());
     println!("Elapsed: {:.2?}", elapsed);
+    println!("Distinct wrappers: {}", by_wrapper.len());
+    println!("Distinct families: {}", by_family.len());
+    println!("Largest wrapper share: {:.1}%", largest_wrapper_share * 100.0);
+    println!("Wrappers: {}", wrapper_names.join(", "));
     println!();
     println!("By wrapper:");
     for (wrapper, summary) in &by_wrapper {

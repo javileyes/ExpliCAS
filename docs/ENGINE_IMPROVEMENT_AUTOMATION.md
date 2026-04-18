@@ -74,6 +74,43 @@ This matters because the campaign repeatedly encounters ideas with:
 - low retention probability
 - poor actual ROI
 
+The ROI estimate should explicitly include dimensional coverage value, not just
+local hotspot movement.
+
+At minimum, each candidate should be evaluated across these lenses:
+
+- `runtime ROI`
+  - how much real cost it removes from retained traffic
+- `correctness / robustness ROI`
+  - how much stable mathematical or operational failure it removes
+- `dimensional coverage ROI`
+  - whether it expands an under-covered axis such as wrapper spread,
+    `noise_budget`, `shell_depth`, `cross_family_composition`, semantic regime,
+    or a derive-specific dimension
+- `promotion ROI`
+  - whether the result is stable enough to become a lasting guardrail or corpus
+    promotion
+
+These lenses do not replace the main ROI formula.
+They make it harder for the selector to overfit to a narrow hotspot that sits
+inside an already overrepresented slice of the scorecard.
+
+### ROI Tie-Breakers
+
+When two candidate iterations are similar in local runtime value, prefer the
+one that:
+
+- expands a weakly covered dimension
+- reduces concentration in an already dominant wrapper or family pocket
+- improves both a hotspot and a corpus promotion path
+- increases the chance of promoting a stable new guardrail
+
+Be more skeptical of candidates that:
+
+- improve a hotspot inside an already saturated wrapper axis
+- add complexity without changing scorecard dimensions
+- only win on a narrow local profiler slice with no plausible promotion path
+
 ### Default Selection Rules
 
 Prefer:
@@ -96,6 +133,15 @@ Prefer:
 
 Avoid selecting `combination` just because multiple ideas looked good locally.
 
+Also allow dimensional coverage to steer the class choice:
+
+- prefer `coverage` when a stable new wrapper, shell-depth level, or
+  composition axis can be promoted cheaply
+- prefer `observability` when the current scorecard shows an under-covered
+  dimension but the profitable next promotion is still unclear
+- prefer `runtime` only if the hotspot is not merely the byproduct of severe
+  concentration in an under-grown dimension that should be expanded instead
+
 ### Per-Iteration Loop
 
 Each automatic iteration should do this in order:
@@ -104,10 +150,15 @@ Each automatic iteration should do this in order:
 2. classify candidate work into `runtime`, `coverage`, `robustness`,
    `observability`, or `combination`
 3. estimate expected ROI for the top candidates
-4. choose one primary class for the iteration
-5. write down the success condition before editing code
-6. validate against the relevant benchmark roles
-7. if the change fails global retention, revert the runtime change and preserve
+4. annotate each serious candidate with:
+   - primary dimension affected
+   - secondary dimension affected
+   - whether it is a hotspot move, a dimensional coverage move, or both
+   - whether it has a realistic promotion path into corpus or guardrail
+5. choose one primary class for the iteration
+6. write down the success condition before editing code
+7. validate against the relevant benchmark roles
+8. if the change fails global retention, revert the runtime change and preserve
    the learning in observability and/or the combination ledger
 
 ## Current Automation Base
@@ -199,6 +250,24 @@ The embedded corpora matter because they are harder to game than a single benchm
   verifies composed simplify-to-zero behavior across heterogeneous identities
 - [derive_pairs.csv](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/derive_pairs.csv)
   measures whether `derive` can actually bridge source to target and how long the path is
+
+These are not interchangeable metrics.
+
+- `embedded_equivalence_context_corpus.csv` is a contextual simplify/equivalence metric:
+  it tells us whether the engine can preserve an equivalence once that identity is
+  embedded inside realistic wrappers
+- `derive_pairs.csv` is a bridgeability/path metric:
+  it tells us whether the planner can find a valid `source -> target` route and how
+  expensive that route is
+
+Interpret them separately:
+
+- `embedded` passes and `derive` fails:
+  the algebra is present but the derive planner or strategy selection is weak
+- `derive` passes and `embedded` fails:
+  the planner can bridge the pair, but contextual simplification under wrappers is weak
+- both fail:
+  the gap is probably algebraic, normalization-related, or otherwise more fundamental
 
 For work centered on
 [orchestrator.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs),
@@ -306,6 +375,29 @@ with isolated examples.
 
 The embedded context corpus should grow by structural family, not by anecdote.
 
+But family count alone is not enough.
+
+Wrapper coverage is a first-class axis of embedded quality.
+
+A corpus with many identity families but only a few wrappers can still miss the
+real contextual failures that matter in the engine:
+
+- the naked identity works
+- the same identity fails under a square, quotient, reciprocal, or additive shell
+- the engine succeeds only through a late expensive fallback when wrapped
+
+So `embedded` coverage should be thought of as at least two-dimensional:
+
+- family axis:
+  what mathematical identities are present
+- wrapper axis:
+  what contextual shells and composition environments those identities survive in
+
+Operationally, this means the scorecard and runner should not report only total
+cases and family spread. They should also expose wrapper spread and wrapper
+concentration, so we can notice when we have accidentally built a corpus with
+broad family labels but narrow contextual shape coverage.
+
 Good additions are families that introduce at least one of:
 
 - a new mathematical identity family
@@ -331,12 +423,162 @@ Within each family, prefer a curated pattern:
 - several contextual wrappers
 - one or two composed variants that reflect real engine traffic
 
+When choosing between:
+
+- more depth inside already-common wrappers
+- and a stable new wrapper axis
+
+prefer the new wrapper axis unless the old wrapper is still clearly under-covered.
+
 Avoid this anti-pattern:
 
 - adding many near-duplicate examples that all exercise the same matcher path
 
 The goal is not raw corpus size.
 The goal is broader contextual mathematical coverage per added case.
+
+## Coverage Dimensions To Grow Deliberately
+
+`embedded` should be grown along explicit dimensions, not just by adding more
+rows whenever a new anecdote appears.
+
+The dimensions that matter most are:
+
+- wrapper axis:
+  which contextual shells are represented at all
+- noise or width axis:
+  how much unrelated algebraic traffic surrounds the core identity
+- shell depth:
+  how many meaningful contextual layers the identity survives through
+- cross-family composition:
+  whether one family still works when embedded inside another family's shape
+- semantic regime:
+  exact, symbolic, general, branch-sensitive, and domain-sensitive traffic
+- strategy tier:
+  whether the case resolves by a local rewrite, a structural equivalence, or only
+  by a late expensive fallback
+
+These dimensions are often more valuable than adding yet another example in an
+already-covered family/wrapper pocket.
+
+### Depth Should Mean Shell Depth, Not Raw AST Depth
+
+Raw AST depth is a weak guardrail dimension by itself.
+
+It is too easy to inflate syntactically without teaching us anything about the
+real contextual strength of the engine.
+
+Prefer `shell depth` or `context depth` instead:
+
+- depth 0:
+  naked equivalence
+- depth 1:
+  one wrapper
+- depth 2:
+  one wrapper plus passthrough or residual context
+- depth 3:
+  two nested wrappers
+- depth 4:
+  nested wrappers plus cross-family composition
+
+This gives a much more meaningful progression for continuous improvement.
+
+If a family is stable at one shell depth, the next promotion target should
+usually be the next shell depth, not arbitrary extra syntax.
+
+### Noise Or Width Is A First-Class Dimension
+
+Many real slowdowns and failures come less from depth than from width:
+
+- extra additive noise
+- extra multiplicative noise
+- extra residual terms that create candidate traffic and dead compares
+
+That means `noise budget` is a better guardrail dimension than raw tree depth in
+many campaigns.
+
+When choosing the next contextual promotion, strongly consider:
+
+- same family, same wrapper, higher noise budget
+- before
+- same family, much deeper but syntactically artificial nesting
+
+### Cross-Family Composition Should Be Treated As Its Own Axis
+
+We should explicitly value cases where a family is embedded inside another
+family's environment, for example:
+
+- trig inside quotient normalization
+- factorization inside square wrappers
+- telescoping inside passthrough shells
+- log/exp identities inside algebraic wrappers
+
+These are often more representative of real engine traffic than isolated family
+benchmarks.
+
+### Strategy Tier Must Stay Visible
+
+A case that still passes can still represent a regression if it has drifted from:
+
+- local direct rewrite
+- to structural equivalence
+- to default simplify
+- to proved-symbolic or numeric-only
+
+So corpus growth and scorecard interpretation should care not only about
+pass/fail, but also about how the engine is winning.
+
+## Recommended Next Axes For Embedded Growth
+
+When the current wrapper spread is healthy enough, the default next dimensions
+to add are:
+
+1. `noise_budget`
+2. `shell_depth`
+3. `cross_family_composition`
+
+That ordering is intentional.
+
+It reflects how real contextual traffic tends to hurt the engine:
+
+- broad noisy traffic often appears before truly deep nesting
+- moderate contextual nesting is common and important
+- composed families are high-value once the simpler axes are stable
+
+In practice, a good progression looks like:
+
+- naked identity
+- one wrapper
+- one wrapper plus noise
+- two wrappers
+- two wrappers plus noise
+- composed family under wrappers
+
+This is a better long-term growth ladder than “just make the expression deeper”.
+
+## Derive Needs Different Dimensions
+
+`derive` should not inherit the same score interpretation as `embedded`.
+
+For `derive`, the important dimensions are:
+
+- reachability:
+  can the planner bridge `source -> target` at all
+- step count:
+  how long the successful route is
+- long-path rate:
+  how often derive only succeeds through a bloated path
+- strategy diversity:
+  whether different families rely on a narrow brittle planner route
+- planner-miss-with-algebra-present:
+  cases where the algebra exists in simplify/equivalence but derive still fails
+
+So when evolving the scorecard or corpus policy, keep two separate mental models:
+
+- `embedded` asks:
+  "does the engine preserve equivalence under realistic contextual shells?"
+- `derive` asks:
+  "can the planner intentionally find the bridge, and how expensive is that bridge?"
 
 ## What The Embedded Corpus Should Not Become
 
@@ -359,6 +601,10 @@ A family should be promoted into `embedded_equivalence_context_corpus.csv` when:
 - the engine behavior is stable enough that the case is now a guardrail, not a moving target
 - the family covers a new wrapper or composition axis
 - the case is likely to catch future regressions that unit tests would miss
+
+A candidate addition that does not increase mathematical family coverage can
+still be a strong promotion if it adds a genuinely new wrapper dimension for an
+already important family.
 
 A family should stay out of `embedded` for now when:
 

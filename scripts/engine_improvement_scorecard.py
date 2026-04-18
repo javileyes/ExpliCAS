@@ -304,11 +304,25 @@ def parse_corpus(output: str) -> dict[str, Any]:
         ("total_cases", r"Total cases:\s+(\d+)"),
         ("passed", r"Passed:\s+(\d+)"),
         ("failed", r"Failed:\s+(\d+)"),
+        ("wrapper_count", r"Distinct wrappers:\s+(\d+)"),
+        ("family_count", r"Distinct families:\s+(\d+)"),
     ):
         match = re.search(pattern, output)
+        if not match and key in {"wrapper_count", "family_count"}:
+            continue
         if not match:
             raise ValueError(f"missing {key} in corpus output")
         metrics[key] = int(match.group(1))
+
+    match = re.search(r"Largest wrapper share:\s+([0-9.]+)%", output)
+    if match:
+        metrics["largest_wrapper_share_percent"] = float(match.group(1))
+
+    match = re.search(r"Wrappers:\s+(.+)", output)
+    if match:
+        metrics["wrapper_names"] = [
+            part.strip() for part in match.group(1).split(",") if part.strip()
+        ]
 
     match = re.search(r"Elapsed:\s+([0-9.]+)([a-z]+)", output)
     if match:
@@ -590,13 +604,28 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
 
     embedded_suite = scorecard["suites"].get("embedded_equivalence_context")
     if embedded_suite:
+        embedded_metrics = embedded_suite["metrics"]
         lines.extend(
             [
                 "## Embedded Runtime Guardrail",
                 "",
+                "- Dimension: contextual simplify/equivalence under real wrappers.",
+                "- Interpretation: strong for simplify/orchestration quality; not a derive-path metric.",
                 f"- Elapsed: {embedded_suite['elapsed_seconds']:.2f}s",
             ]
         )
+        wrapper_count = embedded_metrics.get("wrapper_count")
+        family_count = embedded_metrics.get("family_count")
+        largest_wrapper_share = embedded_metrics.get("largest_wrapper_share_percent")
+        wrapper_names = embedded_metrics.get("wrapper_names")
+        if isinstance(wrapper_count, int) and isinstance(family_count, int):
+            lines.append(
+                f"- Coverage axes: {wrapper_count} wrappers across {family_count} families"
+            )
+        if isinstance(largest_wrapper_share, (int, float)):
+            lines.append(f"- Largest wrapper share: {largest_wrapper_share:.1f}%")
+        if isinstance(wrapper_names, list) and wrapper_names:
+            lines.append(f"- Wrappers: {', '.join(wrapper_names)}")
         embedded_guardrail = embedded_suite.get("guardrail")
         if embedded_guardrail:
             lines.extend(
@@ -613,6 +642,28 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             )
         lines.append("")
 
+    derive_suite = scorecard["suites"].get("derive_contract")
+    if derive_suite:
+        derive_metrics = derive_suite["metrics"]
+        lines.extend(
+            [
+                "## Derive Reachability Guardrail",
+                "",
+                "- Dimension: source-to-target bridgeability and path quality.",
+                "- Interpretation: measures planner/strategy reachability; not contextual wrapper strength.",
+                (
+                    f"- Outcomes: derived={derive_metrics['derived']} "
+                    f"unsupported={derive_metrics['unsupported']} "
+                    f"not_equivalent={derive_metrics['not_equivalent']}"
+                ),
+                (
+                    f"- Path quality: mean_step_count={derive_metrics['mean_step_count']:.2f} "
+                    f"long_path_rate={derive_metrics['long_path_rate']:.2f}"
+                ),
+                "",
+            ]
+        )
+
     lines.extend(
         [
             "| Suite | Status | Elapsed | Key metrics |",
@@ -627,10 +678,16 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
         if "parse_error" in metrics:
             summary = f"parse_error={metrics['parse_error']}"
         elif "total_cases" in metrics:
-            summary = (
-                f"passed={metrics['passed']} failed={metrics['failed']} "
-                f"total={metrics['total_cases']}"
-            )
+            pieces = [
+                f"passed={metrics['passed']}",
+                f"failed={metrics['failed']}",
+                f"total={metrics['total_cases']}",
+            ]
+            if "wrapper_count" in metrics:
+                pieces.append(f"wrappers={metrics['wrapper_count']}")
+            if "family_count" in metrics:
+                pieces.append(f"families={metrics['family_count']}")
+            summary = " ".join(pieces)
         elif "derived" in metrics:
             summary = (
                 f"derived={metrics['derived']} unsupported={metrics['unsupported']} "
