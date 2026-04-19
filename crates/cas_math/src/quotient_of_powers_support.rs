@@ -67,7 +67,10 @@ where
                         kind: QuotientOfPowersRewriteKind::PowOverPow,
                     });
                 } else {
-                    if diff < num_rational::BigRational::zero() && !diff.is_integer() {
+                    if diff < num_rational::BigRational::zero()
+                        && !diff.is_integer()
+                        && matches!(ctx.get(b_n), Expr::Number(_))
+                    {
                         return None;
                     }
                     let new_exp = ctx.add(Expr::Number(diff));
@@ -131,6 +134,7 @@ mod tests {
     use super::try_rewrite_quotient_of_powers_expr_with;
     use cas_ast::ordering::compare_expr;
     use cas_ast::Context;
+    use cas_formatter::render_expr;
     use cas_parser::parse;
     use std::cmp::Ordering;
 
@@ -157,6 +161,36 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("x^(1/2) / x^(1/2)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_quotient_of_powers_expr_with(&mut ctx, expr, |_ctx, _base| false);
+        assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn rewrites_symbolic_negative_fractional_pow_ratio() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).expect("parse x");
+        let one_half = ctx.rational(1, 2);
+        let two = ctx.num(2);
+        let num = ctx.add(cas_ast::Expr::Pow(x, one_half));
+        let den = ctx.add(cas_ast::Expr::Pow(x, two));
+        let expr = ctx.add(cas_ast::Expr::Div(num, den));
+        let rewrite = try_rewrite_quotient_of_powers_expr_with(&mut ctx, expr, |_ctx, _base| true)
+            .expect("rewrite");
+        let rendered = render_expr(&ctx, rewrite.rewritten);
+        assert!(
+            rendered == "x^(-3/2)" || rendered == "1 / x^(3/2)",
+            "unexpected rewrite: {rendered}"
+        );
+    }
+
+    #[test]
+    fn rejects_numeric_negative_fractional_pow_ratio() {
+        let mut ctx = Context::new();
+        let two = ctx.num(2);
+        let one_half = ctx.rational(1, 2);
+        let num = ctx.add(cas_ast::Expr::Pow(two, one_half));
+        let den = ctx.add(cas_ast::Expr::Pow(two, two));
+        let expr = ctx.add(cas_ast::Expr::Div(num, den));
+        let rewrite = try_rewrite_quotient_of_powers_expr_with(&mut ctx, expr, |_ctx, _base| true);
         assert!(rewrite.is_none());
     }
 }

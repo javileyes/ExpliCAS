@@ -283,10 +283,10 @@ define_rule!(
 mod tests {
     use crate::parent_context::ParentContext;
     use crate::rule::Rule;
-    use crate::rules::algebra::ReciprocalDifferenceOfSquaresRule;
+    use crate::rules::algebra::{QuotientOfPowersRule, ReciprocalDifferenceOfSquaresRule};
     use crate::DomainMode;
     use cas_ast::ordering::compare_expr;
-    use cas_ast::Context;
+    use cas_ast::{Context, Expr};
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
@@ -364,6 +364,33 @@ mod tests {
         assert_eq!(
             compare_expr(&ctx, rewrite.new_expr, expected),
             std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn quotient_of_powers_rule_rewrites_symbolic_negative_fractional_gap() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).unwrap_or_else(|err| panic!("parse x: {err}"));
+        let one_half = ctx.rational(1, 2);
+        let two = ctx.num(2);
+        let num = ctx.add(Expr::Pow(x, one_half));
+        let den = ctx.add(Expr::Pow(x, two));
+        let expr = ctx.add(Expr::Div(num, den));
+        let rule = QuotientOfPowersRule;
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let rendered = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        );
+        assert!(
+            rendered == "x^(-3/2)" || rendered == "1 / x^(3/2)",
+            "unexpected rewrite: {rendered}"
         );
     }
 }

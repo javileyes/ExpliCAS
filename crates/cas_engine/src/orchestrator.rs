@@ -22060,6 +22060,19 @@ mod tests {
     }
 
     #[test]
+    fn simplify_pipeline_handles_log_fractional_power_gap_zero_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(log(x*sqrt(x)) + log(sqrt(x)/x^2)) + (sqrt(y)/(sqrt(y)-1) - sqrt(y)/(sqrt(y)+1) - (2*sqrt(y))/(y-1)) + (((1/x) - (1/y))/((y-x)/(x*y)) - 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
     fn child_isolated_exact_zero_handles_small_trig_identity_regression() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse("tan(x) + cot(x) - sec(x)*csc(x)", &mut simplifier.context)
