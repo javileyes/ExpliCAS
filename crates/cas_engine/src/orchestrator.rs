@@ -204,6 +204,13 @@ fn run_profiled_orchestrator_bool_section(name: &'static str, run: impl FnOnce()
     result
 }
 
+fn record_profiled_orchestrator_route_hit(ctx: &mut Context, expr: ExprId, name: &'static str) {
+    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        return;
+    }
+    run_profiled_orchestrator_section(name, Some(render_expr(ctx, expr)), || ());
+}
+
 fn pipeline_phase_profile_label(phase: SimplifyPhase) -> &'static str {
     match phase {
         SimplifyPhase::Core => "pipeline.phase.core",
@@ -4328,6 +4335,105 @@ fn matches_direct_reciprocal_trig_product_one_pair_root(
     false
 }
 
+fn matches_direct_trig_reciprocal_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Expr::Div(numerator, denominator) = ctx.get(source).clone() else {
+            continue;
+        };
+        if extract_i64_integer(ctx, numerator) != Some(1) {
+            continue;
+        }
+
+        for (builtin, reciprocal_builtin) in [
+            (BuiltinFn::Cos, BuiltinFn::Sec),
+            (BuiltinFn::Sin, BuiltinFn::Csc),
+        ] {
+            let Some(base_arg) = extract_unary_builtin_arg_root(ctx, denominator, builtin) else {
+                continue;
+            };
+            let Some(target_arg) = extract_unary_builtin_arg_root(ctx, target, reciprocal_builtin)
+            else {
+                continue;
+            };
+            if compare_expr(ctx, base_arg, target_arg) == Ordering::Equal {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn matches_direct_trig_ratio_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Expr::Div(numerator, denominator) = ctx.get(source).clone() else {
+            continue;
+        };
+
+        for (num_builtin, den_builtin, target_builtin) in [
+            (BuiltinFn::Sin, BuiltinFn::Cos, BuiltinFn::Tan),
+            (BuiltinFn::Cos, BuiltinFn::Sin, BuiltinFn::Cot),
+        ] {
+            let Some(num_arg) = extract_unary_builtin_arg_root(ctx, numerator, num_builtin) else {
+                continue;
+            };
+            let Some(den_arg) = extract_unary_builtin_arg_root(ctx, denominator, den_builtin)
+            else {
+                continue;
+            };
+            if compare_expr(ctx, num_arg, den_arg) != Ordering::Equal {
+                continue;
+            }
+            let Some(target_arg) = extract_unary_builtin_arg_root(ctx, target, target_builtin)
+            else {
+                continue;
+            };
+            if compare_expr(ctx, num_arg, target_arg) == Ordering::Equal {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
+    ctx: &mut Context,
+    expr: ExprId,
+    trig_ratio_only: bool,
+) -> bool {
+    let matches_pair = |ctx: &mut Context, lhs: ExprId, rhs: ExprId| {
+        if trig_ratio_only {
+            matches_direct_trig_ratio_pair_root(ctx, lhs, rhs)
+        } else {
+            matches_direct_trig_reciprocal_pair_root(ctx, lhs, rhs)
+        }
+    };
+
+    match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) if matches_pair(ctx, lhs, rhs) => return true,
+        Expr::Add(lhs, rhs) => {
+            if let Expr::Neg(inner) = ctx.get(rhs) {
+                if matches_pair(ctx, lhs, *inner) {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    extract_shared_additive_passthrough_sub_cores_root(ctx, expr)
+        .is_some_and(|(lhs_core, rhs_core)| matches_pair(ctx, lhs_core, rhs_core))
+}
+
 fn matches_direct_hyperbolic_triple_angle_pair_root(
     ctx: &mut Context,
     lhs_core: ExprId,
@@ -7216,6 +7322,540 @@ fn matches_direct_hyperbolic_cosh_cubic_zero_identity_root(
     }
 }
 
+fn extract_plain_hyperbolic_double_angle_arg_root(
+    ctx: &mut Context,
+    expr: ExprId,
+    expected_fn: BuiltinFn,
+) -> Option<ExprId> {
+    let (actual_fn, arg) = extract_plain_sinh_or_cosh_arg_root(ctx, expr)?;
+    if actual_fn != expected_fn {
+        return None;
+    }
+    extract_double_angle_arg_relaxed(ctx, arg)
+}
+
+fn extract_positive_two_cosh_square_minus_one_arg_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return None;
+    }
+
+    let mut cosh_sq_arg = None;
+    let mut saw_negative_one = false;
+
+    for (term_expr, term_sign) in view.terms {
+        if extract_i64_integer(ctx, term_expr)
+            .is_some_and(|value| matches!((value, term_sign), (1, Sign::Neg) | (-1, Sign::Pos)))
+        {
+            saw_negative_one = true;
+            continue;
+        }
+
+        let (mut coeff, base) = extract_coef_and_base(ctx, term_expr);
+        if term_sign == Sign::Neg {
+            coeff = -coeff;
+        }
+        if coeff != BigRational::from_integer(2.into()) || cosh_sq_arg.is_some() {
+            return None;
+        }
+
+        let Expr::Pow(pow_base, exponent) = ctx.get(base) else {
+            return None;
+        };
+        if extract_i64_integer(ctx, *exponent) != Some(2) {
+            return None;
+        }
+        let Some((BuiltinFn::Cosh, arg)) = extract_plain_sinh_or_cosh_arg_root(ctx, *pow_base)
+        else {
+            return None;
+        };
+        cosh_sq_arg = Some(arg);
+    }
+
+    saw_negative_one.then_some(cosh_sq_arg?).or(None)
+}
+
+fn matches_direct_hyperbolic_sinh_double_angle_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    for (double_angle_expr, product_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some(base_arg) =
+            extract_plain_hyperbolic_double_angle_arg_root(ctx, double_angle_expr, BuiltinFn::Sinh)
+        else {
+            continue;
+        };
+        let Some((sinh_arg, cosh_arg)) =
+            extract_scaled_hyperbolic_sinh_cosh_product_half_args_root(ctx, product_expr)
+        else {
+            continue;
+        };
+        if compare_expr(ctx, sinh_arg, base_arg) == Ordering::Equal
+            && compare_expr(ctx, cosh_arg, base_arg) == Ordering::Equal
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn matches_direct_hyperbolic_cosh_double_angle_square_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    for (double_angle_expr, square_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some(base_arg) =
+            extract_plain_hyperbolic_double_angle_arg_root(ctx, double_angle_expr, BuiltinFn::Cosh)
+        else {
+            continue;
+        };
+        let Some(cosh_arg) = extract_positive_two_cosh_square_minus_one_arg_root(ctx, square_expr)
+        else {
+            continue;
+        };
+        if compare_expr(ctx, base_arg, cosh_arg) == Ordering::Equal {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn matches_direct_nested_zero_hyperbolic_residual_pair_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    let matches_pair = |ctx: &mut Context, lhs: ExprId, rhs: ExprId| {
+        matches_direct_hyperbolic_sinh_double_angle_pair_root(ctx, lhs, rhs)
+            || matches_direct_hyperbolic_cosh_double_angle_square_pair_root(ctx, lhs, rhs)
+    };
+
+    match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) if matches_pair(ctx, lhs, rhs) => return true,
+        Expr::Add(lhs, rhs) => {
+            if let Expr::Neg(inner) = ctx.get(rhs) {
+                if matches_pair(ctx, lhs, *inner) {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    extract_shared_additive_passthrough_sub_cores_root(ctx, expr)
+        .is_some_and(|(lhs_core, rhs_core)| matches_pair(ctx, lhs_core, rhs_core))
+}
+
+fn matches_direct_hyperbolic_angle_difference_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    for (single_expr, expanded_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some((single_fn, angle_arg)) = extract_plain_sinh_or_cosh_arg_root(ctx, single_expr)
+        else {
+            continue;
+        };
+        let view = AddView::from_expr(ctx, expanded_expr);
+        if view.terms.len() != 2 {
+            continue;
+        }
+
+        match single_fn {
+            BuiltinFn::Sinh => {
+                let mut positive_pair = None;
+                let mut negative_pair = None;
+
+                for (term_expr, term_sign) in view.terms {
+                    let Some(((fn_a, arg_a), (fn_b, arg_b))) =
+                        extract_plain_hyperbolic_product_pair_args_root(ctx, term_expr)
+                    else {
+                        positive_pair = None;
+                        negative_pair = None;
+                        break;
+                    };
+                    let is_sinh_cosh = matches!(
+                        (fn_a, fn_b),
+                        (BuiltinFn::Sinh, BuiltinFn::Cosh) | (BuiltinFn::Cosh, BuiltinFn::Sinh)
+                    );
+                    if !is_sinh_cosh {
+                        positive_pair = None;
+                        negative_pair = None;
+                        break;
+                    }
+
+                    let sinh_arg = if fn_a == BuiltinFn::Sinh {
+                        arg_a
+                    } else {
+                        arg_b
+                    };
+                    let cosh_arg = if fn_a == BuiltinFn::Cosh {
+                        arg_a
+                    } else {
+                        arg_b
+                    };
+
+                    match term_sign {
+                        Sign::Pos if positive_pair.is_none() => {
+                            positive_pair = Some((sinh_arg, cosh_arg));
+                        }
+                        Sign::Neg if negative_pair.is_none() => {
+                            negative_pair = Some((sinh_arg, cosh_arg));
+                        }
+                        _ => {
+                            positive_pair = None;
+                            negative_pair = None;
+                            break;
+                        }
+                    }
+                }
+
+                let (Some((positive_sinh, positive_cosh)), Some((negative_sinh, negative_cosh))) =
+                    (positive_pair, negative_pair)
+                else {
+                    continue;
+                };
+
+                if compare_expr(ctx, positive_sinh, negative_cosh) == Ordering::Equal
+                    && compare_expr(ctx, positive_cosh, negative_sinh) == Ordering::Equal
+                    && matches_angle_sum_or_diff_arg_root(
+                        ctx,
+                        angle_arg,
+                        positive_sinh,
+                        positive_cosh,
+                        false,
+                    )
+                {
+                    return true;
+                }
+            }
+            BuiltinFn::Cosh => {
+                let mut positive_pair = None;
+                let mut negative_pair = None;
+
+                for (term_expr, term_sign) in view.terms {
+                    let Some(((fn_a, arg_a), (fn_b, arg_b))) =
+                        extract_plain_hyperbolic_product_pair_args_root(ctx, term_expr)
+                    else {
+                        positive_pair = None;
+                        negative_pair = None;
+                        break;
+                    };
+
+                    match term_sign {
+                        Sign::Pos
+                            if positive_pair.is_none()
+                                && fn_a == BuiltinFn::Cosh
+                                && fn_b == BuiltinFn::Cosh =>
+                        {
+                            positive_pair = Some((arg_a, arg_b));
+                        }
+                        Sign::Neg
+                            if negative_pair.is_none()
+                                && fn_a == BuiltinFn::Sinh
+                                && fn_b == BuiltinFn::Sinh =>
+                        {
+                            negative_pair = Some((arg_a, arg_b));
+                        }
+                        _ => {
+                            positive_pair = None;
+                            negative_pair = None;
+                            break;
+                        }
+                    }
+                }
+
+                let (Some((positive_u, positive_v)), Some((negative_u, negative_v))) =
+                    (positive_pair, negative_pair)
+                else {
+                    continue;
+                };
+
+                if matches_unordered_expr_pair_root(
+                    ctx, positive_u, positive_v, negative_u, negative_v,
+                ) && matches_angle_sum_or_diff_arg_root(
+                    ctx, angle_arg, positive_u, positive_v, false,
+                ) {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
+fn matches_direct_nested_zero_hyperbolic_angle_difference_residual_pair_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    let matches_pair = |ctx: &mut Context, lhs: ExprId, rhs: ExprId| {
+        matches_direct_hyperbolic_angle_difference_pair_root(ctx, lhs, rhs)
+    };
+
+    match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) if matches_pair(ctx, lhs, rhs) => return true,
+        Expr::Add(lhs, rhs) => {
+            if let Expr::Neg(inner) = ctx.get(rhs) {
+                if matches_pair(ctx, lhs, *inner) {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    extract_shared_additive_passthrough_sub_cores_root(ctx, expr)
+        .is_some_and(|(lhs_core, rhs_core)| matches_pair(ctx, lhs_core, rhs_core))
+}
+
+fn matches_direct_nested_zero_hyperbolic_triple_angle_residual_pair_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    let matches_pair = |ctx: &mut Context, lhs: ExprId, rhs: ExprId| {
+        matches_direct_hyperbolic_triple_angle_pair_root(ctx, lhs, rhs)
+    };
+
+    match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) if matches_pair(ctx, lhs, rhs) => return true,
+        Expr::Add(lhs, rhs) => {
+            if let Expr::Neg(inner) = ctx.get(rhs) {
+                if matches_pair(ctx, lhs, *inner) {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    extract_shared_additive_passthrough_sub_cores_root(ctx, expr)
+        .is_some_and(|(lhs_core, rhs_core)| matches_pair(ctx, lhs_core, rhs_core))
+}
+
+fn matches_direct_nested_zero_pure_double_angle_residual_pair_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    let matches_pair = |ctx: &mut Context, lhs: ExprId, rhs: ExprId| {
+        matches_direct_pure_double_angle_pair_root(ctx, lhs, rhs)
+    };
+
+    match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) if matches_pair(ctx, lhs, rhs) => return true,
+        Expr::Add(lhs, rhs) => {
+            if let Expr::Neg(inner) = ctx.get(rhs) {
+                if matches_pair(ctx, lhs, *inner) {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    extract_shared_additive_passthrough_sub_cores_root(ctx, expr)
+        .is_some_and(|(lhs_core, rhs_core)| matches_pair(ctx, lhs_core, rhs_core))
+}
+
+fn matches_direct_trig_ratio_alias_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Expr::Div(numerator, denominator) = ctx.get(source).clone() else {
+            continue;
+        };
+
+        for (num_builtin, den_builtin, target_builtin) in [
+            (BuiltinFn::Sin, BuiltinFn::Cos, BuiltinFn::Tan),
+            (BuiltinFn::Cos, BuiltinFn::Sin, BuiltinFn::Cot),
+        ] {
+            let Some(num_arg) = extract_unary_builtin_arg_root(ctx, numerator, num_builtin) else {
+                continue;
+            };
+            let Some(den_arg) = extract_unary_builtin_arg_root(ctx, denominator, den_builtin)
+            else {
+                continue;
+            };
+            let Some(target_arg) = extract_unary_builtin_arg_root(ctx, target, target_builtin)
+            else {
+                continue;
+            };
+            let Some(num_base_arg) = extract_double_angle_arg_relaxed(ctx, num_arg) else {
+                continue;
+            };
+            let Some(den_base_arg) = extract_double_angle_arg_relaxed(ctx, den_arg) else {
+                continue;
+            };
+            let Some(target_base_arg) = extract_double_angle_arg_relaxed(ctx, target_arg) else {
+                continue;
+            };
+
+            if compare_expr(ctx, num_arg, target_arg) == Ordering::Equal
+                && compare_expr(ctx, den_arg, num_arg) != Ordering::Equal
+                && compare_expr(ctx, num_base_arg, den_base_arg) == Ordering::Equal
+                && compare_expr(ctx, num_base_arg, target_base_arg) == Ordering::Equal
+            {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn matches_direct_nested_zero_trig_ratio_alias_residual_pair_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    let matches_pair = |ctx: &mut Context, lhs: ExprId, rhs: ExprId| {
+        matches_direct_trig_ratio_alias_pair_root(ctx, lhs, rhs)
+    };
+
+    match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) if matches_pair(ctx, lhs, rhs) => return true,
+        Expr::Add(lhs, rhs) => {
+            if let Expr::Neg(inner) = ctx.get(rhs) {
+                if matches_pair(ctx, lhs, *inner) {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    extract_shared_additive_passthrough_sub_cores_root(ctx, expr)
+        .is_some_and(|(lhs_core, rhs_core)| matches_pair(ctx, lhs_core, rhs_core))
+}
+
+fn matches_direct_signed_pure_double_angle_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    for (lhs_expr, rhs_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let (lhs_coeff, lhs_base) = extract_coef_and_base(ctx, lhs_expr);
+        let (rhs_coeff, rhs_base) = extract_coef_and_base(ctx, rhs_expr);
+        if lhs_coeff == rhs_coeff
+            && matches_direct_pure_double_angle_pair_root(ctx, lhs_base, rhs_base)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn matches_direct_nested_zero_signed_pure_double_angle_residual_pair_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    let matches_pair = |ctx: &mut Context, lhs: ExprId, rhs: ExprId| {
+        matches_direct_signed_pure_double_angle_pair_root(ctx, lhs, rhs)
+    };
+
+    match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) if matches_pair(ctx, lhs, rhs) => return true,
+        Expr::Add(lhs, rhs) => {
+            if let Expr::Neg(inner) = ctx.get(rhs) {
+                if matches_pair(ctx, lhs, *inner) {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    extract_shared_additive_passthrough_sub_cores_root(ctx, expr)
+        .is_some_and(|(lhs_core, rhs_core)| matches_pair(ctx, lhs_core, rhs_core))
+}
+
+fn extract_half_angle_tan_numerator_arg_root(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return None;
+    }
+
+    let mut has_one = false;
+    let mut negative_cos_arg = None;
+    for (term_expr, term_sign) in view.terms {
+        match (ctx.get(term_expr), term_sign) {
+            (Expr::Number(n), Sign::Pos) if n.is_one() => has_one = true,
+            (_, Sign::Neg) => {
+                negative_cos_arg = extract_positive_cos_double_angle_arg_root(ctx, term_expr);
+            }
+            _ => return None,
+        }
+    }
+
+    (has_one).then_some(negative_cos_arg?).filter(|_| has_one)
+}
+
+fn matches_direct_half_angle_tan_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Expr::Div(numerator, denominator) = ctx.get(source).clone() else {
+            continue;
+        };
+        let Some(target_arg) = extract_unary_builtin_arg_root(ctx, target, BuiltinFn::Tan) else {
+            continue;
+        };
+        let Some(num_arg) = extract_half_angle_tan_numerator_arg_root(ctx, numerator) else {
+            continue;
+        };
+        let Some((BuiltinFn::Sin, den_arg)) = extract_plain_sin_or_cos_arg_root(ctx, denominator)
+        else {
+            continue;
+        };
+        let Some(den_base_arg) = extract_double_angle_arg_relaxed(ctx, den_arg) else {
+            continue;
+        };
+
+        if compare_expr(ctx, num_arg, target_arg) == Ordering::Equal
+            && compare_expr(ctx, den_base_arg, target_arg) == Ordering::Equal
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn matches_direct_nested_zero_half_angle_tan_residual_pair_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    let matches_pair = |ctx: &mut Context, lhs: ExprId, rhs: ExprId| {
+        matches_direct_half_angle_tan_pair_root(ctx, lhs, rhs)
+    };
+
+    match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) if matches_pair(ctx, lhs, rhs) => return true,
+        Expr::Add(lhs, rhs) => {
+            if let Expr::Neg(inner) = ctx.get(rhs) {
+                if matches_pair(ctx, lhs, *inner) {
+                    return true;
+                }
+            }
+        }
+        _ => {}
+    }
+
+    extract_shared_additive_passthrough_sub_cores_root(ctx, expr)
+        .is_some_and(|(lhs_core, rhs_core)| matches_pair(ctx, lhs_core, rhs_core))
+}
+
 fn matches_direct_general_phase_shift_zero_identity_root(ctx: &mut Context, expr: ExprId) -> bool {
     let view = AddView::from_expr(ctx, expr);
     if view.terms.len() != 3 || !expr_contains_trig_builtin_local(ctx, expr) {
@@ -9646,6 +10286,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
             Expr::Mul(_, _) => {
                 let rule = crate::rules::arithmetic::CollapseExactZeroProductFactorRule;
                 if let Some(rewrite) = crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx) {
+                    record_profiled_orchestrator_route_hit(
+                        ctx,
+                        expr,
+                        "root.exact_zero.route.guarded_small_zero_product_rule",
+                    );
                     return Some(finish_root_shortcut_with_rewrite_meta(
                         ctx,
                         expr,
@@ -9658,6 +10303,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
             Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => {
                 if matches_direct_trig_cubic_cosine_pair_root(ctx, *lhs, *rhs) {
                     let zero = ctx.num(0);
+                    record_profiled_orchestrator_route_hit(
+                        ctx,
+                        expr,
+                        "root.exact_zero.route.guarded_small_zero_trig_cubic_pair",
+                    );
                     return Some(run_named_rebuilt_root_shortcut_simplify(
                         options,
                         ctx,
@@ -9670,6 +10320,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
                 }
                 let rule = crate::rules::arithmetic::CollapseExactZeroThreeTermSubsetRule;
                 if let Some(rewrite) = crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx) {
+                    record_profiled_orchestrator_route_hit(
+                        ctx,
+                        expr,
+                        "root.exact_zero.route.guarded_small_zero_three_term_subset_rule",
+                    );
                     return Some(finish_root_shortcut_with_rewrite_meta(
                         ctx,
                         expr,
@@ -9692,6 +10347,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
             && matches_direct_trig_cubic_cosine_pair_root(ctx, lhs, rhs)
         {
             let zero = ctx.num(0);
+            record_profiled_orchestrator_route_hit(
+                ctx,
+                expr,
+                "root.exact_zero.route.binary_trig_cubic_pair",
+            );
             return Some(run_rebuilt_root_shortcut_simplify(
                 options,
                 ctx,
@@ -9703,6 +10363,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
 
         if matches_direct_cos_square_diff_pair_root(ctx, lhs, rhs) {
             let zero = ctx.num(0);
+            record_profiled_orchestrator_route_hit(
+                ctx,
+                expr,
+                "root.exact_zero.route.binary_cos_square_diff_pair",
+            );
             return Some(run_rebuilt_root_shortcut_simplify(
                 options,
                 ctx,
@@ -9723,6 +10388,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
             let zero = ctx.num(0);
             let rewrite =
                 crate::rule::Rewrite::with_local(zero, "Exact Zero Core Composition", expr, zero);
+            record_profiled_orchestrator_route_hit(
+                ctx,
+                expr,
+                "root.exact_zero.route.binary_direct_zero_pair",
+            );
             return Some(finish_root_shortcut_with_rewrite_meta(
                 ctx,
                 expr,
@@ -9736,6 +10406,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
             || (rhs_is_direct_zero && lhs_is_small_trig_zero)
         {
             let zero = ctx.num(0);
+            record_profiled_orchestrator_route_hit(
+                ctx,
+                expr,
+                "root.exact_zero.route.binary_direct_plus_small_trig",
+            );
             return Some(run_rebuilt_root_shortcut_simplify(
                 options,
                 ctx,
@@ -9754,6 +10429,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
     {
         if matches_direct_small_zero_or_known_pair_residual_root(ctx, residual_expr) {
             let zero = ctx.num(0);
+            record_profiled_orchestrator_route_hit(
+                ctx,
+                expr,
+                "root.exact_zero.route.common_scale_known_residual",
+            );
             return Some(run_common_scale_rebuilt_root_shortcut_simplify(
                 options,
                 ctx,
@@ -9772,6 +10452,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
                 || matches_direct_half_angle_binomial_square_pair_root(ctx, lhs_core, rhs_core)
             {
                 let zero = ctx.num(0);
+                record_profiled_orchestrator_route_hit(
+                    ctx,
+                    expr,
+                    "root.exact_zero.route.same_denominator_direct_pair",
+                );
                 return Some(run_common_scale_rebuilt_root_shortcut_simplify(
                     options,
                     ctx,
@@ -9792,6 +10477,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
                     )
                 {
                     let zero = ctx.num(0);
+                    record_profiled_orchestrator_route_hit(
+                        ctx,
+                        expr,
+                        "root.exact_zero.route.same_denominator_passthrough_pair",
+                    );
                     return Some(run_common_scale_rebuilt_root_shortcut_simplify(
                         options,
                         ctx,
@@ -9807,6 +10497,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
         {
             let zero = ctx.num(0);
             if compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal {
+                record_profiled_orchestrator_route_hit(
+                    ctx,
+                    expr,
+                    "root.exact_zero.route.same_denominator_rule",
+                );
                 return Some(finish_root_shortcut_with_rewrite_meta(
                     ctx,
                     expr,
@@ -9824,6 +10519,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
         let zero = ctx.num(0);
         let rewrite =
             crate::rule::Rewrite::with_local(zero, "Equivalent Residual Cancellation", expr, zero);
+        record_profiled_orchestrator_route_hit(
+            ctx,
+            expr,
+            "root.exact_zero.route.two_factor_or_quotient_pair",
+        );
         return Some(finish_root_shortcut_with_rewrite_meta(
             ctx,
             expr,
@@ -9841,6 +10541,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
             collect_steps,
         )
     {
+        record_profiled_orchestrator_route_hit(
+            ctx,
+            expr,
+            "root.exact_zero.route.sum_diff_cubes_quotient",
+        );
         return Some((result, shortcut_steps));
     }
 
@@ -9849,6 +10554,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
     {
         if matches_direct_small_pow_expansion_pair_root(ctx, lhs_core, rhs_core) {
             let zero = ctx.num(0);
+            record_profiled_orchestrator_route_hit(
+                ctx,
+                expr,
+                "root.exact_zero.route.shared_passthrough_small_pow",
+            );
             return Some(run_rebuilt_root_shortcut_simplify(
                 options,
                 ctx,
@@ -9863,6 +10573,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
     if let Some(rewrite) = crate::rule::Rule::apply(&direct_rule, ctx, expr, &parent_ctx) {
         let zero = ctx.num(0);
         if compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal {
+            record_profiled_orchestrator_route_hit(
+                ctx,
+                expr,
+                "root.exact_zero.route.three_term_subset_rule",
+            );
             return Some(finish_root_shortcut_with_rewrite_meta(
                 ctx,
                 expr,
@@ -9876,6 +10591,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
     if let Some(rewrite) = crate::rule::Rule::apply(&common_scale_rule, ctx, expr, &parent_ctx) {
         let zero = ctx.num(0);
         if compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal {
+            record_profiled_orchestrator_route_hit(
+                ctx,
+                expr,
+                "root.exact_zero.route.common_scale_rule",
+            );
             return Some(finish_root_shortcut_with_rewrite_meta(
                 ctx,
                 expr,
@@ -9889,6 +10609,11 @@ fn try_standard_exact_zero_equivalence_shortcut(
     if let Some(result) =
         try_standard_common_scale_exact_zero_shortcut_fallback(options, ctx, expr, collect_steps)
     {
+        record_profiled_orchestrator_route_hit(
+            ctx,
+            expr,
+            "root.exact_zero.route.common_scale_fallback",
+        );
         return Some(result);
     }
 
@@ -10050,6 +10775,85 @@ fn child_isolated_exact_zero(
     try_standard_exact_zero_equivalence_shortcut(options, ctx, child, false).is_some()
 }
 
+fn child_matches_exact_zero_three_term_subset_rule(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    child: ExprId,
+) -> bool {
+    if !matches!(ctx.get(child), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, child);
+    let rule = crate::rules::arithmetic::CollapseExactZeroThreeTermSubsetRule;
+    let Some(rewrite) = crate::rule::Rule::apply(&rule, ctx, child, &parent_ctx) else {
+        return false;
+    };
+
+    let zero = ctx.num(0);
+    compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal
+}
+
+fn child_matches_exact_zero_same_denominator_direct_or_passthrough_pair(
+    ctx: &mut Context,
+    child: ExprId,
+) -> bool {
+    let Some((_den, lhs_core, rhs_core)) = extract_same_denominator_direct_pair_root(ctx, child)
+    else {
+        return false;
+    };
+
+    if matches_known_direct_pair_root(ctx, lhs_core, rhs_core)
+        || matches_direct_half_angle_binomial_square_pair_root(ctx, lhs_core, rhs_core)
+    {
+        return true;
+    }
+
+    extract_shared_additive_passthrough_pair_cores_root(ctx, lhs_core, rhs_core).is_some_and(
+        |(lhs_residual, rhs_residual)| {
+            matches_known_direct_pair_root(ctx, lhs_residual, rhs_residual)
+                || matches_direct_half_angle_binomial_square_pair_root(
+                    ctx,
+                    lhs_residual,
+                    rhs_residual,
+                )
+        },
+    )
+}
+
+fn child_matches_exact_zero_two_factor_or_quotient_pair(ctx: &mut Context, child: ExprId) -> bool {
+    matches!(ctx.get(child), Expr::Add(_, _) | Expr::Sub(_, _))
+        && (matches_direct_two_factor_product_pair_zero_difference_root(ctx, child)
+            || matches_direct_quotient_pair_zero_difference_root(ctx, child))
+}
+
+fn child_matches_exact_zero_common_scale_known_residual(ctx: &mut Context, child: ExprId) -> bool {
+    if let Some((_common_factor, residual_expr)) =
+        extract_common_multiplicative_residual_sum_root(ctx, child)
+    {
+        if matches_direct_small_zero_or_known_pair_residual_root(ctx, residual_expr) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn child_matches_exact_zero_common_scale_rule(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    child: ExprId,
+) -> bool {
+    let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, child);
+    let rule = crate::rules::arithmetic::CollapseExactZeroCommonScaledDifferenceRule;
+    let Some(rewrite) = crate::rule::Rule::apply(&rule, ctx, child, &parent_ctx) else {
+        return false;
+    };
+
+    let zero = ctx.num(0);
+    compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal
+}
+
 fn child_matches_direct_or_isolated_exact_zero(
     options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
@@ -10109,6 +10913,19 @@ fn is_supported_nested_zero_child_partner(ctx: &Context, expr: ExprId) -> bool {
         || (matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
             && !expr_contains_trig_or_hyperbolic_builtin_local(ctx, expr)
             && !expr_contains_log_builtin_local(ctx, expr))
+}
+
+fn supported_nested_zero_child_partner_profile_family(ctx: &Context, expr: ExprId) -> &'static str {
+    if expr_contains_log_builtin_local(ctx, expr) {
+        "log"
+    } else if matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
+        && !expr_contains_trig_or_hyperbolic_builtin_local(ctx, expr)
+        && !expr_contains_log_builtin_local(ctx, expr)
+    {
+        "nonlog_additive"
+    } else {
+        "other"
+    }
 }
 
 fn supported_nested_zero_partner_rewrites_to_zero(
@@ -16808,29 +17625,108 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
             ));
         }
 
-        let zero_child_supported_partner =
-            profiled_nested_zero_bool!("root.div.03d.nested_zero.zero_child_supported_partner", {
-                (expr_contains_trig_or_hyperbolic_builtin_local(ctx, numerator_core)
+        let zero_child_supported_partner = profiled_nested_zero_bool!(
+            "root.div.03d.nested_zero.zero_child_supported_partner",
+            {
+                let mut matched = false;
+                if expr_contains_trig_or_hyperbolic_builtin_local(ctx, numerator_core)
                     && is_supported_nested_zero_child_partner(ctx, denominator_core)
-                    && child_matches_direct_or_isolated_exact_zero(options, ctx, numerator_core)
-                    && supported_nested_zero_partner_rewrites_to_zero(
-                        options,
-                        ctx,
-                        denominator_core,
-                    ))
-                    || (expr_contains_trig_or_hyperbolic_builtin_local(ctx, denominator_core)
-                        && is_supported_nested_zero_child_partner(ctx, numerator_core)
-                        && child_matches_direct_or_isolated_exact_zero(
-                            options,
-                            ctx,
-                            denominator_core,
-                        )
-                        && supported_nested_zero_partner_rewrites_to_zero(
-                            options,
-                            ctx,
-                            numerator_core,
-                        ))
-            });
+                {
+                    let partner_family =
+                        supported_nested_zero_child_partner_profile_family(ctx, denominator_core);
+                    let label = match partner_family {
+                        "log" => {
+                            "root.div.03d1.nested_zero.zero_child_supported_partner.partner_family.log"
+                        }
+                        "nonlog_additive" => {
+                            "root.div.03d2.nested_zero.zero_child_supported_partner.partner_family.nonlog_additive"
+                        }
+                        _ => {
+                            "root.div.03d3.nested_zero.zero_child_supported_partner.partner_family.other"
+                        }
+                    };
+                    if profile_nested_zero {
+                        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                            label,
+                            format!(
+                                "{}  ||  {}",
+                                render_expr(ctx, numerator_core),
+                                render_expr(ctx, denominator_core)
+                            ),
+                        );
+                    }
+                    matched |= if profile_nested_zero {
+                        run_profiled_orchestrator_bool_section(label, || {
+                            child_matches_direct_or_isolated_exact_zero(
+                                options,
+                                ctx,
+                                numerator_core,
+                            ) && supported_nested_zero_partner_rewrites_to_zero(
+                                options,
+                                ctx,
+                                denominator_core,
+                            )
+                        })
+                    } else {
+                        child_matches_direct_or_isolated_exact_zero(options, ctx, numerator_core)
+                            && supported_nested_zero_partner_rewrites_to_zero(
+                                options,
+                                ctx,
+                                denominator_core,
+                            )
+                    };
+                }
+                if !matched
+                    && expr_contains_trig_or_hyperbolic_builtin_local(ctx, denominator_core)
+                    && is_supported_nested_zero_child_partner(ctx, numerator_core)
+                {
+                    let partner_family =
+                        supported_nested_zero_child_partner_profile_family(ctx, numerator_core);
+                    let label = match partner_family {
+                        "log" => {
+                            "root.div.03d1.nested_zero.zero_child_supported_partner.partner_family.log"
+                        }
+                        "nonlog_additive" => {
+                            "root.div.03d2.nested_zero.zero_child_supported_partner.partner_family.nonlog_additive"
+                        }
+                        _ => {
+                            "root.div.03d3.nested_zero.zero_child_supported_partner.partner_family.other"
+                        }
+                    };
+                    if profile_nested_zero {
+                        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                            label,
+                            format!(
+                                "{}  ||  {}",
+                                render_expr(ctx, denominator_core),
+                                render_expr(ctx, numerator_core)
+                            ),
+                        );
+                    }
+                    matched |= if profile_nested_zero {
+                        run_profiled_orchestrator_bool_section(label, || {
+                            child_matches_direct_or_isolated_exact_zero(
+                                options,
+                                ctx,
+                                denominator_core,
+                            ) && supported_nested_zero_partner_rewrites_to_zero(
+                                options,
+                                ctx,
+                                numerator_core,
+                            )
+                        })
+                    } else {
+                        child_matches_direct_or_isolated_exact_zero(options, ctx, denominator_core)
+                            && supported_nested_zero_partner_rewrites_to_zero(
+                                options,
+                                ctx,
+                                numerator_core,
+                            )
+                    };
+                }
+                matched
+            }
+        );
         if zero_child_supported_partner {
             return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
                 options,
@@ -16903,15 +17799,16 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
             && expr_contains_trig_or_hyperbolic_builtin_local(ctx, denominator_core)
         {
             let residual_difference = ctx.add(Expr::Sub(numerator_core, denominator_core));
+            let residual_sample =
+                profile_nested_zero.then(|| render_expr(ctx, residual_difference));
             if profile_nested_zero {
-                let residual_sample = render_expr(ctx, residual_difference);
                 crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                     "root.div.03g1.nested_zero.residual_difference_phase_shift_zero",
-                    residual_sample.clone(),
+                    residual_sample.clone().unwrap_or_default(),
                 );
                 crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                     "root.div.03g2.nested_zero.residual_difference_isolated_zero_fallback",
-                    residual_sample,
+                    residual_sample.clone().unwrap_or_default(),
                 );
             }
             let residual_difference_phase_shift_zero = profiled_nested_zero_bool!(
@@ -16930,7 +17827,783 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
 
             let residual_difference_isolated_zero = profiled_nested_zero_bool!(
                 "root.div.03g2.nested_zero.residual_difference_isolated_zero_fallback",
-                child_isolated_exact_zero(options, ctx, residual_difference)
+                {
+                    if profile_nested_zero {
+                        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                            "root.div.03g2a.nested_zero.residual_difference_direct_small_zero",
+                            residual_sample.clone().unwrap_or_default(),
+                        );
+                    }
+                    let residual_difference_direct_small_zero = profiled_nested_zero_bool!(
+                        "root.div.03g2a.nested_zero.residual_difference_direct_small_zero",
+                        matches_direct_small_zero_identity_root(ctx, residual_difference)
+                    );
+                    if residual_difference_direct_small_zero {
+                        true
+                    } else {
+                        if profile_nested_zero {
+                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                "root.div.03g2b.nested_zero.residual_difference_hyperbolic_cosh_cubic_zero",
+                                residual_sample.clone().unwrap_or_default(),
+                            );
+                        }
+                        let residual_difference_hyperbolic_cosh_cubic_zero =
+                            profiled_nested_zero_bool!(
+                                "root.div.03g2b.nested_zero.residual_difference_hyperbolic_cosh_cubic_zero",
+                                matches_direct_hyperbolic_cosh_cubic_zero_identity_root(
+                                    ctx,
+                                    residual_difference,
+                                )
+                            );
+                        if residual_difference_hyperbolic_cosh_cubic_zero {
+                            true
+                        } else {
+                            if profile_nested_zero {
+                                crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                    "root.div.03g2c0.nested_zero.residual_difference_hyperbolic_pair",
+                                    residual_sample.clone().unwrap_or_default(),
+                                );
+                            }
+                            let residual_difference_hyperbolic_pair = profiled_nested_zero_bool!(
+                                "root.div.03g2c0.nested_zero.residual_difference_hyperbolic_pair",
+                                matches_direct_nested_zero_hyperbolic_residual_pair_root(
+                                    ctx,
+                                    residual_difference,
+                                )
+                            );
+                            if residual_difference_hyperbolic_pair {
+                                true
+                            } else {
+                                if profile_nested_zero {
+                                    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                        "root.div.03g2c1.nested_zero.residual_difference_hyperbolic_angle_difference",
+                                        residual_sample.clone().unwrap_or_default(),
+                                    );
+                                }
+                                let residual_difference_hyperbolic_angle_difference =
+                                    if profile_nested_zero {
+                                        run_profiled_orchestrator_bool_section(
+                                            "root.div.03g2c1.nested_zero.residual_difference_hyperbolic_angle_difference",
+                                            || {
+                                                matches_direct_nested_zero_hyperbolic_angle_difference_residual_pair_root(
+                                                    ctx,
+                                                    residual_difference,
+                                                )
+                                            },
+                                        )
+                                    } else {
+                                        false
+                                    };
+                                if !residual_difference_hyperbolic_angle_difference
+                                    && profile_nested_zero
+                                {
+                                    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                        "root.div.03g2c2.nested_zero.residual_difference_hyperbolic_triple_angle",
+                                        residual_sample.clone().unwrap_or_default(),
+                                    );
+                                }
+                                let residual_difference_hyperbolic_triple_angle =
+                                    if !residual_difference_hyperbolic_angle_difference
+                                        && profile_nested_zero
+                                    {
+                                        run_profiled_orchestrator_bool_section(
+                                            "root.div.03g2c2.nested_zero.residual_difference_hyperbolic_triple_angle",
+                                            || {
+                                                matches_direct_nested_zero_hyperbolic_triple_angle_residual_pair_root(
+                                                    ctx,
+                                                    residual_difference,
+                                                )
+                                            },
+                                        )
+                                    } else {
+                                        false
+                                    };
+                                if !residual_difference_hyperbolic_angle_difference
+                                    && !residual_difference_hyperbolic_triple_angle
+                                    && profile_nested_zero
+                                {
+                                    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                        "root.div.03g2c3.nested_zero.residual_difference_pure_double_angle",
+                                        residual_sample.clone().unwrap_or_default(),
+                                    );
+                                }
+                                if !residual_difference_hyperbolic_angle_difference
+                                    && !residual_difference_hyperbolic_triple_angle
+                                    && profile_nested_zero
+                                {
+                                    run_profiled_orchestrator_bool_section(
+                                        "root.div.03g2c3.nested_zero.residual_difference_pure_double_angle",
+                                        || {
+                                            matches_direct_nested_zero_pure_double_angle_residual_pair_root(
+                                                ctx,
+                                                residual_difference,
+                                            )
+                                        },
+                                    );
+                                }
+                                if profile_nested_zero {
+                                    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                        "root.div.03g2c4.nested_zero.residual_difference_three_term_subset_rule",
+                                        residual_sample.clone().unwrap_or_default(),
+                                    );
+                                }
+                                let residual_difference_three_term_subset_rule =
+                                    profiled_nested_zero_bool!(
+                                        "root.div.03g2c4.nested_zero.residual_difference_three_term_subset_rule",
+                                        child_matches_exact_zero_three_term_subset_rule(
+                                            options,
+                                            ctx,
+                                            residual_difference,
+                                        )
+                                    );
+                                if residual_difference_three_term_subset_rule {
+                                    true
+                                } else {
+                                    if profile_nested_zero {
+                                        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                            "root.div.03g2c5a.nested_zero.residual_difference_trig_ratio",
+                                            residual_sample.clone().unwrap_or_default(),
+                                        );
+                                    }
+                                    let residual_difference_trig_ratio = if profile_nested_zero {
+                                        run_profiled_orchestrator_bool_section(
+                                            "root.div.03g2c5a.nested_zero.residual_difference_trig_ratio",
+                                            || {
+                                                matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
+                                                    ctx,
+                                                    residual_difference,
+                                                    true,
+                                                )
+                                            },
+                                        )
+                                    } else {
+                                        matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
+                                            ctx,
+                                            residual_difference,
+                                            true,
+                                        )
+                                    };
+                                    if !residual_difference_trig_ratio && profile_nested_zero {
+                                        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                            "root.div.03g2c5b.nested_zero.residual_difference_trig_reciprocal",
+                                            residual_sample.clone().unwrap_or_default(),
+                                        );
+                                    }
+                                    let residual_difference_trig_reciprocal =
+                                        if !residual_difference_trig_ratio && profile_nested_zero {
+                                            run_profiled_orchestrator_bool_section(
+                                                "root.div.03g2c5b.nested_zero.residual_difference_trig_reciprocal",
+                                                || {
+                                                    matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
+                                                        ctx,
+                                                        residual_difference,
+                                                        false,
+                                                    )
+                                                },
+                                            )
+                                        } else if !residual_difference_trig_ratio {
+                                            matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
+                                                ctx,
+                                                residual_difference,
+                                                false,
+                                            )
+                                        } else {
+                                            false
+                                        };
+                                    if residual_difference_trig_ratio
+                                        || residual_difference_trig_reciprocal
+                                    {
+                                        true
+                                    } else {
+                                        if profile_nested_zero {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c6a.nested_zero.residual_difference_trig_ratio_alias",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_trig_ratio_alias =
+                                            if profile_nested_zero {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c6a.nested_zero.residual_difference_trig_ratio_alias",
+                                                    || {
+                                                        matches_direct_nested_zero_trig_ratio_alias_residual_pair_root(
+                                                            ctx,
+                                                            residual_difference,
+                                                        )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        if !residual_difference_trig_ratio_alias
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c6b.nested_zero.residual_difference_signed_pure_double_angle",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_signed_pure_double_angle =
+                                            if !residual_difference_trig_ratio_alias
+                                                && profile_nested_zero
+                                            {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c6b.nested_zero.residual_difference_signed_pure_double_angle",
+                                                    || {
+                                                        matches_direct_nested_zero_signed_pure_double_angle_residual_pair_root(
+                                                            ctx,
+                                                            residual_difference,
+                                                        )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        if !residual_difference_trig_ratio_alias
+                                            && !residual_difference_signed_pure_double_angle
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c6c.nested_zero.residual_difference_half_angle_tan",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        if !residual_difference_trig_ratio_alias
+                                            && !residual_difference_signed_pure_double_angle
+                                            && profile_nested_zero
+                                        {
+                                            run_profiled_orchestrator_bool_section(
+                                                "root.div.03g2c6c.nested_zero.residual_difference_half_angle_tan",
+                                                || {
+                                                    matches_direct_nested_zero_half_angle_tan_residual_pair_root(
+                                                        ctx,
+                                                        residual_difference,
+                                                    )
+                                                },
+                                            );
+                                        }
+                                        if profile_nested_zero {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7a.nested_zero.residual_difference_exact_zero_same_denominator_pair",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_exact_zero_same_denominator_pair =
+                                            if profile_nested_zero {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c7a.nested_zero.residual_difference_exact_zero_same_denominator_pair",
+                                                    || {
+                                                        child_matches_exact_zero_same_denominator_direct_or_passthrough_pair(
+                                                            ctx,
+                                                            residual_difference,
+                                                        )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7b.nested_zero.residual_difference_exact_zero_two_factor_or_quotient_pair",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_exact_zero_two_factor_or_quotient_pair =
+                                            if !residual_difference_exact_zero_same_denominator_pair
+                                                && profile_nested_zero
+                                            {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c7b.nested_zero.residual_difference_exact_zero_two_factor_or_quotient_pair",
+                                                    || {
+                                                        child_matches_exact_zero_two_factor_or_quotient_pair(
+                                                            ctx,
+                                                            residual_difference,
+                                                        )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7c1.nested_zero.residual_difference_exact_zero_common_scale_known_residual",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_exact_zero_common_scale_known_residual =
+                                            if !residual_difference_exact_zero_same_denominator_pair
+                                                && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                                && profile_nested_zero
+                                            {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c7c1.nested_zero.residual_difference_exact_zero_common_scale_known_residual",
+                                                    || {
+                                                        child_matches_exact_zero_common_scale_known_residual(
+                                                            ctx,
+                                                            residual_difference,
+                                                        )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7c2.nested_zero.residual_difference_exact_zero_common_scale_rule",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_exact_zero_common_scale_rule =
+                                            if !residual_difference_exact_zero_same_denominator_pair
+                                                && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                                && !residual_difference_exact_zero_common_scale_known_residual
+                                                && profile_nested_zero
+                                            {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c7c2.nested_zero.residual_difference_exact_zero_common_scale_rule",
+                                                    || {
+                                                        child_matches_exact_zero_common_scale_rule(
+                                                            options,
+                                                            ctx,
+                                                            residual_difference,
+                                                        )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        let residual_difference_exact_zero_common_scale_rule_family =
+                                            if !residual_difference_exact_zero_same_denominator_pair
+                                                && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                                && !residual_difference_exact_zero_common_scale_known_residual
+                                                && profile_nested_zero
+                                            {
+                                                crate::rules::arithmetic::classify_exact_zero_common_scale_route_profile_family(
+                                                    ctx,
+                                                    residual_difference,
+                                                )
+                                            } else {
+                                                None
+                                            };
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7c2a.nested_zero.residual_difference_exact_zero_common_scale_same_denominator",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_exact_zero_common_scale_same_denominator =
+                                            if !residual_difference_exact_zero_same_denominator_pair
+                                                && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                                && !residual_difference_exact_zero_common_scale_known_residual
+                                                && profile_nested_zero
+                                            {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c7c2a.nested_zero.residual_difference_exact_zero_common_scale_same_denominator",
+                                                    || {
+                                                        residual_difference_exact_zero_common_scale_rule_family
+                                                            == Some(
+                                                                crate::rules::arithmetic::ExactZeroCommonScaleRouteProfileFamily::SameDenominator,
+                                                            )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && !residual_difference_exact_zero_common_scale_same_denominator
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7c2b.nested_zero.residual_difference_exact_zero_common_scale_residual_direct",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_exact_zero_common_scale_residual_direct =
+                                            if !residual_difference_exact_zero_same_denominator_pair
+                                                && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                                && !residual_difference_exact_zero_common_scale_known_residual
+                                                && !residual_difference_exact_zero_common_scale_same_denominator
+                                                && profile_nested_zero
+                                            {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c7c2b.nested_zero.residual_difference_exact_zero_common_scale_residual_direct",
+                                                    || {
+                                                        residual_difference_exact_zero_common_scale_rule_family
+                                                            == Some(
+                                                                crate::rules::arithmetic::ExactZeroCommonScaleRouteProfileFamily::ResidualDirect,
+                                                            )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        let residual_difference_exact_zero_common_scale_residual_direct_label =
+                                            if !residual_difference_exact_zero_same_denominator_pair
+                                                && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                                && !residual_difference_exact_zero_common_scale_known_residual
+                                                && !residual_difference_exact_zero_common_scale_same_denominator
+                                                && profile_nested_zero
+                                            {
+                                                crate::rules::arithmetic::classify_exact_zero_common_scale_residual_direct_profile_label(
+                                                    ctx,
+                                                    residual_difference,
+                                                )
+                                            } else {
+                                                None
+                                            };
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && !residual_difference_exact_zero_common_scale_same_denominator
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7c2b1.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_default_simplify_trig_ratio",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_exact_zero_common_scale_residual_direct_default_simplify_trig_ratio =
+                                            if !residual_difference_exact_zero_same_denominator_pair
+                                                && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                                && !residual_difference_exact_zero_common_scale_known_residual
+                                                && !residual_difference_exact_zero_common_scale_same_denominator
+                                                && profile_nested_zero
+                                            {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c7c2b1.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_default_simplify_trig_ratio",
+                                                    || {
+                                                        residual_difference_exact_zero_common_scale_residual_direct_label
+                                                            == Some(
+                                                                "rule.direct_core_equivalence.default_simplify.family.trig_ratio",
+                                                            )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && !residual_difference_exact_zero_common_scale_same_denominator
+                                            && !residual_difference_exact_zero_common_scale_residual_direct_default_simplify_trig_ratio
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7c2b2.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_signed_double_angle",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_exact_zero_common_scale_residual_direct_signed_double_angle =
+                                            if !residual_difference_exact_zero_same_denominator_pair
+                                                && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                                && !residual_difference_exact_zero_common_scale_known_residual
+                                                && !residual_difference_exact_zero_common_scale_same_denominator
+                                                && !residual_difference_exact_zero_common_scale_residual_direct_default_simplify_trig_ratio
+                                                && profile_nested_zero
+                                            {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c7c2b2.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_signed_double_angle",
+                                                    || {
+                                                        residual_difference_exact_zero_common_scale_residual_direct_label
+                                                            == Some(
+                                                                "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.signed_double_angle",
+                                                            )
+                                                            || residual_difference_exact_zero_common_scale_residual_direct_label
+                                                                == Some(
+                                                                    "rule.direct_core_equivalence.family.double_angle_contraction",
+                                                                )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && !residual_difference_exact_zero_common_scale_same_denominator
+                                            && !residual_difference_exact_zero_common_scale_residual_direct_default_simplify_trig_ratio
+                                            && !residual_difference_exact_zero_common_scale_residual_direct_signed_double_angle
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7c2b3.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && !residual_difference_exact_zero_common_scale_same_denominator
+                                            && !residual_difference_exact_zero_common_scale_residual_direct_default_simplify_trig_ratio
+                                            && !residual_difference_exact_zero_common_scale_residual_direct_signed_double_angle
+                                            && profile_nested_zero
+                                        {
+                                            let residual_difference_exact_zero_common_scale_residual_direct_phase_shift_identity_label =
+                                                crate::rules::arithmetic::classify_exact_zero_common_scale_residual_direct_phase_shift_identity_profile_label(
+                                                    ctx,
+                                                    residual_difference,
+                                                );
+                                            for label in [
+                                                "root.div.03g2c7c2b3a1.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.forward_linear_to_shifted",
+                                                "root.div.03g2c7c2b3a2.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.forward_shifted_to_linear",
+                                                "root.div.03g2c7c2b3a3.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.forward_shifted_to_shifted",
+                                                "root.div.03g2c7c2b3a4.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.reverse_linear_to_shifted",
+                                                "root.div.03g2c7c2b3a5.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.reverse_shifted_to_linear",
+                                                "root.div.03g2c7c2b3a6.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.reverse_shifted_to_shifted",
+                                            ] {
+                                                crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                    label,
+                                                    residual_sample.clone().unwrap_or_default(),
+                                                );
+                                            }
+                                            for label in [
+                                                "root.div.03g2c7c2b3a1.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.forward_linear_to_shifted",
+                                                "root.div.03g2c7c2b3a2.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.forward_shifted_to_linear",
+                                                "root.div.03g2c7c2b3a3.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.forward_shifted_to_shifted",
+                                                "root.div.03g2c7c2b3a4.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.reverse_linear_to_shifted",
+                                                "root.div.03g2c7c2b3a5.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.reverse_shifted_to_linear",
+                                                "root.div.03g2c7c2b3a6.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity.reverse_shifted_to_shifted",
+                                            ] {
+                                                let matches_label =
+                                                    residual_difference_exact_zero_common_scale_residual_direct_phase_shift_identity_label
+                                                        == Some(label);
+                                                run_profiled_orchestrator_bool_section(label, || {
+                                                    matches_label
+                                                });
+                                            }
+                                            let residual_difference_exact_zero_common_scale_residual_direct_other_label =
+                                                crate::rules::arithmetic::classify_exact_zero_common_scale_residual_direct_other_profile_label(
+                                                    ctx,
+                                                    residual_difference,
+                                                );
+                                            for label in [
+                                                "root.div.03g2c7c2b3a.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity",
+                                                "root.div.03g2c7c2b3b.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.default_simplify_non_hyperbolic_other",
+                                                "root.div.03g2c7c2b3c.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.default_simplify_other",
+                                                "root.div.03g2c7c2b3d.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.direct_core_other",
+                                                "root.div.03g2c7c2b3e.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.remaining_family",
+                                            ] {
+                                                crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                    label,
+                                                    residual_sample.clone().unwrap_or_default(),
+                                                );
+                                            }
+                                            for label in [
+                                                "root.div.03g2c7c2b3a.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.phase_shift_identity",
+                                                "root.div.03g2c7c2b3b.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.default_simplify_non_hyperbolic_other",
+                                                "root.div.03g2c7c2b3c.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.default_simplify_other",
+                                                "root.div.03g2c7c2b3d.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.direct_core_other",
+                                                "root.div.03g2c7c2b3e.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other.remaining_family",
+                                            ] {
+                                                let matches_label =
+                                                    residual_difference_exact_zero_common_scale_residual_direct_other_label
+                                                        == Some(label);
+                                                run_profiled_orchestrator_bool_section(label, || {
+                                                    matches_label
+                                                });
+                                            }
+                                            run_profiled_orchestrator_bool_section(
+                                                "root.div.03g2c7c2b3.nested_zero.residual_difference_exact_zero_common_scale_residual_direct_other",
+                                                || {
+                                                    residual_difference_exact_zero_common_scale_residual_direct_label
+                                                        .is_some()
+                                                },
+                                            );
+                                        }
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && !residual_difference_exact_zero_common_scale_same_denominator
+                                            && !residual_difference_exact_zero_common_scale_residual_direct
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7c2c.nested_zero.residual_difference_exact_zero_common_scale_tail_fast_trig_raw",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_exact_zero_common_scale_tail_fast_trig_raw =
+                                            if !residual_difference_exact_zero_same_denominator_pair
+                                                && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                                && !residual_difference_exact_zero_common_scale_known_residual
+                                                && !residual_difference_exact_zero_common_scale_same_denominator
+                                                && !residual_difference_exact_zero_common_scale_residual_direct
+                                                && profile_nested_zero
+                                            {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c7c2c.nested_zero.residual_difference_exact_zero_common_scale_tail_fast_trig_raw",
+                                                    || {
+                                                        residual_difference_exact_zero_common_scale_rule_family
+                                                            == Some(
+                                                                crate::rules::arithmetic::ExactZeroCommonScaleRouteProfileFamily::TailFastTrigRaw,
+                                                            )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && !residual_difference_exact_zero_common_scale_same_denominator
+                                            && !residual_difference_exact_zero_common_scale_residual_direct
+                                            && !residual_difference_exact_zero_common_scale_tail_fast_trig_raw
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7c2d.nested_zero.residual_difference_exact_zero_common_scale_tail_fast_trig_normalized",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        let residual_difference_exact_zero_common_scale_tail_fast_trig_normalized =
+                                            if !residual_difference_exact_zero_same_denominator_pair
+                                                && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                                && !residual_difference_exact_zero_common_scale_known_residual
+                                                && !residual_difference_exact_zero_common_scale_same_denominator
+                                                && !residual_difference_exact_zero_common_scale_residual_direct
+                                                && !residual_difference_exact_zero_common_scale_tail_fast_trig_raw
+                                                && profile_nested_zero
+                                            {
+                                                run_profiled_orchestrator_bool_section(
+                                                    "root.div.03g2c7c2d.nested_zero.residual_difference_exact_zero_common_scale_tail_fast_trig_normalized",
+                                                    || {
+                                                        residual_difference_exact_zero_common_scale_rule_family
+                                                            == Some(
+                                                                crate::rules::arithmetic::ExactZeroCommonScaleRouteProfileFamily::TailFastTrigNormalized,
+                                                            )
+                                                    },
+                                                )
+                                            } else {
+                                                false
+                                            };
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && !residual_difference_exact_zero_common_scale_same_denominator
+                                            && !residual_difference_exact_zero_common_scale_residual_direct
+                                            && !residual_difference_exact_zero_common_scale_tail_fast_trig_raw
+                                            && !residual_difference_exact_zero_common_scale_tail_fast_trig_normalized
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7c2e.nested_zero.residual_difference_exact_zero_common_scale_tail_two_term_core_equivalence",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && !residual_difference_exact_zero_common_scale_same_denominator
+                                            && !residual_difference_exact_zero_common_scale_residual_direct
+                                            && !residual_difference_exact_zero_common_scale_tail_fast_trig_raw
+                                            && !residual_difference_exact_zero_common_scale_tail_fast_trig_normalized
+                                            && profile_nested_zero
+                                        {
+                                            run_profiled_orchestrator_bool_section(
+                                                "root.div.03g2c7c2e.nested_zero.residual_difference_exact_zero_common_scale_tail_two_term_core_equivalence",
+                                                || {
+                                                    residual_difference_exact_zero_common_scale_rule_family
+                                                        == Some(
+                                                            crate::rules::arithmetic::ExactZeroCommonScaleRouteProfileFamily::TailTwoTermCoreEquivalence,
+                                                        )
+                                                },
+                                            );
+                                        }
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && !residual_difference_exact_zero_common_scale_same_denominator
+                                            && !residual_difference_exact_zero_common_scale_residual_direct
+                                            && !residual_difference_exact_zero_common_scale_tail_fast_trig_raw
+                                            && !residual_difference_exact_zero_common_scale_tail_fast_trig_normalized
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7c2f.nested_zero.residual_difference_exact_zero_common_scale_other",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_known_residual
+                                            && !residual_difference_exact_zero_common_scale_same_denominator
+                                            && !residual_difference_exact_zero_common_scale_residual_direct
+                                            && !residual_difference_exact_zero_common_scale_tail_fast_trig_raw
+                                            && !residual_difference_exact_zero_common_scale_tail_fast_trig_normalized
+                                            && profile_nested_zero
+                                        {
+                                            run_profiled_orchestrator_bool_section(
+                                                "root.div.03g2c7c2f.nested_zero.residual_difference_exact_zero_common_scale_other",
+                                                || {
+                                                    residual_difference_exact_zero_common_scale_rule_family
+                                                        == Some(
+                                                            crate::rules::arithmetic::ExactZeroCommonScaleRouteProfileFamily::Other,
+                                                        )
+                                                },
+                                            );
+                                        }
+                                        let residual_difference_exact_zero_common_scale_shortcut =
+                                            residual_difference_exact_zero_common_scale_known_residual
+                                                || residual_difference_exact_zero_common_scale_rule;
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_shortcut
+                                            && profile_nested_zero
+                                        {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c7d.nested_zero.residual_difference_exact_zero_shortcut_other",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        if !residual_difference_exact_zero_same_denominator_pair
+                                            && !residual_difference_exact_zero_two_factor_or_quotient_pair
+                                            && !residual_difference_exact_zero_common_scale_shortcut
+                                            && profile_nested_zero
+                                        {
+                                            run_profiled_orchestrator_bool_section(
+                                                "root.div.03g2c7d.nested_zero.residual_difference_exact_zero_shortcut_other",
+                                                || {
+                                                    try_standard_exact_zero_equivalence_shortcut(
+                                                        options,
+                                                        ctx,
+                                                        residual_difference,
+                                                        false,
+                                                    )
+                                                    .is_some()
+                                                },
+                                            );
+                                        }
+                                        if profile_nested_zero {
+                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                                "root.div.03g2c.nested_zero.residual_difference_isolated_zero",
+                                                residual_sample.clone().unwrap_or_default(),
+                                            );
+                                        }
+                                        profiled_nested_zero_bool!(
+                                            "root.div.03g2c.nested_zero.residual_difference_isolated_zero",
+                                            child_isolated_exact_zero(options, ctx, residual_difference)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             );
             if residual_difference_isolated_zero {
                 return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
@@ -16946,10 +18619,42 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
 
     let new_numerator = numerator_core.and_then(|core| {
         profiled_nested_zero_bool!("root.div.03h.nested_zero.new_numerator_rewrite_to_one", {
-            expr_contains_trig_or_hyperbolic_builtin_local(ctx, core)
-                && denominator_core
-                    .is_some_and(|other| is_supported_nested_zero_child_partner(ctx, other))
-                && child_isolated_exact_zero(options, ctx, core)
+            if expr_contains_trig_or_hyperbolic_builtin_local(ctx, core) {
+                if let Some(other) = denominator_core {
+                    if is_supported_nested_zero_child_partner(ctx, other) {
+                        let partner_family =
+                            supported_nested_zero_child_partner_profile_family(ctx, other);
+                        let label = match partner_family {
+                            "log" => {
+                                "root.div.03h1.nested_zero.new_numerator_rewrite_to_one.partner_family.log"
+                            }
+                            "nonlog_additive" => {
+                                "root.div.03h2.nested_zero.new_numerator_rewrite_to_one.partner_family.nonlog_additive"
+                            }
+                            _ => {
+                                "root.div.03h3.nested_zero.new_numerator_rewrite_to_one.partner_family.other"
+                            }
+                        };
+                        if profile_nested_zero {
+                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                label,
+                                format!("{}  ||  {}", render_expr(ctx, core), render_expr(ctx, other)),
+                            );
+                            run_profiled_orchestrator_bool_section(label, || {
+                                child_isolated_exact_zero(options, ctx, core)
+                            })
+                        } else {
+                            child_isolated_exact_zero(options, ctx, core)
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
         })
         .then_some(one)
     });
@@ -25372,6 +27077,140 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
             "((2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x) - 2*sin(x))) + 1)/((exp(x) - exp(-x) - 2*sinh(x)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_nested_zero_core_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_hyperbolic_pythagorean_residual_difference_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((cosh(x)^2 - 1) + 1)/((sinh(x)^2) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_nested_zero_core_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_trig_ratio_residual_difference_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((sin(2*x)/cos(2*x)) + 1)/((tan(2*x)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_nested_zero_core_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_trig_reciprocal_residual_difference_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("((1/cos(x)) + 1)/((sec(x)) + 1)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_nested_zero_core_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_hyperbolic_sinh_double_angle_residual_difference_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((2*sinh(x)*cosh(x) + a) + 1)/((sinh(2*x) + a) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_nested_zero_core_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_hyperbolic_cosh_double_angle_square_residual_difference_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((cosh(2*x)) + 1)/(((2*cosh(x)^2 - 1)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_nested_zero_core_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_hyperbolic_sinh_angle_difference_residual_difference_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((sinh(x-y)) + 1)/((sinh(x)*cosh(y) - sinh(y)*cosh(x)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_nested_zero_core_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_hyperbolic_cosh_triple_angle_residual_difference_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((4*cosh(x)^3 - 3*cosh(x)) + 1)/((cosh(3*x)) + 1)",
             &mut simplifier.context,
         )
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
