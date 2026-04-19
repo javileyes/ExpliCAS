@@ -3,10 +3,12 @@ use cas_api_models::{
     EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalStepsMode,
     EvalValueDomain,
 };
+use cas_ast::{count_nodes_and_max_depth, Context};
 use cas_engine::{
     clear_orchestrator_shortcut_profile, orchestrator_shortcut_profile_report,
     orchestrator_shortcut_profiling_enabled,
 };
+use cas_parser::parse;
 use cas_session::eval::{evaluate_eval_command_with_session, EvalCommandConfig};
 use std::collections::BTreeMap;
 use std::env;
@@ -24,6 +26,7 @@ struct CorpusCase {
     source: String,
     target: String,
     expected_strategy: String,
+    complexity: ComplexityProfile,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +52,89 @@ struct Summary {
     failed: usize,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum ComplexityLevel {
+    L0RootPair,
+    L1SingleWrapper,
+    L2WrapperPlusNoise,
+    L3NestedOrComposed,
+}
+
+impl ComplexityLevel {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::L0RootPair => "l0_root_pair",
+            Self::L1SingleWrapper => "l1_single_wrapper",
+            Self::L2WrapperPlusNoise => "l2_wrapper_plus_noise",
+            Self::L3NestedOrComposed => "l3_nested_or_composed",
+        }
+    }
+
+    fn parse_arg(value: &str) -> Option<Self> {
+        match value {
+            "l0" | "l0_root_pair" | "root_pair" => Some(Self::L0RootPair),
+            "l1" | "l1_single_wrapper" | "single_wrapper" => Some(Self::L1SingleWrapper),
+            "l2" | "l2_wrapper_plus_noise" | "wrapper_plus_noise" => Some(Self::L2WrapperPlusNoise),
+            "l3" | "l3_nested_or_composed" | "nested_or_composed" => Some(Self::L3NestedOrComposed),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for ComplexityLevel {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ComplexityProfile {
+    expression_depth: usize,
+    wrapper_overhead_nodes: usize,
+    shell_depth: usize,
+    level: ComplexityLevel,
+}
+
+#[derive(Debug, Default, Clone, Copy)]
+struct ComplexitySummary {
+    total: usize,
+    passed: usize,
+    failed: usize,
+    total_wrapper_overhead_nodes: usize,
+    total_shell_depth: usize,
+    max_shell_depth: usize,
+}
+
+impl ComplexitySummary {
+    fn record(&mut self, complexity: ComplexityProfile, failed: bool) {
+        self.total += 1;
+        if failed {
+            self.failed += 1;
+        } else {
+            self.passed += 1;
+        }
+        self.total_wrapper_overhead_nodes += complexity.wrapper_overhead_nodes;
+        self.total_shell_depth += complexity.shell_depth;
+        self.max_shell_depth = self.max_shell_depth.max(complexity.shell_depth);
+    }
+
+    fn avg_wrapper_overhead_nodes(self) -> f64 {
+        if self.total == 0 {
+            0.0
+        } else {
+            self.total_wrapper_overhead_nodes as f64 / self.total as f64
+        }
+    }
+
+    fn avg_shell_depth(self) -> f64 {
+        if self.total == 0 {
+            0.0
+        } else {
+            self.total_shell_depth as f64 / self.total as f64
+        }
+    }
+}
+
 #[derive(Debug)]
 struct RunnerConfig {
     csv_path: PathBuf,
@@ -56,6 +142,7 @@ struct RunnerConfig {
     limit: Option<usize>,
     wrapper_filter: Option<String>,
     family_filter: Option<String>,
+    complexity_level_filter: Option<ComplexityLevel>,
 }
 
 fn main() {
@@ -79,6 +166,9 @@ fn run(config: RunnerConfig) -> i32 {
     if let Some(family) = &config.family_filter {
         cases.retain(|case| &case.family == family);
     }
+    if let Some(level) = config.complexity_level_filter {
+        cases.retain(|case| case.complexity.level == level);
+    }
     if let Some(limit) = config.limit {
         cases.truncate(limit);
     }
@@ -92,9 +182,13 @@ fn run(config: RunnerConfig) -> i32 {
     let mut failures = Vec::new();
     let mut by_wrapper = BTreeMap::<String, Summary>::new();
     let mut by_family = BTreeMap::<String, Summary>::new();
+    let mut by_shell_depth = BTreeMap::<usize, Summary>::new();
+    let mut by_complexity = BTreeMap::<ComplexityLevel, ComplexitySummary>::new();
+    let mut by_wrapper_complexity = BTreeMap::<(String, ComplexityLevel), ComplexitySummary>::new();
 
     for (index, case) in cases.iter().enumerate() {
         let failure = evaluate_case(case);
+        let failed = failure.is_some();
 
         let wrapper_entry = by_wrapper.entry(case.wrapper.clone()).or_default();
         wrapper_entry.total += 1;
@@ -102,13 +196,29 @@ fn run(config: RunnerConfig) -> i32 {
         let family_entry = by_family.entry(case.family.clone()).or_default();
         family_entry.total += 1;
 
+        let shell_depth_entry = by_shell_depth
+            .entry(case.complexity.shell_depth)
+            .or_default();
+        shell_depth_entry.total += 1;
+
+        by_complexity
+            .entry(case.complexity.level)
+            .or_default()
+            .record(case.complexity, failed);
+        by_wrapper_complexity
+            .entry((case.wrapper.clone(), case.complexity.level))
+            .or_default()
+            .record(case.complexity, failed);
+
         if let Some(failure) = failure {
             wrapper_entry.failed += 1;
             family_entry.failed += 1;
+            shell_depth_entry.failed += 1;
             failures.push(failure);
         } else {
             wrapper_entry.passed += 1;
             family_entry.passed += 1;
+            shell_depth_entry.passed += 1;
         }
 
         if (index + 1) % 250 == 0 || index + 1 == cases.len() {
@@ -131,6 +241,31 @@ fn run(config: RunnerConfig) -> i32 {
     } else {
         largest_wrapper_cases as f64 / cases.len() as f64
     };
+    let largest_wrapper_complexity_cases = by_wrapper_complexity
+        .values()
+        .map(|summary| summary.total)
+        .max()
+        .unwrap_or(0);
+    let largest_wrapper_complexity_share = if cases.is_empty() {
+        0.0
+    } else {
+        largest_wrapper_complexity_cases as f64 / cases.len() as f64
+    };
+    let max_shell_depth = by_shell_depth.keys().copied().max().unwrap_or(0);
+    let max_expression_depth = cases
+        .iter()
+        .map(|case| case.complexity.expression_depth)
+        .max()
+        .unwrap_or(0);
+    let avg_wrapper_overhead_nodes = if cases.is_empty() {
+        0.0
+    } else {
+        cases
+            .iter()
+            .map(|case| case.complexity.wrapper_overhead_nodes)
+            .sum::<usize>() as f64
+            / cases.len() as f64
+    };
     println!("Corpus file: {}", config.csv_path.display());
     println!("Failures file: {}", config.failures_path.display());
     println!("Total cases: {}", cases.len());
@@ -139,9 +274,21 @@ fn run(config: RunnerConfig) -> i32 {
     println!("Elapsed: {:.2?}", elapsed);
     println!("Distinct wrappers: {}", by_wrapper.len());
     println!("Distinct families: {}", by_family.len());
+    println!("Distinct complexity levels: {}", by_complexity.len());
+    println!("Distinct shell depths: {}", by_shell_depth.len());
     println!(
         "Largest wrapper share: {:.1}%",
         largest_wrapper_share * 100.0
+    );
+    println!(
+        "Largest wrapper x complexity share: {:.1}%",
+        largest_wrapper_complexity_share * 100.0
+    );
+    println!("Max shell depth: {}", max_shell_depth);
+    println!("Max expression depth: {}", max_expression_depth);
+    println!(
+        "Average wrapper overhead nodes: {:.2}",
+        avg_wrapper_overhead_nodes
     );
     println!("Wrappers: {}", wrapper_names.join(", "));
     println!();
@@ -150,6 +297,45 @@ fn run(config: RunnerConfig) -> i32 {
         println!(
             "  {}: total={} passed={} failed={}",
             wrapper, summary.total, summary.passed, summary.failed
+        );
+    }
+    println!();
+    println!("By shell depth:");
+    for (shell_depth, summary) in &by_shell_depth {
+        println!(
+            "  depth {}: total={} passed={} failed={}",
+            shell_depth, summary.total, summary.passed, summary.failed
+        );
+    }
+    println!();
+    println!("By complexity level:");
+    for (level, summary) in &by_complexity {
+        println!(
+            "  {}: total={} passed={} failed={} avg_wrapper_overhead_nodes={:.2} avg_shell_depth={:.2} max_shell_depth={}",
+            level,
+            summary.total,
+            summary.passed,
+            summary.failed,
+            summary.avg_wrapper_overhead_nodes(),
+            summary.avg_shell_depth(),
+            summary.max_shell_depth,
+        );
+    }
+    println!();
+    println!("Top wrapper x complexity buckets:");
+    let mut wrapper_complexity_rows: Vec<_> = by_wrapper_complexity.iter().collect();
+    wrapper_complexity_rows.sort_by_key(|((_, _), summary)| std::cmp::Reverse(summary.total));
+    for ((wrapper, level), summary) in wrapper_complexity_rows.into_iter().take(20) {
+        println!(
+            "  {} x {}: total={} passed={} failed={} avg_wrapper_overhead_nodes={:.2} avg_shell_depth={:.2} max_shell_depth={}",
+            wrapper,
+            level,
+            summary.total,
+            summary.passed,
+            summary.failed,
+            summary.avg_wrapper_overhead_nodes(),
+            summary.avg_shell_depth(),
+            summary.max_shell_depth,
         );
     }
     println!();
@@ -207,6 +393,7 @@ fn parse_args() -> RunnerConfig {
     let mut limit = None;
     let mut wrapper_filter = None;
     let mut family_filter = None;
+    let mut complexity_level_filter = None;
 
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
@@ -233,6 +420,16 @@ fn parse_args() -> RunnerConfig {
             "--family" => {
                 family_filter = Some(args.next().expect("--family requires a value"));
             }
+            "--complexity-level" => {
+                let value = args.next().expect("--complexity-level requires a value");
+                complexity_level_filter = Some(ComplexityLevel::parse_arg(&value).unwrap_or_else(
+                    || {
+                        panic!(
+                            "invalid --complexity-level value: {value} (expected one of: l0_root_pair, l1_single_wrapper, l2_wrapper_plus_noise, l3_nested_or_composed)"
+                        )
+                    },
+                ));
+            }
             other => panic!("unknown argument: {other}"),
         }
     }
@@ -243,6 +440,7 @@ fn parse_args() -> RunnerConfig {
         limit,
         wrapper_filter,
         family_filter,
+        complexity_level_filter,
     }
 }
 
@@ -269,9 +467,52 @@ fn load_cases(path: &Path) -> Vec<CorpusCase> {
                 source: parts[5].clone(),
                 target: parts[6].clone(),
                 expected_strategy: parts[7].clone(),
+                complexity: analyze_case_complexity(&parts[0], &parts[5], &parts[6]),
             }
         })
         .collect()
+}
+
+fn analyze_case_complexity(expression: &str, source: &str, target: &str) -> ComplexityProfile {
+    let mut ctx = Context::default();
+    let expression_id = parse(expression, &mut ctx)
+        .unwrap_or_else(|err| panic!("failed to parse embedded expression `{expression}`: {err}"));
+    let source_id = parse(source, &mut ctx)
+        .unwrap_or_else(|err| panic!("failed to parse source `{source}`: {err}"));
+    let target_id = parse(target, &mut ctx)
+        .unwrap_or_else(|err| panic!("failed to parse target `{target}`: {err}"));
+
+    let (expression_nodes, expression_depth) = count_nodes_and_max_depth(&ctx, expression_id);
+    let (source_nodes, source_depth) = count_nodes_and_max_depth(&ctx, source_id);
+    let (target_nodes, target_depth) = count_nodes_and_max_depth(&ctx, target_id);
+
+    // Use the larger side of the naked pair as the core baseline. This keeps the
+    // contextual delta focused on wrapper/noise overhead instead of the intrinsic
+    // asymmetry of a specific identity orientation.
+    let core_nodes = source_nodes.max(target_nodes);
+    let core_depth = source_depth.max(target_depth);
+    let wrapper_overhead_nodes = expression_nodes.saturating_sub(core_nodes);
+    let shell_depth = expression_depth.saturating_sub(core_depth);
+    let level = classify_complexity_level(shell_depth, wrapper_overhead_nodes);
+
+    ComplexityProfile {
+        expression_depth,
+        wrapper_overhead_nodes,
+        shell_depth,
+        level,
+    }
+}
+
+fn classify_complexity_level(shell_depth: usize, wrapper_overhead_nodes: usize) -> ComplexityLevel {
+    if shell_depth == 0 && wrapper_overhead_nodes <= 2 {
+        ComplexityLevel::L0RootPair
+    } else if shell_depth <= 1 && wrapper_overhead_nodes <= 6 {
+        ComplexityLevel::L1SingleWrapper
+    } else if shell_depth <= 2 && wrapper_overhead_nodes <= 14 {
+        ComplexityLevel::L2WrapperPlusNoise
+    } else {
+        ComplexityLevel::L3NestedOrComposed
+    }
 }
 
 fn split_csv_line(line: &str) -> Vec<String> {

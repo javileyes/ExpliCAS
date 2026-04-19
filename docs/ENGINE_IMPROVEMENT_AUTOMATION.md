@@ -556,6 +556,74 @@ In practice, a good progression looks like:
 
 This is a better long-term growth ladder than “just make the expression deeper”.
 
+### Operational Complexity Levels For Embedded
+
+This policy should be implemented in the embedded corpus runner, not kept as a
+manual intuition.
+
+For each embedded row, the runner should compute:
+
+- `shell_depth`
+  - `expression_depth - max(source_depth, target_depth)`
+- `wrapper_overhead_nodes`
+  - `expression_nodes - max(source_nodes, target_nodes)`
+
+The baseline uses the larger naked side of the pair so that the contextual delta
+tracks wrapper/noise/composition overhead, not the intrinsic asymmetry of one
+orientation of the identity.
+
+Those raw metrics should then be collapsed into a small number of stable
+complexity levels:
+
+- `l0_root_pair`
+  - `shell_depth == 0` and `wrapper_overhead_nodes <= 2`
+- `l1_single_wrapper`
+  - `shell_depth <= 1` and `wrapper_overhead_nodes <= 6`
+- `l2_wrapper_plus_noise`
+  - `shell_depth <= 2` and `wrapper_overhead_nodes <= 14`
+- `l3_nested_or_composed`
+  - everything else
+
+These levels are intentionally not “number of wrappers only”.
+
+A case can move up a level through:
+
+- one more contextual wrapper
+- the same wrapper plus passthrough/noise overhead
+- nested wrappers
+- cross-family composition
+
+That is the right behavior for the automation loop, because the engine often
+pays for contextual complexity long before it pays for extreme raw AST depth.
+
+Operationally, the runner should report at least:
+
+- family spread
+- wrapper spread
+- shell-depth spread
+- complexity-level spread
+- `wrapper x complexity-level` concentration
+
+The selector should then use this reading:
+
+- if wrapper spread is weak, prefer a new wrapper axis first
+- if wrapper spread is healthy but most traffic is still `l0/l1`, prefer the
+  next retained complexity level inside an important wrapper
+- if `wrapper x complexity-level` concentration is high, be skeptical of adding
+  more examples in the dominant bucket
+
+Promotion guidance should also use this stratification:
+
+- do not promote a new row just because it is “more complex” syntactically
+- do promote a row when it raises wrapper coverage, shell depth, or
+  `wrapper x level` coverage for an important family
+- a row that stays in the same family, same wrapper, and same complexity level
+  should usually stay out unless it adds a new strategy tier or catches a known
+  fragile routing path
+
+This makes “add more wrappers” a controlled lever inside the scorecard, instead
+of an ad-hoc intuition.
+
 ## Derive Needs Different Dimensions
 
 `derive` should not inherit the same score interpretation as `embedded`.
