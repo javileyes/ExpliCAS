@@ -5,7 +5,8 @@ use cas_ast::{Context, Expr, ExprPath};
 use cas_formatter::path::{
     diff_find_path_to_expr, diff_find_paths_by_structure, navigate_to_subexpr,
 };
-use cas_formatter::{DisplayContext, HighlightColor, StylePreferences};
+use cas_formatter::{DisplayContext, HighlightColor, LaTeXExpr, StylePreferences};
+use num_traits::Zero;
 
 pub(super) fn render_after_additive_focus(
     context: &Context,
@@ -40,6 +41,14 @@ pub(super) fn render_after_additive_focus(
             HighlightColor::Green,
             render_with_single_path,
         );
+    }
+
+    if matches!(context.get(focus_after), Expr::Number(n) if n.is_zero()) {
+        return LaTeXExpr {
+            context,
+            id: global_after_expr,
+        }
+        .to_latex();
     }
 
     if let Some(scope_path) = common_path {

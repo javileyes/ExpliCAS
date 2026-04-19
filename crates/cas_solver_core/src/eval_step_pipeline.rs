@@ -1,6 +1,7 @@
 //! Generic eval-step cleanup pipeline shared across crates.
 
-use cas_ast::ExprId;
+use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_predicates::{is_one_expr, is_zero_expr};
 
 /// Clean raw eval steps for display:
 /// 1) Remove no-op steps (no global or focused local change),
@@ -68,10 +69,89 @@ pub fn to_display_eval_steps(
     crate::display_steps::DisplaySteps(cleaned)
 }
 
+pub fn normalize_expr_for_display(ctx: &mut Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) => {
+            let lhs = normalize_expr_for_display(ctx, lhs);
+            let rhs = normalize_expr_for_display(ctx, rhs);
+            if is_zero_expr(ctx, lhs) {
+                rhs
+            } else if is_zero_expr(ctx, rhs) {
+                lhs
+            } else {
+                ctx.add(Expr::Add(lhs, rhs))
+            }
+        }
+        Expr::Sub(lhs, rhs) => {
+            let lhs = normalize_expr_for_display(ctx, lhs);
+            let rhs = normalize_expr_for_display(ctx, rhs);
+            if is_zero_expr(ctx, rhs) {
+                lhs
+            } else {
+                ctx.add(Expr::Sub(lhs, rhs))
+            }
+        }
+        Expr::Mul(lhs, rhs) => {
+            let lhs = normalize_expr_for_display(ctx, lhs);
+            let rhs = normalize_expr_for_display(ctx, rhs);
+            if is_zero_expr(ctx, lhs) || is_zero_expr(ctx, rhs) {
+                ctx.num(0)
+            } else if is_one_expr(ctx, lhs) {
+                rhs
+            } else if is_one_expr(ctx, rhs) {
+                lhs
+            } else {
+                ctx.add(Expr::Mul(lhs, rhs))
+            }
+        }
+        Expr::Div(lhs, rhs) => {
+            let lhs = normalize_expr_for_display(ctx, lhs);
+            let rhs = normalize_expr_for_display(ctx, rhs);
+            if is_one_expr(ctx, rhs) {
+                lhs
+            } else {
+                ctx.add(Expr::Div(lhs, rhs))
+            }
+        }
+        Expr::Pow(base, exp) => {
+            let base = normalize_expr_for_display(ctx, base);
+            let exp = normalize_expr_for_display(ctx, exp);
+            ctx.add(Expr::Pow(base, exp))
+        }
+        Expr::Neg(inner) => {
+            let inner = normalize_expr_for_display(ctx, inner);
+            if is_zero_expr(ctx, inner) {
+                inner
+            } else {
+                ctx.add(Expr::Neg(inner))
+            }
+        }
+        Expr::Function(fn_id, args) => {
+            let args = args
+                .into_iter()
+                .map(|arg| normalize_expr_for_display(ctx, arg))
+                .collect();
+            ctx.add(Expr::Function(fn_id, args))
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let data = data
+                .into_iter()
+                .map(|item| normalize_expr_for_display(ctx, item))
+                .collect();
+            ctx.add(Expr::Matrix { rows, cols, data })
+        }
+        Expr::Hold(inner) => {
+            let inner = normalize_expr_for_display(ctx, inner);
+            ctx.add(Expr::Hold(inner))
+        }
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cas_ast::Context;
+    use cas_ast::{Context, Expr};
 
     #[derive(Clone, Debug)]
     struct TestStep {
@@ -199,5 +279,20 @@ mod tests {
         let step = crate::step_model::Step::new_compact("test", "rule", one, two);
         let out = super::to_display_eval_steps(vec![step]);
         assert_eq!(out.len(), 1);
+    }
+
+    #[test]
+    fn normalize_expr_for_display_collapses_identity_noise() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let zero = ctx.num(0);
+        let one = ctx.num(1);
+        let x_plus_zero = ctx.add(Expr::Add(x, zero));
+        let zero_plus_zero = ctx.add(Expr::Add(zero, zero));
+        let x_times_one = ctx.add(Expr::Mul(x, one));
+
+        assert_eq!(normalize_expr_for_display(&mut ctx, x_plus_zero), x);
+        assert_eq!(normalize_expr_for_display(&mut ctx, zero_plus_zero), zero);
+        assert_eq!(normalize_expr_for_display(&mut ctx, x_times_one), x);
     }
 }

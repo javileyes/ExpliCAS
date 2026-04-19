@@ -33,11 +33,13 @@ fn render_optional_expr(
 ) -> Option<String> {
     expr.map(|id| {
         let clean = strip_all_holds(ctx, id);
+        let normalized =
+            cas_solver_core::eval_step_pipeline::normalize_expr_for_display(ctx, clean);
         cas_formatter::clean_display_string(&format!(
             "{}",
             cas_formatter::DisplayExpr {
                 context: ctx,
-                id: clean
+                id: normalized
             }
         ))
     })

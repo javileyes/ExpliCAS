@@ -6,8 +6,11 @@ use super::direct::render_direct_focus_transition;
 use crate::runtime::Step;
 use crate::timeline::simplify_highlights::TimelineStepSnapshots;
 use cas_ast::{Context, Expr, ExprId, ExprPath};
-use cas_formatter::path::{diff_find_path_to_expr, diff_find_paths_by_structure};
+use cas_formatter::path::{
+    diff_find_path_to_expr, diff_find_paths_by_structure, navigate_to_subexpr,
+};
 use cas_formatter::{DisplayContext, StylePreferences};
+use num_traits::Zero;
 
 pub(super) fn render_local_scope_transition(
     context: &Context,
@@ -62,8 +65,31 @@ fn render_absolute_scope_transition(
     style_prefs: &StylePreferences,
 ) -> Option<(String, String)> {
     let focus_after = step.after_local().unwrap_or(step.after);
-    let before_path = find_absolute_path(context, snapshots.global_before_expr, before_local)?;
-    let after_path = find_absolute_path(context, snapshots.global_after_expr, focus_after)?;
+    let mut before_path = find_absolute_path(context, snapshots.global_before_expr, before_local);
+    let mut after_path = find_absolute_path(context, snapshots.global_after_expr, focus_after);
+
+    if before_path.is_none() {
+        if let Some(candidate) = after_path.clone().filter(|path| !path.is_empty()) {
+            let candidate_expr =
+                navigate_to_subexpr(context, snapshots.global_before_expr, &candidate);
+            if candidate_expr != snapshots.global_before_expr {
+                before_path = Some(candidate);
+            }
+        }
+    }
+
+    if after_path.is_none() && !matches!(context.get(focus_after), Expr::Number(n) if n.is_zero()) {
+        if let Some(candidate) = before_path.clone().filter(|path| !path.is_empty()) {
+            let candidate_expr =
+                navigate_to_subexpr(context, snapshots.global_after_expr, &candidate);
+            if candidate_expr != snapshots.global_after_expr {
+                after_path = Some(candidate);
+            }
+        }
+    }
+
+    let before_path = before_path?;
+    let after_path = after_path?;
 
     let before = render_with_single_path(
         context,

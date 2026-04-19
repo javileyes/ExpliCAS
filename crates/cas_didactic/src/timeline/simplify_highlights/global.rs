@@ -42,15 +42,14 @@ pub(super) fn render_global_transition_latex(
 
 fn preferred_local_scope(context: &Context, step: &Step) -> Option<ExprId> {
     let focus_before = step.before_local().unwrap_or(step.before);
-    if step
-        .before_local()
-        .is_some_and(|before_local| before_local != step.before)
-    {
+    if step.before_local().is_some() {
         return Some(focus_before);
     }
 
     match context.get(focus_before) {
-        Expr::Function(_, _) | Expr::Add(_, _) | Expr::Sub(_, _) => Some(focus_before),
+        Expr::Function(_, _) | Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Div(_, _) => {
+            Some(focus_before)
+        }
         _ => None,
     }
 }

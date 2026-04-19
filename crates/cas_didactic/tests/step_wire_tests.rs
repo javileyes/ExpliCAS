@@ -64,7 +64,7 @@ fn step_wire_events_fallback_is_used_when_steps_are_missing() {
 
     assert_eq!(steps.len(), 1);
     assert_eq!(steps[0].rule, "Additive Identity");
-    assert_eq!(steps[0].before, "x + 0");
+    assert_eq!(steps[0].before, "x");
     assert_eq!(steps[0].after, "x");
 }
 
@@ -86,6 +86,134 @@ fn step_wire_events_fallback_respects_off_mode() {
         "off",
     );
     assert!(steps.is_empty());
+}
+
+#[test]
+fn step_wire_log_fraction_gap_regression_cleans_identity_noise_without_breaking_after_focus() {
+    let expr = "(log(x*sqrt(x)) + log(sqrt(x)/x^2)) + (sqrt(y)/(sqrt(y)-1) - sqrt(y)/(sqrt(y)+1) - (2*sqrt(y))/(y-1)) + (((1/x) - (1/y))/((y-x)/(x*y)) - 1)";
+    let (engine, output) = eval_output_for(expr);
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    for step in &steps {
+        assert!(
+            !step.before.contains(" + 0") && !step.before.starts_with("0 + "),
+            "wire before still contains additive zero noise: {}",
+            step.before
+        );
+        assert!(
+            !step.after.contains(" + 0") && !step.after.starts_with("0 + "),
+            "wire after still contains additive zero noise: {}",
+            step.after
+        );
+        assert!(
+            !step.before_latex.contains("+ 0") && !step.before_latex.contains("0 +"),
+            "wire before_latex still contains additive zero noise: {}",
+            step.before_latex
+        );
+        assert!(
+            !step.after_latex.contains("+ 0") && !step.after_latex.contains("0 +"),
+            "wire after_latex still contains additive zero noise: {}",
+            step.after_latex
+        );
+    }
+
+    let collapse_common_scale = steps
+        .iter()
+        .find(|step| step.rule == "Collapse Common-Scale Equivalent Difference")
+        .expect("expected common-scale collapse step");
+    assert!(
+        !collapse_common_scale
+            .after_latex
+            .starts_with("{\\color{green}{"),
+        "after_latex should not highlight the entire surviving residual: {}",
+        collapse_common_scale.after_latex
+    );
+    assert!(
+        collapse_common_scale
+            .after_latex
+            .contains("\\frac{\\frac{1}{x} - \\frac{1}{y}}{\\frac{y - x}{x\\cdot y}}"),
+        "expected surviving residual after removing the zero summand, got: {}",
+        collapse_common_scale.after_latex
+    );
+
+    let self_cancel = steps
+        .iter()
+        .find(|step| {
+            step.rule == "Restar dos expresiones iguales"
+                && step.after.contains("sqrt(y)/(sqrt(y) - 1)")
+        })
+        .expect("expected self-cancel step");
+    assert!(
+        !self_cancel.after_latex.starts_with("{\\color{green}{"),
+        "after_latex should stay plain when the local zero disappears from the cleaned snapshot: {}",
+        self_cancel.after_latex
+    );
+    assert!(
+        self_cancel
+            .after_latex
+            .contains("\\frac{\\sqrt{y}}{\\sqrt{y} - 1}"),
+        "expected surviving y-residual after removing the zero summand, got: {}",
+        self_cancel.after_latex
+    );
+
+    let expand_inside_fraction = steps
+        .iter()
+        .find(|step| {
+            step.rule == "Expandir la expresión"
+                && step.before.contains("(sqrt(y) · (sqrt(y) - 1))/(y - 1)")
+        })
+        .expect("expected distributive step inside the fraction");
+    assert!(
+        expand_inside_fraction
+            .before_latex
+            .contains("{\\color{red}{\\sqrt{y}\\cdot (\\sqrt{y} - 1)}}"),
+        "expected the factorized product to stay highlighted in before_latex, got: {}",
+        expand_inside_fraction.before_latex
+    );
+    assert!(
+        expand_inside_fraction
+            .after_latex
+            .contains("{\\color{green}{\\sqrt{y}\\cdot \\sqrt{y} - 1\\cdot \\sqrt{y}}}"),
+        "expected the expanded product to stay highlighted in after_latex, got: {}",
+        expand_inside_fraction.after_latex
+    );
+}
+
+#[test]
+fn step_wire_pull_constant_from_fraction_highlights_the_rewritten_fraction() {
+    let expr = "(log(x*sqrt(x)) + log(sqrt(x)/x^2)) + (sqrt(y)/(sqrt(y)-1) - sqrt(y)/(sqrt(y)+1) - (2*sqrt(y))/(y-1)) + (((1/x) - (1/y))/((y-x)/(x*y)) - 1)";
+    let (engine, output) = eval_output_for(expr);
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let pull_steps: Vec<_> = steps
+        .iter()
+        .filter(|step| step.rule == "Pull Constant From Fraction")
+        .collect();
+    assert_eq!(pull_steps.len(), 2, "expected the two pull-constant steps");
+
+    assert!(
+        pull_steps[0]
+            .before_latex
+            .starts_with("{\\color{red}{\\frac{2\\cdot \\sqrt{y}}{y - 1}}}"),
+        "expected the first pull-constant step to highlight the full input fraction, got: {}",
+        pull_steps[0].before_latex
+    );
+    assert!(
+        pull_steps[0]
+            .after_latex
+            .starts_with("{\\color{green}{2\\cdot \\frac{\\sqrt{y}}{y - 1}}}"),
+        "expected the first pull-constant step to highlight the full rewritten fraction, got: {}",
+        pull_steps[0].after_latex
+    );
+    assert!(
+        pull_steps[1]
+            .after_latex
+            .starts_with("{\\color{green}{2\\cdot \\frac{\\sqrt{y}}{y - 1}}}"),
+        "expected the second pull-constant step to highlight the rewritten fraction, got: {}",
+        pull_steps[1].after_latex
+    );
 }
 
 #[test]

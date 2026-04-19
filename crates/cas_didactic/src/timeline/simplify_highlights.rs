@@ -45,22 +45,63 @@ pub(crate) fn render_step_wire_global_before_after_latex(
     context: &Context,
     step: &Step,
 ) -> (String, String) {
-    let snapshots = step_wire_presentation_snapshots(context, step);
+    let mut temp_ctx = context.clone();
+    let snapshots = step_wire_presentation_snapshots(&mut temp_ctx, step);
+    let mut presentation_step = step.clone();
+    presentation_step.before =
+        cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut temp_ctx, step.before);
+    presentation_step.after =
+        cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut temp_ctx, step.after);
+    if let Some(meta) = presentation_step.meta.as_mut() {
+        if let Some(before_local) = meta.before_local {
+            meta.before_local = Some(
+                cas_solver_core::eval_step_pipeline::normalize_expr_for_display(
+                    &mut temp_ctx,
+                    before_local,
+                ),
+            );
+        }
+        if let Some(after_local) = meta.after_local {
+            meta.after_local = Some(
+                cas_solver_core::eval_step_pipeline::normalize_expr_for_display(
+                    &mut temp_ctx,
+                    after_local,
+                ),
+            );
+        }
+    }
     let display_hints = DisplayContext::default();
     let style_prefs = StylePreferences::default();
-    global::render_global_transition_latex(context, step, snapshots, &display_hints, &style_prefs)
+    global::render_global_transition_latex(
+        &temp_ctx,
+        &presentation_step,
+        snapshots,
+        &display_hints,
+        &style_prefs,
+    )
 }
 
 pub(crate) fn step_wire_presentation_snapshots(
-    context: &Context,
+    context: &mut Context,
     step: &Step,
 ) -> TimelineStepSnapshots {
-    let global_before_expr = step.global_before.unwrap_or(step.before);
-    let global_after_expr = step.global_after.unwrap_or(step.after);
+    let raw_global_before_expr = step.global_before.unwrap_or(step.before);
+    let raw_global_after_expr = step.global_after.unwrap_or(step.after);
+    let global_before_expr = cas_solver_core::eval_step_pipeline::normalize_expr_for_display(
+        context,
+        raw_global_before_expr,
+    );
+    let global_after_expr = cas_solver_core::eval_step_pipeline::normalize_expr_for_display(
+        context,
+        raw_global_after_expr,
+    );
 
-    if is_zero_expr(context, global_after_expr) && step.before != global_before_expr {
+    if is_zero_expr(context, global_after_expr) && step.before != raw_global_before_expr {
         return TimelineStepSnapshots {
-            global_before_expr: step.before_local().unwrap_or(step.before),
+            global_before_expr: cas_solver_core::eval_step_pipeline::normalize_expr_for_display(
+                context,
+                step.before_local().unwrap_or(step.before),
+            ),
             global_after_expr,
         };
     }
