@@ -32,7 +32,10 @@ use cas_math::logarithm_inverse_support::{make_log_expr, try_extract_log_parts};
 use cas_math::nested_fraction_support::try_rewrite_simplify_nested_fraction_expr;
 use cas_math::perfect_square_support::rational_sqrt;
 use cas_math::poly_compare::poly_eq;
-use cas_math::summation_support::{try_plan_finite_product_evaluation, ProductEvaluationKind};
+use cas_math::summation_support::{
+    try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation, ProductEvaluationKind,
+    SumEvaluationKind,
+};
 use cas_math::symbolic_integration_support::get_linear_coeffs;
 use cas_math::telescoping_dirichlet::try_dirichlet_kernel_identity;
 use cas_math::trig_canonicalization_support::{
@@ -15413,7 +15416,6 @@ fn try_build_direct_core_equivalence_rewrite(
         profile_route("rule.direct_core_equivalence.route.finite_product");
         return Some(rewrite);
     }
-
     if let Some(rewrite) =
         try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
@@ -15583,6 +15585,17 @@ fn try_build_direct_core_equivalence_rewrite(
     }
 
     if let Some(false) =
+        reject_noncall_product_vs_division_shared_numerator_scale_before_default_simplify(
+            ctx, lhs_core, rhs_core,
+        )
+    {
+        profile_route(
+            "rule.direct_core_equivalence.route.default_simplify_product_division_shared_scale_reject",
+        );
+        return None;
+    }
+
+    if let Some(false) =
         reject_surface_plain_cross_trig_pair_before_default_simplify(ctx, lhs_core, rhs_core)
     {
         profile_route(
@@ -15683,6 +15696,62 @@ fn reject_atomic_noncall_pair_before_default_simplify(
 ) -> Option<bool> {
     if expr_is_atomic_noncall(ctx, lhs_core) && expr_is_atomic_noncall(ctx, rhs_core) {
         return Some(false);
+    }
+
+    None
+}
+
+fn reject_noncall_product_vs_division_shared_numerator_scale_before_default_simplify(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<bool> {
+    for (product_expr, division_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let product_expr =
+            strip_unit_negation_for_phase_shift(ctx, product_expr).unwrap_or(product_expr);
+        let division_expr =
+            strip_unit_negation_for_phase_shift(ctx, division_expr).unwrap_or(division_expr);
+
+        let product_factors = flatten_mul_chain(ctx, product_expr);
+        if product_factors.len() != 2
+            || !product_factors
+                .iter()
+                .all(|factor| expr_is_atomic_noncall(ctx, *factor))
+        {
+            continue;
+        }
+
+        let Some((numerator, denominator)) = as_div(ctx, division_expr) else {
+            continue;
+        };
+        if !expr_is_atomic_noncall(ctx, denominator) || is_minus_one_expr(ctx, denominator) {
+            continue;
+        }
+        let one = ctx.num(1);
+        if compare_expr(ctx, denominator, one) == Ordering::Equal {
+            continue;
+        }
+
+        let numerator_factors = flatten_mul_chain(ctx, numerator);
+        if numerator_factors.len() != 2
+            || !numerator_factors
+                .iter()
+                .all(|factor| expr_is_atomic_noncall(ctx, *factor))
+        {
+            continue;
+        }
+
+        let shared_factor_count = product_factors
+            .iter()
+            .filter(|product_factor| {
+                numerator_factors.iter().any(|numerator_factor| {
+                    compare_expr(ctx, **product_factor, *numerator_factor) == Ordering::Equal
+                })
+            })
+            .count();
+        if shared_factor_count >= 1 {
+            return Some(false);
+        }
     }
 
     None
@@ -16353,6 +16422,31 @@ fn matches_plain_surface_trig_power_gap_profile_pair(
     false
 }
 
+fn classify_finite_series_vs_other_profile_pair(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> &'static str {
+    for series_expr in [lhs_core, rhs_core] {
+        if let Some(plan) = try_plan_finite_sum_evaluation(ctx, series_expr, 1000) {
+            return match plan.kind {
+                SumEvaluationKind::Telescoping => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_telescoping"
+                }
+                SumEvaluationKind::FiniteDirect { .. } => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_direct"
+                }
+            };
+        }
+
+        if try_plan_finite_product_evaluation(ctx, series_expr, 1000).is_some() {
+            return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.product_evaluable";
+        }
+    }
+
+    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.other"
+}
+
 fn extract_hyperbolic_linear_term_for_profile(
     ctx: &cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -16627,6 +16721,109 @@ fn is_simple_symbolic_multiplicative_noncall_profile_expr(
         && matches!(ctx.get(expr), Expr::Mul(_, _) | Expr::Div(_, _))
 }
 
+fn classify_noncall_multiplicative_profile_pair(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> &'static str {
+    let difference = ctx.add(Expr::Sub(lhs_core, rhs_core));
+    if let Some((_common_factor, residual_expr)) =
+        extract_common_multiplicative_residual_sum(ctx, difference)
+    {
+        let residual_terms = AddView::from_expr(ctx, residual_expr).terms;
+        let normalized_terms: Vec<_> = residual_terms
+            .iter()
+            .copied()
+            .map(|(term_expr, term_sign)| normalize_signed_add_term(ctx, term_expr, term_sign).0)
+            .collect();
+        let atomic_terms = normalized_terms
+            .iter()
+            .filter(|term| expr_is_atomic_noncall(ctx, **term))
+            .count();
+        let division_terms = normalized_terms
+            .iter()
+            .filter(|term| contains_division_like_term(ctx, **term))
+            .count();
+
+        if residual_terms.len() == 2 && atomic_terms == 2 {
+            return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_atomic_tail";
+        }
+
+        if residual_terms.len() == 2 && atomic_terms == 1 && division_terms == 1 {
+            return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_division_tail";
+        }
+
+        return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_other";
+    }
+
+    let lhs_expr = strip_unit_negation_for_phase_shift(ctx, lhs_core).unwrap_or(lhs_core);
+    let rhs_expr = strip_unit_negation_for_phase_shift(ctx, rhs_core).unwrap_or(rhs_core);
+    if matches_noncall_product_vs_division_shared_numerator_scale_profile_pair(
+        ctx, lhs_expr, rhs_expr,
+    ) {
+        return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.product_vs_division_shared_numerator_scale";
+    }
+
+    let lhs_factors = flatten_mul_chain(ctx, lhs_expr);
+    let rhs_factors = flatten_mul_chain(ctx, rhs_expr);
+    if lhs_factors.len() == 2
+        && rhs_factors.len() == 2
+        && lhs_factors
+            .iter()
+            .all(|factor| expr_is_atomic_noncall(ctx, *factor))
+        && rhs_factors
+            .iter()
+            .all(|factor| expr_is_atomic_noncall(ctx, *factor))
+    {
+        return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.cross_atomic_product";
+    }
+
+    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.other"
+}
+
+fn matches_noncall_product_vs_division_shared_numerator_scale_profile_pair(
+    ctx: &mut cas_ast::Context,
+    lhs_expr: cas_ast::ExprId,
+    rhs_expr: cas_ast::ExprId,
+) -> bool {
+    for (product_expr, division_expr) in [(lhs_expr, rhs_expr), (rhs_expr, lhs_expr)] {
+        let product_factors = flatten_mul_chain(ctx, product_expr);
+        if product_factors.len() != 2
+            || !product_factors
+                .iter()
+                .all(|factor| expr_is_atomic_noncall(ctx, *factor))
+        {
+            continue;
+        }
+
+        let Some((numerator, denominator)) = as_div(ctx, division_expr) else {
+            continue;
+        };
+        if !expr_is_atomic_noncall(ctx, denominator) {
+            continue;
+        }
+
+        let numerator_factors = flatten_mul_chain(ctx, numerator);
+        if numerator_factors.len() != 2
+            || !numerator_factors
+                .iter()
+                .all(|factor| expr_is_atomic_noncall(ctx, *factor))
+        {
+            continue;
+        }
+
+        if product_factors.iter().any(|product_factor| {
+            numerator_factors.iter().any(|numerator_factor| {
+                compare_expr(ctx, *product_factor, *numerator_factor) == Ordering::Equal
+            })
+        }) {
+            return true;
+        }
+    }
+
+    false
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum PowerMergeExponentProfileKind {
     Integer,
@@ -16834,7 +17031,7 @@ fn default_simplify_other_profile_label(
         let rhs_multiplicative =
             is_simple_symbolic_multiplicative_noncall_profile_expr(ctx, rhs_core);
         if lhs_multiplicative && rhs_multiplicative {
-            return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair";
+            return classify_noncall_multiplicative_profile_pair(ctx, lhs_core, rhs_core);
         }
 
         if lhs_multiplicative ^ rhs_multiplicative {
@@ -16857,7 +17054,7 @@ fn default_simplify_other_profile_label(
             return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_pair";
         }
 
-        return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other";
+        return classify_finite_series_vs_other_profile_pair(ctx, lhs_core, rhs_core);
     }
 
     if matches_shifted_surface_trig_mismatch_profile_pair(ctx, lhs_core, rhs_core) {
@@ -17112,7 +17309,7 @@ fn direct_core_default_simplify_profile_label(
     let has_tan = has_builtin_on_either_side(ctx, lhs_core, rhs_core, BuiltinFn::Tan);
     let has_cot = has_builtin_on_either_side(ctx, lhs_core, rhs_core, BuiltinFn::Cot);
     if has_div_on_either_side(ctx, lhs_core, rhs_core) && (has_tan || has_cot) {
-        return "rule.direct_core_equivalence.default_simplify.family.trig_ratio";
+        return direct_core_trig_ratio_profile_label(ctx, lhs_core, rhs_core);
     }
 
     if has_div_on_either_side(ctx, lhs_core, rhs_core) {
@@ -17120,6 +17317,20 @@ fn direct_core_default_simplify_profile_label(
     }
 
     default_simplify_other_profile_label(ctx, lhs_core, rhs_core)
+}
+
+fn direct_core_trig_ratio_profile_label(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> &'static str {
+    if try_match_half_angle_tan_equivalence(ctx, lhs_core, rhs_core).is_some()
+        || try_match_half_angle_tan_equivalence(ctx, rhs_core, lhs_core).is_some()
+    {
+        "rule.direct_core_equivalence.default_simplify.family.trig_ratio.half_angle_tan"
+    } else {
+        "rule.direct_core_equivalence.default_simplify.family.trig_ratio.other"
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -17155,8 +17366,12 @@ fn scoped_direct_core_default_simplify_profile_label(
         ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.abs_sqrt",
         (
             DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
-            "rule.direct_core_equivalence.default_simplify.family.trig_ratio",
-        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.trig_ratio",
+            "rule.direct_core_equivalence.default_simplify.family.trig_ratio.half_angle_tan",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.trig_ratio.half_angle_tan",
+        (
+            DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
+            "rule.direct_core_equivalence.default_simplify.family.trig_ratio.other",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.trig_ratio.other",
         (
             DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
             "rule.direct_core_equivalence.default_simplify.family.quotient_cancel.radical_pair",
@@ -17359,8 +17574,28 @@ fn scoped_direct_core_default_simplify_profile_label(
         ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.noncall_negated_additive_mismatch",
         (
             DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
-            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair",
-        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair",
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.product_vs_division_shared_numerator_scale",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.product_vs_division_shared_numerator_scale",
+        (
+            DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.cross_atomic_product",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.cross_atomic_product",
+        (
+            DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_atomic_tail",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_atomic_tail",
+        (
+            DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_division_tail",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_division_tail",
+        (
+            DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_other",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_other",
+        (
+            DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.other",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.other",
         (
             DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
             "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_vs_other",
@@ -17385,6 +17620,22 @@ fn scoped_direct_core_default_simplify_profile_label(
             DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
             "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_pair",
         ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.finite_series_pair",
+        (
+            DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_telescoping",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_telescoping",
+        (
+            DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_direct",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_direct",
+        (
+            DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.product_evaluable",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.product_evaluable",
+        (
+            DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.other",
+        ) => "rule.same_denominator_zero.tail_direct_core.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.other",
         (
             DirectCoreDefaultSimplifyProfileScope::SameDenominatorTail,
             "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other",
@@ -17431,8 +17682,12 @@ fn scoped_direct_core_default_simplify_profile_label(
         ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.abs_sqrt",
         (
             DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
-            "rule.direct_core_equivalence.default_simplify.family.trig_ratio",
-        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.trig_ratio",
+            "rule.direct_core_equivalence.default_simplify.family.trig_ratio.half_angle_tan",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.trig_ratio.half_angle_tan",
+        (
+            DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+            "rule.direct_core_equivalence.default_simplify.family.trig_ratio.other",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.trig_ratio.other",
         (
             DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
             "rule.direct_core_equivalence.default_simplify.family.quotient_cancel.radical_pair",
@@ -17635,8 +17890,28 @@ fn scoped_direct_core_default_simplify_profile_label(
         ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.noncall_negated_additive_mismatch",
         (
             DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
-            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair",
-        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair",
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.product_vs_division_shared_numerator_scale",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.product_vs_division_shared_numerator_scale",
+        (
+            DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.cross_atomic_product",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.cross_atomic_product",
+        (
+            DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_atomic_tail",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_atomic_tail",
+        (
+            DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_division_tail",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_division_tail",
+        (
+            DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_other",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.shared_scale_other",
+        (
+            DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.other",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_pair.other",
         (
             DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
             "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.noncall_multiplicative_vs_other",
@@ -17661,6 +17936,22 @@ fn scoped_direct_core_default_simplify_profile_label(
             DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
             "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_pair",
         ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.finite_series_pair",
+        (
+            DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_telescoping",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_telescoping",
+        (
+            DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_direct",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_direct",
+        (
+            DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.product_evaluable",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.product_evaluable",
+        (
+            DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.other",
+        ) => "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.other",
         (
             DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
             "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other",
@@ -18526,6 +18817,17 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             profile_route("rule.shifted_quotient.exact_one.route.nested_fraction_residual_narrow");
             Some(child_rewrite)
         } else if let Some(child_rewrite) =
+            try_build_shifted_quotient_fraction_decompose_residual_rewrite(
+                ctx,
+                numerator_core,
+                denominator_core,
+            )
+        {
+            profile_route(
+                "rule.shifted_quotient.exact_one.route.fraction_decompose_residual_narrow",
+            );
+            Some(child_rewrite)
+        } else if let Some(child_rewrite) =
             try_build_direct_core_equivalence_rewrite(ctx, numerator_core, denominator_core)
         {
             profile_route("rule.shifted_quotient.exact_one.route.direct_core_equivalence");
@@ -18573,6 +18875,13 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             })
             .or_else(|| {
                 try_build_shifted_quotient_nested_fraction_residual_rewrite(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                )
+            })
+            .or_else(|| {
+                try_build_shifted_quotient_fraction_decompose_residual_rewrite(
                     ctx,
                     numerator_core,
                     denominator_core,
@@ -18666,6 +18975,135 @@ fn try_build_shifted_quotient_nested_fraction_residual_rewrite(
         return Some(Rewrite::with_local(
             ctx.num(0),
             "Simplify Nested Fraction",
+            lhs_core,
+            rhs_core,
+        ));
+    }
+
+    None
+}
+
+fn extract_atomic_noncall_factor_set(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Vec<cas_ast::ExprId>> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.is_empty()
+        || !factors
+            .iter()
+            .all(|factor| expr_is_atomic_noncall(ctx, *factor))
+    {
+        return None;
+    }
+
+    let mut unique = Vec::new();
+    for factor in factors {
+        if unique
+            .iter()
+            .any(|existing| compare_expr(ctx, *existing, factor) == Ordering::Equal)
+        {
+            continue;
+        }
+        unique.push(factor);
+    }
+    Some(unique)
+}
+
+fn extract_fraction_like_add_term(
+    ctx: &mut cas_ast::Context,
+    term_expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    match ctx.get(term_expr).clone() {
+        Expr::Div(num, den) => Some((num, den)),
+        Expr::Neg(inner) => {
+            let Expr::Div(num, den) = ctx.get(inner).clone() else {
+                return None;
+            };
+            Some((ctx.add(Expr::Neg(num)), den))
+        }
+        _ => None,
+    }
+}
+
+fn try_rewrite_shifted_quotient_fraction_decompose_source(
+    ctx: &mut cas_ast::Context,
+    source_expr: cas_ast::ExprId,
+    target_expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    if expr_contains_any_function_call(ctx, source_expr)
+        || expr_contains_any_function_call(ctx, target_expr)
+    {
+        return None;
+    }
+
+    let (_source_num, source_den) = as_div(ctx, source_expr)?;
+    let source_den_factors = extract_atomic_noncall_factor_set(ctx, source_den)?;
+    let target_terms = AddView::from_expr(ctx, target_expr).terms;
+    if !(2..=4).contains(&target_terms.len()) {
+        return None;
+    }
+
+    let mut numerator_terms = Vec::with_capacity(target_terms.len());
+    for (term_expr, term_sign) in target_terms {
+        let contribution =
+            if let Some((term_num, term_den)) = extract_fraction_like_add_term(ctx, term_expr) {
+                let term_den_factors = extract_atomic_noncall_factor_set(ctx, term_den)?;
+                if term_den_factors.iter().any(|term_factor| {
+                    !source_den_factors.iter().any(|source_factor| {
+                        compare_expr(ctx, *source_factor, *term_factor) == Ordering::Equal
+                    })
+                }) {
+                    return None;
+                }
+
+                let missing_factors: Vec<_> = source_den_factors
+                    .iter()
+                    .copied()
+                    .filter(|source_factor| {
+                        !term_den_factors.iter().any(|term_factor| {
+                            compare_expr(ctx, *source_factor, *term_factor) == Ordering::Equal
+                        })
+                    })
+                    .collect();
+                let missing_factor_expr = build_mul_expr_from_factors(ctx, &missing_factors);
+                smart_mul(ctx, term_num, missing_factor_expr)
+            } else {
+                if contains_division_like_term(ctx, term_expr)
+                    || expr_contains_any_function_call(ctx, term_expr)
+                    || matches!(ctx.get(term_expr), Expr::Add(_, _) | Expr::Sub(_, _))
+                {
+                    return None;
+                }
+                smart_mul(ctx, term_expr, source_den)
+            };
+
+        numerator_terms.push((contribution, term_sign));
+    }
+
+    let rebuilt_numerator = build_signed_sum_expr(ctx, &numerator_terms);
+    let rebuilt = ctx.add(Expr::Div(rebuilt_numerator, source_den));
+    let residual = ctx.add(Expr::Sub(rebuilt, source_expr));
+    if exprs_match_for_cancellation(ctx, rebuilt, source_expr)
+        || exprs_match_after_default_simplify(ctx, rebuilt, source_expr)
+        || is_zero_after_default_simplify(ctx, residual)
+    {
+        Some(rebuilt)
+    } else {
+        None
+    }
+}
+
+fn try_build_shifted_quotient_fraction_decompose_residual_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    if try_rewrite_shifted_quotient_fraction_decompose_source(ctx, lhs_core, rhs_core).is_some()
+        || try_rewrite_shifted_quotient_fraction_decompose_source(ctx, rhs_core, lhs_core).is_some()
+    {
+        return Some(Rewrite::with_local(
+            ctx.num(0),
+            "Equivalent Residual Cancellation",
             lhs_core,
             rhs_core,
         ));
@@ -22418,6 +22856,27 @@ mod tests {
     }
 
     #[test]
+    fn direct_core_equivalence_rewrite_rejects_product_division_shared_scale_before_default_simplify(
+    ) {
+        let mut ctx = Context::new();
+        let lhs = parse("a * x", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("-(a * d / c)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs);
+        assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_keeps_cancelable_product_division_before_default_simplify() {
+        let mut ctx = Context::new();
+        let lhs = parse("a * x", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("(a * x * y) / y", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs);
+        assert!(rewrite.is_some());
+    }
+
+    #[test]
     fn direct_core_equivalence_rewrite_keeps_atomic_direct_match_before_default_simplify() {
         let mut ctx = Context::new();
         let lhs = parse("a", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
@@ -23026,6 +23485,78 @@ mod tests {
             one
         ));
         assert_eq!(rewrite.description, "Simplify Nested Fraction");
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_fraction_decompose_plus_tail_pair() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(((a*x + b*y + c)/(x*y)) + 1)/((a/y + b/x + c/(x*y)) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.description, "Equivalent Residual Cancellation");
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_fraction_decompose_split_pair() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(((a*x + b*y + c*z)/(x*y*z)) + 1)/((a/(y*z) + b/(x*z) + c/(x*y)) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.description, "Equivalent Residual Cancellation");
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_fraction_decompose_with_whole_term_pair() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(((d*x*y*z + a*x*y + b*x*z + c*y*z)/(x*y*z)) + 1)/((a/z + b/y + c/x + d) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_eq!(rewrite.description, "Equivalent Residual Cancellation");
     }
 
     #[test]
