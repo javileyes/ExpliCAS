@@ -199,6 +199,47 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_text_simplify_with_session_restores_session_and_simplifier_steps_mode() {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+        session.options_mut().steps_mode = cas_solver::runtime::StepsMode::Compact;
+        engine
+            .simplifier
+            .set_steps_mode(cas_solver::runtime::StepsMode::Compact);
+
+        let out =
+            evaluate_eval_text_simplify_with_session(&mut engine, &mut session, "x + x", false)
+                .expect("eval succeeds");
+
+        assert_eq!(out, "2 * x");
+        assert_eq!(
+            session.options().steps_mode,
+            cas_solver::runtime::StepsMode::Compact
+        );
+        assert_eq!(
+            engine.simplifier.get_steps_mode(),
+            cas_solver::runtime::StepsMode::Compact
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_text_simplify_with_session_handles_triple_sine_plus_rational_against_hyperbolic_pythagorean_regression(
+    ) {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+
+        let out = evaluate_eval_text_simplify_with_session(
+            &mut engine,
+            &mut session,
+            "(sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))",
+            false,
+        )
+        .expect("eval succeeds");
+
+        assert_eq!(out, "0");
+    }
+
+    #[test]
     fn evaluate_eval_command_pretty_with_session_accepts_lazy_function_assignment() {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,

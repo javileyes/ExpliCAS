@@ -1,5 +1,6 @@
 use crate::expr_destructure::{as_add, as_div, as_mul, as_neg, as_sub};
 use crate::expr_nary::{add_terms_signed, mul_leaves, Sign};
+use crate::expr_rewrite::smart_mul;
 use crate::pattern_marks::PatternMarks;
 use crate::trig_multi_angle_support::is_multiple_angle;
 use crate::trig_roots_flatten::extract_double_angle_arg;
@@ -21,6 +22,10 @@ pub enum TrigContractionRewriteKind {
     DoubleAngleCos,
     Cos2xAdditiveSin,
     Cos2xAdditiveCos,
+    Cos2xAdditiveSinScaled,
+    Cos2xAdditiveCosScaled,
+    Cos2xAdditiveSinScaledWithOffset,
+    Cos2xAdditiveCosScaledWithOffset,
     AngleSumFractionToTan,
     AngleDiffFractionToTan,
 }
@@ -900,9 +905,9 @@ pub fn try_rewrite_cos2x_additive_contraction_expr(
         return None;
     }
 
+    let zero_rat = BigRational::from_integer(0.into());
     let one_rat = BigRational::from_integer(1.into());
-    let two_rat = BigRational::from_integer(2.into());
-    let neg_two_rat = BigRational::from_integer((-2).into());
+    let neg_one_rat = -one_rat.clone();
 
     for (i, &(term_i, sign_i)) in signed_terms.iter().enumerate() {
         let term_val = match ctx.get(term_i) {
@@ -915,10 +920,7 @@ pub fn try_rewrite_cos2x_additive_contraction_expr(
             }
             _ => continue,
         };
-
-        let is_pos_one = term_val == one_rat;
-        let is_neg_one = term_val == -one_rat.clone();
-        if !is_pos_one && !is_neg_one {
+        if term_val == zero_rat {
             continue;
         }
 
@@ -939,24 +941,54 @@ pub fn try_rewrite_cos2x_additive_contraction_expr(
                     coeff = -coeff;
                 }
 
-                let matches = (is_pos_one && trig_is_sin && coeff == neg_two_rat)
-                    || (is_neg_one && !trig_is_sin && coeff == two_rat);
-                if !matches {
+                let two_rat = BigRational::from_integer(2.into());
+                let scale = if trig_is_sin {
+                    -coeff.clone() / two_rat.clone()
+                } else {
+                    coeff.clone() / two_rat.clone()
+                };
+                if scale == zero_rat {
                     continue;
                 }
 
                 let two = ctx.num(2);
                 let double_arg = ctx.add(Expr::Mul(two, trig_arg));
                 let cos_2t = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
-                let kind = if trig_is_sin {
-                    TrigContractionRewriteKind::Cos2xAdditiveSin
+                let offset = if trig_is_sin {
+                    term_val.clone() - scale.clone()
                 } else {
-                    TrigContractionRewriteKind::Cos2xAdditiveCos
+                    term_val.clone() + scale.clone()
                 };
-                return Some(TrigContractionRewrite {
-                    rewritten: cos_2t,
-                    kind,
-                });
+                let scale_expr = ctx.add(Expr::Number(scale.clone()));
+                let scaled_cos = smart_mul(ctx, scale_expr, cos_2t);
+                let rewritten = if offset == zero_rat {
+                    scaled_cos
+                } else {
+                    let offset_expr = ctx.add(Expr::Number(offset.clone()));
+                    ctx.add(Expr::Add(offset_expr, scaled_cos))
+                };
+                let kind = if offset == zero_rat {
+                    if trig_is_sin {
+                        if term_val == one_rat {
+                            TrigContractionRewriteKind::Cos2xAdditiveSin
+                        } else {
+                            TrigContractionRewriteKind::Cos2xAdditiveSinScaled
+                        }
+                    } else if term_val == neg_one_rat {
+                        TrigContractionRewriteKind::Cos2xAdditiveCos
+                    } else {
+                        TrigContractionRewriteKind::Cos2xAdditiveCosScaled
+                    }
+                } else if trig_is_sin {
+                    if term_val == one_rat {
+                        TrigContractionRewriteKind::Cos2xAdditiveSin
+                    } else {
+                        TrigContractionRewriteKind::Cos2xAdditiveSinScaledWithOffset
+                    }
+                } else {
+                    TrigContractionRewriteKind::Cos2xAdditiveCosScaledWithOffset
+                };
+                return Some(TrigContractionRewrite { rewritten, kind });
             }
         }
     }
@@ -1152,6 +1184,46 @@ mod tests {
         let expr2 = parse("2*cos(t)^2-1", &mut ctx).expect("expr2");
         let rw2 = try_rewrite_cos2x_additive_contraction_expr(&mut ctx, expr2).expect("rw2");
         assert_eq!(compare_expr(&ctx, rw2.rewritten, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn rewrites_scaled_cos2x_additive_contraction_forms() {
+        let mut ctx = Context::new();
+        let expr1 = parse("2-4*sin(t)^2", &mut ctx).expect("expr1");
+        let expected1 = parse("2*cos(2*t)", &mut ctx).expect("expected1");
+        let rw1 = try_rewrite_cos2x_additive_contraction_expr(&mut ctx, expr1).expect("rw1");
+        assert_eq!(
+            compare_expr(&ctx, rw1.rewritten, expected1),
+            Ordering::Equal
+        );
+
+        let expr2 = parse("-4*cos(t)^2+2", &mut ctx).expect("expr2");
+        let expected2 = parse("-2*cos(2*t)", &mut ctx).expect("expected2");
+        let rw2 = try_rewrite_cos2x_additive_contraction_expr(&mut ctx, expr2).expect("rw2");
+        assert_eq!(
+            compare_expr(&ctx, rw2.rewritten, expected2),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_offset_cos2x_additive_contraction_forms() {
+        let mut ctx = Context::new();
+        let expr1 = parse("3-4*sin(t)^2", &mut ctx).expect("expr1");
+        let expected1 = parse("1+2*cos(2*t)", &mut ctx).expect("expected1");
+        let rw1 = try_rewrite_cos2x_additive_contraction_expr(&mut ctx, expr1).expect("rw1");
+        assert_eq!(
+            compare_expr(&ctx, rw1.rewritten, expected1),
+            Ordering::Equal
+        );
+
+        let expr2 = parse("4*cos(t)^2+1", &mut ctx).expect("expr2");
+        let expected2 = parse("3+2*cos(2*t)", &mut ctx).expect("expected2");
+        let rw2 = try_rewrite_cos2x_additive_contraction_expr(&mut ctx, expr2).expect("rw2");
+        assert_eq!(
+            compare_expr(&ctx, rw2.rewritten, expected2),
+            Ordering::Equal
+        );
     }
 
     #[test]

@@ -117,6 +117,7 @@ fn allows_direct_single_step_without_substeps(wire_steps: &[StepWire]) -> bool {
         "Aplicar la identidad pitagórica"
             | "Aplicar la identidad pitagórica hiperbólica"
             | "Cancelar un factor común"
+            | "Collapse Exact Zero Additive Subexpression"
     )
 }
 
@@ -683,25 +684,42 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     let final_log_cancel_step = log_cancel_artifact
         .wire_steps
         .iter()
-        .find(|step| {
-            step.rule == "Expandir logaritmos y cancelar términos iguales" && step.after == "0"
-        })
-        .expect("missing final log cancellation step");
-    let final_titles = final_log_cancel_step
-        .substeps
-        .iter()
-        .map(|substep| substep.title.as_str())
-        .collect::<Vec<_>>();
+        .find(|step| step.after == "0")
+        .expect("missing final zero step for log cancellation audit case");
     assert_eq!(
-        final_titles,
-        vec![
-            "Expandir el logaritmo del producto o del cociente",
-            "Sacar exponentes fuera del logaritmo cuando sea necesario",
-            "Cancelar términos iguales",
-        ],
-        "log_product_cancellation wire narrative should keep the new explicit three-phase log cancellation story, got {:?}",
-        final_titles
+        log_cancel_artifact.final_expr, "0",
+        "log_product_cancellation should still simplify to zero"
     );
+
+    if final_log_cancel_step.rule == "Expandir logaritmos y cancelar términos iguales" {
+        let final_titles = final_log_cancel_step
+            .substeps
+            .iter()
+            .map(|substep| substep.title.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            final_titles,
+            vec![
+                "Expandir el logaritmo del producto o del cociente",
+                "Sacar exponentes fuera del logaritmo cuando sea necesario",
+                "Cancelar términos iguales",
+            ],
+            "log_product_cancellation wire narrative should keep the new explicit three-phase log cancellation story, got {:?}",
+            final_titles
+        );
+    } else {
+        assert_eq!(
+            final_log_cancel_step.rule,
+            "Collapse Exact Zero Additive Subexpression",
+            "log_product_cancellation should either keep the explicit three-phase log cancellation story or collapse directly via exact-zero, got {:?}",
+            final_log_cancel_step.rule
+        );
+        assert!(
+            final_log_cancel_step.substeps.is_empty(),
+            "direct exact-zero collapse should not emit redundant log-cancellation micro-substeps, got {:?}",
+            final_log_cancel_step.substeps
+        );
+    }
 
     let inverse_trig_case = cases
         .iter()

@@ -7,11 +7,16 @@ mod tests {
         EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalStepsMode,
         EvalValueDomain,
     };
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
 
     use crate::eval::evaluate_eval_text_command_with_session;
     use crate::eval::EvalCommandConfig;
     use crate::state_core::SessionState;
     use tempfile::tempdir;
+
+    const TRIPLE_SINE_RATIONAL_HYPER_EXPR: &str =
+        "(sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))";
 
     #[test]
     fn evaluate_eval_with_session_runs() {
@@ -44,6 +49,82 @@ mod tests {
 
         assert!(out.ok);
         assert!(out.result.contains("2 * x"));
+    }
+
+    #[test]
+    fn engine_eval_with_stateful_session_steps_off_handles_triple_sine_plus_rational_against_hyperbolic_pythagorean_regression(
+    ) {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+        session.options_mut().steps_mode = cas_solver::runtime::StepsMode::Off;
+        session.options_mut().shared.context_mode = cas_solver::runtime::ContextMode::Standard;
+        session.options_mut().shared.semantics.domain_mode =
+            cas_solver::runtime::DomainMode::Generic;
+
+        let parsed = parse(
+            TRIPLE_SINE_RATIONAL_HYPER_EXPR,
+            &mut engine.simplifier.context,
+        )
+        .expect("parse succeeds");
+
+        let output = engine
+            .eval(
+                &mut session,
+                cas_solver::runtime::EvalRequest {
+                    raw_input: TRIPLE_SINE_RATIONAL_HYPER_EXPR.to_string(),
+                    parsed,
+                    action: cas_solver::runtime::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval succeeds");
+
+        let cas_solver::runtime::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_with_session_handles_triple_sine_plus_rational_against_hyperbolic_pythagorean_regression(
+    ) {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+
+        let out = cas_solver::session_api::eval::evaluate_eval_with_session(
+            &mut engine,
+            &mut session,
+            EvalCommandConfig {
+                expr: TRIPLE_SINE_RATIONAL_HYPER_EXPR,
+                auto_store: false,
+                max_chars: 2000,
+                steps_mode: EvalStepsMode::Off,
+                budget_preset: EvalBudgetPreset::Standard,
+                strict: false,
+                domain: EvalDomainMode::Generic,
+                context_mode: EvalContextMode::Standard,
+                branch_mode: EvalBranchMode::Strict,
+                expand_policy: EvalExpandPolicy::Off,
+                complex_mode: EvalComplexMode::Auto,
+                const_fold: EvalConstFoldMode::Off,
+                value_domain: EvalValueDomain::Real,
+                complex_branch: cas_api_models::EvalBranchMode::Principal,
+                inv_trig: EvalInvTrigPolicy::Strict,
+                assume_scope: EvalAssumeScope::Real,
+            },
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        )
+        .expect("eval succeeds");
+
+        assert!(out.ok);
+        assert_eq!(out.result, "0");
     }
 
     #[test]

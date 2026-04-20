@@ -3405,19 +3405,20 @@ pub(crate) fn try_rewrite_trig_contraction_target_aware(
         cas_math::trig_contraction_support::try_rewrite_double_angle_contraction_expr(ctx, expr)
     {
         if strong_target_match(ctx, rewrite.rewritten, target_expr) {
-            let kind = match rewrite.kind {
+            if let Some(kind) = match rewrite.kind {
                 cas_math::trig_contraction_support::TrigContractionRewriteKind::DoubleAngleSin => {
-                    DeriveTrigRewriteKind::DoubleAngleSin
+                    Some(DeriveTrigRewriteKind::DoubleAngleSin)
                 }
                 cas_math::trig_contraction_support::TrigContractionRewriteKind::DoubleAngleCos => {
-                    DeriveTrigRewriteKind::DoubleAngleCos
+                    Some(DeriveTrigRewriteKind::DoubleAngleCos)
                 }
-                _ => return None,
-            };
-            return Some(DeriveTrigRewrite {
-                rewritten: rewrite.rewritten,
-                kind,
-            });
+                _ => None,
+            } {
+                return Some(DeriveTrigRewrite {
+                    rewritten: rewrite.rewritten,
+                    kind,
+                });
+            }
         }
     }
 
@@ -3454,19 +3455,20 @@ pub(crate) fn try_rewrite_trig_contraction_target_aware(
         cas_math::trig_contraction_support::try_rewrite_cos2x_additive_contraction_expr(ctx, expr)
     {
         if strong_target_match(ctx, rewrite.rewritten, target_expr) {
-            let kind = match rewrite.kind {
+            if let Some(kind) = match rewrite.kind {
                 cas_math::trig_contraction_support::TrigContractionRewriteKind::Cos2xAdditiveSin => {
-                    DeriveTrigRewriteKind::DoubleAngleCosOneMinusTwoSinSq
+                    Some(DeriveTrigRewriteKind::DoubleAngleCosOneMinusTwoSinSq)
                 }
                 cas_math::trig_contraction_support::TrigContractionRewriteKind::Cos2xAdditiveCos => {
-                    DeriveTrigRewriteKind::DoubleAngleCosTwoCosSqMinusOne
+                    Some(DeriveTrigRewriteKind::DoubleAngleCosTwoCosSqMinusOne)
                 }
-                _ => return None,
-            };
-            return Some(DeriveTrigRewrite {
-                rewritten: rewrite.rewritten,
-                kind,
-            });
+                _ => None,
+            } {
+                return Some(DeriveTrigRewrite {
+                    rewritten: rewrite.rewritten,
+                    kind,
+                });
+            }
         }
     }
 
@@ -6130,52 +6132,53 @@ fn try_rewrite_negated_cos_double_angle_contraction_target_aware(
     target_expr: ExprId,
 ) -> Option<DeriveTrigRewrite> {
     let two = ctx.num(2);
+    let build_candidate = |ctx: &mut cas_ast::Context, arg: ExprId| {
+        let double_arg = smart_mul(ctx, two, arg);
+        let cos_double = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
+        let candidate = ctx.add(Expr::Neg(cos_double));
+        strong_target_match(ctx, candidate, target_expr).then_some(DeriveTrigRewrite {
+            rewritten: candidate,
+            kind: DeriveTrigRewriteKind::DoubleAngleNegCosContract,
+        })
+    };
 
-    if let Expr::Sub(left, right) = ctx.get(expr) {
-        let (left, right) = (*left, *right);
+    let terms = add_terms_signed(ctx, expr);
+    if terms.len() != 2 {
+        return None;
+    }
 
-        if let (Some((BuiltinFn::Sin, sin_arg)), Some((BuiltinFn::Cos, cos_arg))) =
-            (trig_square(ctx, left), trig_square(ctx, right))
-        {
-            if strong_target_match(ctx, sin_arg, cos_arg) {
-                let double_arg = smart_mul(ctx, two, sin_arg);
-                let cos_double = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
-                let candidate = ctx.add(Expr::Neg(cos_double));
-                if strong_target_match(ctx, candidate, target_expr) {
-                    return Some(DeriveTrigRewrite {
-                        rewritten: candidate,
-                        kind: DeriveTrigRewriteKind::DoubleAngleNegCosContract,
-                    });
-                }
-            }
+    let mut positive_term = None;
+    let mut negative_term = None;
+    for (term, sign) in terms {
+        match sign {
+            Sign::Pos if positive_term.is_none() => positive_term = Some(term),
+            Sign::Neg if negative_term.is_none() => negative_term = Some(term),
+            _ => return None,
         }
+    }
 
-        if let Some((BuiltinFn::Sin, arg)) = scaled_sin_or_cos_square(ctx, left, 2) {
-            if is_small_integer(ctx, right, 1) {
-                let double_arg = smart_mul(ctx, two, arg);
-                let cos_double = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
-                let candidate = ctx.add(Expr::Neg(cos_double));
-                if strong_target_match(ctx, candidate, target_expr) {
-                    return Some(DeriveTrigRewrite {
-                        rewritten: candidate,
-                        kind: DeriveTrigRewriteKind::DoubleAngleNegCosContract,
-                    });
-                }
-            }
+    let (Some(positive_term), Some(negative_term)) = (positive_term, negative_term) else {
+        return None;
+    };
+
+    if let (Some((BuiltinFn::Sin, sin_arg)), Some((BuiltinFn::Cos, cos_arg))) = (
+        trig_square(ctx, positive_term),
+        trig_square(ctx, negative_term),
+    ) {
+        if strong_target_match(ctx, sin_arg, cos_arg) {
+            return build_candidate(ctx, sin_arg);
         }
+    }
 
-        if is_small_integer(ctx, left, 1) {
-            if let Some((BuiltinFn::Cos, arg)) = scaled_sin_or_cos_square(ctx, right, 2) {
-                let double_arg = smart_mul(ctx, two, arg);
-                let cos_double = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
-                let candidate = ctx.add(Expr::Neg(cos_double));
-                if strong_target_match(ctx, candidate, target_expr) {
-                    return Some(DeriveTrigRewrite {
-                        rewritten: candidate,
-                        kind: DeriveTrigRewriteKind::DoubleAngleNegCosContract,
-                    });
-                }
-            }
+    if let Some((BuiltinFn::Sin, arg)) = scaled_sin_or_cos_square(ctx, positive_term, 2) {
+        if is_small_integer(ctx, negative_term, 1) {
+            return build_candidate(ctx, arg);
+        }
+    }
+
+    if is_small_integer(ctx, positive_term, 1) {
+        if let Some((BuiltinFn::Cos, arg)) = scaled_sin_or_cos_square(ctx, negative_term, 2) {
+            return build_candidate(ctx, arg);
         }
     }
 
@@ -7007,7 +7010,7 @@ mod tests {
             let source = parse(source_text, &mut ctx).expect("source");
             let target = parse(target_text, &mut ctx).expect("target");
             let rewrite = try_rewrite_trig_contraction_target_aware(&mut ctx, source, target)
-                .expect("rewrite");
+                .unwrap_or_else(|| panic!("rewrite for `{source_text}` -> `{target_text}`"));
 
             assert_eq!(rewrite.kind, expected_kind);
             assert!(
@@ -7063,7 +7066,7 @@ mod tests {
             let source = parse(source_text, &mut ctx).expect("source");
             let target = parse(target_text, &mut ctx).expect("target");
             let rewrite = try_rewrite_trig_contraction_target_aware(&mut ctx, source, target)
-                .expect("rewrite");
+                .unwrap_or_else(|| panic!("rewrite for `{source_text}` -> `{target_text}`"));
 
             assert_eq!(rewrite.kind, expected_kind);
             assert!(
@@ -8666,7 +8669,7 @@ mod tests {
             let source = parse(source_text, &mut ctx).expect("source");
             let target = parse(target_text, &mut ctx).expect("target");
             let rewrite = try_rewrite_trig_contraction_target_aware(&mut ctx, source, target)
-                .expect("rewrite");
+                .unwrap_or_else(|| panic!("rewrite for `{source_text}` -> `{target_text}`"));
 
             assert_eq!(rewrite.kind, expected_kind);
             assert!(

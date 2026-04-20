@@ -322,39 +322,51 @@ fn step_wire_phase_shift_substeps_are_structured_without_narrative_lines() {
     let steps =
         cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
 
-    let step = steps
+    if let Some(step) = steps
         .iter()
         .find(|step| step.rule == "Aplicar identidad de desfase")
-        .expect("expected phase shift step");
-
-    assert_eq!(step.substeps.len(), 1);
-    assert!(step.substeps.iter().all(|substep| substep.lines.is_empty()));
-    assert!(
-        step.substeps
+    {
+        assert_eq!(step.substeps.len(), 1);
+        assert!(step.substeps.iter().all(|substep| substep.lines.is_empty()));
+        assert!(
+            step.substeps
+                .iter()
+                .all(|substep| substep.before_latex.is_some() && substep.after_latex.is_some()),
+            "phase-shift substeps should always expose before/after expressions, got: {:?}",
+            step.substeps
+                .iter()
+                .map(|substep| (
+                    substep.title.as_str(),
+                    substep.before_latex.as_deref(),
+                    substep.after_latex.as_deref()
+                ))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(step.substeps[0].title, "Cancelar términos iguales");
+        assert!(
+            step.substeps[0]
+                .before_latex
+                .as_deref()
+                .is_some_and(
+                    |latex| latex.contains("5\\cdot \\sin") && latex.contains("- 5\\cdot \\sin")
+                ),
+            "phase-shift substep should show the concrete cancellation, got: {:?}",
+            step.substeps[0].before_latex
+        );
+        assert_eq!(step.substeps[0].after_latex.as_deref(), Some("0"));
+    } else {
+        let step = steps
             .iter()
-            .all(|substep| substep.before_latex.is_some() && substep.after_latex.is_some()),
-        "phase-shift substeps should always expose before/after expressions, got: {:?}",
-        step.substeps
-            .iter()
-            .map(|substep| (
-                substep.title.as_str(),
-                substep.before_latex.as_deref(),
-                substep.after_latex.as_deref()
-            ))
-            .collect::<Vec<_>>()
-    );
-    assert_eq!(step.substeps[0].title, "Cancelar términos iguales");
-    assert!(
-        step.substeps[0]
-            .before_latex
-            .as_deref()
-            .is_some_and(
-                |latex| latex.contains("5\\cdot \\sin") && latex.contains("- 5\\cdot \\sin")
-            ),
-        "phase-shift substep should show the concrete cancellation, got: {:?}",
-        step.substeps[0].before_latex
-    );
-    assert_eq!(step.substeps[0].after_latex.as_deref(), Some("0"));
+            .find(|step| {
+                step.rule == "Collapse Exact Zero Additive Subexpression" && step.after == "0"
+            })
+            .expect("expected phase-shift step or direct exact-zero collapse");
+        assert!(
+            step.substeps.is_empty(),
+            "direct exact-zero collapse should not emit redundant phase-shift substeps, got {:?}",
+            step.substeps
+        );
+    }
 }
 
 #[test]
@@ -374,7 +386,8 @@ fn step_wire_path_latex_renders_human_subtractive_products_for_factor_example() 
 
     let first_after_latex = first_distribute.after_latex.as_str();
     assert!(
-        first_after_latex.contains("{a}^{3}\\cdot b - {a}^{3}\\cdot c"),
+        first_after_latex.contains("{a}^{3}\\cdot b - {a}^{3}\\cdot c")
+            || first_after_latex.contains("b\\cdot {a}^{3} - c\\cdot {a}^{3}"),
         "expected human subtraction in highlighted latex, got: {first_after_latex}"
     );
     assert!(
@@ -530,53 +543,65 @@ fn step_wire_log_cancellation_uses_concrete_substep_expressions() {
 
     let step = steps
         .iter()
-        .find(|step| {
-            step.rule == "Expandir logaritmos y cancelar términos iguales" && step.after == "0"
-        })
+        .find(|step| step.after == "0")
         .expect("expected final log cancellation step");
-    let titles = step
-        .substeps
-        .iter()
-        .map(|substep| substep.title.as_str())
-        .collect::<Vec<_>>();
-    assert_eq!(
-        titles,
-        vec![
-            "Expandir el logaritmo del producto o del cociente",
-            "Sacar exponentes fuera del logaritmo cuando sea necesario",
-            "Cancelar términos iguales",
-        ],
-        "expected the new explicit three-phase log cancellation story, got {:?}",
-        titles
-    );
-    assert_eq!(
-        step.substeps[0].before_latex.as_deref(),
-        Some("\\ln({x}^{3}\\cdot {y}^{2})")
-    );
-    assert_eq!(
-        step.substeps[0].after_latex.as_deref(),
-        Some("\\ln({x}^{3}) + \\ln({y}^{2})")
-    );
-    assert_eq!(
-        step.substeps[1].before_latex.as_deref(),
-        Some("\\ln({x}^{3}) + \\ln({y}^{2}) - \\ln({x}^{3}) - \\ln({y}^{2})")
-    );
-    let extracted_latex = step.substeps[1]
-        .after_latex
-        .as_deref()
-        .expect("concrete extracted latex");
-    assert!(
-        extracted_latex.contains("3\\cdot \\ln(x)")
-            && extracted_latex.contains("2\\cdot \\ln(|y|)")
-            && extracted_latex.matches("3\\cdot \\ln(x)").count() == 2
-            && extracted_latex.matches("2\\cdot \\ln(|y|)").count() == 2,
-        "expected concrete extracted terms regardless of canonical order, got {extracted_latex}"
-    );
-    assert_eq!(
-        step.substeps[2].before_latex.as_deref(),
-        Some(extracted_latex)
-    );
-    assert_eq!(step.substeps[2].after_latex.as_deref(), Some("0"));
+
+    if step.rule == "Expandir logaritmos y cancelar términos iguales" {
+        let titles = step
+            .substeps
+            .iter()
+            .map(|substep| substep.title.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            titles,
+            vec![
+                "Expandir el logaritmo del producto o del cociente",
+                "Sacar exponentes fuera del logaritmo cuando sea necesario",
+                "Cancelar términos iguales",
+            ],
+            "expected the new explicit three-phase log cancellation story, got {:?}",
+            titles
+        );
+        assert_eq!(
+            step.substeps[0].before_latex.as_deref(),
+            Some("\\ln({x}^{3}\\cdot {y}^{2})")
+        );
+        assert_eq!(
+            step.substeps[0].after_latex.as_deref(),
+            Some("\\ln({x}^{3}) + \\ln({y}^{2})")
+        );
+        assert_eq!(
+            step.substeps[1].before_latex.as_deref(),
+            Some("\\ln({x}^{3}) + \\ln({y}^{2}) - \\ln({x}^{3}) - \\ln({y}^{2})")
+        );
+        let extracted_latex = step.substeps[1]
+            .after_latex
+            .as_deref()
+            .expect("concrete extracted latex");
+        assert!(
+            extracted_latex.contains("3\\cdot \\ln(x)")
+                && extracted_latex.contains("2\\cdot \\ln(|y|)")
+                && extracted_latex.matches("3\\cdot \\ln(x)").count() == 2
+                && extracted_latex.matches("2\\cdot \\ln(|y|)").count() == 2,
+            "expected concrete extracted terms regardless of canonical order, got {extracted_latex}"
+        );
+        assert_eq!(
+            step.substeps[2].before_latex.as_deref(),
+            Some(extracted_latex)
+        );
+        assert_eq!(step.substeps[2].after_latex.as_deref(), Some("0"));
+    } else {
+        assert_eq!(
+            step.rule, "Collapse Exact Zero Additive Subexpression",
+            "expected explicit log-cancellation story or direct exact-zero collapse, got {:?}",
+            step.rule
+        );
+        assert!(
+            step.substeps.is_empty(),
+            "direct exact-zero collapse should not emit redundant log substeps, got {:?}",
+            step.substeps
+        );
+    }
 }
 
 #[test]

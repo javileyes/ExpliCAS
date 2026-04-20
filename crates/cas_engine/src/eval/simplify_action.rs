@@ -38,10 +38,17 @@ impl Engine {
     ) -> Result<ActionResult, anyhow::Error> {
         let effective_opts = self.effective_options(options, resolved);
         let profile = self.profile_cache.get_or_build(&effective_opts);
+        let inherited_allow_numerical_verification = self.simplifier.allow_numerical_verification;
+        let inherited_debug_mode = self.simplifier.debug_mode;
+        let inherited_step_listener = self.simplifier.replace_step_listener(None);
         let mut ctx_simplifier = Simplifier::from_profile_with_context(
             profile,
             std::mem::take(&mut self.simplifier.context),
         );
+        ctx_simplifier.set_steps_mode(effective_opts.steps_mode);
+        ctx_simplifier.allow_numerical_verification = inherited_allow_numerical_verification;
+        ctx_simplifier.debug_mode = inherited_debug_mode;
+        ctx_simplifier.set_step_listener(inherited_step_listener);
 
         let mut simplify_opts = effective_opts.to_simplify_options();
 
@@ -108,7 +115,9 @@ impl Engine {
 
         self.simplifier
             .extend_blocked_hints(ctx_simplifier.take_blocked_hints());
+        let restored_step_listener = ctx_simplifier.replace_step_listener(None);
         self.simplifier.context = ctx_simplifier.context;
+        self.simplifier.set_step_listener(restored_step_listener);
 
         {
             use crate::{classify_assumptions_in_place, infer_implicit_domain, DomainContext};
@@ -175,5 +184,748 @@ impl Engine {
             vec![],
             vec![],
         ))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    #[test]
+    fn eval_stateless_steps_off_handles_triple_sine_plus_rational_against_hyperbolic_pythagorean_regression(
+    ) {
+        let mut engine = Engine::new();
+        let expr_text = "(sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))";
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_triple_sine_plus_rational_against_hyperbolic_pythagorean_regression(
+    ) {
+        let mut engine = Engine::new();
+        let expr_text = "(sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))";
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn with_profile_simplify_steps_off_handles_triple_sine_plus_rational_against_hyperbolic_pythagorean_regression(
+    ) {
+        let expr_text = "(sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))";
+        let mut probe_engine = Engine::new();
+        let probe_parsed = parse(expr_text, &mut probe_engine.simplifier.context)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let effective_options = probe_engine.effective_options(&options, probe_parsed);
+        let mut simplifier = crate::Simplifier::with_profile(&effective_options);
+        simplifier.set_collect_steps(false);
+        let parsed = parse(expr_text, &mut simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let (result, _steps) =
+            simplifier.simplify_with_options(parsed, effective_options.to_simplify_options());
+        assert_eq!(
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_triple_sine_against_polynomial_partner_regression() {
+        let expr_text =
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn with_profile_simplify_steps_off_handles_triple_sine_against_polynomial_partner_regression() {
+        let expr_text =
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1)";
+        let mut probe_engine = Engine::new();
+        let probe_parsed = parse(expr_text, &mut probe_engine.simplifier.context)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let effective_options = probe_engine.effective_options(&options, probe_parsed);
+        let mut simplifier = crate::Simplifier::with_profile(&effective_options);
+        simplifier.set_collect_steps(false);
+        let parsed = parse(expr_text, &mut simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let (result, _steps) =
+            simplifier.simplify_with_options(parsed, effective_options.to_simplify_options());
+        assert_eq!(
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_triple_sine_against_polynomial_plus_rational_regression() {
+        let expr_text =
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (x/(1 + x/(1-x)) - x + x^2)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn with_profile_simplify_steps_off_handles_triple_sine_against_polynomial_plus_rational_regression(
+    ) {
+        let expr_text =
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (x/(1 + x/(1-x)) - x + x^2)";
+        let mut probe_engine = Engine::new();
+        let probe_parsed = parse(expr_text, &mut probe_engine.simplifier.context)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let effective_options = probe_engine.effective_options(&options, probe_parsed);
+        let mut simplifier = crate::Simplifier::with_profile(&effective_options);
+        simplifier.set_collect_steps(false);
+        let parsed = parse(expr_text, &mut simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let (result, _steps) =
+            simplifier.simplify_with_options(parsed, effective_options.to_simplify_options());
+        assert_eq!(
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_triple_sine_against_polynomial_plus_hyperbolic_regression() {
+        let expr_text =
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn with_profile_simplify_steps_off_handles_triple_sine_against_polynomial_plus_hyperbolic_regression(
+    ) {
+        let expr_text =
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))";
+        let mut probe_engine = Engine::new();
+        let probe_parsed = parse(expr_text, &mut probe_engine.simplifier.context)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let effective_options = probe_engine.effective_options(&options, probe_parsed);
+        let mut simplifier = crate::Simplifier::with_profile(&effective_options);
+        simplifier.set_collect_steps(false);
+        let parsed = parse(expr_text, &mut simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let (result, _steps) =
+            simplifier.simplify_with_options(parsed, effective_options.to_simplify_options());
+        assert_eq!(
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_hyperbolic_sum_against_telescoping_sum_regression() {
+        let expr_text =
+            "(sinh(x+y) - (sinh(x)*cosh(y) + cosh(x)*sinh(y))) + (1/(u*(u+1)) - 1/u + 1/(u+1))";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn with_profile_simplify_steps_off_handles_hyperbolic_sum_against_telescoping_sum_regression() {
+        let expr_text =
+            "(sinh(x+y) - (sinh(x)*cosh(y) + cosh(x)*sinh(y))) + (1/(u*(u+1)) - 1/u + 1/(u+1))";
+        let mut probe_engine = Engine::new();
+        let probe_parsed = parse(expr_text, &mut probe_engine.simplifier.context)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let effective_options = probe_engine.effective_options(&options, probe_parsed);
+        let mut simplifier = crate::Simplifier::with_profile(&effective_options);
+        simplifier.set_collect_steps(false);
+        let parsed = parse(expr_text, &mut simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let (result, _steps) =
+            simplifier.simplify_with_options(parsed, effective_options.to_simplify_options());
+        assert_eq!(
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_trig_square_cube_substitution_pair_regression() {
+        let expr_text = "(((sin(u)^2)^3 - 1) / ((sin(u)^2) - 1)) - ((sin(u)^4) + (sin(u)^2) + 1)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_negative_double_cos_square_diff_passthrough_forward_regression(
+    ) {
+        let expr_text = "((sin(x)^2 - cos(x)^2) + m) - ((-cos(2*x)) + m)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn with_profile_simplify_steps_off_handles_negative_double_cos_square_diff_passthrough_forward_regression(
+    ) {
+        let expr_text = "((sin(x)^2 - cos(x)^2) + m) - ((-cos(2*x)) + m)";
+        let mut probe_engine = Engine::new();
+        let probe_parsed = parse(expr_text, &mut probe_engine.simplifier.context)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let effective_options = probe_engine.effective_options(&options, probe_parsed);
+        let mut simplifier = crate::Simplifier::with_profile(&effective_options);
+        simplifier.set_collect_steps(false);
+        let parsed = parse(expr_text, &mut simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let (result, _steps) =
+            simplifier.simplify_with_options(parsed, effective_options.to_simplify_options());
+        assert_eq!(
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_squared_pythagorean_passthrough_forward_regression() {
+        let expr_text = "(((sin(x)^2 + cos(x)^2)^2) + m) - (((1)^2) + m)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_negative_double_sine_passthrough_forward_regression() {
+        let expr_text = "((-2*sin(x)*cos(x)) + m) - ((-sin(2*x)) + m)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn with_profile_simplify_steps_off_handles_negative_double_sine_passthrough_forward_regression()
+    {
+        let expr_text = "((-2*sin(x)*cos(x)) + m) - ((-sin(2*x)) + m)";
+        let mut probe_engine = Engine::new();
+        let probe_parsed = parse(expr_text, &mut probe_engine.simplifier.context)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let effective_options = probe_engine.effective_options(&options, probe_parsed);
+        let mut simplifier = crate::Simplifier::with_profile(&effective_options);
+        simplifier.set_collect_steps(false);
+        let parsed = parse(expr_text, &mut simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let (result, _steps) =
+            simplifier.simplify_with_options(parsed, effective_options.to_simplify_options());
+        assert_eq!(
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_sophie_germain_passthrough_forward_regression() {
+        let expr_text = "((x^4 + 4*y^4) + m) - (((x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2)) + m)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_trig_ratio_alias_passthrough_forward_regression() {
+        let expr_text = "((sin(2*x)/cos(x+x)) + m) - ((tan(2*x)) + m)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_half_angle_tan_zero_difference_regression() {
+        let expr_text = "(1 - cos(2*x))/sin(2*x) - tan(x)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_morrie_scaled_difference_regression() {
+        let expr_text = "k*(cos(x)*cos(2*x)*cos(4*x)) - k*(sin(8*x)/(8*sin(x)))";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_full_mixed_identity_regression() {
+        let expr_text =
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (ln(sqrt((1+sin(y))/(1-sin(y)))) - atanh(sin(y))) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn with_profile_simplify_steps_off_handles_full_mixed_identity_regression() {
+        let expr_text =
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (ln(sqrt((1+sin(y))/(1-sin(y)))) - atanh(sin(y))) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))";
+        let mut probe_engine = Engine::new();
+        let probe_parsed = parse(expr_text, &mut probe_engine.simplifier.context)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let effective_options = probe_engine.effective_options(&options, probe_parsed);
+        let mut simplifier = crate::Simplifier::with_profile(&effective_options);
+        simplifier.set_collect_steps(false);
+        let parsed = parse(expr_text, &mut simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let (result, _steps) =
+            simplifier.simplify_with_options(parsed, effective_options.to_simplify_options());
+        assert_eq!(
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn with_profile_simplify_steps_off_handles_polynomial_against_hyperbolic_pythagorean_regression(
+    ) {
+        let expr_text =
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))";
+        let mut probe_engine = Engine::new();
+        let probe_parsed = parse(expr_text, &mut probe_engine.simplifier.context)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let effective_options = probe_engine.effective_options(&options, probe_parsed);
+        let mut simplifier = crate::Simplifier::with_profile(&effective_options);
+        simplifier.set_collect_steps(false);
+        let parsed = parse(expr_text, &mut simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let (result, _steps) =
+            simplifier.simplify_with_options(parsed, effective_options.to_simplify_options());
+        assert_eq!(
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn with_default_rules_simplify_steps_off_handles_triple_sine_against_polynomial_partner_regression(
+    ) {
+        let expr_text =
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1)";
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        simplifier.set_collect_steps(false);
+        let parsed = parse(expr_text, &mut simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (result, _steps) =
+            simplifier.simplify_with_options(parsed, options.to_simplify_options());
+        assert_eq!(
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn from_profile_simplify_steps_off_handles_triple_sine_plus_rational_against_hyperbolic_pythagorean_regression(
+    ) {
+        let expr_text = "(sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))";
+        let mut probe_engine = Engine::new();
+        let probe_parsed = parse(expr_text, &mut probe_engine.simplifier.context)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let effective_options = probe_engine.effective_options(&options, probe_parsed);
+        let mut cache = crate::profile_cache::ProfileCache::new();
+        let profile = cache.get_or_build(&effective_options);
+        let mut simplifier =
+            crate::Simplifier::from_profile_with_context(profile, cas_ast::Context::new());
+        simplifier.set_collect_steps(false);
+        let parsed = parse(expr_text, &mut simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let (result, _steps) =
+            simplifier.simplify_with_options(parsed, effective_options.to_simplify_options());
+        assert_eq!(
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
     }
 }

@@ -11,6 +11,7 @@ pub fn is_always_keep_step_rule_name(name: &str) -> bool {
         || name == "Evaluate Numeric Power"
         || name == "Expand to Cancel Fraction"
         || name == "Expand Log Abs Mul/Div"
+        || name == "Cancel Exact Additive Pairs"
 }
 
 /// Returns true when rule name corresponds to canonicalization/reordering.

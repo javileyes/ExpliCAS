@@ -97,4 +97,82 @@ mod engine_tests {
         // sin(3x) = 3sin(x) - 4sin³(x) is a trig identity, so sin(3x) - (3sin(x) - 4sin^3(x)) = 0
         assert_eq!(res, "0");
     }
+
+    #[test]
+    fn test_triple_sine_quotient_engine() {
+        let mut simplifier = create_standard_simplifier();
+
+        let expr = parse("sin(3*x)/sin(x) - 2*cos(2*x) - 1", &mut simplifier.context).unwrap();
+        let (simplified, _) = simplifier.simplify(expr);
+        let res = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: simplified
+            }
+        );
+
+        assert_eq!(res, "0");
+    }
+
+    #[test]
+    fn test_full_mixed_identity_engine() {
+        let mut simplifier = create_standard_simplifier();
+
+        let expr = parse(
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (ln(sqrt((1+sin(y))/(1-sin(y)))) - atanh(sin(y))) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))",
+            &mut simplifier.context,
+        )
+        .unwrap();
+        let (simplified, _) = simplifier.simplify(expr);
+        let res = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: simplified
+            }
+        );
+
+        assert_eq!(res, "0");
+    }
+
+    #[test]
+    fn test_exact_additive_pair_chain_arithmetic_runtime() {
+        let mut simplifier = Simplifier::new();
+        cas_solver::runtime::rules::canonicalization::register(&mut simplifier);
+        cas_solver::runtime::rules::arithmetic::register(&mut simplifier);
+
+        let expr = parse("2*cos(2*x)+1-2*cos(2*x)", &mut simplifier.context).unwrap();
+        let (simplified, _) = simplifier.simplify(expr);
+        let res = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: simplified
+            }
+        );
+
+        assert_eq!(res, "1");
+    }
+
+    #[test]
+    fn test_exact_additive_pair_chain_single_rule_runtime() {
+        let mut simplifier = Simplifier::new();
+        simplifier.set_collect_steps(false);
+        simplifier.add_rule(Box::new(
+            cas_solver::runtime::rules::arithmetic::CancelExactAdditivePairsRule,
+        ));
+
+        let expr = parse("2*cos(2*x)+1-2*cos(2*x)", &mut simplifier.context).unwrap();
+        let (simplified, _) = simplifier.simplify(expr);
+        let res = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: simplified
+            }
+        );
+
+        assert_eq!(res, "1");
+    }
 }

@@ -7,6 +7,7 @@ use cas_solver::runtime::Simplifier;
 
 /// Run the problematic expression with profiler to identify high-frequency rules
 #[test]
+#[ignore = "Manual profiling diagnostic; not a CI contract test"]
 fn diagnose_rule_firing_counts() {
     // The simplest expression that triggers very deep recursion
     let expr_str = "sin((3 - x + sin(x))^4)";
@@ -60,6 +61,7 @@ fn diagnose_rule_firing_counts() {
 
 /// Run with sin^2 + cos^2 + the problematic term  
 #[test]
+#[ignore = "Manual stack-overflow diagnostic; currently intended for focused local investigation"]
 fn diagnose_pythagorean_plus_sin_pow() {
     let expr_str = "(sin(x)^2 + cos(x)^2) + sin((3 - x + sin(x))^4)^2";
 

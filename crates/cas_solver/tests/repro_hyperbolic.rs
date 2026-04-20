@@ -15,6 +15,7 @@ fn opts_autoexpand() -> EvalOptions {
 }
 
 #[test]
+#[ignore = "manual hyperbolic auto-expand repro; rule coverage lives in cas_engine hyperbolic tests"]
 fn test_hyperbolic_double_angle_exponential() {
     let opts = opts_autoexpand();
     let mut simplifier = Simplifier::with_profile(&opts);

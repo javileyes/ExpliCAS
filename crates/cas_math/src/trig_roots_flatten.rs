@@ -1,7 +1,8 @@
 // ========== Trig, Roots, and Flatten Helpers ==========
 
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{ordering::compare_expr, Context, Expr, ExprId};
 use num_traits::{One, Signed, ToPrimitive};
+use std::cmp::Ordering;
 
 /// Check if expression is a trigonometric function raised to a specific power.
 ///
@@ -337,6 +338,23 @@ pub fn extract_int_multiple_additive(
         _ => return None,
     };
 
+    // Special-case duplicate terms such as `x + x` and `x - (-x)` for `2*x`.
+    if target == 2 {
+        let normalize_term = |ctx: &Context, id: ExprId| match ctx.get(id) {
+            Expr::Neg(inner) => (false, *inner),
+            _ => (true, id),
+        };
+        let (lhs_positive, lhs_base) = normalize_term(context, lhs);
+        let (rhs_positive, rhs_base) = normalize_term(context, rhs);
+        if compare_expr(context, lhs_base, rhs_base) == Ordering::Equal {
+            match (is_sub, lhs_positive, rhs_positive) {
+                (false, true, true) | (true, true, false) => return Some((true, lhs_base)),
+                (false, false, false) | (true, false, true) => return Some((false, lhs_base)),
+                _ => {}
+            }
+        }
+    }
+
     // Extract factor from each term
     let (l_sign, l_inner) =
         extract_relaxed_int_factor(context, lhs, &target_big, &neg_target_big, target)?;
@@ -506,6 +524,15 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("4*u + 6", &mut ctx).expect("expr");
         let expected = parse("2*u + 3", &mut ctx).expect("expected");
+        let got = extract_double_angle_arg_relaxed(&mut ctx, expr).expect("rewrite");
+        assert_eq!(compare_expr(&ctx, got, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn relaxed_multiple_extracts_repeated_term_double_angle() {
+        let mut ctx = Context::new();
+        let expr = parse("x + x", &mut ctx).expect("expr");
+        let expected = parse("x", &mut ctx).expect("expected");
         let got = extract_double_angle_arg_relaxed(&mut ctx, expr).expect("rewrite");
         assert_eq!(compare_expr(&ctx, got, expected), Ordering::Equal);
     }

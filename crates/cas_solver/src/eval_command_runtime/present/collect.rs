@@ -85,7 +85,6 @@ where
         simplify_us: prepared.simplify_us,
         total_us,
     };
-
     CollectedEvalArtifacts {
         input_latex,
         steps,

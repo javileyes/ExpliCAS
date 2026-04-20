@@ -45,6 +45,14 @@ fn format_trig_contraction_desc(kind: TrigContractionRewriteKind) -> &'static st
         TrigContractionRewriteKind::DoubleAngleCos => "cos²(t) - sin²(t) = cos(2t)",
         TrigContractionRewriteKind::Cos2xAdditiveSin => "1 - 2·sin²(t) = cos(2t)",
         TrigContractionRewriteKind::Cos2xAdditiveCos => "2·cos²(t) - 1 = cos(2t)",
+        TrigContractionRewriteKind::Cos2xAdditiveSinScaled => "k - 2·k·sin²(t) = k·cos(2t)",
+        TrigContractionRewriteKind::Cos2xAdditiveCosScaled => "2·k·cos²(t) - k = k·cos(2t)",
+        TrigContractionRewriteKind::Cos2xAdditiveSinScaledWithOffset => {
+            "c + k - 2·k·sin²(t) = c + k·cos(2t)"
+        }
+        TrigContractionRewriteKind::Cos2xAdditiveCosScaledWithOffset => {
+            "c + 2·k·cos²(t) - k = c + k·cos(2t)"
+        }
         TrigContractionRewriteKind::AngleSumFractionToTan => {
             "(sin(a)cos(b)+cos(a)sin(b))/(cos(a)cos(b)-sin(a)sin(b)) = tan(a+b)"
         }

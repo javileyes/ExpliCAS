@@ -264,10 +264,10 @@ pub fn try_rewrite_gaussian_add_expr(ctx: &mut Context, expr: ExprId) -> Option<
     }
 
     if (left.is_real() && !right.is_real()) || (!left.is_real() && right.is_real()) {
-        if left.is_real() && right.is_pure_imag() {
+        if left.is_real() && !left.real.is_zero() && right.is_pure_imag() {
             return None;
         }
-        if right.is_real() && left.is_pure_imag() {
+        if right.is_real() && !right.real.is_zero() && left.is_pure_imag() {
             return None;
         }
     }
@@ -382,9 +382,10 @@ pub fn try_rewrite_sqrt_negative_expr(ctx: &mut Context, expr: ExprId) -> Option
 #[cfg(test)]
 mod tests {
     use super::{
-        extract_gaussian, try_rewrite_gaussian_div_expr, try_rewrite_gaussian_mul_expr,
-        try_rewrite_i_squared_mul_identity_expr, try_rewrite_imaginary_power_expr,
-        try_rewrite_sqrt_negative_expr, ComplexRewriteKind, GaussianRational,
+        extract_gaussian, try_rewrite_gaussian_add_expr, try_rewrite_gaussian_div_expr,
+        try_rewrite_gaussian_mul_expr, try_rewrite_i_squared_mul_identity_expr,
+        try_rewrite_imaginary_power_expr, try_rewrite_sqrt_negative_expr, ComplexRewriteKind,
+        GaussianRational,
     };
     use cas_ast::{Constant, Context, Expr};
     use cas_formatter::DisplayExpr;
@@ -431,6 +432,21 @@ mod tests {
         let g = extract_gaussian(&ctx, rewrite.rewritten).expect("gaussian");
         assert_eq!(g.real, BigRational::from_integer((-5).into()));
         assert_eq!(g.imag, BigRational::from_integer(10.into()));
+    }
+
+    #[test]
+    fn rewrites_gaussian_add_after_real_cancellation_to_pure_imag() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("(1 + 2*i) + (-1 + 3*i)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_gaussian_add_expr(&mut ctx, expr).expect("rewrite");
+        let shown = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert_eq!(shown, "5 * i");
     }
 
     #[test]

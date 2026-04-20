@@ -319,7 +319,7 @@ fn test_difference_of_cubes_in_solve_generic_context_steps_off_simplifies_and_ke
 }
 
 #[test]
-fn test_difference_of_cubes_in_solve_strict_context_steps_off_preserves_runtime_shape() {
+fn test_difference_of_cubes_in_solve_strict_context_steps_off_simplifies() {
     let result = eval_with_semantics_and_steps(
         "(x^3 - y^3) / (x - y)",
         ContextMode::Solve,
@@ -327,9 +327,8 @@ fn test_difference_of_cubes_in_solve_strict_context_steps_off_preserves_runtime_
         StepsMode::Off,
     );
     assert_eq!(
-        result,
-        "(y^3 - x^3) / (y - x)",
-        "solve-context strict eval currently preserves the canonical fraction shape for difference-of-cubes with steps off"
+        result, "x^2 + y^2 + x * y",
+        "solve-context strict eval should simplify the difference-of-cubes quotient with steps off"
     );
 }
 
@@ -352,7 +351,7 @@ fn test_sum_of_cubes_in_solve_generic_context_steps_off_simplifies_and_keeps_req
 }
 
 #[test]
-fn test_sum_of_cubes_in_solve_strict_context_steps_off_preserves_runtime_shape() {
+fn test_sum_of_cubes_in_solve_strict_context_steps_off_simplifies() {
     let result = eval_with_semantics_and_steps(
         "(x^3 + y^3) / (x + y)",
         ContextMode::Solve,
@@ -360,9 +359,8 @@ fn test_sum_of_cubes_in_solve_strict_context_steps_off_preserves_runtime_shape()
         StepsMode::Off,
     );
     assert_eq!(
-        result,
-        "(x^3 + y^3) / (x + y)",
-        "solve-context strict eval currently preserves the canonical fraction shape for sum-of-cubes with steps off"
+        result, "x^2 + y^2 - x * y",
+        "solve-context strict eval should simplify the sum-of-cubes quotient with steps off"
     );
 }
 

@@ -18,15 +18,33 @@ where
         &mut engine.simplifier.context,
         auto_store,
     )?;
-    let output_view =
-        crate::eval_request_runtime::evaluate_prepared_request_with_session(engine, session, req)
-            .map_err(|e| {
-            if e.starts_with("Error:") || e.starts_with("Parse error:") || e.starts_with("Usage:") {
-                e
-            } else {
-                format!("Error: {e}")
-            }
-        })?;
+    let previous_session_steps_mode = session.options().steps_mode;
+    let previous_simplifier_steps_mode = engine.simplifier.get_steps_mode();
+    let previous_listener = engine.simplifier.replace_step_listener(None);
+
+    if !matches!(previous_session_steps_mode, crate::StepsMode::Off) {
+        session.options_mut().steps_mode = crate::StepsMode::Off;
+    }
+    engine.simplifier.set_steps_mode(crate::StepsMode::Off);
+
+    let output_view_result =
+        crate::eval_request_runtime::evaluate_prepared_request_with_session(engine, session, req);
+
+    if session.options().steps_mode != previous_session_steps_mode {
+        session.options_mut().steps_mode = previous_session_steps_mode;
+    }
+    engine
+        .simplifier
+        .set_steps_mode(previous_simplifier_steps_mode);
+    engine.simplifier.set_step_listener(previous_listener);
+
+    let output_view = output_view_result.map_err(|e| {
+        if e.starts_with("Error:") || e.starts_with("Parse error:") || e.starts_with("Usage:") {
+            e
+        } else {
+            format!("Error: {e}")
+        }
+    })?;
     Ok(format_eval_result_text(
         &engine.simplifier.context,
         &output_view.result,
