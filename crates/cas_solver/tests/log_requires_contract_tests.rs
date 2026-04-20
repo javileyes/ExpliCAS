@@ -13,6 +13,7 @@ fn log_power_requires_drop_redundant_power_guards() {
             expr: "ln(x^n) + ln(y^n)",
             auto_store: false,
             max_chars: 4000,
+            time_budget_ms: None,
             steps_mode: EvalStepsMode::On,
             budget_preset: EvalBudgetPreset::Standard,
             strict: false,

@@ -72,7 +72,7 @@ impl Engine {
                 (resolved, Vec::new())
             };
 
-        let (mut res, mut steps, _stats) =
+        let (mut res, mut steps, stats) =
             ctx_simplifier.simplify_with_stats(expr_to_simplify, simplify_opts);
 
         if !expand_log_events.is_empty() {
@@ -161,6 +161,24 @@ impl Engine {
             effective_opts.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly,
             &steps,
         );
+
+        if stats.timed_out {
+            let message = match effective_opts.time_budget_ms {
+                Some(ms) => format!(
+                    "Partial result: simplification stopped after reaching the {} ms time budget.",
+                    ms
+                ),
+                None => "Partial result: simplification stopped after reaching the time budget."
+                    .to_string(),
+            };
+            let timeout_warning = DomainWarning {
+                message,
+                rule_name: "Simplification Time Budget".to_string(),
+            };
+            if !warnings.iter().any(|warning| warning == &timeout_warning) {
+                warnings.push(timeout_warning);
+            }
+        }
 
         if effective_opts.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly
             && cas_math::numeric_eval::contains_i(&self.simplifier.context, resolved)
@@ -926,6 +944,40 @@ mod tests {
             }
             .to_string(),
             "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_surfaces_partial_result_warning_when_time_budget_is_hit() {
+        let mut engine = Engine::new();
+        let expr_text = "a + b";
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.time_budget_ms = Some(0);
+
+        let (result, warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "a + b"
+        );
+        assert!(
+            warnings.iter().any(|warning| {
+                warning.rule_name == "Simplification Time Budget"
+                    && warning.message.contains("Partial result")
+            }),
+            "expected partial-result timeout warning, got: {warnings:?}"
         );
     }
 }

@@ -23,6 +23,7 @@ fn eval_config<'a>(expr: &'a str, auto_store: bool) -> EvalSessionRunConfig<'a> 
         expr,
         auto_store,
         max_chars: 2000,
+        time_budget_ms: None,
         steps_mode: EvalStepsMode::Off,
         budget_preset: EvalBudgetPreset::Standard,
         strict: false,

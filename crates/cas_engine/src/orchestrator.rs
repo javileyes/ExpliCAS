@@ -79,6 +79,7 @@ use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
 use std::collections::HashSet;
+use std::time::{Duration, Instant};
 
 fn to_math_auto_expand_budget(
     budget: &crate::phase::ExpandBudget,
@@ -20599,6 +20600,63 @@ impl Orchestrator {
         o
     }
 
+    #[inline]
+    fn initialize_deadline_if_needed(&mut self) {
+        if self.options.deadline.is_some() {
+            return;
+        }
+        let Some(time_budget_ms) = self.options.time_budget_ms else {
+            return;
+        };
+        let now = Instant::now();
+        self.options.deadline = Some(
+            now.checked_add(Duration::from_millis(time_budget_ms))
+                .unwrap_or(now),
+        );
+    }
+
+    #[inline]
+    fn time_budget_exceeded(&self) -> bool {
+        self.options
+            .deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
+    }
+
+    fn finish_timed_out_pipeline(
+        &self,
+        simplifier: &mut Simplifier,
+        current: ExprId,
+        all_steps: Vec<Step>,
+        mut pipeline_stats: crate::phase::PipelineStats,
+        best: Option<&BestSoFar>,
+    ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
+        let current_score = crate::best_so_far::score_expr(&simplifier.context, current);
+        let (final_expr, final_steps) = match best {
+            Some(best) if best.best_score() < current_score => {
+                let best_expr = best.best_expr();
+                let best_steps = if self.options.collect_steps {
+                    best.best_steps_prefix(&all_steps)
+                } else {
+                    all_steps
+                };
+                (best_expr, best_steps)
+            }
+            _ => (current, all_steps),
+        };
+
+        if self.options.shared.assumption_reporting != crate::AssumptionReporting::Off {
+            pipeline_stats.assumptions = crate::collect_assumption_records_from_iter(
+                final_steps
+                    .iter()
+                    .flat_map(|step| step.assumption_events().iter().cloned()),
+            );
+        }
+        pipeline_stats.cycle_events = cas_solver_core::cycle_event_registry::take_cycle_events();
+        pipeline_stats.timed_out = true;
+        simplifier.clear_sticky_implicit_domain();
+        (final_expr, final_steps, pipeline_stats)
+    }
+
     /// Run a single phase of the pipeline until fixed point or budget exhausted.
     ///
     /// Returns the simplified expression, steps, and phase statistics.
@@ -20629,6 +20687,18 @@ impl Orchestrator {
             );
 
             for iter in 0..max_iters {
+                if self.time_budget_exceeded() {
+                    stats.timed_out = true;
+                    stats.iters_used = iter;
+                    tracing::warn!(
+                        target: "simplify",
+                        phase = %phase,
+                        iters = stats.iters_used,
+                        "phase_timeout_before_iteration"
+                    );
+                    break;
+                }
+
                 let is_solve_mode =
                     self.options.shared.context_mode == crate::options::ContextMode::Solve;
                 if self.pattern_marks_expr != Some(current) {
@@ -20713,6 +20783,20 @@ impl Orchestrator {
 
                 stats.rewrites_used += steps.len();
                 all_steps.extend(steps);
+
+                if self.time_budget_exceeded() {
+                    current = next;
+                    stats.iters_used = iter + 1;
+                    stats.timed_out = true;
+                    tracing::warn!(
+                        target: "simplify",
+                        phase = %phase,
+                        iters = stats.iters_used,
+                        rewrites = stats.rewrites_used,
+                        "phase_timeout_after_pass"
+                    );
+                    break;
+                }
 
                 // Hidden solve fast path: once Core collapses to a terminal value or a
                 // plain symbolic closed form, another full Core pass is only paying the
@@ -20808,6 +20892,18 @@ impl Orchestrator {
         expr: ExprId,
         simplifier: &mut Simplifier,
     ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
+        self.initialize_deadline_if_needed();
+
+        if self.time_budget_exceeded() {
+            return self.finish_timed_out_pipeline(
+                simplifier,
+                expr,
+                Vec::new(),
+                crate::phase::PipelineStats::default(),
+                None,
+            );
+        }
+
         // Extract collect_steps early so pre-passes can skip Step construction
         let collect_steps = self.options.collect_steps;
         let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
@@ -22720,6 +22816,16 @@ impl Orchestrator {
             run_poly_lower_pass(&mut simplifier.context, current, collect_steps);
         all_steps.extend(lower_steps);
 
+        if self.time_budget_exceeded() {
+            return self.finish_timed_out_pipeline(
+                simplifier,
+                current,
+                all_steps,
+                crate::phase::PipelineStats::default(),
+                None,
+            );
+        }
+
         // Check for specialized strategies first
         if let Some(result) =
             crate::try_dirichlet_kernel_identity_pub(&mut simplifier.context, current)
@@ -22761,6 +22867,15 @@ impl Orchestrator {
         all_steps.extend(steps);
         pipeline_stats.core = stats;
         pipeline_stats.total_rewrites += pipeline_stats.core.rewrites_used;
+        if pipeline_stats.core.timed_out {
+            return self.finish_timed_out_pipeline(
+                simplifier,
+                current,
+                all_steps,
+                pipeline_stats,
+                None,
+            );
+        }
         // Fast path: when Core already collapses to a terminal exact value and the
         // caller is not collecting steps, later phases are pure fixed-cost noise.
         if !collect_steps && is_terminal_after_core(&simplifier.context, current) {
@@ -22909,6 +23024,15 @@ impl Orchestrator {
                 });
                 best_ref.consider(current, &all_steps, &simplifier.context);
             }
+            if pipeline_stats.transform.timed_out {
+                return self.finish_timed_out_pipeline(
+                    simplifier,
+                    current,
+                    all_steps,
+                    pipeline_stats,
+                    best.as_ref(),
+                );
+            }
         }
 
         // Narrow hidden solve fast path: if Transform lands on a plain symbolic
@@ -22979,6 +23103,15 @@ impl Orchestrator {
                 });
                 best_ref.consider(current, &all_steps, &simplifier.context);
             }
+            if pipeline_stats.rationalize.timed_out {
+                return self.finish_timed_out_pipeline(
+                    simplifier,
+                    current,
+                    all_steps,
+                    pipeline_stats,
+                    best.as_ref(),
+                );
+            }
         } else {
             pipeline_stats.rationalize_level = Some(auto_level);
             pipeline_stats.rationalize_outcome = Some(if auto_level == AutoRationalizeLevel::Off {
@@ -23013,6 +23146,15 @@ impl Orchestrator {
                 )
             });
             best_ref.consider(current, &all_steps, &simplifier.context);
+        }
+        if pipeline_stats.post_cleanup.timed_out || self.time_budget_exceeded() {
+            return self.finish_timed_out_pipeline(
+                simplifier,
+                current,
+                all_steps,
+                pipeline_stats,
+                best.as_ref(),
+            );
         }
 
         // Log pipeline summary
@@ -23450,6 +23592,25 @@ mod tests {
         let mut orchestrator = Orchestrator::new();
         let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
         assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_marks_timed_out_and_returns_partial_when_deadline_is_expired() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("a + b", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        orchestrator.options.collect_steps = false;
+        orchestrator.options.time_budget_ms = Some(1);
+        orchestrator.options.deadline =
+            Some(std::time::Instant::now() - std::time::Duration::from_millis(1));
+
+        let (rewritten, steps, stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+
+        assert_eq!(rewritten, expr);
+        assert!(steps.is_empty(), "timed-out partial path should skip steps");
+        assert!(stats.timed_out, "pipeline should be marked as timed out");
+        assert_eq!(stats.total_rewrites, 0);
     }
 
     #[test]

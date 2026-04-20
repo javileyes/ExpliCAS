@@ -872,6 +872,7 @@ pub struct EvalSessionRunConfig<'a> {
     pub expr: &'a str,
     pub auto_store: bool,
     pub max_chars: usize,
+    pub time_budget_ms: Option<u64>,
     pub steps_mode: EvalStepsMode,
     pub budget_preset: EvalBudgetPreset,
     pub strict: bool,

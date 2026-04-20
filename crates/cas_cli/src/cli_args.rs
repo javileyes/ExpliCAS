@@ -276,6 +276,10 @@ pub struct EvalArgs {
     #[arg(long, default_value_t = 2000)]
     pub max_chars: usize,
 
+    /// Cooperative wall-clock simplification budget in milliseconds
+    #[arg(long)]
+    pub time_budget_ms: Option<u64>,
+
     /// Steps mode: on, off, compact
     #[arg(long, value_enum, default_value_t = StepsArg::Off)]
     pub steps: StepsArg,

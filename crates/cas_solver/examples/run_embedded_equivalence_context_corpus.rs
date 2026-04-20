@@ -540,6 +540,7 @@ fn evaluate_case(case: &CorpusCase) -> Option<FailureRecord> {
         expr: &case.expression,
         auto_store: false,
         max_chars: usize::MAX,
+        time_budget_ms: None,
         steps_mode: EvalStepsMode::Off,
         budget_preset: EvalBudgetPreset::Standard,
         strict: false,

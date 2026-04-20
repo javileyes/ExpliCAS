@@ -56,6 +56,7 @@ fn consecutive_factorial_ratio_wire_uses_factorial_latex_and_nonnegative_require
             expr: "(n + 1)! / n!",
             auto_store: false,
             max_chars: 2000,
+            time_budget_ms: None,
             steps_mode: EvalStepsMode::On,
             budget_preset: EvalBudgetPreset::Standard,
             strict: false,

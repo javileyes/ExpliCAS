@@ -113,6 +113,7 @@ where
             assume_scope: config.assume_scope,
         },
     );
+    session.options_mut().time_budget_ms = config.time_budget_ms;
 
     let parse_start = Instant::now();
     let style_signals = ParseStyleSignals::from_input_string(config.expr);

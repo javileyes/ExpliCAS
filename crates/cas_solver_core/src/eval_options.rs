@@ -27,6 +27,8 @@ pub struct EvalOptions {
     pub requires_display: crate::domain_condition::RequiresDisplayLevel,
     /// Shared configuration (expand policy, semantics, context, etc.).
     pub shared: crate::simplify_options::SharedSemanticConfig,
+    /// Optional wall-clock budget for cooperative simplification timeout.
+    pub time_budget_ms: Option<u64>,
 }
 
 impl EvalOptions {
@@ -87,6 +89,7 @@ impl EvalOptions {
         crate::simplify_options::SimplifyOptions {
             shared: self.shared.clone(),
             collect_steps: !matches!(self.steps_mode, StepsMode::Off),
+            time_budget_ms: self.time_budget_ms,
             ..Default::default()
         }
     }
@@ -105,6 +108,7 @@ impl Default for EvalOptions {
             check_solutions: false,
             requires_display: crate::domain_condition::RequiresDisplayLevel::Essential,
             shared: crate::simplify_options::SharedSemanticConfig::default(),
+            time_budget_ms: None,
         }
     }
 }

@@ -13,6 +13,8 @@ pub struct PhaseStats {
     pub changed: bool,
     /// Cycle detected (ping-pong) - if Some, phase was stopped early.
     pub cycle: Option<crate::cycle_models::CycleInfo>,
+    /// Cooperative wall-clock timeout was hit during this phase.
+    pub timed_out: bool,
 }
 
 impl PhaseStats {
@@ -23,6 +25,7 @@ impl PhaseStats {
             rewrites_used: 0,
             changed: false,
             cycle: None,
+            timed_out: false,
         }
     }
 }
@@ -43,4 +46,6 @@ pub struct PipelineStats {
     pub assumptions: Vec<crate::assumption_model::AssumptionRecord>,
     /// Collected cycle events detected during simplification.
     pub cycle_events: Vec<crate::cycle_models::CycleEvent>,
+    /// Cooperative wall-clock timeout was hit and the result is partial/best-so-far.
+    pub timed_out: bool,
 }

@@ -284,11 +284,13 @@ impl BestSoFar {
     }
 
     /// Materialize the best prefix of steps from the final accumulated list.
+    pub fn best_steps_prefix(&self, all_steps: &[Step]) -> Vec<Step> {
+        all_steps[..self.best_steps_len.min(all_steps.len())].to_vec()
+    }
+
+    /// Materialize the best prefix of steps from the final accumulated list.
     #[cfg(test)]
     pub fn into_parts_from(self, all_steps: &[Step]) -> (ExprId, Vec<Step>) {
-        (
-            self.best_expr,
-            all_steps[..self.best_steps_len.min(all_steps.len())].to_vec(),
-        )
+        (self.best_expr, self.best_steps_prefix(all_steps))
     }
 }

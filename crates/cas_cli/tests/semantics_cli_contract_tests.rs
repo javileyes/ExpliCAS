@@ -69,6 +69,25 @@ fn semantics_defaults_reflected() {
 }
 
 #[test]
+fn time_budget_zero_surfaces_partial_result_warning_in_wire_output() {
+    let (output, _code) = run_cli(&["eval", "a + b", "--format", "json", "--time-budget-ms", "0"]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "a + b");
+    let warnings = wire["warnings"].as_array().expect("warnings array");
+    assert!(
+        warnings.iter().any(|warning| {
+            warning["rule"] == "Simplification Time Budget"
+                && warning["assumption"]
+                    .as_str()
+                    .is_some_and(|msg| msg.contains("Partial result"))
+        }),
+        "expected partial-result timeout warning, got: {warnings:?}"
+    );
+}
+
+#[test]
 fn value_domain_complex_reflected() {
     let (output, _code) = run_cli(&[
         "eval",

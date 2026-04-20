@@ -1,5 +1,7 @@
 //! Shared simplification option models.
 
+use std::time::Instant;
+
 /// Shared configuration axes used by both EvalOptions and SimplifyOptions.
 #[derive(Debug, Clone)]
 pub struct SharedSemanticConfig {
@@ -57,6 +59,17 @@ pub struct SimplifyOptions {
     pub simplify_purpose: crate::solve_safety_policy::SimplifyPurpose,
     /// Suppress best-effort depth overflow warnings for internal/proof-only simplifications.
     pub suppress_depth_overflow_warnings: bool,
+    /// Optional wall-clock budget for cooperative simplification timeout.
+    ///
+    /// When the budget is reached, the engine returns the best expression found so far
+    /// instead of continuing through later phases.
+    pub time_budget_ms: Option<u64>,
+    /// Runtime-only absolute deadline derived from `time_budget_ms`.
+    ///
+    /// This is propagated through nested/internal orchestrators so child simplifies do not
+    /// restart the wall-clock budget.
+    #[doc(hidden)]
+    pub deadline: Option<Instant>,
 }
 
 impl Default for SimplifyOptions {
@@ -71,6 +84,8 @@ impl Default for SimplifyOptions {
             goal: crate::normal_form_goal::NormalFormGoal::default(),
             simplify_purpose: crate::solve_safety_policy::SimplifyPurpose::default(),
             suppress_depth_overflow_warnings: false,
+            time_budget_ms: None,
+            deadline: None,
         }
     }
 }

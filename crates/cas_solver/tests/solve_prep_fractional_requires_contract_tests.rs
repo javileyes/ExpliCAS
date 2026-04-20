@@ -13,6 +13,7 @@ fn fractional_symbolic_solve_prep_dedupes_scaled_nonzero_requires() {
             expr: "derive((a/2)*x^2 + b*x + c, (a/2)*(x + b/a)^2 + c - b^2/(2*a))",
             auto_store: false,
             max_chars: 4000,
+            time_budget_ms: None,
             steps_mode: EvalStepsMode::On,
             budget_preset: EvalBudgetPreset::Standard,
             strict: false,

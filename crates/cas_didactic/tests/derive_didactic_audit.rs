@@ -153,6 +153,7 @@ fn derive_eval_config(expr: &str) -> EvalCommandConfig<'_> {
         expr,
         auto_store: false,
         max_chars: 8000,
+        time_budget_ms: None,
         steps_mode: EvalStepsMode::On,
         budget_preset: EvalBudgetPreset::Standard,
         strict: false,

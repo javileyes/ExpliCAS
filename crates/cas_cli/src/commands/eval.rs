@@ -50,7 +50,7 @@ fn render_wire(args: &EvalArgs) -> CommandOutput {
     )
 }
 
-fn eval_command_config<'a>(
+pub(super) fn eval_command_config<'a>(
     expr: &'a str,
     args: &'a EvalArgs,
 ) -> cas_session::eval::EvalCommandConfig<'a> {
@@ -58,6 +58,7 @@ fn eval_command_config<'a>(
         expr,
         auto_store: args.session.is_some(),
         max_chars: args.max_chars,
+        time_budget_ms: args.time_budget_ms,
         steps_mode: steps_mode(args.steps),
         budget_preset: budget_preset(args.budget),
         strict: args.strict,

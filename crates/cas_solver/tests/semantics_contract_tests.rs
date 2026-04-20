@@ -98,6 +98,23 @@ fn eval_options_propagates_new_axes_to_simplify_options() {
     );
 }
 
+#[test]
+fn eval_options_propagates_time_budget_to_simplify_options() {
+    use cas_solver::runtime::EvalOptions;
+
+    let eval_opts = EvalOptions {
+        time_budget_ms: Some(2_000),
+        ..EvalOptions::default()
+    };
+    let simplify_opts = eval_opts.to_simplify_options();
+
+    assert_eq!(simplify_opts.time_budget_ms, Some(2_000));
+    assert!(
+        simplify_opts.deadline.is_none(),
+        "runtime deadline should be initialized lazily by the orchestrator"
+    );
+}
+
 // =============================================================================
 // Round-trip Stability Tests
 // =============================================================================

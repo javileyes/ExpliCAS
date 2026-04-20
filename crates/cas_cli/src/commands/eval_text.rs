@@ -3,27 +3,25 @@
 //! Handles parse/eval flow for text mode and optional session persistence.
 
 use super::output::CommandOutput;
-use crate::{DomainArg, EvalArgs};
+use crate::EvalArgs;
 
 pub(crate) fn render(args: &EvalArgs) -> Result<CommandOutput, String> {
-    let domain = match args.domain {
-        DomainArg::Strict => "strict",
-        DomainArg::Generic => "generic",
-        DomainArg::Assume => "assume",
-    };
-
     let (result, load_warning, save_warning) =
-        cas_session::eval::evaluate_eval_text_command_with_session(
+        cas_session::eval::evaluate_eval_command_with_session(
             args.session.as_deref(),
-            domain,
-            &args.expr,
-            args.session.is_some(),
+            super::eval::eval_command_config(&args.expr, args),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
         );
     let mut output = CommandOutput::default();
     output.stderr_lines.extend(load_warning);
 
     match result {
-        Ok(result_str) => output.stdout = result_str,
+        Ok(result_wire) => {
+            for warning in result_wire.warnings {
+                output.push_stderr_line(format!("⚠ {} ({})", warning.assumption, warning.rule));
+            }
+            output.stdout = result_wire.result;
+        }
         Err(message) => return Err(message),
     }
 
