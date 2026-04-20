@@ -21,6 +21,20 @@ If `python` on your system already points to Python 3, this also works:
 python web/server.py
 ```
 
+To configure the web simplification budget from a `.env`, copy the example file first:
+
+```bash
+cp .env.example .env
+```
+
+Then adjust `WEB_TIME_BUDGET_MS` and rebuild:
+
+```bash
+make build-release
+```
+
+That build refreshes `web/build-config.js` from `.env`, and the Python server also reads the same `.env` at runtime.
+
 ## Features
 
 - **Interactive REPL**: Enter mathematical expressions and see step-by-step solutions
@@ -174,6 +188,9 @@ Both `%n` and `#n` syntax work.
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | 8080 | Server port |
+| `WEB_TIME_BUDGET_MS` | 1700 | Frontend/default simplification budget passed to the CLI |
+| `WEB_MIN_HARD_TIMEOUT_SECONDS` | 8 | Minimum hard subprocess timeout for the web server |
+| `WEB_TIMEOUT_GRACE_SECONDS` | 5 | Grace window added on top of the cooperative engine budget |
 | `CAS_CLI` | `./target/release/cas_cli` | Path to CLI binary |
 | `SESSION_TIMEOUT_SECONDS` | 7200 | Session expiration (2 hours) |
 

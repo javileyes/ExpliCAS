@@ -13,6 +13,7 @@
             svg: { fontCache: 'global' }
         };
     </script>
+    <script src="/build-config.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js" async></script>
 
     <style>
@@ -1209,7 +1210,7 @@
 
         // API endpoint (adjust based on your server)
         const API_URL = '/api/eval';
-        const DEFAULT_TIME_BUDGET_MS = 1700;
+        const DEFAULT_TIME_BUDGET_MS = window.EXPLICAS_BUILD_CONFIG?.defaultTimeBudgetMs ?? 1700;
 
         // Input handling
         const input = document.getElementById('expression-input');

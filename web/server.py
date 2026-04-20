@@ -27,14 +27,25 @@ import hashlib
 import tempfile
 from contextlib import contextmanager, nullcontext
 
+from app_config import (
+    DEFAULT_WEB_MIN_HARD_TIMEOUT_SECONDS,
+    DEFAULT_WEB_TIME_BUDGET_MS,
+    DEFAULT_WEB_TIMEOUT_GRACE_SECONDS,
+    env_int,
+    render_frontend_build_config_js,
+)
 
-PORT = int(os.environ.get('PORT', 8080))
+PORT = env_int("PORT", 8080)
 CAS_CLI = "./target/release/cas_cli"
 # Calibrated below the visible 2s SLA because the engine deadline is cooperative
 # and some root shortcuts can overrun the budget slightly before the next checkpoint.
-WEB_TIME_BUDGET_MS = int(os.environ.get("WEB_TIME_BUDGET_MS", "1700"))
-WEB_MIN_HARD_TIMEOUT_SECONDS = int(os.environ.get("WEB_MIN_HARD_TIMEOUT_SECONDS", "8"))
-WEB_TIMEOUT_GRACE_SECONDS = int(os.environ.get("WEB_TIMEOUT_GRACE_SECONDS", "5"))
+WEB_TIME_BUDGET_MS = env_int("WEB_TIME_BUDGET_MS", DEFAULT_WEB_TIME_BUDGET_MS)
+WEB_MIN_HARD_TIMEOUT_SECONDS = env_int(
+    "WEB_MIN_HARD_TIMEOUT_SECONDS", DEFAULT_WEB_MIN_HARD_TIMEOUT_SECONDS
+)
+WEB_TIMEOUT_GRACE_SECONDS = env_int(
+    "WEB_TIMEOUT_GRACE_SECONDS", DEFAULT_WEB_TIMEOUT_GRACE_SECONDS
+)
 
 # CLI session snapshot configuration (for fast #N references without textual substitution)
 SESSION_SNAPSHOT_DIR = os.path.join(tempfile.gettempdir(), "explicas_cli_sessions")
@@ -275,6 +286,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/api/examples':
             self.handle_get_examples()
+        elif self.path == '/build-config.js':
+            self.handle_build_config_js()
         else:
             # Default static file serving
             super().do_GET()
@@ -310,6 +323,15 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             self.send_json({"ok": False, "error": "Examples file not found", "examples": []})
         except Exception as e:
             self.send_json({"ok": False, "error": str(e), "examples": []})
+
+    def handle_build_config_js(self):
+        payload = render_frontend_build_config_js().encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/javascript; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
     
     def handle_clear(self):
         """Clear session state for a specific session"""

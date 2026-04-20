@@ -23,6 +23,15 @@ import sys
 import argparse
 from pathlib import Path
 
+from app_config import (
+    DEFAULT_WEB_MIN_HARD_TIMEOUT_SECONDS,
+    DEFAULT_WEB_TIME_BUDGET_MS,
+    DEFAULT_WEB_TIMEOUT_GRACE_SECONDS,
+    env_int,
+    env_value,
+    render_frontend_build_config_js,
+)
+
 # ----------------------------
 # Config (env + defaults)
 # ----------------------------
@@ -30,29 +39,23 @@ from pathlib import Path
 DEFAULT_PORT = 8000
 DEFAULT_HOST = "0.0.0.0"
 
-def env_int(*names, default):
-    for n in names:
-        v = os.environ.get(n)
-        if v:
-            try:
-                return int(v)
-            except ValueError:
-                pass
-    return default
-
 def env_str(*names, default=None):
     for n in names:
-        v = os.environ.get(n)
+        v = env_value(n)
         if v:
             return v
     return default
 
-CAS_TIMEOUT = env_int("CAS_TIMEOUT", default=60)  # seconds
+CAS_TIMEOUT = env_int("CAS_TIMEOUT", 60)  # seconds
 # Calibrated below the visible 2s SLA because the engine deadline is cooperative
 # and some root shortcuts can overrun the budget slightly before the next checkpoint.
-WEB_TIME_BUDGET_MS = env_int("WEB_TIME_BUDGET_MS", default=1700)
-WEB_MIN_HARD_TIMEOUT_SECONDS = env_int("WEB_MIN_HARD_TIMEOUT_SECONDS", default=8)
-WEB_TIMEOUT_GRACE_SECONDS = env_int("WEB_TIMEOUT_GRACE_SECONDS", default=5)
+WEB_TIME_BUDGET_MS = env_int("WEB_TIME_BUDGET_MS", DEFAULT_WEB_TIME_BUDGET_MS)
+WEB_MIN_HARD_TIMEOUT_SECONDS = env_int(
+    "WEB_MIN_HARD_TIMEOUT_SECONDS", DEFAULT_WEB_MIN_HARD_TIMEOUT_SECONDS
+)
+WEB_TIMEOUT_GRACE_SECONDS = env_int(
+    "WEB_TIMEOUT_GRACE_SECONDS", DEFAULT_WEB_TIMEOUT_GRACE_SECONDS
+)
 
 
 def _coerce_time_budget_ms(raw_value):
@@ -175,6 +178,12 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
     def log_message(self, format, *args):
         # quieter but still useful
         log("[http] " + (format % args))
+
+    def do_GET(self):
+        if self.path == "/build-config.js":
+            self.handle_build_config_js()
+        else:
+            super().do_GET()
 
     def do_POST(self):
         if self.path == "/api/eval":
@@ -344,6 +353,16 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Content-Length", str(len(payload)))
+        self.end_headers()
+        self.wfile.write(payload)
+
+    def handle_build_config_js(self):
+        payload = render_frontend_build_config_js().encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/javascript; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
