@@ -84,6 +84,12 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     pub(super) initial_parent_ctx: crate::parent_context::ParentContext, // Carries marks to rules
     /// Current phase of the simplification pipeline (controls which rules can run)
     pub(super) current_phase: crate::phase::SimplifyPhase,
+    /// Shared deadline inherited from the orchestrator for cooperative timeouts.
+    pub(super) deadline: Option<std::time::Instant>,
+    /// Sticky timeout bit for this local pass.
+    pub(super) timed_out: bool,
+    /// Poll counter so we do not hit `Instant::now()` on every node/rule dispatch.
+    pub(super) deadline_check_counter: u32,
 
     // ── Cycle detection ──────────────────────────────────────────────────
     /// Cycle detector for ping-pong detection (always-on as of V2.14.30)
@@ -139,6 +145,25 @@ impl<'a> Transformer for LocalSimplificationTransformer<'a> {
 }
 
 impl<'a> LocalSimplificationTransformer<'a> {
+    #[inline]
+    pub(super) fn time_budget_exceeded(&mut self) -> bool {
+        if self.timed_out {
+            return true;
+        }
+        let Some(deadline) = self.deadline else {
+            return false;
+        };
+        self.deadline_check_counter = self.deadline_check_counter.wrapping_add(1);
+        if (self.deadline_check_counter & 0x3f) != 0 {
+            return false;
+        }
+        if std::time::Instant::now() >= deadline {
+            self.timed_out = true;
+            return true;
+        }
+        false
+    }
+
     pub(super) fn indent(&self) -> String {
         "  ".repeat(self.current_path.len())
     }
@@ -178,6 +203,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
     }
 
     pub(super) fn transform_expr_recursive(&mut self, id: ExprId) -> ExprId {
+        if self.time_budget_exceeded() {
+            return id;
+        }
+
         // Depth guard: prevent stack overflow by limiting recursion depth
         self.current_depth += 1;
         if self.current_depth > MAX_SIMPLIFY_DEPTH {

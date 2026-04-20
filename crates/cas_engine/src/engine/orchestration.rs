@@ -16,6 +16,7 @@ use cas_ast::{hold::strip_all_holds, ExprId};
 #[derive(Debug, Clone)]
 pub struct LoopConfig {
     pub phase: crate::phase::SimplifyPhase,
+    pub deadline: Option<std::time::Instant>,
     pub expand_mode: bool,
     pub auto_expand: bool,
     pub expand_budget: crate::phase::ExpandBudget,
@@ -34,6 +35,7 @@ impl Default for LoopConfig {
     fn default() -> Self {
         Self {
             phase: crate::phase::SimplifyPhase::Transform,
+            deadline: None,
             expand_mode: false,
             auto_expand: false,
             expand_budget: crate::phase::ExpandBudget::default(),
@@ -108,6 +110,9 @@ impl Simplifier {
             root_expr: expr_id,
             event_listener: step_listener.as_deref_mut(),
             current_phase: phase,
+            deadline: None,
+            timed_out: false,
+            deadline_check_counter: 0,
             cycle_detector: None,
             cycle_phase: None,
             fp_memo: std::collections::HashMap::new(),
@@ -237,6 +242,7 @@ impl Simplifier {
         config: &LoopConfig,
     ) -> (ExprId, Vec<Step>, crate::budget::PassStats) {
         let phase = config.phase;
+        let deadline = config.deadline;
         let expand_mode = config.expand_mode;
         let auto_expand = config.auto_expand;
         let expand_budget = config.expand_budget;
@@ -342,6 +348,9 @@ impl Simplifier {
             root_expr: expr_id,
             event_listener: step_listener.as_deref_mut(),
             current_phase: phase,
+            deadline,
+            timed_out: false,
+            deadline_check_counter: 0,
             cycle_detector: None,
             cycle_phase: None,
             fp_memo: std::collections::HashMap::new(),

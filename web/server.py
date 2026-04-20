@@ -16,6 +16,7 @@ Then open http://localhost:8080
 
 import http.server
 import json
+import math
 import os
 import re
 import subprocess
@@ -29,6 +30,11 @@ from contextlib import contextmanager, nullcontext
 
 PORT = int(os.environ.get('PORT', 8080))
 CAS_CLI = "./target/release/cas_cli"
+# Calibrated below the visible 2s SLA because the engine deadline is cooperative
+# and some root shortcuts can overrun the budget slightly before the next checkpoint.
+WEB_TIME_BUDGET_MS = int(os.environ.get("WEB_TIME_BUDGET_MS", "1700"))
+WEB_MIN_HARD_TIMEOUT_SECONDS = int(os.environ.get("WEB_MIN_HARD_TIMEOUT_SECONDS", "8"))
+WEB_TIMEOUT_GRACE_SECONDS = int(os.environ.get("WEB_TIMEOUT_GRACE_SECONDS", "5"))
 
 # CLI session snapshot configuration (for fast #N references without textual substitution)
 SESSION_SNAPSHOT_DIR = os.path.join(tempfile.gettempdir(), "explicas_cli_sessions")
@@ -172,6 +178,34 @@ SESSION_TIMEOUT_SECONDS = 2 * 60 * 60  # 2 hours of inactivity before session ex
 # Sessions are identified by a UUID stored in the browser's sessionStorage
 # Each session tracks: variables, results, and last_access time for cleanup
 sessions = {}  # session_id -> dict(variables/results/ref_map/cli_ref/session_file/last_access)
+
+
+def _coerce_time_budget_ms(raw_value):
+    """Parse optional request budget; fall back to the web default."""
+    if raw_value is None or raw_value == "":
+        return WEB_TIME_BUDGET_MS
+
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        raise ValueError("time_budget_ms must be an integer")
+
+    if value < 0:
+        raise ValueError("time_budget_ms must be >= 0")
+
+    return value
+
+
+def _compute_subprocess_timeout_seconds(expr_len: int, time_budget_ms: int | None) -> int:
+    legacy_timeout = 120 if expr_len > 10000 else 60
+    if time_budget_ms is None:
+        return legacy_timeout
+
+    cooperative_timeout = max(
+        WEB_MIN_HARD_TIMEOUT_SECONDS,
+        math.ceil(time_budget_ms / 1000) + WEB_TIMEOUT_GRACE_SECONDS,
+    )
+    return min(legacy_timeout, cooperative_timeout)
 
 def get_session(session_id):
     """Get or create a session by ID, updating last access time"""
@@ -390,6 +424,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             data = json.loads(body)
             expression = data.get('expression', '').strip()
             session_id = data.get('session_id', 'default')
+            time_budget_ms = _coerce_time_budget_ms(data.get("time_budget_ms"))
             session = get_session(session_id)
             
             if not expression:
@@ -402,7 +437,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             if assignment_match:
                 var_name = assignment_match.group(1)
                 expr_part = assignment_match.group(2)
-                result, cli_id = self.eval_and_store(expr_part, session)
+                result, cli_id = self.eval_and_store(expr_part, session, time_budget_ms)
                 
                 if result.get('ok', False):
                     # Store the result for this variable (but NOT in results list)
@@ -415,7 +450,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     result['ref'] = None
                     
             else:
-                result, cli_id = self.eval_and_store(expression, session)
+                result, cli_id = self.eval_and_store(expression, session, time_budget_ms)
                 # Only non-assignment evaluations get stored for UI references
                 session["results"].append(result)
                 result['ref'] = len(session["results"])
@@ -429,16 +464,18 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             
         except json.JSONDecodeError:
             self.send_json_error("Invalid JSON")
+        except ValueError as e:
+            self.send_json_error(str(e))
         except Exception as e:
             self.send_json_error(str(e))
-    
-    def eval_and_store(self, expression, session):
+
+    def eval_and_store(self, expression, session, time_budget_ms):
         """Evaluate via cas_cli using the per-session snapshot, tracking real stored ids."""
         session_file = session.get("session_file")
         lock_path = (session_file + ".lock") if session_file else None
 
         with (_file_lock(lock_path) if lock_path else nullcontext()):
-            result = self.eval_with_substitution(expression, session)
+            result = self.eval_with_substitution(expression, session, time_budget_ms)
 
             cli_id = None
             if result.get("ok", False) and result.get("stored_id") is not None:
@@ -447,7 +484,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
 
             return result, cli_id
 
-    def eval_with_substitution(self, expression, session):
+    def eval_with_substitution(self, expression, session, time_budget_ms):
         """Evaluate expression, substituting variables and mapping UI #N refs to CLI session refs."""
         expr = expression
         session_results = session.get("results", [])
@@ -508,19 +545,31 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 expr,
                 session.get("session_file"),
                 steps_on=False,
+                time_budget_ms=time_budget_ms,
             )
             if _equiv_result_is_true(equiv_result):
                 derive_result = self.call_cas_cli(
                     derive_expr,
                     session.get("session_file"),
                     steps_on=True,
+                    time_budget_ms=time_budget_ms,
                 )
                 return _merge_equiv_with_derive_steps(equiv_result, derive_result)
             return _merge_equiv_with_derive_steps(equiv_result, None)
 
-        return self.call_cas_cli(expr, session.get("session_file"))
+        return self.call_cas_cli(
+            expr,
+            session.get("session_file"),
+            time_budget_ms=time_budget_ms,
+        )
 
-    def call_cas_cli(self, expression, session_file=None, steps_on=True):
+    def call_cas_cli(
+        self,
+        expression,
+        session_file=None,
+        steps_on=True,
+        time_budget_ms=None,
+    ):
         """Call cas_cli eval-json and return parsed result"""
         result = None  # Initialize to handle exception cases
         try:
@@ -528,9 +577,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             expr_len = len(expression)
             if expr_len > 1000:
                 print(f"⚠️  Large expression: {expr_len} chars")
-
-            # Increased timeout for very large expressions
-            timeout = 120 if expr_len > 10000 else 60
+            timeout = _compute_subprocess_timeout_seconds(expr_len, time_budget_ms)
 
             # Build CLI command (session snapshot enables fast #N references across calls)
             cmd = [
@@ -543,6 +590,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 "--steps",
                 "on" if steps_on else "off",
             ]
+            if time_budget_ms is not None:
+                cmd += ["--time-budget-ms", str(time_budget_ms)]
             if session_file:
                 cmd += ["--session", session_file]
 
@@ -572,7 +621,14 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
 
         except subprocess.TimeoutExpired:
             print(f"⏰ Timeout ({timeout}s) for expression of {len(expression)} chars")
-            return {"ok": False, "error": f"Timeout ({timeout}s) - expression too complex", "input": expression[:500]}
+            if time_budget_ms is not None:
+                error = (
+                    f"Timeout ({timeout}s hard limit after {time_budget_ms}ms "
+                    "simplification budget) - expression too complex"
+                )
+            else:
+                error = f"Timeout ({timeout}s) - expression too complex"
+            return {"ok": False, "error": error, "input": expression[:500]}
         except FileNotFoundError:
             return {"ok": False, "error": f"cas_cli not found. Run 'cargo build --release' first.", "input": expression[:500]}
         except json.JSONDecodeError as e:

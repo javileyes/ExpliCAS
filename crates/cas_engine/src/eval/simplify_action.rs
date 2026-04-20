@@ -980,4 +980,41 @@ mod tests {
             "expected partial-result timeout warning, got: {warnings:?}"
         );
     }
+
+    #[test]
+    fn eval_simplify_surfaces_partial_result_warning_when_root_shortcut_nested_timeout_is_hit() {
+        let mut engine = Engine::new();
+        let expr_text = "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (log(sqrt((1+sin(y))/(1-sin(y)))) - atanh(sin(y))) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))";
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        options.time_budget_ms = Some(1);
+
+        let (result, warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        let rendered = DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result,
+        }
+        .to_string();
+        assert!(
+            !rendered.is_empty(),
+            "expected a partial result to be returned before timeout"
+        );
+        assert!(
+            warnings.iter().any(|warning| {
+                warning.rule_name == "Simplification Time Budget"
+                    && warning.message.contains("Partial result")
+            }),
+            "expected nested root-shortcut timeout warning, got: {warnings:?}"
+        );
+    }
 }

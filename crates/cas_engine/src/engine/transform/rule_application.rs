@@ -8,6 +8,14 @@ use super::*;
 use crate::canonical_forms::normalize_core_with_cache;
 use cas_solver_core::solve_safety_policy::{safe_for_prepass, safe_for_tactic_with_domain_flags};
 
+static CAS_TRACE_SLOW_RULE_ATTEMPTS_MS: std::sync::LazyLock<Option<u128>> =
+    std::sync::LazyLock::new(|| {
+        std::env::var("CAS_TRACE_SLOW_RULE_ATTEMPTS_MS")
+            .ok()
+            .and_then(|raw| raw.parse::<u128>().ok())
+            .filter(|threshold| *threshold > 0)
+    });
+
 impl<'a> LocalSimplificationTransformer<'a> {
     /// Build the ParentContext for the current node position.
     ///
@@ -67,6 +75,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
         // Note: This loop pattern with early returns is intentional for structured exit points
         #[allow(clippy::never_loop)]
         loop {
+            if self.time_budget_exceeded() {
+                self.current_depth -= 1;
+                return expr_id;
+            }
             let mut changed = false;
             let target_kind = crate::target_kind::TargetKind::from_expr(self.context.get(expr_id));
             let simplify_purpose = self.initial_parent_ctx.simplify_purpose();
@@ -85,13 +97,38 @@ impl<'a> LocalSimplificationTransformer<'a> {
             // Try specific rules
             if let Some(specific_rules) = self.rules.get(&target_kind) {
                 for rule in specific_rules {
+                    if self.time_budget_exceeded() {
+                        self.current_depth -= 1;
+                        return expr_id;
+                    }
                     if specific_rules_need_runtime_filter
                         && self.should_skip_rule(rule.as_ref(), true)
                     {
                         continue;
                     }
 
-                    if let Some(mut rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
+                    let slow_rule_start = CAS_TRACE_SLOW_RULE_ATTEMPTS_MS
+                        .as_ref()
+                        .map(|_| std::time::Instant::now());
+                    let rewrite_attempt = rule.apply(self.context, expr_id, &parent_ctx);
+                    if let (Some(threshold_ms), Some(start)) =
+                        (CAS_TRACE_SLOW_RULE_ATTEMPTS_MS.as_ref(), slow_rule_start)
+                    {
+                        let elapsed = start.elapsed().as_millis();
+                        if elapsed >= *threshold_ms {
+                            eprintln!(
+                                "slow_rule_attempt phase={:?} kind=specific rule={} elapsed_ms={} expr={}",
+                                self.current_phase,
+                                rule.name(),
+                                elapsed,
+                                cas_formatter::DisplayExpr {
+                                    context: self.context,
+                                    id: expr_id,
+                                }
+                            );
+                        }
+                    }
+                    if let Some(mut rewrite) = rewrite_attempt {
                         let final_expr = rewrite.final_expr();
                         // Check semantic equality - skip if no real change
                         // EXCEPTION: Didactic rules should always generate steps
@@ -302,17 +339,46 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
 
             if changed {
+                if self.time_budget_exceeded() {
+                    self.current_depth -= 1;
+                    return expr_id;
+                }
                 return self.transform_expr_recursive(expr_id);
             }
 
             // Try global rules
             for rule in self.global_rules {
+                if self.time_budget_exceeded() {
+                    self.current_depth -= 1;
+                    return expr_id;
+                }
                 if global_rules_need_runtime_filter && self.should_skip_rule(rule.as_ref(), true) {
                     continue;
                 }
 
                 // PERF: Reuse the parent_ctx built once per apply_rules() call
-                if let Some(mut rewrite) = rule.apply(self.context, expr_id, &parent_ctx) {
+                let slow_rule_start = CAS_TRACE_SLOW_RULE_ATTEMPTS_MS
+                    .as_ref()
+                    .map(|_| std::time::Instant::now());
+                let rewrite_attempt = rule.apply(self.context, expr_id, &parent_ctx);
+                if let (Some(threshold_ms), Some(start)) =
+                    (CAS_TRACE_SLOW_RULE_ATTEMPTS_MS.as_ref(), slow_rule_start)
+                {
+                    let elapsed = start.elapsed().as_millis();
+                    if elapsed >= *threshold_ms {
+                        eprintln!(
+                            "slow_rule_attempt phase={:?} kind=global rule={} elapsed_ms={} expr={}",
+                            self.current_phase,
+                            rule.name(),
+                            elapsed,
+                            cas_formatter::DisplayExpr {
+                                context: self.context,
+                                id: expr_id,
+                            }
+                        );
+                    }
+                }
+                if let Some(mut rewrite) = rewrite_attempt {
                     let final_expr = rewrite.final_expr();
                     // Fast path: if rewrite produces identical ExprId, skip entirely
                     if final_expr == expr_id {
@@ -375,6 +441,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
 
             if changed {
+                if self.time_budget_exceeded() {
+                    self.current_depth -= 1;
+                    return expr_id;
+                }
                 return self.transform_expr_recursive(expr_id);
             }
 

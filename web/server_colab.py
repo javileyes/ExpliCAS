@@ -15,6 +15,7 @@ Colab tips:
 
 import http.server
 import json
+import math
 import os
 import re
 import subprocess
@@ -47,6 +48,37 @@ def env_str(*names, default=None):
     return default
 
 CAS_TIMEOUT = env_int("CAS_TIMEOUT", default=60)  # seconds
+# Calibrated below the visible 2s SLA because the engine deadline is cooperative
+# and some root shortcuts can overrun the budget slightly before the next checkpoint.
+WEB_TIME_BUDGET_MS = env_int("WEB_TIME_BUDGET_MS", default=1700)
+WEB_MIN_HARD_TIMEOUT_SECONDS = env_int("WEB_MIN_HARD_TIMEOUT_SECONDS", default=8)
+WEB_TIMEOUT_GRACE_SECONDS = env_int("WEB_TIMEOUT_GRACE_SECONDS", default=5)
+
+
+def _coerce_time_budget_ms(raw_value):
+    if raw_value is None or raw_value == "":
+        return WEB_TIME_BUDGET_MS
+
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        raise ValueError("time_budget_ms must be an integer")
+
+    if value < 0:
+        raise ValueError("time_budget_ms must be >= 0")
+
+    return value
+
+
+def _compute_subprocess_timeout_seconds(legacy_timeout: int, time_budget_ms: int | None) -> int:
+    if time_budget_ms is None:
+        return legacy_timeout
+
+    cooperative_timeout = max(
+        WEB_MIN_HARD_TIMEOUT_SECONDS,
+        math.ceil(time_budget_ms / 1000) + WEB_TIMEOUT_GRACE_SECONDS,
+    )
+    return min(legacy_timeout, cooperative_timeout)
 
 def _split_top_level_pair(input_str: str):
     depth = 0
@@ -174,6 +206,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         try:
             data = json.loads(body)
             expression = (data.get("expression") or "").strip()
+            time_budget_ms = _coerce_time_budget_ms(data.get("time_budget_ms"))
             if not expression:
                 self.send_json_error("No expression provided")
                 return
@@ -183,13 +216,13 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             if assignment_match:
                 var_name = assignment_match.group(1)
                 expr_part = assignment_match.group(2)
-                result = self.eval_with_substitution(expr_part)
+                result = self.eval_with_substitution(expr_part, time_budget_ms)
                 if result.get("ok", False):
                     session_variables[var_name] = result.get("result", "")
                     result["assignment"] = var_name
                     result["input"] = expression
             else:
-                result = self.eval_with_substitution(expression)
+                result = self.eval_with_substitution(expression, time_budget_ms)
 
             session_results.append(result)
             result["ref"] = len(session_results)
@@ -198,10 +231,12 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
 
         except json.JSONDecodeError:
             self.send_json_error("Invalid JSON")
+        except ValueError as e:
+            self.send_json_error(str(e))
         except Exception as e:
             self.send_json_error(f"Server error: {e}")
 
-    def eval_with_substitution(self, expression: str):
+    def eval_with_substitution(self, expression: str, time_budget_ms):
         expr = expression
 
         # Substitute refs: %n or #n
@@ -221,15 +256,23 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
 
         derive_expr = _build_derive_command_from_equiv(expr)
         if derive_expr is not None:
-            equiv_result = self.call_cas_cli(expr, steps_on=False)
+            equiv_result = self.call_cas_cli(
+                expr,
+                steps_on=False,
+                time_budget_ms=time_budget_ms,
+            )
             if _equiv_result_is_true(equiv_result):
-                derive_result = self.call_cas_cli(derive_expr, steps_on=True)
+                derive_result = self.call_cas_cli(
+                    derive_expr,
+                    steps_on=True,
+                    time_budget_ms=time_budget_ms,
+                )
                 return _merge_equiv_with_derive_steps(equiv_result, derive_result)
             return _merge_equiv_with_derive_steps(equiv_result, None)
 
-        return self.call_cas_cli(expr)
+        return self.call_cas_cli(expr, time_budget_ms=time_budget_ms)
 
-    def call_cas_cli(self, expression: str, steps_on=True):
+    def call_cas_cli(self, expression: str, steps_on=True, time_budget_ms=None):
         try:
             # Use absolute path if available
             cas_cli = self.server.cas_cli_path
@@ -240,13 +283,20 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 "--max-chars", "500000",
                 "--steps", "on" if steps_on else "off",
             ]
+            if time_budget_ms is not None:
+                cmd += ["--time-budget-ms", str(time_budget_ms)]
+
+            timeout = _compute_subprocess_timeout_seconds(
+                self.server.cas_timeout,
+                time_budget_ms,
+            )
 
             result = subprocess.run(
                 cmd,
                 input=expression,
                 capture_output=True,
                 text=True,
-                timeout=self.server.cas_timeout,
+                timeout=timeout,
                 cwd=str(self.server.project_root),
             )
 
@@ -272,7 +322,14 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 }
 
         except subprocess.TimeoutExpired:
-            return {"ok": False, "error": f"Timeout ({self.server.cas_timeout}s)", "input": expression}
+            if time_budget_ms is not None:
+                error = (
+                    f"Timeout ({timeout}s hard limit after {time_budget_ms}ms "
+                    "simplification budget)"
+                )
+            else:
+                error = f"Timeout ({self.server.cas_timeout}s)"
+            return {"ok": False, "error": error, "input": expression}
         except FileNotFoundError:
             return {
                 "ok": False,

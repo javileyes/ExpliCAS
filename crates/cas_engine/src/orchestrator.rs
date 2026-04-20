@@ -10525,7 +10525,7 @@ fn try_standard_sub_self_cancel_shortcut(
             rewrite.new_expr,
             crate::SimplifyOptions {
                 suppress_depth_overflow_warnings: true,
-                ..crate::SimplifyOptions::default()
+                ..options.clone()
             },
         );
         std::mem::swap(&mut simplifier.context, ctx);
@@ -18469,6 +18469,17 @@ fn try_standard_shifted_quotient_exact_one_shortcut(
         }
     }
 
+    // Under an active wall-clock budget, the generic shifted-quotient exact-one
+    // probe is not worth paying on nested-fraction pairs after the cheap direct
+    // checks above have already failed. The expensive proof path frequently
+    // misses on these shapes and can blow past the interactive deadline.
+    if options.deadline.is_some()
+        && (expr_contains_division_node_local(ctx, numerator)
+            || expr_contains_division_node_local(ctx, denominator))
+    {
+        return None;
+    }
+
     let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
     let rule = crate::rules::arithmetic::CollapseExactOneShiftedQuotientRule;
     if let Some(sample) = pair_sample.clone() {
@@ -18551,7 +18562,7 @@ fn try_standard_shifted_quotient_exact_one_shortcut(
         rewrite.new_expr,
         crate::SimplifyOptions {
             suppress_depth_overflow_warnings: true,
-            ..crate::SimplifyOptions::default()
+            ..options.clone()
         },
     );
     std::mem::swap(&mut simplifier.context, ctx);
@@ -20729,6 +20740,7 @@ impl Orchestrator {
                     && !is_solve_mode;
                 let config = crate::engine::LoopConfig {
                     phase,
+                    deadline: self.options.deadline,
                     expand_mode: self.options.expand_mode,
                     auto_expand: global_auto_expand,
                     expand_budget: self.options.shared.expand_budget,
@@ -20920,24 +20932,89 @@ impl Orchestrator {
             return (expr, Vec::new(), crate::phase::PipelineStats::default());
         }
 
+        macro_rules! return_profiled_root_shortcut {
+            ($name:literal, $call:expr) => {
+                if self.time_budget_exceeded() {
+                    return self.finish_timed_out_pipeline(
+                        simplifier,
+                        expr,
+                        Vec::new(),
+                        crate::phase::PipelineStats::default(),
+                        None,
+                    );
+                }
+                if let Some((result, shortcut_steps)) = run_profiled_root_shortcut($name, || $call)
+                {
+                    if self.time_budget_exceeded() {
+                        return self.finish_timed_out_pipeline(
+                            simplifier,
+                            result,
+                            shortcut_steps,
+                            crate::phase::PipelineStats::default(),
+                            None,
+                        );
+                    }
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if self.time_budget_exceeded() {
+                    return self.finish_timed_out_pipeline(
+                        simplifier,
+                        expr,
+                        Vec::new(),
+                        crate::phase::PipelineStats::default(),
+                        None,
+                    );
+                }
+            };
+        }
+
+        macro_rules! return_root_shortcut_pair {
+            ($call:expr) => {
+                if self.time_budget_exceeded() {
+                    return self.finish_timed_out_pipeline(
+                        simplifier,
+                        expr,
+                        Vec::new(),
+                        crate::phase::PipelineStats::default(),
+                        None,
+                    );
+                }
+                if let Some((result, shortcut_steps)) = $call {
+                    if self.time_budget_exceeded() {
+                        return self.finish_timed_out_pipeline(
+                            simplifier,
+                            result,
+                            shortcut_steps,
+                            crate::phase::PipelineStats::default(),
+                            None,
+                        );
+                    }
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if self.time_budget_exceeded() {
+                    return self.finish_timed_out_pipeline(
+                        simplifier,
+                        expr,
+                        Vec::new(),
+                        crate::phase::PipelineStats::default(),
+                        None,
+                    );
+                }
+            };
+        }
+
         if matches!(
             self.options.shared.context_mode,
             crate::options::ContextMode::Standard | crate::options::ContextMode::Auto
         ) {
-            macro_rules! return_profiled_root_shortcut {
-                ($name:literal, $call:expr) => {
-                    if let Some((result, shortcut_steps)) =
-                        run_profiled_root_shortcut($name, || $call)
-                    {
-                        return (
-                            result,
-                            shortcut_steps,
-                            crate::phase::PipelineStats::default(),
-                        );
-                    }
-                };
-            }
-
             let add_root = matches!(simplifier.context.get(expr), Expr::Add(_, _));
             let sub_root = matches!(simplifier.context.get(expr), Expr::Sub(_, _));
             let div_root = matches!(simplifier.context.get(expr), Expr::Div(_, _));
@@ -21254,34 +21331,20 @@ impl Orchestrator {
                         collect_steps,
                     )
                 );
-                if let Some((result, shortcut_steps)) =
-                    try_standard_shared_passthrough_direct_pair_shortcut(
-                        &self.options,
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
+                return_root_shortcut_pair!(try_standard_shared_passthrough_direct_pair_shortcut(
+                    &self.options,
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(
                     try_standard_subtract_expanded_sum_diff_cubes_quotient_shortcut(
                         &self.options,
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
+                );
                 if !collect_steps {
                     if let Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) = simplifier.context.get(expr)
                     {
@@ -21308,35 +21371,19 @@ impl Orchestrator {
                             rhs,
                             true,
                         ) {
-                            if let Some((result, shortcut_steps)) =
-                                try_standard_small_trig_zero_pair_shortcut(
-                                    &self.options,
-                                    &mut simplifier.context,
-                                    expr,
-                                    collect_steps,
-                                )
-                            {
-                                return (
-                                    result,
-                                    shortcut_steps,
-                                    crate::phase::PipelineStats::default(),
-                                );
-                            }
-                        }
-                        if let Some((result, shortcut_steps)) =
-                            try_standard_direct_small_trig_zero_child_with_supported_zero_partner_shortcut(
+                            return_root_shortcut_pair!(try_standard_small_trig_zero_pair_shortcut(
                                 &self.options,
                                 &mut simplifier.context,
                                 expr,
                                 collect_steps,
-                            )
-                        {
-                            return (
-                                result,
-                                shortcut_steps,
-                                crate::phase::PipelineStats::default(),
-                            );
+                            ));
                         }
+                        return_root_shortcut_pair!(try_standard_direct_small_trig_zero_child_with_supported_zero_partner_shortcut(
+                            &self.options,
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        ));
                     }
                     return_profiled_root_shortcut!(
                         "root.addsub.01.multiterm_trig_numeric_subset_zero",
@@ -21351,48 +21398,28 @@ impl Orchestrator {
                         && !raw_binary_pythagorean_identity
                         && has_structural_numeric_pythagorean_pair(&simplifier.context, expr)
                     {
-                        if let Some((result, shortcut_steps)) =
+                        return_root_shortcut_pair!(
                             try_standard_pythagorean_additive_pipeline_shortcut(
                                 &self.options,
                                 &mut simplifier.context,
                                 expr,
                                 collect_steps,
                             )
-                        {
-                            return (
-                                result,
-                                shortcut_steps,
-                                crate::phase::PipelineStats::default(),
-                            );
-                        }
-                    }
-                    if let Some((result, shortcut_steps)) =
-                        try_standard_nested_exact_zero_child_shortcut(
-                            &self.options,
-                            &mut simplifier.context,
-                            expr,
-                            collect_steps,
-                        )
-                    {
-                        return (
-                            result,
-                            shortcut_steps,
-                            crate::phase::PipelineStats::default(),
                         );
                     }
+                    return_root_shortcut_pair!(try_standard_nested_exact_zero_child_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    ));
                 }
-                if let Some((result, shortcut_steps)) = try_standard_small_trig_zero_pair_shortcut(
+                return_root_shortcut_pair!(try_standard_small_trig_zero_pair_shortcut(
                     &self.options,
                     &mut simplifier.context,
                     expr,
                     collect_steps,
-                ) {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
+                ));
                 return_profiled_root_shortcut!(
                     "root.addsub.01.multiterm_trig_numeric_subset_zero",
                     try_standard_multiterm_trig_numeric_subset_zero_shortcut(
@@ -21402,225 +21429,111 @@ impl Orchestrator {
                         collect_steps,
                     )
                 );
-                if let Some((result, shortcut_steps)) =
+                return_root_shortcut_pair!(
                     try_standard_rational_half_angle_target_passthrough_shortcut(
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
+                );
+                return_root_shortcut_pair!(
                     try_standard_scaled_sin_fourth_power_reduction_zero_shortcut(
                         &self.options,
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_trig_fourth_power_difference_shortcut(
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_reciprocal_pythagorean_pair_shortcut(
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_shared_passthrough_direct_pair_shortcut(
-                        &self.options,
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_two_factor_product_pair_zero_shortcut(
-                        &self.options,
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
+                );
+                return_root_shortcut_pair!(try_standard_trig_fourth_power_difference_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(try_standard_reciprocal_pythagorean_pair_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(try_standard_shared_passthrough_direct_pair_shortcut(
+                    &self.options,
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(try_standard_two_factor_product_pair_zero_shortcut(
+                    &self.options,
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
                 if add_term_count > 2
                     && !raw_binary_pythagorean_identity
                     && has_structural_numeric_pythagorean_pair(&simplifier.context, expr)
                 {
-                    if let Some((result, shortcut_steps)) =
+                    return_root_shortcut_pair!(
                         try_standard_pythagorean_additive_pipeline_shortcut(
                             &self.options,
                             &mut simplifier.context,
                             expr,
                             collect_steps,
                         )
-                    {
-                        return (
-                            result,
-                            shortcut_steps,
-                            crate::phase::PipelineStats::default(),
-                        );
-                    }
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_repeated_phase_shift_pair_shortcut(
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
                     );
                 }
-                if let Some((result, shortcut_steps)) = try_standard_direct_known_pair_zero_shortcut(
+                return_root_shortcut_pair!(try_standard_repeated_phase_shift_pair_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(try_standard_direct_known_pair_zero_shortcut(
                     &self.options,
                     &mut simplifier.context,
                     expr,
                     collect_steps,
-                ) {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
+                ));
+                return_root_shortcut_pair!(
                     try_standard_exact_additive_pair_chain_pipeline_shortcut(
                         &self.options,
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_common_scale_known_pair_shortcut(
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
+                );
+                return_root_shortcut_pair!(try_standard_common_scale_known_pair_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(
                     try_standard_trig_double_angle_cos_variant_zero_shortcut(
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_direct_sum_to_product_root_shortcut(
-                        &self.options,
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_direct_trig_sum_product_zero_shortcut(
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_direct_small_zero_identity_shortcut(
-                        &self.options,
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
+                );
+                return_root_shortcut_pair!(try_standard_direct_sum_to_product_root_shortcut(
+                    &self.options,
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(try_standard_direct_trig_sum_product_zero_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(try_standard_direct_small_zero_identity_shortcut(
+                    &self.options,
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(
                     try_standard_direct_small_zero_additive_combination_shortcut(
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
+                );
                 if let Some((result, shortcut_steps)) =
                     try_standard_partitioned_direct_small_zero_sum_shortcut(
                         &mut simplifier.context,
@@ -22245,239 +22158,127 @@ impl Orchestrator {
                 }
             }
             if div_root {
-                if let Some((result, shortcut_steps)) =
+                return_root_shortcut_pair!(
                     try_standard_small_polynomial_denominator_factor_shortcut(
                         &self.options,
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
+                );
             }
             if add_root || sub_root {
-                if let Some((result, shortcut_steps)) =
-                    try_standard_direct_small_zero_identity_shortcut(
-                        &self.options,
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
+                return_root_shortcut_pair!(try_standard_direct_small_zero_identity_shortcut(
+                    &self.options,
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(
                     try_standard_direct_small_zero_additive_combination_shortcut(
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
+                );
+                return_root_shortcut_pair!(
                     try_standard_partitioned_direct_small_zero_sum_shortcut(
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) = try_standard_direct_small_zero_pair_shortcut(
+                );
+                return_root_shortcut_pair!(try_standard_direct_small_zero_pair_shortcut(
                     &self.options,
                     &mut simplifier.context,
                     expr,
                     collect_steps,
-                ) {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_reciprocal_pythagorean_zero_shortcut(
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
+                ));
+                return_root_shortcut_pair!(try_standard_reciprocal_pythagorean_zero_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(
                     try_standard_subtract_expanded_sum_diff_cubes_quotient_shortcut(
                         &self.options,
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
+                );
             }
             if sub_root {
-                if let Some((result, shortcut_steps)) = try_standard_sub_self_cancel_shortcut(
+                return_root_shortcut_pair!(try_standard_sub_self_cancel_shortcut(
                     &self.options,
                     &mut simplifier.context,
                     expr,
                     collect_steps,
-                ) {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
+                ));
             }
             if add_root {
                 if is_symbolic_atom_plus_nonzero_literal_root(&simplifier.context, expr) {
                     return (expr, Vec::new(), crate::phase::PipelineStats::default());
                 }
-                if let Some((result, shortcut_steps)) = try_standard_numeric_add_chain_shortcut(
+                return_root_shortcut_pair!(try_standard_numeric_add_chain_shortcut(
                     &mut simplifier.context,
                     expr,
                     collect_steps,
-                ) {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
+                ));
+                return_root_shortcut_pair!(
                     try_standard_reciprocal_product_pythagorean_zero_shortcut(
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
+                );
+                return_root_shortcut_pair!(
                     try_standard_trig_binomial_square_double_angle_shortcut(
                         &self.options,
                         &mut simplifier.context,
                         expr,
                         collect_steps,
                     )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_sin_sum_triple_identity_zero_shortcut(
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_trig_fourth_power_difference_shortcut(
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
+                );
+                return_root_shortcut_pair!(try_standard_sin_sum_triple_identity_zero_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(try_standard_trig_fourth_power_difference_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
                 if try_rewrite_pythagorean_chain_add_expr(&mut simplifier.context, expr).is_some() {
-                    if let Some((result, shortcut_steps)) =
+                    return_root_shortcut_pair!(
                         try_standard_pythagorean_additive_pipeline_shortcut(
                             &self.options,
                             &mut simplifier.context,
                             expr,
                             collect_steps,
                         )
-                    {
-                        return (
-                            result,
-                            shortcut_steps,
-                            crate::phase::PipelineStats::default(),
-                        );
-                    }
+                    );
                 }
             }
 
             if matches!(simplifier.context.get(expr), Expr::Function(_, _)) {
-                if let Some((result, shortcut_steps)) = try_standard_abs_shortcut(
+                return_root_shortcut_pair!(try_standard_abs_shortcut(
                     &self.options,
                     &mut simplifier.context,
                     expr,
                     collect_steps,
-                ) {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) = try_standard_simplify_square_root_shortcut(
+                ));
+                return_root_shortcut_pair!(try_standard_simplify_square_root_shortcut(
                     &mut simplifier.context,
                     expr,
                     collect_steps,
-                ) {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_extract_perfect_square_root_shortcut(
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
-                }
+                ));
+                return_root_shortcut_pair!(try_standard_extract_perfect_square_root_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
             }
 
             if pow_root {

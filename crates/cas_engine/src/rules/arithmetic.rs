@@ -3292,18 +3292,217 @@ fn extract_scaled_atanh_arg_for_cancellation(
             Some((-scale, arg))
         }
         Expr::Mul(lhs, rhs) => {
-            if let Expr::Number(n) = ctx.get(*lhs) {
+            if let Some(n) = extract_literal_rational_for_cancellation(ctx, *lhs) {
                 let arg = extract_unary_builtin_arg(ctx, *rhs, BuiltinFn::Atanh)?;
-                return Some((n.clone(), arg));
+                return Some((n, arg));
             }
-            if let Expr::Number(n) = ctx.get(*rhs) {
+            if let Some(n) = extract_literal_rational_for_cancellation(ctx, *rhs) {
                 let arg = extract_unary_builtin_arg(ctx, *lhs, BuiltinFn::Atanh)?;
-                return Some((n.clone(), arg));
+                return Some((n, arg));
             }
             None
         }
         _ => None,
     }
+}
+
+fn extract_literal_rational_for_cancellation(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Neg(inner) => extract_literal_rational_for_cancellation(ctx, *inner).map(|n| -n),
+        Expr::Div(numerator, denominator) => {
+            let numerator = extract_literal_rational_for_cancellation(ctx, *numerator)?;
+            let denominator = extract_literal_rational_for_cancellation(ctx, *denominator)?;
+            Some(numerator / denominator)
+        }
+        _ => None,
+    }
+}
+
+fn extract_common_log_atanh_definition_arg(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+
+    let numerator_arg = match ctx.get(*numerator) {
+        Expr::Add(lhs, rhs) => {
+            if matches!(ctx.get(*lhs), Expr::Number(n) if n.is_one()) {
+                Some(*rhs)
+            } else if matches!(ctx.get(*rhs), Expr::Number(n) if n.is_one()) {
+                Some(*lhs)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }?;
+
+    let denominator_arg = match ctx.get(*denominator) {
+        Expr::Sub(lhs, rhs) if matches!(ctx.get(*lhs), Expr::Number(n) if n.is_one()) => Some(*rhs),
+        Expr::Add(lhs, rhs) if matches!(ctx.get(*lhs), Expr::Number(n) if n.is_one()) => {
+            match ctx.get(*rhs) {
+                Expr::Neg(inner) => Some(*inner),
+                _ => None,
+            }
+        }
+        Expr::Add(lhs, rhs) if matches!(ctx.get(*rhs), Expr::Number(n) if n.is_one()) => {
+            match ctx.get(*lhs) {
+                Expr::Neg(inner) => Some(*inner),
+                _ => None,
+            }
+        }
+        _ => None,
+    }?;
+
+    (compare_expr(ctx, numerator_arg, denominator_arg) == Ordering::Equal).then_some(numerator_arg)
+}
+
+fn extract_scaled_common_log_atanh_definition_arg_for_cancellation(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(BigRational, cas_ast::ExprId)> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 1 =>
+        {
+            extract_common_log_atanh_definition_arg(ctx, args[0])
+                .map(|arg| (BigRational::from_integer(1.into()), arg))
+        }
+        Expr::Neg(inner) => {
+            let (scale, arg) =
+                extract_scaled_common_log_atanh_definition_arg_for_cancellation(ctx, *inner)?;
+            Some((-scale, arg))
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(n) = extract_literal_rational_for_cancellation(ctx, *lhs) {
+                let arg =
+                    extract_scaled_common_log_atanh_definition_arg_for_cancellation(ctx, *rhs)?;
+                return Some((n * arg.0, arg.1));
+            }
+            if let Some(n) = extract_literal_rational_for_cancellation(ctx, *rhs) {
+                let arg =
+                    extract_scaled_common_log_atanh_definition_arg_for_cancellation(ctx, *lhs)?;
+                return Some((n * arg.0, arg.1));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn is_atanh_common_log_definition_mismatch_pair(
+    ctx: &cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    for (atanh_side, log_side) in [(lhs, rhs), (rhs, lhs)] {
+        let Some((atanh_scale, atanh_arg)) =
+            extract_scaled_atanh_arg_for_cancellation(ctx, atanh_side)
+        else {
+            continue;
+        };
+        let Some((log_scale, log_arg)) =
+            extract_scaled_common_log_atanh_definition_arg_for_cancellation(ctx, log_side)
+        else {
+            continue;
+        };
+
+        if compare_expr(ctx, atanh_arg, log_arg) == Ordering::Equal
+            && log_scale * BigRational::from_integer(2.into()) == atanh_scale
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn scale_with_add_sign(scale: BigRational, sign: Sign) -> BigRational {
+    match sign {
+        Sign::Pos => scale,
+        Sign::Neg => -scale,
+    }
+}
+
+fn has_atanh_common_log_mismatch_with_plain_passthrough_terms(
+    ctx: &mut cas_ast::Context,
+    terms: &[(cas_ast::ExprId, Sign)],
+) -> bool {
+    if terms.len() != 3 {
+        return false;
+    }
+
+    let mut log_term = None;
+    let mut atanh_term = None;
+
+    for (term_expr, term_sign) in terms.iter().copied() {
+        let has_log = expr_contains_any_builtin(ctx, term_expr, &[BuiltinFn::Log]);
+        let has_atanh = expr_contains_any_builtin(ctx, term_expr, &[BuiltinFn::Atanh]);
+        let has_ln_or_abs =
+            expr_contains_any_builtin(ctx, term_expr, &[BuiltinFn::Ln, BuiltinFn::Abs]);
+
+        if has_log && !has_atanh && !has_ln_or_abs {
+            let Some((scale, arg)) =
+                extract_scaled_common_log_atanh_definition_arg_for_cancellation(ctx, term_expr)
+            else {
+                return false;
+            };
+            if log_term
+                .replace((scale_with_add_sign(scale, term_sign), arg))
+                .is_some()
+            {
+                return false;
+            }
+            continue;
+        }
+
+        if has_atanh && !has_log && !has_ln_or_abs {
+            let Some((scale, arg)) = extract_scaled_atanh_arg_for_cancellation(ctx, term_expr)
+            else {
+                return false;
+            };
+            if atanh_term
+                .replace((scale_with_add_sign(scale, term_sign), arg))
+                .is_some()
+            {
+                return false;
+            }
+            continue;
+        }
+
+        if has_log || has_atanh || has_ln_or_abs {
+            return false;
+        }
+    }
+
+    match (log_term, atanh_term) {
+        (Some((log_scale, log_arg)), Some((atanh_scale, atanh_arg))) => {
+            compare_expr(ctx, log_arg, atanh_arg) == Ordering::Equal
+                && log_scale.abs() * BigRational::from_integer(2.into()) == atanh_scale.abs()
+        }
+        _ => false,
+    }
+}
+
+fn has_atanh_common_log_mismatch_with_plain_passthrough(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    let normalized_terms: Vec<_> = view
+        .terms
+        .iter()
+        .copied()
+        .map(|(term_expr, term_sign)| normalize_signed_add_term(ctx, term_expr, term_sign))
+        .collect();
+
+    has_atanh_common_log_mismatch_with_plain_passthrough_terms(ctx, &normalized_terms)
 }
 
 fn try_rewrite_atanh_ln_definition_for_cancellation(
@@ -12164,6 +12363,12 @@ fn try_build_exact_zero_identity_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
+    if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
+        if is_atanh_common_log_definition_mismatch_pair(ctx, lhs_core, rhs_core) {
+            return None;
+        }
+    }
+
     if let Some(rewrite) = try_build_exact_zero_identity_rewrite_direct(ctx, expr) {
         return Some(rewrite);
     }
@@ -12465,6 +12670,11 @@ fn try_find_exact_zero_additive_factor_in_product(
     for factor in factors {
         if !matches!(ctx.get(factor), Expr::Add(_, _) | Expr::Sub(_, _)) {
             continue;
+        }
+        if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, factor) {
+            if is_atanh_common_log_definition_mismatch_pair(ctx, lhs_core, rhs_core) {
+                continue;
+            }
         }
 
         if let Some(child_rewrite) = try_build_small_direct_zero_core_rewrite(ctx, factor) {
@@ -21507,7 +21717,13 @@ define_rule!(
         if !has_negative_contribution {
             return None;
         }
+        if has_atanh_common_log_mismatch_with_plain_passthrough(ctx, expr) {
+            return None;
+        }
         if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
+            if is_atanh_common_log_definition_mismatch_pair(ctx, lhs_core, rhs_core) {
+                return None;
+            }
             if let Some(rewrite) =
                 try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core)
             {
@@ -23937,6 +24153,73 @@ mod tests {
 
         let rewrite =
             super::try_build_direct_safe_hyperbolic_core_equivalence_rewrite(&mut ctx, lhs, rhs);
+
+        assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn atanh_common_log_definition_mismatch_pair_detector_matches_scaled_forms() {
+        let mut ctx = Context::new();
+        let lhs =
+            parse("1/2*log((1 + x)/(1 - x))", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("atanh(x)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        assert!(super::is_atanh_common_log_definition_mismatch_pair(
+            &ctx, lhs, rhs
+        ));
+    }
+
+    #[test]
+    fn exact_zero_identity_rewrite_rejects_atanh_common_log_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("1/2*log((1 + x)/(1 - x)) - atanh(x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_identity_rewrite(&mut ctx, expr);
+
+        assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn exact_zero_product_factor_rule_rejects_atanh_common_log_pair_factor() {
+        let mut ctx = Context::new();
+        let expr = parse("1/2*(log((1 + x)/(1 - x)) - 2*atanh(x))", &mut ctx)
+            .unwrap_or_else(|err| panic!("expr: {err}"));
+        let parent_ctx = ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
+
+        let rewrite =
+            super::try_build_exact_zero_product_factor_rewrite(&mut ctx, expr, &parent_ctx);
+
+        assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn atanh_common_log_plain_passthrough_detector_matches_scaled_three_term_residual() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "log((1+sin(y))/(1-sin(y))) + 2*x*y^2 - 2*atanh(sin(y))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        assert!(super::has_atanh_common_log_mismatch_with_plain_passthrough(
+            &mut ctx, expr
+        ));
+    }
+
+    #[test]
+    fn collapse_exact_zero_three_term_subset_rule_rejects_atanh_common_log_pair_with_plain_passthrough(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "log((1+sin(y))/(1-sin(y))) + 2*x*y^2 - 2*atanh(sin(y))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+        let parent_ctx = ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+
+        let rewrite = rule.apply(&mut ctx, expr, &parent_ctx);
 
         assert!(rewrite.is_none());
     }

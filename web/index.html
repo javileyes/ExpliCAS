@@ -636,6 +636,37 @@
             content: "⚠️ ";
         }
 
+        .warning-section {
+            background: linear-gradient(135deg, rgba(249, 115, 22, 0.12), rgba(249, 115, 22, 0.06));
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #f97316;
+        }
+
+        .warning-label {
+            color: #fb923c;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+
+        .warning-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .warning-list li {
+            padding: 4px 0;
+            font-size: 0.92em;
+            color: var(--text-secondary);
+        }
+
+        .warning-list li::before {
+            content: "⚠️ ";
+        }
+
         /* Solve steps section (for equation solving) */
         .solve-step-item {
             background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05));
@@ -1178,6 +1209,7 @@
 
         // API endpoint (adjust based on your server)
         const API_URL = '/api/eval';
+        const DEFAULT_TIME_BUDGET_MS = 1700;
 
         // Input handling
         const input = document.getElementById('expression-input');
@@ -1233,7 +1265,11 @@
                 const response = await fetch(API_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ expression: expr, session_id: SESSION_ID })
+                    body: JSON.stringify({
+                        expression: expr,
+                        session_id: SESSION_ID,
+                        time_budget_ms: DEFAULT_TIME_BUDGET_MS
+                    })
                 });
 
                 if (!response.ok) {
@@ -1259,6 +1295,7 @@
                     stats: data.stats || null,
                     timings_us: data.timings_us || null,
                     time_ms: data.time_ms || 0,
+                    warnings: data.warnings || [],
                     required_display: data.required_display || [],
                     error: data.error,
                     // Variable assignment fields from server
@@ -1274,6 +1311,29 @@
                 }
                 throw error;
             }
+        }
+
+        function normalizeWarnings(warnings) {
+            if (!Array.isArray(warnings)) return [];
+            return warnings.map((warning) => {
+                if (!warning) return '';
+                if (typeof warning === 'string') return warning;
+                return warning.message || warning.text || warning.rule || '';
+            }).filter(Boolean);
+        }
+
+        function renderWarningsSection(warnings) {
+            const messages = normalizeWarnings(warnings);
+            if (messages.length === 0) return '';
+
+            return `
+                <div class="warning-section">
+                    <div class="warning-label">⚠️ Notice</div>
+                    <ul class="warning-list">
+                        ${messages.map(message => `<li>${escapeHtml(message)}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
         }
 
         function addExpressionCard(expr, result) {
@@ -1307,6 +1367,7 @@
             const hasSteps = result.steps && result.steps.length > 0;
             const isPolyResult = result.result && result.result.length > 500;
             const timeMs = result.timings_us ? Math.round(result.timings_us.total_us / 1000) : (result.time_ms || 0);
+            const hasWarnings = normalizeWarnings(result.warnings).length > 0;
             const hasRequirements = result.required_display && result.required_display.length > 0;
 
             if (isAssignment) {
@@ -1400,6 +1461,7 @@
                                 </ul>
                             </div>
                         ` : ''}
+                        ${hasWarnings ? renderWarningsSection(result.warnings) : ''}
                     </div>
                 `;
             }
@@ -1825,6 +1887,7 @@
                     // Save stats and timings if available
                     stats: storedResult?.stats || null,
                     timings_us: storedResult?.timings_us || null,
+                    warnings: storedResult?.warnings || [],
                     required_display: storedResult?.required_display || []
                 };
 
@@ -2023,6 +2086,15 @@
                             }
                                     </div>
                                 </div>
+                                ${entry.required_display && entry.required_display.length > 0 ? `
+                                    <div class="requires-section">
+                                        <div class="requires-label">⚠️ Requires</div>
+                                        <ul class="requires-list">
+                                            ${entry.required_display.map(req => `<li>${escapeHtml(req)}</li>`).join('')}
+                                        </ul>
+                                    </div>
+                                ` : ''}
+                                ${renderWarningsSection(entry.warnings)}
                             </div>
                         `;
                     }
@@ -2044,6 +2116,7 @@
                             // Preserve additional metadata
                             stats: entry.stats || null,
                             timings_us: entry.timings_us || null,
+                            warnings: entry.warnings || [],
                             required_display: entry.required_display || [],
                             poly_output: entry.poly_output || null
                         };
