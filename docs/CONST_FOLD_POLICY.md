@@ -238,7 +238,7 @@ Debe cubrir:
 
 Si se amplía `const_fold`, estos son hotspots típicos:
 
-* `log(negative_literal)`:
+* `ln(negative_literal)`:
   * `RealOnly` → `undefined`/residual
   * `ComplexEnabled + Principal` → `ln(|n|) + i*pi` (si se decide)
 * `pow` con exponente racional (raíces generales):

@@ -376,7 +376,7 @@ Controls how multi-valued functions are resolved. **Only applies when `ValueDoma
 
 | Value | Behavior |
 |-------|----------|
-| `Principal` | Use principal branch (e.g., `log(-1) = iπ`) |
+| `Principal` | Use principal branch (e.g., `ln(-1) = iπ`) |
 
 ### Future Values (Non-Goals for V1)
 
@@ -466,7 +466,7 @@ semantics set requires essential # Hide redundant (witness survives)
 | `CancelCommonFactorsRule` | ✅ | - | - | - |
 | `QuotientOfPowersRule` | ✅ | - | - | - |
 | `sqrt(negative literal)` | - | ✅ | ✅ | - |
-| `log(negative literal)` | - | ✅ | ✅ | - |
+| `ln(negative literal)` | - | ✅ | ✅ | - |
 | `ArcTanTanRule` | - | - | - | ✅ |
 | `ArcSinSinRule` | - | - | - | ✅ |
 | `ArcCosCosRule` | - | - | - | ✅ |
@@ -584,7 +584,7 @@ The following behaviors MUST hold (see `strict_definedness_contract_tests.rs`):
 ### ValueDomain / BranchPolicy Hotspots
 
 - `sqrt(negative_literal)` — first case to implement
-- `log(negative_literal)` — future
+- `ln(negative_literal)` — future
 - `pow(negative_base, rational_exp)` — future
 - Complex trig/hyperbolic — very future
 
@@ -739,7 +739,7 @@ The following behavioral changes were introduced in V1.2:
 
 The following are explicitly **not** supported in V1:
 
-- General complex logarithm (`log(z)` for arbitrary z)
+- General complex natural logarithm (`ln(z)` / unary `log(z)`)
 - Multi-valued symbolic expressions
 - Automatic domain inference from context
 - Riemann surface branch tracking

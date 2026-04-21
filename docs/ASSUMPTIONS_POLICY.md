@@ -108,8 +108,8 @@ A **new constraint** introduced by a step that was **not deducible** from intrin
 conditions. This narrows the domain of validity. **Blocked in Generic mode** per Invariant A.
 
 ```
-Input: log(a·b)
-Step: log(a·b) → log(a) + log(b)
+Input: ln(a·b)
+Step: ln(a·b) → ln(a) + ln(b)
 → RequiresIntroduced: a > 0, b > 0
    (the input only required a·b > 0 — the new constraint is INTRODUCED)
 ```
@@ -166,7 +166,7 @@ Step: Combined terms assuming specific form
 |-------|------|----------|---------|------------|
 | `(x²-4)/(x-2)` | Cancel | DerivedFromRequires | *(hidden)* | Intrinsic |
 | `exp(ln(x))` | → x | DerivedFromRequires | *(hidden, Requires: x>0)* | Intrinsic (from `ln`) |
-| `log(a·b)` | Split | RequiresIntroduced | ℹ️ `a>0, b>0` | Introduced |
+| `ln(a·b)` | Split | RequiresIntroduced | ℹ️ `a>0, b>0` | Introduced |
 | `√(x²)` | Simplify to x | BranchChoice | 🔀 `x≥0` | Intrinsic |
 | `(-1)^(1/2)` | → i | DomainExtension | 🧿 `ℝ→ℂ` | — |
 | `sin(arcsin(x))` | → x | BranchChoice | 🔀 Principal range | — |
@@ -187,7 +187,7 @@ When writing a new rule that emits assumptions:
 3. **Does the rule introduce a NEW constraint not in input?**
    - YES → Use `positive()` with default RequiresIntroduced
    - Set `SolveSafety::NeedsCondition(...)`. Blocked in Generic mode (Invariant A).
-   - Example: `log(a·b) → log(a)+log(b)` introduces `a>0, b>0`
+  - Example: `ln(a·b) → ln(a)+ln(b)` introduces `a>0, b>0`
 
 4. **Does the rule choose a branch?**
    - YES → Use `inv_trig_principal_range()` or `complex_principal_branch()`

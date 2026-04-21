@@ -577,7 +577,7 @@ Good seeds for this next corpus:
 - `cos(x) - cos(y) ~ -2*sin((x+y)/2)*sin((x-y)/2)`
 - `3*sin(x) + 4*cos(x) ~ 5*sin(x + arctan(4/3))`
 - `sinh(x+y) ~ sinh(x)*cosh(y) + cosh(x)*sinh(y)`
-- `log(x^2-y^2) ~ log(x-y) + log(x+y)`
+- `ln(x^2-y^2) ~ ln(x-y) + ln(x+y)`
 - `1/(sqrt(a)+sqrt(b)) ~ (sqrt(a)-sqrt(b))/(a-b)`
 - `(x^3-b^3)/(x-b) ~ x^2 + x*b + b^2`
 

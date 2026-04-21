@@ -158,7 +158,7 @@ Como `principal_strict` pero **requiere** filter no vacío. Panic si filter = No
 |-------|-------|-------------|
 | `NearPole { op, denom, threshold }` | Denominador ≈ 0 | sample inválido |
 | `DivisionByZero { op }` | Denominador = 0 | sample inválido |
-| `Domain { function, arg }` | log(≤0), sqrt(<0) | sample inválido |
+| `Domain { function, arg }` | ln(≤0), sqrt(<0) | sample inválido |
 | `NonFinite` | NaN o Inf | sample inválido |
 | `DepthExceeded` | Recursión excesiva | sample inválido |
 
@@ -227,7 +227,7 @@ impl FilterSpec {
 
 | Función | Filter Recomendado | Razón |
 |---------|-------------------|-------|
-| `ln(x)`, `log(x)` | `gt(0.0)` | Dominio x > 0 |
+| `ln(x)`, `log(x)` (alias), `log10(x)` | `gt(0.0)` | Dominio x > 0 |
 | `sqrt(x)` | `ge(0.0)` | Dominio x >= 0 |
 | `1/x` | `away_from(0;eps=0.01)` | Polo en x=0 |
 | `tan(x)` | `away_from(1.57;-1.57;eps=0.01)` | Polos en ±π/2 |

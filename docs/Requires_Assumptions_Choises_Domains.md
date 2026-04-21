@@ -24,7 +24,7 @@ Ejemplos (en ℝ):
 
 * `1/(x-1)` ⇒ requiere `x-1 ≠ 0`
 * `sqrt(x)` ⇒ requiere `x ≥ 0`
-* `log(x)` ⇒ requiere `x > 0`
+* `ln(x)` / `log(x)` ⇒ requiere `x > 0`
 
 **Propiedad:** las reglas de simplificación no deben “añadir” esto como *Assume*: es parte del dominio implícito del input.
 
@@ -232,10 +232,10 @@ Paso de racionalización preserva equivalencia bajo esas condiciones; no introdu
 
 ### 6.5 Logaritmos: identidad condicional (estrecha dominio)
 
-**Entrada:** `log(a*b)` (en ℝ)
+**Entrada:** `ln(a*b)` (en ℝ)
 **Requires (input):** `a*b > 0`
 
-Si el motor aplica `log(a*b) → log(a)+log(b)`, entonces:
+Si el motor aplica `ln(a*b) → ln(a)+ln(b)`, entonces:
 
 * **ℹ️ Requires (introduced):** `a>0`, `b>0`
   (no es branch choice: es restricción más fuerte que `ab>0`)
@@ -301,7 +301,7 @@ Cuando la condición ya está cubierta por:
 
 ## 9. Preguntas para revisión matemática
 
-1. ¿Es correcta la clasificación `log(ab)→log(a)+log(b)` como “requires introduced” (no branch)?
+1. ¿Es correcta la clasificación `ln(ab)→ln(a)+ln(b)` como “requires introduced” (no branch)?
 2. ¿En ℝ, debería preferirse `sqrt(x^2)=|x|` por defecto para evitar branch choice?
 3. En trig inversa, ¿cómo se debe documentar el uso de rango principal para identidades tipo `sin(arcsin(x))`?
 4. ¿Cuándo es aceptable una `HeuristicAssumption` en un CAS didáctico (modo agresivo vs modo estricto)?
