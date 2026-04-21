@@ -34,6 +34,7 @@ use cas_math::logarithm_inverse_support::{
 use cas_math::nested_fraction_support::try_rewrite_simplify_nested_fraction_expr;
 use cas_math::perfect_square_support::rational_sqrt;
 use cas_math::poly_compare::poly_eq;
+use cas_math::root_forms::extract_square_root_base;
 use cas_math::summation_support::{
     try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation, ProductEvaluationKind,
     SumEvaluationKind,
@@ -3832,6 +3833,63 @@ fn extract_common_log_atanh_definition_arg(
     (compare_expr(ctx, numerator_arg, denominator_arg) == Ordering::Equal).then_some(numerator_arg)
 }
 
+fn extract_square_plus_minus_one_pattern_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, Sign, Sign)> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let mut square_term = None;
+    let mut one_term = None;
+    for (term_expr, term_sign) in terms {
+        if extract_i64_integer(ctx, term_expr) == Some(1) {
+            if one_term.replace(term_sign).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        let square_base = extract_square_power_base(ctx, term_expr)?;
+        if square_term.replace((square_base, term_sign)).is_some() {
+            return None;
+        }
+    }
+
+    let (square_base, square_sign) = square_term?;
+    Some((square_base, square_sign, one_term?))
+}
+
+fn extract_atanh_square_ratio_log_arg_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, bool)> {
+    let (numerator, denominator) = match ctx.get(expr) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+
+    let (den_base, den_square_sign, den_one_sign) =
+        extract_square_plus_minus_one_pattern_for_cancellation(ctx, denominator)?;
+    if den_square_sign != Sign::Pos || den_one_sign != Sign::Pos {
+        return None;
+    }
+
+    let (num_base, num_square_sign, num_one_sign) =
+        extract_square_plus_minus_one_pattern_for_cancellation(ctx, numerator)?;
+    if !exprs_match_for_cancellation(ctx, den_base, num_base) {
+        return None;
+    }
+
+    match (num_square_sign, num_one_sign) {
+        (Sign::Pos, Sign::Neg) => Some((den_base, true)),
+        (Sign::Neg, Sign::Pos) => Some((den_base, false)),
+        _ => None,
+    }
+}
+
 fn extract_scaled_common_log_atanh_definition_arg_for_cancellation(
     ctx: &cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -4004,6 +4062,31 @@ fn try_rewrite_atanh_ln_definition_for_cancellation(
 
     let coeff_expr = ctx.add(Expr::Number(scaled_coeff));
     Some(smart_mul(ctx, coeff_expr, ln_expr))
+}
+
+fn try_rewrite_atanh_square_ratio_log_equivalence_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let (scale, arg) = extract_scaled_atanh_arg_for_cancellation(ctx, expr)?;
+    let (log_arg, positive_orientation) =
+        extract_atanh_square_ratio_log_arg_for_cancellation(ctx, arg)?;
+    let ln_expr = ctx.call_builtin(BuiltinFn::Ln, vec![log_arg]);
+    let oriented = if positive_orientation {
+        ln_expr
+    } else {
+        ctx.add(Expr::Neg(ln_expr))
+    };
+
+    if scale == BigRational::from_integer(1.into()) {
+        return Some(oriented);
+    }
+    if scale == BigRational::from_integer((-1).into()) {
+        return Some(ctx.add(Expr::Neg(oriented)));
+    }
+
+    let coeff_expr = ctx.add(Expr::Number(scale));
+    Some(smart_mul(ctx, coeff_expr, oriented))
 }
 
 fn try_rewrite_exact_hyperbolic_equivalence_for_cancellation(
@@ -10347,6 +10430,10 @@ fn try_build_small_direct_zero_core_rewrite(
         }
     }
     if expr_contains_sqrt_or_half_power(ctx, expr) {
+        if let Some(rewrite) = try_build_small_symbolic_root_denesting_zero_core_rewrite(ctx, expr)
+        {
+            return Some(rewrite);
+        }
         if let Some(rewrite) = try_build_small_odd_half_power_zero_core_rewrite(ctx, expr) {
             return Some(rewrite);
         }
@@ -12998,6 +13085,16 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
     ) {
         return Some(rewrite);
     }
+    if expr_contains_sqrt_or_half_power(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.symbolic_root_denesting",
+            &expr_sample,
+            || try_build_small_symbolic_root_denesting_zero_core_rewrite(ctx, expr),
+        ) {
+            return Some(rewrite);
+        }
+    }
 
     if allow_direct_small_zero_combination {
         if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
@@ -13458,11 +13555,7 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         }
     }
 
-    if expr_contains_any_builtin(
-        ctx,
-        expr,
-        &[BuiltinFn::Sinh, BuiltinFn::Cosh, BuiltinFn::Tanh],
-    ) {
+    if expr_contains_hyperbolic_builtin(ctx, expr) {
         if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
             profiling,
             "rule.direct_identity.try.zero_scope_fast_hyperbolic",
@@ -15894,6 +15987,124 @@ fn try_build_small_odd_half_power_zero_core_rewrite(
     Some(exact_rewrite)
 }
 
+fn extract_square_power_base(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) if extract_i64_integer(ctx, *exp) == Some(2) => Some(*base),
+        _ => None,
+    }
+}
+
+fn extract_difference_of_square_bases(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let mut positive_base = None;
+    let mut negative_base = None;
+    for (term, sign) in terms {
+        let base = extract_square_power_base(ctx, term)?;
+        match sign {
+            Sign::Pos if positive_base.is_none() => positive_base = Some(base),
+            Sign::Neg if negative_base.is_none() => negative_base = Some(base),
+            _ => return None,
+        }
+    }
+
+    Some((positive_base?, negative_base?))
+}
+
+fn try_match_symbolic_root_denesting_pair(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let outer_inner = extract_square_root_base(ctx, expr)?;
+    let terms = AddView::from_expr(ctx, outer_inner).terms;
+    if terms.len() != 2 || terms.iter().any(|(_, sign)| *sign != Sign::Pos) {
+        return None;
+    }
+
+    for (plain_term, surd_term) in [(terms[0].0, terms[1].0), (terms[1].0, terms[0].0)] {
+        let Some(delta) = extract_square_root_base(ctx, surd_term) else {
+            continue;
+        };
+        let Some((square_base, other_base)) = extract_difference_of_square_bases(ctx, delta) else {
+            continue;
+        };
+        if !exprs_match_for_cancellation(ctx, plain_term, square_base) {
+            continue;
+        }
+
+        let plus_arg = ctx.add(Expr::Add(plain_term, other_base));
+        let minus_arg = ctx.add(Expr::Sub(plain_term, other_base));
+        return Some((plus_arg, minus_arg));
+    }
+
+    None
+}
+
+fn build_symbolic_root_denesting_target_expr(
+    ctx: &mut cas_ast::Context,
+    plus_arg: cas_ast::ExprId,
+    minus_arg: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    let sqrt_plus = ctx.call_builtin(BuiltinFn::Sqrt, vec![plus_arg]);
+    let sqrt_minus = ctx.call_builtin(BuiltinFn::Sqrt, vec![minus_arg]);
+    let numerator = ctx.add(Expr::Add(sqrt_plus, sqrt_minus));
+    let two = ctx.num(2);
+    let sqrt_two = ctx.call_builtin(BuiltinFn::Sqrt, vec![two]);
+    ctx.add(Expr::Div(numerator, sqrt_two))
+}
+
+fn try_build_small_symbolic_root_denesting_zero_core_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let zero = ctx.num(0);
+    let (lhs_core, rhs_core) = extract_two_term_core_difference(ctx, expr)?;
+
+    for (root_side, target_side) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some((plus_arg, minus_arg)) = try_match_symbolic_root_denesting_pair(ctx, root_side)
+        else {
+            continue;
+        };
+        let rewritten = build_symbolic_root_denesting_target_expr(ctx, plus_arg, minus_arg);
+        if !(exprs_match_for_cancellation(ctx, rewritten, target_side)
+            || exprs_match_after_default_simplify(ctx, rewritten, target_side))
+        {
+            continue;
+        }
+
+        return Some(
+            Rewrite::with_local(zero, "Root Denesting", root_side, target_side)
+                .requires(crate::ImplicitCondition::NonNegative(plus_arg))
+                .requires(crate::ImplicitCondition::NonNegative(minus_arg))
+                .substep(
+                    "Denestar la raíz anidada",
+                    vec![
+                        "La forma sqrt(a + sqrt(a^2 - b^2)) coincide con (sqrt(a+b) + sqrt(a-b))/sqrt(2) cuando ambos radicandos lineales son no negativos."
+                            .to_string(),
+                    ],
+                )
+                .substep(
+                    "Cancelar términos iguales",
+                    vec![
+                        "Tras denestar la raíz, ambos lados coinciden exactamente y la diferencia vale 0."
+                            .to_string(),
+                    ],
+                ),
+        );
+    }
+
+    None
+}
+
 fn build_square_preserving_one(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -17170,6 +17381,12 @@ fn try_rewrite_safe_direct_hyperbolic_equivalence_for_cancellation(
 
     if let Some(rewritten) = try_rewrite_sinh_cosh_exp_definition_for_cancellation(ctx, expr) {
         return Some((rewritten, "Recognize Hyperbolic from Exponential"));
+    }
+
+    if let Some(rewritten) =
+        try_rewrite_atanh_square_ratio_log_equivalence_for_cancellation(ctx, expr)
+    {
+        return Some((rewritten, "Inverse Hyperbolic Log Definition"));
     }
 
     if let Some(rewritten) = try_rewrite_atanh_ln_definition_for_cancellation(ctx, expr) {
@@ -24187,6 +24404,13 @@ define_rule!(
         let maybe_two_term_direct_half_angle_square = term_count == 2
             && !has_nontrivial_common_scale
             && expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Sin, BuiltinFn::Cos]);
+        let maybe_two_term_direct_symbolic_root_denesting_identity = term_count == 2
+            && !has_nontrivial_common_scale
+            && expr_contains_sqrt_or_half_power(ctx, expr)
+            && extract_two_term_core_difference(ctx, expr).is_some_and(|(lhs_core, rhs_core)| {
+                try_match_symbolic_root_denesting_pair(ctx, lhs_core).is_some()
+                    || try_match_symbolic_root_denesting_pair(ctx, rhs_core).is_some()
+            });
         let maybe_small_trig_direct_identity = (2..=3).contains(&term_count)
             && !has_nontrivial_common_scale
             && expr_contains_any_builtin(
@@ -24239,6 +24463,11 @@ define_rule!(
 
         if maybe_two_term_direct_half_angle_square {
             if let Some(rewrite) = try_build_two_term_direct_half_angle_square_rewrite(ctx, expr) {
+                return Some(rewrite);
+            }
+        }
+        if maybe_two_term_direct_symbolic_root_denesting_identity {
+            if let Some(rewrite) = try_build_exact_zero_identity_rewrite_direct(ctx, expr) {
                 return Some(rewrite);
             }
         }
@@ -26048,6 +26277,31 @@ mod tests {
     }
 
     #[test]
+    fn small_direct_zero_core_rewrite_matches_symbolic_root_denesting_core() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sqrt(x + sqrt(x^2 - y^2)) - (sqrt(x+y) + sqrt(x-y))/sqrt(2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.required_conditions.len(), 2);
+    }
+
+    #[test]
     fn direct_small_zero_additive_combination_rewrite_matches_trig_and_reciprocal_nested_fraction_sum(
     ) {
         let mut ctx = Context::new();
@@ -26568,6 +26822,25 @@ mod tests {
     }
 
     #[test]
+    fn direct_safe_hyperbolic_core_equivalence_rewrite_matches_atanh_square_ratio_ln_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("atanh((x^2 - 1)/(x^2 + 1))", &mut ctx)
+            .unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("ln(x)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_direct_safe_hyperbolic_core_equivalence_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Inverse Hyperbolic Log Definition",
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
     fn direct_safe_hyperbolic_core_equivalence_rewrite_rejects_atanh_common_log_pair() {
         let mut ctx = Context::new();
         let lhs = parse("2*atanh(x)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
@@ -26601,6 +26874,46 @@ mod tests {
         let rewrite = super::try_build_exact_zero_identity_rewrite(&mut ctx, expr);
 
         assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn exact_zero_identity_rewrite_matches_atanh_square_ratio_ln_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("atanh((x^2 - 1)/(x^2 + 1)) - ln(x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_identity_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(rewrite.final_expr(), ctx.num(0));
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Inverse Hyperbolic Log Definition",
+        );
+    }
+
+    #[test]
+    fn exact_zero_identity_rewrite_matches_symbolic_root_denesting_pair() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sqrt(x + sqrt(x^2 - y^2)) - (sqrt(x+y) + sqrt(x-y))/sqrt(2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_identity_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
     }
 
     #[test]

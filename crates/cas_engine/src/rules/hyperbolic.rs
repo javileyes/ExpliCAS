@@ -5,7 +5,8 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_nary::{build_balanced_mul, AddView, Sign};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::hyperbolic_core_support::{
-    try_eval_hyperbolic_special_value, try_rewrite_hyperbolic_composition,
+    try_eval_hyperbolic_special_value, try_rewrite_atanh_square_ratio_to_ln,
+    try_rewrite_hyperbolic_composition,
 };
 use cas_math::hyperbolic_identity_support::{
     try_rewrite_hyperbolic_double_angle_sub_chain, try_rewrite_hyperbolic_double_angle_sum,
@@ -110,6 +111,79 @@ fn format_hyperbolic_composition_desc(ctx: &Context, expr: ExprId) -> Option<&'s
         (Some(BuiltinFn::Atanh), Some(BuiltinFn::Tanh)) => Some("atanh(tanh(x)) = x"),
         _ => None,
     }
+}
+
+fn extract_ln_subject_and_negation(ctx: &Context, expr: ExprId) -> Option<(ExprId, bool)> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Ln) && args.len() == 1 => {
+            Some((args[0], false))
+        }
+        Expr::Neg(inner) => match ctx.get(*inner) {
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Ln) && args.len() == 1 =>
+            {
+                Some((args[0], true))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn apply_difference_sign(ctx: &mut Context, expr: ExprId, sign: Sign) -> ExprId {
+    match sign {
+        Sign::Pos => expr,
+        Sign::Neg => ctx.add(Expr::Neg(expr)),
+    }
+}
+
+fn apply_opposite_difference_sign(ctx: &mut Context, expr: ExprId, sign: Sign) -> ExprId {
+    match sign {
+        Sign::Pos => ctx.add(Expr::Neg(expr)),
+        Sign::Neg => expr,
+    }
+}
+
+fn extract_two_term_core_difference_local(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+
+    Some((
+        apply_difference_sign(ctx, terms[0].0, terms[0].1),
+        apply_opposite_difference_sign(ctx, terms[1].0, terms[1].1),
+    ))
+}
+
+pub(crate) fn try_build_atanh_square_ratio_log_zero_rewrite(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Rewrite> {
+    let (lhs_core, rhs_core) = extract_two_term_core_difference_local(ctx, expr)?;
+
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let rewritten = try_rewrite_atanh_square_ratio_to_ln(ctx, source)?.rewritten;
+        if compare_expr(ctx, rewritten, target) != Ordering::Equal {
+            continue;
+        }
+
+        let (subject, _) = extract_ln_subject_and_negation(ctx, rewritten)?;
+        return Some(
+            Rewrite::with_local(
+                ctx.num(0),
+                "Inverse Hyperbolic Log Definition",
+                expr,
+                ctx.num(0),
+            )
+            .requires(crate::ImplicitCondition::Positive(subject)),
+        );
+    }
+
+    None
 }
 
 fn format_hyperbolic_identity_desc(
@@ -777,6 +851,40 @@ define_rule!(
     }
 );
 
+define_rule!(
+    AtanhSquareRatioLogRule,
+    "Atanh Square-Ratio to Log",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    solve_safety: crate::SolveSafety::IntrinsicCondition(
+        crate::ConditionClass::Analytic
+    ),
+    |ctx, expr, _parent_ctx| {
+        let rewrite = try_rewrite_atanh_square_ratio_to_ln(ctx, expr)?;
+        let (subject, negate) = extract_ln_subject_and_negation(ctx, rewrite.rewritten)?;
+        let abs_subject = ctx.call_builtin(BuiltinFn::Abs, vec![subject]);
+        let rewritten = ctx.call_builtin(BuiltinFn::Ln, vec![abs_subject]);
+        let rewritten = if negate {
+            ctx.add(Expr::Neg(rewritten))
+        } else {
+            rewritten
+        };
+
+        Some(Rewrite::new(rewritten).desc("Inverse Hyperbolic Log Definition"))
+    }
+);
+
+define_rule!(
+    AtanhSquareRatioLogZeroRule,
+    "Atanh Square-Ratio Log Pair Cancellation",
+    Some(crate::target_kind::TargetKindSet::ADD.union(crate::target_kind::TargetKindSet::SUB)),
+    solve_safety: crate::SolveSafety::NeedsCondition(
+        crate::ConditionClass::Analytic
+    ),
+    |ctx, expr, _parent_ctx| {
+        try_build_atanh_square_ratio_log_zero_rewrite(ctx, expr)
+    }
+);
+
 // Rule 3: Negative argument identities
 // Handles both explicit Neg(x) and Sub(a,b) where a < b canonically.
 // V2.16: Extended to catch Sub patterns like sinh(1-u²) → -sinh(u²-1).
@@ -979,6 +1087,8 @@ define_rule!(
 pub fn register(simplifier: &mut crate::engine::Simplifier) {
     simplifier.add_rule(Box::new(EvaluateHyperbolicRule));
     simplifier.add_rule(Box::new(HyperbolicCompositionRule));
+    simplifier.add_rule(Box::new(AtanhSquareRatioLogRule));
+    simplifier.add_rule(Box::new(AtanhSquareRatioLogZeroRule));
     simplifier.add_rule(Box::new(HyperbolicNegativeRule));
     simplifier.add_rule(Box::new(HyperbolicPythagoreanRule));
     simplifier.add_rule(Box::new(SinhCoshToExpRule));
@@ -997,8 +1107,58 @@ pub fn register(simplifier: &mut crate::engine::Simplifier) {
 #[cfg(test)]
 mod tests {
     use super::{match_hyperbolic_product_triple_identity_zero, HyperbolicCubicZeroMatch};
+    use crate::rule::Rule;
     use cas_ast::Context;
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+
+    #[test]
+    fn atanh_square_ratio_log_rule_matches() {
+        let mut ctx = Context::new();
+        let expr = parse("atanh((x^2 - 1)/(x^2 + 1))", &mut ctx)
+            .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::AtanhSquareRatioLogRule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.final_expr(),
+            }
+            .to_string(),
+            "ln(|x|)"
+        );
+    }
+
+    #[test]
+    fn atanh_square_ratio_log_zero_rule_matches_difference() {
+        let mut ctx = Context::new();
+        let expr = parse("atanh((x^2 - 1)/(x^2 + 1)) - ln(x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::AtanhSquareRatioLogZeroRule
+            .apply(
+                &mut ctx,
+                expr,
+                &crate::parent_context::ParentContext::root(),
+            )
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.final_expr(),
+            }
+            .to_string(),
+            "0"
+        );
+    }
 
     #[test]
     fn matches_hyperbolic_product_triple_identity_zero_expr() {

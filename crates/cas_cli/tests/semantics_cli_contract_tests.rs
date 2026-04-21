@@ -8472,6 +8472,49 @@ fn eval_exp_natural_log_power_difference_collapses_to_zero() {
 }
 
 #[test]
+fn eval_atanh_square_ratio_log_difference_collapses_to_zero() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "atanh((x^2 - 1)/(x^2 + 1)) - log(x)",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "0");
+}
+
+#[test]
+fn eval_atanh_square_ratio_log_difference_steps_hide_noop_negation_cleanup() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "atanh((x^2 - 1)/(x^2 + 1)) - log(x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert!(
+        steps
+            .iter()
+            .all(|step| step["rule"] != "Quitar paréntesis tras el signo menos"),
+        "unexpected noop negation cleanup step(s): {steps:?}"
+    );
+}
+
+#[test]
 fn eval_log10_power_difference_collapses_to_zero() {
     let (output, code) = run_cli(&["eval", "10^(y*log10(x)) - x^y", "--format", "json"]);
     assert_eq!(
