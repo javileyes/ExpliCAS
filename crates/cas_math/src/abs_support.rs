@@ -886,6 +886,9 @@ pub fn is_sum_of_nonnegative(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         // x^(2k) is non-negative
         Expr::Pow(_, exp) => {
+            if crate::root_forms::extract_square_root_base(ctx, expr).is_some() {
+                return true;
+            }
             if let Expr::Number(n) = ctx.get(*exp) {
                 n.is_integer() && n.to_integer().is_even()
             } else {
@@ -929,12 +932,18 @@ mod tests {
         let mut ctx = Context::new();
         let x = ctx.var("x");
         let two = ctx.num(2);
+        let half = ctx.add(Expr::Number(num_rational::BigRational::new(
+            1.into(),
+            2.into(),
+        )));
         let square = ctx.add(Expr::Pow(x, two));
+        let sqrt_pow_x = ctx.add(Expr::Pow(x, half));
         let abs_x = ctx.call_builtin(BuiltinFn::Abs, vec![x]);
         let sqrt_x = ctx.call_builtin(BuiltinFn::Sqrt, vec![x]);
         let exp_x = ctx.call_builtin(BuiltinFn::Exp, vec![x]);
 
         assert!(is_sum_of_nonnegative(&ctx, square));
+        assert!(is_sum_of_nonnegative(&ctx, sqrt_pow_x));
         assert!(is_sum_of_nonnegative(&ctx, abs_x));
         assert!(is_sum_of_nonnegative(&ctx, sqrt_x));
         assert!(is_sum_of_nonnegative(&ctx, exp_x));
@@ -1430,6 +1439,18 @@ mod tests {
             .expect("symmetric expected");
         assert_eq!(
             compare_expr(&ctx, symmetric_rewrite.rewritten, symmetric_expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_abs_sum_nonnegative_for_sqrt_like_pow_plus_constant() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("abs((x-1)^(1/2) + 1)", &mut ctx).expect("parse");
+        let expected = cas_parser::parse("(x-1)^(1/2) + 1", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_abs_sum_nonnegative_expr(&ctx, expr).expect("rewrite");
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
             std::cmp::Ordering::Equal
         );
     }

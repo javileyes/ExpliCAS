@@ -8477,6 +8477,23 @@ fn eval_arcsin_arctan_expansion_difference_collapses_to_zero() {
 }
 
 #[test]
+fn eval_collapsed_shifted_root_square_difference_collapses_to_zero() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "0");
+}
+
+#[test]
 fn eval_scaled_log_power_product_difference_collapses_in_one_common_scale_step() {
     let (output, _code) = run_cli(&[
         "eval",

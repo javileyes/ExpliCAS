@@ -260,7 +260,7 @@ fn multiset_matches_exprs(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> b
     true
 }
 
-fn split_positive_additive_parts(
+fn split_additive_parts_with_signed_numeric(
     ctx: &Context,
     expr: ExprId,
 ) -> Option<(Vec<ExprId>, BigRational)> {
@@ -270,12 +270,20 @@ fn split_positive_additive_parts(
     let mut numeric = BigRational::zero();
 
     for (term, sign) in AddView::from_expr(ctx, expr).terms {
-        if sign != Sign::Pos {
-            return None;
-        }
         match ctx.get(term) {
-            Expr::Number(n) => numeric += n.clone(),
-            _ => symbolic.push(term),
+            Expr::Number(n) => {
+                if sign == Sign::Pos {
+                    numeric += n.clone();
+                } else {
+                    numeric -= n.clone();
+                }
+            }
+            _ => {
+                if sign != Sign::Pos {
+                    return None;
+                }
+                symbolic.push(term);
+            }
         }
     }
 
@@ -289,20 +297,33 @@ fn try_match_collapsed_sqrt_square_trinomial(
     use crate::expr_nary::{AddView, Sign};
 
     let terms = AddView::from_expr(ctx, arg).terms;
-    if terms.len() != 3 {
+    if !(2..=3).contains(&terms.len()) {
         return None;
     }
 
-    for mid_idx in 0..3 {
+    for mid_idx in 0..terms.len() {
         let (term_mid, sign_mid) = terms[mid_idx];
-        let other_idxs: Vec<_> = (0..3).filter(|idx| *idx != mid_idx).collect();
-        let (left_term, left_sign) = terms[other_idxs[0]];
-        let (right_term, right_sign) = terms[other_idxs[1]];
-        if left_sign != Sign::Pos || right_sign != Sign::Pos {
+        let mut positive_terms = Vec::with_capacity(terms.len().saturating_sub(1));
+        let mut valid_positive_sum = true;
+        for (idx, (term, sign)) in terms.iter().copied().enumerate() {
+            if idx == mid_idx {
+                continue;
+            }
+            if sign != Sign::Pos {
+                valid_positive_sum = false;
+                break;
+            }
+            positive_terms.push(term);
+        }
+        if !valid_positive_sum || positive_terms.is_empty() {
             continue;
         }
 
-        let positive_sum = ctx.add(Expr::Add(left_term, right_term));
+        let positive_sum = if positive_terms.len() == 1 {
+            positive_terms[0]
+        } else {
+            crate::expr_nary::build_balanced_add(ctx, &positive_terms)
+        };
         let (effective_mid, effective_neg_mid) =
             normalize_signed_multiplicative_term(ctx, term_mid, sign_mid);
 
@@ -318,11 +339,12 @@ fn try_match_collapsed_sqrt_square_trinomial(
                 }
             };
             let Some((sum_symbolic, sum_numeric)) =
-                split_positive_additive_parts(ctx, positive_sum)
+                split_additive_parts_with_signed_numeric(ctx, positive_sum)
             else {
                 continue;
             };
-            let Some((root_symbolic, root_numeric)) = split_positive_additive_parts(ctx, root_base)
+            let Some((root_symbolic, root_numeric)) =
+                split_additive_parts_with_signed_numeric(ctx, root_base)
             else {
                 continue;
             };
@@ -646,6 +668,15 @@ mod tests {
         let mut ctx = Context::new();
         let expr = cas_parser::parse("sqrt((u + pi)^2 + 2*(u + pi) + 1)", &mut ctx).expect("parse");
         let expected = cas_parser::parse("abs(u + pi + 1)", &mut ctx).expect("expected");
+        let rw = try_rewrite_sqrt_perfect_square_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn rewrite_sqrt_perfect_square_expr_collapsed_shifted_root_square() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("sqrt(x + 2*sqrt(x-1))", &mut ctx).expect("parse");
+        let expected = cas_parser::parse("abs(sqrt(x-1) + 1)", &mut ctx).expect("expected");
         let rw = try_rewrite_sqrt_perfect_square_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
     }

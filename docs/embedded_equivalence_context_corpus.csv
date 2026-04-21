@@ -168,6 +168,7 @@ k*((a^2-2*a*b+b^2)/(a-b)) - k*(a-b),0,scaled_difference_zero,cancel_fraction_per
 k*(sqrt(a^2 + 2*a*b + b^2)) - k*(abs(a+b)),0,scaled_difference_zero,perfect_square_root_to_abs,simplify,sqrt(a^2 + 2*a*b + b^2),abs(a+b),rewrite radicals
 ((sqrt(a^2 + 2*a*b + b^2))/q) - ((abs(a+b))/q),0,common_denominator_zero,perfect_square_root_to_abs,simplify,sqrt(a^2 + 2*a*b + b^2),abs(a+b),rewrite radicals
 ((sqrt(a^2 + 2*a*b + b^2)) + 1)/((abs(a+b)) + 1),1,shifted_quotient_one,perfect_square_root_to_abs,simplify,sqrt(a^2 + 2*a*b + b^2),abs(a+b),rewrite radicals
+(sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1),0,additive_passthrough_zero,collapsed_shifted_root_square_to_linear,simplify,sqrt(x + 2*sqrt(x-1)),sqrt(x-1)+1,rewrite radicals
 ((sqrt(a^2 + 2*a*b + b^2)+c) + m) - ((abs(a+b)+c) + m),0,additive_passthrough_zero,perfect_square_root_to_abs_with_passthrough,simplify,sqrt(a^2 + 2*a*b + b^2)+c,abs(a+b)+c,rewrite radicals
 k*(sqrt(a^2 + 2*a*b + b^2)+c) - k*(abs(a+b)+c),0,scaled_difference_zero,perfect_square_root_to_abs_with_passthrough,simplify,sqrt(a^2 + 2*a*b + b^2)+c,abs(a+b)+c,rewrite radicals
 ((sqrt(a^2 + 2*a*b + b^2)+c)/q) - ((abs(a+b)+c)/q),0,common_denominator_zero,perfect_square_root_to_abs_with_passthrough,simplify,sqrt(a^2 + 2*a*b + b^2)+c,abs(a+b)+c,rewrite radicals
