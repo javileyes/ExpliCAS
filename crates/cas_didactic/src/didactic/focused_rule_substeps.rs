@@ -4,9 +4,10 @@ use crate::didactic::try_as_fraction;
 use crate::runtime::Step;
 use cas_ast::ordering::compare_expr;
 use cas_ast::views::as_rational_const;
-use cas_ast::{substitute_expr_by_id, BuiltinFn, Context, Expr, ExprId};
-use cas_math::expr_destructure::as_div;
+use cas_ast::{substitute_expr_by_id, BuiltinFn, Constant, Context, Expr, ExprId};
+use cas_math::expr_destructure::{as_div, as_mul, as_pow};
 use cas_math::expr_extract::extract_i64_multiplier_and_base_factors;
+use cas_math::expr_extract::{extract_log_base_argument_view, log10_base_sentinel};
 use cas_math::expr_nary::build_balanced_mul;
 use cas_math::expr_nary::{self, AddView, Sign};
 use cas_math::poly_compare::poly_eq;
@@ -92,6 +93,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Factor Perfect Square in Logarithm" => {
             generate_factor_perfect_square_log_substeps(ctx, step)
         }
+        "Log Inverse Power" => generate_log_inverse_power_substeps(ctx, step),
         "Log Contraction" => generate_log_contraction_substeps(ctx, step),
         "Finite Product" => generate_finite_product_substeps(ctx, step),
         "Finite Summation" => generate_finite_summation_substeps(ctx, step),
@@ -1240,6 +1242,146 @@ fn generate_log_cancellation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
         .with_after_latex(latex_expr(&work, after)),
     );
     substeps
+}
+
+fn generate_log_inverse_power_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some(plan) = log_inverse_power_plan(ctx, before) else {
+        return Vec::new();
+    };
+    let Some((_source_base, exponent)) = as_pow(ctx, before) else {
+        return Vec::new();
+    };
+
+    let mut temp_ctx = ctx.clone();
+    let target_base = match plan.base_kind {
+        LogInversePowerBaseKind::Natural => temp_ctx.add(Expr::Constant(Constant::E)),
+        LogInversePowerBaseKind::Decimal => temp_ctx.num(10),
+        LogInversePowerBaseKind::Explicit => {
+            let Some(explicit_target_base) = plan.explicit_target_base else {
+                return Vec::new();
+            };
+            explicit_target_base
+        }
+    };
+    let recovery = temp_ctx.add(Expr::Pow(target_base, plan.log_expr));
+    let intermediate = temp_ctx.add(Expr::Pow(recovery, exponent));
+
+    let (source_plain, source_latex) = render_temp_expr(&temp_ctx, plan.source_base);
+    let (recovery_plain, recovery_latex) = render_temp_expr(&temp_ctx, recovery);
+    let (intermediate_plain, intermediate_latex) = render_temp_expr(&temp_ctx, intermediate);
+    let (after_plain, after_latex) = render_temp_expr(&temp_ctx, after);
+
+    let identity_title = match plan.base_kind {
+        LogInversePowerBaseKind::Natural => "Usar que e^(ln(u)) = u",
+        LogInversePowerBaseKind::Decimal => "Usar que 10^(log10(u)) = u",
+        LogInversePowerBaseKind::Explicit => "Usar que a^(log(a, u)) = u",
+    };
+    let cancel_title = match plan.base_kind {
+        LogInversePowerBaseKind::Natural => {
+            "El exponente exterior cancela el ln del exponente interior"
+        }
+        LogInversePowerBaseKind::Decimal => {
+            "El exponente exterior cancela el log10 del exponente interior"
+        }
+        LogInversePowerBaseKind::Explicit => {
+            "El exponente exterior cancela el logaritmo del exponente interior"
+        }
+    };
+
+    vec![
+        formula_substep(
+            identity_title,
+            &source_plain,
+            &recovery_plain,
+            &source_latex,
+            &recovery_latex,
+        ),
+        formula_substep(
+            cancel_title,
+            &intermediate_plain,
+            &after_plain,
+            &intermediate_latex,
+            &after_latex,
+        ),
+    ]
+}
+
+#[derive(Clone, Copy)]
+enum LogInversePowerBaseKind {
+    Natural,
+    Decimal,
+    Explicit,
+}
+
+struct LogInversePowerPlan {
+    source_base: ExprId,
+    log_expr: ExprId,
+    explicit_target_base: Option<ExprId>,
+    base_kind: LogInversePowerBaseKind,
+}
+
+fn log_inverse_power_plan(ctx: &Context, expr: ExprId) -> Option<LogInversePowerPlan> {
+    let (source_base, exponent) = as_pow(ctx, expr)?;
+
+    let check_log_denom = |ctx: &Context,
+                           denom: ExprId|
+     -> Option<(ExprId, Option<ExprId>, LogInversePowerBaseKind)> {
+        let (log_base_opt, log_arg) = extract_log_base_argument_view(ctx, denom)?;
+        if compare_expr(ctx, log_arg, source_base) != Ordering::Equal {
+            return None;
+        }
+
+        let (explicit_target_base, base_kind) = match log_base_opt {
+            Some(base) if base == log10_base_sentinel() => (None, LogInversePowerBaseKind::Decimal),
+            Some(base) => (Some(base), LogInversePowerBaseKind::Explicit),
+            None => (None, LogInversePowerBaseKind::Natural),
+        };
+        Some((denom, explicit_target_base, base_kind))
+    };
+
+    if let Some((_coeff, denom)) = as_div(ctx, exponent) {
+        let (log_expr, explicit_target_base, base_kind) = check_log_denom(ctx, denom)?;
+        return Some(LogInversePowerPlan {
+            source_base,
+            log_expr,
+            explicit_target_base,
+            base_kind,
+        });
+    }
+
+    if let Some((lhs, rhs)) = as_mul(ctx, exponent) {
+        for maybe_inverse in [rhs, lhs] {
+            let Some((den, den_exp)) = as_pow(ctx, maybe_inverse) else {
+                continue;
+            };
+            if !is_integer_literal(ctx, den_exp, -1) {
+                continue;
+            }
+            let (log_expr, explicit_target_base, base_kind) = check_log_denom(ctx, den)?;
+            return Some(LogInversePowerPlan {
+                source_base,
+                log_expr,
+                explicit_target_base,
+                base_kind,
+            });
+        }
+    }
+
+    if let Some((den, den_exp)) = as_pow(ctx, exponent) {
+        if is_integer_literal(ctx, den_exp, -1) {
+            let (log_expr, explicit_target_base, base_kind) = check_log_denom(ctx, den)?;
+            return Some(LogInversePowerPlan {
+                source_base,
+                log_expr,
+                explicit_target_base,
+                base_kind,
+            });
+        }
+    }
+
+    None
 }
 
 fn build_log_cancellation_expansion_plan(

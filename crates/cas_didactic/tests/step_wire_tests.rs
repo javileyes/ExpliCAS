@@ -857,6 +857,65 @@ fn step_wire_rationalization_explains_conjugate_then_multiply_then_simplify() {
 }
 
 #[test]
+fn step_wire_log_inverse_power_explains_inverse_log_relation_before_collapsing() {
+    let (engine, output) = eval_output_for("(x^2 + 2)^(1/ln(x^2 + 2))");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Log Inverse Power")
+        .expect("expected log inverse power step");
+
+    assert_eq!(step.substeps.len(), 2);
+    assert_eq!(step.substeps[0].title, "Usar que e^(ln(u)) = u");
+    assert_eq!(
+        step.substeps[1].title,
+        "El exponente exterior cancela el ln del exponente interior"
+    );
+    assert!(
+        step.substeps[0]
+            .after_latex
+            .as_deref()
+            .is_some_and(|latex| latex.contains("{e}^{") && latex.contains("\\ln")),
+        "expected inverse-log relation in first substep, got: {:?}",
+        step.substeps[0].after_latex
+    );
+    assert_eq!(step.substeps[1].after_latex.as_deref(), Some("e"));
+}
+
+#[test]
+fn step_wire_rationalization_exact_cube_quotient_uses_notable_quotient_narrative() {
+    let (engine, output) = eval_output_for("(x^3 + y^3)/((x + y) * (x^2 - x*y + y^2))");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let step = steps
+        .iter()
+        .find(|step| step.rule == "Racionalizar el denominador")
+        .expect("expected rationalization step");
+
+    assert_eq!(step.substeps.len(), 2);
+    assert_eq!(
+        step.substeps[0].title,
+        "Factorizar el numerador como suma de cubos"
+    );
+    assert_eq!(
+        step.substeps[1].title,
+        "Numerador y denominador quedan iguales, así que el cociente vale 1"
+    );
+    assert!(
+        step.substeps[0]
+            .after_latex
+            .as_deref()
+            .is_some_and(|latex| latex.contains("(x + y)") && latex.contains("x\\cdot y")),
+        "expected the first substep to expose the exact notable quotient factorization, got: {:?}",
+        step.substeps[0].after_latex
+    );
+    assert_eq!(step.substeps[1].after_latex.as_deref(), Some("1"));
+}
+
+#[test]
 fn step_wire_rationalization_self_cancel_stays_direct_without_tautological_substeps() {
     let (engine, output) = eval_output_for("1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)");
     let steps =
