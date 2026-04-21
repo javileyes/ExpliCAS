@@ -95,6 +95,62 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-04-21: Fast Solve-Prep Neg-Rewritten Default-Simplify Route
+
+- area:
+  - [arithmetic.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/arithmetic.rs)
+  - `try_build_fast_solve_prep_exact_zero_scope_rewrite(...)`
+- status:
+  - `candidate for combination`
+- local lane:
+  - `CAS_PROFILE_ORCHESTRATOR_SHORTCUTS=1 CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER=rule.direct_identity.try.zero_scope_fast_solve_prep,rule.fast_solve_prep.,rule.solve_prep. cargo run --release -q -p cas_solver --example run_embedded_equivalence_context_corpus -- --limit 480`
+- attempted change:
+  - promote an extra `neg_rewritten` + `default_simplify` comparison before
+    falling back to `candidate_total_zero`
+- local profiler signal:
+  - `rule.fast_solve_prep.route.neg_rewritten_default_simplify_match`: `4` hits
+  - `rule.fast_solve_prep.route.candidate_total_zero`: `8 -> 4`
+  - the moved traffic stayed concentrated in the same shape bucket:
+    - `add(add, div) || neg(mul)`
+- global runtime result:
+  - retained baseline on the same profiled embedded slice:
+    - `Elapsed: 762.60ms`
+    - `rule.direct_identity.try.zero_scope_fast_solve_prep`: `47.855ms`
+    - `TOTAL`: `72.885ms`
+  - attempted route enabled:
+    - `Elapsed: 805.35ms`
+    - `rule.direct_identity.try.zero_scope_fast_solve_prep`: `102.883ms`
+    - `TOTAL`: `127.485ms`
+  - decision:
+    - rejected as runtime change
+- best current explanation:
+  - the extra whole-expression `default_simplify` comparison is broad enough
+    that it costs more than the saved `candidate_total_zero` traffic on the
+    shared `fast_solve_prep` path
+  - the local win is real, but the call-site is still too broad for this check
+    to pay for itself as a default branch
+- follow-up combination check:
+  - paired later with a retained `remaining_shifted_square` gate in
+    `fast_solve_prep`
+  - local movement improved:
+    - `rule.fast_solve_prep.route.candidate_total_zero`: `8 -> 4`
+    - `rule.fast_solve_prep.route.neg_rewritten_default_simplify_match`: `4`
+  - but the global guarded slice still regressed:
+    - retained gated baseline:
+      - `Elapsed: 753.61ms`
+      - `TOTAL: 71.558ms`
+    - gated + neg-rewritten route:
+      - `Elapsed: 824.95ms`
+      - `TOTAL: 128.302ms`
+  - conclusion:
+    - `remaining_shifted_square` is not a narrow enough partner for this route
+- plausible combination later:
+  - pair it with a still narrower syntactic gate specific to the surviving
+    `add(add, div) || neg(mul)` pocket, not merely “remaining has shifted
+    square”
+  - or reuse caller metadata so the extra negated-compare only runs on a
+    subset already known to have exact cancellation plausibility
+
 ### 2026-04-18: Binary-Add Surface Plain-Algebraic Gate
 
 - area:
@@ -500,3 +556,136 @@ The burden of proof stays the same:
   - reuse an already materialized exact-target signature from the caller of
     `exact_scope_pair_match`, instead of introducing cache logic inside
     `try_find_trig_phase_shift_cancellation_match(...)`
+
+### 2026-04-21: One-Pass Quadratic Term Analyzer
+
+- area:
+  - [quadratic_coeffs.rs](/Users/javiergimenezmoya/developer/math/crates/cas_solver_core/src/quadratic_coeffs.rs)
+  - `extract_quadratic_coefficients(...)`
+  - `analyze_term(...)`
+- status:
+  - `rejected as runtime change`
+- attempted change:
+  - replace the current `contains_var`-driven branching in `analyze_term(...)`
+    with a one-pass recursive analyzer for `Mul`/`Div`/`Neg`
+  - keep constant subtrees opaque and only rebuild coefficients after recursive
+    degree analysis
+- local lane:
+  - `CAS_PROFILE_ORCHESTRATOR_SHORTCUTS=1 CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER=rule.direct_identity.try.zero_scope_fast_solve_prep,rule.fast_solve_prep.,rule.solve_prep. cargo run --release -q -p cas_solver --example run_embedded_equivalence_context_corpus -- --family solve_prep`
+  - result:
+    - retained baseline before attempt:
+      - `Elapsed: 37.85ms`
+      - `TOTAL: 42.830ms`
+      - `rule.solve_prep.build_candidate.extract_coeffs: 10.264ms`
+    - attempted change, hot rerun:
+      - `Elapsed: 41.36ms`
+      - `TOTAL: 46.217ms`
+      - `rule.solve_prep.build_candidate.extract_coeffs: 10.755ms`
+- global result:
+  - guardrail lane:
+    - `CAS_PROFILE_ORCHESTRATOR_SHORTCUTS=1 CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER=rule.direct_identity.try.zero_scope_fast_solve_prep,rule.fast_solve_prep.,rule.solve_prep. cargo run --release -q -p cas_solver --example run_embedded_equivalence_context_corpus -- --limit 480`
+  - retained baseline before attempt:
+    - `Elapsed: 706.67ms`
+    - `TOTAL: 38.352ms`
+    - `rule.solve_prep.build_candidate.extract_coeffs: 9.063ms`
+  - attempted change, hot rerun:
+    - `Elapsed: 716.12ms`
+    - `TOTAL: 41.026ms`
+    - `rule.solve_prep.build_candidate.extract_coeffs: 9.715ms`
+  - decision:
+    - reverted
+- best current explanation:
+  - the repeated `contains_var(...)` scans are not the dominant cost in the
+    retained `solve_prep` pocket
+  - replacing them with a more generic recursive analyzer adds its own control
+    flow and coefficient rebuilding overhead before any real candidate is
+    formed
+- useful retained signal:
+  - `extract_coeffs` should not be attacked with a broad analyzer rewrite in
+    shared core
+  - the next viable move should be narrower:
+    - route-specific prefilters before quadratic extraction
+    - or observability inside coefficient extraction to separate
+      coefficient-shape cost from target-variable scans
+
+### 2026-04-21: Deferred `solve_prep` `c` Simplification
+
+- area:
+  - [arithmetic.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/arithmetic.rs)
+  - `extract_profiled_solve_prep_nonzero_quadratic_coefficients(...)`
+- status:
+  - `rejected as runtime change`
+- attempted change:
+  - stop simplifying the extracted constant term `c` inside `solve_prep`
+  - rely on later `tail` / final-candidate simplification to normalize it
+- local lane:
+  - `CAS_PROFILE_ORCHESTRATOR_SHORTCUTS=1 CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER=rule.direct_identity.try.zero_scope_fast_solve_prep,rule.fast_solve_prep.,rule.solve_prep. cargo run --release -q -p cas_solver --example run_embedded_equivalence_context_corpus -- --family solve_prep`
+  - retained baseline before attempt:
+    - `Elapsed: 47.44ms`
+    - `TOTAL: 56.502ms`
+    - `rule.solve_prep.extract.simplify_c: 4.958ms`
+  - attempted change:
+    - `Elapsed: 57.03ms`
+    - `TOTAL: 113.983ms`
+    - `rule.solve_prep.extract.defer_simplify_c: 0.001ms`
+    - but `rule.solve_prep.build_candidate.extract_coeffs: 10.973ms -> 16.229ms`
+    - and `rule.fast_solve_prep.gate.focus_remaining_var_mismatch: 16 -> 56`
+- global result:
+  - guardrail lane:
+    - `CAS_PROFILE_ORCHESTRATOR_SHORTCUTS=1 CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER=rule.direct_identity.try.zero_scope_fast_solve_prep,rule.fast_solve_prep.,rule.solve_prep. cargo run --release -q -p cas_solver --example run_embedded_equivalence_context_corpus -- --limit 480`
+  - retained baseline before attempt:
+    - `Elapsed: 723.97ms`
+    - `rule.solve_prep.build_candidate.extract_coeffs: 9.735ms`
+  - attempted change:
+    - `Elapsed: 761.06ms`
+    - `rule.solve_prep.build_candidate.extract_coeffs: 15.329ms`
+    - `rule.fast_solve_prep.gate.focus_remaining_var_mismatch: 16 -> 56`
+  - decision:
+    - reverted
+- best current explanation:
+  - `simplify_c` is expensive, but removing it broadens the upstream shape
+    space enough to reopen a larger dead-traffic pocket than the cost it saves
+  - the saved work is real; the placement is wrong
+- plausible combination later:
+  - defer `c` normalization only after a narrower route-specific prefilter
+  - or only for one build-route once the `focus_remaining_var_mismatch` pocket
+    is already closed
+
+### 2026-04-21: Narrow `pos_generic` Negative-Linear `c` Deferral
+
+- area:
+  - [arithmetic.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/arithmetic.rs)
+  - `extract_profiled_solve_prep_nonzero_quadratic_coefficients(...)`
+- status:
+  - `rejected as runtime change`
+- attempted change:
+  - defer `c` only for the `pos_generic` pocket measured as:
+    - `a.shape = atom`
+    - `b.shape = neg_atom`
+    - `c.shape = addsub_with_div`
+    - `focus_no_shifted_square`
+  - this was narrow enough to make the focused regression
+    `a*x^2 - b*x + (c + d - d)` pass in fast `solve_prep`
+- local lane:
+  - `CAS_PROFILE_ORCHESTRATOR_SHORTCUTS=1 CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER=rule.solve_prep.extract.simplify_a,rule.solve_prep.extract.simplify_a.shape.,rule.solve_prep.extract.simplify_b,rule.solve_prep.extract.simplify_b.shape.,rule.solve_prep.extract.simplify_c,rule.solve_prep.extract.simplify_c.build.,rule.solve_prep.extract.simplify_c.shape.,rule.solve_prep.extract.pos_generic.,rule.solve_prep.extract.defer_simplify_c.,rule.direct_identity.try.zero_scope_fast_solve_prep,rule.fast_solve_prep.,rule.solve_prep. cargo run --release -q -p cas_solver --example run_embedded_equivalence_context_corpus -- --family solve_prep`
+  - retained baseline before attempt:
+    - `Elapsed: 43.27ms`
+    - `TOTAL: 52.250ms`
+    - `rule.fast_solve_prep.try.collect_rewrites: 16`
+    - `rule.solve_prep.build_candidate.extract_coeffs: 16`
+  - attempted change:
+    - `Elapsed: 47.28ms`
+    - `TOTAL: 57.535ms`
+    - `rule.fast_solve_prep.try.collect_rewrites: 16 -> 72`
+    - `rule.solve_prep.build_candidate.extract_coeffs: 16 -> 104`
+    - `rule.solve_prep.extract.defer_simplify_c.pos_generic_scale: 4`
+    - sample dead traffic reopened as `:: b`
+- decision:
+  - reverted
+- best current explanation:
+  - the pocket is real, but skipping `c` normalization there is still early enough
+    to broaden the rewrite search around the raw focus
+  - the next viable move is not another `defer_c` variant
+  - it should be either:
+    - a dedicated negative-linear symbolic route that keeps `c` normalized
+    - or a prefilter earlier than coefficient extraction

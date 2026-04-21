@@ -195,26 +195,80 @@ fn warning_event_is_intrinsically_true_in_reals(
     }
 }
 
+fn required_condition_matches_warning_event(
+    ctx: &Context,
+    required: &crate::ImplicitCondition,
+    event: &crate::AssumptionEvent,
+) -> bool {
+    match (required, &event.key) {
+        (
+            crate::ImplicitCondition::Positive(expr),
+            crate::AssumptionKey::Positive { expr_fingerprint },
+        )
+        | (
+            crate::ImplicitCondition::NonNegative(expr),
+            crate::AssumptionKey::NonNegative { expr_fingerprint },
+        )
+        | (
+            crate::ImplicitCondition::NonZero(expr),
+            crate::AssumptionKey::NonZero { expr_fingerprint },
+        ) => crate::expr_fingerprint(ctx, *expr) == *expr_fingerprint,
+        _ => false,
+    }
+}
+
+fn warning_event_is_redundant_with_required_condition(
+    ctx: &Context,
+    step: &crate::Step,
+    event: &crate::AssumptionEvent,
+) -> bool {
+    matches!(event.kind, crate::AssumptionKind::HeuristicAssumption)
+        && step
+            .required_conditions()
+            .iter()
+            .any(|required| required_condition_matches_warning_event(ctx, required, event))
+}
+
 pub(crate) fn collect_domain_warnings(
     ctx: &Context,
-    real_only: bool,
+    value_domain: crate::semantics::ValueDomain,
+    result: ExprId,
     steps: &[crate::Step],
 ) -> Vec<DomainWarning> {
-    cas_session_core::eval::collect_warnings_with(
-        steps,
-        |step| step.assumption_events().to_vec(),
-        |event| {
-            matches!(
+    use std::collections::HashSet;
+
+    let real_only = value_domain == crate::semantics::ValueDomain::RealOnly;
+    let result_domain = crate::infer_implicit_domain(ctx, result, value_domain);
+    let mut seen: HashSet<String> = HashSet::new();
+    let mut warnings = Vec::new();
+
+    for step in steps {
+        for event in step.assumption_events() {
+            let should_skip = matches!(
                 event.kind,
                 crate::AssumptionKind::RequiresIntroduced
                     | crate::AssumptionKind::DerivedFromRequires
-            ) || (real_only && warning_event_is_intrinsically_true_in_reals(ctx, event))
-        },
-        |event| event.message.clone(),
-        |step| step.rule_name.clone(),
-        |message, rule_name| DomainWarning {
-            message,
-            rule_name: rule_name.to_string(),
-        },
-    )
+            ) || (real_only
+                && warning_event_is_intrinsically_true_in_reals(ctx, event))
+                || warning_event_is_redundant_with_required_condition(ctx, step, event);
+            let result_domain_already_requires_warning =
+                matches!(event.kind, crate::AssumptionKind::HeuristicAssumption)
+                    && result_domain.conditions().iter().any(|required| {
+                        required_condition_matches_warning_event(ctx, required, event)
+                    });
+            if should_skip || result_domain_already_requires_warning {
+                continue;
+            }
+
+            let message = event.message.clone();
+            if seen.insert(message.clone()) {
+                warnings.push(DomainWarning {
+                    message,
+                    rule_name: step.rule_name.to_string(),
+                });
+            }
+        }
+    }
+
+    warnings
 }

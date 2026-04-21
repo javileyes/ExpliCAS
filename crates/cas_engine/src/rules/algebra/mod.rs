@@ -746,20 +746,53 @@ pub fn try_exact_sum_diff_of_cubes_preorder(
             extract_cube_base(ctx, *right)?,
             true,
         ),
-        cas_ast::Expr::Add(left, right) => (
-            extract_cube_base(ctx, *left)?,
-            extract_cube_base(ctx, *right)?,
-            false,
-        ),
+        cas_ast::Expr::Add(left, right) => {
+            if let cas_ast::Expr::Neg(inner) = ctx.get(*right) {
+                (
+                    extract_cube_base(ctx, *left)?,
+                    extract_cube_base(ctx, *inner)?,
+                    true,
+                )
+            } else if let cas_ast::Expr::Neg(inner) = ctx.get(*left) {
+                (
+                    extract_cube_base(ctx, *right)?,
+                    extract_cube_base(ctx, *inner)?,
+                    true,
+                )
+            } else {
+                (
+                    extract_cube_base(ctx, *left)?,
+                    extract_cube_base(ctx, *right)?,
+                    false,
+                )
+            }
+        }
         _ => return None,
     };
 
-    match (is_difference, ctx.get(den)) {
-        (true, cas_ast::Expr::Sub(dl, dr))
-            if expr_eq_fast(ctx, *dl, a) && expr_eq_fast(ctx, *dr, b) => {}
-        (false, cas_ast::Expr::Add(dl, dr))
-            if expr_eq_fast(ctx, *dl, a) && expr_eq_fast(ctx, *dr, b) => {}
-        _ => return None,
+    let den_matches = match (is_difference, ctx.get(den)) {
+        (true, cas_ast::Expr::Sub(dl, dr)) => {
+            expr_eq_fast(ctx, *dl, a) && expr_eq_fast(ctx, *dr, b)
+        }
+        (true, cas_ast::Expr::Add(dl, dr)) => {
+            if let cas_ast::Expr::Neg(inner) = ctx.get(*dr) {
+                expr_eq_fast(ctx, *dl, a) && expr_eq_fast(ctx, *inner, b)
+            } else if let cas_ast::Expr::Neg(inner) = ctx.get(*dl) {
+                expr_eq_fast(ctx, *dr, a) && expr_eq_fast(ctx, *inner, b)
+            } else {
+                false
+            }
+        }
+        (false, cas_ast::Expr::Add(dl, dr)) => {
+            !matches!(ctx.get(*dl), cas_ast::Expr::Neg(_))
+                && !matches!(ctx.get(*dr), cas_ast::Expr::Neg(_))
+                && ((expr_eq_fast(ctx, *dl, a) && expr_eq_fast(ctx, *dr, b))
+                    || (expr_eq_fast(ctx, *dl, b) && expr_eq_fast(ctx, *dr, a)))
+        }
+        _ => false,
+    };
+    if !den_matches {
+        return None;
     }
 
     let two = ctx.num(2);

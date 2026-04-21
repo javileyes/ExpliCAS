@@ -1,3 +1,5 @@
+use cas_ast::{Constant, Context, Expr, ExprId};
+use num_traits::{One, Zero};
 use std::cell::RefCell;
 use std::cmp::Reverse;
 use std::collections::HashMap;
@@ -6,6 +8,17 @@ use std::time::Duration;
 
 static CAS_PROFILE_ORCHESTRATOR_SHORTCUTS_ENABLED: LazyLock<bool> =
     LazyLock::new(|| std::env::var("CAS_PROFILE_ORCHESTRATOR_SHORTCUTS").is_ok());
+static CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER: LazyLock<Option<Vec<String>>> =
+    LazyLock::new(|| {
+        let value = std::env::var("CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER").ok()?;
+        let prefixes: Vec<_> = value
+            .split(',')
+            .map(str::trim)
+            .filter(|prefix| !prefix.is_empty())
+            .map(str::to_owned)
+            .collect();
+        (!prefixes.is_empty()).then_some(prefixes)
+    });
 
 #[derive(Debug, Clone, Default)]
 struct ShortcutStats {
@@ -136,8 +149,18 @@ pub fn orchestrator_shortcut_profiling_enabled() -> bool {
     *CAS_PROFILE_ORCHESTRATOR_SHORTCUTS_ENABLED
 }
 
-pub fn record_orchestrator_shortcut_attempt(name: &'static str, matched: bool, elapsed: Duration) {
+pub fn should_profile_orchestrator_shortcut(name: &str) -> bool {
     if !orchestrator_shortcut_profiling_enabled() {
+        return false;
+    }
+    match &*CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER {
+        Some(prefixes) => prefixes.iter().any(|prefix| name.starts_with(prefix)),
+        None => true,
+    }
+}
+
+pub fn record_orchestrator_shortcut_attempt(name: &'static str, matched: bool, elapsed: Duration) {
+    if !should_profile_orchestrator_shortcut(name) {
         return;
     }
     ORCHESTRATOR_SHORTCUT_PROFILER.with(|profiler| {
@@ -152,7 +175,7 @@ pub fn clear_orchestrator_shortcut_profile() {
 }
 
 pub fn record_orchestrator_shortcut_sample(name: &'static str, sample: String) {
-    if !orchestrator_shortcut_profiling_enabled() {
+    if !should_profile_orchestrator_shortcut(name) {
         return;
     }
     ORCHESTRATOR_SHORTCUT_PROFILER.with(|profiler| {
@@ -166,6 +189,108 @@ pub fn orchestrator_shortcut_profile_report() -> String {
             .to_string();
     }
     ORCHESTRATOR_SHORTCUT_PROFILER.with(|profiler| profiler.borrow().report())
+}
+
+pub fn render_expr_shape_for_orchestrator_profile(ctx: &Context, expr: ExprId) -> String {
+    match ctx.get(expr) {
+        Expr::Number(value) => {
+            if value.is_zero() {
+                "num(0)".to_string()
+            } else if value.is_one() {
+                "num(1)".to_string()
+            } else if value.is_integer() {
+                "int".to_string()
+            } else {
+                "rational".to_string()
+            }
+        }
+        Expr::Constant(constant) => format!("const({})", constant_profile_label(constant)),
+        Expr::Variable(id) => format!("var({})", truncate(ctx.symbols.resolve(*id), 24)),
+        Expr::Add(left, right) => {
+            format!(
+                "add({}, {})",
+                expr_kind_label(ctx, *left),
+                expr_kind_label(ctx, *right)
+            )
+        }
+        Expr::Sub(left, right) => {
+            format!(
+                "sub({}, {})",
+                expr_kind_label(ctx, *left),
+                expr_kind_label(ctx, *right)
+            )
+        }
+        Expr::Mul(left, right) => {
+            format!(
+                "mul({}, {})",
+                expr_kind_label(ctx, *left),
+                expr_kind_label(ctx, *right)
+            )
+        }
+        Expr::Div(left, right) => {
+            format!(
+                "div({}, {})",
+                expr_kind_label(ctx, *left),
+                expr_kind_label(ctx, *right)
+            )
+        }
+        Expr::Pow(base, exp) => {
+            format!(
+                "pow({}, {})",
+                expr_kind_label(ctx, *base),
+                expr_kind_label(ctx, *exp)
+            )
+        }
+        Expr::Neg(inner) => format!("neg({})", expr_kind_label(ctx, *inner)),
+        Expr::Function(fn_id, args) => {
+            let fn_name = truncate(ctx.symbols.resolve(*fn_id), 24);
+            let mut arg_kinds: Vec<_> = args
+                .iter()
+                .take(3)
+                .map(|arg| expr_kind_label(ctx, *arg))
+                .collect();
+            if args.len() > 3 {
+                arg_kinds.push("…");
+            }
+            if arg_kinds.is_empty() {
+                format!("{fn_name}()")
+            } else {
+                format!("{fn_name}({})", arg_kinds.join(", "))
+            }
+        }
+        Expr::Matrix { rows, cols, .. } => format!("matrix({rows}x{cols})"),
+        Expr::SessionRef(id) => format!("session_ref({id})"),
+        Expr::Hold(inner) => format!("hold({})", expr_kind_label(ctx, *inner)),
+    }
+}
+
+fn constant_profile_label(constant: &Constant) -> &'static str {
+    match constant {
+        Constant::Pi => "pi",
+        Constant::E => "e",
+        Constant::Infinity => "infinity",
+        Constant::Undefined => "undefined",
+        Constant::I => "i",
+        Constant::Phi => "phi",
+    }
+}
+
+fn expr_kind_label(ctx: &Context, expr: ExprId) -> &'static str {
+    match ctx.get(expr) {
+        Expr::Number(_) => "number",
+        Expr::Constant(_) => "constant",
+        Expr::Variable(_) => "variable",
+        Expr::Add(_, _) => "add",
+        Expr::Sub(_, _) => "sub",
+        Expr::Mul(_, _) => "mul",
+        Expr::Div(_, _) => "div",
+        Expr::Pow(_, _) => "pow",
+        Expr::Neg(_) => "neg",
+        Expr::Function(_, _) => "function",
+        Expr::Matrix { .. } => "matrix",
+        Expr::SessionRef(_) => "session_ref",
+        Expr::Hold(_) => "hold",
+    }
 }
 
 fn truncate(text: &str, max_len: usize) -> String {

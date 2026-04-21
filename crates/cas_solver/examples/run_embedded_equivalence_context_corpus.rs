@@ -147,11 +147,22 @@ struct RunnerConfig {
 
 fn main() {
     let config = parse_args();
-    // Match the direct wire path used by `cas_cli eval`. The fixed-stack helper
-    // thread has proven less robust than the main-thread path on deep recursive
-    // shifted-quotient cases, even when those cases succeed through the normal
-    // CLI entrypoint.
-    std::process::exit(run(config));
+    // Match the direct wire path used by `cas_cli eval` in the default case.
+    // When orchestrator profiling is enabled, the extra wrapper frames can push
+    // deep embedded cases past the default thread stack budget, so run the
+    // corpus inside a larger-stack worker thread.
+    let status = if orchestrator_shortcut_profiling_enabled() {
+        std::thread::Builder::new()
+            .name("embedded-orchestrator-profile".to_string())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || run(config))
+            .expect("failed to spawn embedded profiling thread")
+            .join()
+            .expect("embedded profiling thread panicked")
+    } else {
+        run(config)
+    };
+    std::process::exit(status);
 }
 
 fn run(config: RunnerConfig) -> i32 {

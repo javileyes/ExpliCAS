@@ -130,6 +130,7 @@ impl Simplifier {
         use crate::options::ContextMode;
 
         let mut s = Self::with_default_rules();
+        s.steps_mode = opts.steps_mode;
 
         // Apply context mode rules (placeholder for future rule bundles)
         match opts.shared.context_mode {

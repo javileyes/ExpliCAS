@@ -288,6 +288,46 @@ mod tests {
     }
 
     #[test]
+    fn test_with_profile_simplify_keeps_steps_off_for_additive_neg_cubes() {
+        use crate::Simplifier;
+
+        let opts = EvalOptions {
+            shared: crate::phase::SharedSemanticConfig {
+                context_mode: ContextMode::Solve,
+                semantics: crate::EvalConfig {
+                    domain_mode: DomainMode::Strict,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            steps_mode: StepsMode::Off,
+            ..Default::default()
+        };
+
+        let mut simplifier = Simplifier::with_profile(&opts);
+        let expr =
+            parse("(y^3 + (-x^3)) / (y + (-x))", &mut simplifier.context).expect("parse failed");
+
+        let (result, steps) = simplifier.simplify(expr);
+        let result_str = format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result
+            }
+        );
+
+        assert!(
+            result_str == "x^2 + y^2 + x * y" || result_str == "x^2 + y^2 + y * x",
+            "with_profile().simplify() should still hit the hidden cubes fast path for Add+Neg, got: {result_str}"
+        );
+        assert!(
+            steps.is_empty(),
+            "steps_off from EvalOptions should be retained"
+        );
+    }
+
+    #[test]
     fn test_from_profile_solve_tactic_assume_still_allows_intrinsic_analytic_rules() {
         use crate::Simplifier;
 

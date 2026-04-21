@@ -32,6 +32,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = ROOT / "docs" / "generated" / "engine_improvement_scorecard.json"
 EMBEDDED_RUNTIME_DELTA_RATIO_THRESHOLD = 0.10
 EMBEDDED_RUNTIME_DELTA_SECONDS_THRESHOLD = 5.0
+EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT = 480
 
 
 @dataclass(frozen=True)
@@ -239,6 +240,14 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Print commands and exit without executing them.",
     )
+    parser.add_argument(
+        "--orchestrator-profile",
+        action="store_true",
+        help=(
+            "Enable orchestrator shortcut profiling for the embedded equivalence "
+            "corpus suite."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -266,12 +275,40 @@ def git_value(args: list[str]) -> str:
     return result.stdout.strip() or "unknown"
 
 
-def run_command(spec: SuiteSpec) -> tuple[int, str, float]:
+def effective_suite_env(spec: SuiteSpec, args: argparse.Namespace) -> dict[str, str]:
+    del args
+    return dict(spec.env)
+
+
+def orchestrator_profile_env(
+    spec: SuiteSpec, args: argparse.Namespace
+) -> dict[str, str] | None:
+    if not args.orchestrator_profile or spec.name != "embedded_equivalence_context":
+        return None
+    return {
+        "CAS_PROFILE_ORCHESTRATOR_SHORTCUTS": "1",
+        "CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER": "pipeline.,root.",
+    }
+
+
+def orchestrator_profile_command(spec: SuiteSpec) -> list[str] | None:
+    if spec.name != "embedded_equivalence_context":
+        return None
+    return [*spec.command, "--limit", str(EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT)]
+
+
+def run_command(
+    spec: SuiteSpec,
+    suite_env: dict[str, str] | None = None,
+    command: list[str] | None = None,
+) -> tuple[int, str, float]:
     env = os.environ.copy()
     env.update(spec.env)
+    if suite_env:
+        env.update(suite_env)
     start = time.time()
     process = subprocess.Popen(
-        spec.command,
+        command or spec.command,
         cwd=ROOT,
         env=env,
         stdout=subprocess.PIPE,
@@ -306,9 +343,20 @@ def parse_corpus(output: str) -> dict[str, Any]:
         ("failed", r"Failed:\s+(\d+)"),
         ("wrapper_count", r"Distinct wrappers:\s+(\d+)"),
         ("family_count", r"Distinct families:\s+(\d+)"),
+        ("complexity_level_count", r"Distinct complexity levels:\s+(\d+)"),
+        ("shell_depth_count", r"Distinct shell depths:\s+(\d+)"),
+        ("max_shell_depth", r"Max shell depth:\s+(\d+)"),
+        ("max_expression_depth", r"Max expression depth:\s+(\d+)"),
     ):
         match = re.search(pattern, output)
-        if not match and key in {"wrapper_count", "family_count"}:
+        if not match and key in {
+            "wrapper_count",
+            "family_count",
+            "complexity_level_count",
+            "shell_depth_count",
+            "max_shell_depth",
+            "max_expression_depth",
+        }:
             continue
         if not match:
             raise ValueError(f"missing {key} in corpus output")
@@ -317,6 +365,14 @@ def parse_corpus(output: str) -> dict[str, Any]:
     match = re.search(r"Largest wrapper share:\s+([0-9.]+)%", output)
     if match:
         metrics["largest_wrapper_share_percent"] = float(match.group(1))
+
+    match = re.search(r"Largest wrapper x complexity share:\s+([0-9.]+)%", output)
+    if match:
+        metrics["largest_wrapper_complexity_share_percent"] = float(match.group(1))
+
+    match = re.search(r"Average wrapper overhead nodes:\s+([0-9.]+)", output)
+    if match:
+        metrics["average_wrapper_overhead_nodes"] = float(match.group(1))
 
     match = re.search(r"Wrappers:\s+(.+)", output)
     if match:
@@ -330,6 +386,22 @@ def parse_corpus(output: str) -> dict[str, Any]:
         metrics["reported_elapsed_seconds"] = duration_to_seconds(
             float(match.group(1)), match.group(2)
         )
+
+    complexity_rows = parse_complexity_rows(output)
+    if complexity_rows:
+        metrics["complexity_rows"] = complexity_rows
+
+    shell_depth_rows = parse_shell_depth_rows(output)
+    if shell_depth_rows:
+        metrics["shell_depth_rows"] = shell_depth_rows
+
+    wrapper_complexity_rows = parse_wrapper_complexity_rows(output)
+    if wrapper_complexity_rows:
+        metrics["wrapper_complexity_rows"] = wrapper_complexity_rows
+
+    orchestrator_profile = parse_orchestrator_profile(output)
+    if orchestrator_profile:
+        metrics["orchestrator_profile"] = orchestrator_profile
     return metrics
 
 
@@ -344,6 +416,228 @@ def duration_to_seconds(value: float, unit: str) -> float:
     if scale is None:
         raise ValueError(f"unsupported duration unit: {unit}")
     return value * scale
+
+
+def parse_complexity_rows(output: str) -> dict[str, dict[str, Any]]:
+    complexity_rows: dict[str, dict[str, Any]] = {}
+    in_block = False
+    row_pattern = re.compile(
+        r"^\s+(?P<level>\S+): total=(?P<total>\d+) passed=(?P<passed>\d+) failed=(?P<failed>\d+) "
+        r"avg_wrapper_overhead_nodes=(?P<avg_wrapper_overhead_nodes>[0-9.]+) "
+        r"avg_shell_depth=(?P<avg_shell_depth>[0-9.]+) "
+        r"max_shell_depth=(?P<max_shell_depth>\d+)$"
+    )
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped == "By complexity level:":
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if not stripped:
+            break
+        match = row_pattern.match(line)
+        if not match:
+            continue
+        complexity_rows[match.group("level")] = {
+            "total": int(match.group("total")),
+            "passed": int(match.group("passed")),
+            "failed": int(match.group("failed")),
+            "avg_wrapper_overhead_nodes": float(
+                match.group("avg_wrapper_overhead_nodes")
+            ),
+            "avg_shell_depth": float(match.group("avg_shell_depth")),
+            "max_shell_depth": int(match.group("max_shell_depth")),
+        }
+    return complexity_rows
+
+
+def parse_shell_depth_rows(output: str) -> dict[int, dict[str, int]]:
+    shell_depth_rows: dict[int, dict[str, int]] = {}
+    in_block = False
+    row_pattern = re.compile(
+        r"^\s+depth (?P<depth>\d+): total=(?P<total>\d+) passed=(?P<passed>\d+) failed=(?P<failed>\d+)$"
+    )
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped == "By shell depth:":
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if not stripped:
+            break
+        match = row_pattern.match(line)
+        if not match:
+            continue
+        depth = int(match.group("depth"))
+        shell_depth_rows[depth] = {
+            "total": int(match.group("total")),
+            "passed": int(match.group("passed")),
+            "failed": int(match.group("failed")),
+        }
+    return shell_depth_rows
+
+
+def parse_wrapper_complexity_rows(output: str) -> list[dict[str, Any]]:
+    wrapper_complexity_rows: list[dict[str, Any]] = []
+    in_block = False
+    row_pattern = re.compile(
+        r"^\s+(?P<wrapper>.+?) x (?P<level>\S+): total=(?P<total>\d+) passed=(?P<passed>\d+) failed=(?P<failed>\d+) "
+        r"avg_wrapper_overhead_nodes=(?P<avg_wrapper_overhead_nodes>[0-9.]+) "
+        r"avg_shell_depth=(?P<avg_shell_depth>[0-9.]+) "
+        r"max_shell_depth=(?P<max_shell_depth>\d+)$"
+    )
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped == "Top wrapper x complexity buckets:":
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if not stripped:
+            break
+        match = row_pattern.match(line)
+        if not match:
+            continue
+        wrapper_complexity_rows.append(
+            {
+                "wrapper": match.group("wrapper"),
+                "level": match.group("level"),
+                "total": int(match.group("total")),
+                "passed": int(match.group("passed")),
+                "failed": int(match.group("failed")),
+                "avg_wrapper_overhead_nodes": float(
+                    match.group("avg_wrapper_overhead_nodes")
+                ),
+                "avg_shell_depth": float(match.group("avg_shell_depth")),
+                "max_shell_depth": int(match.group("max_shell_depth")),
+            }
+        )
+    return wrapper_complexity_rows
+
+
+def parse_orchestrator_profile(output: str) -> dict[str, Any] | None:
+    lines = output.splitlines()
+    header_idx = next(
+        (
+            idx
+            for idx, line in enumerate(lines)
+            if line.strip() == "Orchestrator Profiling Report"
+        ),
+        None,
+    )
+    if header_idx is None:
+        return None
+
+    row_pattern = re.compile(
+        r"^(?P<section>.+?)\s+(?P<attempts>\d+)\s+(?P<hits>\d+)\s+(?P<misses>\d+)\s+"
+        r"(?P<total_ms>[0-9.]+)\s+(?P<avg_us>[0-9.]+)$"
+    )
+    sections: list[dict[str, Any]] = []
+    total_row: dict[str, Any] | None = None
+    samples_by_section: dict[str, list[str]] = {}
+    in_samples = False
+    current_sample_section: str | None = None
+
+    for line in lines[header_idx + 1 :]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped == "Sample expressions":
+            in_samples = True
+            current_sample_section = None
+            continue
+        if set(stripped) == {"─"}:
+            continue
+
+        if in_samples:
+            if line.startswith("  - "):
+                if current_sample_section is not None:
+                    samples_by_section.setdefault(current_sample_section, []).append(
+                        line[4:].strip()
+                    )
+                continue
+            if not line.startswith(" "):
+                current_sample_section = stripped
+                samples_by_section.setdefault(current_sample_section, [])
+            continue
+
+        match = row_pattern.match(line.rstrip())
+        if not match:
+            continue
+
+        attempts = int(match.group("attempts"))
+        hits = int(match.group("hits"))
+        misses = int(match.group("misses"))
+        row = {
+            "section": match.group("section").strip(),
+            "attempts": attempts,
+            "hits": hits,
+            "misses": misses,
+            "hit_rate_percent": round((hits * 100.0 / attempts), 2) if attempts else 0.0,
+            "miss_rate_percent": round((misses * 100.0 / attempts), 2)
+            if attempts
+            else 0.0,
+            "total_ms": float(match.group("total_ms")),
+            "avg_us": float(match.group("avg_us")),
+        }
+        if row["section"] == "TOTAL":
+            total_row = row
+        else:
+            sections.append(row)
+
+    for row in sections:
+        row["samples"] = samples_by_section.get(row["section"], [])
+
+    if total_row is None:
+        total_attempts = sum(row["attempts"] for row in sections)
+        total_hits = sum(row["hits"] for row in sections)
+        total_misses = sum(row["misses"] for row in sections)
+        total_ms = round(sum(row["total_ms"] for row in sections), 3)
+        total_avg_us = round(
+            (total_ms * 1000.0 / total_attempts) if total_attempts else 0.0,
+            2,
+        )
+        total_row = {
+            "section": "TOTAL",
+            "attempts": total_attempts,
+            "hits": total_hits,
+            "misses": total_misses,
+            "hit_rate_percent": round(
+                (total_hits * 100.0 / total_attempts) if total_attempts else 0.0,
+                2,
+            ),
+            "miss_rate_percent": round(
+                (total_misses * 100.0 / total_attempts) if total_attempts else 0.0,
+                2,
+            ),
+            "total_ms": total_ms,
+            "avg_us": total_avg_us,
+        }
+    else:
+        total_row["samples"] = []
+
+    hot_sections = sorted(
+        sections,
+        key=lambda row: (-row["total_ms"], -row["attempts"], row["section"]),
+    )
+    no_match_cost_sections = sorted(
+        (row for row in sections if row["misses"] > 0),
+        key=lambda row: (-row["total_ms"], -row["misses"], row["section"]),
+    )
+
+    return {
+        "section_count": len(sections),
+        "sections": sections,
+        "totals": total_row,
+        "top_hot_sections": hot_sections[:5],
+        "top_no_match_cost_sections": no_match_cost_sections[:5],
+        "sample_section_count": sum(1 for row in sections if row["samples"]),
+    }
 
 
 def parse_derive(output: str) -> dict[str, Any]:
@@ -622,10 +916,72 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             lines.append(
                 f"- Coverage axes: {wrapper_count} wrappers across {family_count} families"
             )
+        complexity_level_count = embedded_metrics.get("complexity_level_count")
+        shell_depth_count = embedded_metrics.get("shell_depth_count")
+        if isinstance(complexity_level_count, int) and isinstance(shell_depth_count, int):
+            lines.append(
+                f"- Context axes: {complexity_level_count} complexity levels across {shell_depth_count} shell depths"
+            )
         if isinstance(largest_wrapper_share, (int, float)):
             lines.append(f"- Largest wrapper share: {largest_wrapper_share:.1f}%")
+        largest_wrapper_complexity_share = embedded_metrics.get(
+            "largest_wrapper_complexity_share_percent"
+        )
+        if isinstance(largest_wrapper_complexity_share, (int, float)):
+            lines.append(
+                f"- Largest wrapper x complexity share: {largest_wrapper_complexity_share:.1f}%"
+            )
         if isinstance(wrapper_names, list) and wrapper_names:
             lines.append(f"- Wrappers: {', '.join(wrapper_names)}")
+        max_shell_depth = embedded_metrics.get("max_shell_depth")
+        max_expression_depth = embedded_metrics.get("max_expression_depth")
+        avg_wrapper_overhead_nodes = embedded_metrics.get("average_wrapper_overhead_nodes")
+        shell_depth_fragments = []
+        if isinstance(max_shell_depth, int):
+            shell_depth_fragments.append(f"max_shell_depth={max_shell_depth}")
+        if isinstance(max_expression_depth, int):
+            shell_depth_fragments.append(f"max_expression_depth={max_expression_depth}")
+        if isinstance(avg_wrapper_overhead_nodes, (int, float)):
+            shell_depth_fragments.append(
+                f"avg_wrapper_overhead_nodes={avg_wrapper_overhead_nodes:.2f}"
+            )
+        if shell_depth_fragments:
+            lines.append(f"- Structural depth: {' '.join(shell_depth_fragments)}")
+        complexity_rows = embedded_metrics.get("complexity_rows")
+        if isinstance(complexity_rows, dict) and complexity_rows:
+            ordered_rows = sorted(
+                complexity_rows.items(),
+                key=lambda item: (-item[1]["total"], item[0]),
+            )
+            complexity_summary = ", ".join(
+                (
+                    f"{level} total={row['total']} failed={row['failed']} "
+                    f"avg_shell_depth={row['avg_shell_depth']:.2f}"
+                )
+                for level, row in ordered_rows[:3]
+            )
+            lines.append(f"- Complexity mix: {complexity_summary}")
+        shell_depth_rows = embedded_metrics.get("shell_depth_rows")
+        if isinstance(shell_depth_rows, dict) and shell_depth_rows:
+            ordered_shell_rows = sorted(shell_depth_rows.items())
+            shell_depth_summary = ", ".join(
+                f"depth {depth} total={row['total']} failed={row['failed']}"
+                for depth, row in ordered_shell_rows[:4]
+            )
+            lines.append(f"- Shell-depth mix: {shell_depth_summary}")
+        wrapper_complexity_rows = embedded_metrics.get("wrapper_complexity_rows")
+        if isinstance(wrapper_complexity_rows, list) and wrapper_complexity_rows:
+            dominant_bucket_summary = ", ".join(
+                (
+                    f"{row['wrapper']} x {row['level']} total={row['total']} "
+                    f"failed={row['failed']} avg_shell_depth={row['avg_shell_depth']:.2f}"
+                )
+                for row in wrapper_complexity_rows[:3]
+            )
+            lines.append(
+                "- Dominant wrapper x complexity buckets: "
+                f"{dominant_bucket_summary}"
+            )
         embedded_guardrail = embedded_suite.get("guardrail")
         if embedded_guardrail:
             lines.extend(
@@ -641,6 +997,65 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 ]
             )
         lines.append("")
+
+        orchestrator_profile = embedded_metrics.get("orchestrator_profile")
+        if isinstance(orchestrator_profile, dict):
+            profile_slice = embedded_metrics.get("orchestrator_profile_slice")
+            totals = orchestrator_profile["totals"]
+            lines.extend(
+                [
+                    "## Embedded Orchestrator Profile",
+                    "",
+                    "- Purpose: identify hot shortcut groups and expensive no-match traffic under the embedded live guardrail.",
+                ]
+            )
+            if isinstance(profile_slice, dict):
+                lines.append(
+                    (
+                        "- Profiled slice: "
+                        f"{profile_slice['total_cases']} cases "
+                        f"(limit {profile_slice['limit']}), "
+                        f"{profile_slice['wrapper_count']} wrappers, "
+                        f"{profile_slice['family_count']} families, "
+                        f"{profile_slice['elapsed_seconds']:.2f}s elapsed."
+                    )
+                )
+            lines.append(
+                (
+                    "- Coverage: "
+                    f"{orchestrator_profile['section_count']} sections, "
+                    f"{totals['attempts']} attempts, "
+                    f"{totals['hits']} hits, "
+                    f"{totals['misses']} misses, "
+                    f"{totals['total_ms']:.3f}ms total profiled time."
+                )
+            )
+            for idx, row in enumerate(orchestrator_profile["top_hot_sections"][:3], start=1):
+                sample_suffix = ""
+                if row["samples"]:
+                    sample_suffix = f" sample=`{row['samples'][0]}`"
+                lines.append(
+                    (
+                        f"- Hot {idx}: `{row['section']}` {row['total_ms']:.3f}ms over "
+                        f"{row['attempts']} attempts "
+                        f"(hits {row['hits']}, misses {row['misses']}){sample_suffix}"
+                    )
+                )
+            no_match_sections = orchestrator_profile["top_no_match_cost_sections"][:3]
+            if no_match_sections:
+                for idx, row in enumerate(no_match_sections, start=1):
+                    sample_suffix = ""
+                    if row["samples"]:
+                        sample_suffix = f" sample=`{row['samples'][0]}`"
+                    lines.append(
+                        (
+                            f"- No-match hotspot {idx}: `{row['section']}` "
+                            f"{row['total_ms']:.3f}ms "
+                            f"(misses {row['misses']} of {row['attempts']})"
+                            f"{sample_suffix}"
+                        )
+                    )
+            lines.append("")
 
     derive_suite = scorecard["suites"].get("derive_contract")
     if derive_suite:
@@ -739,6 +1154,7 @@ def main() -> int:
     scorecard: dict[str, Any] = {
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "profile": args.profile,
+        "orchestrator_profile_requested": args.orchestrator_profile,
         "git": {
             "branch": git_value(["rev-parse", "--abbrev-ref", "HEAD"]),
             "commit": git_value(["rev-parse", "HEAD"]),
@@ -748,9 +1164,20 @@ def main() -> int:
 
     if args.dry_run:
         for spec in specs:
-            env_prefix = " ".join(f"{k}={v}" for k, v in sorted(spec.env.items()))
+            suite_env = effective_suite_env(spec, args)
+            env_prefix = " ".join(f"{k}={v}" for k, v in sorted(suite_env.items()))
             command = " ".join(spec.command)
             print(f"[dry-run] {spec.name}: {env_prefix} {command}".strip())
+            profile_env = orchestrator_profile_env(spec, args)
+            profile_command = orchestrator_profile_command(spec)
+            if profile_env and profile_command:
+                profile_prefix = " ".join(
+                    f"{k}={v}" for k, v in sorted(profile_env.items())
+                )
+                print(
+                    f"[dry-run] {spec.name}[orchestrator-profile]: "
+                    f"{profile_prefix} {' '.join(profile_command)}"
+                )
         return 0
 
     overall_exit = 0
@@ -758,7 +1185,8 @@ def main() -> int:
         print()
         print(f"=== {spec.name} ===")
         print(spec.description)
-        returncode, output, elapsed = run_command(spec)
+        suite_env = effective_suite_env(spec, args)
+        returncode, output, elapsed = run_command(spec, suite_env)
         try:
             metrics = PARSERS[spec.parser](output)
         except ValueError as exc:
@@ -788,13 +1216,52 @@ def main() -> int:
             "elapsed_seconds": round(measured_elapsed, 3),
             "process_elapsed_seconds": round(elapsed, 3),
             "command": spec.command,
-            "env": spec.env,
+            "env": suite_env,
             "metrics": metrics,
             "delta": compute_deltas(
                 baseline_data, spec.name, metrics, measured_elapsed
             ),
             "guardrail": guardrail,
         }
+
+        profile_env = orchestrator_profile_env(spec, args)
+        profile_command = orchestrator_profile_command(spec)
+        if profile_env and profile_command and "parse_error" not in metrics:
+            print()
+            print(
+                f"=== {spec.name}.orchestrator_profile ===\n"
+                f"Profiled observability slice (limit {EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT})"
+            )
+            profile_returncode, profile_output, profile_elapsed = run_command(
+                spec,
+                profile_env,
+                profile_command,
+            )
+            try:
+                profile_metrics = PARSERS[spec.parser](profile_output)
+            except ValueError as exc:
+                metrics["orchestrator_profile_error"] = str(exc)
+            else:
+                if profile_returncode != 0:
+                    metrics["orchestrator_profile_error"] = (
+                        f"returncode={profile_returncode}"
+                    )
+                elif "orchestrator_profile" in profile_metrics:
+                    metrics["orchestrator_profile"] = profile_metrics["orchestrator_profile"]
+                    metrics["orchestrator_profile_slice"] = {
+                        "limit": EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT,
+                        "total_cases": profile_metrics["total_cases"],
+                        "wrapper_count": profile_metrics.get("wrapper_count", 0),
+                        "family_count": profile_metrics.get("family_count", 0),
+                        "elapsed_seconds": round(
+                            effective_elapsed_seconds(profile_metrics, profile_elapsed),
+                            3,
+                        ),
+                    }
+                else:
+                    metrics["orchestrator_profile_error"] = (
+                        "missing orchestrator_profile in profiled slice output"
+                    )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(scorecard, indent=2, sort_keys=True) + "\n")

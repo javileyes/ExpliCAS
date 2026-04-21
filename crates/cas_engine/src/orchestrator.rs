@@ -66,8 +66,8 @@ use cas_math::trig_power_identity_support::{
     try_rewrite_reciprocal_product_pythagorean_zero_add_expr,
     try_rewrite_trig_fourth_power_difference_add_expr,
 };
-use cas_math::trig_roots_flatten::extract_double_angle_arg_relaxed;
 use cas_math::trig_roots_flatten::flatten_mul_chain;
+use cas_math::trig_roots_flatten::{extract_double_angle_arg_relaxed, extract_triple_angle_arg};
 use cas_math::trig_sum_product_support::{
     try_rewrite_product_to_sum_expr, try_rewrite_sum_to_product_contraction_expr,
 };
@@ -153,7 +153,7 @@ fn run_poly_gcd_modp_eager_pass(
 }
 
 fn run_profiled_root_shortcut<T>(name: &'static str, run: impl FnOnce() -> Option<T>) -> Option<T> {
-    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+    if !crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(name) {
         return run();
     }
 
@@ -172,7 +172,7 @@ fn run_profiled_orchestrator_section<T>(
     sample: Option<String>,
     run: impl FnOnce() -> T,
 ) -> T {
-    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+    if !crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(name) {
         return run();
     }
 
@@ -191,7 +191,7 @@ fn run_profiled_orchestrator_section<T>(
 }
 
 fn run_profiled_orchestrator_bool_section(name: &'static str, run: impl FnOnce() -> bool) -> bool {
-    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+    if !crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(name) {
         return run();
     }
 
@@ -205,11 +205,19 @@ fn run_profiled_orchestrator_bool_section(name: &'static str, run: impl FnOnce()
     result
 }
 
+fn render_expr_for_orchestrator_profile(ctx: &Context, expr: ExprId) -> String {
+    crate::orchestrator_shortcut_profiler::render_expr_shape_for_orchestrator_profile(ctx, expr)
+}
+
 fn record_profiled_orchestrator_route_hit(ctx: &mut Context, expr: ExprId, name: &'static str) {
-    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+    if !crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(name) {
         return;
     }
-    run_profiled_orchestrator_section(name, Some(render_expr(ctx, expr)), || ());
+    run_profiled_orchestrator_section(
+        name,
+        Some(render_expr_for_orchestrator_profile(ctx, expr)),
+        || (),
+    );
 }
 
 fn pipeline_phase_profile_label(phase: SimplifyPhase) -> &'static str {
@@ -4632,6 +4640,19 @@ fn matches_direct_hyperbolic_triple_angle_pair_root(
     rhs_core: ExprId,
 ) -> bool {
     for (source_expr, target_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some((source_builtin, inner_arg)) =
+            extract_rewritable_hyperbolic_triple_angle_source_root(ctx, source_expr)
+        else {
+            continue;
+        };
+        if matches_direct_hyperbolic_triple_angle_expansion_target_root(
+            ctx,
+            target_expr,
+            source_builtin,
+            inner_arg,
+        ) {
+            return true;
+        }
         let Some(rewrite) = try_rewrite_hyperbolic_triple_angle(ctx, source_expr) else {
             continue;
         };
@@ -4654,6 +4675,89 @@ fn matches_direct_hyperbolic_triple_angle_pair_root(
     false
 }
 
+fn is_simple_hyperbolic_triple_angle_inner_root(ctx: &Context, expr: ExprId) -> bool {
+    let is_atomic = |id: ExprId| {
+        matches!(
+            ctx.get(id),
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_)
+        )
+    };
+
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => true,
+        Expr::Mul(lhs, rhs) => is_atomic(*lhs) && is_atomic(*rhs),
+        Expr::Neg(inner) => is_atomic(*inner),
+        _ => false,
+    }
+}
+
+fn extract_rewritable_hyperbolic_triple_angle_source_root(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, ExprId)> {
+    let (source_builtin, source_arg) = extract_plain_sinh_or_cosh_arg_root(ctx, expr)?;
+    let inner_arg = extract_triple_angle_arg(ctx, source_arg)?;
+    is_simple_hyperbolic_triple_angle_inner_root(ctx, inner_arg)
+        .then_some((source_builtin, inner_arg))
+}
+
+fn matches_direct_hyperbolic_triple_angle_expansion_target_root(
+    ctx: &Context,
+    expr: ExprId,
+    source_builtin: BuiltinFn,
+    inner_arg: ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return false;
+    }
+
+    let mut linear_coeff = None;
+    let mut cubic_coeff = None;
+
+    for (term_expr, term_sign) in view.terms {
+        let (mut coeff, base) = extract_coef_and_base(ctx, term_expr);
+        if term_sign == Sign::Neg {
+            coeff = -coeff;
+        }
+
+        if let Some((term_builtin, term_arg)) = extract_plain_sinh_or_cosh_arg_root(ctx, base) {
+            if term_builtin != source_builtin
+                || compare_expr(ctx, term_arg, inner_arg) != Ordering::Equal
+                || linear_coeff.replace(coeff).is_some()
+            {
+                return false;
+            }
+            continue;
+        }
+
+        let Expr::Pow(pow_base, pow_exp) = ctx.get(base) else {
+            return false;
+        };
+        if extract_i64_integer(ctx, *pow_exp) != Some(3) {
+            return false;
+        }
+        let Some((term_builtin, term_arg)) = extract_plain_sinh_or_cosh_arg_root(ctx, *pow_base)
+        else {
+            return false;
+        };
+        if term_builtin != source_builtin
+            || compare_expr(ctx, term_arg, inner_arg) != Ordering::Equal
+            || cubic_coeff.replace(coeff).is_some()
+        {
+            return false;
+        }
+    }
+
+    let three = BigRational::from_integer(3.into());
+    let four = BigRational::from_integer(4.into());
+    match source_builtin {
+        BuiltinFn::Sinh => linear_coeff == Some(three) && cubic_coeff == Some(four),
+        BuiltinFn::Cosh => linear_coeff == Some(-three) && cubic_coeff == Some(four),
+        _ => false,
+    }
+}
+
 fn extract_special_angle_exact_value_root(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let (builtin_name, arg) = {
         let Expr::Function(fn_id, args) = ctx.get(expr) else {
@@ -4670,7 +4774,7 @@ fn extract_special_angle_exact_value_root(ctx: &mut Context, expr: ExprId) -> Op
     if profiling {
         crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
             "root.special_angle.lookup_trig_or_inverse",
-            render_expr(ctx, expr),
+            render_expr_for_orchestrator_profile(ctx, expr),
         );
         if let Some(hit) =
             run_profiled_root_shortcut("root.special_angle.lookup_trig_or_inverse", || {
@@ -4697,7 +4801,7 @@ fn extract_special_angle_exact_value_root(ctx: &mut Context, expr: ExprId) -> Op
 
         crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
             "root.special_angle.legacy_eval",
-            render_expr(ctx, expr),
+            render_expr_for_orchestrator_profile(ctx, expr),
         );
         return run_profiled_root_shortcut("root.special_angle.legacy_eval", || {
             try_rewrite_legacy_evaluate_trig_expr(ctx, expr).map(|rewrite| rewrite.rewritten)
@@ -8178,32 +8282,31 @@ fn matches_direct_three_term_phase_shift_zero_subset_root(ctx: &mut Context, exp
 
     let profiling =
         crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
-    let parent_ctx = crate::ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
-    let rule = crate::rules::arithmetic::CollapseExactZeroThreeTermSubsetRule;
     let rewrite = if profiling {
         run_profiled_orchestrator_section(
-            "root.div.03g1a.phase_shift_zero.rule_apply",
+            "root.div.03g1a.phase_shift_zero.exact_scope_rewrite",
             None,
-            || crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx),
+            || {
+                crate::rules::arithmetic::try_build_exact_trig_phase_shift_zero_scope_rewrite(
+                    ctx, expr,
+                )
+            },
         )
     } else {
-        crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx)
+        crate::rules::arithmetic::try_build_exact_trig_phase_shift_zero_scope_rewrite(ctx, expr)
     };
     let Some(rewrite) = rewrite else {
         return false;
     };
     if profiling {
-        let description_label = if rewrite.description == "Phase Shift Identity" {
-            "root.div.03g1b.phase_shift_zero.phase_shift_identity_rewrite"
-        } else {
-            "root.div.03g1c.phase_shift_zero.other_rewrite_kind"
-        };
+        let description_label = "root.div.03g1b.phase_shift_zero.phase_shift_identity_rewrite";
         run_profiled_root_shortcut(description_label, || Some(rewrite.new_expr));
         let mode_label = match rewrite
             .substeps
             .first()
             .map(|substep| substep.title.as_str())
         {
+            Some("Phase Shift Identity") => "root.div.03g1c.phase_shift_zero.fast_structural",
             Some("Reescribir la combinación lineal") => {
                 "root.div.03g1d.phase_shift_zero.linear_to_shifted"
             }
@@ -11252,6 +11355,128 @@ fn child_matches_exact_zero_same_denominator_direct_or_passthrough_pair(
     )
 }
 
+fn matches_shifted_quotient_exact_one_direct_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    matches_known_direct_pair_root(ctx, lhs_core, rhs_core)
+        || crate::rules::arithmetic::try_build_direct_trig_double_angle_cos_variant_equivalence_rewrite(
+            ctx,
+            lhs_core,
+            rhs_core,
+        )
+        .is_some()
+        || matches_direct_half_angle_binomial_square_pair_root(ctx, lhs_core, rhs_core)
+        || matches_direct_pythagorean_factor_form_pair_root(ctx, lhs_core, rhs_core)
+}
+
+fn matches_shifted_quotient_exact_one_direct_or_passthrough_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    if matches_shifted_quotient_exact_one_direct_pair_root(ctx, lhs_core, rhs_core) {
+        return true;
+    }
+
+    extract_shared_additive_passthrough_pair_cores_root(ctx, lhs_core, rhs_core).is_some_and(
+        |(lhs_residual, rhs_residual)| {
+            matches_shifted_quotient_exact_one_direct_pair_root(ctx, lhs_residual, rhs_residual)
+        },
+    )
+}
+
+fn is_potential_shifted_quotient_exact_one_direct_pair_side_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            is_potential_shifted_quotient_exact_one_direct_pair_side_root(ctx, inner)
+        }
+        Expr::Number(_)
+        | Expr::Constant(_)
+        | Expr::Function(_, _)
+        | Expr::Div(_, _)
+        | Expr::Pow(_, _) => true,
+        Expr::Mul(_, _) => {
+            expr_contains_builtin_function_local(ctx, expr)
+                || expr_contains_sqrt_or_half_power_local(ctx, expr)
+                || extract_direct_factored_linear_shift_pair_root(ctx, expr).is_some()
+                || extract_direct_two_linear_shift_product_root(ctx, expr).is_some()
+                || extract_direct_three_linear_shift_product_root(ctx, expr).is_some()
+                || (cas_ast::collect_variables(ctx, expr).is_empty()
+                    && cas_ast::count_nodes(ctx, expr) <= 16)
+        }
+        Expr::Add(_, _) | Expr::Sub(_, _) => {
+            let terms = AddView::from_expr(ctx, expr).terms;
+            terms.len() <= 4
+                && (expr_contains_builtin_function_local(ctx, expr)
+                    || has_numeric_pythagorean_complement_pair(ctx, expr)
+                    || extract_direct_expanded_linear_shift_pair_root(ctx, expr).is_some()
+                    || terms.iter().any(|(term, _)| {
+                        matches!(
+                            ctx.get(*term),
+                            Expr::Div(_, _) | Expr::Pow(_, _) | Expr::Function(_, _)
+                        )
+                    })
+                    || (cas_ast::collect_variables(ctx, expr).is_empty()
+                        && cas_ast::count_nodes(ctx, expr) <= 16))
+        }
+        Expr::Variable(_) | Expr::Matrix { .. } | Expr::SessionRef(_) | Expr::Hold(_) => false,
+    }
+}
+
+fn is_potential_nested_zero_direct_pair_family_side_root(ctx: &mut Context, expr: ExprId) -> bool {
+    if expr_contains_division_node_local(ctx, expr) {
+        return matches!(
+            ctx.get(expr),
+            Expr::Div(_, _) | Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Mul(_, _)
+        );
+    }
+
+    if extract_plain_sin_or_cos_arg_root(ctx, expr).is_some()
+        || extract_plain_sinh_or_cosh_arg_root(ctx, expr).is_some()
+        || is_plain_two_term_sin_cos_sum_or_diff_root(ctx, expr)
+        || is_trig_sum_product_candidate_root(ctx, expr)
+    {
+        return true;
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => {
+            let terms = AddView::from_expr(ctx, expr).terms;
+            terms.len() <= 4 && expr_contains_trig_or_hyperbolic_builtin_local(ctx, expr)
+        }
+        Expr::Mul(_, _) => {
+            flatten_mul_chain(ctx, expr).len() <= 4
+                && expr_contains_trig_or_hyperbolic_builtin_local(ctx, expr)
+        }
+        Expr::Pow(base, exponent) => {
+            extract_i64_integer(ctx, *exponent) == Some(2)
+                && matches!(ctx.get(*base), Expr::Add(_, _) | Expr::Sub(_, _))
+                && expr_contains_trig_builtin_local(ctx, *base)
+        }
+        _ => false,
+    }
+}
+
+fn is_potential_nested_zero_direct_pair_family_pair_root(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    let lhs_has_division = expr_contains_division_node_local(ctx, lhs_core);
+    let rhs_has_division = expr_contains_division_node_local(ctx, rhs_core);
+    if lhs_has_division || rhs_has_division {
+        return lhs_has_division && rhs_has_division;
+    }
+
+    is_potential_nested_zero_direct_pair_family_side_root(ctx, lhs_core)
+        && is_potential_nested_zero_direct_pair_family_side_root(ctx, rhs_core)
+}
+
 fn child_matches_exact_zero_two_factor_or_quotient_pair(ctx: &mut Context, child: ExprId) -> bool {
     matches!(ctx.get(child), Expr::Add(_, _) | Expr::Sub(_, _))
         && (matches_direct_two_factor_product_pair_zero_difference_root(ctx, child)
@@ -11340,20 +11565,69 @@ fn expr_contains_log_builtin_local(ctx: &Context, expr: ExprId) -> bool {
     expr_contains_any_builtin_local(ctx, expr, &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Abs])
 }
 
+fn expr_contains_explicit_negative_marker_local(ctx: &Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Number(n) => {
+                if n.is_negative() {
+                    return true;
+                }
+            }
+            Expr::Neg(_) => return true,
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) | Expr::Hold(_) => {}
+        }
+    }
+
+    false
+}
+
+fn is_plausible_nonlog_additive_zero_partner(ctx: &Context, expr: ExprId) -> bool {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() < 2 {
+        return false;
+    }
+
+    let has_positive = terms.iter().any(|(_, sign)| *sign == Sign::Pos);
+    let has_negative = terms.iter().any(|(_, sign)| *sign == Sign::Neg);
+    if has_positive && has_negative {
+        return true;
+    }
+
+    terms.iter().any(|(term, _)| {
+        matches!(
+            ctx.get(*term),
+            Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Neg(_)
+        ) || expr_contains_explicit_negative_marker_local(ctx, *term)
+    })
+}
+
+fn is_supported_nonlog_additive_nested_zero_child_partner(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
+        && !expr_contains_trig_or_hyperbolic_builtin_local(ctx, expr)
+        && !expr_contains_log_builtin_local(ctx, expr)
+        && is_plausible_nonlog_additive_zero_partner(ctx, expr)
+}
+
 fn is_supported_nested_zero_child_partner(ctx: &Context, expr: ExprId) -> bool {
     expr_contains_log_builtin_local(ctx, expr)
-        || (matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
-            && !expr_contains_trig_or_hyperbolic_builtin_local(ctx, expr)
-            && !expr_contains_log_builtin_local(ctx, expr))
+        || is_supported_nonlog_additive_nested_zero_child_partner(ctx, expr)
 }
 
 fn supported_nested_zero_child_partner_profile_family(ctx: &Context, expr: ExprId) -> &'static str {
     if expr_contains_log_builtin_local(ctx, expr) {
         "log"
-    } else if matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
-        && !expr_contains_trig_or_hyperbolic_builtin_local(ctx, expr)
-        && !expr_contains_log_builtin_local(ctx, expr)
-    {
+    } else if is_supported_nonlog_additive_nested_zero_child_partner(ctx, expr) {
         "nonlog_additive"
     } else {
         "other"
@@ -13327,7 +13601,7 @@ fn try_standard_special_angle_exact_value_factor_shortcut(
                         {
                             crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                                 "root.mul.19q.special_angle.exact_value_probe",
-                                render_expr(ctx, factor),
+                                render_expr_for_orchestrator_profile(ctx, factor),
                             );
                             extract_special_angle_exact_value_root(ctx, factor)
                         } else {
@@ -14459,7 +14733,7 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
             if label.starts_with("root.mul.14c6") {
                 crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                     label,
-                    render_expr(ctx, expr),
+                    render_expr_for_orchestrator_profile(ctx, expr),
                 );
             }
             run_profiled_root_shortcut(label, || {
@@ -14508,6 +14782,10 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
                 || ctx.is_builtin(*fn_id, BuiltinFn::Arctan))
     }
 
+    fn is_simple_unary_function_partner_root(ctx: &Context, expr: ExprId) -> bool {
+        matches!(ctx.get(expr), Expr::Function(_, args) if args.len() == 1)
+    }
+
     fn canonicalize_two_factor_partner_root(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
         factor_sum_diff_cubes_partner_root(ctx, expr)
             .or_else(|| factor_higher_degree_difference_partner_root(ctx, expr))
@@ -14521,7 +14799,7 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
                 {
                     crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                         "root.mul.14d.two_factor.partner.direct_pair_fallback",
-                        render_expr(ctx, expr),
+                        render_expr_for_orchestrator_profile(ctx, expr),
                     );
                     run_profiled_root_shortcut(
                         "root.mul.14d.two_factor.partner.direct_pair_fallback",
@@ -14564,7 +14842,7 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
             ) {
                 crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                     "root.mul.14c.two_factor.anchor.direct_pair_fallback",
-                    render_expr(ctx, expr),
+                    render_expr_for_orchestrator_profile(ctx, expr),
                 );
                 run_profiled_root_shortcut(
                     "root.mul.14c.two_factor.anchor.direct_pair_fallback",
@@ -14577,7 +14855,7 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
         if crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
             crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                 "root.mul.14c.two_factor.anchor.direct_pair_fallback",
-                render_expr(ctx, expr),
+                render_expr_for_orchestrator_profile(ctx, expr),
             );
             run_profiled_root_shortcut(
                 "root.mul.14c.two_factor.anchor.direct_pair_fallback",
@@ -14673,7 +14951,7 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
                 {
                     crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                         "root.mul.14i.two_factor.function_special_angle_skip",
-                        render_expr(ctx, factors[anchor_index]),
+                        render_expr_for_orchestrator_profile(ctx, factors[anchor_index]),
                     );
                 }
                 is_special_angle_exact_value_function_builtin_root(ctx, factors[anchor_index])
@@ -14693,7 +14971,7 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
         let anchor_canonical = if profiling {
             crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                 "root.mul.14k.two_factor.anchor_canonicalize",
-                render_expr(ctx, factors[anchor_index]),
+                render_expr_for_orchestrator_profile(ctx, factors[anchor_index]),
             );
             run_profiled_root_shortcut("root.mul.14k.two_factor.anchor_canonicalize", || {
                 canonicalize_two_factor_anchor_root(ctx, factors[anchor_index])
@@ -14767,12 +15045,17 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
             build_locally_simplified_mul_expr_from_factors_root(ctx, &rewritten_factors);
         let skip_final_isolated = partner_pre_simplified.is_some()
             || (stable_constant_anchor
-                && is_function_free_arithmetic_expr_root(ctx, effective_partner)
-                && AddView::from_expr(ctx, effective_partner).terms.len() == 1);
+                && ((is_function_free_arithmetic_expr_root(ctx, effective_partner)
+                    && AddView::from_expr(ctx, effective_partner).terms.len() == 1)
+                    || is_simple_unary_function_partner_root(ctx, effective_partner)));
         let final_isolated = if skip_final_isolated {
             if profiling {
                 let label = if partner_pre_simplified.is_some() {
                     "root.mul.14f0a.two_factor.skip_after_partner_only_simplify"
+                } else if stable_constant_anchor
+                    && is_simple_unary_function_partner_root(ctx, effective_partner)
+                {
+                    "root.mul.14f0b.two_factor.skip_stable_constant_times_unary_function"
                 } else {
                     "root.mul.14f0.two_factor.skip_stable_constant_times_nonadditive_arithmetic"
                 };
@@ -14790,7 +15073,7 @@ fn try_standard_two_factor_direct_pair_anchor_shortcut(
                 } else {
                     "root.mul.14f.unchanged.sample"
                 },
-                render_expr(ctx, rewritten_raw),
+                render_expr_for_orchestrator_profile(ctx, rewritten_raw),
             );
             result
         } else {
@@ -15129,6 +15412,28 @@ fn is_potential_small_trig_zero_identity_root(ctx: &Context, expr: ExprId) -> bo
     let has_positive = terms.iter().any(|(_, sign)| *sign == Sign::Pos);
     let has_negative = terms.iter().any(|(_, sign)| *sign == Sign::Neg);
     has_positive && has_negative
+}
+
+fn is_potential_direct_small_zero_identity_root(ctx: &Context, expr: ExprId) -> bool {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if !(2..=4).contains(&terms.len()) {
+        return false;
+    }
+
+    let has_positive = terms.iter().any(|(_, sign)| *sign == Sign::Pos);
+    let has_negative = terms.iter().any(|(_, sign)| *sign == Sign::Neg);
+    has_positive
+        && has_negative
+        && terms.iter().any(|(term, _)| {
+            matches!(
+                ctx.get(*term),
+                Expr::Mul(_, _) | Expr::Div(_, _) | Expr::Pow(_, _) | Expr::Function(_, _)
+            )
+        })
 }
 
 fn is_supported_small_trig_zero_pair_side_root(
@@ -15730,7 +16035,7 @@ fn try_standard_trig_power_reduction_factor_shortcut(
             if profiling {
                 crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                     "root.mul.23d.trig_power.pair.mixed_square",
-                    render_expr(ctx, pair_factor),
+                    render_expr_for_orchestrator_profile(ctx, pair_factor),
                 );
             }
             let pair_arg = if profiling {
@@ -18281,75 +18586,44 @@ fn try_standard_shifted_quotient_exact_one_shortcut(
     let pair_sample = profiling.then(|| {
         format!(
             "{}  ||  {}",
-            cas_formatter::DisplayExpr {
-                context: ctx,
-                id: numerator,
-            },
-            cas_formatter::DisplayExpr {
-                context: ctx,
-                id: denominator,
-            }
+            render_expr_for_orchestrator_profile(ctx, numerator),
+            render_expr_for_orchestrator_profile(ctx, denominator)
         )
     });
     let passthrough_cores = strip_positive_one_passthrough_root(ctx, numerator)
         .zip(strip_positive_one_passthrough_root(ctx, denominator));
-    if let Some((numerator_core, denominator_core)) = passthrough_cores {
-        if matches_known_direct_pair_root(ctx, numerator_core, denominator_core)
-            || matches_direct_trig_product_to_sum_sin_sin_pair_root(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-            || matches_direct_trig_product_to_sum_sin_cos_pair_root(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-            || matches_direct_trig_product_to_sum_cos_cos_pair_root(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-            || matches_direct_nested_fraction_simplified_pair_root(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-            || matches_direct_hyperbolic_sinh_sum_to_product_pair_root(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-            || matches_direct_hyperbolic_cosh_sum_to_product_pair_root(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-            || matches_direct_hyperbolic_cosh_difference_to_product_pair_root(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-            || matches_direct_recursive_hyperbolic_sinh_sum_pair_root(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-            || matches_direct_recursive_hyperbolic_cosh_sum_pair_root(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-            || matches_direct_trig_mixed_double_angle_pair_root(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-            || matches_direct_trig_cubic_cosine_pair_root(ctx, numerator_core, denominator_core)
-            || matches_direct_trig_binomial_square_pair_root(ctx, numerator_core, denominator_core)
-            || matches_direct_cos_square_diff_pair_root(ctx, numerator_core, denominator_core)
-            || matches_direct_angle_sum_diff_pair_root(ctx, numerator_core, denominator_core)
-        {
+    if profiling {
+        if let Some(sample) = pair_sample.clone() {
+            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                "root.div.02.shifted_quotient_exact_one.passthrough_gate",
+                sample,
+            );
+        }
+        run_profiled_orchestrator_bool_section(
+            "root.div.02.shifted_quotient_exact_one.passthrough_gate",
+            || passthrough_cores.is_some(),
+        );
+    }
+    let (numerator_core, denominator_core) = passthrough_cores?;
+
+    if matches_shifted_quotient_exact_one_direct_pair_root(ctx, numerator_core, denominator_core) {
+        let one = ctx.num(1);
+        return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
+            options,
+            ctx,
+            expr,
+            one,
+            collect_steps,
+        ));
+    }
+    if let Some((numerator_residual, denominator_residual)) =
+        extract_shared_additive_passthrough_pair_cores_root(ctx, numerator_core, denominator_core)
+    {
+        if matches_shifted_quotient_exact_one_direct_pair_root(
+            ctx,
+            numerator_residual,
+            denominator_residual,
+        ) {
             let one = ctx.num(1);
             return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
                 options,
@@ -18359,114 +18633,25 @@ fn try_standard_shifted_quotient_exact_one_shortcut(
                 collect_steps,
             ));
         }
-        if let Some((numerator_residual, denominator_residual)) =
-            extract_shared_additive_passthrough_pair_cores_root(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-        {
-            if matches_known_direct_pair_root(ctx, numerator_residual, denominator_residual)
-                || matches_direct_trig_product_to_sum_sin_sin_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_trig_product_to_sum_sin_cos_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_trig_product_to_sum_cos_cos_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_nested_fraction_simplified_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_hyperbolic_sinh_sum_to_product_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_hyperbolic_cosh_sum_to_product_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_hyperbolic_cosh_difference_to_product_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_recursive_hyperbolic_sinh_sum_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_recursive_hyperbolic_cosh_sum_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_trig_mixed_double_angle_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_trig_cubic_cosine_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_trig_binomial_square_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_cos_square_diff_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-                || matches_direct_angle_sum_diff_pair_root(
-                    ctx,
-                    numerator_residual,
-                    denominator_residual,
-                )
-            {
-                let one = ctx.num(1);
-                return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
-                    options,
-                    ctx,
-                    expr,
-                    one,
-                    collect_steps,
-                ));
-            }
-        }
-        if ((expr_contains_reciprocal_trig_builtin_local(ctx, numerator_core)
-            && expr_contains_trig_or_hyperbolic_builtin_local(ctx, denominator_core))
-            || (expr_contains_reciprocal_trig_builtin_local(ctx, denominator_core)
-                && expr_contains_trig_or_hyperbolic_builtin_local(ctx, numerator_core)))
-            && child_isolated_exact_zero(options, ctx, numerator_core)
-            && child_isolated_exact_zero(options, ctx, denominator_core)
-        {
-            let one = ctx.num(1);
-            return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
-                options,
-                ctx,
-                expr,
-                one,
-                collect_steps,
-            ));
-        }
-        if is_nested_additive_log_residual_pair_root(ctx, numerator_core, denominator_core) {
-            return None;
-        }
+    }
+    if ((expr_contains_reciprocal_trig_builtin_local(ctx, numerator_core)
+        && expr_contains_trig_or_hyperbolic_builtin_local(ctx, denominator_core))
+        || (expr_contains_reciprocal_trig_builtin_local(ctx, denominator_core)
+            && expr_contains_trig_or_hyperbolic_builtin_local(ctx, numerator_core)))
+        && child_isolated_exact_zero(options, ctx, numerator_core)
+        && child_isolated_exact_zero(options, ctx, denominator_core)
+    {
+        let one = ctx.num(1);
+        return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
+            options,
+            ctx,
+            expr,
+            one,
+            collect_steps,
+        ));
+    }
+    if is_nested_additive_log_residual_pair_root(ctx, numerator_core, denominator_core) {
+        return None;
     }
 
     // Under an active wall-clock budget, the generic shifted-quotient exact-one
@@ -18503,8 +18688,6 @@ fn try_standard_shifted_quotient_exact_one_shortcut(
         run_profiled_root_shortcut(
             "root.div.02.shifted_quotient_exact_one.fallback_residual_zero",
             || {
-                let numerator_core = strip_positive_one_passthrough_root(ctx, numerator)?;
-                let denominator_core = strip_positive_one_passthrough_root(ctx, denominator)?;
                 let residual_difference = ctx.add(Expr::Sub(numerator_core, denominator_core));
 
                 let mut residual_simplifier = crate::Simplifier::with_default_rules();
@@ -18620,8 +18803,16 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
             return None;
         }
 
-        let direct_pair_family =
-            profiled_nested_zero_bool!("root.div.03a.nested_zero.direct_pair_family", {
+        let direct_pair_family = profiled_nested_zero_bool!(
+            "root.div.03a.nested_zero.direct_pair_family",
+            profiled_nested_zero_bool!(
+                "root.div.03a0.nested_zero.direct_pair_family_candidate_gate",
+                is_potential_nested_zero_direct_pair_family_pair_root(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                )
+            ) && {
                 matches_direct_trig_product_to_sum_sin_sin_pair_root(
                     ctx,
                     numerator_core,
@@ -18669,7 +18860,8 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
                         numerator_core,
                         denominator_core,
                     )
-            });
+            }
+        );
         if direct_pair_family {
             return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
                 options,
@@ -18682,7 +18874,9 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
 
         let both_direct_small_zero =
             profiled_nested_zero_bool!("root.div.03b.nested_zero.both_direct_small_zero", {
-                matches_direct_small_zero_identity_root(ctx, numerator_core)
+                is_potential_direct_small_zero_identity_root(ctx, numerator_core)
+                    && is_potential_direct_small_zero_identity_root(ctx, denominator_core)
+                    && matches_direct_small_zero_identity_root(ctx, numerator_core)
                     && matches_direct_small_zero_identity_root(ctx, denominator_core)
             });
         if both_direct_small_zero {
@@ -18741,8 +18935,8 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
                             label,
                             format!(
                                 "{}  ||  {}",
-                                render_expr(ctx, numerator_core),
-                                render_expr(ctx, denominator_core)
+                                render_expr_for_orchestrator_profile(ctx, numerator_core),
+                                render_expr_for_orchestrator_profile(ctx, denominator_core)
                             ),
                         );
                     }
@@ -18789,8 +18983,8 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
                             label,
                             format!(
                                 "{}  ||  {}",
-                                render_expr(ctx, denominator_core),
-                                render_expr(ctx, numerator_core)
+                                render_expr_for_orchestrator_profile(ctx, denominator_core),
+                                render_expr_for_orchestrator_profile(ctx, numerator_core)
                             ),
                         );
                     }
@@ -18890,8 +19084,8 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
             && expr_contains_trig_or_hyperbolic_builtin_local(ctx, denominator_core)
         {
             let residual_difference = ctx.add(Expr::Sub(numerator_core, denominator_core));
-            let residual_sample =
-                profile_nested_zero.then(|| render_expr(ctx, residual_difference));
+            let residual_sample = profile_nested_zero
+                .then(|| render_expr_for_orchestrator_profile(ctx, residual_difference));
             if profile_nested_zero {
                 crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                     "root.div.03g1.nested_zero.residual_difference_phase_shift_zero",
@@ -19050,9 +19244,114 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
                                     } else {
                                         false
                                     };
+                                let residual_difference_trig_ratio =
+                                    if !residual_difference_hyperbolic_angle_difference
+                                        && !residual_difference_hyperbolic_triple_angle
+                                        && !residual_difference_pure_double_angle
+                                        && profile_nested_zero
+                                    {
+                                        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                            "root.div.03g2c5a.nested_zero.residual_difference_trig_ratio",
+                                            residual_sample.clone().unwrap_or_default(),
+                                        );
+                                        run_profiled_orchestrator_bool_section(
+                                            "root.div.03g2c5a.nested_zero.residual_difference_trig_ratio",
+                                            || {
+                                                matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
+                                                    ctx,
+                                                    residual_difference,
+                                                    true,
+                                                )
+                                            },
+                                        )
+                                    } else if !residual_difference_hyperbolic_angle_difference
+                                        && !residual_difference_hyperbolic_triple_angle
+                                        && !residual_difference_pure_double_angle
+                                    {
+                                        matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
+                                            ctx,
+                                            residual_difference,
+                                            true,
+                                        )
+                                    } else {
+                                        false
+                                    };
+                                let residual_difference_trig_reciprocal =
+                                    if !residual_difference_hyperbolic_angle_difference
+                                        && !residual_difference_hyperbolic_triple_angle
+                                        && !residual_difference_pure_double_angle
+                                        && !residual_difference_trig_ratio
+                                        && profile_nested_zero
+                                    {
+                                        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                            "root.div.03g2c5b.nested_zero.residual_difference_trig_reciprocal",
+                                            residual_sample.clone().unwrap_or_default(),
+                                        );
+                                        run_profiled_orchestrator_bool_section(
+                                            "root.div.03g2c5b.nested_zero.residual_difference_trig_reciprocal",
+                                            || {
+                                                matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
+                                                    ctx,
+                                                    residual_difference,
+                                                    false,
+                                                )
+                                            },
+                                        )
+                                    } else if !residual_difference_hyperbolic_angle_difference
+                                        && !residual_difference_hyperbolic_triple_angle
+                                        && !residual_difference_pure_double_angle
+                                        && !residual_difference_trig_ratio
+                                    {
+                                        matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
+                                            ctx,
+                                            residual_difference,
+                                            false,
+                                        )
+                                    } else {
+                                        false
+                                    };
+                                let residual_difference_trig_ratio_alias =
+                                    if !residual_difference_hyperbolic_angle_difference
+                                        && !residual_difference_hyperbolic_triple_angle
+                                        && !residual_difference_pure_double_angle
+                                        && !residual_difference_trig_ratio
+                                        && !residual_difference_trig_reciprocal
+                                        && profile_nested_zero
+                                    {
+                                        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                                            "root.div.03g2c6a.nested_zero.residual_difference_trig_ratio_alias",
+                                            residual_sample.clone().unwrap_or_default(),
+                                        );
+                                        run_profiled_orchestrator_bool_section(
+                                            "root.div.03g2c6a.nested_zero.residual_difference_trig_ratio_alias",
+                                            || {
+                                                matches_direct_nested_zero_trig_ratio_alias_residual_pair_root(
+                                                    ctx,
+                                                    residual_difference,
+                                                )
+                                            },
+                                        )
+                                    } else if !residual_difference_hyperbolic_angle_difference
+                                        && !residual_difference_hyperbolic_triple_angle
+                                        && !residual_difference_pure_double_angle
+                                        && !residual_difference_trig_ratio
+                                        && !residual_difference_trig_reciprocal
+                                    {
+                                        matches_direct_nested_zero_trig_ratio_alias_residual_pair_root(
+                                            ctx,
+                                            residual_difference,
+                                        )
+                                    } else {
+                                        false
+                                    };
+                                let residual_difference_trig_double_angle_cos_variant = false;
                                 if residual_difference_hyperbolic_angle_difference
                                     || residual_difference_hyperbolic_triple_angle
                                     || residual_difference_pure_double_angle
+                                    || residual_difference_trig_ratio
+                                    || residual_difference_trig_reciprocal
+                                    || residual_difference_trig_ratio_alias
+                                    || residual_difference_trig_double_angle_cos_variant
                                 {
                                     true
                                 } else {
@@ -19087,88 +19386,14 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
                                     if residual_difference_three_term_subset_rule {
                                         true
                                     } else {
-                                        if profile_nested_zero {
-                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
-                                        "root.div.03g2c5a.nested_zero.residual_difference_trig_ratio",
-                                        residual_sample.clone().unwrap_or_default(),
-                                    );
-                                        }
-                                        let residual_difference_trig_ratio = if profile_nested_zero
-                                        {
-                                            run_profiled_orchestrator_bool_section(
-                                        "root.div.03g2c5a.nested_zero.residual_difference_trig_ratio",
-                                        || {
-                                            matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
-                                                ctx,
-                                                residual_difference,
-                                                true,
-                                            )
-                                        },
-                                    )
-                                        } else {
-                                            matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
-                                        ctx,
-                                        residual_difference,
-                                        true,
-                                    )
-                                        };
-                                        if !residual_difference_trig_ratio && profile_nested_zero {
-                                            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
-                                        "root.div.03g2c5b.nested_zero.residual_difference_trig_reciprocal",
-                                        residual_sample.clone().unwrap_or_default(),
-                                    );
-                                        }
-                                        let residual_difference_trig_reciprocal =
-                                            if !residual_difference_trig_ratio
-                                                && profile_nested_zero
-                                            {
-                                                run_profiled_orchestrator_bool_section(
-                                            "root.div.03g2c5b.nested_zero.residual_difference_trig_reciprocal",
-                                            || {
-                                                matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
-                                                    ctx,
-                                                    residual_difference,
-                                                    false,
-                                                )
-                                            },
-                                        )
-                                            } else if !residual_difference_trig_ratio {
-                                                matches_direct_nested_zero_trig_ratio_or_reciprocal_residual_pair_root(
-                                            ctx,
-                                            residual_difference,
-                                            false,
-                                        )
-                                            } else {
-                                                false
-                                            };
+                                        let residual_difference_trig_ratio = false;
+                                        let residual_difference_trig_reciprocal = false;
                                         if residual_difference_trig_ratio
                                             || residual_difference_trig_reciprocal
                                         {
                                             true
                                         } else {
-                                            if profile_nested_zero {
-                                                crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
-                                            "root.div.03g2c6a.nested_zero.residual_difference_trig_ratio_alias",
-                                            residual_sample.clone().unwrap_or_default(),
-                                        );
-                                            }
-                                            let residual_difference_trig_ratio_alias =
-                                                if profile_nested_zero {
-                                                    run_profiled_orchestrator_bool_section(
-                                                "root.div.03g2c6a.nested_zero.residual_difference_trig_ratio_alias",
-                                                || {
-                                                    matches_direct_nested_zero_trig_ratio_alias_residual_pair_root(
-                                                        ctx,
-                                                        residual_difference,
-                                                    )
-                                                },
-                                            )
-                                                } else {
-                                                    matches_direct_nested_zero_trig_ratio_alias_residual_pair_root(
-                                                ctx,
-                                                residual_difference,
-                                            )
-                                                };
+                                            let residual_difference_trig_ratio_alias = false;
                                             if !residual_difference_trig_ratio_alias
                                                 && profile_nested_zero
                                             {
@@ -19795,7 +20020,11 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
                         if profile_nested_zero {
                             crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
                                 label,
-                                format!("{}  ||  {}", render_expr(ctx, core), render_expr(ctx, other)),
+                                format!(
+                                    "{}  ||  {}",
+                                    render_expr_for_orchestrator_profile(ctx, core),
+                                    render_expr_for_orchestrator_profile(ctx, other)
+                                ),
                             );
                             run_profiled_orchestrator_bool_section(label, || {
                                 child_isolated_exact_zero(options, ctx, core)
@@ -20681,7 +20910,7 @@ impl Orchestrator {
         let phase_label = pipeline_phase_profile_label(phase);
         let sample =
             crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled()
-                .then(|| render_expr(&simplifier.context, start));
+                .then(|| render_expr_for_orchestrator_profile(&simplifier.context, start));
         run_profiled_orchestrator_section(phase_label, sample, || {
             use crate::phase::PhaseStats;
 
@@ -21930,136 +22159,23 @@ impl Orchestrator {
                                     denominator,
                                 ))
                                 .is_some_and(|(numerator_core, denominator_core)| {
-                                    let shared_passthrough_direct_pair =
-                                        extract_shared_additive_passthrough_pair_cores_root(
-                                            &mut simplifier.context,
-                                            numerator_core,
-                                            denominator_core,
-                                        )
-                                        .is_some_and(|(numerator_residual, denominator_residual)| {
-                                            matches_direct_trig_product_to_sum_sin_sin_pair_root(
+                                    run_profiled_orchestrator_bool_section(
+                                        "root.div.01a.shifted_quotient_exact_one_candidate_gate",
+                                        || {
+                                            is_potential_shifted_quotient_exact_one_direct_pair_side_root(
                                                 &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_trig_product_to_sum_sin_cos_pair_root(
+                                                numerator_core,
+                                            ) && is_potential_shifted_quotient_exact_one_direct_pair_side_root(
                                                 &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_trig_product_to_sum_cos_cos_pair_root(
-                                                &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_nested_fraction_simplified_pair_root(
-                                                &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_hyperbolic_sinh_sum_to_product_pair_root(
-                                                &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_hyperbolic_cosh_sum_to_product_pair_root(
-                                                &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_hyperbolic_cosh_difference_to_product_pair_root(
-                                                &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_recursive_hyperbolic_sinh_sum_pair_root(
-                                                &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_recursive_hyperbolic_cosh_sum_pair_root(
-                                                &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_trig_mixed_double_angle_pair_root(
-                                                &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_trig_cubic_cosine_pair_root(
-                                                &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_cos_square_diff_pair_root(
-                                                &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
-                                            ) || matches_direct_angle_sum_diff_pair_root(
-                                                &mut simplifier.context,
-                                                numerator_residual,
-                                                denominator_residual,
+                                                denominator_core,
                                             )
-                                        });
-                                    matches_known_direct_pair_root(
+                                        },
+                                    ) &&
+                                    matches_shifted_quotient_exact_one_direct_or_passthrough_pair_root(
                                         &mut simplifier.context,
                                         numerator_core,
                                         denominator_core,
-                                    ) || matches_direct_half_angle_binomial_square_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_trig_phase_shift_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_pythagorean_factor_form_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_trig_product_to_sum_sin_sin_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_trig_product_to_sum_sin_cos_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_trig_product_to_sum_cos_cos_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_nested_fraction_simplified_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_hyperbolic_sinh_sum_to_product_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_hyperbolic_cosh_sum_to_product_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_hyperbolic_cosh_difference_to_product_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_recursive_hyperbolic_sinh_sum_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_recursive_hyperbolic_cosh_sum_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_trig_mixed_double_angle_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_trig_cubic_cosine_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_cos_square_diff_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || matches_direct_angle_sum_diff_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
-                                    ) || shared_passthrough_direct_pair
+                                    )
                                 })
                         })
                     },
@@ -22113,14 +22229,17 @@ impl Orchestrator {
                         crate::phase::PipelineStats::default(),
                     );
                 }
-                if let Some((result, shortcut_steps)) =
-                    try_standard_shifted_quotient_exact_one_shortcut(
-                        &self.options,
-                        &mut simplifier.context,
-                        expr,
-                        collect_steps,
-                    )
-                {
+                if let Some((result, shortcut_steps)) = run_profiled_root_shortcut(
+                    "root.div.04.shifted_quotient_exact_one_late",
+                    || {
+                        try_standard_shifted_quotient_exact_one_shortcut(
+                            &self.options,
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    },
+                ) {
                     return (
                         result,
                         shortcut_steps,
@@ -24909,6 +25028,20 @@ mod tests {
     }
 
     #[test]
+    fn matches_direct_three_term_phase_shift_zero_subset_root_handles_general_shifted_sine() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "3*sin(x) + 4*cos(x) - 5*sin(x + arctan(4/3))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(matches_direct_three_term_phase_shift_zero_subset_root(
+            &mut simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
     fn simplify_pipeline_handles_hyperbolic_cosh_cubic_passthrough_shifted_quotient_regression() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
@@ -26628,6 +26761,18 @@ mod tests {
     }
 
     #[test]
+    fn rejects_direct_nested_zero_hyperbolic_triple_angle_residual_on_double_angle_regression() {
+        let mut ctx = Context::new();
+        let expr = parse("cosh(2*x) - (2*cosh(x)^2 - 1)", &mut ctx)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(
+            !super::matches_direct_nested_zero_hyperbolic_triple_angle_residual_pair_root(
+                &mut ctx, expr
+            )
+        );
+    }
+
+    #[test]
     fn detects_direct_small_exact_constant_pair_regression() {
         let mut ctx = Context::new();
         let lhs = parse("sec(pi)", &mut ctx).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
@@ -26897,6 +27042,30 @@ mod tests {
         let difference = simplifier.context.add(Expr::Sub(rewritten, expected));
         assert!(super::isolated_simplify_rewrites_to_zero(
             &crate::phase::SimplifyOptions::default(),
+            &mut simplifier.context,
+            difference
+        ));
+    }
+
+    #[test]
+    fn two_factor_direct_pair_anchor_shortcut_handles_exact_quarter_shifted_sine_partner_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("(sqrt(2)) * sin(pi/4 + x)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let expected = parse("(2^(1/2)) * sin(x + pi/4)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_two_factor_direct_pair_anchor_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected two-factor direct-pair anchor shortcut to match"));
+        let difference = simplifier.context.add(Expr::Sub(rewritten, expected));
+        assert!(super::isolated_simplify_rewrites_to_zero(
+            &options,
             &mut simplifier.context,
             difference
         ));
@@ -28739,6 +28908,28 @@ mod tests {
     }
 
     #[test]
+    fn supported_nested_zero_child_partner_rejects_flat_nonlog_additive_noise_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("x + 1", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(!is_supported_nested_zero_child_partner(
+            &simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
+    fn supported_nested_zero_child_partner_keeps_nested_additive_cancellation_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("(x - y) + (y - x)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(is_supported_nested_zero_child_partner(
+            &simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
     fn classify_multiterm_trig_numeric_subset_status_is_candidate_ready_on_raw_polynomial_triple_sine_sum_regression(
     ) {
         let mut simplifier = crate::Simplifier::with_default_rules();
@@ -29241,6 +29432,199 @@ mod tests {
     }
 
     #[test]
+    fn shifted_quotient_shortcut_handles_pythagorean_factor_form_to_cos_sq_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((1 - sin(x)^2) + 1)/((cos(x)^2) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_exact_one_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            true,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient exact-one shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn exact_one_shortcut_handles_trig_double_angle_cos_variant_shifted_quotient_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((cos(2*x)) + 1)/((1 - 2*sin(x)^2) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_exact_one_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            true,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient exact-one shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn exact_one_shortcut_handles_cubes_quotient_against_binomial_square_shifted_quotient_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(((a^3-b^3)/(a-b) - (a^2 + a*b + b^2)) + 1)/((x^2 + 2*x + 1 - (x+1)^2) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_exact_one_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            true,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient exact-one shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn exact_one_shortcut_handles_nonadditive_log_power_pair_shifted_quotient_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((ln((x+1)^2)) + 1)/((2*ln(abs(x+1))) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_exact_one_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            true,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient exact-one shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_exact_one_candidate_gate_rejects_linear_collect_noise_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((a*x + b*x + c) + 1)/((((a + b)*x + c)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (numerator, denominator) = match simplifier.context.get(expr).clone() {
+            Expr::Div(numerator, denominator) => (numerator, denominator),
+            _ => panic!("expected division root"),
+        };
+        let numerator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, numerator)
+                .unwrap_or_else(|| panic!("expected numerator core"));
+        let denominator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, denominator)
+                .unwrap_or_else(|| panic!("expected denominator core"));
+
+        assert!(
+            !is_potential_shifted_quotient_exact_one_direct_pair_side_root(
+                &mut simplifier.context,
+                numerator_core,
+            ) || !is_potential_shifted_quotient_exact_one_direct_pair_side_root(
+                &mut simplifier.context,
+                denominator_core,
+            )
+        );
+    }
+
+    #[test]
+    fn shifted_quotient_exact_one_candidate_gate_keeps_cubes_quotient_binomial_square_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(((a^3-b^3)/(a-b) - (a^2 + a*b + b^2)) + 1)/((x^2 + 2*x + 1 - (x+1)^2) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (numerator, denominator) = match simplifier.context.get(expr).clone() {
+            Expr::Div(numerator, denominator) => (numerator, denominator),
+            _ => panic!("expected division root"),
+        };
+        let numerator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, numerator)
+                .unwrap_or_else(|| panic!("expected numerator core"));
+        let denominator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, denominator)
+                .unwrap_or_else(|| panic!("expected denominator core"));
+
+        assert!(
+            is_potential_shifted_quotient_exact_one_direct_pair_side_root(
+                &mut simplifier.context,
+                numerator_core,
+            )
+        );
+        assert!(
+            is_potential_shifted_quotient_exact_one_direct_pair_side_root(
+                &mut simplifier.context,
+                denominator_core,
+            )
+        );
+    }
+
+    #[test]
+    fn nested_zero_direct_pair_family_candidate_gate_rejects_division_vs_common_factor_regression()
+    {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(((a^3-b^3)/(a-b) - (a^2 + a*b + b^2)) + 1)/((x*y + x*z - x*(y+z)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (numerator, denominator) = match simplifier.context.get(expr).clone() {
+            Expr::Div(numerator, denominator) => (numerator, denominator),
+            _ => panic!("expected division root"),
+        };
+        let numerator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, numerator)
+                .unwrap_or_else(|| panic!("expected numerator core"));
+        let denominator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, denominator)
+                .unwrap_or_else(|| panic!("expected denominator core"));
+
+        assert!(!is_potential_nested_zero_direct_pair_family_pair_root(
+            &mut simplifier.context,
+            numerator_core,
+            denominator_core,
+        ));
+    }
+
+    #[test]
+    fn nested_zero_direct_pair_family_candidate_gate_keeps_trig_product_to_sum_pair_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((2*sin(x)*sin(y)) + 1)/((cos(x-y) - cos(x+y)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (numerator, denominator) = match simplifier.context.get(expr).clone() {
+            Expr::Div(numerator, denominator) => (numerator, denominator),
+            _ => panic!("expected division root"),
+        };
+        let numerator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, numerator)
+                .unwrap_or_else(|| panic!("expected numerator core"));
+        let denominator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, denominator)
+                .unwrap_or_else(|| panic!("expected denominator core"));
+
+        assert!(is_potential_nested_zero_direct_pair_family_pair_root(
+            &mut simplifier.context,
+            numerator_core,
+            denominator_core,
+        ));
+    }
+
+    #[test]
     fn simplify_pipeline_handles_pythagorean_factor_form_from_sin_sq_shifted_quotient_regression() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
@@ -29296,6 +29680,25 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
             "((sin(2*x)/cos(2*x)) + 1)/((tan(2*x)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_nested_zero_core_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_trig_ratio_alias_residual_difference_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((sin(2*x)/cos(x+x)) + 1)/((tan(2*x)) + 1)",
             &mut simplifier.context,
         )
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
@@ -29392,6 +29795,65 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
             "((4*cosh(x)^3 - 3*cosh(x)) + 1)/((cosh(3*x)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_nested_zero_core_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_hyperbolic_sinh_sum_residual_difference_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((sinh(x+y)) + 1)/((sinh(x)*cosh(y) + cosh(x)*sinh(y)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_nested_zero_core_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_hyperbolic_tanh_double_angle_residual_difference_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((2*tanh(x)/(1+tanh(x)^2)) + 1)/((tanh(2*x)) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_nested_zero_core_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_trig_double_angle_cos_variant_residual_difference_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((cos(2*x)) + 1)/((1 - 2*sin(x)^2) + 1)",
             &mut simplifier.context,
         )
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));

@@ -1,7 +1,55 @@
 //! Simplify action handler for `Engine::eval`.
 
 use super::*;
-use cas_ast::Expr;
+use cas_ast::{BuiltinFn, Expr};
+
+fn expr_contains_any_builtin_local(
+    ctx: &cas_ast::Context,
+    root: ExprId,
+    builtins: &[BuiltinFn],
+) -> bool {
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Function(fn_id, args) => {
+                if builtins
+                    .iter()
+                    .any(|builtin| ctx.is_builtin(*fn_id, *builtin))
+                {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    false
+}
+
+fn expr_contains_hyperbolic_builtin_local(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    expr_contains_any_builtin_local(
+        ctx,
+        expr,
+        &[
+            BuiltinFn::Sinh,
+            BuiltinFn::Cosh,
+            BuiltinFn::Tanh,
+            BuiltinFn::Asinh,
+            BuiltinFn::Acosh,
+            BuiltinFn::Atanh,
+        ],
+    )
+}
 
 impl Engine {
     /// Handle `EvalAction::Expand`.
@@ -16,7 +64,8 @@ impl Engine {
         let (res, steps) = self.simplifier.simplify(resolved);
         let warnings = collect_domain_warnings(
             &self.simplifier.context,
-            options.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly,
+            options.shared.semantics.value_domain,
+            res,
             &steps,
         );
         Ok((
@@ -45,7 +94,21 @@ impl Engine {
             profile,
             std::mem::take(&mut self.simplifier.context),
         );
-        ctx_simplifier.set_steps_mode(effective_opts.steps_mode);
+        let preserve_hidden_solve_fast_paths = effective_opts.shared.context_mode
+            == crate::options::ContextMode::Solve
+            && effective_opts.shared.semantics.domain_mode == crate::DomainMode::Strict;
+        let runtime_steps_mode = match effective_opts.steps_mode {
+            crate::options::StepsMode::Off if preserve_hidden_solve_fast_paths => {
+                crate::options::StepsMode::Off
+            }
+            crate::options::StepsMode::Off
+                if !expr_contains_hyperbolic_builtin_local(&ctx_simplifier.context, resolved) =>
+            {
+                crate::options::StepsMode::Compact
+            }
+            mode => mode,
+        };
+        ctx_simplifier.set_steps_mode(runtime_steps_mode);
         ctx_simplifier.allow_numerical_verification = inherited_allow_numerical_verification;
         ctx_simplifier.debug_mode = inherited_debug_mode;
         ctx_simplifier.set_step_listener(inherited_step_listener);
@@ -158,7 +221,8 @@ impl Engine {
 
         let mut warnings = collect_domain_warnings(
             &self.simplifier.context,
-            effective_opts.shared.semantics.value_domain == crate::semantics::ValueDomain::RealOnly,
+            effective_opts.shared.semantics.value_domain,
+            res,
             &steps,
         );
 
@@ -667,6 +731,35 @@ mod tests {
             }
             .to_string(),
             "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_keeps_strict_solve_difference_of_cubes_fast_path() {
+        let expr_text = "(x^3 - y^3) / (x - y)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Solve;
+        options.shared.semantics.domain_mode = crate::DomainMode::Strict;
+
+        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        let result_str = DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result,
+        }
+        .to_string();
+        assert!(
+            result_str == "x^2 + y^2 + x * y" || result_str == "x^2 + y^2 + y * x",
+            "expected strict solve steps-off cubes fast path, got: {result_str}"
         );
     }
 

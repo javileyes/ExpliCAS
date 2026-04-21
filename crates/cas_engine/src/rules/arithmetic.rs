@@ -28,7 +28,9 @@ use cas_math::fraction_combine_policy_support::try_plan_same_denominator_combina
 use cas_math::fraction_pair_support::extract_fraction_pair;
 use cas_math::fraction_sub_rewrite_support::plan_sub_fraction_rewrite_with;
 use cas_math::hyperbolic_identity_support::try_rewrite_hyperbolic_triple_angle;
-use cas_math::logarithm_inverse_support::{make_log_expr, try_extract_log_parts};
+use cas_math::logarithm_inverse_support::{
+    make_log_expr, try_extract_log_parts, try_rewrite_log_chain_product_expr,
+};
 use cas_math::nested_fraction_support::try_rewrite_simplify_nested_fraction_expr;
 use cas_math::perfect_square_support::rational_sqrt;
 use cas_math::poly_compare::poly_eq;
@@ -65,9 +67,7 @@ use cas_math::trig_sum_product_support::{
     try_rewrite_product_to_sum_expr, try_rewrite_sum_to_product_contraction_expr,
     TrigProductToSumRewriteKind, TrigSumToProductContractionRewriteKind,
 };
-use cas_solver_core::quadratic_coeffs::{
-    extract_quadratic_coefficients, extract_simplified_nonzero_quadratic_coefficients_with_state,
-};
+use cas_solver_core::quadratic_coeffs::extract_quadratic_coefficients;
 use num_bigint::BigInt;
 use num_integer::Integer;
 use num_rational::BigRational;
@@ -77,13 +77,7 @@ use std::cmp::Ordering;
 use std::time::Instant;
 
 fn render_expr_for_orchestrator_profile(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> String {
-    format!(
-        "{}",
-        cas_formatter::DisplayExpr {
-            context: ctx,
-            id: expr
-        }
-    )
+    crate::orchestrator_shortcut_profiler::render_expr_shape_for_orchestrator_profile(ctx, expr)
 }
 
 fn run_profiled_orchestrator_option_section<T>(
@@ -91,7 +85,7 @@ fn run_profiled_orchestrator_option_section<T>(
     sample: Option<String>,
     body: impl FnOnce() -> Option<T>,
 ) -> Option<T> {
-    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+    if !crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(name) {
         return body();
     }
 
@@ -115,7 +109,7 @@ fn run_profiled_orchestrator_section<T>(
     body: impl FnOnce() -> T,
     is_hit: impl FnOnce(&T) -> bool,
 ) -> T {
-    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+    if !crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(name) {
         return body();
     }
 
@@ -131,6 +125,274 @@ fn run_profiled_orchestrator_section<T>(
         start.elapsed(),
     );
     result
+}
+
+fn run_profiled_exact_zero_direct_identity_probe(
+    profiling: bool,
+    name: &'static str,
+    sample: &Option<String>,
+    body: impl FnOnce() -> Option<Rewrite>,
+) -> Option<Rewrite> {
+    if profiling {
+        run_profiled_orchestrator_option_section(name, sample.clone(), body)
+    } else {
+        body()
+    }
+}
+
+fn run_profiled_fast_solve_prep_probe<T>(
+    profiling: bool,
+    name: &'static str,
+    sample: &Option<String>,
+    body: impl FnOnce() -> Option<T>,
+) -> Option<T> {
+    if profiling {
+        run_profiled_orchestrator_option_section(name, sample.clone(), body)
+    } else {
+        body()
+    }
+}
+
+fn is_default_simplified_zero_expr(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if n.is_zero())
+}
+
+#[derive(Clone, Copy)]
+enum SolvePrepCoeffShape {
+    Atom,
+    NegAtom,
+    NegWithDiv,
+    NegOther,
+    AddSubWithDiv,
+    AddSubNoDiv,
+    Div,
+    MulWithDiv,
+    MulNoDiv,
+    Pow,
+    Function,
+    Hold,
+    Matrix,
+    SessionRef,
+}
+
+impl SolvePrepCoeffShape {
+    fn simplify_a_profile_label(self) -> &'static str {
+        match self {
+            Self::Atom => "rule.solve_prep.extract.simplify_a.shape.atom",
+            Self::NegAtom => "rule.solve_prep.extract.simplify_a.shape.neg_atom",
+            Self::NegWithDiv => "rule.solve_prep.extract.simplify_a.shape.neg_with_div",
+            Self::NegOther => "rule.solve_prep.extract.simplify_a.shape.neg_other",
+            Self::AddSubWithDiv => "rule.solve_prep.extract.simplify_a.shape.addsub_with_div",
+            Self::AddSubNoDiv => "rule.solve_prep.extract.simplify_a.shape.addsub_no_div",
+            Self::Div => "rule.solve_prep.extract.simplify_a.shape.div",
+            Self::MulWithDiv => "rule.solve_prep.extract.simplify_a.shape.mul_with_div",
+            Self::MulNoDiv => "rule.solve_prep.extract.simplify_a.shape.mul_no_div",
+            Self::Pow => "rule.solve_prep.extract.simplify_a.shape.pow",
+            Self::Function => "rule.solve_prep.extract.simplify_a.shape.function",
+            Self::Hold => "rule.solve_prep.extract.simplify_a.shape.hold",
+            Self::Matrix => "rule.solve_prep.extract.simplify_a.shape.matrix",
+            Self::SessionRef => "rule.solve_prep.extract.simplify_a.shape.session_ref",
+        }
+    }
+
+    fn simplify_b_profile_label(self) -> &'static str {
+        match self {
+            Self::Atom => "rule.solve_prep.extract.simplify_b.shape.atom",
+            Self::NegAtom => "rule.solve_prep.extract.simplify_b.shape.neg_atom",
+            Self::NegWithDiv => "rule.solve_prep.extract.simplify_b.shape.neg_with_div",
+            Self::NegOther => "rule.solve_prep.extract.simplify_b.shape.neg_other",
+            Self::AddSubWithDiv => "rule.solve_prep.extract.simplify_b.shape.addsub_with_div",
+            Self::AddSubNoDiv => "rule.solve_prep.extract.simplify_b.shape.addsub_no_div",
+            Self::Div => "rule.solve_prep.extract.simplify_b.shape.div",
+            Self::MulWithDiv => "rule.solve_prep.extract.simplify_b.shape.mul_with_div",
+            Self::MulNoDiv => "rule.solve_prep.extract.simplify_b.shape.mul_no_div",
+            Self::Pow => "rule.solve_prep.extract.simplify_b.shape.pow",
+            Self::Function => "rule.solve_prep.extract.simplify_b.shape.function",
+            Self::Hold => "rule.solve_prep.extract.simplify_b.shape.hold",
+            Self::Matrix => "rule.solve_prep.extract.simplify_b.shape.matrix",
+            Self::SessionRef => "rule.solve_prep.extract.simplify_b.shape.session_ref",
+        }
+    }
+
+    fn simplify_c_profile_label(self) -> &'static str {
+        match self {
+            Self::Atom => "rule.solve_prep.extract.simplify_c.shape.atom",
+            Self::NegAtom => "rule.solve_prep.extract.simplify_c.shape.neg_atom",
+            Self::NegWithDiv => "rule.solve_prep.extract.simplify_c.shape.neg_with_div",
+            Self::NegOther => "rule.solve_prep.extract.simplify_c.shape.neg_other",
+            Self::AddSubWithDiv => "rule.solve_prep.extract.simplify_c.shape.addsub_with_div",
+            Self::AddSubNoDiv => "rule.solve_prep.extract.simplify_c.shape.addsub_no_div",
+            Self::Div => "rule.solve_prep.extract.simplify_c.shape.div",
+            Self::MulWithDiv => "rule.solve_prep.extract.simplify_c.shape.mul_with_div",
+            Self::MulNoDiv => "rule.solve_prep.extract.simplify_c.shape.mul_no_div",
+            Self::Pow => "rule.solve_prep.extract.simplify_c.shape.pow",
+            Self::Function => "rule.solve_prep.extract.simplify_c.shape.function",
+            Self::Hold => "rule.solve_prep.extract.simplify_c.shape.hold",
+            Self::Matrix => "rule.solve_prep.extract.simplify_c.shape.matrix",
+            Self::SessionRef => "rule.solve_prep.extract.simplify_c.shape.session_ref",
+        }
+    }
+}
+
+fn classify_solve_prep_coeff_shape(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> SolvePrepCoeffShape {
+    let contains_div = contains_division_like_term(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => SolvePrepCoeffShape::Atom,
+        Expr::Neg(inner) => match ctx.get(*inner) {
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => SolvePrepCoeffShape::NegAtom,
+            _ if contains_div => SolvePrepCoeffShape::NegWithDiv,
+            _ => SolvePrepCoeffShape::NegOther,
+        },
+        Expr::Add(_, _) | Expr::Sub(_, _) if contains_div => SolvePrepCoeffShape::AddSubWithDiv,
+        Expr::Add(_, _) | Expr::Sub(_, _) => SolvePrepCoeffShape::AddSubNoDiv,
+        Expr::Div(_, _) => SolvePrepCoeffShape::Div,
+        Expr::Mul(_, _) if contains_div => SolvePrepCoeffShape::MulWithDiv,
+        Expr::Mul(_, _) => SolvePrepCoeffShape::MulNoDiv,
+        Expr::Pow(_, _) => SolvePrepCoeffShape::Pow,
+        Expr::Function(_, _) => SolvePrepCoeffShape::Function,
+        Expr::Hold(_) => SolvePrepCoeffShape::Hold,
+        Expr::Matrix { .. } => SolvePrepCoeffShape::Matrix,
+        Expr::SessionRef(_) => SolvePrepCoeffShape::SessionRef,
+    }
+}
+
+fn classify_solve_prep_simplify_c_shape_label(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> &'static str {
+    classify_solve_prep_coeff_shape(ctx, expr).simplify_c_profile_label()
+}
+
+fn extract_profiled_solve_prep_nonzero_quadratic_coefficients(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    var: &str,
+    profiling: bool,
+    sample: &Option<String>,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId)> {
+    let (a, b, c) = if profiling {
+        run_profiled_orchestrator_option_section(
+            "rule.solve_prep.extract.raw_coeffs",
+            sample.clone(),
+            || extract_quadratic_coefficients(ctx, expr, var),
+        )?
+    } else {
+        extract_quadratic_coefficients(ctx, expr, var)?
+    };
+    let sim_a = if profiling {
+        run_profiled_orchestrator_option_section(
+            "rule.solve_prep.extract.simplify_a",
+            sample.clone(),
+            || Some(run_default_simplify(ctx, a)),
+        )?
+    } else {
+        run_default_simplify(ctx, a)
+    };
+    let sim_b = if profiling {
+        run_profiled_orchestrator_option_section(
+            "rule.solve_prep.extract.simplify_b",
+            sample.clone(),
+            || Some(run_default_simplify(ctx, b)),
+        )?
+    } else {
+        run_default_simplify(ctx, b)
+    };
+    let predicted_route = classify_solve_prep_build_route(ctx, sim_a, sim_b);
+    if profiling && predicted_route == SolvePrepBuildRoute::PosGeneric {
+        let _ = run_profiled_orchestrator_option_section(
+            classify_solve_prep_coeff_shape(ctx, sim_a).simplify_a_profile_label(),
+            sample.clone(),
+            || Some(()),
+        );
+        let _ = run_profiled_orchestrator_option_section(
+            classify_solve_prep_coeff_shape(ctx, sim_b).simplify_b_profile_label(),
+            sample.clone(),
+            || Some(()),
+        );
+        let focus_shape_label = if expr_contains_shifted_square(ctx, expr) {
+            "rule.solve_prep.extract.pos_generic.focus_shifted_square"
+        } else {
+            "rule.solve_prep.extract.pos_generic.focus_no_shifted_square"
+        };
+        let _ =
+            run_profiled_orchestrator_option_section(
+                focus_shape_label,
+                sample.clone(),
+                || Some(()),
+            );
+    }
+    let should_defer_c_simplify = matches!(
+        predicted_route,
+        SolvePrepBuildRoute::NegSymbolic
+            | SolvePrepBuildRoute::PosHalf
+            | SolvePrepBuildRoute::PosSymbolic
+    );
+    let sim_c = if profiling {
+        if should_defer_c_simplify {
+            let _ = run_profiled_orchestrator_option_section(
+                predicted_route.defer_simplify_c_profile_label(),
+                sample.clone(),
+                || Some(()),
+            );
+            c
+        } else {
+            run_profiled_orchestrator_option_section(
+                "rule.solve_prep.extract.simplify_c",
+                sample.clone(),
+                || {
+                    if predicted_route == SolvePrepBuildRoute::PosGeneric {
+                        run_profiled_orchestrator_option_section(
+                            predicted_route.simplify_c_profile_label(),
+                            sample.clone(),
+                            || {
+                                run_profiled_orchestrator_option_section(
+                                    classify_solve_prep_simplify_c_shape_label(ctx, c),
+                                    sample.clone(),
+                                    || Some(run_default_simplify(ctx, c)),
+                                )
+                            },
+                        )
+                    } else {
+                        run_profiled_orchestrator_option_section(
+                            predicted_route.simplify_c_profile_label(),
+                            sample.clone(),
+                            || Some(run_default_simplify(ctx, c)),
+                        )
+                    }
+                },
+            )?
+        }
+    } else if should_defer_c_simplify {
+        c
+    } else {
+        run_default_simplify(ctx, c)
+    };
+    let a_is_zero = if profiling {
+        run_profiled_orchestrator_section(
+            "rule.solve_prep.extract.zero_check_a",
+            sample.clone(),
+            || is_default_simplified_zero_expr(ctx, sim_a),
+            |is_zero| *is_zero,
+        )
+    } else {
+        is_default_simplified_zero_expr(ctx, sim_a)
+    };
+    if profiling {
+        let gate_label = if a_is_zero {
+            "rule.solve_prep.extract.reject_zero_a"
+        } else {
+            "rule.solve_prep.extract.keep_nonzero_a"
+        };
+        let _ = run_profiled_orchestrator_option_section(gate_label, sample.clone(), || Some(()));
+    }
+    if a_is_zero {
+        return None;
+    }
+
+    Some((sim_a, sim_b, sim_c))
 }
 
 fn canonicalize_nested_integer_powers(
@@ -1475,6 +1737,119 @@ fn try_match_log_product_power_cancellation_side(
         components: normalized_terms,
         needs_power_split,
     })
+}
+
+fn try_build_direct_log_expansion_equivalence_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let uses_only_natural_logs = |ctx: &cas_ast::Context, expr: cas_ast::ExprId| {
+        expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Ln])
+            && !expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Log])
+    };
+    let matches_target = |ctx: &mut cas_ast::Context,
+                          rewritten: cas_ast::ExprId,
+                          target: cas_ast::ExprId,
+                          allow_ln_default_simplify: bool| {
+        exprs_match_for_cancellation(ctx, rewritten, target)
+            || (allow_ln_default_simplify
+                && exprs_match_after_default_simplify(ctx, rewritten, target))
+    };
+
+    if !expr_contains_log_builtin_for_profile(ctx, lhs_core)
+        && !expr_contains_log_builtin_for_profile(ctx, rhs_core)
+    {
+        return None;
+    }
+
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        if let Some(matched) = try_match_log_product_power_cancellation_side(ctx, source) {
+            let allow_ln_default_simplify =
+                uses_only_natural_logs(ctx, source) && uses_only_natural_logs(ctx, target);
+            if matches_target(ctx, matched.focus_after, target, allow_ln_default_simplify)
+                || matches_target(
+                    ctx,
+                    matched.raw_focus_after,
+                    target,
+                    allow_ln_default_simplify,
+                )
+            {
+                let mut rewrite =
+                    Rewrite::with_local(ctx.num(0), "Log Expansion Identity", source, target)
+                        .substep(
+                            "Expandir el logaritmo del producto, cociente o potencia",
+                            vec![
+                                "Tras expandir el logaritmo, ambos lados quedan en la misma forma."
+                                    .to_string(),
+                            ],
+                        );
+                if matched.needs_power_split
+                    && compare_expr(ctx, matched.raw_focus_after, matched.focus_after)
+                        != Ordering::Equal
+                {
+                    rewrite = rewrite.substep(
+                        "Sacar exponentes fuera del logaritmo cuando sea necesario",
+                        vec![
+                            "La potencia interna se reescribe como un factor exterior equivalente."
+                                .to_string(),
+                        ],
+                    );
+                }
+                return Some(rewrite);
+            }
+        }
+
+        if let Some(matched) = try_match_log_abs_mul_div_cancellation_side(ctx, source) {
+            let distributed_focus_after = build_signed_add_expr(ctx, &matched.components);
+            if exprs_match_for_cancellation(ctx, distributed_focus_after, target)
+                || exprs_match_for_cancellation(ctx, matched.focus_after, target)
+            {
+                return Some(
+                    Rewrite::with_local(
+                        ctx.num(0),
+                        "Log Expansion Identity",
+                        source,
+                        target,
+                    )
+                    .substep(
+                        "Expandir el logaritmo del producto o del cociente",
+                        vec![
+                            "Tras expandir el logaritmo con valor absoluto, ambos lados quedan en la misma forma."
+                                .to_string(),
+                        ],
+                    ),
+                );
+            }
+        }
+    }
+
+    None
+}
+
+fn try_build_direct_log_chain_product_equivalence_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some(rewritten) = try_rewrite_log_chain_product_expr(ctx, source) else {
+            continue;
+        };
+
+        if exprs_match_for_cancellation(ctx, rewritten.rewritten, target)
+            || exprs_match_after_default_simplify(ctx, rewritten.rewritten, target)
+        {
+            return Some(Rewrite::with_local(
+                ctx.num(0),
+                "Log Chain Identity",
+                source,
+                rewritten.rewritten,
+            ));
+        }
+    }
+
+    None
 }
 
 fn rebuild_subtractive_expr(
@@ -3029,6 +3404,8 @@ fn try_build_fast_solve_prep_exact_zero_scope_rewrite(
     if view.terms.len() < 2 {
         return None;
     }
+    let profiling =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
 
     let term_count = view.terms.len();
     for subset_len in [3usize, 2, 1] {
@@ -3062,13 +3439,72 @@ fn try_build_fast_solve_prep_exact_zero_scope_rewrite(
             }
 
             let remaining_expr = build_signed_sum_expr(ctx, &remaining_terms);
+            let pair_sample = profiling.then(|| {
+                format!(
+                    "{}  ||  {}",
+                    render_expr_for_orchestrator_profile(ctx, focus_expr),
+                    render_expr_for_orchestrator_profile(ctx, remaining_expr)
+                )
+            });
+            let remaining_has_shifted_square = expr_contains_shifted_square(ctx, remaining_expr);
+            if profiling {
+                let label = if remaining_has_shifted_square {
+                    "rule.fast_solve_prep.gate.remaining_shifted_square"
+                } else {
+                    "rule.fast_solve_prep.gate.remaining_no_shifted_square"
+                };
+                let _ =
+                    run_profiled_orchestrator_option_section(label, pair_sample.clone(), || {
+                        Some(())
+                    });
+            }
+            if !remaining_has_shifted_square {
+                continue;
+            }
+            if profiling {
+                let overlap = has_plausible_solve_prep_focus_remaining_variable_overlap(
+                    ctx,
+                    focus_expr,
+                    remaining_expr,
+                );
+                let label = if overlap {
+                    "rule.fast_solve_prep.gate.focus_remaining_var_overlap"
+                } else {
+                    "rule.fast_solve_prep.gate.focus_remaining_var_mismatch"
+                };
+                let _ =
+                    run_profiled_orchestrator_option_section(label, pair_sample.clone(), || {
+                        Some(())
+                    });
+            }
             let neg_remaining = negate_additive_scope_expr(ctx, remaining_expr);
             let mut canonical_neg_remaining = None;
 
-            for rewrite_match in
-                collect_exact_solve_prep_equivalence_rewrites_for_cancellation(ctx, focus_expr)
-            {
+            let rewrite_matches = match run_profiled_fast_solve_prep_probe(
+                profiling,
+                "rule.fast_solve_prep.try.collect_rewrites",
+                &pair_sample,
+                || {
+                    Some(
+                        collect_exact_solve_prep_equivalence_rewrites_for_cancellation(
+                            ctx, focus_expr,
+                        ),
+                    )
+                },
+            ) {
+                Some(matches) => matches,
+                None => continue,
+            };
+
+            for rewrite_match in rewrite_matches {
                 if exprs_match_for_cancellation(ctx, rewrite_match.rewritten, neg_remaining) {
+                    if profiling {
+                        let _ = run_profiled_orchestrator_option_section(
+                            "rule.fast_solve_prep.route.direct_neg_match",
+                            pair_sample.clone(),
+                            || Some(()),
+                        );
+                    }
                     return Some(
                         Rewrite::with_local(
                             ctx.num(0),
@@ -3087,16 +3523,49 @@ fn try_build_fast_solve_prep_exact_zero_scope_rewrite(
                 let canonical_rewritten =
                     normalize_additive_scope_expr(ctx, rewrite_match.rewritten);
                 let candidate_total = ctx.add(Expr::Add(rewrite_match.rewritten, remaining_expr));
-                if compare_expr(ctx, canonical_rewritten, canonical_neg_remaining)
-                    != Ordering::Equal
-                    && !exprs_match_after_default_simplify(
+                let canonical_match =
+                    compare_expr(ctx, canonical_rewritten, canonical_neg_remaining)
+                        == Ordering::Equal;
+                let default_simplify_match = !canonical_match
+                    && exprs_match_after_default_simplify(
                         ctx,
                         rewrite_match.rewritten,
                         neg_remaining,
-                    )
-                    && !is_zero_after_default_simplify(ctx, candidate_total)
-                {
+                    );
+                let total_zero_match = !canonical_match
+                    && !default_simplify_match
+                    && is_zero_after_default_simplify(ctx, candidate_total);
+                if !(canonical_match || default_simplify_match || total_zero_match) {
                     continue;
+                }
+                if profiling {
+                    let route_label = if canonical_match {
+                        "rule.fast_solve_prep.route.canonical_neg_match"
+                    } else if default_simplify_match {
+                        "rule.fast_solve_prep.route.default_simplify_match"
+                    } else {
+                        "rule.fast_solve_prep.route.candidate_total_zero"
+                    };
+                    let _ = run_profiled_orchestrator_option_section(
+                        route_label,
+                        pair_sample.clone(),
+                        || Some(()),
+                    );
+                    if default_simplify_match {
+                        let _ = run_profiled_orchestrator_option_section(
+                            rewrite_match.build_route.default_simplify_profile_label(),
+                            pair_sample.clone(),
+                            || Some(()),
+                        );
+                    } else if total_zero_match {
+                        let _ = run_profiled_orchestrator_option_section(
+                            rewrite_match
+                                .build_route
+                                .candidate_total_zero_profile_label(),
+                            pair_sample.clone(),
+                            || Some(()),
+                        );
+                    }
                 }
 
                 return Some(
@@ -3943,6 +4412,100 @@ struct SolvePrepExactEquivalenceRewrite {
     local_before: cas_ast::ExprId,
     local_after: cas_ast::ExprId,
     nonzero_expr: cas_ast::ExprId,
+    build_route: SolvePrepBuildRoute,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SolvePrepBuildRoute {
+    NegSymbolic,
+    NegGeneric,
+    PosHalf,
+    PosSymbolic,
+    PosGeneric,
+}
+
+impl SolvePrepBuildRoute {
+    fn defer_simplify_c_profile_label(self) -> &'static str {
+        match self {
+            Self::NegSymbolic => "rule.solve_prep.extract.defer_simplify_c.neg_symbolic_scale",
+            Self::PosSymbolic => "rule.solve_prep.extract.defer_simplify_c.pos_symbolic_scale",
+            Self::NegGeneric => "rule.solve_prep.extract.defer_simplify_c.neg_generic_scale",
+            Self::PosHalf => "rule.solve_prep.extract.defer_simplify_c.pos_half_scale",
+            Self::PosGeneric => "rule.solve_prep.extract.defer_simplify_c.pos_generic_scale",
+        }
+    }
+
+    fn simplify_c_profile_label(self) -> &'static str {
+        match self {
+            Self::NegSymbolic => "rule.solve_prep.extract.simplify_c.build.neg_symbolic_scale",
+            Self::NegGeneric => "rule.solve_prep.extract.simplify_c.build.neg_generic_scale",
+            Self::PosHalf => "rule.solve_prep.extract.simplify_c.build.pos_half_scale",
+            Self::PosSymbolic => "rule.solve_prep.extract.simplify_c.build.pos_symbolic_scale",
+            Self::PosGeneric => "rule.solve_prep.extract.simplify_c.build.pos_generic_scale",
+        }
+    }
+
+    fn default_simplify_profile_label(self) -> &'static str {
+        match self {
+            Self::NegSymbolic => {
+                "rule.fast_solve_prep.route.default_simplify_match.build.neg_symbolic_scale"
+            }
+            Self::NegGeneric => {
+                "rule.fast_solve_prep.route.default_simplify_match.build.neg_generic_scale"
+            }
+            Self::PosHalf => {
+                "rule.fast_solve_prep.route.default_simplify_match.build.pos_half_scale"
+            }
+            Self::PosSymbolic => {
+                "rule.fast_solve_prep.route.default_simplify_match.build.pos_symbolic_scale"
+            }
+            Self::PosGeneric => {
+                "rule.fast_solve_prep.route.default_simplify_match.build.pos_generic_scale"
+            }
+        }
+    }
+
+    fn candidate_total_zero_profile_label(self) -> &'static str {
+        match self {
+            Self::NegSymbolic => {
+                "rule.fast_solve_prep.route.candidate_total_zero.build.neg_symbolic_scale"
+            }
+            Self::NegGeneric => {
+                "rule.fast_solve_prep.route.candidate_total_zero.build.neg_generic_scale"
+            }
+            Self::PosHalf => "rule.fast_solve_prep.route.candidate_total_zero.build.pos_half_scale",
+            Self::PosSymbolic => {
+                "rule.fast_solve_prep.route.candidate_total_zero.build.pos_symbolic_scale"
+            }
+            Self::PosGeneric => {
+                "rule.fast_solve_prep.route.candidate_total_zero.build.pos_generic_scale"
+            }
+        }
+    }
+}
+
+fn classify_solve_prep_build_route(
+    ctx: &mut cas_ast::Context,
+    a: cas_ast::ExprId,
+    b: cas_ast::ExprId,
+) -> SolvePrepBuildRoute {
+    if let Some(positive_a) = strip_unit_negation_for_phase_shift(ctx, a) {
+        if is_direct_complete_square_symbolic_scale_expr(ctx, positive_a)
+            && strip_unit_negation_for_phase_shift(ctx, b).is_none()
+        {
+            SolvePrepBuildRoute::NegSymbolic
+        } else {
+            SolvePrepBuildRoute::NegGeneric
+        }
+    } else if extract_positive_half_scaled_base_expr(ctx, a).is_some() {
+        SolvePrepBuildRoute::PosHalf
+    } else if is_direct_complete_square_symbolic_scale_expr(ctx, a)
+        && strip_unit_negation_for_phase_shift(ctx, b).is_none()
+    {
+        SolvePrepBuildRoute::PosSymbolic
+    } else {
+        SolvePrepBuildRoute::PosGeneric
+    }
 }
 
 fn expr_contains_variable_square(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
@@ -4031,6 +4594,253 @@ fn collect_squared_variable_names(ctx: &cas_ast::Context, root: cas_ast::ExprId)
     names.into_iter().collect()
 }
 
+fn bare_variable_name(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<String> {
+    match ctx.get(expr) {
+        Expr::Variable(sym_id) => Some(ctx.sym_name(*sym_id).to_string()),
+        _ => None,
+    }
+}
+
+fn try_extract_shifted_square_primary_variable_name(
+    ctx: &cas_ast::Context,
+    base: cas_ast::ExprId,
+) -> Option<String> {
+    let (lhs, rhs) = match ctx.get(base) {
+        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => (*lhs, *rhs),
+        _ => return None,
+    };
+
+    if let Some(var_name) = bare_variable_name(ctx, lhs) {
+        if bare_variable_name(ctx, rhs).is_none() && !contains_named_var(ctx, rhs, &var_name) {
+            return Some(var_name);
+        }
+    }
+
+    if let Some(var_name) = bare_variable_name(ctx, rhs) {
+        if bare_variable_name(ctx, lhs).is_none() && !contains_named_var(ctx, lhs, &var_name) {
+            return Some(var_name);
+        }
+    }
+
+    None
+}
+
+fn collect_shifted_square_primary_variable_names(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+) -> Vec<String> {
+    let mut names = std::collections::BTreeSet::new();
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Pow(base, exp)
+                if extract_i64_integer(ctx, *exp) == Some(2)
+                    && matches!(ctx.get(*base), Expr::Add(_, _) | Expr::Sub(_, _)) =>
+            {
+                if let Some(var_name) = try_extract_shifted_square_primary_variable_name(ctx, *base)
+                {
+                    names.insert(var_name);
+                }
+                stack.push(*base);
+                stack.push(*exp);
+            }
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    names.into_iter().collect()
+}
+
+fn collect_non_division_square_variable_names_from_term(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+    names: &mut std::collections::BTreeSet<String>,
+) {
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Pow(base, exp)
+                if extract_i64_integer(ctx, *exp) == Some(2)
+                    && matches!(ctx.get(*base), Expr::Variable(_)) =>
+            {
+                if let Expr::Variable(sym_id) = ctx.get(*base) {
+                    names.insert(ctx.sym_name(*sym_id).to_string());
+                }
+                stack.push(*base);
+                stack.push(*exp);
+            }
+            Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) | Expr::Mul(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Div(_, _)
+            | Expr::Number(_)
+            | Expr::Constant(_)
+            | Expr::Variable(_)
+            | Expr::SessionRef(_) => {}
+            Expr::Pow(base, exp) => {
+                stack.push(*base);
+                stack.push(*exp);
+            }
+        }
+    }
+}
+
+fn collect_direct_additive_square_variable_names(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+) -> Vec<String> {
+    let mut names = std::collections::BTreeSet::new();
+    let view = AddView::from_expr(ctx, root);
+    for (term_expr, _) in view.terms {
+        collect_non_division_square_variable_names_from_term(ctx, term_expr, &mut names);
+    }
+    names.into_iter().collect()
+}
+
+fn collect_non_division_linear_variable_names_from_term(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+    names: &mut std::collections::BTreeSet<String>,
+) {
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Variable(sym_id) => {
+                names.insert(ctx.sym_name(*sym_id).to_string());
+            }
+            Expr::Pow(base, exp)
+                if extract_i64_integer(ctx, *exp) == Some(2)
+                    && matches!(ctx.get(*base), Expr::Variable(_)) => {}
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Div(num, _) => stack.push(*num),
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+}
+
+fn collect_direct_additive_linear_variable_names(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+) -> Vec<String> {
+    let mut names = std::collections::BTreeSet::new();
+    let view = AddView::from_expr(ctx, root);
+    for (term_expr, _) in view.terms {
+        collect_non_division_linear_variable_names_from_term(ctx, term_expr, &mut names);
+    }
+    names.into_iter().collect()
+}
+
+fn expr_contains_named_var_outside_simple_square(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+    var: &str,
+) -> bool {
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var => return true,
+            Expr::Pow(base, exp) if extract_i64_integer(ctx, *exp) == Some(2) => {
+                if matches!(ctx.get(*base), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var)
+                {
+                    continue;
+                }
+                stack.push(*base);
+                stack.push(*exp);
+            }
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+            Expr::Variable(_) => {}
+        }
+    }
+
+    false
+}
+
+fn collect_solve_prep_candidate_variable_names(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+) -> Vec<String> {
+    let shifted_primary_vars = collect_shifted_square_primary_variable_names(ctx, root);
+    if !shifted_primary_vars.is_empty() {
+        return shifted_primary_vars;
+    }
+
+    let direct_additive_square_vars = collect_direct_additive_square_variable_names(ctx, root);
+    if !direct_additive_square_vars.is_empty() {
+        let direct_additive_linear_vars = collect_direct_additive_linear_variable_names(ctx, root);
+        let filtered_square_vars: Vec<_> = direct_additive_square_vars
+            .into_iter()
+            .filter(|var| {
+                direct_additive_linear_vars
+                    .iter()
+                    .any(|linear| linear == var)
+            })
+            .collect();
+        if !filtered_square_vars.is_empty() {
+            return filtered_square_vars;
+        }
+    }
+
+    collect_squared_variable_names(ctx, root)
+        .into_iter()
+        .filter(|var| expr_contains_named_var_outside_simple_square(ctx, root, var))
+        .collect()
+}
+
+fn has_plausible_solve_prep_focus_remaining_variable_overlap(
+    ctx: &cas_ast::Context,
+    focus_expr: cas_ast::ExprId,
+    remaining_expr: cas_ast::ExprId,
+) -> bool {
+    let raw_quadratic_vars = collect_squared_variable_names(ctx, focus_expr);
+    if raw_quadratic_vars.is_empty() {
+        return false;
+    }
+
+    let shifted_square_vars = collect_shifted_square_primary_variable_names(ctx, remaining_expr);
+    if shifted_square_vars.is_empty() {
+        return false;
+    }
+
+    raw_quadratic_vars
+        .iter()
+        .any(|var| shifted_square_vars.iter().any(|shifted| shifted == var))
+}
+
 fn is_solve_prep_focus_term_candidate(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Div(num, _) => expr_contains_variable_square(ctx, *num),
@@ -4097,21 +4907,78 @@ fn is_direct_complete_square_symbolic_scale_expr(
     matches!(ctx.get(expr), Expr::Variable(_))
 }
 
+fn build_complete_square_binomial_expr(
+    ctx: &mut cas_ast::Context,
+    var_expr: cas_ast::ExprId,
+    shift: cas_ast::ExprId,
+    additive_orientation: Sign,
+) -> cas_ast::ExprId {
+    match additive_orientation {
+        Sign::Pos => {
+            if let Some(inner_shift) = strip_unit_negation_for_phase_shift(ctx, shift) {
+                ctx.add_raw(Expr::Sub(var_expr, inner_shift))
+            } else {
+                ctx.add_raw(Expr::Add(var_expr, shift))
+            }
+        }
+        Sign::Neg => {
+            if let Some(inner_shift) = strip_unit_negation_for_phase_shift(ctx, shift) {
+                ctx.add_raw(Expr::Add(var_expr, inner_shift))
+            } else {
+                ctx.add_raw(Expr::Sub(var_expr, shift))
+            }
+        }
+    }
+}
+
 fn build_complete_square_candidate_for_var_for_cancellation(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
     var: &str,
-) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
-    let (a, b, c) = extract_simplified_nonzero_quadratic_coefficients_with_state(
-        ctx,
-        expr,
-        var,
-        extract_quadratic_coefficients,
-        run_default_simplify,
-        is_zero_after_default_simplify,
-    )?;
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId, SolvePrepBuildRoute)> {
+    let profiling =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    let candidate_sample = profiling.then(|| {
+        format!(
+            "{} :: {}",
+            render_expr_for_orchestrator_profile(ctx, expr),
+            var
+        )
+    });
+    let profile_route = |label: &'static str| {
+        if profiling {
+            let _ =
+                run_profiled_orchestrator_option_section(label, candidate_sample.clone(), || {
+                    Some(())
+                });
+        }
+    };
+    let (a, b, c) = if profiling {
+        run_profiled_orchestrator_option_section(
+            "rule.solve_prep.build_candidate.extract_coeffs",
+            candidate_sample.clone(),
+            || {
+                extract_profiled_solve_prep_nonzero_quadratic_coefficients(
+                    ctx,
+                    expr,
+                    var,
+                    profiling,
+                    &candidate_sample,
+                )
+            },
+        )?
+    } else {
+        extract_profiled_solve_prep_nonzero_quadratic_coefficients(
+            ctx,
+            expr,
+            var,
+            profiling,
+            &candidate_sample,
+        )?
+    };
 
-    if is_zero_after_default_simplify(ctx, b) {
+    if is_default_simplified_zero_expr(ctx, b) {
+        profile_route("rule.solve_prep.build_candidate.reject_zero_linear");
         return None;
     }
 
@@ -4120,28 +4987,34 @@ fn build_complete_square_candidate_for_var_for_cancellation(
     let var_expr = ctx.var(var);
     let b_squared = ctx.add(Expr::Pow(b, two));
 
-    let (candidate_raw, nonzero_expr) =
+    let (candidate_raw, nonzero_expr, build_route) =
         if let Some(positive_a) = strip_unit_negation_for_phase_shift(ctx, a) {
             if is_direct_complete_square_symbolic_scale_expr(ctx, positive_a)
                 && strip_unit_negation_for_phase_shift(ctx, b).is_none()
             {
+                profile_route("rule.solve_prep.build_candidate.route.neg_symbolic_scale");
                 let two_pos_a = ctx.add(Expr::Mul(two, positive_a));
                 let shift = ctx.add(Expr::Div(b, two_pos_a));
-                let completed_binomial = ctx.add(Expr::Sub(var_expr, shift));
+                let completed_binomial =
+                    build_complete_square_binomial_expr(ctx, var_expr, shift, Sign::Neg);
                 let square = ctx.add(Expr::Pow(completed_binomial, two));
                 let scaled_square_inner = ctx.add(Expr::Mul(positive_a, square));
                 let scaled_square = ctx.add(Expr::Neg(scaled_square_inner));
                 let four_pos_a = ctx.add(Expr::Mul(four, positive_a));
                 let correction = ctx.add(Expr::Div(b_squared, four_pos_a));
                 let tail = ctx.add(Expr::Add(c, correction));
-                return Some((ctx.add(Expr::Add(scaled_square, tail)), positive_a));
+                let candidate_raw = ctx.add(Expr::Add(scaled_square, tail));
+                let candidate = run_default_simplify(ctx, candidate_raw);
+                return Some((candidate, positive_a, SolvePrepBuildRoute::NegSymbolic));
             }
 
+            profile_route("rule.solve_prep.build_candidate.route.neg_generic_scale");
             let two_pos_a_raw = ctx.add(Expr::Mul(two, positive_a));
             let two_pos_a = run_default_simplify(ctx, two_pos_a_raw);
             let shift_raw = ctx.add(Expr::Div(b, two_pos_a));
             let shift = run_default_simplify(ctx, shift_raw);
-            let completed_binomial_raw = ctx.add(Expr::Sub(var_expr, shift));
+            let completed_binomial_raw =
+                build_complete_square_binomial_expr(ctx, var_expr, shift, Sign::Neg);
             let completed_binomial = run_default_simplify(ctx, completed_binomial_raw);
             let square = ctx.add(Expr::Pow(completed_binomial, two));
             let scaled_square_inner = ctx.add(Expr::Mul(positive_a, square));
@@ -4153,63 +5026,87 @@ fn build_complete_square_candidate_for_var_for_cancellation(
             let correction = run_default_simplify(ctx, correction_raw);
             let tail_raw = ctx.add(Expr::Add(c, correction));
             let tail = run_default_simplify(ctx, tail_raw);
-            (ctx.add(Expr::Add(scaled_square, tail)), positive_a)
+            (
+                ctx.add(Expr::Add(scaled_square, tail)),
+                positive_a,
+                SolvePrepBuildRoute::NegGeneric,
+            )
         } else {
             if let Some(double_a) = extract_positive_half_scaled_base_expr(ctx, a) {
+                profile_route("rule.solve_prep.build_candidate.route.pos_half_scale");
                 let half_a = ctx.add(Expr::Div(double_a, two));
                 let shift = ctx.add(Expr::Div(b, double_a));
-                let completed_binomial = ctx.add(Expr::Add(var_expr, shift));
+                let completed_binomial =
+                    build_complete_square_binomial_expr(ctx, var_expr, shift, Sign::Pos);
                 let square = ctx.add(Expr::Pow(completed_binomial, two));
                 let scaled_square = ctx.add(Expr::Mul(half_a, square));
                 let two_double_a = ctx.add(Expr::Mul(two, double_a));
                 let correction = ctx.add(Expr::Div(b_squared, two_double_a));
                 let tail = ctx.add(Expr::Sub(c, correction));
-                return Some((ctx.add(Expr::Add(scaled_square, tail)), double_a));
+                let candidate_raw = ctx.add(Expr::Add(scaled_square, tail));
+                let candidate = run_default_simplify(ctx, candidate_raw);
+                return Some((candidate, double_a, SolvePrepBuildRoute::PosHalf));
             }
 
             if is_direct_complete_square_symbolic_scale_expr(ctx, a)
                 && strip_unit_negation_for_phase_shift(ctx, b).is_none()
             {
+                profile_route("rule.solve_prep.build_candidate.route.pos_symbolic_scale");
                 let two_a = ctx.add(Expr::Mul(two, a));
                 let shift = ctx.add(Expr::Div(b, two_a));
-                let completed_binomial = ctx.add(Expr::Add(var_expr, shift));
+                let completed_binomial =
+                    build_complete_square_binomial_expr(ctx, var_expr, shift, Sign::Pos);
                 let square = ctx.add(Expr::Pow(completed_binomial, two));
                 let scaled_square = ctx.add(Expr::Mul(a, square));
                 let four_a = ctx.add(Expr::Mul(four, a));
                 let correction = ctx.add(Expr::Div(b_squared, four_a));
                 let tail = ctx.add(Expr::Sub(c, correction));
-                return Some((ctx.add(Expr::Add(scaled_square, tail)), a));
+                let candidate_raw = ctx.add(Expr::Add(scaled_square, tail));
+                let candidate = run_default_simplify(ctx, candidate_raw);
+                return Some((candidate, a, SolvePrepBuildRoute::PosSymbolic));
             }
 
-            let two_a_raw = ctx.add(Expr::Mul(two, a));
-            let two_a = run_default_simplify(ctx, two_a_raw);
-            let shift_raw = ctx.add(Expr::Div(b, two_a));
-            let shift = run_default_simplify(ctx, shift_raw);
-            let completed_binomial_raw = ctx.add(Expr::Add(var_expr, shift));
-            let completed_binomial = run_default_simplify(ctx, completed_binomial_raw);
+            profile_route("rule.solve_prep.build_candidate.route.pos_generic_scale");
+            let two_a = ctx.add(Expr::Mul(two, a));
+            let shift = ctx.add(Expr::Div(b, two_a));
+            let completed_binomial =
+                build_complete_square_binomial_expr(ctx, var_expr, shift, Sign::Pos);
             let square = ctx.add(Expr::Pow(completed_binomial, two));
             let scaled_square = ctx.add(Expr::Mul(a, square));
 
-            let four_a_raw = ctx.add(Expr::Mul(four, a));
-            let four_a = run_default_simplify(ctx, four_a_raw);
-            let correction_raw = ctx.add(Expr::Div(b_squared, four_a));
-            let correction = run_default_simplify(ctx, correction_raw);
-            let tail_raw = ctx.add(Expr::Sub(c, correction));
-            let tail = run_default_simplify(ctx, tail_raw);
-            (ctx.add(Expr::Add(scaled_square, tail)), a)
+            let four_a = ctx.add(Expr::Mul(four, a));
+            let correction = ctx.add(Expr::Div(b_squared, four_a));
+            let tail = ctx.add(Expr::Sub(c, correction));
+            let candidate_raw = ctx.add(Expr::Add(scaled_square, tail));
+            let candidate = run_default_simplify(ctx, candidate_raw);
+            (candidate, a, SolvePrepBuildRoute::PosGeneric)
         };
 
-    Some((candidate_raw, nonzero_expr))
+    Some((candidate_raw, nonzero_expr, build_route))
 }
 
 fn collect_exact_solve_prep_core_rewrites_for_cancellation(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Vec<SolvePrepExactEquivalenceRewrite> {
-    let vars = collect_squared_variable_names(ctx, expr);
+    let vars = collect_solve_prep_candidate_variable_names(ctx, expr);
+    let profiling =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    if profiling {
+        let label = match vars.len() {
+            0 => "rule.solve_prep.collect.vars.none",
+            1 => "rule.solve_prep.collect.vars.single",
+            _ => "rule.solve_prep.collect.vars.multi",
+        };
+        let _ = run_profiled_orchestrator_option_section(
+            label,
+            Some(render_expr_for_orchestrator_profile(ctx, expr)),
+            || Some(()),
+        );
+    }
     let mut rewrites = Vec::new();
     for var in vars {
-        let Some((rewritten, nonzero_expr)) =
+        let Some((rewritten, nonzero_expr, build_route)) =
             build_complete_square_candidate_for_var_for_cancellation(ctx, expr, &var)
         else {
             continue;
@@ -4220,6 +5117,7 @@ fn collect_exact_solve_prep_core_rewrites_for_cancellation(
             local_before: expr,
             local_after: rewritten,
             nonzero_expr,
+            build_route,
         });
     }
 
@@ -4248,6 +5146,7 @@ fn collect_exact_solve_prep_equivalence_rewrites_for_cancellation(
                 local_before: child.local_before,
                 local_after: child.local_after,
                 nonzero_expr: child.nonzero_expr,
+                build_route: child.build_route,
             })
             .collect();
     }
@@ -4857,11 +5756,20 @@ fn strip_unit_negation_for_phase_shift(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<cas_ast::ExprId> {
-    match ctx.get(expr) {
-        Expr::Neg(inner) => return Some(*inner),
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => return Some(inner),
         Expr::Number(n) if n.is_negative() => return Some(ctx.add(Expr::Number(-n))),
-        Expr::Mul(left, right) if is_minus_one_expr(ctx, *left) => return Some(*right),
-        Expr::Mul(left, right) if is_minus_one_expr(ctx, *right) => return Some(*left),
+        Expr::Mul(left, right) if is_minus_one_expr(ctx, left) => return Some(right),
+        Expr::Mul(left, right) if is_minus_one_expr(ctx, right) => return Some(left),
+        Expr::Div(num, den) => {
+            let positive_num = strip_unit_negation_for_phase_shift(ctx, num);
+            let positive_den = strip_unit_negation_for_phase_shift(ctx, den);
+            return match (positive_num, positive_den) {
+                (Some(pos_num), None) => Some(ctx.add(Expr::Div(pos_num, den))),
+                (None, Some(pos_den)) => Some(ctx.add(Expr::Div(num, pos_den))),
+                _ => None,
+            };
+        }
         Expr::Mul(_, _) => {}
         _ => return None,
     }
@@ -9441,6 +10349,18 @@ fn try_build_small_direct_zero_core_rewrite(
     (compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal).then_some(rewrite)
 }
 
+fn has_plausible_small_zero_partition_term_shape(terms: &[(cas_ast::ExprId, Sign)]) -> bool {
+    (2..=3).contains(&terms.len()) && terms.iter().any(|(_, sign)| *sign == Sign::Neg)
+}
+
+fn has_plausible_small_zero_partition_core_shape(
+    ctx: &mut cas_ast::Context,
+    candidate: cas_ast::ExprId,
+) -> bool {
+    let terms = AddView::from_expr(ctx, candidate).terms;
+    has_plausible_small_zero_partition_term_shape(&terms)
+}
+
 pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -9472,7 +10392,9 @@ pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
     let build_combined_rewrite = |ctx: &mut cas_ast::Context,
                                   first_expr: cas_ast::ExprId,
                                   second_expr: cas_ast::ExprId| {
-        if !is_supported_partition_core(ctx, first_expr)
+        if !has_plausible_small_zero_partition_core_shape(ctx, first_expr)
+            || !has_plausible_small_zero_partition_core_shape(ctx, second_expr)
+            || !is_supported_partition_core(ctx, first_expr)
             || !is_supported_partition_core(ctx, second_expr)
         {
             return None;
@@ -9556,6 +10478,11 @@ pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
                     .filter_map(|(index, term)| (!chosen.contains(&index)).then_some(term))
                     .collect();
                 if !(2..=3).contains(&second_terms.len()) {
+                    continue;
+                }
+                if !has_plausible_small_zero_partition_term_shape(&first_terms)
+                    || !has_plausible_small_zero_partition_term_shape(&second_terms)
+                {
                     continue;
                 }
 
@@ -10600,7 +11527,7 @@ fn try_build_exact_solve_prep_zero_scope_rewrite(
     None
 }
 
-fn try_build_exact_trig_phase_shift_zero_scope_rewrite(
+pub(crate) fn try_build_exact_trig_phase_shift_zero_scope_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
@@ -12024,243 +12951,405 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
 ) -> Option<Rewrite> {
     let parent_ctx = ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
     let zero = ctx.num(0);
+    let profiling =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    let expr_sample = profiling.then(|| render_expr_for_orchestrator_profile(ctx, expr));
+    let two_term_cores = extract_two_term_core_difference(ctx, expr);
+    let direct_term_count = AddView::from_expr(ctx, expr).terms.len();
 
     let try_rule = |ctx: &mut cas_ast::Context, rewrite: Option<Rewrite>| -> Option<Rewrite> {
         let rewrite = rewrite?;
         exprs_match_after_default_simplify(ctx, rewrite.final_expr(), zero).then_some(rewrite)
     };
 
-    if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
-        if let Some(rewrite) =
-            try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
+    if let Some((lhs_core, rhs_core)) = two_term_cores {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_trig_power_reduction_early",
+            &expr_sample,
+            || try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        ) {
             return Some(rewrite);
         }
     }
-    if let Some(rewrite) =
-        try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr)
-    {
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.sin_sin_three_term_early",
+        &expr_sample,
+        || try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr),
+    ) {
         return Some(rewrite);
     }
 
     if allow_direct_small_zero_combination {
-        if let Some(rewrite) = try_build_direct_small_zero_additive_combination_rewrite(ctx, expr) {
-            return Some(rewrite);
-        }
-    }
-    if let Some(rewrite) = try_build_direct_fraction_telescoping_zero_scope_rewrite(ctx, expr) {
-        return Some(rewrite);
-    }
-
-    if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
-        if let Some(rewrite) =
-            try_build_direct_trig_product_to_sum_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) =
-            try_build_direct_trig_sum_to_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) =
-            try_build_direct_tanh_exp_definition_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) =
-            try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) =
-            try_build_direct_trig_mixed_double_angle_polynomial_equivalence_rewrite(
-                ctx, lhs_core, rhs_core,
-            )
-        {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) =
-            try_build_direct_trig_square_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = try_build_direct_hyperbolic_sinh_cubic_polynomial_equivalence_rewrite(
-            ctx, lhs_core, rhs_core,
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.small_zero_additive_combination",
+            &expr_sample,
+            || try_build_direct_small_zero_additive_combination_rewrite(ctx, expr),
         ) {
             return Some(rewrite);
         }
-        if let Some(rewrite) =
-            try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
+    }
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.fraction_telescoping_zero_scope",
+        &expr_sample,
+        || try_build_direct_fraction_telescoping_zero_scope_rewrite(ctx, expr),
+    ) {
+        return Some(rewrite);
+    }
+
+    if let Some((lhs_core, rhs_core)) = two_term_cores {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_trig_product_to_sum",
+            &expr_sample,
+            || try_build_direct_trig_product_to_sum_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        ) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_trig_sum_to_product",
+            &expr_sample,
+            || try_build_direct_trig_sum_to_product_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        ) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_tanh_exp",
+            &expr_sample,
+            || try_build_direct_tanh_exp_definition_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        ) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_trig_power_reduction",
+            &expr_sample,
+            || try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        ) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_mixed_double_angle_poly",
+            &expr_sample,
+            || {
+                try_build_direct_trig_mixed_double_angle_polynomial_equivalence_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
+        ) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_trig_square",
+            &expr_sample,
+            || try_build_direct_trig_square_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        ) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_sinh_cubic",
+            &expr_sample,
+            || {
+                try_build_direct_hyperbolic_sinh_cubic_polynomial_equivalence_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
+        ) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_safe_hyperbolic",
+            &expr_sample,
+            || try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        ) {
             return Some(rewrite);
         }
     }
 
-    if let Some(rewrite) =
-        try_build_exact_zero_hyperbolic_sinh_cubic_polynomial_zero_scope_rewrite(ctx, expr)
-    {
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.zero_scope_sinh_cubic",
+        &expr_sample,
+        || try_build_exact_zero_hyperbolic_sinh_cubic_polynomial_zero_scope_rewrite(ctx, expr),
+    ) {
         return Some(rewrite);
     }
 
-    if let Some(rewrite) =
-        try_build_fast_recursive_trig_angle_sum_diff_zero_scope_rewrite(ctx, expr)
-    {
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.zero_scope_fast_recursive_trig",
+        &expr_sample,
+        || try_build_fast_recursive_trig_angle_sum_diff_zero_scope_rewrite(ctx, expr),
+    ) {
         return Some(rewrite);
     }
 
-    if let Some(rewrite) =
-        try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr)
-    {
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.sin_sin_three_term_late",
+        &expr_sample,
+        || try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr),
+    ) {
         return Some(rewrite);
     }
 
     if maybe_small_polynomial_expand_zero_candidate(ctx, expr) {
-        if let Some(rewrite) =
-            try_build_fast_small_polynomial_expansion_zero_scope_rewrite(ctx, expr)
-        {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_fast_small_polynomial",
+            &expr_sample,
+            || try_build_fast_small_polynomial_expansion_zero_scope_rewrite(ctx, expr),
+        ) {
             return Some(rewrite);
         }
     }
 
     if maybe_solve_prep_exact_additive_candidate(ctx, expr) {
-        if let Some(rewrite) = try_build_fast_solve_prep_exact_zero_scope_rewrite(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_fast_solve_prep",
+            &expr_sample,
+            || try_build_fast_solve_prep_exact_zero_scope_rewrite(ctx, expr),
+        ) {
             return Some(rewrite);
         }
     }
 
-    let direct_term_count = AddView::from_expr(ctx, expr).terms.len();
-    if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
-        if let Some(rewrite) =
-            try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
-                ctx, lhs_core, rhs_core,
-            )
-        {
+    if let Some((lhs_core, rhs_core)) = two_term_cores {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_phase_shift_quarter_pair",
+            &expr_sample,
+            || {
+                try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
+        ) {
             return Some(rewrite);
         }
-        if direct_term_count == 2
-            && maybe_trig_phase_shift_zero_candidate(ctx, expr)
-            && try_find_trig_phase_shift_cancellation_match(ctx, lhs_core, rhs_core, false)
-                .or_else(|| {
-                    try_find_trig_phase_shift_cancellation_match(ctx, rhs_core, lhs_core, false)
-                })
-                .is_some()
-        {
-            return Some(Rewrite::with_local(
-                zero,
-                "Phase Shift Identity",
-                lhs_core,
-                rhs_core,
-            ));
+        if direct_term_count == 2 && maybe_trig_phase_shift_zero_candidate(ctx, expr) {
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_phase_shift_identity",
+                &expr_sample,
+                || {
+                    try_find_trig_phase_shift_cancellation_match(ctx, lhs_core, rhs_core, false)
+                        .or_else(|| {
+                            try_find_trig_phase_shift_cancellation_match(
+                                ctx, rhs_core, lhs_core, false,
+                            )
+                        })
+                        .map(|_| {
+                            Rewrite::with_local(zero, "Phase Shift Identity", lhs_core, rhs_core)
+                        })
+                },
+            ) {
+                return Some(rewrite);
+            }
         }
-        if let Some(rewrite) =
-            try_build_direct_finite_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_finite_product",
+            &expr_sample,
+            || try_build_direct_finite_product_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        ) {
             return Some(rewrite);
         }
-        if let Some(rewrite) =
-            try_build_direct_cos_product_telescoping_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_cos_product_telescoping_early",
+            &expr_sample,
+            || {
+                try_build_direct_cos_product_telescoping_equivalence_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
+        ) {
             return Some(rewrite);
         }
-        if let Some(rewrite) =
-            try_build_direct_dirichlet_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_dirichlet_early",
+            &expr_sample,
+            || try_build_direct_dirichlet_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        ) {
             return Some(rewrite);
         }
     }
 
-    if let Some(rewrite) = try_build_exact_dirichlet_zero_scope_rewrite(ctx, expr) {
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.zero_scope_dirichlet",
+        &expr_sample,
+        || try_build_exact_dirichlet_zero_scope_rewrite(ctx, expr),
+    ) {
         return Some(rewrite);
     }
 
     if maybe_trig_square_zero_candidate(ctx, expr) {
-        if let Some(rewrite) = try_build_exact_trig_square_zero_scope_rewrite(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_trig_square",
+            &expr_sample,
+            || try_build_exact_trig_square_zero_scope_rewrite(ctx, expr),
+        ) {
             return Some(rewrite);
         }
     }
 
     if maybe_trig_sum_to_product_zero_candidate(ctx, expr) {
-        if let Some(rewrite) = try_build_exact_trig_sum_to_product_zero_scope_rewrite(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_trig_sum_to_product",
+            &expr_sample,
+            || try_build_exact_trig_sum_to_product_zero_scope_rewrite(ctx, expr),
+        ) {
             return Some(rewrite);
         }
     }
 
-    if let Some(rewrite) =
-        try_build_exact_zero_trig_cos_double_angle_polynomial_zero_scope_rewrite(ctx, expr)
-    {
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.zero_scope_cos_double_angle_poly",
+        &expr_sample,
+        || try_build_exact_zero_trig_cos_double_angle_polynomial_zero_scope_rewrite(ctx, expr),
+    ) {
         return Some(rewrite);
     }
 
-    if let Some(rewrite) =
-        try_build_exact_zero_trig_double_angle_cos_variant_zero_scope_rewrite(ctx, expr)
-    {
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.zero_scope_double_angle_cos_variant",
+        &expr_sample,
+        || try_build_exact_zero_trig_double_angle_cos_variant_zero_scope_rewrite(ctx, expr),
+    ) {
         return Some(rewrite);
     }
 
-    if let Some(rewrite) =
-        try_build_exact_zero_trig_mixed_double_angle_polynomial_zero_scope_rewrite(ctx, expr)
-    {
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.zero_scope_mixed_double_angle_poly",
+        &expr_sample,
+        || try_build_exact_zero_trig_mixed_double_angle_polynomial_zero_scope_rewrite(ctx, expr),
+    ) {
         return Some(rewrite);
     }
 
-    if let Some(rewrite) =
-        try_build_exact_zero_hyperbolic_sinh_cubic_polynomial_zero_scope_rewrite(ctx, expr)
-    {
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.zero_scope_sinh_cubic_late",
+        &expr_sample,
+        || try_build_exact_zero_hyperbolic_sinh_cubic_polynomial_zero_scope_rewrite(ctx, expr),
+    ) {
         return Some(rewrite);
     }
 
-    if let Some(rewrite) =
-        try_build_exact_zero_trig_embedded_double_angle_factor_zero_scope_rewrite(ctx, expr)
-    {
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.zero_scope_embedded_double_angle_factor",
+        &expr_sample,
+        || try_build_exact_zero_trig_embedded_double_angle_factor_zero_scope_rewrite(ctx, expr),
+    ) {
         return Some(rewrite);
     }
 
-    if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
+    if let Some((lhs_core, rhs_core)) = two_term_cores {
         if expr_contains_hyperbolic_builtin(ctx, lhs_core)
             || expr_contains_hyperbolic_builtin(ctx, rhs_core)
         {
-            if let Some(rewrite) =
-                try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
-            {
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_hyperbolic_direct_core_equivalence",
+                &expr_sample,
+                || try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
+            ) {
                 return Some(rewrite);
             }
         }
-        if let Some(rewrite) = try_build_direct_trig_cos_diff_sin_diff_quotient_equivalence_rewrite(
-            ctx, lhs_core, rhs_core,
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_cos_diff_sin_diff_quotient",
+            &expr_sample,
+            || {
+                try_build_direct_trig_cos_diff_sin_diff_quotient_equivalence_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
         ) {
             return Some(rewrite);
         }
-        if let Some(rewrite) =
-            try_build_direct_cos_product_telescoping_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) =
-            try_build_direct_dirichlet_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = try_build_direct_trig_double_angle_contraction_equivalence_rewrite(
-            ctx, lhs_core, rhs_core,
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_cos_product_telescoping_late",
+            &expr_sample,
+            || {
+                try_build_direct_cos_product_telescoping_equivalence_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
         ) {
             return Some(rewrite);
         }
-        if let Some(rewrite) = try_build_direct_trig_double_angle_cos_variant_equivalence_rewrite(
-            ctx, lhs_core, rhs_core,
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_dirichlet_late",
+            &expr_sample,
+            || try_build_direct_dirichlet_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
         ) {
             return Some(rewrite);
         }
-        if let Some(rewrite) =
-            try_build_direct_trig_embedded_double_angle_expansion_equivalence_rewrite(
-                ctx, lhs_core, rhs_core,
-            )
-        {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_double_angle_contraction",
+            &expr_sample,
+            || {
+                try_build_direct_trig_double_angle_contraction_equivalence_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
+        ) {
             return Some(rewrite);
         }
-        if let Some(rewrite) =
-            try_build_direct_multi_angle_equivalence_rewrite(ctx, lhs_core, rhs_core)
-        {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_double_angle_cos_variant",
+            &expr_sample,
+            || {
+                try_build_direct_trig_double_angle_cos_variant_equivalence_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
+        ) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_embedded_double_angle_expansion",
+            &expr_sample,
+            || {
+                try_build_direct_trig_embedded_double_angle_expansion_equivalence_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
+        ) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_multi_angle",
+            &expr_sample,
+            || try_build_direct_multi_angle_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        ) {
             return Some(rewrite);
         }
     }
@@ -12277,36 +13366,76 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
             BuiltinFn::Csc,
         ],
     ) {
-        let candidate = try_build_exact_trig_equivalence_zero_scope_rewrite(ctx, expr);
-        if let Some(rewrite) = try_rule(ctx, candidate) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_exact_trig_equivalence",
+            &expr_sample,
+            || {
+                let candidate = try_build_exact_trig_equivalence_zero_scope_rewrite(ctx, expr);
+                try_rule(ctx, candidate)
+            },
+        ) {
             return Some(rewrite);
         }
     }
 
     if maybe_trig_sum_to_product_zero_candidate(ctx, expr) {
-        let candidate =
-            ExpandTrigSumToProductToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
-        if let Some(rewrite) = try_rule(ctx, candidate) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.expand_trig_sum_to_product",
+            &expr_sample,
+            || {
+                let candidate =
+                    ExpandTrigSumToProductToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+                try_rule(ctx, candidate)
+            },
+        ) {
             return Some(rewrite);
         }
     }
 
     if maybe_trig_square_zero_candidate(ctx, expr) {
-        let square_candidate =
-            ExpandTrigSquareIdentityToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
-        if let Some(rewrite) = try_rule(ctx, square_candidate) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.expand_trig_square",
+            &expr_sample,
+            || {
+                let square_candidate =
+                    ExpandTrigSquareIdentityToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+                try_rule(ctx, square_candidate)
+            },
+        ) {
             return Some(rewrite);
         }
-        let triple_angle_candidate =
-            ExpandTrigSineProductTripleAngleToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
-        if let Some(rewrite) = try_rule(ctx, triple_angle_candidate) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.expand_triple_angle",
+            &expr_sample,
+            || {
+                let triple_angle_candidate =
+                    ExpandTrigSineProductTripleAngleToEnableCancellationRule.apply(
+                        ctx,
+                        expr,
+                        &parent_ctx,
+                    );
+                try_rule(ctx, triple_angle_candidate)
+            },
+        ) {
             return Some(rewrite);
         }
     }
 
     if maybe_trig_phase_shift_zero_candidate(ctx, expr) {
-        let candidate = ExpandTrigPhaseShiftToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
-        if let Some(rewrite) = try_rule(ctx, candidate) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.expand_trig_phase_shift",
+            &expr_sample,
+            || {
+                let candidate =
+                    ExpandTrigPhaseShiftToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+                try_rule(ctx, candidate)
+            },
+        ) {
             return Some(rewrite);
         }
     }
@@ -12316,47 +13445,100 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         expr,
         &[BuiltinFn::Sinh, BuiltinFn::Cosh, BuiltinFn::Tanh],
     ) {
-        if let Some(rewrite) = try_build_fast_hyperbolic_zero_scope_rewrite(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_fast_hyperbolic",
+            &expr_sample,
+            || try_build_fast_hyperbolic_zero_scope_rewrite(ctx, expr),
+        ) {
             return Some(rewrite);
         }
-        let candidate = try_build_exact_hyperbolic_equivalence_zero_scope_rewrite(ctx, expr);
-        if let Some(rewrite) = try_rule(ctx, candidate) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_exact_hyperbolic_equivalence",
+            &expr_sample,
+            || {
+                let candidate =
+                    try_build_exact_hyperbolic_equivalence_zero_scope_rewrite(ctx, expr);
+                try_rule(ctx, candidate)
+            },
+        ) {
             return Some(rewrite);
         }
     }
 
     if maybe_hyperbolic_angle_sum_diff_zero_candidate(ctx, expr) {
-        let candidate =
-            ExpandHyperbolicAngleSumDiffToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
-        if let Some(rewrite) = try_rule(ctx, candidate) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.expand_hyperbolic_angle_sum_diff",
+            &expr_sample,
+            || {
+                let candidate = ExpandHyperbolicAngleSumDiffToEnableCancellationRule.apply(
+                    ctx,
+                    expr,
+                    &parent_ctx,
+                );
+                try_rule(ctx, candidate)
+            },
+        ) {
             return Some(rewrite);
         }
     }
 
     if maybe_hyperbolic_pythagorean_factor_zero_candidate(ctx, expr) {
-        let candidate =
-            ExpandHyperbolicPythagoreanFactorToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
-        if let Some(rewrite) = try_rule(ctx, candidate) {
+        if let Some(rewrite) =
+            run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.expand_hyperbolic_pythagorean_factor",
+                &expr_sample,
+                || {
+                    let candidate = ExpandHyperbolicPythagoreanFactorToEnableCancellationRule
+                        .apply(ctx, expr, &parent_ctx);
+                    try_rule(ctx, candidate)
+                },
+            )
+        {
             return Some(rewrite);
         }
     }
 
     if maybe_solve_prep_exact_additive_candidate(ctx, expr) {
-        let candidate = try_build_exact_solve_prep_zero_scope_rewrite(ctx, expr);
-        if let Some(rewrite) = try_rule(ctx, candidate) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_exact_solve_prep",
+            &expr_sample,
+            || {
+                let candidate = try_build_exact_solve_prep_zero_scope_rewrite(ctx, expr);
+                try_rule(ctx, candidate)
+            },
+        ) {
             return Some(rewrite);
         }
     }
 
-    let log_power_candidate =
-        ExpandLogProductPowerToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
-    if let Some(rewrite) = try_rule(ctx, log_power_candidate) {
+    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.expand_log_product_power",
+        &expr_sample,
+        || {
+            let log_power_candidate =
+                ExpandLogProductPowerToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+            try_rule(ctx, log_power_candidate)
+        },
+    ) {
         return Some(rewrite);
     }
 
-    let log_abs_candidate =
-        ExpandLogAbsMulDivToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
-    try_rule(ctx, log_abs_candidate)
+    run_profiled_exact_zero_direct_identity_probe(
+        profiling,
+        "rule.direct_identity.try.expand_log_abs_mul_div",
+        &expr_sample,
+        || {
+            let log_abs_candidate =
+                ExpandLogAbsMulDivToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+            try_rule(ctx, log_abs_candidate)
+        },
+    )
 }
 
 fn try_build_exact_zero_identity_rewrite(
@@ -13806,7 +14988,7 @@ fn try_build_direct_trig_reciprocal_equivalence_rewrite(
     None
 }
 
-fn try_build_direct_trig_double_angle_cos_variant_equivalence_rewrite(
+pub(crate) fn try_build_direct_trig_double_angle_cos_variant_equivalence_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
     rhs_core: cas_ast::ExprId,
@@ -14259,6 +15441,109 @@ fn try_rewrite_single_symbolic_scale_sum_for_cancellation(
 
     let distributed_expr = build_signed_sum_expr(ctx, &distributed_terms);
     (compare_expr(ctx, distributed_expr, expr) != Ordering::Equal).then_some(distributed_expr)
+}
+
+fn collect_distributed_single_symbolic_scale_sum_terms_for_fast_match(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Vec<(cas_ast::ExprId, Sign)>> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    let (scale_expr, sum_expr) =
+        if is_simple_symbolic_scale_factor_for_cancellation(ctx, factors[0])
+            && matches!(ctx.get(factors[1]), Expr::Add(_, _) | Expr::Sub(_, _))
+        {
+            (factors[0], factors[1])
+        } else if is_simple_symbolic_scale_factor_for_cancellation(ctx, factors[1])
+            && matches!(ctx.get(factors[0]), Expr::Add(_, _) | Expr::Sub(_, _))
+        {
+            (factors[1], factors[0])
+        } else {
+            return None;
+        };
+
+    let sum_terms = AddView::from_expr(ctx, sum_expr).terms;
+    if !(2..=4).contains(&sum_terms.len()) {
+        return None;
+    }
+
+    Some(
+        sum_terms
+            .into_iter()
+            .map(|(term_expr, term_sign)| {
+                let distributed_term =
+                    distribute_symbolic_scale_sum_term_for_cancellation(ctx, scale_expr, term_expr);
+                let (normalized_expr, normalized_sign) =
+                    normalize_signed_add_term_for_fast_match(ctx, distributed_term, Sign::Pos);
+                let combined_sign = match term_sign {
+                    Sign::Pos => normalized_sign,
+                    Sign::Neg => normalized_sign.negate(),
+                };
+                (normalized_expr, combined_sign)
+            })
+            .collect(),
+    )
+}
+
+fn grouped_symbolic_scale_sum_matches_target_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    grouped_expr: cas_ast::ExprId,
+    target_expr: cas_ast::ExprId,
+) -> bool {
+    let grouped_terms = AddView::from_expr(ctx, grouped_expr).terms;
+    if !(2..=4).contains(&grouped_terms.len()) {
+        return false;
+    }
+
+    let mut distributed_terms = Vec::new();
+    for (term_expr, term_sign) in grouped_terms {
+        let Some(rewritten_terms) =
+            collect_distributed_single_symbolic_scale_sum_terms_for_fast_match(ctx, term_expr)
+        else {
+            return false;
+        };
+        distributed_terms.extend(rewritten_terms.into_iter().map(|(expr, sign)| {
+            let combined_sign = match term_sign {
+                Sign::Pos => sign,
+                Sign::Neg => sign.negate(),
+            };
+            (expr, combined_sign)
+        }));
+    }
+
+    let target_terms: Vec<_> = AddView::from_expr(ctx, target_expr)
+        .terms
+        .into_iter()
+        .map(|(term_expr, term_sign)| {
+            normalize_signed_add_term_for_fast_match(ctx, term_expr, term_sign)
+        })
+        .collect();
+    if distributed_terms.len() != target_terms.len() {
+        return false;
+    }
+
+    let mut used_target = vec![false; target_terms.len()];
+    for (distributed_expr, distributed_sign) in distributed_terms {
+        let Some(target_index) =
+            target_terms
+                .iter()
+                .enumerate()
+                .find_map(|(index, (target_expr, target_sign))| {
+                    (!used_target[index]
+                        && distributed_sign == *target_sign
+                        && exprs_match_for_cancellation_leaf(ctx, distributed_expr, *target_expr))
+                    .then_some(index)
+                })
+        else {
+            return false;
+        };
+        used_target[target_index] = true;
+    }
+
+    true
 }
 
 fn try_rewrite_simple_symbolic_scale_sum_for_cancellation(
@@ -16422,6 +17707,18 @@ fn try_build_direct_core_equivalence_rewrite(
         }
     }
 
+    if classify_symbolic_scale_sum_profile_detail(ctx, lhs_core) == "grouped_multi_scale"
+        && grouped_symbolic_scale_sum_matches_target_for_cancellation(ctx, lhs_core, rhs_core)
+    {
+        profile_route("rule.direct_core_equivalence.route.symbolic_scale_sum_lhs");
+        return Some(Rewrite::with_local(
+            ctx.num(0),
+            "Equivalent Residual Cancellation",
+            lhs_core,
+            rhs_core,
+        ));
+    }
+
     if let Some(rewritten) = try_rewrite_simple_symbolic_scale_sum_for_cancellation(ctx, lhs_core) {
         if exprs_match_for_cancellation(ctx, rewritten, rhs_core) {
             profile_route("rule.direct_core_equivalence.route.symbolic_scale_sum_lhs");
@@ -16432,6 +17729,18 @@ fn try_build_direct_core_equivalence_rewrite(
                 rhs_core,
             ));
         }
+    }
+
+    if classify_symbolic_scale_sum_profile_detail(ctx, rhs_core) == "grouped_multi_scale"
+        && grouped_symbolic_scale_sum_matches_target_for_cancellation(ctx, rhs_core, lhs_core)
+    {
+        profile_route("rule.direct_core_equivalence.route.symbolic_scale_sum_rhs");
+        return Some(Rewrite::with_local(
+            ctx.num(0),
+            "Equivalent Residual Cancellation",
+            lhs_core,
+            rhs_core,
+        ));
     }
 
     if let Some(rewritten) = try_rewrite_simple_symbolic_scale_sum_for_cancellation(ctx, rhs_core) {
@@ -16456,6 +17765,20 @@ fn try_build_direct_core_equivalence_rewrite(
     if let Some(rewrite) = try_build_direct_trig_ratio_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
         profile_route("rule.direct_core_equivalence.route.trig_ratio");
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_build_direct_log_expansion_equivalence_rewrite(ctx, lhs_core, rhs_core)
+    {
+        profile_route("rule.direct_core_equivalence.route.log_expansion");
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_build_direct_log_chain_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
+    {
+        profile_route("rule.direct_core_equivalence.route.log_chain_product");
         return Some(rewrite);
     }
 
@@ -16887,6 +18210,8 @@ enum DirectCoreEquivalenceProfileFamily {
     DirectMatch,
     SymbolicScaleSumLhs,
     SymbolicScaleSumRhs,
+    LogExpansion,
+    LogChainProduct,
     TrigReciprocal,
     CosDiffSinDiffQuotient,
     SumDiffCubesQuotient,
@@ -16917,6 +18242,13 @@ fn classify_direct_core_equivalence_profile_family(
         .unwrap_or(false)
     {
         DirectCoreEquivalenceProfileFamily::SymbolicScaleSumRhs
+    } else if try_build_direct_log_chain_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
+        .is_some()
+    {
+        DirectCoreEquivalenceProfileFamily::LogChainProduct
+    } else if try_build_direct_log_expansion_equivalence_rewrite(ctx, lhs_core, rhs_core).is_some()
+    {
+        DirectCoreEquivalenceProfileFamily::LogExpansion
     } else if try_build_direct_trig_reciprocal_equivalence_rewrite(ctx, lhs_core, rhs_core)
         .is_some()
     {
@@ -16979,6 +18311,12 @@ pub(crate) fn classify_exact_zero_common_scale_residual_direct_profile_label(
         }
         DirectCoreEquivalenceProfileFamily::SymbolicScaleSumRhs => {
             "rule.direct_core_equivalence.family.symbolic_scale_sum_rhs"
+        }
+        DirectCoreEquivalenceProfileFamily::LogExpansion => {
+            "rule.direct_core_equivalence.family.log_expansion"
+        }
+        DirectCoreEquivalenceProfileFamily::LogChainProduct => {
+            "rule.direct_core_equivalence.family.log_chain_product"
         }
         DirectCoreEquivalenceProfileFamily::TrigReciprocal => {
             "rule.direct_core_equivalence.family.trig_reciprocal"
@@ -17360,6 +18698,152 @@ fn expr_contains_hyperbolic_builtin_for_profile(
 
 fn expr_contains_log_builtin_for_profile(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
     expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Ln, BuiltinFn::Log])
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LogProfileKind {
+    Ln,
+    GeneralBase,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LogArgProfileShape {
+    Atom,
+    AddSub,
+    Mul,
+    Div,
+    Pow,
+    Abs,
+    Function,
+    Other,
+}
+
+#[derive(Clone, Copy)]
+struct LogProfileMember {
+    negated: bool,
+    kind: LogProfileKind,
+    arg_shape: LogArgProfileShape,
+}
+
+fn classify_log_arg_profile_shape(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> LogArgProfileShape {
+    match ctx.get(expr) {
+        Expr::Variable(_) | Expr::SessionRef(_) | Expr::Number(_) | Expr::Constant(_) => {
+            LogArgProfileShape::Atom
+        }
+        Expr::Neg(inner) => classify_log_arg_profile_shape(ctx, *inner),
+        Expr::Add(_, _) | Expr::Sub(_, _) => LogArgProfileShape::AddSub,
+        Expr::Mul(_, _) => LogArgProfileShape::Mul,
+        Expr::Div(_, _) => LogArgProfileShape::Div,
+        Expr::Pow(_, _) => LogArgProfileShape::Pow,
+        Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Abs) => {
+            LogArgProfileShape::Abs
+        }
+        Expr::Function(_, _) => LogArgProfileShape::Function,
+        _ => LogArgProfileShape::Other,
+    }
+}
+
+fn extract_log_profile_member(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<LogProfileMember> {
+    let (negated, inner) = match ctx.get(expr) {
+        Expr::Neg(inner) => (true, *inner),
+        _ => (false, expr),
+    };
+    let (_base, arg) = try_extract_log_parts(ctx, inner)?;
+    let kind = match ctx.get(inner) {
+        Expr::Function(fn_id, args) if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Ln) => {
+            LogProfileKind::Ln
+        }
+        _ => LogProfileKind::GeneralBase,
+    };
+    Some(LogProfileMember {
+        negated,
+        kind,
+        arg_shape: classify_log_arg_profile_shape(ctx, arg),
+    })
+}
+
+fn classify_nonhyperbolic_log_pair_profile_label(
+    ctx: &cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> &'static str {
+    let lhs = extract_log_profile_member(ctx, lhs_core);
+    let rhs = extract_log_profile_member(ctx, rhs_core);
+    let Some(lhs) = lhs else {
+        return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.other";
+    };
+    let Some(rhs) = rhs else {
+        return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.other";
+    };
+
+    let pair_arg_shape = |a: LogArgProfileShape, b: LogArgProfileShape| match (a, b) {
+        (LogArgProfileShape::Atom, LogArgProfileShape::Div)
+        | (LogArgProfileShape::Div, LogArgProfileShape::Atom) => "atomic_div",
+        (LogArgProfileShape::Atom, LogArgProfileShape::Pow)
+        | (LogArgProfileShape::Pow, LogArgProfileShape::Atom) => "atomic_pow",
+        (LogArgProfileShape::Pow, LogArgProfileShape::Pow) => "pow_pair",
+        (LogArgProfileShape::Mul, LogArgProfileShape::Pow)
+        | (LogArgProfileShape::Pow, LogArgProfileShape::Mul) => "mul_pow",
+        (LogArgProfileShape::Mul, LogArgProfileShape::Mul) => "mul_pair",
+        (LogArgProfileShape::Div, LogArgProfileShape::Div) => "div_pair",
+        (LogArgProfileShape::Abs, LogArgProfileShape::Abs) => "abs_pair",
+        (LogArgProfileShape::AddSub, LogArgProfileShape::AddSub) => "addsub_pair",
+        _ => "other",
+    };
+
+    match (lhs.negated, rhs.negated, lhs.kind, rhs.kind) {
+        (false, true, LogProfileKind::Ln, LogProfileKind::Ln)
+        | (true, false, LogProfileKind::Ln, LogProfileKind::Ln) => match pair_arg_shape(
+            lhs.arg_shape,
+            rhs.arg_shape,
+        ) {
+            "atomic_div" => {
+                "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.negated_ln.atomic_div"
+            }
+            "atomic_pow" => {
+                "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.negated_ln.atomic_pow"
+            }
+            "pow_pair" => {
+                "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.negated_ln.pow_pair"
+            }
+            _ => {
+                "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.negated_ln.other"
+            }
+        },
+        (false, true, LogProfileKind::GeneralBase, LogProfileKind::GeneralBase)
+        | (true, false, LogProfileKind::GeneralBase, LogProfileKind::GeneralBase) => {
+            match pair_arg_shape(lhs.arg_shape, rhs.arg_shape) {
+                "atomic_div" => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.negated_general_base.atomic_div"
+                }
+                "atomic_pow" => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.negated_general_base.atomic_pow"
+                }
+                "pow_pair" => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.negated_general_base.pow_pair"
+                }
+                _ => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.negated_general_base.other"
+                }
+            }
+        }
+        (false, false, LogProfileKind::Ln, LogProfileKind::Ln) => {
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.ln_pair"
+        }
+        (false, false, LogProfileKind::GeneralBase, LogProfileKind::GeneralBase) => {
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.general_base_pair"
+        }
+        (true, true, _, _) => {
+            "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.negated_pair"
+        }
+        _ => "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair.mixed_base_or_shape",
+    }
 }
 
 fn expr_contains_named_function_for_profile(
@@ -18049,7 +19533,7 @@ fn default_simplify_other_profile_label(
             return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_vs_nonlog";
         }
 
-        return "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.log_pair";
+        return classify_nonhyperbolic_log_pair_profile_label(ctx, lhs_core, rhs_core);
     }
 
     if matches_signed_double_angle_contraction_profile_pair(ctx, lhs_core, rhs_core) {
@@ -19055,6 +20539,12 @@ fn profile_same_denominator_tail_direct_core_equivalence_family(
         DirectCoreEquivalenceProfileFamily::SymbolicScaleSumRhs => {
             "rule.same_denominator_zero.tail_direct_core.family.symbolic_scale_sum_rhs"
         }
+        DirectCoreEquivalenceProfileFamily::LogExpansion => {
+            "rule.same_denominator_zero.tail_direct_core.family.log_expansion"
+        }
+        DirectCoreEquivalenceProfileFamily::LogChainProduct => {
+            "rule.same_denominator_zero.tail_direct_core.family.log_chain_product"
+        }
         DirectCoreEquivalenceProfileFamily::TrigReciprocal => {
             "rule.same_denominator_zero.tail_direct_core.family.trig_reciprocal"
         }
@@ -19157,6 +20647,12 @@ fn profile_shifted_quotient_exact_one_direct_core_equivalence_family(
                 _ => "rule.shifted_quotient.exact_one.direct_core.family.symbolic_scale_sum_rhs.other",
             }
         }
+        DirectCoreEquivalenceProfileFamily::LogExpansion => {
+            "rule.shifted_quotient.exact_one.direct_core.family.log_expansion"
+        }
+        DirectCoreEquivalenceProfileFamily::LogChainProduct => {
+            "rule.shifted_quotient.exact_one.direct_core.family.log_chain_product"
+        }
         DirectCoreEquivalenceProfileFamily::TrigReciprocal => {
             "rule.shifted_quotient.exact_one.direct_core.family.trig_reciprocal"
         }
@@ -19223,6 +20719,10 @@ fn profile_shifted_quotient_exact_one_rule_apply_pair_family(
         DirectCoreEquivalenceProfileFamily::SymbolicScaleSumRhs => {
             "sq1.rule_apply.family.symbolic_scale_sum_rhs"
         }
+        DirectCoreEquivalenceProfileFamily::LogExpansion => "sq1.rule_apply.family.log_expansion",
+        DirectCoreEquivalenceProfileFamily::LogChainProduct => {
+            "sq1.rule_apply.family.log_chain_product"
+        }
         DirectCoreEquivalenceProfileFamily::TrigReciprocal => {
             "sq1.rule_apply.family.trig_reciprocal"
         }
@@ -19252,7 +20752,636 @@ fn profile_shifted_quotient_exact_one_rule_apply_pair_family(
         DirectCoreEquivalenceProfileFamily::Other => "sq1.rule_apply.family.other",
     };
 
-    let _ = run_profiled_orchestrator_option_section(label, sample, || Some(()));
+    let _ = run_profiled_orchestrator_option_section(label, sample.clone(), || Some(()));
+    match family {
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumLhs => {
+            let detail_label = match classify_symbolic_scale_sum_profile_detail(ctx, lhs_core) {
+                "linear_reciprocal_tail" => {
+                    "sq1.rule_apply.family.symbolic_scale_sum_lhs.linear_reciprocal_tail"
+                }
+                "power_reciprocal_tail" => {
+                    "sq1.rule_apply.family.symbolic_scale_sum_lhs.power_reciprocal_tail"
+                }
+                "single_scale_plain" => {
+                    "sq1.rule_apply.family.symbolic_scale_sum_lhs.single_scale_plain"
+                }
+                "single_scale_other" => {
+                    "sq1.rule_apply.family.symbolic_scale_sum_lhs.single_scale_other"
+                }
+                "grouped_multi_scale" => {
+                    "sq1.rule_apply.family.symbolic_scale_sum_lhs.grouped_multi_scale"
+                }
+                _ => "sq1.rule_apply.family.symbolic_scale_sum_lhs.other",
+            };
+            let _ =
+                run_profiled_orchestrator_option_section(detail_label, sample.clone(), || Some(()));
+        }
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumRhs => {
+            let detail_label = match classify_symbolic_scale_sum_profile_detail(ctx, rhs_core) {
+                "linear_reciprocal_tail" => {
+                    "sq1.rule_apply.family.symbolic_scale_sum_rhs.linear_reciprocal_tail"
+                }
+                "power_reciprocal_tail" => {
+                    "sq1.rule_apply.family.symbolic_scale_sum_rhs.power_reciprocal_tail"
+                }
+                "single_scale_plain" => {
+                    "sq1.rule_apply.family.symbolic_scale_sum_rhs.single_scale_plain"
+                }
+                "single_scale_other" => {
+                    "sq1.rule_apply.family.symbolic_scale_sum_rhs.single_scale_other"
+                }
+                "grouped_multi_scale" => {
+                    "sq1.rule_apply.family.symbolic_scale_sum_rhs.grouped_multi_scale"
+                }
+                _ => "sq1.rule_apply.family.symbolic_scale_sum_rhs.other",
+            };
+            let _ =
+                run_profiled_orchestrator_option_section(detail_label, sample.clone(), || Some(()));
+        }
+        DirectCoreEquivalenceProfileFamily::DefaultSimplify => {
+            let scoped_label = scoped_direct_core_default_simplify_profile_label(
+                DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+                ctx,
+                lhs_core,
+                rhs_core,
+            );
+            let detail_label = if scoped_label
+                .starts_with(
+                    "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.quotient_cancel.",
+                )
+            {
+                "sq1.rule_apply.family.default_simplify.detail.quotient_cancel"
+            } else if scoped_label.starts_with(
+                "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.log",
+            ) {
+                "sq1.rule_apply.family.default_simplify.detail.log"
+            } else if scoped_label == "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.inverse_trig" {
+                "sq1.rule_apply.family.default_simplify.detail.inverse_trig"
+            } else if scoped_label == "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.abs_sqrt" {
+                "sq1.rule_apply.family.default_simplify.detail.abs_sqrt"
+            } else if scoped_label.starts_with(
+                "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.trig_ratio.",
+            ) {
+                "sq1.rule_apply.family.default_simplify.detail.trig_ratio"
+            } else if scoped_label
+                .contains(".hyperbolic")
+                || scoped_label
+                    == "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.tanh_cosh"
+                || scoped_label
+                    == "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.exp_hyperbolic"
+            {
+                "sq1.rule_apply.family.default_simplify.detail.hyperbolic"
+            } else if scoped_label.starts_with(
+                "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.",
+            ) {
+                "sq1.rule_apply.family.default_simplify.detail.other_non_hyperbolic"
+            } else {
+                "sq1.rule_apply.family.default_simplify.detail.other"
+            };
+            let _ =
+                run_profiled_orchestrator_option_section(detail_label, sample.clone(), || Some(()));
+        }
+        _ => {}
+    }
+}
+
+fn profile_shifted_quotient_exact_one_route_pair_family(
+    route_prefix: &'static str,
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+    sample: Option<String>,
+) {
+    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        return;
+    }
+
+    let family = classify_direct_core_equivalence_profile_family(ctx, lhs_core, rhs_core);
+    let label = match family {
+        DirectCoreEquivalenceProfileFamily::DirectMatch => {
+            "rule.shifted_quotient.exact_one.route.family.direct_match"
+        }
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumLhs => {
+            match classify_symbolic_scale_sum_profile_detail(ctx, lhs_core) {
+                "linear_reciprocal_tail" => {
+                    "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.linear_reciprocal_tail"
+                }
+                "power_reciprocal_tail" => {
+                    "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.power_reciprocal_tail"
+                }
+                "single_scale_plain" => {
+                    "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.single_scale_plain"
+                }
+                "single_scale_other" => {
+                    "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.single_scale_other"
+                }
+                "grouped_multi_scale" => {
+                    "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.grouped_multi_scale"
+                }
+                _ => "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.other",
+            }
+        }
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumRhs => {
+            match classify_symbolic_scale_sum_profile_detail(ctx, rhs_core) {
+                "linear_reciprocal_tail" => {
+                    "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.linear_reciprocal_tail"
+                }
+                "power_reciprocal_tail" => {
+                    "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.power_reciprocal_tail"
+                }
+                "single_scale_plain" => {
+                    "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.single_scale_plain"
+                }
+                "single_scale_other" => {
+                    "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.single_scale_other"
+                }
+                "grouped_multi_scale" => {
+                    "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.grouped_multi_scale"
+                }
+                _ => "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.other",
+            }
+        }
+        DirectCoreEquivalenceProfileFamily::LogExpansion => {
+            "rule.shifted_quotient.exact_one.route.family.log_expansion"
+        }
+        DirectCoreEquivalenceProfileFamily::LogChainProduct => {
+            "rule.shifted_quotient.exact_one.route.family.log_chain_product"
+        }
+        DirectCoreEquivalenceProfileFamily::DefaultSimplify => {
+            let scoped_label = scoped_direct_core_default_simplify_profile_label(
+                DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+                ctx,
+                lhs_core,
+                rhs_core,
+            );
+            if scoped_label.starts_with(
+                "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.quotient_cancel.",
+            ) {
+                "rule.shifted_quotient.exact_one.route.family.default_simplify.quotient_cancel"
+            } else if scoped_label.starts_with(
+                "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.other.non_hyperbolic.log",
+            ) {
+                "rule.shifted_quotient.exact_one.route.family.default_simplify.log"
+            } else if scoped_label
+                == "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.abs_sqrt"
+            {
+                "rule.shifted_quotient.exact_one.route.family.default_simplify.abs_sqrt"
+            } else if scoped_label
+                == "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.inverse_trig"
+            {
+                "rule.shifted_quotient.exact_one.route.family.default_simplify.inverse_trig"
+            } else if scoped_label.contains(".hyperbolic")
+                || scoped_label
+                    == "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.tanh_cosh"
+                || scoped_label
+                    == "rule.shifted_quotient.exact_one.direct_core.default_simplify.family.exp_hyperbolic"
+            {
+                "rule.shifted_quotient.exact_one.route.family.default_simplify.hyperbolic"
+            } else {
+                "rule.shifted_quotient.exact_one.route.family.default_simplify.other"
+            }
+        }
+        DirectCoreEquivalenceProfileFamily::TrigReciprocal => {
+            "rule.shifted_quotient.exact_one.route.family.trig_reciprocal"
+        }
+        DirectCoreEquivalenceProfileFamily::CosDiffSinDiffQuotient => {
+            "rule.shifted_quotient.exact_one.route.family.cos_diff_sin_diff_quotient"
+        }
+        DirectCoreEquivalenceProfileFamily::SumDiffCubesQuotient => {
+            "rule.shifted_quotient.exact_one.route.family.sum_diff_cubes_quotient"
+        }
+        DirectCoreEquivalenceProfileFamily::PhaseShiftIdentity => {
+            "rule.shifted_quotient.exact_one.route.family.phase_shift_identity"
+        }
+        DirectCoreEquivalenceProfileFamily::CosProductTelescoping => {
+            "rule.shifted_quotient.exact_one.route.family.cos_product_telescoping"
+        }
+        DirectCoreEquivalenceProfileFamily::FiniteSum => {
+            "rule.shifted_quotient.exact_one.route.family.finite_sum"
+        }
+        DirectCoreEquivalenceProfileFamily::FiniteProduct => {
+            "rule.shifted_quotient.exact_one.route.family.finite_product"
+        }
+        DirectCoreEquivalenceProfileFamily::TrigPowerReduction => {
+            "rule.shifted_quotient.exact_one.route.family.trig_power_reduction"
+        }
+        DirectCoreEquivalenceProfileFamily::DoubleAngleContraction => {
+            "rule.shifted_quotient.exact_one.route.family.double_angle_contraction"
+        }
+        DirectCoreEquivalenceProfileFamily::Other => {
+            "rule.shifted_quotient.exact_one.route.family.other"
+        }
+    };
+
+    let full_label = match route_prefix {
+        "shared_passthrough_residual" => match label {
+            "rule.shifted_quotient.exact_one.route.family.direct_match" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.direct_match"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.linear_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_lhs.linear_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.power_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_lhs.power_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.single_scale_plain" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_lhs.single_scale_plain"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.single_scale_other" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_lhs.single_scale_other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.grouped_multi_scale" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_lhs.grouped_multi_scale"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.other" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_lhs.other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.linear_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_rhs.linear_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.power_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_rhs.power_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.single_scale_plain" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_rhs.single_scale_plain"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.single_scale_other" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_rhs.single_scale_other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.grouped_multi_scale" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_rhs.grouped_multi_scale"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.other" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.symbolic_scale_sum_rhs.other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.log_expansion" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.log_expansion"
+            }
+            "rule.shifted_quotient.exact_one.route.family.log_chain_product" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.log_chain_product"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.quotient_cancel" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.default_simplify.quotient_cancel"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.log" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.default_simplify.log"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.abs_sqrt" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.default_simplify.abs_sqrt"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.inverse_trig" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.default_simplify.inverse_trig"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.hyperbolic" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.default_simplify.hyperbolic"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.other" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.default_simplify.other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.trig_reciprocal" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.trig_reciprocal"
+            }
+            "rule.shifted_quotient.exact_one.route.family.cos_diff_sin_diff_quotient" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.cos_diff_sin_diff_quotient"
+            }
+            "rule.shifted_quotient.exact_one.route.family.sum_diff_cubes_quotient" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.sum_diff_cubes_quotient"
+            }
+            "rule.shifted_quotient.exact_one.route.family.phase_shift_identity" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.phase_shift_identity"
+            }
+            "rule.shifted_quotient.exact_one.route.family.cos_product_telescoping" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.cos_product_telescoping"
+            }
+            "rule.shifted_quotient.exact_one.route.family.finite_sum" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.finite_sum"
+            }
+            "rule.shifted_quotient.exact_one.route.family.finite_product" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.finite_product"
+            }
+            "rule.shifted_quotient.exact_one.route.family.trig_power_reduction" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.trig_power_reduction"
+            }
+            "rule.shifted_quotient.exact_one.route.family.double_angle_contraction" => {
+                "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.double_angle_contraction"
+            }
+            _ => "rule.shifted_quotient.exact_one.route.shared_passthrough_residual.family.other",
+        },
+        "exact_zero_direct_residual" => match label {
+            "rule.shifted_quotient.exact_one.route.family.direct_match" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.direct_match"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.linear_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_lhs.linear_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.power_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_lhs.power_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.single_scale_plain" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_lhs.single_scale_plain"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.single_scale_other" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_lhs.single_scale_other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.grouped_multi_scale" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_lhs.grouped_multi_scale"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.other" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_lhs.other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.linear_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_rhs.linear_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.power_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_rhs.power_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.single_scale_plain" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_rhs.single_scale_plain"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.single_scale_other" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_rhs.single_scale_other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.grouped_multi_scale" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_rhs.grouped_multi_scale"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.other" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.symbolic_scale_sum_rhs.other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.log_expansion" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.log_expansion"
+            }
+            "rule.shifted_quotient.exact_one.route.family.log_chain_product" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.log_chain_product"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.quotient_cancel" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.default_simplify.quotient_cancel"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.log" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.default_simplify.log"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.abs_sqrt" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.default_simplify.abs_sqrt"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.inverse_trig" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.default_simplify.inverse_trig"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.hyperbolic" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.default_simplify.hyperbolic"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.other" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.default_simplify.other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.trig_reciprocal" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.trig_reciprocal"
+            }
+            "rule.shifted_quotient.exact_one.route.family.cos_diff_sin_diff_quotient" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.cos_diff_sin_diff_quotient"
+            }
+            "rule.shifted_quotient.exact_one.route.family.sum_diff_cubes_quotient" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.sum_diff_cubes_quotient"
+            }
+            "rule.shifted_quotient.exact_one.route.family.phase_shift_identity" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.phase_shift_identity"
+            }
+            "rule.shifted_quotient.exact_one.route.family.cos_product_telescoping" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.cos_product_telescoping"
+            }
+            "rule.shifted_quotient.exact_one.route.family.finite_sum" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.finite_sum"
+            }
+            "rule.shifted_quotient.exact_one.route.family.finite_product" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.finite_product"
+            }
+            "rule.shifted_quotient.exact_one.route.family.trig_power_reduction" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.trig_power_reduction"
+            }
+            "rule.shifted_quotient.exact_one.route.family.double_angle_contraction" => {
+                "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.double_angle_contraction"
+            }
+            _ => "rule.shifted_quotient.exact_one.route.exact_zero_direct_residual.family.other",
+        },
+        "direct_core_equivalence" => match label {
+            "rule.shifted_quotient.exact_one.route.family.direct_match" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.direct_match"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.linear_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_lhs.linear_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.power_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_lhs.power_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.single_scale_plain" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_lhs.single_scale_plain"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.single_scale_other" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_lhs.single_scale_other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.grouped_multi_scale" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_lhs.grouped_multi_scale"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_lhs.other" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_lhs.other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.linear_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_rhs.linear_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.power_reciprocal_tail" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_rhs.power_reciprocal_tail"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.single_scale_plain" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_rhs.single_scale_plain"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.single_scale_other" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_rhs.single_scale_other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.grouped_multi_scale" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_rhs.grouped_multi_scale"
+            }
+            "rule.shifted_quotient.exact_one.route.family.symbolic_scale_sum_rhs.other" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.symbolic_scale_sum_rhs.other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.log_expansion" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.log_expansion"
+            }
+            "rule.shifted_quotient.exact_one.route.family.log_chain_product" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.log_chain_product"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.quotient_cancel" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.default_simplify.quotient_cancel"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.log" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.default_simplify.log"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.abs_sqrt" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.default_simplify.abs_sqrt"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.inverse_trig" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.default_simplify.inverse_trig"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.hyperbolic" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.default_simplify.hyperbolic"
+            }
+            "rule.shifted_quotient.exact_one.route.family.default_simplify.other" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.default_simplify.other"
+            }
+            "rule.shifted_quotient.exact_one.route.family.trig_reciprocal" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.trig_reciprocal"
+            }
+            "rule.shifted_quotient.exact_one.route.family.cos_diff_sin_diff_quotient" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.cos_diff_sin_diff_quotient"
+            }
+            "rule.shifted_quotient.exact_one.route.family.sum_diff_cubes_quotient" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.sum_diff_cubes_quotient"
+            }
+            "rule.shifted_quotient.exact_one.route.family.phase_shift_identity" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.phase_shift_identity"
+            }
+            "rule.shifted_quotient.exact_one.route.family.cos_product_telescoping" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.cos_product_telescoping"
+            }
+            "rule.shifted_quotient.exact_one.route.family.finite_sum" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.finite_sum"
+            }
+            "rule.shifted_quotient.exact_one.route.family.finite_product" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.finite_product"
+            }
+            "rule.shifted_quotient.exact_one.route.family.trig_power_reduction" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.trig_power_reduction"
+            }
+            "rule.shifted_quotient.exact_one.route.family.double_angle_contraction" => {
+                "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.double_angle_contraction"
+            }
+            _ => "rule.shifted_quotient.exact_one.route.direct_core_equivalence.family.other",
+        },
+        _ => return,
+    };
+
+    let _ = run_profiled_orchestrator_option_section(full_label, sample.clone(), || Some(()));
+    if matches!(family, DirectCoreEquivalenceProfileFamily::DefaultSimplify) {
+        let scoped_label = scoped_direct_core_default_simplify_profile_label(
+            DirectCoreDefaultSimplifyProfileScope::ShiftedQuotientExactOne,
+            ctx,
+            lhs_core,
+            rhs_core,
+        );
+        let _ = run_profiled_orchestrator_option_section(scoped_label, sample, || Some(()));
+    }
+}
+
+fn profile_shared_passthrough_tail_direct_core_family(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+    sample: Option<String>,
+) {
+    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        return;
+    }
+
+    let family = classify_direct_core_equivalence_profile_family(ctx, lhs_core, rhs_core);
+    let label = match family {
+        DirectCoreEquivalenceProfileFamily::DirectMatch => {
+            "rule.shared_passthrough.tail_direct_core.family.direct_match"
+        }
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumLhs => {
+            "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_lhs"
+        }
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumRhs => {
+            "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_rhs"
+        }
+        DirectCoreEquivalenceProfileFamily::LogExpansion => {
+            "rule.shared_passthrough.tail_direct_core.family.log_expansion"
+        }
+        DirectCoreEquivalenceProfileFamily::LogChainProduct => {
+            "rule.shared_passthrough.tail_direct_core.family.log_chain_product"
+        }
+        DirectCoreEquivalenceProfileFamily::TrigReciprocal => {
+            "rule.shared_passthrough.tail_direct_core.family.trig_reciprocal"
+        }
+        DirectCoreEquivalenceProfileFamily::CosDiffSinDiffQuotient => {
+            "rule.shared_passthrough.tail_direct_core.family.cos_diff_sin_diff_quotient"
+        }
+        DirectCoreEquivalenceProfileFamily::SumDiffCubesQuotient => {
+            "rule.shared_passthrough.tail_direct_core.family.sum_diff_cubes_quotient"
+        }
+        DirectCoreEquivalenceProfileFamily::PhaseShiftIdentity => {
+            "rule.shared_passthrough.tail_direct_core.family.phase_shift_identity"
+        }
+        DirectCoreEquivalenceProfileFamily::CosProductTelescoping => {
+            "rule.shared_passthrough.tail_direct_core.family.cos_product_telescoping"
+        }
+        DirectCoreEquivalenceProfileFamily::FiniteSum => {
+            "rule.shared_passthrough.tail_direct_core.family.finite_sum"
+        }
+        DirectCoreEquivalenceProfileFamily::FiniteProduct => {
+            "rule.shared_passthrough.tail_direct_core.family.finite_product"
+        }
+        DirectCoreEquivalenceProfileFamily::TrigPowerReduction => {
+            "rule.shared_passthrough.tail_direct_core.family.trig_power_reduction"
+        }
+        DirectCoreEquivalenceProfileFamily::DoubleAngleContraction => {
+            "rule.shared_passthrough.tail_direct_core.family.double_angle_contraction"
+        }
+        DirectCoreEquivalenceProfileFamily::DefaultSimplify => {
+            "rule.shared_passthrough.tail_direct_core.family.default_simplify"
+        }
+        DirectCoreEquivalenceProfileFamily::Other => {
+            "rule.shared_passthrough.tail_direct_core.family.other"
+        }
+    };
+
+    let _ = run_profiled_orchestrator_option_section(label, sample.clone(), || Some(()));
+    match family {
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumLhs => {
+            let detail_label = match classify_symbolic_scale_sum_profile_detail(ctx, lhs_core) {
+                "linear_reciprocal_tail" => {
+                    "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_lhs.linear_reciprocal_tail"
+                }
+                "power_reciprocal_tail" => {
+                    "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_lhs.power_reciprocal_tail"
+                }
+                "single_scale_plain" => {
+                    "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_lhs.single_scale_plain"
+                }
+                "single_scale_other" => {
+                    "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_lhs.single_scale_other"
+                }
+                "grouped_multi_scale" => {
+                    "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_lhs.grouped_multi_scale"
+                }
+                _ => "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_lhs.other",
+            };
+            let _ =
+                run_profiled_orchestrator_option_section(detail_label, sample.clone(), || Some(()));
+        }
+        DirectCoreEquivalenceProfileFamily::SymbolicScaleSumRhs => {
+            let detail_label = match classify_symbolic_scale_sum_profile_detail(ctx, rhs_core) {
+                "linear_reciprocal_tail" => {
+                    "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_rhs.linear_reciprocal_tail"
+                }
+                "power_reciprocal_tail" => {
+                    "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_rhs.power_reciprocal_tail"
+                }
+                "single_scale_plain" => {
+                    "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_rhs.single_scale_plain"
+                }
+                "single_scale_other" => {
+                    "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_rhs.single_scale_other"
+                }
+                "grouped_multi_scale" => {
+                    "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_rhs.grouped_multi_scale"
+                }
+                _ => "rule.shared_passthrough.tail_direct_core.family.symbolic_scale_sum_rhs.other",
+            };
+            let _ =
+                run_profiled_orchestrator_option_section(detail_label, sample.clone(), || Some(()));
+        }
+        DirectCoreEquivalenceProfileFamily::DefaultSimplify => {
+            let detail_label = direct_core_default_simplify_profile_label(ctx, lhs_core, rhs_core);
+            let _ = run_profiled_orchestrator_option_section(detail_label, sample, || Some(()));
+        }
+        _ => {}
+    }
 }
 
 fn try_build_fast_trig_residual_identity_child_rewrite(
@@ -19669,6 +21798,19 @@ fn try_build_exact_zero_same_denominator_rewrite(
     Some(rewrite)
 }
 
+fn run_profiled_shifted_quotient_exact_one_route(
+    profiling: bool,
+    name: &'static str,
+    sample: &Option<String>,
+    body: impl FnOnce() -> Option<Rewrite>,
+) -> Option<Rewrite> {
+    if profiling {
+        run_profiled_orchestrator_option_section(name, sample.clone(), body)
+    } else {
+        body()
+    }
+}
+
 fn try_build_shifted_quotient_exact_one_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -19751,10 +21893,17 @@ fn try_build_shifted_quotient_exact_one_rewrite(
         );
     }
 
-    if let Some(child_rewrite) = try_build_direct_sub_fraction_combination_equivalence_rewrite(
-        ctx,
-        numerator_core,
-        denominator_core,
+    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.sub_fraction",
+        &pair_sample,
+        || {
+            try_build_direct_sub_fraction_combination_equivalence_rewrite(
+                ctx,
+                numerator_core,
+                denominator_core,
+            )
+        },
     ) {
         profile_route("rule.shifted_quotient.exact_one.route.sub_fraction");
         return Some(build_shifted_quotient_exact_one_rewrite(
@@ -19764,10 +21913,17 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             child_rewrite,
         ));
     }
-    if let Some(child_rewrite) = try_build_direct_tanh_exp_definition_equivalence_rewrite(
-        ctx,
-        numerator_core,
-        denominator_core,
+    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.tanh_exp",
+        &pair_sample,
+        || {
+            try_build_direct_tanh_exp_definition_equivalence_rewrite(
+                ctx,
+                numerator_core,
+                denominator_core,
+            )
+        },
     ) {
         profile_route("rule.shifted_quotient.exact_one.route.tanh_exp");
         return Some(build_shifted_quotient_exact_one_rewrite(
@@ -19777,9 +21933,12 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             child_rewrite,
         ));
     }
-    if let Some(child_rewrite) =
-        try_build_direct_trig_square_equivalence_rewrite(ctx, numerator_core, denominator_core)
-    {
+    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.trig_square",
+        &pair_sample,
+        || try_build_direct_trig_square_equivalence_rewrite(ctx, numerator_core, denominator_core),
+    ) {
         profile_route("rule.shifted_quotient.exact_one.route.trig_square");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
@@ -19788,33 +21947,52 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             child_rewrite,
         ));
     }
-    if let Some(rewrite) = try_build_direct_half_angle_binomial_square_shifted_quotient_rewrite(
-        ctx,
-        numerator,
-        denominator,
-        numerator_core,
-        denominator_core,
+    if let Some(rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.half_angle_binomial",
+        &pair_sample,
+        || {
+            try_build_direct_half_angle_binomial_square_shifted_quotient_rewrite(
+                ctx,
+                numerator,
+                denominator,
+                numerator_core,
+                denominator_core,
+            )
+        },
     ) {
         profile_route("rule.shifted_quotient.exact_one.route.half_angle_binomial");
         return Some(rewrite);
     }
-    if let Some(rewrite) = try_build_direct_small_zero_core_shifted_quotient_rewrite(
-        ctx,
-        numerator,
-        denominator,
-        numerator_core,
-        denominator_core,
+    if let Some(rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.small_zero_core",
+        &pair_sample,
+        || {
+            try_build_direct_small_zero_core_shifted_quotient_rewrite(
+                ctx,
+                numerator,
+                denominator,
+                numerator_core,
+                denominator_core,
+            )
+        },
     ) {
         profile_route("rule.shifted_quotient.exact_one.route.small_zero_core");
         return Some(rewrite);
     }
-    if let Some(child_rewrite) =
-        try_build_direct_hyperbolic_sinh_cubic_polynomial_equivalence_rewrite(
-            ctx,
-            numerator_core,
-            denominator_core,
-        )
-    {
+    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.sinh_cubic",
+        &pair_sample,
+        || {
+            try_build_direct_hyperbolic_sinh_cubic_polynomial_equivalence_rewrite(
+                ctx,
+                numerator_core,
+                denominator_core,
+            )
+        },
+    ) {
         profile_route("rule.shifted_quotient.exact_one.route.sinh_cubic");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
@@ -19823,13 +22001,18 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             child_rewrite,
         ));
     }
-    if let Some(child_rewrite) =
-        try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
-            ctx,
-            numerator_core,
-            denominator_core,
-        )
-    {
+    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.phase_shift_pair",
+        &pair_sample,
+        || {
+            try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
+                ctx,
+                numerator_core,
+                denominator_core,
+            )
+        },
+    ) {
         profile_route("rule.shifted_quotient.exact_one.route.phase_shift_pair");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
@@ -19838,10 +22021,17 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             child_rewrite,
         ));
     }
-    if let Some(child_rewrite) = try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
-        ctx,
-        numerator_core,
-        denominator_core,
+    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.safe_hyperbolic",
+        &pair_sample,
+        || {
+            try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
+                ctx,
+                numerator_core,
+                denominator_core,
+            )
+        },
     ) {
         profile_route("rule.shifted_quotient.exact_one.route.safe_hyperbolic");
         return Some(build_shifted_quotient_exact_one_rewrite(
@@ -19852,9 +22042,12 @@ fn try_build_shifted_quotient_exact_one_rewrite(
         ));
     }
     let residual_difference = ctx.add(Expr::Sub(numerator_core, denominator_core));
-    if let Some(child_rewrite) =
-        try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_difference)
-    {
+    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.repeated_phase_shift_residual",
+        &pair_sample,
+        || try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_difference),
+    ) {
         profile_route("rule.shifted_quotient.exact_one.route.repeated_phase_shift_residual");
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
@@ -19863,10 +22056,20 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             child_rewrite,
         ));
     }
-    if let Some(child_rewrite) =
-        try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, residual_difference)
-    {
+    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.shared_passthrough_residual",
+        &pair_sample,
+        || try_build_exact_zero_shared_passthrough_difference_rewrite(ctx, residual_difference),
+    ) {
         profile_route("rule.shifted_quotient.exact_one.route.shared_passthrough_residual");
+        profile_shifted_quotient_exact_one_route_pair_family(
+            "shared_passthrough_residual",
+            ctx,
+            numerator_core,
+            denominator_core,
+            pair_sample.clone(),
+        );
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
             numerator,
@@ -19874,12 +22077,22 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             child_rewrite,
         ));
     }
-    if let Some(child_rewrite) =
-        try_build_exact_zero_identity_rewrite_direct(ctx, residual_difference)
-    {
+    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.exact_zero_direct_residual",
+        &pair_sample,
+        || try_build_exact_zero_identity_rewrite_direct(ctx, residual_difference),
+    ) {
         let zero = ctx.num(0);
         if compare_expr(ctx, child_rewrite.final_expr(), zero) == Ordering::Equal {
             profile_route("rule.shifted_quotient.exact_one.route.exact_zero_direct_residual");
+            profile_shifted_quotient_exact_one_route_pair_family(
+                "exact_zero_direct_residual",
+                ctx,
+                numerator_core,
+                denominator_core,
+                pair_sample.clone(),
+            );
             return Some(build_shifted_quotient_exact_one_rewrite(
                 ctx,
                 numerator,
@@ -19888,77 +22101,145 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             ));
         }
     }
-    let residual_child_rewrite = if profiling {
-        if let Some(child_rewrite) =
-            try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_difference)
-        {
-            profile_route("rule.shifted_quotient.exact_one.route.stripped_zero_log_residual");
-            Some(child_rewrite)
-        } else if let Some(child_rewrite) =
-            try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_difference)
-        {
+    let residual_child_rewrite = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.stripped_zero_log_residual",
+        &pair_sample,
+        || try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_difference),
+    )
+    .inspect(|_| {
+        profile_route("rule.shifted_quotient.exact_one.route.stripped_zero_log_residual");
+    })
+    .or_else(|| {
+        run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.fast_multiterm_hyperbolic_residual",
+            &pair_sample,
+            || try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_difference),
+        )
+        .inspect(|_| {
             profile_route(
                 "rule.shifted_quotient.exact_one.route.fast_multiterm_hyperbolic_residual",
             );
-            Some(child_rewrite)
-        } else if let Some(child_rewrite) =
-            try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-        {
+        })
+    })
+    .or_else(|| {
+        run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.safe_hyperbolic_residual_pair",
+            &pair_sample,
+            || {
+                try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                )
+            },
+        )
+        .inspect(|_| {
             profile_route("rule.shifted_quotient.exact_one.route.safe_hyperbolic_residual_pair");
-            Some(child_rewrite)
-        } else if let Some(child_rewrite) =
-            try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_difference)
-        {
+        })
+    })
+    .or_else(|| {
+        run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.fast_trig_residual",
+            &pair_sample,
+            || try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_difference),
+        )
+        .inspect(|_| {
             profile_route("rule.shifted_quotient.exact_one.route.fast_trig_residual");
-            Some(child_rewrite)
-        } else if let Some(child_rewrite) =
-            try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_difference)
-        {
+        })
+    })
+    .or_else(|| {
+        run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.fast_small_polynomial_residual",
+            &pair_sample,
+            || try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_difference),
+        )
+        .inspect(|_| {
             profile_route("rule.shifted_quotient.exact_one.route.fast_small_polynomial_residual");
-            Some(child_rewrite)
-        } else if let Some(child_rewrite) = try_build_shifted_quotient_power_merge_residual_rewrite(
-            ctx,
-            numerator_core,
-            denominator_core,
-        ) {
+        })
+    })
+    .or_else(|| {
+        run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.power_merge_residual_narrow",
+            &pair_sample,
+            || {
+                try_build_shifted_quotient_power_merge_residual_rewrite(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                )
+            },
+        )
+        .inspect(|_| {
             profile_route("rule.shifted_quotient.exact_one.route.power_merge_residual_narrow");
-            Some(child_rewrite)
-        } else if let Some(child_rewrite) =
-            try_build_shifted_quotient_fraction_combine_residual_rewrite(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-        {
+        })
+    })
+    .or_else(|| {
+        run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.fraction_combine_residual_narrow",
+            &pair_sample,
+            || {
+                try_build_shifted_quotient_fraction_combine_residual_rewrite(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                )
+            },
+        )
+        .inspect(|_| {
             profile_route("rule.shifted_quotient.exact_one.route.fraction_combine_residual_narrow");
-            Some(child_rewrite)
-        } else if let Some(child_rewrite) =
-            try_build_shifted_quotient_nested_fraction_residual_rewrite(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-        {
+        })
+    })
+    .or_else(|| {
+        run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.nested_fraction_residual_narrow",
+            &pair_sample,
+            || {
+                try_build_shifted_quotient_nested_fraction_residual_rewrite(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                )
+            },
+        )
+        .inspect(|_| {
             profile_route("rule.shifted_quotient.exact_one.route.nested_fraction_residual_narrow");
-            Some(child_rewrite)
-        } else if let Some(child_rewrite) =
-            try_build_shifted_quotient_fraction_decompose_residual_rewrite(
-                ctx,
-                numerator_core,
-                denominator_core,
-            )
-        {
+        })
+    })
+    .or_else(|| {
+        run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.fraction_decompose_residual_narrow",
+            &pair_sample,
+            || {
+                try_build_shifted_quotient_fraction_decompose_residual_rewrite(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                )
+            },
+        )
+        .inspect(|_| {
             profile_route(
                 "rule.shifted_quotient.exact_one.route.fraction_decompose_residual_narrow",
             );
-            Some(child_rewrite)
-        } else if let Some(child_rewrite) =
-            try_build_direct_core_equivalence_rewrite(ctx, numerator_core, denominator_core)
-        {
+        })
+    })
+    .or_else(|| {
+        run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.direct_core_equivalence",
+            &pair_sample,
+            || try_build_direct_core_equivalence_rewrite(ctx, numerator_core, denominator_core),
+        )
+        .inspect(|_| {
             profile_route("rule.shifted_quotient.exact_one.route.direct_core_equivalence");
             profile_shifted_quotient_exact_one_direct_core_equivalence_family(
                 ctx,
@@ -19966,60 +22247,15 @@ fn try_build_shifted_quotient_exact_one_rewrite(
                 denominator_core,
                 pair_sample.clone(),
             );
-            Some(child_rewrite)
-        } else {
-            None
-        }
-    } else {
-        try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_difference)
-            .or_else(|| {
-                try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_difference)
-            })
-            .or_else(|| {
-                try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
-                    ctx,
-                    numerator_core,
-                    denominator_core,
-                )
-            })
-            .or_else(|| {
-                try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_difference)
-            })
-            .or_else(|| {
-                try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_difference)
-            })
-            .or_else(|| {
-                try_build_shifted_quotient_power_merge_residual_rewrite(
-                    ctx,
-                    numerator_core,
-                    denominator_core,
-                )
-            })
-            .or_else(|| {
-                try_build_shifted_quotient_fraction_combine_residual_rewrite(
-                    ctx,
-                    numerator_core,
-                    denominator_core,
-                )
-            })
-            .or_else(|| {
-                try_build_shifted_quotient_nested_fraction_residual_rewrite(
-                    ctx,
-                    numerator_core,
-                    denominator_core,
-                )
-            })
-            .or_else(|| {
-                try_build_shifted_quotient_fraction_decompose_residual_rewrite(
-                    ctx,
-                    numerator_core,
-                    denominator_core,
-                )
-            })
-            .or_else(|| {
-                try_build_direct_core_equivalence_rewrite(ctx, numerator_core, denominator_core)
-            })
-    };
+            profile_shifted_quotient_exact_one_route_pair_family(
+                "direct_core_equivalence",
+                ctx,
+                numerator_core,
+                denominator_core,
+                pair_sample.clone(),
+            );
+        })
+    });
     if let Some(child_rewrite) = residual_child_rewrite {
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
@@ -20028,24 +22264,35 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             child_rewrite,
         ));
     }
-    let child_rewrite =
-        if let Some(rewrite) = try_build_exact_zero_identity_rewrite(ctx, residual_difference) {
-            profile_route("rule.shifted_quotient.exact_one.route.exact_zero_identity");
-            rewrite
-        } else {
-            let zero = ctx.num(0);
-            let simplified_difference = run_default_simplify(ctx, residual_difference);
-            if compare_expr(ctx, simplified_difference, zero) != Ordering::Equal {
-                return None;
-            }
-            profile_route("rule.shifted_quotient.exact_one.route.default_simplify_residual_zero");
-            Rewrite::with_local(
-                ctx.num(0),
-                "Equivalent Residual Cancellation",
-                numerator_core,
-                denominator_core,
-            )
-        };
+    let child_rewrite = if let Some(rewrite) = run_profiled_shifted_quotient_exact_one_route(
+        profiling,
+        "rule.shifted_quotient.exact_one.try.exact_zero_identity",
+        &pair_sample,
+        || try_build_exact_zero_identity_rewrite(ctx, residual_difference),
+    ) {
+        profile_route("rule.shifted_quotient.exact_one.route.exact_zero_identity");
+        rewrite
+    } else {
+        let rewrite = run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.default_simplify_residual_zero",
+            &pair_sample,
+            || {
+                let zero = ctx.num(0);
+                let simplified_difference = run_default_simplify(ctx, residual_difference);
+                (compare_expr(ctx, simplified_difference, zero) == Ordering::Equal).then(|| {
+                    Rewrite::with_local(
+                        ctx.num(0),
+                        "Equivalent Residual Cancellation",
+                        numerator_core,
+                        denominator_core,
+                    )
+                })
+            },
+        )?;
+        profile_route("rule.shifted_quotient.exact_one.route.default_simplify_residual_zero");
+        rewrite
+    };
 
     Some(build_shifted_quotient_exact_one_rewrite(
         ctx,
@@ -21229,10 +23476,53 @@ fn extract_shared_additive_passthrough_difference_cores(
     extract_cores_from_term_lists(ctx, lhs_terms, rhs_terms)
 }
 
+fn has_plausible_shared_additive_passthrough_difference_shape(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    if let Some((lhs, rhs)) = match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) => Some((lhs, rhs)),
+        Expr::Add(lhs, rhs) => match ctx.get(rhs).clone() {
+            Expr::Neg(inner) => Some((lhs, inner)),
+            _ => None,
+        },
+        _ => None,
+    } {
+        return AddView::from_expr(ctx, lhs).terms.len() >= 2
+            && AddView::from_expr(ctx, rhs).terms.len() >= 2;
+    }
+
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() < 4 {
+        return false;
+    }
+
+    let positive_count = terms.iter().filter(|(_, sign)| *sign == Sign::Pos).count();
+    let negative_count = terms.iter().filter(|(_, sign)| *sign == Sign::Neg).count();
+    positive_count >= 2 && negative_count >= 2
+}
+
+fn run_profiled_shared_passthrough_probe(
+    profiling: bool,
+    name: &'static str,
+    sample: &Option<String>,
+    body: impl FnOnce() -> Option<Rewrite>,
+) -> Option<Rewrite> {
+    if profiling {
+        run_profiled_orchestrator_option_section(name, sample.clone(), body)
+    } else {
+        body()
+    }
+}
+
 fn try_build_exact_zero_shared_passthrough_difference_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
+    if !has_plausible_shared_additive_passthrough_difference_shape(ctx, expr) {
+        return None;
+    }
+
     let (lhs_core, rhs_core) = extract_shared_additive_passthrough_difference_cores(ctx, expr)?;
     let profiling =
         crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
@@ -21250,64 +23540,110 @@ fn try_build_exact_zero_shared_passthrough_difference_rewrite(
         }
     };
     let residual_expr = ctx.add(Expr::Sub(lhs_core, rhs_core));
-    if let Some(rewrite) =
-        try_build_direct_sub_fraction_combination_equivalence_rewrite(ctx, lhs_core, rhs_core)
-    {
+    if let Some(rewrite) = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.sub_fraction",
+        &pair_sample,
+        || try_build_direct_sub_fraction_combination_equivalence_rewrite(ctx, lhs_core, rhs_core),
+    ) {
         profile_route("rule.shared_passthrough.route.sub_fraction");
         return Some(rewrite);
     }
-    if let Some(rewrite) =
-        try_build_direct_tanh_exp_definition_equivalence_rewrite(ctx, lhs_core, rhs_core)
-    {
+    if let Some(rewrite) = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.tanh_exp",
+        &pair_sample,
+        || try_build_direct_tanh_exp_definition_equivalence_rewrite(ctx, lhs_core, rhs_core),
+    ) {
         profile_route("rule.shared_passthrough.route.tanh_exp");
         return Some(rewrite);
     }
-    if let Some(rewrite) =
-        try_build_direct_trig_product_to_sum_equivalence_rewrite(ctx, lhs_core, rhs_core)
-    {
+    if let Some(rewrite) = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.trig_product_to_sum",
+        &pair_sample,
+        || try_build_direct_trig_product_to_sum_equivalence_rewrite(ctx, lhs_core, rhs_core),
+    ) {
         profile_route("rule.shared_passthrough.route.trig_product_to_sum");
         return Some(rewrite);
     }
-    if let Some(rewrite) =
-        try_build_direct_trig_sum_to_product_equivalence_rewrite(ctx, lhs_core, rhs_core)
-    {
+    if let Some(rewrite) = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.trig_sum_to_product",
+        &pair_sample,
+        || try_build_direct_trig_sum_to_product_equivalence_rewrite(ctx, lhs_core, rhs_core),
+    ) {
         profile_route("rule.shared_passthrough.route.trig_sum_to_product");
         return Some(rewrite);
     }
-    if let Some(rewrite) = try_build_direct_trig_square_equivalence_rewrite(ctx, lhs_core, rhs_core)
-    {
+    if let Some(rewrite) = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.trig_square",
+        &pair_sample,
+        || try_build_direct_trig_square_equivalence_rewrite(ctx, lhs_core, rhs_core),
+    ) {
         profile_route("rule.shared_passthrough.route.trig_square");
         return Some(rewrite);
     }
-    if let Some(rewrite) = try_build_direct_hyperbolic_sinh_cubic_polynomial_equivalence_rewrite(
-        ctx, lhs_core, rhs_core,
+    if let Some(rewrite) = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.sinh_cubic",
+        &pair_sample,
+        || {
+            try_build_direct_hyperbolic_sinh_cubic_polynomial_equivalence_rewrite(
+                ctx, lhs_core, rhs_core,
+            )
+        },
     ) {
         profile_route("rule.shared_passthrough.route.sinh_cubic");
         return Some(rewrite);
     }
-    if let Some(rewrite) = try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
-    {
+    if let Some(rewrite) = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.repeated_phase_shift_pair",
+        &pair_sample,
+        || try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr),
+    ) {
         profile_route("rule.shared_passthrough.route.repeated_phase_shift_pair");
         return Some(rewrite);
     }
-    if let Some(rewrite) = try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
-        ctx, lhs_core, rhs_core,
+    if let Some(rewrite) = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.phase_shift_quarter_pair",
+        &pair_sample,
+        || {
+            try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
+                ctx, lhs_core, rhs_core,
+            )
+        },
     ) {
         profile_route("rule.shared_passthrough.route.phase_shift_quarter_pair");
         return Some(rewrite);
     }
-    if let Some(rewrite) =
-        try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
-    {
+    if let Some(rewrite) = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.safe_hyperbolic",
+        &pair_sample,
+        || try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
+    ) {
         profile_route("rule.shared_passthrough.route.safe_hyperbolic");
         return Some(rewrite);
     }
-    if let Some(rewrite) = try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr)
-    {
+    if let Some(rewrite) = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.repeated_phase_shift_pair_late",
+        &pair_sample,
+        || try_build_repeated_trig_phase_shift_pair_zero_rewrite(ctx, residual_expr),
+    ) {
         profile_route("rule.shared_passthrough.route.repeated_phase_shift_pair_late");
         return Some(rewrite);
     }
-    if let Some(rewrite) = try_build_exact_zero_identity_rewrite_direct(ctx, residual_expr) {
+    if let Some(rewrite) = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.direct_identity",
+        &pair_sample,
+        || try_build_exact_zero_identity_rewrite_direct(ctx, residual_expr),
+    ) {
         let zero = ctx.num(0);
         if compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal {
             profile_route("rule.shared_passthrough.route.direct_identity");
@@ -21316,72 +23652,120 @@ fn try_build_exact_zero_shared_passthrough_difference_rewrite(
     }
     let normalized_residual = normalize_additive_scope_expr(ctx, residual_expr);
 
-    let child_rewrite =
-        try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_expr)
-            .inspect(|_| {
-                profile_route("rule.shared_passthrough.route.tail_fast_multiterm_hyperbolic");
-            })
-            .or_else(|| {
-                try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
-                    .inspect(|_| {
-                        profile_route("rule.shared_passthrough.route.tail_safe_hyperbolic");
-                    })
-            })
-            .or_else(|| {
-                try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_expr).inspect(
-                    |_| {
-                        profile_route("rule.shared_passthrough.route.tail_stripped_zero_log");
-                    },
-                )
-            })
-            .or_else(|| {
-                try_build_stripped_zero_log_identity_child_rewrite(ctx, normalized_residual)
-                    .inspect(|_| {
-                        profile_route(
-                            "rule.shared_passthrough.route.tail_stripped_zero_log_normalized",
-                        );
-                    })
-            })
-            .or_else(|| {
-                try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_expr).inspect(
-                    |_| {
-                        profile_route("rule.shared_passthrough.route.tail_fast_trig_residual");
-                    },
-                )
-            })
-            .or_else(|| {
-                try_build_fast_trig_residual_identity_child_rewrite(ctx, normalized_residual)
-                    .inspect(|_| {
-                        profile_route(
-                            "rule.shared_passthrough.route.tail_fast_trig_residual_normalized",
-                        );
-                    })
-            })
-            .or_else(|| {
-                try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_expr).inspect(
-                    |_| {
-                        profile_route("rule.shared_passthrough.route.tail_fast_small_polynomial");
-                    },
-                )
-            })
-            .or_else(|| {
-                try_build_fast_small_polynomial_residual_child_rewrite(ctx, normalized_residual)
-                    .inspect(|_| {
-                        profile_route(
-                            "rule.shared_passthrough.route.tail_fast_small_polynomial_normalized",
-                        );
-                    })
-            })
-            .or_else(|| {
-                try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core).inspect(|_| {
-                    profile_route("rule.shared_passthrough.route.tail_direct_core_equivalence");
-                })
-            })
-            .or_else(|| {
-                try_build_exact_zero_identity_rewrite(ctx, residual_expr).inspect(|_| {
-                    profile_route("rule.shared_passthrough.route.tail_exact_zero_identity");
-                })
-            })?;
+    let child_rewrite = run_profiled_shared_passthrough_probe(
+        profiling,
+        "rule.shared_passthrough.try.tail_fast_multiterm_hyperbolic",
+        &pair_sample,
+        || try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_expr),
+    )
+    .inspect(|_| {
+        profile_route("rule.shared_passthrough.route.tail_fast_multiterm_hyperbolic");
+    })
+    .or_else(|| {
+        run_profiled_shared_passthrough_probe(
+            profiling,
+            "rule.shared_passthrough.try.tail_safe_hyperbolic",
+            &pair_sample,
+            || try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        )
+        .inspect(|_| {
+            profile_route("rule.shared_passthrough.route.tail_safe_hyperbolic");
+        })
+    })
+    .or_else(|| {
+        run_profiled_shared_passthrough_probe(
+            profiling,
+            "rule.shared_passthrough.try.tail_stripped_zero_log",
+            &pair_sample,
+            || try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_expr),
+        )
+        .inspect(|_| {
+            profile_route("rule.shared_passthrough.route.tail_stripped_zero_log");
+        })
+    })
+    .or_else(|| {
+        run_profiled_shared_passthrough_probe(
+            profiling,
+            "rule.shared_passthrough.try.tail_stripped_zero_log_normalized",
+            &pair_sample,
+            || try_build_stripped_zero_log_identity_child_rewrite(ctx, normalized_residual),
+        )
+        .inspect(|_| {
+            profile_route("rule.shared_passthrough.route.tail_stripped_zero_log_normalized");
+        })
+    })
+    .or_else(|| {
+        run_profiled_shared_passthrough_probe(
+            profiling,
+            "rule.shared_passthrough.try.tail_fast_trig_residual",
+            &pair_sample,
+            || try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_expr),
+        )
+        .inspect(|_| {
+            profile_route("rule.shared_passthrough.route.tail_fast_trig_residual");
+        })
+    })
+    .or_else(|| {
+        run_profiled_shared_passthrough_probe(
+            profiling,
+            "rule.shared_passthrough.try.tail_fast_trig_residual_normalized",
+            &pair_sample,
+            || try_build_fast_trig_residual_identity_child_rewrite(ctx, normalized_residual),
+        )
+        .inspect(|_| {
+            profile_route("rule.shared_passthrough.route.tail_fast_trig_residual_normalized");
+        })
+    })
+    .or_else(|| {
+        run_profiled_shared_passthrough_probe(
+            profiling,
+            "rule.shared_passthrough.try.tail_fast_small_polynomial",
+            &pair_sample,
+            || try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_expr),
+        )
+        .inspect(|_| {
+            profile_route("rule.shared_passthrough.route.tail_fast_small_polynomial");
+        })
+    })
+    .or_else(|| {
+        run_profiled_shared_passthrough_probe(
+            profiling,
+            "rule.shared_passthrough.try.tail_fast_small_polynomial_normalized",
+            &pair_sample,
+            || try_build_fast_small_polynomial_residual_child_rewrite(ctx, normalized_residual),
+        )
+        .inspect(|_| {
+            profile_route("rule.shared_passthrough.route.tail_fast_small_polynomial_normalized");
+        })
+    })
+    .or_else(|| {
+        run_profiled_shared_passthrough_probe(
+            profiling,
+            "rule.shared_passthrough.try.tail_direct_core_equivalence",
+            &pair_sample,
+            || try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
+        )
+        .inspect(|_| {
+            profile_route("rule.shared_passthrough.route.tail_direct_core_equivalence");
+            profile_shared_passthrough_tail_direct_core_family(
+                ctx,
+                lhs_core,
+                rhs_core,
+                pair_sample.clone(),
+            );
+        })
+    })
+    .or_else(|| {
+        run_profiled_shared_passthrough_probe(
+            profiling,
+            "rule.shared_passthrough.try.tail_exact_zero_identity",
+            &pair_sample,
+            || try_build_exact_zero_identity_rewrite(ctx, residual_expr),
+        )
+        .inspect(|_| {
+            profile_route("rule.shared_passthrough.route.tail_exact_zero_identity");
+        })
+    })?;
     let zero = ctx.num(0);
 
     (compare_expr(ctx, child_rewrite.final_expr(), zero) == Ordering::Equal)
@@ -23873,6 +26257,18 @@ mod tests {
     }
 
     #[test]
+    fn direct_small_zero_additive_combination_rewrite_rejects_non_partition_core_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("(2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + z", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .is_none()
+        );
+    }
+
+    #[test]
     fn collapse_exact_zero_additive_subexpression_matches_trig_mixed_double_angle_polynomial() {
         let mut ctx = Context::new();
         let expr = parse("2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x)-2*sin(x))", &mut ctx)
@@ -24252,6 +26648,109 @@ mod tests {
             .unwrap_or_else(|| panic!("rewrite"));
 
         assert_empty_or_legacy_description(&rewrite.description, "Trig Square Identity");
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_matches_log_power_pair_before_default_simplify() {
+        let mut ctx = Context::new();
+        let lhs = parse("ln((x+1)^2)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("2*ln(abs(x+1))", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(&rewrite.description, "Log Expansion Identity");
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_matches_log_abs_product_pair_before_default_simplify() {
+        let mut ctx = Context::new();
+        let lhs = parse("ln(abs(x*y))", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs =
+            parse("ln(abs(x)) + ln(abs(y))", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(&rewrite.description, "Log Expansion Identity");
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_matches_grouped_ln_power_pair_before_default_simplify() {
+        let mut ctx = Context::new();
+        let lhs = parse("ln((x*y)^2)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("ln(x^2) + ln(y^2)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(&rewrite.description, "Log Expansion Identity");
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_matches_scaled_log_abs_product_pair_before_default_simplify()
+    {
+        let mut ctx = Context::new();
+        let lhs = parse("2*ln(abs(x*y))", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("2*ln(abs(x)) + 2*ln(abs(y))", &mut ctx)
+            .unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(&rewrite.description, "Log Expansion Identity");
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_rejects_grouped_general_base_log_power_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("log(b,(x*y)^2)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs =
+            parse("2*log(b,x) + 2*log(b,y)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs);
+        assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_matches_log_chain_product_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("log(b,a)*log(a,c)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("log(b,c)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(&rewrite.description, "Log Chain Identity");
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_matches_grouped_symbolic_scale_sum_distribution_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("a*x^2 + c*x^2 + e*x^2 + b*x + d*x", &mut ctx)
+            .unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("x*(b + d) + x^2*(a + c + e)", &mut ctx)
+            .unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
         assert_eq!(rewrite.before_local, Some(lhs));
         assert_eq!(rewrite.after_local, Some(rhs));
     }
@@ -24947,6 +27446,40 @@ mod tests {
             expected
         ));
         assert_empty_or_legacy_description(&rewrite.description, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn shared_passthrough_difference_shape_gate_rejects_additive_vs_single_term_residual() {
+        let mut ctx = Context::new();
+        let expr = parse("(x + x) - (2*x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::has_plausible_shared_additive_passthrough_difference_shape(&mut ctx, expr));
+        assert!(
+            super::try_build_exact_zero_shared_passthrough_difference_rewrite(&mut ctx, expr)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn shared_passthrough_difference_shape_gate_keeps_known_passthrough_zero_regression() {
+        let mut ctx = Context::new();
+        let expr = parse("((sin(x)^2 + cos(x)^2) + m) - ((1) + m)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::has_plausible_shared_additive_passthrough_difference_shape(&mut ctx, expr));
+        let rewrite =
+            super::try_build_exact_zero_shared_passthrough_difference_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
     }
 
     #[test]
@@ -25829,6 +28362,180 @@ mod tests {
     }
 
     #[test]
+    fn solve_prep_focus_remaining_variable_overlap_detects_complete_square_pair() {
+        let mut ctx = Context::new();
+        let focus_expr =
+            parse("a*x^2 - b*x + c", &mut ctx).unwrap_or_else(|err| panic!("focus parse: {err}"));
+        let remaining_expr = parse("-(a*(x - b/(2*a))^2 + c - b^2/(4*a))", &mut ctx)
+            .unwrap_or_else(|err| panic!("remaining parse: {err}"));
+
+        assert!(
+            super::has_plausible_solve_prep_focus_remaining_variable_overlap(
+                &ctx,
+                focus_expr,
+                remaining_expr
+            )
+        );
+    }
+
+    #[test]
+    fn solve_prep_focus_remaining_variable_overlap_rejects_mismatched_shifted_square_variable() {
+        let mut ctx = Context::new();
+        let focus_expr =
+            parse("a*x^2 - b*x + c", &mut ctx).unwrap_or_else(|err| panic!("focus parse: {err}"));
+        let remaining_expr = parse("-(a*(y - b/(2*a))^2 + c - b^2/(4*a))", &mut ctx)
+            .unwrap_or_else(|err| panic!("remaining parse: {err}"));
+
+        assert!(
+            !super::has_plausible_solve_prep_focus_remaining_variable_overlap(
+                &ctx,
+                focus_expr,
+                remaining_expr
+            )
+        );
+    }
+
+    #[test]
+    fn solve_prep_focus_remaining_variable_overlap_rejects_shift_parameter_only_overlap() {
+        let mut ctx = Context::new();
+        let focus_expr =
+            parse("b^2/(4*a) - b + c", &mut ctx).unwrap_or_else(|err| panic!("focus parse: {err}"));
+        let remaining_expr = parse("-(a*(x - b/(2*a))^2 + c - b^2/(4*a))", &mut ctx)
+            .unwrap_or_else(|err| panic!("remaining parse: {err}"));
+
+        assert!(
+            !super::has_plausible_solve_prep_focus_remaining_variable_overlap(
+                &ctx,
+                focus_expr,
+                remaining_expr
+            )
+        );
+    }
+
+    #[test]
+    fn solve_prep_candidate_variable_names_prefer_shifted_square_primary_variable() {
+        let mut ctx = Context::new();
+        let expr = parse("a*(x - b/(2*a))^2 + c - b^2/(4*a)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert_eq!(
+            super::collect_solve_prep_candidate_variable_names(&ctx, expr),
+            vec!["x".to_string()]
+        );
+    }
+
+    #[test]
+    fn solve_prep_candidate_variable_names_fall_back_to_raw_squared_variable() {
+        let mut ctx = Context::new();
+        let expr = parse("a*x^2 - b*x + c", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert_eq!(
+            super::collect_solve_prep_candidate_variable_names(&ctx, expr),
+            vec!["x".to_string()]
+        );
+    }
+
+    #[test]
+    fn solve_prep_candidate_variable_names_ignore_division_only_correction_square() {
+        let mut ctx = Context::new();
+        let expr = parse("b^2/(4*a) + a*x^2 - b*x + c", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert_eq!(
+            super::collect_solve_prep_candidate_variable_names(&ctx, expr),
+            vec!["x".to_string()]
+        );
+    }
+
+    #[test]
+    fn solve_prep_candidate_variable_names_reject_division_only_square_fallback() {
+        let mut ctx = Context::new();
+        let expr = parse("b^2/(4*a) - c", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert_eq!(
+            super::collect_solve_prep_candidate_variable_names(&ctx, expr),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn solve_prep_candidate_variable_names_reject_square_without_linear_term() {
+        let mut ctx = Context::new();
+        let expr = parse("b^2 - c", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert_eq!(
+            super::collect_solve_prep_candidate_variable_names(&ctx, expr),
+            Vec::<String>::new()
+        );
+    }
+
+    #[test]
+    fn complete_square_binomial_expr_flips_negative_shift_for_positive_orientation() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).unwrap_or_else(|err| panic!("parse x: {err}"));
+        let neg_shift =
+            parse("-b/(2*a)", &mut ctx).unwrap_or_else(|err| panic!("parse shift: {err}"));
+
+        let expr = super::build_complete_square_binomial_expr(
+            &mut ctx,
+            x,
+            neg_shift,
+            cas_math::expr_nary::Sign::Pos,
+        );
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: expr
+                }
+            ),
+            "x - b / (2 * a)"
+        );
+    }
+
+    #[test]
+    fn complete_square_binomial_expr_flips_negative_shift_for_negative_orientation() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).unwrap_or_else(|err| panic!("parse x: {err}"));
+        let neg_shift =
+            parse("-b/(2*a)", &mut ctx).unwrap_or_else(|err| panic!("parse shift: {err}"));
+
+        let expr = super::build_complete_square_binomial_expr(
+            &mut ctx,
+            x,
+            neg_shift,
+            cas_math::expr_nary::Sign::Neg,
+        );
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: expr
+                }
+            ),
+            "b / (2 * a) + x"
+        );
+    }
+
+    #[test]
+    fn fast_solve_prep_zero_scope_rewrite_rejects_mismatched_shifted_square_variable() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "a*x^2 - b*x + c - (a*(y - b/(2*a))^2 + c - b^2/(4*a))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            super::try_build_fast_solve_prep_exact_zero_scope_rewrite(&mut ctx, expr).is_none()
+        );
+    }
+
+    #[test]
     fn solve_prep_equivalence_helper_rewrites_raw_quadratic() {
         let mut ctx = Context::new();
         let expr = parse("a*x^2 - b*x + c", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
@@ -25952,6 +28659,78 @@ mod tests {
     }
 
     #[test]
+    fn fast_solve_prep_zero_scope_rewrite_matches_negative_leading_difference_with_unsimplified_c()
+    {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "-a*x^2 + b*x + (c + d - d) - (-a*(x - b/(2*a))^2 + (c + d - d) + b^2/(4*a))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_fast_solve_prep_exact_zero_scope_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("fast rewrite"));
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn fast_solve_prep_zero_scope_rewrite_matches_positive_symbolic_difference_with_unsimplified_c()
+    {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "a*x^2 + b*x + (c + d - d) - (a*(x + b/(2*a))^2 + (c + d - d) - b^2/(4*a))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_fast_solve_prep_exact_zero_scope_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("fast rewrite"));
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn fast_solve_prep_zero_scope_rewrite_matches_fractional_symbolic_difference_with_unsimplified_c(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(a/2)*x^2 + b*x + (c + d - d) - ((a/2)*(x + b/a)^2 + (c + d - d) - b^2/(2*a))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_fast_solve_prep_exact_zero_scope_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("fast rewrite"));
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
     fn solve_prep_equivalence_helper_rewrites_fractional_symbolic_leading_quadratic() {
         let mut ctx = Context::new();
         let expr =
@@ -25985,6 +28764,49 @@ mod tests {
             &mut ctx,
         )
         .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_fast_solve_prep_exact_zero_scope_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("fast rewrite"));
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn fast_solve_prep_zero_scope_rewrite_matches_generic_leading_difference() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(m + n)*x^2 + b*x + c - ((m + n)*(x + b/(2*(m + n)))^2 + c - b^2/(4*(m + n)))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_fast_solve_prep_exact_zero_scope_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("fast rewrite"));
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn fast_solve_prep_zero_scope_rewrite_matches_non_contiguous_passthrough_difference() {
+        let mut ctx = Context::new();
+        let expr = parse("b^2/(4*a) + a*x^2 - a*(x - b/(2*a))^2 - b*x", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
 
         let rewrite = super::try_build_fast_solve_prep_exact_zero_scope_rewrite(&mut ctx, expr)
             .unwrap_or_else(|| panic!("fast rewrite"));
