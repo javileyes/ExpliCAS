@@ -130,6 +130,15 @@ Preferred path:
    overhead tracking
 4. add larger or more entangled variants to `stress`, not to `frozen`
 
+Generated high-temperature expressions should enter before step 1 as a discovery
+feeder, not as immediate `live` promotions.
+
+Preferred feeder path:
+
+1. generate a composed candidate from trusted equivalence seeds
+2. use it to discover a missing abstraction, brittle route, or didactic gap
+3. retain the smallest durable guardrail artifact afterward
+
 ## Corpus 1: Embedded Equivalence In Context
 
 ### Purpose
@@ -146,6 +155,15 @@ Given equivalent expressions `expr1 ~ expr2`, generate:
 - `expr1/k - expr2/k` -> `0`
 - `expr1 + passthrough - (expr2 + passthrough)` -> `0`
 - `(expr1 + c)/(expr2 + c)` -> `1` when safe
+
+Then deliberately generate hotter composed variants by combining several such
+pairs inside a single larger expression, for example:
+
+- additive sums of independent zero-equivalent blocks
+- one family embedded inside another family's wrapper
+- nested wrapper variants with higher `shell_depth`
+- cases with extra additive or multiplicative `noise_budget`
+- sign-flipped or reordered orientations of the same core identity
 
 ### Why It Matters
 
@@ -191,6 +209,14 @@ It also has high ROI as a performance guardrail:
 That is one of the main reasons not to refactor the orchestrator blindly.
 The orchestrator should become more observable before it becomes more abstract.
 
+It is also one of the best reasons to generate composed expressions instead of
+waiting only for manual examples:
+
+- isolated identities often already work
+- failures appear when several valid local identities are forced to coexist
+- those compositions expose route ordering, fallback tax, and sign fragility
+  much faster than isolated curation alone
+
 ### Curation Policy
 
 This corpus should be curated, not inflated.
@@ -204,6 +230,17 @@ Add new entries when they introduce:
 
 Do not add large batches of near-duplicate variants that all exercise the same
 matcher route.
+
+Do not automatically promote every successful or failing high-temperature
+expression either.
+
+For generated composite cases, promote only when the case adds one of:
+
+- a new family interaction
+- a new wrapper axis
+- a new shell-depth level
+- a new `noise_budget` level with real retained value
+- a representative case of a regression-prone failing route
 
 The objective is contextual completeness per case, not corpus size for its own
 sake.
@@ -257,6 +294,102 @@ to capture:
 
 That ledger is especially useful for corpus-guided work because many
 performance-sensitive ideas are only wrong in *placement*, not in mathematics.
+
+## Corpus 2: High-Temperature Composition Discovery
+
+### Purpose
+
+Generate larger composed expressions from already-valid equivalence seeds in
+order to reveal failures that do not appear in isolated rows.
+
+This corpus role is mainly for:
+
+- coverage discovery
+- robustness discovery
+- performance cliff discovery
+- didactic review of nontrivial multi-step transformations
+
+### Why It Should Exist
+
+Recent engine work has repeatedly shown the same pattern:
+
+- each identity term works alone
+- several terms together reveal a new weakness
+- fixing that weakness often improves a reusable engine abstraction
+
+So composed generation is not just “more random cases”.
+
+It is a way to search the missing abstraction space faster.
+
+### Construction Policy
+
+Build these expressions from trusted seeds, not arbitrary syntax.
+
+Recommended knobs:
+
+- number of identity blocks combined
+- family diversity per expression
+- wrapper mix
+- `noise_budget`
+- `shell_depth`
+- sign/orientation perturbation
+- cross-family nesting
+
+Temperature should mean increasing those knobs intentionally, not unconstrained
+randomness.
+
+### Evaluation Loop
+
+For each generated expression:
+
+1. run it through the cheap discovery lane
+2. record whether it:
+   - simplifies correctly
+   - panics, overflows, loops, or times out
+   - resolves only through a late expensive fallback
+   - produces low-quality steps or broken highlights
+3. cluster failures by structural signature
+4. fix the reusable family-level weakness
+5. validate retained fixes against `embedded` runtime and the other relevant
+   guardrails
+6. choose the correct promotion target
+
+### Promotion Policy
+
+Promotion targets should be chosen conservatively:
+
+- `unit test`
+  - when the case captures a narrow matcher bug or very specific regression
+- `live`
+  - when a small representative contextual form improves durable coverage
+- `stress`
+  - when the hotter form is valuable for scale pressure but too large or too
+    duplicative for `live`
+- `frozen`
+  - only when a minimal stable subset becomes a long-term overhead ruler
+
+This means the full hot expression is often *not* the retained artifact.
+
+The retained artifact should be the smallest case that still guards the lesson.
+
+### Didactic Review Policy
+
+Generated composite expressions are also good didactic probes, because they
+surface:
+
+- magical steps
+- weak sub-steps
+- brittle or misleading `before/after` highlighting
+- explanations that are too narrow for the actual family
+
+But didactic review should come after semantic retention, not before it.
+
+The right sequence is:
+
+1. make the expression semantically robust
+2. verify global runtime retention
+3. then improve steps, sub-steps, and highlighting if the explanation can be
+   generalized usefully
 
 ## Corpus 2: Orientation, Sign, And Canonicalization Robustness
 
@@ -536,8 +669,10 @@ Use a family-first policy.
 For each promoted family:
 
 1. define one root equivalence pair
-2. embed it in a small, fixed wrapper set
-3. add at most one or two composed variants if they exercise a genuinely new path
+2. explore hotter composed variants in discovery lanes first
+3. embed the retained representative case in a small, fixed wrapper set
+4. add at most one or two composed variants if they exercise a genuinely new
+   path and still justify their runtime cost
 
 Recommended wrapper set:
 
@@ -557,12 +692,15 @@ these are true:
 - it covers a wrapper or composition axis not already guarded well
 - the engine behavior is stable enough to serve as a long-lived regression guard
 - the case is likely to catch future contextual regressions
+- the added runtime tax on `embedded` is proportionate to the new retained
+  coverage value
 
 Keep a family in metamorphic pressure lanes instead when:
 
 - the family is still moving too fast
 - the common normal form is not stable yet
 - the case is useful for pressure but not ready to become a guardrail
+- the expression is valuable mainly because it is hot, wide, or deeply composed
 
 That separation matters:
 

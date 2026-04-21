@@ -161,6 +161,113 @@ Each automatic iteration should do this in order:
 8. if the change fails global retention, revert the runtime change and preserve
    the learning in observability and/or the combination ledger
 
+## Generated High-Temperature Discovery
+
+The automation loop should also include a deliberate `generated discovery`
+feeder, not only manually curated corpus growth.
+
+This feeder should generate new expressions by composing already validated
+equivalences into larger contexts with controlled structural aggression.
+
+The goal is not random novelty for its own sake.
+The goal is to expose engine weaknesses faster by forcing known identities to
+survive:
+
+- broader wrapper spread
+- higher `noise_budget`
+- greater `shell_depth`
+- cross-family composition
+- reordered or negated orientations
+- more entangled additive or multiplicative context
+
+This is a `coverage + robustness` accelerator.
+
+It is especially valuable when manual corpus growth is finding real issues but
+too slowly.
+
+### Temperature Should Mean Structured Composition
+
+`temperature` should not mean unconstrained syntactic randomness.
+
+It should mean controlled pressure along dimensions that already matter in the
+scorecard:
+
+- wrapper axis
+- `noise_budget`
+- `shell_depth`
+- cross-family composition
+- sign/orientation variation
+- semantic regime
+
+Higher temperature should therefore mean:
+
+- more families combined in one expression
+- more realistic wrappers around known local identities
+- more residual traffic around the useful core
+- more chances for the engine to miss a local rewrite, route late, or pay broad
+  no-match cost
+
+### Generated Discovery Workflow
+
+For each generated candidate, the default workflow should be:
+
+1. generate from trusted equivalence seeds or already-retained identity families
+2. run the expression through the cheap iteration lane
+3. if it fails semantically, panics, loops, overflows, or degrades didactic
+   quality badly, classify the failure by structural signature
+4. fix the family-level weakness, not only the anecdotal string instance
+5. validate against the relevant guardrails, especially `embedded` elapsed time
+6. choose the smallest durable promotion target
+
+Generated candidates should be clustered by:
+
+- family mix
+- wrapper mix
+- shell-depth level
+- noise budget
+- dominant failing route or fallback tier
+
+That clustering matters because several hot generated expressions often expose
+the same missing abstraction.
+
+### Promotion Policy For Generated Cases
+
+Generated high-temperature cases should not go straight into the `live` corpus
+by default.
+
+Preferred promotion path:
+
+1. keep the raw discovery case in a generated or local pressure lane while the
+   family is still moving
+2. promote to a focused unit or regression test when the bug is narrow and the
+   shape is too specific for a long-lived corpus row
+3. promote a small representative contextual variant to `live` when it adds a
+   real new family, wrapper, composition, or shell-depth guardrail
+4. promote only a stable minimal subset to `frozen`
+5. send larger or hotter variants to `stress`
+
+This preserves the main value of high-temperature generation:
+
+- discover aggressively
+- promote conservatively
+
+### Didactic Review Should Follow Semantic Retention
+
+Generated discovery should also improve the didactic layer, but only after the
+semantic fix and runtime retention look good enough.
+
+After a generated case is semantically retained, the follow-up review should
+check:
+
+- step quality
+- sub-step quality
+- whether a step is too magical for the underlying transformation
+- `before/after` highlight correctness
+- whether the explanation is generalizable across the family
+
+If the didactic improvement is too case-specific, prefer a narrow regression
+test instead of broad narration changes.
+
 ## Current Automation Base
 
 Use [engine_improvement_scorecard.py](/Users/javiergimenezmoya/developer/math/scripts/engine_improvement_scorecard.py) as the unified runner.
@@ -191,6 +298,16 @@ surface:
 - suite elapsed deltas
 - explicit `embedded` runtime assessment vs baseline
 - a warning state when `embedded` regresses materially in elapsed time
+
+The scorecard should also grow generated-discovery visibility over time.
+
+At minimum, it should make room for:
+
+- generated candidates explored this cycle
+- how many exposed real engine failures
+- how many collapsed into an already-known failure cluster
+- how many were promoted to `unit`, `live`, `frozen`, or `stress`
+- whether the retained fix changed `embedded` elapsed time materially
 
 ## Benchmark Stratification
 
@@ -375,6 +492,9 @@ with isolated examples.
 
 The embedded context corpus should grow by structural family, not by anecdote.
 
+Generated high-temperature expressions are a valid source of new embedded cases,
+but they should feed curation rather than bypass it.
+
 But family count alone is not enough.
 
 Wrapper coverage is a first-class axis of embedded quality.
@@ -436,6 +556,27 @@ Avoid this anti-pattern:
 
 The goal is not raw corpus size.
 The goal is broader contextual mathematical coverage per added case.
+
+### Generated Composition Should Feed Curation
+
+When a generated expression exposes a new weakness, do not promote the whole
+large composed expression automatically.
+
+Instead:
+
+1. identify the reusable structural lesson
+2. decide whether the best durable guard is:
+   - a unit test
+   - a single curated `live` row
+   - a hotter `stress` row
+3. keep only the minimal representative case in `embedded`
+
+This is the main safeguard against turning `embedded` into a bag of noisy
+anecdotes.
+
+Large composed expressions are useful for discovery precisely because they are
+hard.
+That does not mean they are always the right long-lived guardrail artifact.
 
 ## Coverage Dimensions To Grow Deliberately
 
@@ -515,6 +656,10 @@ family's environment, for example:
 
 These are often more representative of real engine traffic than isolated family
 benchmarks.
+
+High-temperature generation is one of the best ways to grow this axis on
+purpose, because it can deliberately compose already-known families instead of
+waiting for those mixtures to appear only by anecdote.
 
 ### Strategy Tier Must Stay Visible
 
