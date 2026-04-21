@@ -139,6 +139,7 @@ k*(tanh(x)) - k*((e^x - e^(-x))/(e^x + e^(-x))),0,scaled_difference_zero,hyperbo
 k*(arctan(a)+arctan(1/a)) - k*(pi/2),0,scaled_difference_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,rewrite inverse trigs
 ((arctan(a)+arctan(1/a))/q) - ((pi/2)/q),0,common_denominator_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,rewrite inverse trigs
 ((arctan(a)+arctan(1/a)) + 1)/((pi/2) + 1),1,shifted_quotient_one,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,rewrite inverse trigs
+(asin(x/sqrt(x^2 + 1)) - atan(x)),0,additive_passthrough_zero,arcsin_sin_arctan_safe_composition,simplify,asin(x/sqrt(x^2 + 1)),atan(x),rewrite inverse trigs
 (((a^2-b^2)/(a-b)) + m) - ((a+b) + m),0,additive_passthrough_zero,cancel_fraction_difference_squares,simplify,(a^2-b^2)/(a-b),a+b,cancel fraction
 k*((a^2-b^2)/(a-b)) - k*(a+b),0,scaled_difference_zero,cancel_fraction_difference_squares,simplify,(a^2-b^2)/(a-b),a+b,cancel fraction
 (((a^2-b^2)/(a-b))/q) - ((a+b)/q),0,common_denominator_zero,cancel_fraction_difference_squares,simplify,(a^2-b^2)/(a-b),a+b,cancel fraction
@@ -295,6 +296,7 @@ k*(2*ln(abs(x*y))) - k*(2*ln(abs(x))+2*ln(abs(y))),0,scaled_difference_zero,expa
 "k*(log(b,(x*y)^2)) - k*(2*log(b,x)+2*log(b,y))",0,scaled_difference_zero,expand_log_grouped_general_base_power,log_expand,"log(b,(x*y)^2)","2*log(b,x)+2*log(b,y)",expand_log
 "((log(b,(x*y)^2))/q) - ((2*log(b,x)+2*log(b,y))/q)",0,common_denominator_zero,expand_log_grouped_general_base_power,log_expand,"log(b,(x*y)^2)","2*log(b,x)+2*log(b,y)",expand_log
 "((log(b,(x*y)^2)) + 1)/((2*log(b,x)+2*log(b,y)) + 1)",1,shifted_quotient_one,expand_log_grouped_general_base_power,log_expand,"log(b,(x*y)^2)","2*log(b,x)+2*log(b,y)",expand_log
+((x^(log(log(x))/log(x))) + m) - ((log(x)) + m),0,additive_passthrough_zero,log_inverse_power_unary_base10,log_inverse_power,x^(log(log(x))/log(x)),log(x),log inverse power
 ((ln((x*y)^2)+a) + m) - ((ln(x^2)+ln(y^2)+a) + m),0,additive_passthrough_zero,expand_log_grouped_power_with_passthrough,log_expand,ln((x*y)^2)+a,ln(x^2)+ln(y^2)+a,expand_log
 k*(ln((x*y)^2)+a) - k*(ln(x^2)+ln(y^2)+a),0,scaled_difference_zero,expand_log_grouped_power_with_passthrough,log_expand,ln((x*y)^2)+a,ln(x^2)+ln(y^2)+a,expand_log
 ((ln((x*y)^2)+a)/q) - ((ln(x^2)+ln(y^2)+a)/q),0,common_denominator_zero,expand_log_grouped_power_with_passthrough,log_expand,ln((x*y)^2)+a,ln(x^2)+ln(y^2)+a,expand_log

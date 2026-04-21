@@ -1,6 +1,8 @@
 use crate::expr_nary::build_balanced_add;
 use crate::expr_relations::extract_negated_inner;
+use crate::expr_terms::collect_additive_terms_flat_add;
 use crate::numeric_eval::as_rational_const;
+use crate::root_forms::extract_square_root_base;
 use crate::trig_reciprocal_support::{are_reciprocals, has_reciprocal_atan_pair};
 use crate::trig_roots_flatten::flatten_add_sub_chain;
 use cas_ast::ordering::compare_expr;
@@ -13,6 +15,7 @@ pub enum InverseTrigCompositionKind {
     CosArccos,
     TanArctan,
     ArctanTanArctan,
+    ArcsinSinArctan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -92,9 +95,139 @@ pub fn is_number_in_unit_interval(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+fn is_exact_one(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if *n == num_rational::BigRational::one())
+}
+
+fn is_exact_two(ctx: &Context, expr: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Number(n)
+            if *n == num_rational::BigRational::from_integer(2.into())
+    )
+}
+
+fn match_square_base_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    if is_exact_two(ctx, *exp) {
+        Some(*base)
+    } else {
+        None
+    }
+}
+
+fn match_one_plus_square_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let terms = collect_additive_terms_flat_add(ctx, expr);
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let mut saw_one = false;
+    let mut square_base = None;
+    for term in terms {
+        if is_exact_one(ctx, term) {
+            if saw_one {
+                return None;
+            }
+            saw_one = true;
+            continue;
+        }
+        let base = match_square_base_expr(ctx, term)?;
+        if square_base.is_some() {
+            return None;
+        }
+        square_base = Some(base);
+    }
+
+    if saw_one {
+        square_base
+    } else {
+        None
+    }
+}
+
+fn match_sqrt_one_plus_square_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let radicand = extract_square_root_base(ctx, expr)?;
+    match_one_plus_square_expr(ctx, radicand)
+}
+
+fn collect_mul_factors(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Mul(left, right) => {
+            collect_mul_factors(ctx, *left, factors);
+            collect_mul_factors(ctx, *right, factors);
+        }
+        _ => factors.push(expr),
+    }
+}
+
+fn match_var_times_sqrt_one_plus_square_expr(ctx: &Context, expr: ExprId, var: ExprId) -> bool {
+    let mut factors = Vec::new();
+    collect_mul_factors(ctx, expr, &mut factors);
+    if factors.len() != 2 {
+        return false;
+    }
+
+    let mut saw_var = false;
+    let mut saw_sqrt = false;
+    for factor in factors {
+        if !saw_var && compare_expr(ctx, factor, var) == std::cmp::Ordering::Equal {
+            saw_var = true;
+            continue;
+        }
+        if !saw_sqrt
+            && match_sqrt_one_plus_square_expr(ctx, factor).is_some_and(|sqrt_var| {
+                compare_expr(ctx, sqrt_var, var) == std::cmp::Ordering::Equal
+            })
+        {
+            saw_sqrt = true;
+            continue;
+        }
+        return false;
+    }
+
+    saw_var && saw_sqrt
+}
+
+fn try_match_safe_arcsin_sin_arctan_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Expr::Function(sin_name, sin_args) = ctx.get(expr) {
+        let is_sin = ctx.is_builtin(*sin_name, BuiltinFn::Sin);
+        if is_sin && sin_args.len() == 1 {
+            let atan_expr = sin_args[0];
+            if let Expr::Function(atan_name, atan_args) = ctx.get(atan_expr) {
+                let is_atan = ctx.is_builtin(*atan_name, BuiltinFn::Arctan)
+                    || ctx.is_builtin(*atan_name, BuiltinFn::Atan);
+                if is_atan && atan_args.len() == 1 {
+                    return Some(atan_args[0]);
+                }
+            }
+        }
+    }
+
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+
+    if let Some(var) = match_sqrt_one_plus_square_expr(ctx, *den) {
+        if compare_expr(ctx, *num, var) == std::cmp::Ordering::Equal {
+            return Some(var);
+        }
+    }
+
+    if let Some(var) = match_one_plus_square_expr(ctx, *den) {
+        if match_var_times_sqrt_one_plus_square_expr(ctx, *num, var) {
+            return Some(var);
+        }
+    }
+
+    None
+}
+
 /// Plan direct inverse-trig compositions (`sin(arcsin(x))`, etc.) under domain policy.
 pub fn try_plan_inverse_trig_composition_expr(
-    ctx: &Context,
+    ctx: &mut Context,
     expr: ExprId,
     assume_mode: bool,
     strict_mode: bool,
@@ -107,74 +240,88 @@ pub fn try_plan_inverse_trig_composition_expr(
     }
 
     let inner_expr = outer_args[0];
-    let Expr::Function(inner_name, inner_args) = ctx.get(inner_expr) else {
-        return None;
+    let inner_fn_info = match ctx.get(inner_expr) {
+        Expr::Function(inner_name, inner_args) if inner_args.len() == 1 => {
+            Some((*inner_name, inner_args[0]))
+        }
+        _ => None,
     };
-    if inner_args.len() != 1 {
-        return None;
-    }
-    let x = inner_args[0];
 
-    if ctx.is_builtin(*outer_name, BuiltinFn::Sin)
-        && (ctx.is_builtin(*inner_name, BuiltinFn::Arcsin)
-            || ctx.is_builtin(*inner_name, BuiltinFn::Asin))
-    {
-        let plan = plan_inverse_trig_composition_with_mode_flags(
-            InverseTrigCompositionKind::SinArcsin,
-            is_number_in_unit_interval(ctx, x),
-            assume_mode,
-            strict_mode,
-        )?;
-        return Some(InverseTrigCompositionRewritePlan {
-            rewritten: x,
-            kind: plan.kind,
-            assume_defined_expr: if plan.assume_defined { Some(x) } else { None },
-        });
-    }
+    if let Some((inner_name, x)) = inner_fn_info {
+        if ctx.is_builtin(*outer_name, BuiltinFn::Sin)
+            && (ctx.is_builtin(inner_name, BuiltinFn::Arcsin)
+                || ctx.is_builtin(inner_name, BuiltinFn::Asin))
+        {
+            let plan = plan_inverse_trig_composition_with_mode_flags(
+                InverseTrigCompositionKind::SinArcsin,
+                is_number_in_unit_interval(ctx, x),
+                assume_mode,
+                strict_mode,
+            )?;
+            return Some(InverseTrigCompositionRewritePlan {
+                rewritten: x,
+                kind: plan.kind,
+                assume_defined_expr: if plan.assume_defined { Some(x) } else { None },
+            });
+        }
 
-    if ctx.is_builtin(*outer_name, BuiltinFn::Cos)
-        && (ctx.is_builtin(*inner_name, BuiltinFn::Arccos)
-            || ctx.is_builtin(*inner_name, BuiltinFn::Acos))
-    {
-        let plan = plan_inverse_trig_composition_with_mode_flags(
-            InverseTrigCompositionKind::CosArccos,
-            is_number_in_unit_interval(ctx, x),
-            assume_mode,
-            strict_mode,
-        )?;
-        return Some(InverseTrigCompositionRewritePlan {
-            rewritten: x,
-            kind: plan.kind,
-            assume_defined_expr: if plan.assume_defined { Some(x) } else { None },
-        });
-    }
+        if ctx.is_builtin(*outer_name, BuiltinFn::Cos)
+            && (ctx.is_builtin(inner_name, BuiltinFn::Arccos)
+                || ctx.is_builtin(inner_name, BuiltinFn::Acos))
+        {
+            let plan = plan_inverse_trig_composition_with_mode_flags(
+                InverseTrigCompositionKind::CosArccos,
+                is_number_in_unit_interval(ctx, x),
+                assume_mode,
+                strict_mode,
+            )?;
+            return Some(InverseTrigCompositionRewritePlan {
+                rewritten: x,
+                kind: plan.kind,
+                assume_defined_expr: if plan.assume_defined { Some(x) } else { None },
+            });
+        }
 
-    if ctx.is_builtin(*outer_name, BuiltinFn::Tan)
-        && (ctx.is_builtin(*inner_name, BuiltinFn::Arctan)
-            || ctx.is_builtin(*inner_name, BuiltinFn::Atan))
-    {
-        return Some(InverseTrigCompositionRewritePlan {
-            rewritten: x,
-            kind: InverseTrigCompositionKind::TanArctan,
-            assume_defined_expr: None,
-        });
-    }
+        if ctx.is_builtin(*outer_name, BuiltinFn::Tan)
+            && (ctx.is_builtin(inner_name, BuiltinFn::Arctan)
+                || ctx.is_builtin(inner_name, BuiltinFn::Atan))
+        {
+            return Some(InverseTrigCompositionRewritePlan {
+                rewritten: x,
+                kind: InverseTrigCompositionKind::TanArctan,
+                assume_defined_expr: None,
+            });
+        }
 
-    let is_outer_arctan = ctx.is_builtin(*outer_name, BuiltinFn::Arctan)
-        || ctx.is_builtin(*outer_name, BuiltinFn::Atan);
-    let is_inner_tan = ctx.is_builtin(*inner_name, BuiltinFn::Tan);
-    if is_outer_arctan && is_inner_tan {
-        if let Expr::Function(innermost_name, innermost_args) = ctx.get(x) {
-            let is_innermost_arctan = ctx.is_builtin(*innermost_name, BuiltinFn::Arctan)
-                || ctx.is_builtin(*innermost_name, BuiltinFn::Atan);
-            if is_innermost_arctan && innermost_args.len() == 1 {
-                return Some(InverseTrigCompositionRewritePlan {
-                    rewritten: x,
-                    kind: InverseTrigCompositionKind::ArctanTanArctan,
-                    assume_defined_expr: None,
-                });
+        let is_outer_arctan = ctx.is_builtin(*outer_name, BuiltinFn::Arctan)
+            || ctx.is_builtin(*outer_name, BuiltinFn::Atan);
+        let is_inner_tan = ctx.is_builtin(inner_name, BuiltinFn::Tan);
+        if is_outer_arctan && is_inner_tan {
+            if let Expr::Function(innermost_name, innermost_args) = ctx.get(x) {
+                let is_innermost_arctan = ctx.is_builtin(*innermost_name, BuiltinFn::Arctan)
+                    || ctx.is_builtin(*innermost_name, BuiltinFn::Atan);
+                if is_innermost_arctan && innermost_args.len() == 1 {
+                    return Some(InverseTrigCompositionRewritePlan {
+                        rewritten: x,
+                        kind: InverseTrigCompositionKind::ArctanTanArctan,
+                        assume_defined_expr: None,
+                    });
+                }
             }
         }
+    }
+
+    if (ctx.is_builtin(*outer_name, BuiltinFn::Arcsin)
+        || ctx.is_builtin(*outer_name, BuiltinFn::Asin))
+        && try_match_safe_arcsin_sin_arctan_argument(ctx, inner_expr).is_some()
+    {
+        let x = try_match_safe_arcsin_sin_arctan_argument(ctx, inner_expr)?;
+        let rewritten = ctx.call_builtin(BuiltinFn::Arctan, vec![x]);
+        return Some(InverseTrigCompositionRewritePlan {
+            rewritten,
+            kind: InverseTrigCompositionKind::ArcsinSinArctan,
+            assume_defined_expr: None,
+        });
     }
 
     None
@@ -858,10 +1005,11 @@ mod tests {
     fn inverse_trig_composition_plan_respects_mode_flags() {
         let mut ctx = Context::new();
         let expr = parse("sin(arcsin(x))", &mut ctx).expect("parse");
-        let strict_blocked = try_plan_inverse_trig_composition_expr(&ctx, expr, false, true);
+        let strict_blocked = try_plan_inverse_trig_composition_expr(&mut ctx, expr, false, true);
         assert!(strict_blocked.is_none());
 
-        let assume = try_plan_inverse_trig_composition_expr(&ctx, expr, true, false).expect("plan");
+        let assume =
+            try_plan_inverse_trig_composition_expr(&mut ctx, expr, true, false).expect("plan");
         assert_eq!(assume.rewritten, parse("x", &mut ctx).expect("x"));
         assert!(assume.assume_defined_expr.is_some());
     }
@@ -1107,5 +1255,33 @@ mod tests {
 
         let machin_expr = parse("atan(1/2) + atan(1/3)", &mut ctx).expect("parse");
         assert!(try_plan_atan_rational_add_expr(&mut ctx, machin_expr, false).is_some());
+    }
+
+    #[test]
+    fn inverse_trig_composition_plan_detects_safe_arcsin_sin_arctan_expansion() {
+        let mut ctx = Context::new();
+        let expr = parse("asin(x/sqrt(x^2 + 1))", &mut ctx).expect("parse");
+        let plan =
+            try_plan_inverse_trig_composition_expr(&mut ctx, expr, false, true).expect("plan");
+        let expected = parse("arctan(x)", &mut ctx).expect("expected");
+        assert_eq!(plan.kind, InverseTrigCompositionKind::ArcsinSinArctan);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plan.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn inverse_trig_composition_plan_detects_normalized_safe_arcsin_sin_arctan_expansion() {
+        let mut ctx = Context::new();
+        let expr = parse("arcsin(x*sqrt(x^2 + 1)/(x^2 + 1))", &mut ctx).expect("parse");
+        let plan =
+            try_plan_inverse_trig_composition_expr(&mut ctx, expr, false, true).expect("plan");
+        let expected = parse("arctan(x)", &mut ctx).expect("expected");
+        assert_eq!(plan.kind, InverseTrigCompositionKind::ArcsinSinArctan);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plan.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
     }
 }

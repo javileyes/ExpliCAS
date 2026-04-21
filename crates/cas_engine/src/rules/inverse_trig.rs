@@ -22,6 +22,7 @@ fn format_inverse_trig_composition_desc(
         (InverseTrigCompositionKind::ArctanTanArctan, _) => {
             "arctan(tan(arctan(u))) = arctan(u) (principal branch)"
         }
+        (InverseTrigCompositionKind::ArcsinSinArctan, _) => "arcsin(x/√(1+x²)) = arctan(x)",
     }
 }
 

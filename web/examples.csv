@@ -1,5 +1,6 @@
 expression,description
 "solve(a*x^2+b*x+c=0,x)","Fórmula cuadrática general"
+"(asin(x/sqrt(x^2 + 1)) - atan(x)) + (factorial(n+1)/factorial(n-1) - n^2 - n) + (x^(log(log(x))/log(x)) - log(x)) + ((x^3 + y^3)/(x^2 - x*y + y^2) - x - y)","Simplificación con arcosenos, factoriales, logaritmos y fracciones"
 "(log(x*sqrt(x)) + log(sqrt(x)/x^2)) + (sqrt(y)/(sqrt(y)-1) - sqrt(y)/(sqrt(y)+1) - (2*sqrt(y))/(y-1)) + (((1/x) - (1/y))/((y-x)/(x*y)) - 1)","Simplificación con logaritmos, raíces y fracciones"
 "1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)","Simplificación con raíces"
 "(x - 1)*(x^5 + x^4 + x^3 + x^2 + x + 1)","Producto polinómico con cancelación telescópica"

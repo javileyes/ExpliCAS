@@ -1713,7 +1713,11 @@ pub fn try_rewrite_log_inverse_power_expr(ctx: &mut Context, expr: ExprId) -> Op
     }
 
     let (base_opt, c) = (target_base_opt?, coeff?);
-    let target_base = base_opt.unwrap_or_else(|| ctx.add(Expr::Constant(Constant::E)));
+    let target_base = match base_opt {
+        Some(base) if base == log10_base_sentinel() => ctx.num(10),
+        Some(base) => base,
+        None => ctx.add(Expr::Constant(Constant::E)),
+    };
     let rewritten = ctx.add(Expr::Pow(target_base, c));
     Some(LogRewrite {
         rewritten,
@@ -2432,6 +2436,29 @@ mod tests {
                 assert!(matches!(ctx.get(*exp), Expr::Number(n) if n.is_one()));
             }
             other => panic!("expected e or e^1, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn rewrites_log_inverse_power_unary_log_form_with_concrete_base_ten() {
+        let mut ctx = Context::new();
+        let expr = parse("x^(log(log(x))/log(x))", &mut ctx).expect("expr");
+        let expected = parse("10^log(log(x))", &mut ctx).expect("expected");
+
+        let rw = try_rewrite_log_inverse_power_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+        match ctx.get(rw.rewritten) {
+            Expr::Pow(base, _) => {
+                assert!(
+                    matches!(ctx.get(*base), Expr::Number(n) if n.is_integer() && n.to_integer() == 10.into()),
+                    "expected concrete base 10, got {:?}",
+                    ctx.get(*base)
+                );
+            }
+            other => panic!("expected Pow(10, ...), got {:?}", other),
         }
     }
 

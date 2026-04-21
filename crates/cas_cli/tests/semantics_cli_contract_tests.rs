@@ -8443,6 +8443,40 @@ fn eval_log_power_product_difference_to_zero_uses_combined_log_cancellation_step
 }
 
 #[test]
+fn eval_unary_log_inverse_power_difference_collapses_to_zero() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "x^(log(log(x))/log(x)) - log(x)",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "0");
+}
+
+#[test]
+fn eval_arcsin_arctan_expansion_difference_collapses_to_zero() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "asin(x/sqrt(x^2 + 1)) - atan(x)",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "0");
+}
+
+#[test]
 fn eval_scaled_log_power_product_difference_collapses_in_one_common_scale_step() {
     let (output, _code) = run_cli(&[
         "eval",
