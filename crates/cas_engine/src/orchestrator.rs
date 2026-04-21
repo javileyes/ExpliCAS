@@ -11698,6 +11698,9 @@ fn classify_small_trig_or_hyperbolic_numeric_additive_chunk_root(
     expr: ExprId,
 ) -> Option<bool> {
     let terms = AddView::from_expr(ctx, expr).terms;
+    if is_supported_nonlog_additive_nested_zero_child_partner(ctx, expr) {
+        return Some(false);
+    }
     if expr_contains_log_builtin_local(ctx, expr) && terms.len() <= 4 {
         return Some(false);
     }
@@ -29351,6 +29354,59 @@ mod tests {
         orchestrator.options.collect_steps = false;
         orchestrator.options.shared.context_mode = crate::options::ContextMode::Standard;
         orchestrator.options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn classify_multiterm_trig_numeric_subset_status_is_candidate_ready_on_log_exp_fraction_root_perfect_square_mix_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(exp(y*log(x)) - x^y) + (sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)) + (2/(x^2 - 1) - 1/(x-1) + 1/(x+1)) + (sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        assert_eq!(
+            classify_root_exact_zero_multiterm_trig_numeric_subset_status(
+                &options,
+                &mut simplifier.context,
+                expr
+            ),
+            Some("candidate_ready")
+        );
+    }
+
+    #[test]
+    fn multiterm_trig_numeric_subset_zero_shortcut_handles_log_exp_fraction_root_perfect_square_mix_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(exp(y*log(x)) - x^y) + (sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)) + (2/(x^2 - 1) - 1/(x-1) + 1/(x+1)) + (sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_multiterm_trig_numeric_subset_zero_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected multiterm trig-numeric subset shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_log_exp_fraction_root_perfect_square_mix_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(exp(y*log(x)) - x^y) + (sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)) + (2/(x^2 - 1) - 1/(x-1) + 1/(x+1)) + (sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
         let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
         assert_eq!(render(&simplifier.context, rewritten), "0");
     }
