@@ -297,7 +297,9 @@ k*(2*ln(abs(x*y))) - k*(2*ln(abs(x))+2*ln(abs(y))),0,scaled_difference_zero,expa
 "k*(log(b,(x*y)^2)) - k*(2*log(b,x)+2*log(b,y))",0,scaled_difference_zero,expand_log_grouped_general_base_power,log_expand,"log(b,(x*y)^2)","2*log(b,x)+2*log(b,y)",expand_log
 "((log(b,(x*y)^2))/q) - ((2*log(b,x)+2*log(b,y))/q)",0,common_denominator_zero,expand_log_grouped_general_base_power,log_expand,"log(b,(x*y)^2)","2*log(b,x)+2*log(b,y)",expand_log
 "((log(b,(x*y)^2)) + 1)/((2*log(b,x)+2*log(b,y)) + 1)",1,shifted_quotient_one,expand_log_grouped_general_base_power,log_expand,"log(b,(x*y)^2)","2*log(b,x)+2*log(b,y)",expand_log
-((x^(log(log(x))/log(x))) + m) - ((log(x)) + m),0,additive_passthrough_zero,log_inverse_power_unary_base10,log_inverse_power,x^(log(log(x))/log(x)),log(x),log inverse power
+((x^(log(log(x))/log(x))) + m) - ((log(x)) + m),0,additive_passthrough_zero,log_inverse_power_unary_natural_alias,log_inverse_power,x^(log(log(x))/log(x)),log(x),log inverse power
+((exp(y*log(x))) + m) - ((x^y) + m),0,additive_passthrough_zero,exp_natural_log_power_alias,log_exp_inverse,exp(y*log(x)),x^y,log alias
+((10^(y*log10(x))) + m) - ((x^y) + m),0,additive_passthrough_zero,log10_power_alias,log_exp_inverse,10^(y*log10(x)),x^y,log10 alias
 ((ln((x*y)^2)+a) + m) - ((ln(x^2)+ln(y^2)+a) + m),0,additive_passthrough_zero,expand_log_grouped_power_with_passthrough,log_expand,ln((x*y)^2)+a,ln(x^2)+ln(y^2)+a,expand_log
 k*(ln((x*y)^2)+a) - k*(ln(x^2)+ln(y^2)+a),0,scaled_difference_zero,expand_log_grouped_power_with_passthrough,log_expand,ln((x*y)^2)+a,ln(x^2)+ln(y^2)+a,expand_log
 ((ln((x*y)^2)+a)/q) - ((ln(x^2)+ln(y^2)+a)/q),0,common_denominator_zero,expand_log_grouped_power_with_passthrough,log_expand,ln((x*y)^2)+a,ln(x^2)+ln(y^2)+a,expand_log

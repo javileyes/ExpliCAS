@@ -578,6 +578,19 @@ pub fn eval_f64_with_substitution(
                 "log" if args.len() == 1 => {
                     let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
                     if av > 0.0 {
+                        let result = av.ln();
+                        if result.is_finite() {
+                            Some(result)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+                "log10" if args.len() == 1 => {
+                    let av = eval_f64_with_substitution(ctx, args[0], var_names, values)?;
+                    if av > 0.0 {
                         let result = av.log10();
                         if result.is_finite() {
                             Some(result)

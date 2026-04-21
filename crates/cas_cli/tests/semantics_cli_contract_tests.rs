@@ -3218,7 +3218,7 @@ fn eval_log_contraction_step_keeps_full_before_scope_highlight() {
     let step = &steps[1];
     let before_latex = step["before_latex"].as_str().expect("before_latex");
     assert!(
-        before_latex.contains("{\\color{red}{\\log({x}^{2} - {y}^{2}) - \\log(u)}}"),
+        before_latex.contains("{\\color{red}{\\ln({x}^{2} - {y}^{2}) - \\ln(u)}}"),
         "expected step 2 before_latex to highlight the full log-contraction scope, got: {before_latex}"
     );
 }
@@ -8460,6 +8460,42 @@ fn eval_unary_log_inverse_power_difference_collapses_to_zero() {
 }
 
 #[test]
+fn eval_exp_natural_log_power_difference_collapses_to_zero() {
+    let (output, code) = run_cli(&["eval", "exp(y*log(x)) - x^y", "--format", "json"]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "0");
+}
+
+#[test]
+fn eval_log10_power_difference_collapses_to_zero() {
+    let (output, code) = run_cli(&["eval", "10^(y*log10(x)) - x^y", "--format", "json"]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "0");
+}
+
+#[test]
+fn eval_log_and_ln_alias_difference_collapses_to_zero() {
+    let (output, code) = run_cli(&["eval", "log(x) - ln(x)", "--format", "json"]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "0");
+}
+
+#[test]
 fn eval_arcsin_arctan_expansion_difference_collapses_to_zero() {
     let (output, code) = run_cli(&[
         "eval",
@@ -8593,8 +8629,8 @@ fn eval_factored_log_difference_to_zero_keeps_global_log_context_through_preorde
         steps[1]["rule"],
         "Factorizar una diferencia de cuadrados y cancelar"
     );
-    assert_eq!(steps[1]["before"], "log((x^2 - y^2)/(x - y)) - log(x + y)");
-    assert_eq!(steps[1]["after"], "log(x + y) - log(x + y)");
+    assert_eq!(steps[1]["before"], "ln((x^2 - y^2)/(x - y)) - ln(x + y)");
+    assert_eq!(steps[1]["after"], "ln(x + y) - ln(x + y)");
     assert_eq!(
         steps[2]["rule"],
         "Collapse Common-Scale Equivalent Difference"
@@ -8602,12 +8638,11 @@ fn eval_factored_log_difference_to_zero_keeps_global_log_context_through_preorde
     let before_latex = steps[1]["before_latex"].as_str().expect("before_latex");
     let after_latex = steps[1]["after_latex"].as_str().expect("after_latex");
     assert!(
-        before_latex.contains("\\log(")
-            && before_latex.contains("\\frac{{x}^{2} - {y}^{2}}{x - y}"),
+        before_latex.contains("\\ln(") && before_latex.contains("\\frac{{x}^{2} - {y}^{2}}{x - y}"),
         "expected full logarithmic before context, got: {before_latex}"
     );
     assert!(
-        after_latex.contains("\\log(") && after_latex.contains("{\\color{green}{x + y}}"),
+        after_latex.contains("\\ln(") && after_latex.contains("{\\color{green}{x + y}}"),
         "expected full logarithmic after context, got: {after_latex}"
     );
 }
@@ -8830,16 +8865,16 @@ fn derive_factored_log_difference_squares_uses_two_named_steps() {
     assert_eq!(steps.len(), 2);
     assert_eq!(steps[0]["rule"], "Factorizar");
     assert_eq!(steps[1]["rule"], "Expandir logaritmos");
-    assert_eq!(steps[0]["before"], "log(x^2 - y^2)");
-    assert_eq!(steps[0]["after"], "log((x + y) · (x - y))");
+    assert_eq!(steps[0]["before"], "ln(x^2 - y^2)");
+    assert_eq!(steps[0]["after"], "ln((x + y) · (x - y))");
     let before_latex = steps[0]["before_latex"].as_str().expect("before_latex");
     let after_latex = steps[0]["after_latex"].as_str().expect("after_latex");
     assert!(
-        before_latex.contains("\\log(") && before_latex.contains("{x}^{2} - {y}^{2}"),
+        before_latex.contains("\\ln(") && before_latex.contains("{x}^{2} - {y}^{2}"),
         "expected full logarithm in first step before_latex, got: {before_latex}"
     );
     assert!(
-        after_latex.contains("\\log(") && after_latex.contains("(x + y)\\cdot (x - y)"),
+        after_latex.contains("\\ln(") && after_latex.contains("(x + y)\\cdot (x - y)"),
         "expected full logarithm in first step after_latex, got: {after_latex}"
     );
     let required = wire["required_display"]

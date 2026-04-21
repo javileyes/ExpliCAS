@@ -912,7 +912,7 @@ mod tests {
             lines.iter().any(|line| line.contains("expand_log")),
             "expected expand_log step in derive output, got: {lines:?}"
         );
-        assert_result_contains_all(&lines, &["log(x - y)", "log(x + y)"]);
+        assert_result_contains_all(&lines, &["ln(x - y)", "ln(x + y)"]);
     }
 
     #[test]
@@ -928,7 +928,7 @@ mod tests {
             lines.iter().any(|line| line.contains("expand_log")),
             "expected expand_log step in derive output, got: {lines:?}"
         );
-        assert_result_contains_all(&lines, &["log(x - y)", "log(x + y)", "log(u)", "log(v)"]);
+        assert_result_contains_all(&lines, &["ln(x - y)", "ln(x + y)", "ln(u)", "ln(v)"]);
     }
 
     #[test]

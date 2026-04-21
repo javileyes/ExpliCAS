@@ -4,7 +4,7 @@ derive_command,step_by_step_result
 "derive sin(x)^2, (1 - cos(2*x))/2",perfecto
 "derive cosh(x) + sinh(x), e^x",perfecto
 "derive 1/(sqrt(a) + sqrt(b)), (sqrt(a) - sqrt(b))/(a - b)",perfecto
-"derive log(x^2 - y^2), log(x - y) + log(x + y)","perfecto: ya enseña factorizar y luego expandir logaritmos en 2 steps nominales, y además muestra solo los guards atómicos x + y > 0 y x - y > 0."
+"derive ln(x^2 - y^2), ln(x - y) + ln(x + y)","perfecto: ya enseña factorizar y luego expandir logaritmos en 2 steps nominales, y además muestra solo los guards atómicos x + y > 0 y x - y > 0."
 "derive (x^4 - 1)/(x - 1), x^3 + x^2 + x + 1","bueno: ahora el step visible parte de la fracción original y llega al objetivo correcto sin ruido algebraico; sigue comprimiendo la factorización implícita del numerador dentro del mismo step."
 "derive 1/(1 + sin(x)) + 1/(1 - sin(x)), 2*sec(x)^2","bueno: sigue comprimiendo la limpieza intermedia del numerador y del denominador, pero los steps visibles ya son fieles; el segundo paso enseña correctamente 2/(1 - sin(x)^2) antes de aplicar la identidad pitagórica."
 "derive (sin(x) + cos(x))^2, 1 + sin(2*x)",perfecto
@@ -34,8 +34,8 @@ derive_command,step_by_step_result
 "derive sqrt(a^2 + 2*a*b + b^2), abs(a+b)",perfecto
 "derive sqrt(a^2 + 2*a*b + b^2)+c, abs(a+b)+c",perfecto
 "derive sqrt(x^3)+a, abs(x)*sqrt(x)+a",perfecto
-"derive log((x*y)^2), log(x^2)+log(y^2)",perfecto
-"derive log(x^2-y^2)+a, log(x-y)+log(x+y)+a","bueno: ya enseña la cadena correcta en 2 steps nominales, factorizar y luego expandir logaritmos; los campos before/after muestran el foco local del log y no toda la suma con +a, pero la narrativa es buena."
+"derive ln((x*y)^2), ln(x^2)+ln(y^2)",perfecto
+"derive ln(x^2-y^2)+a, ln(x-y)+ln(x+y)+a","bueno: ya enseña la cadena correcta en 2 steps nominales, factorizar y luego expandir logaritmos; los campos before/after muestran el foco local del log y no toda la suma con +a, pero la narrativa es buena."
 "derive ln(x^2)+ln(y^2), ln((x*y)^2)",perfecto
 "derive 2*ln(abs(x*y)), 2*ln(abs(x))+2*ln(abs(y))",perfecto
 "derive 2*log(b,x)+2*log(b,y), log(b,(x*y)^2)",perfecto
@@ -53,7 +53,7 @@ derive_command,step_by_step_result
 "derive 2*cosh(2*x), exp(2*x)+exp(-2*x)",perfecto
 "derive exp(x)+exp(-x), 2*cosh(x)",perfecto
 "derive exp(x)-exp(-x), 2*sinh(x)",perfecto
-"derive log((x^2-y^2)/(u*v)), log(x-y)+log(x+y)-log(u)-log(v)","bueno: ahora enseña la cadena correcta en 2 steps, factorizar el numerador y luego expandir logaritmos; el segundo step sigue mostrando el foco local factorizado y no todo el argumento del logaritmo."
+"derive ln((x^2-y^2)/(u*v)), ln(x-y)+ln(x+y)-ln(u)-ln(v)","bueno: ahora enseña la cadena correcta en 2 steps, factorizar el numerador y luego expandir logaritmos; el segundo step sigue mostrando el foco local factorizado y no todo el argumento del logaritmo."
 "derive ln((x*y)^2/z^2), 2*ln(abs(x))+2*ln(abs(y))-2*ln(abs(z))","bueno: el salto es correcto y limpio, pero en un único step comprime potencia, producto y cociente del argumento del logaritmo; además mantiene un guard compuesto redundante."
 "derive 1/(u*(u+1)), 1/u - 1/(u+1)",perfecto
 "derive 1/u - 1/(u+1), 1/(u*(u+1))",perfecto
@@ -76,4 +76,4 @@ derive_command,step_by_step_result
 "derive (x^2 + 2*x + 1)/(x+1), x+1","bueno: el step es fiel y limpio, pero comprime la factorización implícita de (x+1)^2 antes de cancelar."
 "derive (a^2+2*a*b+b^2)/(a+b), a+b","bueno: mismo patrón que el caso anterior; la factorización de (a+b)^2 queda implícita dentro del único step."
 "derive ((1/sqrt(u))^2 + 2*(1/sqrt(u)) + 1)/((1/sqrt(u)) + 1), 1 + 1/sqrt(u)","bueno: el resultado es limpio y la regla es razonable, pero en un solo step comprime la división algebraica tras el cambio t = 1/sqrt(u)."
-"derive log((x*y)^2)+a, log(x^2)+log(y^2)+a","bueno: correcto y limpio con passthrough, pero en un único step comprime la expansión del producto y de la potencia del argumento del logaritmo."
+"derive ln((x*y)^2)+a, ln(x^2)+ln(y^2)+a","bueno: correcto y limpio con passthrough, pero en un único step comprime la expansión del producto y de la potencia del argumento del logaritmo."

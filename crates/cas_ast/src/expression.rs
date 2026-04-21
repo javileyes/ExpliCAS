@@ -755,8 +755,24 @@ impl Context {
     // Function call helpers
     // =========================================================================
 
+    #[inline]
+    fn canonicalize_builtin_call_args(
+        &self,
+        builtin: BuiltinFn,
+        args: Vec<ExprId>,
+    ) -> (BuiltinFn, Vec<ExprId>) {
+        match (builtin, args.len()) {
+            // Unary `log(x)` is the natural logarithm alias.
+            (BuiltinFn::Log, 1) => (BuiltinFn::Ln, args),
+            _ => (builtin, args),
+        }
+    }
+
     /// Create a function call expression: ctx.call("sqrt", vec![x])
     pub fn call(&mut self, name: &str, args: Vec<ExprId>) -> ExprId {
+        if let Some(builtin) = BuiltinFn::from_name(name) {
+            return self.call_builtin(builtin, args);
+        }
         let fn_id = self.intern_symbol(name);
         self.add(Expr::Function(fn_id, args))
     }
@@ -856,6 +872,7 @@ impl Context {
     /// the cached SymbolId.
     #[inline]
     pub fn call_builtin(&mut self, builtin: BuiltinFn, args: Vec<ExprId>) -> ExprId {
+        let (builtin, args) = self.canonicalize_builtin_call_args(builtin, args);
         let fn_id = self.builtin_id(builtin);
         self.add(Expr::Function(fn_id, args))
     }

@@ -117,7 +117,7 @@ pub fn extract_symbol_name(ctx: &Context, expr: ExprId) -> Option<&str> {
     None
 }
 
-/// Sentinel used by engine/parser bridges to represent unary `log(x)` base 10.
+/// Sentinel used by engine/parser bridges to represent unary `log10(x)` base 10.
 #[inline]
 pub fn log10_base_sentinel() -> ExprId {
     ExprId::from_raw(u32::MAX - 1)
@@ -143,9 +143,10 @@ pub fn extract_exp_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 /// Extract `(base, arg)` from logarithmic forms.
 ///
 /// Recognizes:
-/// - `log(arg)` -> `(10, arg)` where `10` is inserted in the context
+/// - `log(arg)` -> `(e, arg)` where `e` is inserted in the context
 /// - `log(base, arg)` -> `(base, arg)`
 /// - `ln(arg)` -> `(e, arg)` where `e` is inserted in the context
+/// - `log10(arg)` -> `(10, arg)` where `10` is inserted in the context
 pub fn extract_log_base_argument(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     let (base_opt, arg) = extract_log_base_argument_view(ctx, expr)?;
     if let Some(base) = base_opt {
@@ -162,9 +163,10 @@ pub fn extract_log_base_argument(ctx: &mut Context, expr: ExprId) -> Option<(Exp
 /// Extract `(base_opt, arg)` from logarithmic forms without mutating context.
 ///
 /// Recognizes:
-/// - `log(arg)` -> `(Some(log10_base_sentinel()), arg)` (implicit base 10)
+/// - `log(arg)` -> `(None, arg)` (implicit base `e`)
 /// - `log(base, arg)` -> `(Some(base), arg)`
 /// - `ln(arg)` -> `(None, arg)` (implicit base `e`)
+/// - `log10(arg)` -> `(Some(log10_base_sentinel()), arg)` (implicit base 10)
 pub fn extract_log_base_argument_view(
     ctx: &Context,
     expr: ExprId,
@@ -175,13 +177,16 @@ pub fn extract_log_base_argument_view(
     };
     if ctx.is_builtin(fn_id, BuiltinFn::Log) {
         return match args.as_slice() {
-            [arg] => Some((Some(log10_base_sentinel()), *arg)),
+            [arg] => Some((None, *arg)),
             [base, arg] => Some((Some(*base), *arg)),
             _ => None,
         };
     }
     if ctx.is_builtin(fn_id, BuiltinFn::Ln) && args.len() == 1 {
         return Some((None, args[0]));
+    }
+    if ctx.is_builtin(fn_id, BuiltinFn::Log10) && args.len() == 1 {
+        return Some((Some(log10_base_sentinel()), args[0]));
     }
     None
 }
@@ -191,6 +196,7 @@ pub fn extract_log_base_argument_view(
 /// Recognizes:
 /// - `ln(arg)` -> `arg`
 /// - `log(arg)` -> `arg`
+/// - `log10(arg)` -> `arg`
 ///
 /// This intentionally excludes `log(base, arg)`.
 pub fn extract_unary_log_argument_view(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -202,6 +208,9 @@ pub fn extract_unary_log_argument_view(ctx: &Context, expr: ExprId) -> Option<Ex
         return Some(args[0]);
     }
     if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 1 {
+        return Some(args[0]);
+    }
+    if ctx.is_builtin(fn_id, BuiltinFn::Log10) && args.len() == 1 {
         return Some(args[0]);
     }
     None
@@ -249,9 +258,10 @@ fn strip_unary_neg(ctx: &Context, mut expr: ExprId) -> ExprId {
 /// Extract `(base_opt, arg)` from logarithmic forms with permissive log arity.
 ///
 /// Recognizes:
-/// - `log(arg)` -> `(Some(log10_base_sentinel()), arg)` (implicit base 10)
+/// - `log(arg)` -> `(None, arg)` (implicit base `e`)
 /// - `log(base, arg)` -> `(Some(base), arg)`
 /// - `ln(arg)` -> `(None, arg)`
+/// - `log10(arg)` -> `(Some(log10_base_sentinel()), arg)`
 /// - unary negation wrappers around those forms
 pub fn extract_log_base_argument_relaxed_view(
     ctx: &Context,
@@ -264,13 +274,16 @@ pub fn extract_log_base_argument_relaxed_view(
     };
     if ctx.is_builtin(fn_id, BuiltinFn::Log) {
         return match args.as_slice() {
-            [arg] => Some((Some(log10_base_sentinel()), *arg)),
+            [arg] => Some((None, *arg)),
             [base, arg] => Some((Some(*base), *arg)),
             _ => None,
         };
     }
     if ctx.is_builtin(fn_id, BuiltinFn::Ln) && args.len() == 1 {
         return Some((None, args[0]));
+    }
+    if ctx.is_builtin(fn_id, BuiltinFn::Log10) && args.len() == 1 {
+        return Some((Some(log10_base_sentinel()), args[0]));
     }
     None
 }
@@ -471,7 +484,7 @@ mod tests {
         let (base_opt, arg) =
             extract_log_base_argument_relaxed_view(&ctx, expr).expect("must extract relaxed log");
         let x = parse("x", &mut ctx).expect("parse x");
-        assert_eq!(base_opt, Some(log10_base_sentinel()));
+        assert!(base_opt.is_none());
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, arg, x),
             std::cmp::Ordering::Equal
@@ -479,13 +492,13 @@ mod tests {
     }
 
     #[test]
-    fn extracts_log_base_argument_view_from_single_arg_log_as_log10() {
+    fn extracts_log_base_argument_view_from_single_arg_log_as_natural_log() {
         let mut ctx = Context::new();
         let expr = parse("log(x)", &mut ctx).expect("parse log(x)");
         let (base_opt, arg) =
             extract_log_base_argument_view(&ctx, expr).expect("must extract log(x)");
         let x = parse("x", &mut ctx).expect("parse x");
-        assert_eq!(base_opt, Some(log10_base_sentinel()));
+        assert!(base_opt.is_none());
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, arg, x),
             std::cmp::Ordering::Equal
@@ -497,6 +510,23 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("log(x)", &mut ctx).expect("parse log(x)");
         let (base, arg) = extract_log_base_argument(&mut ctx, expr).expect("must extract log(x)");
+        let e = ctx.add(Expr::Constant(Constant::E));
+        let x = parse("x", &mut ctx).expect("parse x");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, base, e),
+            std::cmp::Ordering::Equal
+        );
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extracts_materialized_base_argument_from_log10() {
+        let mut ctx = Context::new();
+        let expr = parse("log10(x)", &mut ctx).expect("parse log10(x)");
+        let (base, arg) = extract_log_base_argument(&mut ctx, expr).expect("must extract log10(x)");
         let ten = ctx.num(10);
         let x = parse("x", &mut ctx).expect("parse x");
         assert_eq!(
@@ -562,6 +592,18 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("log(x)", &mut ctx).expect("parse log(x)");
         let arg = extract_unary_log_argument_view(&ctx, expr).expect("must extract log arg");
+        let x = parse("x", &mut ctx).expect("parse x");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extracts_unary_log_argument_from_log10() {
+        let mut ctx = Context::new();
+        let expr = parse("log10(x)", &mut ctx).expect("parse log10(x)");
+        let arg = extract_unary_log_argument_view(&ctx, expr).expect("must extract log10 arg");
         let x = parse("x", &mut ctx).expect("parse x");
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, arg, x),

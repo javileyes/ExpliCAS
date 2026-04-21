@@ -4,7 +4,7 @@ expression,step_by_step_result
 "tan(x) + cot(x) - sec(x)*csc(x)","bueno: la narrativa completa existe y no hay ciclos, aunque la cola sec/csc añade algo de rodeo antes de cerrar en 0."
 "1/(x - 1) - 1/(x + 1) - 2/(x^2 - 1)","perfecto: la traza es corta y fiel, y ahora el primer step enseña explícitamente llevar a denominador común y simplificar el numerador antes de cerrar con la resta de expresiones iguales."
 "1/(sqrt(a) + sqrt(b)) - (sqrt(a) - sqrt(b))/(a - b)","perfecto: racionaliza, explica conjugado y diferencia de cuadrados, y cierra limpiamente en una resta de iguales."
-"log(x^2 - y^2) - log(x - y) - log(x + y)","bueno: ahora la traza mantiene el contexto completo de logaritmos; sigue siendo una ruta algo indirecta porque primero contrae, luego cancela dentro del log y después vuelve a contraer hasta 0."
+"ln(x^2 - y^2) - ln(x - y) - ln(x + y)","bueno: ahora la traza mantiene el contexto completo de logaritmos; sigue siendo una ruta algo indirecta porque primero contrae, luego cancela dentro del log y después vuelve a contraer hasta 0."
 "sin(x)^2 - (1 - cos(2*x))/2","perfecto: llega a 0 con 4 steps limpios y ahora el primero enseña explícitamente la expansión cos(2u)=2·cos(u)^2-1, en vez de filtrar la regla interna genérica de angle consistency."
 "cosh(x) + sinh(x) - e^x","perfecto: ahora colapsa directamente a e^x y cierra en una resta de expresiones iguales, sin el no-op Convert exp to Power."
 "(sin(x) + cos(x))^2 - (1 + sin(2*x))","perfecto: ahora reconoce directamente la identidad del cuadrado trigonométrico, evita la oscilación y cierra en un único step con substeps claros de binomio, pitagórica y ángulo doble."
@@ -17,7 +17,7 @@ expression,step_by_step_result
 "sinh(x+y) - (sinh(x)*cosh(y) + cosh(x)*sinh(y))",perfecto
 "(a^3-b^3)/(a-b) - (a^2 + a*b + b^2)","perfecto: ahora mantiene el único step visible, pero lo acompaña con substeps útiles de factorizar a^3-b^3 y cancelar el factor común del numerador y el denominador."
 "sqrt(a^2 + 2*a*b + b^2) - abs(a+b)","perfecto: reconoce el cuadrado perfecto, usa valor absoluto y cierra con una resta de iguales."
-"log((x*y)^2) - log(x^2) - log(y^2)","bueno: ahora llega a 0; primero saca las potencias fuera del logaritmo y luego cierra con un step final didáctico de expansión y cancelación. Sigue siendo algo largo por repetir tres extracciones de exponentes."
+"ln((x*y)^2) - ln(x^2) - ln(y^2)","bueno: ahora llega a 0; primero saca las potencias fuera del logaritmo y luego cierra con un step final didáctico de expansión y cancelación. Sigue siendo algo largo por repetir tres extracciones de exponentes."
 "2*ln(abs(x*y)) - 2*ln(abs(x)) - 2*ln(abs(y))","perfecto: ahora cierra en un único step coherente que explica la expansión del logaritmo y la cancelación de los términos iguales."
 "tan(x)*cot(x) - 1","bueno: llega a 0 con una cadena comprensible, aunque la cancelación de factores intermedia podría enseñarse mejor."
 "sec(x)^2 - tan(x)^2 - 1","bueno: identidad clara y corta; sería perfecto con un poco más de didáctica en la conversión sec -> 1/cos."

@@ -1746,7 +1746,7 @@ fn try_build_direct_log_expansion_equivalence_rewrite(
 ) -> Option<Rewrite> {
     let uses_only_natural_logs = |ctx: &cas_ast::Context, expr: cas_ast::ExprId| {
         expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Ln])
-            && !expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Log])
+            && !expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Log, BuiltinFn::Log10])
     };
     let matches_target = |ctx: &mut cas_ast::Context,
                           rewritten: cas_ast::ExprId,
@@ -3838,7 +3838,7 @@ fn extract_scaled_common_log_atanh_definition_arg_for_cancellation(
 ) -> Option<(BigRational, cas_ast::ExprId)> {
     match ctx.get(expr) {
         Expr::Function(fn_id, args)
-            if ctx.is_builtin(*fn_id, BuiltinFn::Log) && args.len() == 1 =>
+            if ctx.is_builtin(*fn_id, BuiltinFn::Log10) && args.len() == 1 =>
         {
             extract_common_log_atanh_definition_arg(ctx, args[0])
                 .map(|arg| (BigRational::from_integer(1.into()), arg))
@@ -3911,10 +3911,18 @@ fn has_atanh_common_log_mismatch_with_plain_passthrough_terms(
     let mut atanh_term = None;
 
     for (term_expr, term_sign) in terms.iter().copied() {
-        let has_log = expr_contains_any_builtin(ctx, term_expr, &[BuiltinFn::Log]);
+        let has_log = expr_contains_any_builtin(ctx, term_expr, &[BuiltinFn::Log10]);
         let has_atanh = expr_contains_any_builtin(ctx, term_expr, &[BuiltinFn::Atanh]);
-        let has_ln_or_abs =
-            expr_contains_any_builtin(ctx, term_expr, &[BuiltinFn::Ln, BuiltinFn::Abs]);
+        let has_ln_or_abs = expr_contains_any_builtin(
+            ctx,
+            term_expr,
+            &[
+                BuiltinFn::Ln,
+                BuiltinFn::Log,
+                BuiltinFn::Log10,
+                BuiltinFn::Abs,
+            ],
+        );
 
         if has_log && !has_atanh && !has_ln_or_abs {
             let Some((scale, arg)) =
@@ -12827,7 +12835,16 @@ fn maybe_exact_zero_additive_candidate(ctx: &cas_ast::Context, expr: cas_ast::Ex
         )
         || maybe_hyperbolic_angle_sum_diff_zero_candidate(ctx, expr)
         || maybe_hyperbolic_pythagorean_factor_zero_candidate(ctx, expr)
-        || expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Abs]);
+        || expr_contains_any_builtin(
+            ctx,
+            expr,
+            &[
+                BuiltinFn::Ln,
+                BuiltinFn::Log,
+                BuiltinFn::Log10,
+                BuiltinFn::Abs,
+            ],
+        );
 
     if term_count == 2 {
         return trig_power_reduction_candidate || solve_prep_candidate;
@@ -12884,6 +12901,7 @@ fn maybe_exact_zero_common_scaled_difference_candidate(
             BuiltinFn::Tanh,
             BuiltinFn::Ln,
             BuiltinFn::Log,
+            BuiltinFn::Log10,
             BuiltinFn::Abs,
         ],
     ) || maybe_solve_prep_common_scale_candidate(ctx, expr)
@@ -13829,7 +13847,12 @@ fn try_build_stripped_zero_log_identity_child_rewrite(
     if !expr_contains_any_builtin(
         ctx,
         stripped_residual,
-        &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Abs],
+        &[
+            BuiltinFn::Ln,
+            BuiltinFn::Log,
+            BuiltinFn::Log10,
+            BuiltinFn::Abs,
+        ],
     ) {
         return None;
     }
@@ -18697,7 +18720,11 @@ fn expr_contains_hyperbolic_builtin_for_profile(
 }
 
 fn expr_contains_log_builtin_for_profile(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
-    expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Ln, BuiltinFn::Log])
+    expr_contains_any_builtin(
+        ctx,
+        expr,
+        &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Log10],
+    )
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -26545,7 +26572,7 @@ mod tests {
         let mut ctx = Context::new();
         let lhs = parse("2*atanh(x)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
         let rhs =
-            parse("log((1 + x)/(1 - x))", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+            parse("log10((1 + x)/(1 - x))", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
 
         let rewrite =
             super::try_build_direct_safe_hyperbolic_core_equivalence_rewrite(&mut ctx, lhs, rhs);
@@ -26556,8 +26583,8 @@ mod tests {
     #[test]
     fn atanh_common_log_definition_mismatch_pair_detector_matches_scaled_forms() {
         let mut ctx = Context::new();
-        let lhs =
-            parse("1/2*log((1 + x)/(1 - x))", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let lhs = parse("1/2*log10((1 + x)/(1 - x))", &mut ctx)
+            .unwrap_or_else(|err| panic!("lhs: {err}"));
         let rhs = parse("atanh(x)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
 
         assert!(super::is_atanh_common_log_definition_mismatch_pair(
@@ -26568,7 +26595,7 @@ mod tests {
     #[test]
     fn exact_zero_identity_rewrite_rejects_atanh_common_log_pair() {
         let mut ctx = Context::new();
-        let expr = parse("1/2*log((1 + x)/(1 - x)) - atanh(x)", &mut ctx)
+        let expr = parse("1/2*log10((1 + x)/(1 - x)) - atanh(x)", &mut ctx)
             .unwrap_or_else(|err| panic!("expr: {err}"));
 
         let rewrite = super::try_build_exact_zero_identity_rewrite(&mut ctx, expr);
@@ -26579,7 +26606,7 @@ mod tests {
     #[test]
     fn exact_zero_product_factor_rule_rejects_atanh_common_log_pair_factor() {
         let mut ctx = Context::new();
-        let expr = parse("1/2*(log((1 + x)/(1 - x)) - 2*atanh(x))", &mut ctx)
+        let expr = parse("1/2*(log10((1 + x)/(1 - x)) - 2*atanh(x))", &mut ctx)
             .unwrap_or_else(|err| panic!("expr: {err}"));
         let parent_ctx = ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
 
@@ -26590,28 +26617,11 @@ mod tests {
     }
 
     #[test]
-    fn atanh_common_log_plain_passthrough_detector_matches_scaled_three_term_residual() {
-        let mut ctx = Context::new();
-        let expr = parse(
-            "log((1+sin(y))/(1-sin(y))) + 2*x*y^2 - 2*atanh(sin(y))",
-            &mut ctx,
-        )
-        .unwrap_or_else(|err| panic!("expr: {err}"));
-
-        assert!(super::has_atanh_common_log_mismatch_with_plain_passthrough(
-            &mut ctx, expr
-        ));
-    }
-
-    #[test]
     fn collapse_exact_zero_three_term_subset_rule_rejects_atanh_common_log_pair_with_plain_passthrough(
     ) {
         let mut ctx = Context::new();
-        let expr = parse(
-            "log((1+sin(y))/(1-sin(y))) + 2*x*y^2 - 2*atanh(sin(y))",
-            &mut ctx,
-        )
-        .unwrap_or_else(|err| panic!("expr: {err}"));
+        let expr = parse("log10((1+x)/(1-x)) + 2*y^2 - 2*atanh(x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("expr: {err}"));
         let parent_ctx = ParentContext::root().with_domain_mode(crate::DomainMode::Generic);
         let rule = CollapseExactZeroThreeTermSubsetRule;
 

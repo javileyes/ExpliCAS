@@ -55,7 +55,7 @@ pub fn try_rewrite_split_log_exponents_expr(ctx: &mut Context, expr: ExprId) -> 
 pub fn is_log(ctx: &Context, expr: ExprId) -> bool {
     if let Expr::Function(name, _) = ctx.get(expr) {
         if let Some(b) = ctx.builtin_of(*name) {
-            return b == BuiltinFn::Log || b == BuiltinFn::Ln;
+            return b == BuiltinFn::Log || b == BuiltinFn::Ln || b == BuiltinFn::Log10;
         }
     }
     if let Expr::Mul(l, r) = ctx.get(expr) {
@@ -710,12 +710,12 @@ pub fn plan_log_power_base_numeric_policy(
 }
 
 /// Build canonical log expression:
-/// - `base == sentinel_log10` => `log(arg)`
+/// - `base == sentinel_log10` => `log10(arg)`
 /// - `base == e` => `ln(arg)`
 /// - otherwise => `log(base, arg)`
 pub fn make_log_expr(ctx: &mut Context, base: ExprId, arg: ExprId) -> ExprId {
     if is_log10_base_expr(ctx, base) {
-        return ctx.call_builtin(BuiltinFn::Log, vec![arg]);
+        return ctx.call_builtin(BuiltinFn::Log10, vec![arg]);
     }
     if base == ln_base_sentinel() {
         return ctx.call_builtin(BuiltinFn::Ln, vec![arg]);
@@ -1015,7 +1015,9 @@ pub fn try_rewrite_log_perfect_square_expr(
     };
 
     let (log_base, arg) = match ctx.builtin_of(fn_id) {
-        Some(BuiltinFn::Ln) | Some(BuiltinFn::Log) => extract_log_base_argument(ctx, expr)?,
+        Some(BuiltinFn::Ln) | Some(BuiltinFn::Log) | Some(BuiltinFn::Log10) => {
+            extract_log_base_argument(ctx, expr)?
+        }
         _ => return None,
     };
 
@@ -1301,7 +1303,7 @@ pub fn try_rewrite_log_abs_simplify_expr(
     };
 
     let rewritten = match base_opt {
-        Some(base) => ctx.call_builtin(BuiltinFn::Log, vec![base, inner_subject]),
+        Some(base) => make_log_expr(ctx, base, inner_subject),
         None => ctx.call_builtin(BuiltinFn::Ln, vec![inner_subject]),
     };
 
@@ -1735,18 +1737,7 @@ pub fn try_expand_log_auto_rule_expr(
     arg: ExprId,
 ) -> Option<LogRewrite> {
     let (base_opt, _) = extract_log_base_argument_relaxed_view(ctx, original)?;
-    let base = match base_opt {
-        Some(base) => base,
-        None => match ctx.get(original) {
-            Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Ln) => {
-                ctx.add(Expr::Constant(Constant::E))
-            }
-            Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Log) => {
-                log10_base_sentinel()
-            }
-            _ => return None,
-        },
-    };
+    let base = base_opt.unwrap_or_else(|| ctx.add(Expr::Constant(Constant::E)));
 
     match ctx.get(arg) {
         Expr::Mul(_, _) => {
@@ -1829,13 +1820,10 @@ pub fn expand_logs_collect_positive_assumptions(
             LogKind::LogFn(name, ref args)
                 if matches!(
                     ctx.builtin_of(name),
-                    Some(BuiltinFn::Ln) | Some(BuiltinFn::Log)
+                    Some(BuiltinFn::Ln) | Some(BuiltinFn::Log) | Some(BuiltinFn::Log10)
                 ) =>
             {
-                let builtin = ctx.builtin_of(name);
-                let (base, arg) = if builtin == Some(BuiltinFn::Log) && args.len() == 1 {
-                    (log10_base_sentinel(), args[0])
-                } else if let Some((base, arg)) = extract_log_base_argument(ctx, expr) {
+                let (base, arg) = if let Some((base, arg)) = extract_log_base_argument(ctx, expr) {
                     (base, arg)
                 } else {
                     let mut new_args = Vec::with_capacity(args.len());
@@ -2327,7 +2315,7 @@ mod tests {
         assert_eq!(log_arg, x);
 
         let (unary_log_base, unary_log_arg) = try_extract_log_parts(&ctx, log_x).expect("log(x)");
-        assert_eq!(unary_log_base, log10_base_sentinel());
+        assert_eq!(unary_log_base, ln_base_sentinel());
         assert_eq!(unary_log_arg, x);
     }
 
@@ -2440,10 +2428,33 @@ mod tests {
     }
 
     #[test]
-    fn rewrites_log_inverse_power_unary_log_form_with_concrete_base_ten() {
+    fn rewrites_log_inverse_power_unary_log_form_with_natural_base() {
         let mut ctx = Context::new();
         let expr = parse("x^(log(log(x))/log(x))", &mut ctx).expect("expr");
-        let expected = parse("10^log(log(x))", &mut ctx).expect("expected");
+        let expected = parse("e^log(log(x))", &mut ctx).expect("expected");
+
+        let rw = try_rewrite_log_inverse_power_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
+        match ctx.get(rw.rewritten) {
+            Expr::Pow(base, _) => {
+                assert!(
+                    matches!(ctx.get(*base), Expr::Constant(Constant::E)),
+                    "expected natural base e, got {:?}",
+                    ctx.get(*base)
+                );
+            }
+            other => panic!("expected Pow(e, ...), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn rewrites_log_inverse_power_log10_form_with_concrete_base_ten() {
+        let mut ctx = Context::new();
+        let expr = parse("x^(log10(log10(x))/log10(x))", &mut ctx).expect("expr");
+        let expected = parse("10^log10(log10(x))", &mut ctx).expect("expected");
 
         let rw = try_rewrite_log_inverse_power_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(

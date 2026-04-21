@@ -28,7 +28,7 @@ ExpliCAS is a modular Computer Algebra System (CAS) written in Rust, designed to
     -   Fraction simplification (`(x^2 - 1) / (x + 1) -> x - 1`).
 -   **Functions**:
     -   Trigonometry (`sin`, `cos`, `tan`) with identities (`sin(2x) -> 2sin(x)cos(x)`).
-    -   Logarithms (`log(base, x)`, `ln(x)`) with expansion (`ln(xy) -> ln(x) + ln(y)`).
+    -   Logarithms (`log(x)`/`ln(x)` natural, `log10(x)` decimal, `log(base, x)` arbitrary base) with expansion (`ln(xy) -> ln(x) + ln(y)`).
     -   Roots (`sqrt(x)`, `sqrt(x, n)`).
     -   Absolute value (`abs(x)`).
 -   **Equivalence Checking**: Verify if two expressions are equal (`equiv sin(x+y), sin(x)cos(y)+...`).
@@ -364,9 +364,9 @@ Automatically expands products/quotients and simplifies inverses.
 **Output:**
 ```
 Steps:
-1. log(b, x*y) = log(b, x) + log(b, y)
+1. ln(x*y) = ln(x) + ln(y)
    -> ln(x^2) + ln(y) - 2 * ln(x)
-2. log(b, x^y) = y * log(b, x)
+2. ln(x^y) = y * ln(x)
    -> 2 * ln(x) + ln(y) - 2 * ln(x)
 3. Combine like terms (2ln(x) - 2ln(x) = 0)
    -> ln(y)

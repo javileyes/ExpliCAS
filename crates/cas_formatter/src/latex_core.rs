@@ -575,6 +575,9 @@ pub trait LaTeXRenderer {
             "log" if args.len() == 1 => {
                 format!("\\log({})", self.expr_to_latex(args[0], false))
             }
+            "log10" if args.len() == 1 => {
+                format!("\\log_{{10}}({})", self.expr_to_latex(args[0], false))
+            }
             "log" if args.len() == 2 => {
                 // log(base, arg) where args[0]=base, args[1]=arg
                 let base = self.expr_to_latex(args[0], false);
@@ -1274,6 +1277,10 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             ),
             "log" if args.len() == 1 => format!(
                 "\\log({})",
+                self.render_with_path(args[0], false, &self.child_path(path, 0))
+            ),
+            "log10" if args.len() == 1 => format!(
+                "\\log_{{10}}({})",
                 self.render_with_path(args[0], false, &self.child_path(path, 0))
             ),
             "log" if args.len() == 2 => {

@@ -462,10 +462,15 @@ fn extract_plain_log_term(
         }
         Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Log) => {
             match args.as_slice() {
-                [arg] => (LogFamily::Log10, *arg),
+                [arg] => (LogFamily::Ln, *arg),
                 [base, arg] => (LogFamily::LogBase(*base), *arg),
                 _ => return None,
             }
+        }
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Log10) && args.len() == 1 =>
+        {
+            (LogFamily::Log10, args[0])
         }
         _ => return None,
     };
@@ -733,7 +738,7 @@ fn integer_i64(ctx: &Context, expr: ExprId) -> Option<i64> {
 fn make_log_expr(ctx: &mut Context, family: LogFamily, arg: ExprId) -> ExprId {
     match family {
         LogFamily::Ln => ctx.call_builtin(BuiltinFn::Ln, vec![arg]),
-        LogFamily::Log10 => ctx.call_builtin(BuiltinFn::Log, vec![arg]),
+        LogFamily::Log10 => ctx.call_builtin(BuiltinFn::Log10, vec![arg]),
         LogFamily::LogBase(base) => ctx.call_builtin(BuiltinFn::Log, vec![base, arg]),
     }
 }

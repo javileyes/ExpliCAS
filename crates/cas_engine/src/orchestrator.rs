@@ -591,7 +591,12 @@ fn is_nested_additive_log_residual_pair_root(ctx: &mut Context, lhs: ExprId, rhs
         && expr_contains_any_builtin_local(
             ctx,
             residual_difference,
-            &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Abs],
+            &[
+                BuiltinFn::Ln,
+                BuiltinFn::Log,
+                BuiltinFn::Log10,
+                BuiltinFn::Abs,
+            ],
         )
 }
 
@@ -11562,7 +11567,16 @@ fn expr_contains_trig_or_hyperbolic_builtin_local(ctx: &Context, expr: ExprId) -
 }
 
 fn expr_contains_log_builtin_local(ctx: &Context, expr: ExprId) -> bool {
-    expr_contains_any_builtin_local(ctx, expr, &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Abs])
+    expr_contains_any_builtin_local(
+        ctx,
+        expr,
+        &[
+            BuiltinFn::Ln,
+            BuiltinFn::Log,
+            BuiltinFn::Log10,
+            BuiltinFn::Abs,
+        ],
+    )
 }
 
 fn expr_contains_explicit_negative_marker_local(ctx: &Context, expr: ExprId) -> bool {
@@ -17948,9 +17962,12 @@ fn try_standard_shared_passthrough_direct_pair_shortcut(
         ));
     }
 
-    if expr_contains_any_builtin_local(ctx, residual_expr, &[BuiltinFn::Ln, BuiltinFn::Log])
-        && try_standard_exact_zero_equivalence_shortcut(options, ctx, residual_expr, false)
-            .is_some()
+    if expr_contains_any_builtin_local(
+        ctx,
+        residual_expr,
+        &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Log10],
+    ) && try_standard_exact_zero_equivalence_shortcut(options, ctx, residual_expr, false)
+        .is_some()
     {
         return Some(run_named_rebuilt_root_shortcut_simplify(
             options,

@@ -328,6 +328,20 @@ fn eval_function_checked(
                 let arg = arg_vals[0];
                 if arg <= 0.0 {
                     return Err(EvalCheckedError::Domain {
+                        function: "log".to_string(),
+                        arg,
+                    });
+                }
+                Ok(arg.ln())
+            } else {
+                Err(EvalCheckedError::Unsupported)
+            }
+        }
+        "log10" => {
+            if arg_vals.len() == 1 {
+                let arg = arg_vals[0];
+                if arg <= 0.0 {
+                    return Err(EvalCheckedError::Domain {
                         function: "log10".to_string(),
                         arg,
                     });
@@ -454,7 +468,13 @@ fn eval_f64_depth(
                         let arg = arg_vals[1];
                         Some(arg.ln() / base.ln())
                     } else if arg_vals.len() == 1 {
-                        // log(x) = log base 10
+                        Some(arg_vals[0].ln())
+                    } else {
+                        None
+                    }
+                }
+                "log10" => {
+                    if arg_vals.len() == 1 {
                         Some(arg_vals[0].log10())
                     } else {
                         None
