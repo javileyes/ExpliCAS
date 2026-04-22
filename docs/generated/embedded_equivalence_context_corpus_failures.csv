@@ -1,1 +1,2 @@
 expression,expected_result,actual_result,ok,wrapper,pair_id,family,source,target,expected_strategy,error_kind,error_message
+(((a*x+b)/(c*x+d)) + 1)/((a/c + (b-a*d/c)/(c*x+d)) + 1),1,(c * x + d) / (c * x + d),false,shifted_quotient_one,split_fraction_symbolic_over_scaled_general_linear,fraction_decompose,(a*x+b)/(c*x+d),a/c + (b-a*d/c)/(c*x+d),split fraction,result_mismatch,

@@ -12581,6 +12581,28 @@ fn profile_root_exact_zero_multiterm_trig_numeric_subset_status(
     record_profiled_orchestrator_route_hit(ctx, expr, name);
 }
 
+fn try_extract_multiterm_trig_numeric_subset_zero_chunks_root(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let (subset_expr, partner_expr) =
+        extract_small_trig_or_hyperbolic_numeric_subset_root(ctx, expr)?;
+    if !is_supported_small_trig_zero_pair_side_root(ctx, subset_expr, true) {
+        return None;
+    }
+    if !multiterm_trig_numeric_subset_rewrites_to_zero_runtime_safe(options, ctx, subset_expr) {
+        return None;
+    }
+    if !is_supported_nested_zero_child_partner(ctx, partner_expr) {
+        return None;
+    }
+    if !supported_nested_zero_partner_rewrites_to_zero(options, ctx, partner_expr) {
+        return None;
+    }
+    Some((subset_expr, partner_expr))
+}
+
 fn try_standard_multiterm_trig_numeric_subset_zero_shortcut(
     options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
@@ -12640,6 +12662,15 @@ fn try_standard_multiterm_trig_numeric_subset_zero_shortcut(
     let zero = ctx.num(0);
     let mut shortcut_steps = Vec::new();
     if collect_steps {
+        if let Some(steps) = try_build_chunk_pair_zero_shortcut_steps_root(
+            options,
+            ctx,
+            expr,
+            subset_expr,
+            partner_expr,
+        ) {
+            return Some((zero, steps));
+        }
         let mut step = Step::new_compact(
             "Collapse Exact Zero Additive Subexpression",
             "Collapse Exact Zero Additive Subexpression",
@@ -12700,6 +12731,11 @@ fn try_standard_reciprocal_trig_zero_pair_shortcut(
     }
 
     let zero = ctx.num(0);
+    if collect_steps && matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        if let Some(steps) = try_build_recursive_additive_zero_shortcut_steps(options, ctx, expr) {
+            return Some((zero, steps));
+        }
+    }
     Some(run_rebuilt_root_shortcut_simplify(
         options,
         ctx,
@@ -12765,6 +12801,11 @@ fn try_standard_small_trig_zero_pair_shortcut(
     }
 
     let zero = ctx.num(0);
+    if collect_steps && matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        if let Some(steps) = try_build_recursive_additive_zero_shortcut_steps(options, ctx, expr) {
+            return Some((zero, steps));
+        }
+    }
     Some(run_rebuilt_root_shortcut_simplify(
         options,
         ctx,
@@ -17211,12 +17252,11 @@ fn try_standard_inverse_trig_plus_sqrt_subset_zero_shortcut(
     None
 }
 
-fn try_standard_atanh_square_ratio_log_subset_zero_shortcut(
+fn try_extract_atanh_square_ratio_log_subset_zero_chunks_root(
     options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
-    collect_steps: bool,
-) -> Option<(ExprId, Vec<Step>)> {
+) -> Option<(ExprId, ExprId)> {
     if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
         return None;
     }
@@ -17310,18 +17350,40 @@ fn try_standard_atanh_square_ratio_log_subset_zero_shortcut(
                 continue;
             }
 
-            let zero = ctx.num(0);
-            return Some(run_rebuilt_root_shortcut_simplify(
-                options,
-                ctx,
-                expr,
-                zero,
-                collect_steps,
-            ));
+            return Some((subset_expr, remaining_expr));
         }
     }
 
     None
+}
+
+fn try_standard_atanh_square_ratio_log_subset_zero_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let (subset_expr, remaining_expr) =
+        try_extract_atanh_square_ratio_log_subset_zero_chunks_root(options, ctx, expr)?;
+    let zero = ctx.num(0);
+    if collect_steps {
+        if let Some(steps) = try_build_chunk_pair_zero_shortcut_steps_root(
+            options,
+            ctx,
+            expr,
+            subset_expr,
+            remaining_expr,
+        ) {
+            return Some((zero, steps));
+        }
+    }
+    Some(run_rebuilt_root_shortcut_simplify(
+        options,
+        ctx,
+        expr,
+        zero,
+        collect_steps,
+    ))
 }
 
 fn try_standard_atanh_square_ratio_log_zero_shortcut(
@@ -17348,12 +17410,11 @@ fn try_standard_atanh_square_ratio_log_zero_shortcut(
     ))
 }
 
-fn try_standard_symbolic_root_denesting_subset_zero_shortcut(
+fn try_extract_symbolic_root_denesting_subset_zero_chunks_root(
     options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
-    collect_steps: bool,
-) -> Option<(ExprId, Vec<Step>)> {
+) -> Option<(ExprId, ExprId)> {
     if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
         return None;
     }
@@ -17446,18 +17507,40 @@ fn try_standard_symbolic_root_denesting_subset_zero_shortcut(
                 continue;
             }
 
-            let zero = ctx.num(0);
-            return Some(run_rebuilt_root_shortcut_simplify(
-                options,
-                ctx,
-                expr,
-                zero,
-                collect_steps,
-            ));
+            return Some((subset_expr, remaining_expr));
         }
     }
 
     None
+}
+
+fn try_standard_symbolic_root_denesting_subset_zero_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let (subset_expr, remaining_expr) =
+        try_extract_symbolic_root_denesting_subset_zero_chunks_root(options, ctx, expr)?;
+    let zero = ctx.num(0);
+    if collect_steps {
+        if let Some(steps) = try_build_chunk_pair_zero_shortcut_steps_root(
+            options,
+            ctx,
+            expr,
+            subset_expr,
+            remaining_expr,
+        ) {
+            return Some((zero, steps));
+        }
+    }
+    Some(run_rebuilt_root_shortcut_simplify(
+        options,
+        ctx,
+        expr,
+        zero,
+        collect_steps,
+    ))
 }
 fn try_standard_half_angle_subset_zero_shortcut(
     options: &crate::phase::SimplifyOptions,
@@ -17592,6 +17675,32 @@ fn try_standard_nested_exact_zero_child_shortcut(
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
+    let (zero_chunk, rewritten) =
+        try_extract_nested_exact_zero_child_chunks_root(options, ctx, expr)?;
+
+    if collect_steps {
+        let zero = ctx.num(0);
+        if let Some(steps) =
+            try_build_chunk_pair_zero_shortcut_steps_root(options, ctx, expr, zero_chunk, rewritten)
+        {
+            return Some((zero, steps));
+        }
+    }
+
+    Some(run_rebuilt_root_shortcut_simplify(
+        options,
+        ctx,
+        expr,
+        rewritten,
+        collect_steps,
+    ))
+}
+
+fn try_extract_nested_exact_zero_child_chunks_root(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
     if matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
         let add_term_count = AddView::from_expr(ctx, expr).terms.len();
         if add_term_count >= 8 && expr_contains_log_builtin_local(ctx, expr) {
@@ -17613,12 +17722,12 @@ fn try_standard_nested_exact_zero_child_shortcut(
                 && is_supported_zero_partner(ctx, rhs)
                 && child_matches_direct_or_isolated_exact_zero(options, ctx, lhs)
             {
-                Some(rhs)
+                Some((lhs, rhs))
             } else if expr_contains_trig_or_hyperbolic_builtin_local(ctx, rhs)
                 && is_supported_zero_partner(ctx, lhs)
                 && child_matches_direct_or_isolated_exact_zero(options, ctx, rhs)
             {
-                Some(lhs)
+                Some((rhs, lhs))
             } else {
                 None
             }
@@ -17630,26 +17739,20 @@ fn try_standard_nested_exact_zero_child_shortcut(
                 && is_supported_zero_partner(ctx, lhs)
                 && child_matches_direct_or_isolated_exact_zero(options, ctx, rhs)
             {
-                Some(lhs)
+                Some((rhs, lhs))
             } else if expr_contains_trig_or_hyperbolic_builtin_local(ctx, lhs)
                 && is_supported_zero_partner(ctx, rhs)
                 && child_matches_direct_or_isolated_exact_zero(options, ctx, lhs)
             {
-                Some(ctx.add(Expr::Neg(rhs)))
+                Some((lhs, ctx.add(Expr::Neg(rhs))))
             } else {
                 None
             }
         }
         _ => None,
-    }?;
+    };
 
-    Some(run_rebuilt_root_shortcut_simplify(
-        options,
-        ctx,
-        expr,
-        rewritten,
-        collect_steps,
-    ))
+    rewritten
 }
 
 fn try_standard_zero_product_with_exact_zero_child_shortcut(
@@ -18048,18 +18151,43 @@ fn build_small_two_chunk_additive_partitions_root(
     partitions
 }
 
-fn matches_partitioned_direct_small_zero_sum_root(ctx: &mut Context, expr: ExprId) -> bool {
+fn try_extract_partitioned_direct_small_zero_sum_chunks_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
     let terms = AddView::from_expr(ctx, expr).terms;
     if !(3..=8).contains(&terms.len()) {
-        return false;
+        return None;
     }
 
     build_small_two_chunk_additive_partitions_root(ctx, &terms)
         .into_iter()
-        .any(|(lhs_chunk, rhs_chunk)| {
-            matches_direct_small_zero_or_known_pair_base_root(ctx, lhs_chunk)
-                && matches_direct_small_zero_or_known_pair_base_root(ctx, rhs_chunk)
+        .find(|(lhs_chunk, rhs_chunk)| {
+            matches_direct_small_zero_or_known_pair_base_root(ctx, *lhs_chunk)
+                && matches_direct_small_zero_or_known_pair_base_root(ctx, *rhs_chunk)
         })
+}
+
+fn try_extract_partitioned_exact_zero_leaf_chunks_root(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if !(3..=8).contains(&terms.len()) {
+        return None;
+    }
+
+    build_small_two_chunk_additive_partitions_root(ctx, &terms)
+        .into_iter()
+        .find(|(lhs_chunk, rhs_chunk)| {
+            exact_zero_leaf_rewrites_to_zero_root(options, ctx, *lhs_chunk)
+                && exact_zero_leaf_rewrites_to_zero_root(options, ctx, *rhs_chunk)
+        })
+}
+
+fn matches_partitioned_direct_small_zero_sum_root(ctx: &mut Context, expr: ExprId) -> bool {
+    try_extract_partitioned_direct_small_zero_sum_chunks_root(ctx, expr).is_some()
 }
 
 fn extract_partitioned_phase_shift_zero_chunks_root(
@@ -18230,15 +18358,43 @@ fn try_standard_small_composed_additive_pair_shortcut(
 }
 
 fn try_standard_partitioned_direct_small_zero_sum_shortcut(
+    options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
     if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
         || extract_shared_additive_passthrough_sub_cores_root(ctx, expr).is_some()
-        || !matches_partitioned_direct_small_zero_sum_root(ctx, expr)
     {
         return None;
+    }
+
+    let (lhs_chunk, rhs_chunk) = if collect_steps {
+        try_extract_partitioned_exact_zero_leaf_chunks_root(options, ctx, expr)?
+    } else {
+        try_extract_partitioned_direct_small_zero_sum_chunks_root(ctx, expr)?
+    };
+
+    if collect_steps {
+        let zero = ctx.num(0);
+        let mut first_step = build_root_shortcut_compact_step(
+            lhs_chunk,
+            zero,
+            "Collapse Exact Zero Additive Subexpression",
+            "Collapse Exact Zero Additive Subexpression",
+        );
+        first_step.global_before = Some(expr);
+        first_step.global_after = Some(rhs_chunk);
+
+        let mut second_step = build_root_shortcut_compact_step(
+            rhs_chunk,
+            zero,
+            "Collapse Exact Zero Additive Subexpression",
+            "Collapse Exact Zero Additive Subexpression",
+        );
+        second_step.global_before = Some(rhs_chunk);
+        second_step.global_after = Some(zero);
+        return Some((zero, vec![first_step, second_step]));
     }
 
     let zero = ctx.num(0);
@@ -18249,6 +18405,190 @@ fn try_standard_partitioned_direct_small_zero_sum_shortcut(
         "Collapse Exact Zero Additive Subexpression",
         collect_steps,
     ))
+}
+
+fn extend_additive_terms_from_expr_root(
+    ctx: &mut Context,
+    expr: ExprId,
+    out: &mut smallvec::SmallVec<[(ExprId, Sign); 8]>,
+) {
+    if matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        out.extend(AddView::from_expr(ctx, expr).terms);
+    } else {
+        let zero = ctx.num(0);
+        if compare_expr(ctx, expr, zero) != Ordering::Equal {
+            out.push((expr, Sign::Pos));
+        }
+    }
+}
+
+fn merge_additive_zero_chunk_residual_root(
+    ctx: &mut Context,
+    first_residual: ExprId,
+    other_chunk: ExprId,
+) -> ExprId {
+    let mut terms = smallvec::SmallVec::<[(ExprId, Sign); 8]>::new();
+    extend_additive_terms_from_expr_root(ctx, first_residual, &mut terms);
+    extend_additive_terms_from_expr_root(ctx, other_chunk, &mut terms);
+    if terms.is_empty() {
+        ctx.num(0)
+    } else {
+        build_signed_sum_expr_root(ctx, &terms)
+    }
+}
+
+fn exact_zero_leaf_rewrites_to_zero_root(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    let allow_small_isolated_fallback = matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
+        && AddView::from_expr(ctx, expr).terms.len() <= 4;
+    matches_direct_small_zero_or_known_pair_base_root(ctx, expr)
+        || crate::rules::hyperbolic::try_build_atanh_square_ratio_log_zero_rewrite(ctx, expr)
+            .is_some()
+        || crate::rules::arithmetic::matches_direct_symbolic_root_denesting_zero_identity(ctx, expr)
+        || try_standard_direct_small_zero_identity_shortcut(options, ctx, expr, false).is_some()
+        || try_standard_exact_zero_equivalence_shortcut(options, ctx, expr, false).is_some()
+        || (allow_small_isolated_fallback && child_isolated_exact_zero(options, ctx, expr))
+}
+
+fn try_extract_recursive_additive_zero_chunks_root(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    try_extract_partitioned_exact_zero_leaf_chunks_root(options, ctx, expr)
+        .or_else(|| try_extract_multiterm_trig_numeric_subset_zero_chunks_root(options, ctx, expr))
+        .or_else(|| try_extract_symbolic_root_denesting_subset_zero_chunks_root(options, ctx, expr))
+        .or_else(|| try_extract_atanh_square_ratio_log_subset_zero_chunks_root(options, ctx, expr))
+        .or_else(|| try_extract_nested_exact_zero_child_chunks_root(options, ctx, expr))
+}
+
+fn peel_first_recursive_additive_zero_leaf_root(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    if let Some((lhs_chunk, rhs_chunk)) =
+        try_extract_recursive_additive_zero_chunks_root(options, ctx, expr)
+    {
+        let lhs_term_count = AddView::from_expr(ctx, lhs_chunk).terms.len();
+        let rhs_term_count = AddView::from_expr(ctx, rhs_chunk).terms.len();
+        let preferred_first = if rhs_term_count < lhs_term_count {
+            [(rhs_chunk, lhs_chunk), (lhs_chunk, rhs_chunk)]
+        } else {
+            [(lhs_chunk, rhs_chunk), (rhs_chunk, lhs_chunk)]
+        };
+
+        for (first_chunk, other_chunk) in preferred_first {
+            if let Some((leaf_chunk, first_residual)) =
+                peel_first_recursive_additive_zero_leaf_root(options, ctx, first_chunk)
+            {
+                let residual_expr =
+                    merge_additive_zero_chunk_residual_root(ctx, first_residual, other_chunk);
+                let zero = ctx.num(0);
+                if compare_expr(ctx, residual_expr, zero) == Ordering::Equal
+                    || exact_zero_leaf_rewrites_to_zero_root(options, ctx, residual_expr)
+                    || try_extract_recursive_additive_zero_chunks_root(options, ctx, residual_expr)
+                        .is_some()
+                {
+                    return Some((leaf_chunk, residual_expr));
+                }
+            }
+        }
+    }
+
+    exact_zero_leaf_rewrites_to_zero_root(options, ctx, expr).then(|| (expr, ctx.num(0)))
+}
+
+fn try_build_recursive_additive_zero_shortcut_steps(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<Step>> {
+    let zero = ctx.num(0);
+    let mut steps = Vec::new();
+    let mut current = expr;
+
+    loop {
+        let (leaf_chunk, residual_expr) =
+            peel_first_recursive_additive_zero_leaf_root(options, ctx, current)?;
+        let mut step = build_root_shortcut_compact_step(
+            leaf_chunk,
+            zero,
+            "Collapse Exact Zero Additive Subexpression",
+            "Collapse Exact Zero Additive Subexpression",
+        );
+        step.global_before = Some(current);
+        step.global_after = Some(residual_expr);
+        steps.push(step);
+
+        if compare_expr(ctx, residual_expr, zero) == Ordering::Equal {
+            return Some(steps);
+        }
+        current = residual_expr;
+    }
+}
+
+fn build_exact_zero_leaf_shortcut_steps_root(ctx: &mut Context, expr: ExprId) -> Vec<Step> {
+    let zero = ctx.num(0);
+    let mut step = build_root_shortcut_compact_step(
+        expr,
+        zero,
+        "Collapse Exact Zero Additive Subexpression",
+        "Collapse Exact Zero Additive Subexpression",
+    );
+    step.global_before = Some(expr);
+    step.global_after = Some(zero);
+    vec![step]
+}
+
+fn build_recursive_or_leaf_zero_chunk_steps_root(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<Step>> {
+    try_build_recursive_additive_zero_shortcut_steps(options, ctx, expr).or_else(|| {
+        exact_zero_leaf_rewrites_to_zero_root(options, ctx, expr)
+            .then(|| build_exact_zero_leaf_shortcut_steps_root(ctx, expr))
+    })
+}
+
+fn try_build_chunk_pair_zero_shortcut_steps_root(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    first_chunk: ExprId,
+    second_chunk: ExprId,
+) -> Option<Vec<Step>> {
+    let zero = ctx.num(0);
+    let first_steps = build_recursive_or_leaf_zero_chunk_steps_root(options, ctx, first_chunk)?;
+    let second_steps = build_recursive_or_leaf_zero_chunk_steps_root(options, ctx, second_chunk)?;
+
+    let mut stitched_steps = Vec::new();
+    let mut current_global = expr;
+    for step in first_steps {
+        let internal_after = step.global_after.unwrap_or(zero);
+        let parent_after =
+            merge_additive_zero_chunk_residual_root(ctx, internal_after, second_chunk);
+        let mut stitched = step.clone();
+        stitched.global_before = Some(current_global);
+        stitched.global_after = Some(parent_after);
+        stitched_steps.push(stitched);
+        current_global = parent_after;
+    }
+
+    for step in second_steps {
+        let internal_after = step.global_after.unwrap_or(zero);
+        let mut stitched = step.clone();
+        stitched.global_before = Some(current_global);
+        stitched.global_after = Some(internal_after);
+        stitched_steps.push(stitched);
+        current_global = internal_after;
+    }
+
+    Some(stitched_steps)
 }
 
 fn try_extract_exact_zero_subset_passthrough_residual_root(
@@ -18513,7 +18853,7 @@ fn try_standard_repeated_phase_shift_pair_shortcut(
 }
 
 fn try_standard_direct_small_zero_identity_shortcut(
-    _options: &crate::phase::SimplifyOptions,
+    options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
     collect_steps: bool,
@@ -18841,6 +19181,11 @@ fn try_standard_direct_small_zero_identity_shortcut(
     }
 
     let zero = ctx.num(0);
+    if collect_steps && view.terms.len() > 2 {
+        if let Some(steps) = try_build_recursive_additive_zero_shortcut_steps(options, ctx, expr) {
+            return Some((zero, steps));
+        }
+    }
     let rewrite = crate::rule::Rewrite::with_local(zero, "Exact Zero Core Composition", expr, zero);
     Some(finish_root_shortcut_with_rewrite_meta(
         ctx,
@@ -23259,6 +23604,7 @@ impl Orchestrator {
                 );
                 if let Some((result, shortcut_steps)) =
                     try_standard_partitioned_direct_small_zero_sum_shortcut(
+                        &self.options,
                         &mut simplifier.context,
                         expr,
                         collect_steps,
@@ -23880,6 +24226,7 @@ impl Orchestrator {
                 );
                 return_root_shortcut_pair!(
                     try_standard_partitioned_direct_small_zero_sum_shortcut(
+                        &self.options,
                         &mut simplifier.context,
                         expr,
                         collect_steps,
@@ -31619,6 +31966,99 @@ mod tests {
     }
 
     #[test]
+    fn simplify_pipeline_steps_on_decomposes_partitioned_direct_small_zero_sum_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((cos(x))^3 - (3*cos(x) + cos(3*x))/4) + (tan(x) + 1/tan(x) - 2/sin(2*x))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        orchestrator.options.collect_steps = true;
+        orchestrator.options.shared.context_mode = crate::options::ContextMode::Standard;
+        orchestrator.options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+        assert_eq!(steps.len(), 2);
+    }
+
+    #[test]
+    fn simplify_pipeline_steps_on_decomposes_full_mixed_identity_zero_chunks_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((cos(x))^3 - (3*cos(x) + cos(3*x))/4) + (tan(x) + 1/tan(x) - 2/sin(2*x)) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (sqrt(x + sqrt(x^2 - y^2)) - (sqrt(x+y) + sqrt(x-y))/sqrt(2))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        orchestrator.options.collect_steps = true;
+        orchestrator.options.shared.context_mode = crate::options::ContextMode::Standard;
+        orchestrator.options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+        assert_eq!(steps.len(), 4);
+    }
+
+    #[test]
+    fn recursive_additive_zero_shortcut_steps_extracts_two_trig_chunks_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((cos(x))^3 - (3*cos(x) + cos(3*x))/4) + (tan(x) + 1/tan(x) - 2/sin(2*x))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let steps = try_build_recursive_additive_zero_shortcut_steps(
+            &crate::phase::SimplifyOptions::default(),
+            &mut simplifier.context,
+            expr,
+        )
+        .unwrap_or_else(|| panic!("expected recursive additive steps"));
+        assert_eq!(steps.len(), 2);
+    }
+
+    #[test]
+    fn exact_zero_leaf_rewrites_to_zero_root_handles_trig_cubic_and_tan_reciprocal_chunks() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let cubic = parse(
+            "(cos(x))^3 - (3*cos(x) + cos(3*x))/4",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let tan_chunk = parse("tan(x) + 1/tan(x) - 2/sin(2*x)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = crate::phase::SimplifyOptions::default();
+        assert!(exact_zero_leaf_rewrites_to_zero_root(
+            &options,
+            &mut simplifier.context,
+            cubic,
+        ));
+        assert!(exact_zero_leaf_rewrites_to_zero_root(
+            &options,
+            &mut simplifier.context,
+            tan_chunk,
+        ));
+    }
+
+    #[test]
+    fn small_trig_zero_pair_shortcut_decomposes_partitioned_trig_chunks_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((cos(x))^3 - (3*cos(x) + cos(3*x))/4) + (tan(x) + 1/tan(x) - 2/sin(2*x))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (rewritten, steps) = try_standard_small_trig_zero_pair_shortcut(
+            &crate::phase::SimplifyOptions::default(),
+            &mut simplifier.context,
+            expr,
+            true,
+        )
+        .unwrap_or_else(|| panic!("expected small trig zero pair shortcut"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+        assert_eq!(steps.len(), 2);
+    }
+
+    #[test]
     fn nested_exact_zero_child_shortcut_handles_log_product_split_against_trig_mixed_sum_with_steps_regression(
     ) {
         let mut simplifier = crate::Simplifier::with_default_rules();
@@ -33373,6 +33813,7 @@ mod tests {
         )
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         let result = super::try_standard_partitioned_direct_small_zero_sum_shortcut(
+            &crate::phase::SimplifyOptions::default(),
             &mut simplifier.context,
             expr,
             true,
@@ -33393,6 +33834,7 @@ mod tests {
         )
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         let result = super::try_standard_partitioned_direct_small_zero_sum_shortcut(
+            &crate::phase::SimplifyOptions::default(),
             &mut simplifier.context,
             expr,
             true,
