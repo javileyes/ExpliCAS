@@ -9242,6 +9242,32 @@ fn derive_radical_notable_quotient_uses_single_rationalize_step() {
 }
 
 #[test]
+fn eval_acosh_log_chain_notable_quotient_does_not_show_conjugate_substeps() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "acosh( (log((sin(y))^2) / log((cos(x))^2)) * (log((cosh(z))^2) / log((sin(y))^2)) * (log((sec(x))^(-2)) / log((cosh(z))^2)) )",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    let notable = steps
+        .iter()
+        .find(|step| step["rule"] == "Reconocer un cociente notable")
+        .expect("notable quotient step");
+
+    assert!(
+        notable.get("substeps").is_none(),
+        "opaque notable quotient should not inherit conjugate substeps: {notable:?}"
+    );
+}
+
+#[test]
 fn derive_log_higher_even_power_drops_redundant_nonzero_requires() {
     let (output, _code) = run_cli(&["eval", "derive ln(x^4), 4*ln(abs(x))", "--format", "json"]);
     let wire = parse_wire(&output);

@@ -13,6 +13,17 @@ use super::SubStep;
 /// Generate sub-steps explaining rationalization process.
 /// Uses LaTeXExprWithHints for proper sqrt notation rendering.
 pub(crate) fn generate_rationalization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    // Some engine rules reuse a rationalization matcher internally but surface the step
+    // as an opaque notable-quotient recognition. In those cases, conjugate-narrative
+    // substeps are misleading and should stay hidden.
+    if step
+        .description
+        .to_ascii_lowercase()
+        .contains("opaque substitution")
+    {
+        return Vec::new();
+    }
+
     let hints = cas_formatter::DisplayContext::with_root_index(2);
 
     let before = step.before_local().unwrap_or(step.before);
