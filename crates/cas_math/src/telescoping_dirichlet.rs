@@ -63,7 +63,10 @@ pub fn try_dirichlet_kernel_identity(
         if let Some((num_arg, den_arg)) = extract_sin_ratio(ctx, term) {
             sin_ratio = Some((num_arg, den_arg));
             sin_ratio_sign = Some(sign);
+            continue;
         }
+
+        return None;
     }
 
     // Verify pattern: need 1, consecutive cosine multiples, and matching sin ratio.
@@ -334,5 +337,16 @@ mod tests {
         let result = try_dirichlet_kernel_identity(&mut ctx, expr).expect("detect");
         assert_eq!(result.n, 2);
         assert_eq!(result.base_multiplier, 1);
+    }
+
+    #[test]
+    fn rejects_dirichlet_identity_with_passthrough_terms() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((1 + 2*cos(x) + 2*cos(2*x)) + m) - ((sin(5*x/2)/sin(x/2)) + m)",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(try_dirichlet_kernel_identity(&mut ctx, expr).is_none());
     }
 }

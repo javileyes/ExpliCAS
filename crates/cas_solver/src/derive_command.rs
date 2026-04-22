@@ -2237,6 +2237,13 @@ fn try_fast_direct_hyperbolic_derive(
     target_expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    let expr_has_hyperbolic = contains_hyperbolic_fn_expr(&simplifier.context, expr);
+    let target_has_hyperbolic = contains_hyperbolic_fn_expr(&simplifier.context, target_expr);
+
+    if !expr_has_hyperbolic && !target_has_hyperbolic {
+        return None;
+    }
+
     if let Some(derived) = try_fast_direct_recursive_hyperbolic_angle_sum_derive(
         simplifier,
         expr,
@@ -5654,8 +5661,8 @@ mod tests {
     use super::{
         derive_semantic_match, evaluate_derive_request_with_session,
         evaluate_derive_resolved_input, generate_planner_candidate_stages,
-        try_bounded_multistage_derive, try_supported_derive_strategies_inner, DeriveStatus,
-        DeriveStrategy,
+        try_bounded_multistage_derive, try_fast_direct_hyperbolic_derive,
+        try_supported_derive_strategies_inner, DeriveStatus, DeriveStrategy,
     };
     use cas_session_core::eval::StatelessEvalSession;
 
@@ -7985,6 +7992,22 @@ mod tests {
         assert_eq!(derived.0, target);
         assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.1[0].rule_name, "Hyperbolic Double-Angle Identity");
+    }
+
+    #[test]
+    fn fast_direct_hyperbolic_derive_rejects_pure_polynomial_pair() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("(a+b+c)^3", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse(
+            "a^3 + b^3 + c^3 + 3*a^2*b + 3*a^2*c + 3*a*b^2 + 6*a*b*c + 3*a*c^2 + 3*b^2*c + 3*b*c^2",
+            &mut simplifier.context,
+        )
+        .expect("parse target");
+
+        assert!(
+            try_fast_direct_hyperbolic_derive(&mut simplifier, source, target, true).is_none(),
+            "pure polynomial derive should not enter the fast hyperbolic path"
+        );
     }
 
     #[test]

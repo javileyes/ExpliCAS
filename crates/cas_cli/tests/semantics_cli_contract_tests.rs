@@ -3238,7 +3238,9 @@ fn eval_partitioned_zero_chunks_keep_step_highlights_localized_in_mixed_sum() {
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 4);
 
-    let step2_before = steps[1]["before_latex"].as_str().expect("step2 before_latex");
+    let step2_before = steps[1]["before_latex"]
+        .as_str()
+        .expect("step2 before_latex");
     assert!(
         step2_before.contains("{\\color{red}{\\tan(x)}}")
             && step2_before.contains("{\\color{red}{\\frac{1}{\\tan(x)}}}")
@@ -3251,7 +3253,9 @@ fn eval_partitioned_zero_chunks_keep_step_highlights_localized_in_mixed_sum() {
         "expected step 2 before_latex to avoid swallowing unrelated terms, got: {step2_before}"
     );
 
-    let step3_before = steps[2]["before_latex"].as_str().expect("step3 before_latex");
+    let step3_before = steps[2]["before_latex"]
+        .as_str()
+        .expect("step3 before_latex");
     assert!(
         step3_before.contains("{\\color{red}{\\text{atanh}")
             && step3_before.contains("{\\color{red}{\\ln(x)}}"),

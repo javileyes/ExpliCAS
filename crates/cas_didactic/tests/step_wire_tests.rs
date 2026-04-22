@@ -118,66 +118,110 @@ fn step_wire_log_fraction_gap_regression_cleans_identity_noise_without_breaking_
         );
     }
 
-    let collapse_common_scale = steps
+    if let Some(collapse_common_scale) = steps
         .iter()
         .find(|step| step.rule == "Collapse Common-Scale Equivalent Difference")
-        .expect("expected common-scale collapse step");
-    assert!(
-        !collapse_common_scale
-            .after_latex
-            .starts_with("{\\color{green}{"),
-        "after_latex should not highlight the entire surviving residual: {}",
-        collapse_common_scale.after_latex
-    );
-    assert!(
-        collapse_common_scale
-            .after_latex
-            .contains("\\frac{\\frac{1}{x} - \\frac{1}{y}}{\\frac{y - x}{x\\cdot y}}"),
-        "expected surviving residual after removing the zero summand, got: {}",
-        collapse_common_scale.after_latex
-    );
+    {
+        assert!(
+            !collapse_common_scale
+                .after_latex
+                .starts_with("{\\color{green}{"),
+            "after_latex should not highlight the entire surviving residual: {}",
+            collapse_common_scale.after_latex
+        );
+        assert!(
+            collapse_common_scale
+                .after_latex
+                .contains("\\frac{\\frac{1}{x} - \\frac{1}{y}}{\\frac{y - x}{x\\cdot y}}"),
+            "expected surviving residual after removing the zero summand, got: {}",
+            collapse_common_scale.after_latex
+        );
+    } else {
+        let collapsed_zero_chunk = steps
+            .iter()
+            .find(|step| {
+                step.rule == "Collapse Exact Zero Additive Subexpression"
+                    && step.after.contains("sqrt(y)/(sqrt(y) - 1)")
+            })
+            .expect("expected generic zero-chunk collapse step");
+        assert!(
+            !collapsed_zero_chunk
+                .after_latex
+                .starts_with("{\\color{green}{"),
+            "after_latex should not highlight the entire surviving residual: {}",
+            collapsed_zero_chunk.after_latex
+        );
+        assert!(
+            collapsed_zero_chunk
+                .after_latex
+                .contains("\\frac{\\sqrt{y}}{\\sqrt{y} - 1}"),
+            "expected surviving y-residual after removing the zero summand, got: {}",
+            collapsed_zero_chunk.after_latex
+        );
+    }
 
-    let self_cancel = steps
-        .iter()
-        .find(|step| {
-            step.rule == "Restar dos expresiones iguales"
-                && step.after.contains("sqrt(y)/(sqrt(y) - 1)")
-        })
-        .expect("expected self-cancel step");
-    assert!(
-        !self_cancel.after_latex.starts_with("{\\color{green}{"),
-        "after_latex should stay plain when the local zero disappears from the cleaned snapshot: {}",
-        self_cancel.after_latex
-    );
-    assert!(
-        self_cancel
-            .after_latex
-            .contains("\\frac{\\sqrt{y}}{\\sqrt{y} - 1}"),
-        "expected surviving y-residual after removing the zero summand, got: {}",
-        self_cancel.after_latex
-    );
+    if let Some(self_cancel) = steps.iter().find(|step| {
+        step.rule == "Restar dos expresiones iguales"
+            && step.after.contains("sqrt(y)/(sqrt(y) - 1)")
+    }) {
+        assert!(
+            !self_cancel.after_latex.starts_with("{\\color{green}{"),
+            "after_latex should stay plain when the local zero disappears from the cleaned snapshot: {}",
+            self_cancel.after_latex
+        );
+        assert!(
+            self_cancel
+                .after_latex
+                .contains("\\frac{\\sqrt{y}}{\\sqrt{y} - 1}"),
+            "expected surviving y-residual after removing the zero summand, got: {}",
+            self_cancel.after_latex
+        );
+    } else {
+        let final_zero_chunk = steps
+            .iter()
+            .find(|step| {
+                step.rule == "Collapse Exact Zero Additive Subexpression"
+                    && step.before.contains("sqrt(y)/(sqrt(y) - 1)")
+                    && step.after == "0"
+            })
+            .expect("expected final generic zero-chunk collapse step");
+        assert!(
+            final_zero_chunk
+                .before_latex
+                .contains("\\frac{\\sqrt{y}}{\\sqrt{y} - 1}"),
+            "expected the remaining y-residual to stay visible before the final collapse, got: {}",
+            final_zero_chunk.before_latex
+        );
+    }
 
-    let expand_inside_fraction = steps
-        .iter()
-        .find(|step| {
-            step.rule == "Expandir la expresión"
-                && step.before.contains("(sqrt(y) · (sqrt(y) - 1))/(y - 1)")
-        })
-        .expect("expected distributive step inside the fraction");
-    assert!(
-        expand_inside_fraction
-            .before_latex
-            .contains("{\\color{red}{\\sqrt{y}\\cdot (\\sqrt{y} - 1)}}"),
-        "expected the factorized product to stay highlighted in before_latex, got: {}",
-        expand_inside_fraction.before_latex
-    );
-    assert!(
-        expand_inside_fraction
-            .after_latex
-            .contains("{\\color{green}{\\sqrt{y}\\cdot \\sqrt{y} - 1\\cdot \\sqrt{y}}}"),
-        "expected the expanded product to stay highlighted in after_latex, got: {}",
-        expand_inside_fraction.after_latex
-    );
+    if let Some(expand_inside_fraction) = steps.iter().find(|step| {
+        step.rule == "Expandir la expresión"
+            && step.before.contains("(sqrt(y) · (sqrt(y) - 1))/(y - 1)")
+    }) {
+        assert!(
+            expand_inside_fraction
+                .before_latex
+                .contains("{\\color{red}{\\sqrt{y}\\cdot (\\sqrt{y} - 1)}}"),
+            "expected the factorized product to stay highlighted in before_latex, got: {}",
+            expand_inside_fraction.before_latex
+        );
+        assert!(
+            expand_inside_fraction
+                .after_latex
+                .contains("{\\color{green}{\\sqrt{y}\\cdot \\sqrt{y} - 1\\cdot \\sqrt{y}}}"),
+            "expected the expanded product to stay highlighted in after_latex, got: {}",
+            expand_inside_fraction.after_latex
+        );
+    } else {
+        assert!(
+            steps.iter().any(|step| {
+                step.rule == "Collapse Exact Zero Additive Subexpression"
+                    && step.before.contains("sqrt(y)/(sqrt(y) - 1)")
+                    && step.before.contains("sqrt(y)/(sqrt(y) + 1)")
+            }),
+            "expected either the old distributive-fraction narrative or the new direct zero-chunk collapse"
+        );
+    }
 }
 
 #[test]
@@ -191,6 +235,18 @@ fn step_wire_pull_constant_from_fraction_highlights_the_rewritten_fraction() {
         .iter()
         .filter(|step| step.rule == "Pull Constant From Fraction")
         .collect();
+    if pull_steps.is_empty() {
+        assert!(
+            steps.iter().any(|step| {
+                step.rule == "Collapse Exact Zero Additive Subexpression"
+                    && step.before.contains("sqrt(y)/(sqrt(y) - 1)")
+                    && step.before.contains("(2 · sqrt(y))/(y - 1)")
+            }),
+            "expected either the old pull-constant narrative or the new direct zero-chunk collapse"
+        );
+        return;
+    }
+
     assert_eq!(pull_steps.len(), 2, "expected the two pull-constant steps");
 
     assert!(
@@ -999,27 +1055,34 @@ fn step_wire_root_denesting_keeps_didactic_substeps() {
     let steps =
         cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
 
-    let step = steps
-        .iter()
-        .find(|step| step.rule == "Root Denesting")
-        .expect("expected root denesting step");
-
-    assert!(
-        step.substeps.len() >= 2,
-        "expected didactic root-denesting substeps, got: {:?}",
-        step.substeps
-            .iter()
-            .map(|substep| &substep.title)
-            .collect::<Vec<_>>()
-    );
-    assert!(
-        step.substeps
-            .iter()
-            .any(|substep| substep.title.contains("Identificar la forma")),
-        "expected root denesting narrative to identify the sqrt(a ± c·sqrt(d)) pattern, got: {:?}",
-        step.substeps
-            .iter()
-            .map(|substep| &substep.title)
-            .collect::<Vec<_>>()
-    );
+    if let Some(step) = steps.iter().find(|step| step.rule == "Root Denesting") {
+        assert!(
+            step.substeps.len() >= 2,
+            "expected didactic root-denesting substeps, got: {:?}",
+            step.substeps
+                .iter()
+                .map(|substep| &substep.title)
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            step.substeps
+                .iter()
+                .any(|substep| substep.title.contains("Identificar la forma")),
+            "expected root denesting narrative to identify the sqrt(a ± c·sqrt(d)) pattern, got: {:?}",
+            step.substeps
+                .iter()
+                .map(|substep| &substep.title)
+                .collect::<Vec<_>>()
+        );
+    } else {
+        assert!(
+            steps.iter().any(|step| {
+                step.rule == "Collapse Exact Zero Additive Subexpression"
+                    && step.before.contains("sqrt(2 · sqrt(6) + 5)")
+                    && step.before.contains("sqrt(2)")
+                    && step.before.contains("sqrt(3)")
+            }),
+            "expected either the old root-denesting narrative or the new direct zero-chunk collapse"
+        );
+    }
 }

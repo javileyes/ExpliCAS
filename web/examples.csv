@@ -1,5 +1,6 @@
 expression,description
 "solve(a*x^2+b*x+c=0,x)","Fórmula cuadrática general"
+"cos(pi * log(sqrt(exp(1) * x^((2 * log((cos(y))^2 + (sin(y))^2)) / log(x)))))","Simplificación con cosenos, logaritmos y fracciones"
 "asin( log( (x^( log(y^(log(z)/log(y))) / log(x) )) / z ) )","Simplificación con arcosenos, logaritmos y fracciones"
 "(asin(x/sqrt(x^2 + 1)) - atan(x)) + (factorial(n+1)/factorial(n-1) - n^2 - n) + (x^(ln(ln(x))/ln(x)) - ln(x)) + ((x^3 + y^3)/(x^2 - x*y + y^2) - x - y)","Simplificación con arcosenos, factoriales, logaritmos y fracciones"
 "(ln(x*sqrt(x)) + ln(sqrt(x)/x^2)) + (sqrt(y)/(sqrt(y)-1) - sqrt(y)/(sqrt(y)+1) - (2*sqrt(y))/(y-1)) + (((1/x) - (1/y))/((y-x)/(x*y)) - 1)","Simplificación con logaritmos, raíces y fracciones"

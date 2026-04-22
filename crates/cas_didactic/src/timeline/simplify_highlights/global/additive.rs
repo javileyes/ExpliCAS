@@ -199,8 +199,10 @@ mod tests {
             &mut ctx,
         )
         .expect("parse after");
-        let before = cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, before_raw);
-        let after = cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, after_raw);
+        let before =
+            cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, before_raw);
+        let after =
+            cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, after_raw);
 
         let paths = collect_removed_additive_term_paths(&ctx, before, after);
         let removed: Vec<String> = paths
@@ -243,8 +245,10 @@ mod tests {
             &mut ctx,
         )
         .expect("parse after");
-        let before = cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, before_raw);
-        let after = cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, after_raw);
+        let before =
+            cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, before_raw);
+        let after =
+            cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, after_raw);
 
         let paths = collect_removed_additive_term_paths(&ctx, before, after);
         let removed: Vec<String> = paths
@@ -301,8 +305,7 @@ mod tests {
             );
 
         assert!(
-            latex.contains("\\color{red}{\\text{atanh}")
-                && latex.contains("\\color{red}{\\ln(x)}"),
+            latex.contains("\\color{red}{\\text{atanh}") && latex.contains("\\color{red}{\\ln(x)}"),
             "expected exact-path render to keep both atanh and ln highlighted, got: {latex}"
         );
     }
@@ -326,10 +329,15 @@ mod tests {
 
         let mut temp_ctx = engine.simplifier.context.clone();
         let step2 = &output.steps.as_slice()[1];
-        let snapshots2 =
-            crate::timeline::simplify_highlights::step_wire_presentation_snapshots(&mut temp_ctx, step2);
-        let removed2 =
-            collect_removed_additive_term_paths(&temp_ctx, snapshots2.global_before_expr, snapshots2.global_after_expr);
+        let snapshots2 = crate::timeline::simplify_highlights::step_wire_presentation_snapshots(
+            &mut temp_ctx,
+            step2,
+        );
+        let removed2 = collect_removed_additive_term_paths(
+            &temp_ctx,
+            snapshots2.global_before_expr,
+            snapshots2.global_after_expr,
+        );
         let removed2_display: Vec<String> = removed2
             .iter()
             .map(|path| {
@@ -357,10 +365,15 @@ mod tests {
         );
 
         let step3 = &output.steps.as_slice()[2];
-        let snapshots3 =
-            crate::timeline::simplify_highlights::step_wire_presentation_snapshots(&mut temp_ctx, step3);
-        let removed3 =
-            collect_removed_additive_term_paths(&temp_ctx, snapshots3.global_before_expr, snapshots3.global_after_expr);
+        let snapshots3 = crate::timeline::simplify_highlights::step_wire_presentation_snapshots(
+            &mut temp_ctx,
+            step3,
+        );
+        let removed3 = collect_removed_additive_term_paths(
+            &temp_ctx,
+            snapshots3.global_before_expr,
+            snapshots3.global_after_expr,
+        );
         let rendered3 =
             crate::timeline::simplify_highlights::global::additive_render::render_before_additive_focus_with_exact_paths(
                 &temp_ctx,

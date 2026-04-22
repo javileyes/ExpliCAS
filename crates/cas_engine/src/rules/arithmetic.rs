@@ -604,8 +604,123 @@ fn top_level_terms_match_trig_family_or_number(
     trig_term_count >= min_trig_terms
 }
 
-fn maybe_exact_trig_equivalence_zero_scope_candidate(
+fn matches_structural_trig_sum_to_product_zero_scope_family(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 3 {
+        return false;
+    }
+
+    for first_index in 0..view.terms.len() {
+        for second_index in (first_index + 1)..view.terms.len() {
+            let focus_terms = [view.terms[first_index], view.terms[second_index]];
+            let focus_expr = build_signed_sum_expr(ctx, &focus_terms);
+            if try_rewrite_trig_sum_to_product_for_cancellation(ctx, focus_expr).is_some() {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn is_direct_trig_function_term_for_exact_scope(
     ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            args.len() == 1
+                && (ctx.is_builtin(*fn_id, BuiltinFn::Sin)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Cos)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Tan)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Cot)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Sec)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Csc))
+        }
+        _ => false,
+    }
+}
+
+fn extract_scaled_direct_trig_function_term_for_exact_scope(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let positive_expr = match ctx.get(expr) {
+        Expr::Neg(inner) => *inner,
+        _ => expr,
+    };
+
+    if is_direct_trig_function_term_for_exact_scope(ctx, positive_expr) {
+        return true;
+    }
+
+    if !matches!(ctx.get(positive_expr), Expr::Mul(_, _)) {
+        return false;
+    }
+
+    let mut saw_trig = false;
+    for factor in flatten_mul_chain(ctx, positive_expr) {
+        match ctx.get(factor) {
+            Expr::Number(_) => {}
+            _ if is_direct_trig_function_term_for_exact_scope(ctx, factor) && !saw_trig => {
+                saw_trig = true;
+            }
+            _ => return false,
+        }
+    }
+
+    saw_trig
+}
+
+fn is_surface_trig_product_term_for_exact_scope(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let positive_expr = match ctx.get(expr) {
+        Expr::Neg(inner) => *inner,
+        _ => expr,
+    };
+
+    if !matches!(ctx.get(positive_expr), Expr::Mul(_, _)) {
+        return false;
+    }
+
+    let mut trig_factor_count = 0usize;
+    for factor in flatten_mul_chain(ctx, positive_expr) {
+        match ctx.get(factor) {
+            Expr::Number(_) => {}
+            _ if is_direct_trig_function_term_for_exact_scope(ctx, factor) => {
+                trig_factor_count += 1;
+            }
+            _ => return false,
+        }
+    }
+
+    trig_factor_count >= 2
+}
+
+fn matches_two_term_direct_trig_against_trig_product_zero_scope_family(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return false;
+    }
+
+    let lhs = view.terms[0].0;
+    let rhs = view.terms[1].0;
+    (extract_scaled_direct_trig_function_term_for_exact_scope(ctx, lhs)
+        && is_surface_trig_product_term_for_exact_scope(ctx, rhs))
+        || (extract_scaled_direct_trig_function_term_for_exact_scope(ctx, rhs)
+            && is_surface_trig_product_term_for_exact_scope(ctx, lhs))
+}
+
+fn maybe_exact_trig_equivalence_zero_scope_candidate(
+    ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> bool {
     let term_count = AddView::from_expr(ctx, expr).terms.len();
@@ -623,6 +738,8 @@ fn maybe_exact_trig_equivalence_zero_scope_candidate(
             ],
             2,
         )
+        && !matches_two_term_direct_trig_against_trig_product_zero_scope_family(ctx, expr)
+        && !matches_structural_trig_sum_to_product_zero_scope_family(ctx, expr)
 }
 
 fn maybe_hyperbolic_angle_sum_diff_zero_candidate(
@@ -10822,41 +10939,147 @@ fn has_plausible_small_zero_partition_core_shape(
     has_plausible_small_zero_partition_term_shape(&terms)
 }
 
+fn small_zero_additive_combination_supported_partition_core(
+    ctx: &mut cas_ast::Context,
+    candidate: cas_ast::ExprId,
+) -> bool {
+    let terms = AddView::from_expr(ctx, candidate).terms;
+    let has_trig_or_hyper = expr_contains_any_builtin(
+        ctx,
+        candidate,
+        &[
+            BuiltinFn::Sin,
+            BuiltinFn::Cos,
+            BuiltinFn::Tan,
+            BuiltinFn::Cot,
+            BuiltinFn::Sec,
+            BuiltinFn::Csc,
+            BuiltinFn::Sinh,
+            BuiltinFn::Cosh,
+            BuiltinFn::Tanh,
+        ],
+    );
+    let has_division = expr_contains_division_node(ctx, candidate);
+    let has_radical = expr_contains_sqrt_or_half_power(ctx, candidate);
+    let has_factorial = expr_contains_factorial_call(ctx, candidate);
+    let has_log = expr_contains_any_builtin(
+        ctx,
+        candidate,
+        &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Log10],
+    );
+    let has_top_level_division_with_radical_denominator = terms.iter().any(|(term_expr, _)| {
+        let Some((_, denominator)) = as_div(ctx, *term_expr) else {
+            return false;
+        };
+        expr_contains_sqrt_or_half_power(ctx, denominator)
+    });
+
+    if !has_trig_or_hyper && has_radical && has_log {
+        return false;
+    }
+
+    if !has_trig_or_hyper
+        && has_radical
+        && has_division
+        && !has_top_level_division_with_radical_denominator
+    {
+        return false;
+    }
+
+    if !has_trig_or_hyper && has_division && !has_radical && !has_factorial {
+        let all_terms_are_division_like = terms
+            .iter()
+            .all(|(term_expr, _)| expr_contains_division_node(ctx, *term_expr));
+        if !all_terms_are_division_like {
+            return false;
+        }
+    }
+
+    (has_trig_or_hyper || has_division || has_radical || has_factorial)
+        && !(has_trig_or_hyper && has_division)
+}
+
+pub(crate) fn maybe_direct_small_zero_additive_combination_candidate(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if !(4..=6).contains(&view.terms.len()) {
+        return false;
+    }
+
+    for subset_len in 2..=3 {
+        if subset_len >= view.terms.len() {
+            continue;
+        }
+        let mut stack = vec![(0usize, Vec::<usize>::new())];
+        while let Some((next_index, chosen)) = stack.pop() {
+            if chosen.len() == subset_len {
+                if !chosen.contains(&0) {
+                    continue;
+                }
+
+                let first_terms: Vec<_> = view
+                    .terms
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter_map(|(index, term)| chosen.contains(&index).then_some(term))
+                    .collect();
+                let second_terms: Vec<_> = view
+                    .terms
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter_map(|(index, term)| (!chosen.contains(&index)).then_some(term))
+                    .collect();
+                if !(2..=3).contains(&second_terms.len()) {
+                    continue;
+                }
+                if !has_plausible_small_zero_partition_term_shape(&first_terms)
+                    || !has_plausible_small_zero_partition_term_shape(&second_terms)
+                {
+                    continue;
+                }
+
+                let first_expr = build_signed_sum_expr(ctx, &first_terms);
+                let second_expr = build_signed_sum_expr(ctx, &second_terms);
+                if small_zero_additive_combination_supported_partition_core(ctx, first_expr)
+                    && small_zero_additive_combination_supported_partition_core(ctx, second_expr)
+                {
+                    return true;
+                }
+                continue;
+            }
+
+            let remaining_slots = subset_len - chosen.len();
+            let max_start = view.terms.len().saturating_sub(remaining_slots);
+            for index in (next_index..=max_start).rev() {
+                let mut next_chosen = chosen.clone();
+                next_chosen.push(index);
+                stack.push((index + 1, next_chosen));
+            }
+        }
+    }
+
+    false
+}
+
 pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
-    let is_supported_partition_core =
-        |ctx: &mut cas_ast::Context, candidate: cas_ast::ExprId| -> bool {
-            let has_trig_or_hyper = expr_contains_any_builtin(
-                ctx,
-                candidate,
-                &[
-                    BuiltinFn::Sin,
-                    BuiltinFn::Cos,
-                    BuiltinFn::Tan,
-                    BuiltinFn::Cot,
-                    BuiltinFn::Sec,
-                    BuiltinFn::Csc,
-                    BuiltinFn::Sinh,
-                    BuiltinFn::Cosh,
-                    BuiltinFn::Tanh,
-                ],
-            );
-            let has_division = expr_contains_division_node(ctx, candidate);
-            let has_radical = expr_contains_sqrt_or_half_power(ctx, candidate);
-            let has_factorial = expr_contains_factorial_call(ctx, candidate);
-            (has_trig_or_hyper || has_division || has_radical || has_factorial)
-                && !(has_trig_or_hyper && has_division)
-        };
+    if !maybe_direct_small_zero_additive_combination_candidate(ctx, expr) {
+        return None;
+    }
 
     let build_combined_rewrite = |ctx: &mut cas_ast::Context,
                                   first_expr: cas_ast::ExprId,
                                   second_expr: cas_ast::ExprId| {
         if !has_plausible_small_zero_partition_core_shape(ctx, first_expr)
             || !has_plausible_small_zero_partition_core_shape(ctx, second_expr)
-            || !is_supported_partition_core(ctx, first_expr)
-            || !is_supported_partition_core(ctx, second_expr)
+            || !small_zero_additive_combination_supported_partition_core(ctx, first_expr)
+            || !small_zero_additive_combination_supported_partition_core(ctx, second_expr)
         {
             return None;
         }
@@ -13468,7 +13691,9 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         }
     }
 
-    if allow_direct_small_zero_combination {
+    if allow_direct_small_zero_combination
+        && maybe_direct_small_zero_additive_combination_candidate(ctx, expr)
+    {
         if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
             profiling,
             "rule.direct_identity.try.small_zero_additive_combination",
@@ -23346,6 +23571,17 @@ fn try_build_shifted_quotient_fraction_combine_residual_rewrite(
     None
 }
 
+pub(crate) fn matches_shifted_quotient_fraction_residual_narrow_pair_candidate(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> bool {
+    matches_shifted_quotient_fraction_combine_residual_side(ctx, lhs_core, rhs_core)
+        || matches_shifted_quotient_fraction_combine_residual_side(ctx, rhs_core, lhs_core)
+        || try_rewrite_shifted_quotient_fraction_decompose_source(ctx, lhs_core, rhs_core).is_some()
+        || try_rewrite_shifted_quotient_fraction_decompose_source(ctx, rhs_core, lhs_core).is_some()
+}
+
 fn try_rewrite_shifted_quotient_cancel_common_factors_source(
     ctx: &mut cas_ast::Context,
     source_expr: cas_ast::ExprId,
@@ -26887,13 +27123,58 @@ mod tests {
     }
 
     #[test]
-    fn maybe_exact_trig_equivalence_zero_scope_candidate_accepts_pure_trig_residual() {
+    fn exact_trig_sum_to_product_zero_scope_rewrite_matches_raw_sin_sin_residual() {
         let mut ctx = Context::new();
         let expr = parse("2*sin(x)*sin(y) - cos(x-y) + cos(x+y)", &mut ctx)
             .unwrap_or_else(|err| panic!("parse: {err}"));
 
+        let rewrite = super::try_build_exact_trig_sum_to_product_zero_scope_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn maybe_exact_trig_equivalence_zero_scope_candidate_accepts_pure_trig_residual() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("sin(x)^2 + cos(x)^2 - 1", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
         assert!(super::maybe_exact_trig_equivalence_zero_scope_candidate(
-            &ctx, expr
+            &mut ctx, expr
+        ));
+    }
+
+    #[test]
+    fn maybe_exact_trig_equivalence_zero_scope_candidate_rejects_structural_trig_sum_to_product_scope(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_exact_trig_equivalence_zero_scope_candidate(
+            &mut ctx, expr
+        ));
+    }
+
+    #[test]
+    fn maybe_exact_trig_equivalence_zero_scope_candidate_rejects_two_term_direct_trig_against_product_scope(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x) - 2*sin((x+y)/2)*cos((x-y)/2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_exact_trig_equivalence_zero_scope_candidate(
+            &mut ctx, expr
         ));
     }
 
@@ -26908,7 +27189,7 @@ mod tests {
         .unwrap_or_else(|err| panic!("parse: {err}"));
 
         assert!(!super::maybe_exact_trig_equivalence_zero_scope_candidate(
-            &ctx, expr
+            &mut ctx, expr
         ));
     }
 
@@ -27798,6 +28079,62 @@ mod tests {
             super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
                 .is_none()
         );
+    }
+
+    #[test]
+    fn maybe_direct_small_zero_additive_combination_candidate_accepts_trig_and_telescoping_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x)-2*sin(x))) + (1/(u*(u+1)) - 1/u + 1/(u+1))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::maybe_direct_small_zero_additive_combination_candidate(&mut ctx, expr));
+    }
+
+    #[test]
+    fn maybe_direct_small_zero_additive_combination_candidate_accepts_pure_trig_partition_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + (tan(x)*cot(x) - 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::maybe_direct_small_zero_additive_combination_candidate(&mut ctx, expr));
+    }
+
+    #[test]
+    fn maybe_direct_small_zero_additive_combination_candidate_rejects_nontrig_polynomial_scope() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("(a+b-c) + (d+e-f)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_direct_small_zero_additive_combination_candidate(&mut ctx, expr));
+    }
+
+    #[test]
+    fn maybe_direct_small_zero_additive_combination_candidate_rejects_mixed_log_exp_fraction_scope()
+    {
+        let mut ctx = Context::new();
+        let expr = parse("x^y - exp(y*log(x)) - 1/(x+1) - 2/(x^2 - 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_direct_small_zero_additive_combination_candidate(&mut ctx, expr));
+    }
+
+    #[test]
+    fn maybe_direct_small_zero_additive_combination_candidate_rejects_root_log_exp_fraction_scope()
+    {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sqrt(2 * sqrt(x - 1) + x) + exp(y*log(x)) + 1/(x + 1) + 2/(x^2 - 1) - x^y - 1/(x - 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_direct_small_zero_additive_combination_candidate(&mut ctx, expr));
     }
 
     #[test]

@@ -346,7 +346,12 @@ impl<'a> LocalSimplificationTransformer<'a> {
         // PRE-ORDER: Collapse small exact-zero additive combinations before
         // simplifying children. This prevents recursive trig power rewrite loops
         // such as 8*sin(x)^4 - (3 - 4*cos(2*x) + cos(4*x)).
-        if matches!(op, BinaryOp::Add | BinaryOp::Sub) {
+        if matches!(op, BinaryOp::Add | BinaryOp::Sub)
+            && crate::rules::arithmetic::maybe_direct_small_zero_additive_combination_candidate(
+                self.context,
+                id,
+            )
+        {
             if let Some(rewrite) =
                 crate::rules::arithmetic::try_build_direct_small_zero_additive_combination_rewrite(
                     self.context,
