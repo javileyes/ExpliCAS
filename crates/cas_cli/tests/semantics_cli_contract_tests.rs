@@ -6063,10 +6063,7 @@ fn eval_reverse_dirichlet_raw_difference_collapses_to_zero() {
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(
-        steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
-    );
+    assert_eq!(steps[0]["rule"], "Trig Summation Identity");
     assert_eq!(wire["required_display"][0], "sin(x / 2) ≠ 0");
 }
 

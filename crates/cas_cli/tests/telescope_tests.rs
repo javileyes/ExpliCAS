@@ -54,6 +54,12 @@ fn test_dirichlet_kernel_different_order() {
 }
 
 #[test]
+fn test_dirichlet_kernel_reverse_raw_difference() {
+    let (result, is_zero) = parse_and_simplify("sin(5*x/2)/sin(x/2) - (1 + 2*cos(x) + 2*cos(2*x))");
+    assert!(is_zero, "Expected 0, got: {}", result);
+}
+
+#[test]
 fn test_telescope_command_basic() {
     // Test the telescoping module directly
     let mut ctx = cas_ast::Context::new();

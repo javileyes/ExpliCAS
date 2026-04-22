@@ -980,6 +980,7 @@ k*(sin(8*x)/(8*sin(x))) - k*(cos(x)*cos(2*x)*cos(4*x)),0,scaled_difference_zero,
 k*(1 + 2*cos(x) + 2*cos(2*x)) - k*(sin(5*x/2)/sin(x/2)),0,scaled_difference_zero,integrate_prep_dirichlet_basic,integrate_prep,1 + 2*cos(x) + 2*cos(2*x),sin(5*x/2)/sin(x/2),integrate prep
 ((1 + 2*cos(x) + 2*cos(2*x))/q) - ((sin(5*x/2)/sin(x/2))/q),0,common_denominator_zero,integrate_prep_dirichlet_basic,integrate_prep,1 + 2*cos(x) + 2*cos(2*x),sin(5*x/2)/sin(x/2),integrate prep
 ((1 + 2*cos(x) + 2*cos(2*x)) + 1)/((sin(5*x/2)/sin(x/2)) + 1),1,shifted_quotient_one,integrate_prep_dirichlet_basic,integrate_prep,1 + 2*cos(x) + 2*cos(2*x),sin(5*x/2)/sin(x/2),integrate prep
+sin(5*x/2)/sin(x/2) - (1 + 2*cos(x) + 2*cos(2*x)),0,combined_additive_zero,integrate_prep_dirichlet_reverse_basic,integrate_prep,sin(5*x/2)/sin(x/2),1 + 2*cos(x) + 2*cos(2*x),integrate prep
 ((sin(5*x/2)/sin(x/2)) + m) - ((1 + 2*cos(x) + 2*cos(2*x)) + m),0,additive_passthrough_zero,integrate_prep_dirichlet_reverse_basic,integrate_prep,sin(5*x/2)/sin(x/2),1 + 2*cos(x) + 2*cos(2*x),integrate prep
 k*(sin(5*x/2)/sin(x/2)) - k*(1 + 2*cos(x) + 2*cos(2*x)),0,scaled_difference_zero,integrate_prep_dirichlet_reverse_basic,integrate_prep,sin(5*x/2)/sin(x/2),1 + 2*cos(x) + 2*cos(2*x),integrate prep
 ((sin(5*x/2)/sin(x/2))/q) - ((1 + 2*cos(x) + 2*cos(2*x))/q),0,common_denominator_zero,integrate_prep_dirichlet_reverse_basic,integrate_prep,sin(5*x/2)/sin(x/2),1 + 2*cos(x) + 2*cos(2*x),integrate prep

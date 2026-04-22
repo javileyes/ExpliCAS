@@ -23,17 +23,24 @@ pub fn try_dirichlet_kernel_identity(
     let view = AddView::from_expr(ctx, expr);
 
     let mut has_one = false;
+    let mut kernel_sign: Option<Sign> = None;
     let mut cosine_multiples: Vec<(usize, Vec<ExprId>)> = Vec::new(); // (k, base factors)
     let mut sin_ratio: Option<(ExprId, ExprId)> = None; // (numerator arg, denominator arg)
-    let mut sin_ratio_is_negative = false;
+    let mut sin_ratio_sign: Option<Sign> = None;
 
     for &(term, sign) in &view.terms {
-        let is_positive = sign == Sign::Pos;
         let term_data = ctx.get(term).clone();
 
         // Check for constant 1.
         if let Expr::Number(n) = &term_data {
-            if n.is_one() && is_positive {
+            if n.is_one() {
+                if let Some(expected_sign) = kernel_sign {
+                    if sign != expected_sign {
+                        return None;
+                    }
+                } else {
+                    kernel_sign = Some(sign);
+                }
                 has_one = true;
                 continue;
             }
@@ -41,16 +48,21 @@ pub fn try_dirichlet_kernel_identity(
 
         // Check for 2*cos(k*x).
         if let Some((k, base)) = extract_cosine_multiple(ctx, term) {
-            if is_positive {
-                cosine_multiples.push((k, base));
+            if let Some(expected_sign) = kernel_sign {
+                if sign != expected_sign {
+                    return None;
+                }
+            } else {
+                kernel_sign = Some(sign);
             }
+            cosine_multiples.push((k, base));
             continue;
         }
 
         // Check for sin(a)/sin(b) ratio.
         if let Some((num_arg, den_arg)) = extract_sin_ratio(ctx, term) {
             sin_ratio = Some((num_arg, den_arg));
-            sin_ratio_is_negative = !is_positive; // Should be subtracted (negative).
+            sin_ratio_sign = Some(sign);
         }
     }
 
@@ -89,7 +101,7 @@ pub fn try_dirichlet_kernel_identity(
 
     // Verify sin ratio matches expected form: sin((n+1/2)*x)/sin(x/2).
     if let Some((num_arg, den_arg)) = sin_ratio {
-        if sin_ratio_is_negative
+        if Some(kernel_sign?.negate()) == sin_ratio_sign
             && is_half_angle(ctx, den_arg, &base_factors, base_multiplier)
             && is_half_integer_multiple(ctx, num_arg, &base_factors, n, base_multiplier)
         {
@@ -309,5 +321,18 @@ mod tests {
             compare_expr(&ctx, result.base_var, expected),
             Ordering::Equal
         );
+    }
+
+    #[test]
+    fn detects_reverse_dirichlet_identity() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sin(5*x/2)/sin(x/2) - (1 + 2*cos(x) + 2*cos(2*x))",
+            &mut ctx,
+        )
+        .expect("parse");
+        let result = try_dirichlet_kernel_identity(&mut ctx, expr).expect("detect");
+        assert_eq!(result.n, 2);
+        assert_eq!(result.base_multiplier, 1);
     }
 }

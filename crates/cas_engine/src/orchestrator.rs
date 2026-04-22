@@ -22153,6 +22153,32 @@ fn prove_positive_literal_fast(ctx: &Context, expr: ExprId) -> Option<crate::Pro
     }
 }
 
+fn try_finish_dirichlet_kernel_root_shortcut(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>, crate::phase::PipelineStats)> {
+    let result = crate::try_dirichlet_kernel_identity_pub(&mut simplifier.context, expr)?;
+    let zero = simplifier.context.num(0);
+    let steps = if collect_steps {
+        vec![Step::new(
+            &format!(
+                "Dirichlet Kernel Identity: 1 + 2Σcos(kx) = sin((n+½)x)/sin(x/2) for n={}",
+                result.n
+            ),
+            "Trig Summation Identity",
+            expr,
+            zero,
+            Vec::new(),
+            Some(&simplifier.context),
+        )]
+    } else {
+        Vec::new()
+    };
+    simplifier.clear_sticky_implicit_domain();
+    Some((zero, steps, crate::phase::PipelineStats::default()))
+}
+
 fn try_hidden_solve_root_power_quotient_shortcut(
     ctx: &mut Context,
     expr: ExprId,
@@ -22882,6 +22908,12 @@ impl Orchestrator {
             && is_real_domain_complex_noop_root(&simplifier.context, expr)
         {
             return (expr, Vec::new(), crate::phase::PipelineStats::default());
+        }
+
+        if let Some(result) =
+            try_finish_dirichlet_kernel_root_shortcut(simplifier, expr, collect_steps)
+        {
+            return result;
         }
 
         macro_rules! return_profiled_root_shortcut {
@@ -24672,25 +24704,11 @@ impl Orchestrator {
         }
 
         // Check for specialized strategies first
-        if let Some(result) =
-            crate::try_dirichlet_kernel_identity_pub(&mut simplifier.context, current)
+        if let Some((zero, mut shortcut_steps, stats)) =
+            try_finish_dirichlet_kernel_root_shortcut(simplifier, current, collect_steps)
         {
-            let zero = simplifier.context.num(0);
-            if self.options.collect_steps {
-                all_steps.push(Step::new(
-                    &format!(
-                        "Dirichlet Kernel Identity: 1 + 2Σcos(kx) = sin((n+½)x)/sin(x/2) for n={}",
-                        result.n
-                    ),
-                    "Trig Summation Identity",
-                    current,
-                    zero,
-                    Vec::new(),
-                    Some(&simplifier.context),
-                ));
-            }
-            simplifier.clear_sticky_implicit_domain();
-            return (zero, all_steps, crate::phase::PipelineStats::default());
+            all_steps.append(&mut shortcut_steps);
+            return (zero, all_steps, stats);
         }
 
         let mut pipeline_stats = crate::phase::PipelineStats::default();
