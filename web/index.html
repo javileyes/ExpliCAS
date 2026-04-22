@@ -1319,7 +1319,22 @@
             return warnings.map((warning) => {
                 if (!warning) return '';
                 if (typeof warning === 'string') return warning;
-                return warning.message || warning.text || warning.rule || '';
+
+                const assumption = typeof warning.assumption === 'string'
+                    ? warning.assumption.trim()
+                    : '';
+                const message = typeof warning.message === 'string'
+                    ? warning.message.trim()
+                    : '';
+                const text = typeof warning.text === 'string'
+                    ? warning.text.trim()
+                    : '';
+                const rule = typeof warning.rule === 'string'
+                    ? warning.rule.trim()
+                    : '';
+
+                if (assumption && rule) return `${assumption} (${rule})`;
+                return assumption || message || text || rule || '';
             }).filter(Boolean);
         }
 
