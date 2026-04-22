@@ -3224,6 +3224,46 @@ fn eval_log_contraction_step_keeps_full_before_scope_highlight() {
 }
 
 #[test]
+fn eval_partitioned_zero_chunks_keep_step_highlights_localized_in_mixed_sum() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "((cos(x))^3 - (3*cos(x) + cos(3*x))/4) + (tan(x) + 1/tan(x) - 2/sin(2*x)) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (sqrt(x + sqrt(x^2 - y^2)) - (sqrt(x+y) + sqrt(x-y))/sqrt(2))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 4);
+
+    let step2_before = steps[1]["before_latex"].as_str().expect("step2 before_latex");
+    assert!(
+        step2_before.contains("{\\color{red}{\\tan(x)}}")
+            && step2_before.contains("{\\color{red}{\\frac{1}{\\tan(x)}}}")
+            && step2_before.contains("{\\color{red}{\\frac{2}{\\sin(2\\cdot x)}}}"),
+        "expected step 2 before_latex to highlight exactly the trig reciprocal chunk, got: {step2_before}"
+    );
+    assert!(
+        !step2_before.contains("{\\color{red}{\\tan(x) + \\text{atanh}")
+            && !step2_before.contains("{\\color{red}{\\sqrt"),
+        "expected step 2 before_latex to avoid swallowing unrelated terms, got: {step2_before}"
+    );
+
+    let step3_before = steps[2]["before_latex"].as_str().expect("step3 before_latex");
+    assert!(
+        step3_before.contains("{\\color{red}{\\text{atanh}")
+            && step3_before.contains("{\\color{red}{\\ln(x)}}"),
+        "expected step 3 before_latex to highlight the full atanh-log chunk, got: {step3_before}"
+    );
+    assert!(
+        !step3_before.contains("{\\color{red}{\\sqrt"),
+        "expected step 3 before_latex to keep the root-denesting chunk outside the highlight, got: {step3_before}"
+    );
+}
+
+#[test]
 fn eval_equiv_input_uses_latex_relation_in_wire() {
     let (output, _code) = run_cli(&[
         "eval",

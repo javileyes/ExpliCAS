@@ -143,6 +143,53 @@ pub(super) fn render_before_additive_focus(
     )
 }
 
+pub(super) fn render_before_additive_focus_with_exact_paths(
+    context: &Context,
+    global_before_expr: ExprId,
+    exact_paths: &[ExprPath],
+    display_hints: &DisplayContext,
+    style_prefs: &StylePreferences,
+    render_with_paths: fn(
+        &Context,
+        cas_ast::ExprId,
+        &PathHighlightConfig,
+        &DisplayContext,
+        &StylePreferences,
+    ) -> String,
+) -> String {
+    if exact_paths.is_empty() {
+        return LaTeXExprHighlightedWithHints {
+            context,
+            id: global_before_expr,
+            highlights: &HighlightConfig::new(),
+            hints: display_hints,
+            style_prefs: Some(style_prefs),
+        }
+        .to_latex();
+    }
+
+    let path_rendered = with_paths::render_before_additive_focus_with_paths(
+        context,
+        global_before_expr,
+        exact_paths,
+        display_hints,
+        style_prefs,
+        config::build_before_additive_focus_config,
+        render_with_paths,
+    );
+    if count_color_markers(&path_rendered, HighlightColor::Red) >= exact_paths.len() {
+        return path_rendered;
+    }
+
+    render_before_additive_focus_with_expr_ids(
+        context,
+        global_before_expr,
+        exact_paths,
+        display_hints,
+        style_prefs,
+    )
+}
+
 fn render_before_additive_focus_with_expr_id(
     context: &Context,
     global_before_expr: ExprId,

@@ -28,6 +28,23 @@ pub(super) fn render_before_additive_focus(
     )
 }
 
+pub(super) fn render_before_additive_focus_with_exact_paths(
+    context: &Context,
+    global_before_expr: cas_ast::ExprId,
+    exact_paths: &[ExprPath],
+    display_hints: &DisplayContext,
+    style_prefs: &StylePreferences,
+) -> String {
+    before::render_before_additive_focus_with_exact_paths(
+        context,
+        global_before_expr,
+        exact_paths,
+        display_hints,
+        style_prefs,
+        render_with_paths,
+    )
+}
+
 pub(super) fn render_after_additive_focus(
     context: &Context,
     global_after_expr: cas_ast::ExprId,
