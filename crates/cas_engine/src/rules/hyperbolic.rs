@@ -148,15 +148,34 @@ fn extract_two_term_core_difference_local(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(ExprId, ExprId)> {
-    let terms = AddView::from_expr(ctx, expr).terms;
-    if terms.len() != 2 {
-        return None;
-    }
+    match ctx.get(expr).clone() {
+        Expr::Sub(lhs, rhs) => Some((lhs, rhs)),
+        Expr::Add(lhs, rhs) => match ctx.get(rhs).clone() {
+            Expr::Neg(inner) => Some((lhs, inner)),
+            _ => {
+                let terms = AddView::from_expr(ctx, expr).terms;
+                if terms.len() != 2 {
+                    return None;
+                }
 
-    Some((
-        apply_difference_sign(ctx, terms[0].0, terms[0].1),
-        apply_opposite_difference_sign(ctx, terms[1].0, terms[1].1),
-    ))
+                Some((
+                    apply_difference_sign(ctx, terms[0].0, terms[0].1),
+                    apply_opposite_difference_sign(ctx, terms[1].0, terms[1].1),
+                ))
+            }
+        },
+        _ => {
+            let terms = AddView::from_expr(ctx, expr).terms;
+            if terms.len() != 2 {
+                return None;
+            }
+
+            Some((
+                apply_difference_sign(ctx, terms[0].0, terms[0].1),
+                apply_opposite_difference_sign(ctx, terms[1].0, terms[1].1),
+            ))
+        }
+    }
 }
 
 pub(crate) fn try_build_atanh_square_ratio_log_zero_rewrite(

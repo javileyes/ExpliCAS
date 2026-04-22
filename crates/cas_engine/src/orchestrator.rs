@@ -8394,7 +8394,7 @@ fn matches_direct_sqrt_perfect_square_abs_zero_identity_root(
     expr: ExprId,
 ) -> bool {
     let view = AddView::from_expr(ctx, expr);
-    if view.terms.len() != 2 {
+    if !(2..=4).contains(&view.terms.len()) {
         return false;
     }
 
@@ -8407,16 +8407,227 @@ fn matches_direct_sqrt_perfect_square_abs_zero_identity_root(
             continue;
         };
 
-        let (other_term, other_sign) = view.terms[1 - candidate_index];
-        if sqrt_like_sign == other_sign {
+        let normalized_remaining_terms: smallvec::SmallVec<[(ExprId, Sign); 8]> = view
+            .terms
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(index, (term, sign))| {
+                (index != candidate_index).then_some((
+                    term,
+                    if sqrt_like_sign == Sign::Pos {
+                        match sign {
+                            Sign::Pos => Sign::Neg,
+                            Sign::Neg => Sign::Pos,
+                        }
+                    } else {
+                        sign
+                    },
+                ))
+            })
+            .collect();
+        if normalized_remaining_terms.is_empty() {
             continue;
         }
-        if compare_expr(ctx, rewrite.rewritten, other_term) == Ordering::Equal {
+
+        let remaining_expr = AddView {
+            root: expr,
+            terms: normalized_remaining_terms,
+        }
+        .rebuild(ctx);
+        if compare_expr(ctx, rewrite.rewritten, remaining_expr) == Ordering::Equal {
             return true;
+        }
+        if let Some(abs_rewrite) =
+            cas_math::abs_support::try_rewrite_abs_sum_nonnegative_expr(ctx, rewrite.rewritten)
+        {
+            if compare_expr(ctx, abs_rewrite.rewritten, remaining_expr) == Ordering::Equal {
+                return true;
+            }
         }
     }
 
     false
+}
+
+fn try_standard_sqrt_perfect_square_abs_subset_zero_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    let view = AddView::from_expr(ctx, expr);
+    if !(5..=8).contains(&view.terms.len()) {
+        return None;
+    }
+    if !expr_contains_sqrt_or_half_power_local(ctx, expr)
+        || expr_contains_trig_or_hyperbolic_builtin_local(ctx, expr)
+        || !expr_contains_log_builtin_local(ctx, expr)
+    {
+        return None;
+    }
+    let top_level_sqrt_like_terms = view
+        .terms
+        .iter()
+        .filter(|(term, _)| expr_contains_sqrt_or_half_power_local(ctx, *term))
+        .count();
+    let top_level_log_like_terms = view
+        .terms
+        .iter()
+        .filter(|(term, _)| expr_contains_log_builtin_local(ctx, *term))
+        .count();
+    if top_level_sqrt_like_terms < 2 || top_level_log_like_terms < 2 {
+        return None;
+    }
+
+    for subset_size in [2usize, 3usize] {
+        for first_index in 0..view.terms.len() {
+            for second_index in (first_index + 1)..view.terms.len() {
+                if subset_size == 2 {
+                    let subset_terms = [view.terms[first_index], view.terms[second_index]];
+                    let subset_expr = build_signed_sum_expr_root(ctx, &subset_terms);
+                    if !matches_direct_sqrt_perfect_square_abs_zero_identity_root(ctx, subset_expr)
+                    {
+                        continue;
+                    }
+
+                    let remaining_terms: smallvec::SmallVec<[(ExprId, Sign); 8]> = view
+                        .terms
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .filter_map(|(index, term)| {
+                            (index != first_index && index != second_index).then_some(term)
+                        })
+                        .collect();
+                    if !(2..=6).contains(&remaining_terms.len()) {
+                        continue;
+                    }
+
+                    let remaining_expr = AddView {
+                        root: expr,
+                        terms: remaining_terms,
+                    }
+                    .rebuild(ctx);
+                    if expr_contains_sqrt_or_half_power_local(ctx, remaining_expr)
+                        || !is_supported_nested_zero_child_partner(ctx, remaining_expr)
+                    {
+                        continue;
+                    }
+
+                    let remaining_rewrites_to_zero =
+                        matches_direct_small_zero_identity_root(ctx, remaining_expr)
+                            || try_standard_atanh_square_ratio_log_subset_zero_shortcut(
+                                options,
+                                ctx,
+                                remaining_expr,
+                                false,
+                            )
+                            .is_some()
+                            || (cas_ast::count_nodes(ctx, remaining_expr) <= 48
+                                && isolated_simplify_rewrites_to_zero(
+                                    options,
+                                    ctx,
+                                    remaining_expr,
+                                ));
+                    if !remaining_rewrites_to_zero {
+                        continue;
+                    }
+
+                    let zero = ctx.num(0);
+                    return Some(finish_standard_root_shortcut(
+                        ctx,
+                        expr,
+                        crate::rule::Rewrite::with_local(
+                            zero,
+                            "Collapse Exact Zero Additive Subexpression",
+                            subset_expr,
+                            zero,
+                        ),
+                        "Collapse Exact Zero Additive Subexpression",
+                        collect_steps,
+                    ));
+                }
+
+                for third_index in (second_index + 1)..view.terms.len() {
+                    let subset_terms = [
+                        view.terms[first_index],
+                        view.terms[second_index],
+                        view.terms[third_index],
+                    ];
+                    let subset_expr = build_signed_sum_expr_root(ctx, &subset_terms);
+                    if !matches_direct_sqrt_perfect_square_abs_zero_identity_root(ctx, subset_expr)
+                    {
+                        continue;
+                    }
+
+                    let remaining_terms: smallvec::SmallVec<[(ExprId, Sign); 8]> = view
+                        .terms
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .filter_map(|(index, term)| {
+                            (index != first_index && index != second_index && index != third_index)
+                                .then_some(term)
+                        })
+                        .collect();
+                    if !(2..=5).contains(&remaining_terms.len()) {
+                        continue;
+                    }
+
+                    let remaining_expr = AddView {
+                        root: expr,
+                        terms: remaining_terms,
+                    }
+                    .rebuild(ctx);
+                    if expr_contains_sqrt_or_half_power_local(ctx, remaining_expr)
+                        || !is_supported_nested_zero_child_partner(ctx, remaining_expr)
+                    {
+                        continue;
+                    }
+
+                    let remaining_rewrites_to_zero =
+                        matches_direct_small_zero_identity_root(ctx, remaining_expr)
+                            || try_standard_atanh_square_ratio_log_subset_zero_shortcut(
+                                options,
+                                ctx,
+                                remaining_expr,
+                                false,
+                            )
+                            .is_some()
+                            || (cas_ast::count_nodes(ctx, remaining_expr) <= 48
+                                && isolated_simplify_rewrites_to_zero(
+                                    options,
+                                    ctx,
+                                    remaining_expr,
+                                ));
+                    if !remaining_rewrites_to_zero {
+                        continue;
+                    }
+
+                    let zero = ctx.num(0);
+                    return Some(finish_standard_root_shortcut(
+                        ctx,
+                        expr,
+                        crate::rule::Rewrite::with_local(
+                            zero,
+                            "Collapse Exact Zero Additive Subexpression",
+                            subset_expr,
+                            zero,
+                        ),
+                        "Collapse Exact Zero Additive Subexpression",
+                        collect_steps,
+                    ));
+                }
+            }
+        }
+    }
+
+    None
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9508,9 +9719,100 @@ fn matches_direct_small_zero_identity_root(ctx: &mut Context, expr: ExprId) -> b
         || matches_direct_recursive_hyperbolic_sinh_sum_zero_identity_root(ctx, expr)
         || matches_direct_recursive_hyperbolic_cosh_sum_zero_identity_root(ctx, expr)
         || matches_direct_hyperbolic_cosh_cubic_zero_identity_root(ctx, expr)
+        || matches_direct_atanh_square_ratio_log_zero_identity_root(ctx, expr)
+        || matches_direct_inverse_trig_composition_zero_identity_root(ctx, expr)
         || matches_direct_hyperbolic_pythagorean_zero_identity_root(ctx, expr)
         || matches_direct_mixed_pythagorean_zero_identity_root(ctx, expr)
         || matches_direct_exp_hyperbolic_double_identity_root(ctx, expr)
+}
+
+fn matches_direct_atanh_square_ratio_log_zero_identity_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return false;
+    }
+
+    if !expr_contains_any_builtin_local(ctx, expr, &[BuiltinFn::Atanh]) {
+        return false;
+    }
+    if !expr_contains_any_builtin_local(
+        ctx,
+        expr,
+        &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Log10],
+    ) {
+        return false;
+    }
+
+    crate::rules::hyperbolic::try_build_atanh_square_ratio_log_zero_rewrite(ctx, expr).is_some()
+}
+
+fn matches_direct_inverse_trig_composition_zero_identity_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 {
+        return false;
+    }
+    if !expr_contains_any_builtin_local(
+        ctx,
+        expr,
+        &[
+            BuiltinFn::Asin,
+            BuiltinFn::Arcsin,
+            BuiltinFn::Atan,
+            BuiltinFn::Arctan,
+        ],
+    ) {
+        return false;
+    }
+
+    let (lhs_term, rhs_term) = match (view.terms[0].1, view.terms[1].1) {
+        (Sign::Pos, Sign::Neg) => (view.terms[0].0, view.terms[1].0),
+        (Sign::Neg, Sign::Pos) => (view.terms[1].0, view.terms[0].0),
+        _ => return false,
+    };
+
+    for (source_expr, target_expr) in [(lhs_term, rhs_term), (rhs_term, lhs_term)] {
+        let Some(plan) =
+            cas_math::inverse_trig_composition_support::try_plan_inverse_trig_composition_expr(
+                ctx,
+                source_expr,
+                false,
+                false,
+            )
+        else {
+            continue;
+        };
+        let rewritten = strip_multiplicative_one_root(ctx, plan.rewritten);
+        let target = strip_multiplicative_one_root(ctx, target_expr);
+        if compare_expr(ctx, rewritten, target) == Ordering::Equal {
+            return true;
+        }
+        let difference = ctx.add(Expr::Sub(rewritten, target));
+        if cas_ast::count_nodes(ctx, difference) <= 36
+            && isolated_simplify_rewrites_to_zero(
+                &crate::phase::SimplifyOptions::default(),
+                ctx,
+                difference,
+            )
+        {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn matches_direct_small_zero_or_known_pair_base_root(ctx: &mut Context, expr: ExprId) -> bool {
@@ -11365,7 +11667,8 @@ fn matches_shifted_quotient_exact_one_direct_pair_root(
     lhs_core: ExprId,
     rhs_core: ExprId,
 ) -> bool {
-    matches_known_direct_pair_root(ctx, lhs_core, rhs_core)
+    compare_expr(ctx, lhs_core, rhs_core) == Ordering::Equal
+        || matches_known_direct_pair_root(ctx, lhs_core, rhs_core)
         || crate::rules::arithmetic::try_build_direct_trig_double_angle_cos_variant_equivalence_rewrite(
             ctx,
             lhs_core,
@@ -11387,9 +11690,51 @@ fn matches_shifted_quotient_exact_one_direct_or_passthrough_pair_root(
 
     extract_shared_additive_passthrough_pair_cores_root(ctx, lhs_core, rhs_core).is_some_and(
         |(lhs_residual, rhs_residual)| {
-            matches_shifted_quotient_exact_one_direct_pair_root(ctx, lhs_residual, rhs_residual)
+            matches_shifted_quotient_exact_one_passthrough_residual_pair_root(
+                ctx,
+                lhs_residual,
+                rhs_residual,
+            )
         },
     )
+}
+
+fn matches_shifted_quotient_exact_one_passthrough_residual_pair_root(
+    ctx: &mut Context,
+    lhs_residual: ExprId,
+    rhs_residual: ExprId,
+) -> bool {
+    matches_shifted_quotient_exact_one_direct_pair_root(ctx, lhs_residual, rhs_residual)
+        || crate::rules::arithmetic::try_build_direct_sum_diff_cubes_quotient_equivalence_rewrite(
+            ctx,
+            lhs_residual,
+            rhs_residual,
+        )
+        .is_some()
+}
+
+fn matches_shifted_quotient_exact_one_root_gate_candidate(
+    ctx: &mut Context,
+    lhs_core: ExprId,
+    rhs_core: ExprId,
+) -> bool {
+    if matches_shifted_quotient_exact_one_direct_pair_root(ctx, lhs_core, rhs_core) {
+        return true;
+    }
+
+    if crate::rules::arithmetic::try_build_direct_sub_fraction_combination_equivalence_rewrite(
+        ctx, lhs_core, rhs_core,
+    )
+    .is_some()
+    {
+        return true;
+    }
+
+    is_potential_shifted_quotient_exact_one_direct_pair_side_root(ctx, lhs_core)
+        && is_potential_shifted_quotient_exact_one_direct_pair_side_root(ctx, rhs_core)
+        && matches_shifted_quotient_exact_one_direct_or_passthrough_pair_root(
+            ctx, lhs_core, rhs_core,
+        )
 }
 
 fn is_potential_shifted_quotient_exact_one_direct_pair_side_root(
@@ -11648,14 +11993,184 @@ fn supported_nested_zero_child_partner_profile_family(ctx: &Context, expr: ExprI
     }
 }
 
+fn supported_nested_zero_partner_try_profile_label(
+    family: &'static str,
+    stage: &'static str,
+) -> Option<&'static str> {
+    match (family, stage) {
+        ("log", "direct_small_zero") => Some("root.nested_zero.partner.log.try.direct_small_zero"),
+        ("log", "symbolic_root_denesting") => {
+            Some("root.nested_zero.partner.log.try.symbolic_root_denesting")
+        }
+        ("log", "atanh_square_ratio_log") => {
+            Some("root.nested_zero.partner.log.try.atanh_square_ratio_log")
+        }
+        ("log", "exact_zero_equivalence") => {
+            Some("root.nested_zero.partner.log.try.exact_zero_equivalence")
+        }
+        ("log", "isolated_simplify") => Some("root.nested_zero.partner.log.try.isolated_simplify"),
+        ("nonlog_additive", "direct_small_zero") => {
+            Some("root.nested_zero.partner.nonlog_additive.try.direct_small_zero")
+        }
+        ("nonlog_additive", "symbolic_root_denesting") => {
+            Some("root.nested_zero.partner.nonlog_additive.try.symbolic_root_denesting")
+        }
+        ("nonlog_additive", "atanh_square_ratio_log") => {
+            Some("root.nested_zero.partner.nonlog_additive.try.atanh_square_ratio_log")
+        }
+        ("nonlog_additive", "exact_zero_equivalence") => {
+            Some("root.nested_zero.partner.nonlog_additive.try.exact_zero_equivalence")
+        }
+        ("nonlog_additive", "isolated_simplify") => {
+            Some("root.nested_zero.partner.nonlog_additive.try.isolated_simplify")
+        }
+        _ => None,
+    }
+}
+
+fn is_plain_division_difference_root(ctx: &Context, expr: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Sub(lhs, rhs)
+            if matches!(ctx.get(*lhs), Expr::Div(_, _))
+                && matches!(ctx.get(*rhs), Expr::Div(_, _))
+    )
+}
+
+fn should_try_supported_nested_zero_partner_isolated_simplify(ctx: &Context, expr: ExprId) -> bool {
+    let node_count = cas_ast::count_nodes(ctx, expr);
+    if is_plain_division_difference_root(ctx, expr) {
+        return false;
+    }
+
+    if node_count <= 48 && !expr_contains_sqrt_or_half_power_local(ctx, expr) {
+        return true;
+    }
+
+    node_count <= 96
+        && (is_supported_nonlog_additive_nested_zero_child_partner(ctx, expr)
+            || (expr_contains_log_builtin_local(ctx, expr)
+                && expr_contains_sqrt_or_half_power_local(ctx, expr)))
+}
+
 fn supported_nested_zero_partner_rewrites_to_zero(
     options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
 ) -> bool {
-    is_supported_nested_zero_child_partner(ctx, expr)
-        && (matches_direct_small_zero_identity_root(ctx, expr)
-            || isolated_simplify_rewrites_to_zero(options, ctx, expr))
+    if !is_supported_nested_zero_child_partner(ctx, expr) {
+        return false;
+    }
+
+    let family = supported_nested_zero_child_partner_profile_family(ctx, expr);
+    let skip_direct_small_zero =
+        family == "nonlog_additive" && is_plain_division_difference_root(ctx, expr);
+
+    let direct_small_zero = if skip_direct_small_zero {
+        false
+    } else if let Some(label) =
+        supported_nested_zero_partner_try_profile_label(family, "direct_small_zero")
+    {
+        if crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(label) {
+            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                label,
+                render_expr_for_orchestrator_profile(ctx, expr),
+            );
+        }
+        run_profiled_orchestrator_bool_section(label, || {
+            try_standard_direct_small_zero_identity_shortcut(options, ctx, expr, false).is_some()
+        })
+    } else {
+        try_standard_direct_small_zero_identity_shortcut(options, ctx, expr, false).is_some()
+    };
+    if direct_small_zero {
+        return true;
+    }
+
+    let symbolic_root_denesting = if expr_contains_sqrt_or_half_power_local(ctx, expr) {
+        if let Some(label) =
+            supported_nested_zero_partner_try_profile_label(family, "symbolic_root_denesting")
+        {
+            if crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(label) {
+                crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                    label,
+                    render_expr_for_orchestrator_profile(ctx, expr),
+                );
+            }
+            run_profiled_orchestrator_bool_section(label, || {
+                try_standard_symbolic_root_denesting_subset_zero_shortcut(options, ctx, expr, false)
+                    .is_some()
+            })
+        } else {
+            try_standard_symbolic_root_denesting_subset_zero_shortcut(options, ctx, expr, false)
+                .is_some()
+        }
+    } else {
+        false
+    };
+    if symbolic_root_denesting {
+        return true;
+    }
+
+    let atanh_square_ratio_log = if let Some(label) =
+        supported_nested_zero_partner_try_profile_label(family, "atanh_square_ratio_log")
+    {
+        if crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(label) {
+            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                label,
+                render_expr_for_orchestrator_profile(ctx, expr),
+            );
+        }
+        run_profiled_orchestrator_bool_section(label, || {
+            try_standard_atanh_square_ratio_log_subset_zero_shortcut(options, ctx, expr, false)
+                .is_some()
+        })
+    } else {
+        try_standard_atanh_square_ratio_log_subset_zero_shortcut(options, ctx, expr, false)
+            .is_some()
+    };
+    if atanh_square_ratio_log {
+        return true;
+    }
+
+    let exact_zero_equivalence = if let Some(label) =
+        supported_nested_zero_partner_try_profile_label(family, "exact_zero_equivalence")
+    {
+        if crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(label) {
+            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                label,
+                render_expr_for_orchestrator_profile(ctx, expr),
+            );
+        }
+        run_profiled_orchestrator_bool_section(label, || {
+            try_standard_exact_zero_equivalence_shortcut(options, ctx, expr, false).is_some()
+        })
+    } else {
+        try_standard_exact_zero_equivalence_shortcut(options, ctx, expr, false).is_some()
+    };
+    if exact_zero_equivalence {
+        return true;
+    }
+
+    if !should_try_supported_nested_zero_partner_isolated_simplify(ctx, expr) {
+        return false;
+    }
+
+    if let Some(label) =
+        supported_nested_zero_partner_try_profile_label(family, "isolated_simplify")
+    {
+        if crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(label) {
+            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                label,
+                render_expr_for_orchestrator_profile(ctx, expr),
+            );
+        }
+        run_profiled_orchestrator_bool_section(label, || {
+            isolated_simplify_rewrites_to_zero(options, ctx, expr)
+        })
+    } else {
+        isolated_simplify_rewrites_to_zero(options, ctx, expr)
+    }
 }
 
 fn is_small_trig_or_hyperbolic_zero_child(
@@ -11688,9 +12203,132 @@ fn is_small_trig_or_hyperbolic_zero_child(
 }
 
 fn is_small_trig_or_hyperbolic_numeric_subset_term_root(ctx: &Context, term: ExprId) -> bool {
-    (expr_contains_trig_or_hyperbolic_builtin_local(ctx, term)
-        && !expr_contains_log_builtin_local(ctx, term))
-        || matches!(ctx.get(term), Expr::Number(_))
+    matches!(
+        classify_small_trig_or_hyperbolic_numeric_subset_term_root(ctx, term),
+        SmallTrigOrHyperbolicNumericSubsetTermRootKind::Number
+            | SmallTrigOrHyperbolicNumericSubsetTermRootKind::TrigOrHyperbolic
+    )
+}
+
+fn expr_function_calls_are_only_trig_or_hyperbolic_local(ctx: &Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+    while let Some(current) = stack.pop() {
+        match ctx.get(current) {
+            Expr::Function(fn_id, args) => {
+                let is_supported = ctx.is_builtin(*fn_id, BuiltinFn::Sin)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Cos)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Tan)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Cot)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Sec)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Csc)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Sinh)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Cosh)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Tanh);
+                if !is_supported {
+                    return false;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) => stack.push(*inner),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => {}
+            Expr::Matrix { .. } | Expr::SessionRef(_) | Expr::Hold(_) => return false,
+        }
+    }
+
+    true
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SmallTrigOrHyperbolicNumericSubsetTermRootKind {
+    Number,
+    TrigOrHyperbolic,
+    Other,
+}
+
+fn classify_small_trig_or_hyperbolic_numeric_subset_term_root(
+    ctx: &Context,
+    term: ExprId,
+) -> SmallTrigOrHyperbolicNumericSubsetTermRootKind {
+    if matches!(ctx.get(term), Expr::Number(_)) {
+        return SmallTrigOrHyperbolicNumericSubsetTermRootKind::Number;
+    }
+
+    let contains_trig_or_hyperbolic = expr_contains_trig_or_hyperbolic_builtin_local(ctx, term);
+    if !contains_trig_or_hyperbolic
+        || expr_contains_log_builtin_local(ctx, term)
+        || !expr_function_calls_are_only_trig_or_hyperbolic_local(ctx, term)
+    {
+        return SmallTrigOrHyperbolicNumericSubsetTermRootKind::Other;
+    }
+
+    SmallTrigOrHyperbolicNumericSubsetTermRootKind::TrigOrHyperbolic
+}
+
+fn maybe_small_trig_or_hyperbolic_numeric_subset_root_candidate(
+    ctx: &Context,
+    expr: ExprId,
+) -> bool {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if !(5..=17).contains(&terms.len()) {
+        return false;
+    }
+
+    let mut subset_like_terms = 0usize;
+    let mut actual_trig_or_hyperbolic_terms = 0usize;
+    let mut partner_like_terms = 0usize;
+    let mut mixed_log_trig_terms = 0usize;
+    let mut nonlog_partner_terms = 0usize;
+    for (term, _) in terms.iter().copied() {
+        let contains_log_like = expr_contains_any_builtin_local(
+            ctx,
+            term,
+            &[
+                BuiltinFn::Ln,
+                BuiltinFn::Log,
+                BuiltinFn::Log10,
+                BuiltinFn::Atanh,
+                BuiltinFn::Abs,
+            ],
+        );
+        let contains_trig_or_hyperbolic = expr_contains_trig_or_hyperbolic_builtin_local(ctx, term);
+        if contains_log_like && contains_trig_or_hyperbolic {
+            mixed_log_trig_terms += 1;
+        }
+
+        match classify_small_trig_or_hyperbolic_numeric_subset_term_root(ctx, term) {
+            SmallTrigOrHyperbolicNumericSubsetTermRootKind::Number => {
+                subset_like_terms += 1;
+            }
+            SmallTrigOrHyperbolicNumericSubsetTermRootKind::TrigOrHyperbolic => {
+                subset_like_terms += 1;
+                actual_trig_or_hyperbolic_terms += 1;
+            }
+            SmallTrigOrHyperbolicNumericSubsetTermRootKind::Other => {
+                partner_like_terms += 1;
+                if !contains_log_like {
+                    nonlog_partner_terms += 1;
+                }
+            }
+        }
+    }
+
+    if mixed_log_trig_terms > 0 && nonlog_partner_terms > 0 {
+        return false;
+    }
+
+    subset_like_terms >= 3 && actual_trig_or_hyperbolic_terms >= 2 && partner_like_terms >= 2
 }
 
 fn classify_small_trig_or_hyperbolic_numeric_additive_chunk_root(
@@ -11797,23 +12435,7 @@ fn extract_small_trig_or_hyperbolic_numeric_subset_root(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(ExprId, ExprId)> {
-    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
-        return None;
-    }
-
-    let terms = AddView::from_expr(ctx, expr).terms;
-    if !(5..=17).contains(&terms.len()) {
-        return None;
-    }
-
-    let mut has_trig_or_hyperbolic = false;
-    for (term, _) in terms.iter().copied() {
-        if expr_contains_trig_or_hyperbolic_builtin_local(ctx, term) {
-            has_trig_or_hyperbolic = true;
-        }
-    }
-
-    if !has_trig_or_hyperbolic {
+    if !maybe_small_trig_or_hyperbolic_numeric_subset_root_candidate(ctx, expr) {
         return None;
     }
 
@@ -11965,21 +12587,55 @@ fn try_standard_multiterm_trig_numeric_subset_zero_shortcut(
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
-    let (subset_expr, partner_expr) =
-        extract_small_trig_or_hyperbolic_numeric_subset_root(ctx, expr)?;
+    let Some((subset_expr, partner_expr)) =
+        extract_small_trig_or_hyperbolic_numeric_subset_root(ctx, expr)
+    else {
+        record_profiled_orchestrator_route_hit(
+            ctx,
+            expr,
+            "root.multiterm_trig_subset.status.no_candidate",
+        );
+        return None;
+    };
 
     if !is_supported_small_trig_zero_pair_side_root(ctx, subset_expr, true) {
+        record_profiled_orchestrator_route_hit(
+            ctx,
+            expr,
+            "root.multiterm_trig_subset.status.subset_not_supported_pair_side",
+        );
         return None;
     }
     if !multiterm_trig_numeric_subset_rewrites_to_zero_runtime_safe(options, ctx, subset_expr) {
+        record_profiled_orchestrator_route_hit(
+            ctx,
+            expr,
+            "root.multiterm_trig_subset.status.subset_not_isolated_zero",
+        );
         return None;
     }
     if !is_supported_nested_zero_child_partner(ctx, partner_expr) {
+        record_profiled_orchestrator_route_hit(
+            ctx,
+            expr,
+            "root.multiterm_trig_subset.status.partner_unsupported",
+        );
         return None;
     }
     if !supported_nested_zero_partner_rewrites_to_zero(options, ctx, partner_expr) {
+        record_profiled_orchestrator_route_hit(
+            ctx,
+            expr,
+            "root.multiterm_trig_subset.status.partner_not_zero",
+        );
         return None;
     }
+
+    record_profiled_orchestrator_route_hit(
+        ctx,
+        expr,
+        "root.multiterm_trig_subset.status.candidate_ready",
+    );
 
     let zero = ctx.num(0);
     let mut shortcut_steps = Vec::new();
@@ -12004,6 +12660,14 @@ fn multiterm_trig_numeric_subset_rewrites_to_zero_runtime_safe(
     ctx: &mut Context,
     subset_expr: ExprId,
 ) -> bool {
+    if expr_contains_trig_builtin_local(ctx, subset_expr)
+        && !expr_contains_hyperbolic_builtin_local(ctx, subset_expr)
+        && !expr_contains_log_builtin_local(ctx, subset_expr)
+        && matches_direct_symbolic_trig_sum_to_product_zero_identity_root(ctx, subset_expr)
+    {
+        return true;
+    }
+
     matches_direct_small_zero_identity_root(ctx, subset_expr)
         || matches_direct_hyperbolic_cosh_cubic_zero_identity_root(ctx, subset_expr)
         || try_standard_small_trig_zero_pair_shortcut(options, ctx, subset_expr, false).is_some()
@@ -12051,6 +12715,13 @@ fn try_standard_small_trig_zero_pair_shortcut(
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
+    if matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        let add_term_count = AddView::from_expr(ctx, expr).terms.len();
+        if add_term_count >= 8 && expr_contains_log_builtin_local(ctx, expr) {
+            return None;
+        }
+    }
+
     let (lhs, rhs) = match ctx.get(expr) {
         Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) | Expr::Mul(lhs, rhs) => (*lhs, *rhs),
         _ => return None,
@@ -16329,6 +17000,465 @@ fn try_standard_hyperbolic_cosh_cubic_subset_zero_shortcut(
     None
 }
 
+fn narrow_known_pair_subset_remaining_rewrites_to_zero(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    remaining_expr: ExprId,
+) -> bool {
+    matches_direct_small_zero_identity_root(ctx, remaining_expr)
+        || try_standard_sqrt_perfect_square_abs_subset_zero_shortcut(
+            options,
+            ctx,
+            remaining_expr,
+            false,
+        )
+        .is_some()
+        || try_standard_atanh_square_ratio_log_subset_zero_shortcut(
+            options,
+            ctx,
+            remaining_expr,
+            false,
+        )
+        .is_some()
+        || (cas_ast::count_nodes(ctx, remaining_expr) <= 48
+            && isolated_simplify_rewrites_to_zero(options, ctx, remaining_expr))
+}
+
+fn try_standard_inverse_trig_composition_subset_zero_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    let view = AddView::from_expr(ctx, expr);
+    if !(5..=8).contains(&view.terms.len()) {
+        return None;
+    }
+    if !expr_contains_any_builtin_local(
+        ctx,
+        expr,
+        &[
+            BuiltinFn::Asin,
+            BuiltinFn::Arcsin,
+            BuiltinFn::Atan,
+            BuiltinFn::Arctan,
+        ],
+    ) {
+        return None;
+    }
+
+    for first_index in 0..view.terms.len().saturating_sub(1) {
+        for second_index in (first_index + 1)..view.terms.len() {
+            let subset_terms = [view.terms[first_index], view.terms[second_index]];
+            let subset_expr = build_signed_sum_expr_root(ctx, &subset_terms);
+            if !expr_contains_any_builtin_local(
+                ctx,
+                subset_expr,
+                &[
+                    BuiltinFn::Asin,
+                    BuiltinFn::Arcsin,
+                    BuiltinFn::Atan,
+                    BuiltinFn::Arctan,
+                ],
+            ) || !matches_direct_small_zero_or_known_pair_base_root(ctx, subset_expr)
+            {
+                continue;
+            }
+
+            let remaining_terms: smallvec::SmallVec<[(ExprId, Sign); 8]> = view
+                .terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| {
+                    (index != first_index && index != second_index).then_some(term)
+                })
+                .collect();
+            if !(3..=6).contains(&remaining_terms.len()) {
+                continue;
+            }
+
+            let remaining_expr = AddView {
+                root: expr,
+                terms: remaining_terms,
+            }
+            .rebuild(ctx);
+            if !is_supported_nested_zero_child_partner(ctx, remaining_expr) {
+                continue;
+            }
+            if !narrow_known_pair_subset_remaining_rewrites_to_zero(options, ctx, remaining_expr) {
+                continue;
+            }
+
+            let zero = ctx.num(0);
+            return Some(finish_standard_root_shortcut(
+                ctx,
+                expr,
+                crate::rule::Rewrite::with_local(
+                    zero,
+                    "Collapse Exact Zero Additive Subexpression",
+                    subset_expr,
+                    zero,
+                ),
+                "Collapse Exact Zero Additive Subexpression",
+                collect_steps,
+            ));
+        }
+    }
+
+    None
+}
+
+fn try_standard_inverse_trig_plus_sqrt_subset_zero_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    let view = AddView::from_expr(ctx, expr);
+    if !(9..=10).contains(&view.terms.len()) {
+        return None;
+    }
+    if !expr_contains_sqrt_or_half_power_local(ctx, expr)
+        || !expr_contains_log_builtin_local(ctx, expr)
+    {
+        return None;
+    }
+    if !expr_contains_any_builtin_local(
+        ctx,
+        expr,
+        &[
+            BuiltinFn::Asin,
+            BuiltinFn::Arcsin,
+            BuiltinFn::Atan,
+            BuiltinFn::Arctan,
+        ],
+    ) {
+        return None;
+    }
+
+    for first_index in 0..view.terms.len().saturating_sub(1) {
+        for second_index in (first_index + 1)..view.terms.len() {
+            let subset_terms = [view.terms[first_index], view.terms[second_index]];
+            let subset_expr = build_signed_sum_expr_root(ctx, &subset_terms);
+            if !expr_contains_any_builtin_local(
+                ctx,
+                subset_expr,
+                &[
+                    BuiltinFn::Asin,
+                    BuiltinFn::Arcsin,
+                    BuiltinFn::Atan,
+                    BuiltinFn::Arctan,
+                ],
+            ) || !matches_direct_small_zero_or_known_pair_base_root(ctx, subset_expr)
+            {
+                continue;
+            }
+
+            let remaining_terms: smallvec::SmallVec<[(ExprId, Sign); 8]> = view
+                .terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| {
+                    (index != first_index && index != second_index).then_some(term)
+                })
+                .collect();
+            if !(7..=8).contains(&remaining_terms.len()) {
+                continue;
+            }
+
+            let remaining_expr = AddView {
+                root: expr,
+                terms: remaining_terms,
+            }
+            .rebuild(ctx);
+            if try_standard_sqrt_perfect_square_abs_subset_zero_shortcut(
+                options,
+                ctx,
+                remaining_expr,
+                false,
+            )
+            .is_none()
+            {
+                continue;
+            }
+
+            let zero = ctx.num(0);
+            return Some(finish_standard_root_shortcut(
+                ctx,
+                expr,
+                crate::rule::Rewrite::with_local(
+                    zero,
+                    "Collapse Exact Zero Additive Subexpression",
+                    subset_expr,
+                    zero,
+                ),
+                "Collapse Exact Zero Additive Subexpression",
+                collect_steps,
+            ));
+        }
+    }
+
+    None
+}
+
+fn try_standard_atanh_square_ratio_log_subset_zero_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    let view = AddView::from_expr(ctx, expr);
+    if !(5..=17).contains(&view.terms.len()) {
+        return None;
+    }
+    if expr_contains_trig_builtin_local(ctx, expr) {
+        return None;
+    }
+    if !expr_contains_any_builtin_local(ctx, expr, &[BuiltinFn::Atanh]) {
+        return None;
+    }
+    if !expr_contains_any_builtin_local(
+        ctx,
+        expr,
+        &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Log10],
+    ) {
+        return None;
+    }
+
+    for first_index in 0..view.terms.len().saturating_sub(1) {
+        for second_index in (first_index + 1)..view.terms.len() {
+            let subset_terms = [view.terms[first_index], view.terms[second_index]];
+            let subset_expr = build_signed_sum_expr_root(ctx, &subset_terms);
+            if crate::rules::hyperbolic::try_build_atanh_square_ratio_log_zero_rewrite(
+                ctx,
+                subset_expr,
+            )
+            .is_none()
+            {
+                continue;
+            }
+
+            let remaining_terms: smallvec::SmallVec<[(ExprId, Sign); 8]> = view
+                .terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| {
+                    (index != first_index && index != second_index).then_some(term)
+                })
+                .collect();
+            if !(3..=15).contains(&remaining_terms.len()) {
+                continue;
+            }
+
+            let remaining_expr = AddView {
+                root: expr,
+                terms: remaining_terms,
+            }
+            .rebuild(ctx);
+
+            if expr_contains_hyperbolic_builtin_local(ctx, remaining_expr)
+                || expr_contains_trig_builtin_local(ctx, remaining_expr)
+            {
+                continue;
+            }
+            if !expr_contains_any_builtin_local(
+                ctx,
+                remaining_expr,
+                &[
+                    BuiltinFn::Ln,
+                    BuiltinFn::Log,
+                    BuiltinFn::Log10,
+                    BuiltinFn::Exp,
+                ],
+            ) {
+                continue;
+            }
+
+            let remaining_rewrites_to_zero =
+                supported_nested_zero_partner_rewrites_to_zero(options, ctx, remaining_expr)
+                    || try_standard_multiterm_trig_numeric_subset_zero_shortcut(
+                        options,
+                        ctx,
+                        remaining_expr,
+                        false,
+                    )
+                    .is_some()
+                    || try_standard_exact_zero_equivalence_shortcut(
+                        options,
+                        ctx,
+                        remaining_expr,
+                        false,
+                    )
+                    .is_some()
+                    || isolated_simplify_rewrites_to_zero(options, ctx, remaining_expr);
+            if !remaining_rewrites_to_zero {
+                continue;
+            }
+
+            let zero = ctx.num(0);
+            return Some(run_rebuilt_root_shortcut_simplify(
+                options,
+                ctx,
+                expr,
+                zero,
+                collect_steps,
+            ));
+        }
+    }
+
+    None
+}
+
+fn try_standard_atanh_square_ratio_log_zero_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    if AddView::from_expr(ctx, expr).terms.len() != 2 {
+        return None;
+    }
+
+    let rewrite =
+        crate::rules::hyperbolic::try_build_atanh_square_ratio_log_zero_rewrite(ctx, expr)?;
+    Some(finish_root_shortcut_with_rewrite_meta(
+        ctx,
+        expr,
+        rewrite,
+        "Collapse Exact Zero Additive Subexpression",
+        collect_steps,
+    ))
+}
+
+fn try_standard_symbolic_root_denesting_subset_zero_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    let view = AddView::from_expr(ctx, expr);
+    if !(4..=17).contains(&view.terms.len()) {
+        return None;
+    }
+    if !expr_contains_sqrt_or_half_power_local(ctx, expr) {
+        return None;
+    }
+    let mut sqrt_like_terms = 0usize;
+    let mut saw_positive_sqrt_like = false;
+    let mut saw_negative_sqrt_like = false;
+    for (term_expr, term_sign) in view.terms.iter().copied() {
+        if expr_contains_sqrt_or_half_power_local(ctx, term_expr) {
+            sqrt_like_terms += 1;
+            match term_sign {
+                Sign::Pos => saw_positive_sqrt_like = true,
+                Sign::Neg => saw_negative_sqrt_like = true,
+            }
+        }
+    }
+    if sqrt_like_terms != 2 || !saw_positive_sqrt_like || !saw_negative_sqrt_like {
+        return None;
+    }
+    let normalized_terms: smallvec::SmallVec<[(ExprId, Sign); 16]> = view
+        .terms
+        .iter()
+        .copied()
+        .map(|(term_expr, term_sign)| normalize_signed_add_term_root(ctx, term_expr, term_sign))
+        .collect();
+
+    for first_index in 0..normalized_terms.len().saturating_sub(1) {
+        for second_index in (first_index + 1)..normalized_terms.len() {
+            let subset_terms = [
+                normalized_terms[first_index],
+                normalized_terms[second_index],
+            ];
+            let subset_expr = build_signed_sum_expr_root(ctx, &subset_terms);
+            if !crate::rules::arithmetic::matches_direct_symbolic_root_denesting_zero_identity(
+                ctx,
+                subset_expr,
+            ) {
+                continue;
+            }
+
+            let remaining_terms: smallvec::SmallVec<[(ExprId, Sign); 8]> = view
+                .terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| {
+                    (index != first_index && index != second_index)
+                        .then_some(normalize_signed_add_term_root(ctx, term.0, term.1))
+                })
+                .collect();
+            if !(2..=15).contains(&remaining_terms.len()) {
+                continue;
+            }
+
+            let remaining_expr = AddView {
+                root: expr,
+                terms: remaining_terms,
+            }
+            .rebuild(ctx);
+            if expr_contains_sqrt_or_half_power_local(ctx, remaining_expr) {
+                continue;
+            }
+
+            let remaining_rewrites_to_zero =
+                supported_nested_zero_partner_rewrites_to_zero(options, ctx, remaining_expr)
+                    || try_standard_multiterm_trig_numeric_subset_zero_shortcut(
+                        options,
+                        ctx,
+                        remaining_expr,
+                        false,
+                    )
+                    .is_some()
+                    || try_standard_exact_zero_equivalence_shortcut(
+                        options,
+                        ctx,
+                        remaining_expr,
+                        false,
+                    )
+                    .is_some()
+                    || (cas_ast::count_nodes(ctx, remaining_expr) <= 48
+                        && isolated_simplify_rewrites_to_zero(options, ctx, remaining_expr));
+            if !remaining_rewrites_to_zero {
+                continue;
+            }
+
+            let zero = ctx.num(0);
+            return Some(run_rebuilt_root_shortcut_simplify(
+                options,
+                ctx,
+                expr,
+                zero,
+                collect_steps,
+            ));
+        }
+    }
+
+    None
+}
 fn try_standard_half_angle_subset_zero_shortcut(
     options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
@@ -16462,6 +17592,13 @@ fn try_standard_nested_exact_zero_child_shortcut(
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
+    if matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        let add_term_count = AddView::from_expr(ctx, expr).terms.len();
+        if add_term_count >= 8 && expr_contains_log_builtin_local(ctx, expr) {
+            return None;
+        }
+    }
+
     let is_supported_zero_partner = |ctx: &mut Context, partner: ExprId| {
         is_supported_nested_zero_child_partner(ctx, partner)
             || (!expr_contains_trig_or_hyperbolic_builtin_local(ctx, partner)
@@ -16722,6 +17859,13 @@ fn try_standard_pythagorean_additive_pipeline_shortcut(
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
+    if matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        let add_term_count = AddView::from_expr(ctx, expr).terms.len();
+        if add_term_count >= 5 && expr_contains_log_builtin_local(ctx, expr) {
+            return None;
+        }
+    }
+
     let (rewritten, mut shortcut_steps) =
         try_standard_pythagorean_additive_shortcut(ctx, expr, collect_steps)?;
 
@@ -17107,6 +18251,201 @@ fn try_standard_partitioned_direct_small_zero_sum_shortcut(
     ))
 }
 
+fn try_extract_exact_zero_subset_passthrough_residual_root(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    let view = AddView::from_expr(ctx, expr);
+    if !(5..=8).contains(&view.terms.len()) {
+        return None;
+    }
+    if !expr_contains_trig_builtin_local(ctx, expr) || !expr_contains_log_builtin_local(ctx, expr) {
+        return None;
+    }
+
+    let mut log_like_terms = smallvec::SmallVec::<[(ExprId, Sign); 4]>::new();
+    let mut trig_numeric_terms = smallvec::SmallVec::<[(ExprId, Sign); 4]>::new();
+    let mut remaining_terms = smallvec::SmallVec::<[(ExprId, Sign); 8]>::new();
+    for term in view.terms.iter().copied() {
+        let is_numeric_term = matches!(ctx.get(term.0), Expr::Number(_));
+        let contains_log_like = expr_contains_any_builtin_local(
+            ctx,
+            term.0,
+            &[
+                BuiltinFn::Ln,
+                BuiltinFn::Log,
+                BuiltinFn::Log10,
+                BuiltinFn::Atanh,
+            ],
+        );
+        if contains_log_like {
+            log_like_terms.push(term);
+        } else if expr_contains_trig_builtin_local(ctx, term.0) || is_numeric_term {
+            trig_numeric_terms.push(term);
+        } else {
+            remaining_terms.push(term);
+        }
+    }
+
+    if log_like_terms.len() != 2 || !(1..=2).contains(&remaining_terms.len()) {
+        return None;
+    }
+
+    let trig_term_count = trig_numeric_terms
+        .iter()
+        .filter(|(term_expr, _)| expr_contains_trig_builtin_local(ctx, *term_expr))
+        .count();
+    let numeric_term_count = trig_numeric_terms
+        .iter()
+        .filter(|(term_expr, _)| matches!(ctx.get(*term_expr), Expr::Number(_)))
+        .count();
+    if trig_term_count != 2 || numeric_term_count != 1 || trig_numeric_terms.len() != 3 {
+        return None;
+    }
+
+    let remaining_expr = AddView {
+        root: expr,
+        terms: remaining_terms,
+    }
+    .rebuild(ctx);
+    if !is_function_free_arithmetic_expr_root(ctx, remaining_expr) {
+        return None;
+    }
+
+    let log_like_expr = build_signed_sum_expr_root(ctx, &log_like_terms);
+    if !expr_contains_any_builtin_local(ctx, log_like_expr, &[BuiltinFn::Atanh])
+        || !expr_contains_any_builtin_local(
+            ctx,
+            log_like_expr,
+            &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Log10],
+        )
+    {
+        return None;
+    }
+
+    let trig_numeric_expr = build_signed_sum_expr_root(ctx, &trig_numeric_terms);
+    if !expr_contains_trig_builtin_local(ctx, trig_numeric_expr)
+        || expr_contains_any_builtin_local(
+            ctx,
+            trig_numeric_expr,
+            &[
+                BuiltinFn::Ln,
+                BuiltinFn::Log,
+                BuiltinFn::Log10,
+                BuiltinFn::Atanh,
+            ],
+        )
+    {
+        return None;
+    }
+
+    let log_like_rewrites_to_zero =
+        matches_direct_small_zero_or_known_pair_base_root(ctx, log_like_expr)
+            || try_standard_exact_zero_equivalence_shortcut(options, ctx, log_like_expr, false)
+                .is_some()
+            || (cas_ast::count_nodes(ctx, log_like_expr) <= 32
+                && isolated_simplify_rewrites_to_zero(options, ctx, log_like_expr));
+    if !log_like_rewrites_to_zero {
+        return None;
+    }
+
+    let trig_numeric_rewrites_to_zero =
+        matches_direct_small_zero_or_known_pair_base_root(ctx, trig_numeric_expr)
+            || multiterm_trig_numeric_subset_rewrites_to_zero_runtime_safe(
+                options,
+                ctx,
+                trig_numeric_expr,
+            )
+            || (cas_ast::count_nodes(ctx, trig_numeric_expr) <= 24
+                && isolated_simplify_rewrites_to_zero(options, ctx, trig_numeric_expr));
+    if trig_numeric_rewrites_to_zero {
+        return Some(remaining_expr);
+    }
+
+    None
+}
+
+fn try_standard_exact_zero_subset_passthrough_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let residual_expr =
+        try_extract_exact_zero_subset_passthrough_residual_root(options, ctx, expr)?;
+    Some(run_rebuilt_root_shortcut_simplify(
+        options,
+        ctx,
+        expr,
+        residual_expr,
+        collect_steps,
+    ))
+}
+
+fn try_standard_binary_exact_zero_subset_passthrough_pair_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let binary_terms = match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) => [
+            normalize_signed_add_term_root(ctx, lhs, Sign::Pos),
+            normalize_signed_add_term_root(ctx, rhs, Sign::Pos),
+        ],
+        Expr::Sub(lhs, rhs) => [
+            normalize_signed_add_term_root(ctx, lhs, Sign::Pos),
+            normalize_signed_add_term_root(ctx, rhs, Sign::Neg),
+        ],
+        _ => return None,
+    };
+
+    for (candidate_index, candidate_term) in binary_terms.iter().copied().enumerate() {
+        let partner_term = binary_terms[1 - candidate_index];
+        let partner_expr = build_signed_sum_expr_root(ctx, &[partner_term]);
+        if expr_contains_trig_or_hyperbolic_builtin_local(ctx, partner_expr)
+            || expr_contains_log_builtin_local(ctx, partner_expr)
+            || !is_function_free_arithmetic_expr_root(ctx, partner_expr)
+        {
+            continue;
+        }
+
+        let Some(residual_expr) =
+            try_extract_exact_zero_subset_passthrough_residual_root(options, ctx, candidate_term.0)
+        else {
+            continue;
+        };
+
+        let combined_terms = [partner_term, (residual_expr, candidate_term.1)];
+        let combined_expr = build_signed_sum_expr_root(ctx, &combined_terms);
+        let combined_rewrites_to_zero =
+            matches_direct_small_zero_or_known_pair_base_root(ctx, combined_expr)
+                || try_standard_exact_zero_equivalence_shortcut(options, ctx, combined_expr, false)
+                    .is_some()
+                || (cas_ast::count_nodes(ctx, combined_expr) <= 96
+                    && isolated_simplify_rewrites_to_zero(options, ctx, combined_expr));
+        if !combined_rewrites_to_zero {
+            continue;
+        }
+
+        let zero = ctx.num(0);
+        return Some(run_rebuilt_root_shortcut_simplify(
+            options,
+            ctx,
+            expr,
+            zero,
+            collect_steps,
+        ));
+    }
+
+    None
+}
+
 fn try_standard_repeated_phase_shift_pair_shortcut(
     ctx: &mut Context,
     expr: ExprId,
@@ -17239,6 +18578,18 @@ fn try_standard_direct_small_zero_identity_shortcut(
     if let Some((lhs_core, rhs_core)) =
         crate::rules::arithmetic::extract_two_term_core_difference(ctx, expr)
     {
+        if let Some(rewrite) =
+            crate::rules::hyperbolic::try_build_atanh_square_ratio_log_zero_rewrite(ctx, expr)
+        {
+            return Some(finish_root_shortcut_with_rewrite_meta(
+                ctx,
+                expr,
+                rewrite,
+                "Collapse Exact Zero Additive Subexpression",
+                collect_steps,
+            ));
+        }
+
         if collect_steps
             && expr_contains_division_node_local(ctx, lhs_core)
             && expr_contains_division_node_local(ctx, rhs_core)
@@ -17738,6 +19089,13 @@ fn try_standard_trig_double_angle_cos_variant_zero_shortcut(
     expr: ExprId,
     collect_steps: bool,
 ) -> Option<(ExprId, Vec<Step>)> {
+    if matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        let add_term_count = AddView::from_expr(ctx, expr).terms.len();
+        if add_term_count >= 5 && expr_contains_log_builtin_local(ctx, expr) {
+            return None;
+        }
+    }
+
     let rewrite =
         crate::rules::arithmetic::try_build_exact_zero_trig_double_angle_cos_variant_zero_scope_rewrite(
             ctx, expr,
@@ -18639,7 +19997,7 @@ fn try_standard_shifted_quotient_exact_one_shortcut(
     if let Some((numerator_residual, denominator_residual)) =
         extract_shared_additive_passthrough_pair_cores_root(ctx, numerator_core, denominator_core)
     {
-        if matches_shifted_quotient_exact_one_direct_pair_root(
+        if matches_shifted_quotient_exact_one_passthrough_residual_pair_root(
             ctx,
             numerator_residual,
             denominator_residual,
@@ -21580,6 +22938,14 @@ impl Orchestrator {
                         collect_steps,
                     )
                 );
+                return_profiled_root_shortcut!(
+                    "root.addsub.00.atanh_square_ratio_log_zero",
+                    try_standard_atanh_square_ratio_log_zero_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                );
                 return_root_shortcut_pair!(try_standard_shared_passthrough_direct_pair_shortcut(
                     &self.options,
                     &mut simplifier.context,
@@ -21634,9 +23000,56 @@ impl Orchestrator {
                             collect_steps,
                         ));
                     }
+                    if add_term_count >= 5 {
+                        return_profiled_root_shortcut!(
+                            "root.addsub.01.multiterm_trig_numeric_subset_zero",
+                            try_standard_multiterm_trig_numeric_subset_zero_shortcut(
+                                &self.options,
+                                &mut simplifier.context,
+                                expr,
+                                collect_steps,
+                            )
+                        );
+                    }
                     return_profiled_root_shortcut!(
-                        "root.addsub.01.multiterm_trig_numeric_subset_zero",
-                        try_standard_multiterm_trig_numeric_subset_zero_shortcut(
+                        "root.addsub.01.symbolic_root_denesting_subset_zero",
+                        try_standard_symbolic_root_denesting_subset_zero_shortcut(
+                            &self.options,
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    );
+                    return_profiled_root_shortcut!(
+                        "root.addsub.01.sqrt_perfect_square_abs_subset_zero",
+                        try_standard_sqrt_perfect_square_abs_subset_zero_shortcut(
+                            &self.options,
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    );
+                    return_profiled_root_shortcut!(
+                        "root.addsub.01.inverse_trig_plus_sqrt_subset_zero",
+                        try_standard_inverse_trig_plus_sqrt_subset_zero_shortcut(
+                            &self.options,
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    );
+                    return_profiled_root_shortcut!(
+                        "root.addsub.01.inverse_trig_composition_subset_zero",
+                        try_standard_inverse_trig_composition_subset_zero_shortcut(
+                            &self.options,
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    );
+                    return_profiled_root_shortcut!(
+                        "root.addsub.01.atanh_square_ratio_log_subset_zero",
+                        try_standard_atanh_square_ratio_log_subset_zero_shortcut(
                             &self.options,
                             &mut simplifier.context,
                             expr,
@@ -21669,9 +23082,56 @@ impl Orchestrator {
                     expr,
                     collect_steps,
                 ));
+                if add_term_count >= 5 {
+                    return_profiled_root_shortcut!(
+                        "root.addsub.01.multiterm_trig_numeric_subset_zero",
+                        try_standard_multiterm_trig_numeric_subset_zero_shortcut(
+                            &self.options,
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    );
+                }
                 return_profiled_root_shortcut!(
-                    "root.addsub.01.multiterm_trig_numeric_subset_zero",
-                    try_standard_multiterm_trig_numeric_subset_zero_shortcut(
+                    "root.addsub.01.symbolic_root_denesting_subset_zero",
+                    try_standard_symbolic_root_denesting_subset_zero_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                );
+                return_profiled_root_shortcut!(
+                    "root.addsub.01.sqrt_perfect_square_abs_subset_zero",
+                    try_standard_sqrt_perfect_square_abs_subset_zero_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                );
+                return_profiled_root_shortcut!(
+                    "root.addsub.01.inverse_trig_plus_sqrt_subset_zero",
+                    try_standard_inverse_trig_plus_sqrt_subset_zero_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                );
+                return_profiled_root_shortcut!(
+                    "root.addsub.01.inverse_trig_composition_subset_zero",
+                    try_standard_inverse_trig_composition_subset_zero_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                );
+                return_profiled_root_shortcut!(
+                    "root.addsub.01.atanh_square_ratio_log_subset_zero",
+                    try_standard_atanh_square_ratio_log_subset_zero_shortcut(
                         &self.options,
                         &mut simplifier.context,
                         expr,
@@ -21770,6 +23230,20 @@ impl Orchestrator {
                     expr,
                     collect_steps,
                 ));
+                return_root_shortcut_pair!(try_standard_exact_zero_subset_passthrough_shortcut(
+                    &self.options,
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                ));
+                return_root_shortcut_pair!(
+                    try_standard_binary_exact_zero_subset_passthrough_pair_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                );
                 return_root_shortcut_pair!(try_standard_direct_small_zero_identity_shortcut(
                     &self.options,
                     &mut simplifier.context,
@@ -21933,6 +23407,76 @@ impl Orchestrator {
                 }
                 if let Some((result, shortcut_steps)) =
                     try_standard_guarded_small_zero_pair_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_symbolic_root_denesting_subset_zero_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_sqrt_perfect_square_abs_subset_zero_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_inverse_trig_plus_sqrt_subset_zero_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_inverse_trig_composition_subset_zero_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+                if let Some((result, shortcut_steps)) =
+                    try_standard_atanh_square_ratio_log_subset_zero_shortcut(
                         &self.options,
                         &mut simplifier.context,
                         expr,
@@ -22182,19 +23726,12 @@ impl Orchestrator {
                                     run_profiled_orchestrator_bool_section(
                                         "root.div.01a.shifted_quotient_exact_one_candidate_gate",
                                         || {
-                                            is_potential_shifted_quotient_exact_one_direct_pair_side_root(
+                                            matches_shifted_quotient_exact_one_root_gate_candidate(
                                                 &mut simplifier.context,
                                                 numerator_core,
-                                            ) && is_potential_shifted_quotient_exact_one_direct_pair_side_root(
-                                                &mut simplifier.context,
                                                 denominator_core,
                                             )
                                         },
-                                    ) &&
-                                    matches_shifted_quotient_exact_one_direct_or_passthrough_pair_root(
-                                        &mut simplifier.context,
-                                        numerator_core,
-                                        denominator_core,
                                     )
                                 })
                         })
@@ -22249,22 +23786,43 @@ impl Orchestrator {
                         crate::phase::PipelineStats::default(),
                     );
                 }
-                if let Some((result, shortcut_steps)) = run_profiled_root_shortcut(
-                    "root.div.04.shifted_quotient_exact_one_late",
+                let try_exact_one_late = run_profiled_orchestrator_bool_section(
+                    "root.div.04a.shifted_quotient_exact_one_candidate_gate_late",
                     || {
-                        try_standard_shifted_quotient_exact_one_shortcut(
-                            &self.options,
-                            &mut simplifier.context,
-                            expr,
-                            collect_steps,
-                        )
+                        div_pair.is_some_and(|(numerator, denominator)| {
+                            strip_positive_one_passthrough_root(&mut simplifier.context, numerator)
+                                .zip(strip_positive_one_passthrough_root(
+                                    &mut simplifier.context,
+                                    denominator,
+                                ))
+                                .is_some_and(|(numerator_core, denominator_core)| {
+                                    matches_shifted_quotient_exact_one_root_gate_candidate(
+                                        &mut simplifier.context,
+                                        numerator_core,
+                                        denominator_core,
+                                    )
+                                })
+                        })
                     },
-                ) {
-                    return (
-                        result,
-                        shortcut_steps,
-                        crate::phase::PipelineStats::default(),
-                    );
+                );
+                if try_exact_one_late {
+                    if let Some((result, shortcut_steps)) = run_profiled_root_shortcut(
+                        "root.div.04.shifted_quotient_exact_one_late",
+                        || {
+                            try_standard_shifted_quotient_exact_one_shortcut(
+                                &self.options,
+                                &mut simplifier.context,
+                                expr,
+                                collect_steps,
+                            )
+                        },
+                    ) {
+                        return (
+                            result,
+                            shortcut_steps,
+                            crate::phase::PipelineStats::default(),
+                        );
+                    }
                 }
             }
         }
@@ -23310,6 +24868,23 @@ mod tests {
     }
 
     #[test]
+    fn standard_pythagorean_additive_pipeline_shortcut_rejects_large_mixed_log_scope_regression() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (ln(sqrt((1+sin(y))/(1-sin(y)))) - atanh(sin(y))) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(try_standard_pythagorean_additive_pipeline_shortcut(
+            &crate::SimplifyOptions::default(),
+            &mut ctx,
+            expr,
+            false,
+        )
+        .is_none());
+    }
+
+    #[test]
     fn standard_exact_additive_pair_chain_shortcut_cancels_trig_and_constant_tail() {
         let mut ctx = Context::new();
         let expr = parse("2*cos(2*x) + 1 - 2*cos(2*x)", &mut ctx)
@@ -23335,6 +24910,21 @@ mod tests {
                     panic!("shortcut should match split-constant double-angle zero")
                 });
         assert_eq!(render(&ctx, rewritten), "0");
+    }
+
+    #[test]
+    fn standard_trig_double_angle_cos_variant_zero_shortcut_rejects_large_mixed_log_scope_regression(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (ln(sqrt((1+sin(y))/(1-sin(y)))) - atanh(sin(y))) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(
+            try_standard_trig_double_angle_cos_variant_zero_shortcut(&mut ctx, expr, false)
+                .is_none()
+        );
     }
 
     #[test]
@@ -28780,6 +30370,23 @@ mod tests {
     }
 
     #[test]
+    fn nested_exact_zero_child_shortcut_rejects_large_mixed_log_scope_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (ln(sqrt((1+sin(y))/(1-sin(y)))) - atanh(sin(y))) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(try_standard_nested_exact_zero_child_shortcut(
+            &SimplifyOptions::default(),
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .is_none());
+    }
+
+    #[test]
     fn small_trig_zero_pair_shortcut_handles_triple_sine_quotient_against_hyperbolic_pythagorean_regression(
     ) {
         let mut simplifier = crate::Simplifier::with_default_rules();
@@ -28797,6 +30404,23 @@ mod tests {
         )
         .unwrap_or_else(|| panic!("expected small trig zero pair shortcut to match"));
         assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn small_trig_zero_pair_shortcut_rejects_large_mixed_log_scope_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (ln(sqrt((1+sin(y))/(1-sin(y)))) - atanh(sin(y))) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(try_standard_small_trig_zero_pair_shortcut(
+            &SimplifyOptions::default(),
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .is_none());
     }
 
     #[test]
@@ -28928,12 +30552,77 @@ mod tests {
     }
 
     #[test]
+    fn supported_nested_zero_partner_rewrites_to_zero_handles_atanh_grouped_log_plus_exp_log_partner_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y)) + (exp(z*log(w)) - w^z)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        assert!(supported_nested_zero_partner_rewrites_to_zero(
+            &options,
+            &mut simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
+    fn supported_nested_zero_partner_rewrites_to_zero_handles_atanh_grouped_log_plus_exp_log_plus_fraction_partner_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(atanh((u^2 - 1)/(u^2 + 1)) - log(u)) + (log((p*q)^2) - 2*log(p) - 2*log(q)) + (exp(r*log(s)) - s^r) + (2/(t^2 - 1) - 1/(t-1) + 1/(t+1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        assert!(supported_nested_zero_partner_rewrites_to_zero(
+            &options,
+            &mut simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
+    fn supported_nested_zero_partner_rewrites_to_zero_handles_root_denesting_plus_atanh_grouped_log_exp_fraction_partner_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sqrt(m + sqrt(m^2 - n^2)) - (sqrt(m+n) + sqrt(m-n))/sqrt(2)) + (atanh((u^2 - 1)/(u^2 + 1)) - log(u)) + (log((p*q)^2) - 2*log(p) - 2*log(q)) + (exp(r*log(s)) - s^r) + (2/(t^2 - 1) - 1/(t-1) + 1/(t+1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        assert!(supported_nested_zero_partner_rewrites_to_zero(
+            &options,
+            &mut simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
     fn supported_nested_zero_child_partner_rejects_flat_nonlog_additive_noise_regression() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse("x + 1", &mut simplifier.context)
             .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         assert!(!is_supported_nested_zero_child_partner(
             &simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
+    fn supported_nested_zero_partner_rewrites_to_zero_rejects_plain_division_difference_regression()
+    {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("1/(x+1) - 1/(x-1)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        assert!(!supported_nested_zero_partner_rewrites_to_zero(
+            &options,
+            &mut simplifier.context,
             expr
         ));
     }
@@ -29359,6 +31048,406 @@ mod tests {
     }
 
     #[test]
+    fn multiterm_trig_numeric_subset_zero_shortcut_handles_triple_sine_against_atanh_grouped_log_plus_exp_log_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y)) + (exp(z*log(w)) - w^z) + (sin(a) + sin(b) - 2*sin((a+b)/2)*cos((a-b)/2))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut options = SimplifyOptions::default();
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, _steps) = try_standard_multiterm_trig_numeric_subset_zero_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected multiterm trig-numeric subset shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn multiterm_trig_numeric_subset_rewrites_to_zero_runtime_safe_handles_symbolic_triple_sine_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let subset_expr = parse(
+            "sin(a) + sin(b) - 2*sin((a+b)/2)*cos((a-b)/2)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut options = SimplifyOptions::default();
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        assert!(multiterm_trig_numeric_subset_rewrites_to_zero_runtime_safe(
+            &options,
+            &mut simplifier.context,
+            subset_expr,
+        ));
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_triple_sine_against_atanh_grouped_log_plus_exp_log_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y)) + (exp(z*log(w)) - w^z) + (sin(a) + sin(b) - 2*sin((a+b)/2)*cos((a-b)/2))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        orchestrator.options.collect_steps = false;
+        orchestrator.options.shared.context_mode = crate::options::ContextMode::Standard;
+        orchestrator.options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn multiterm_trig_numeric_subset_zero_shortcut_handles_triple_sine_against_atanh_grouped_log_exp_fraction_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(atanh((u^2 - 1)/(u^2 + 1)) - log(u)) + (log((p*q)^2) - 2*log(p) - 2*log(q)) + (exp(r*log(s)) - s^r) + (sin(a) + sin(b) - 2*sin((a+b)/2)*cos((a-b)/2)) + (2/(t^2 - 1) - 1/(t-1) + 1/(t+1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut options = SimplifyOptions::default();
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, _steps) = try_standard_multiterm_trig_numeric_subset_zero_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected multiterm trig-numeric subset shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn matches_direct_small_zero_identity_root_handles_atanh_square_ratio_log_pair_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "atanh((x^2 - 1)/(x^2 + 1)) - log(x)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(matches_direct_small_zero_identity_root(
+            &mut simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
+    fn direct_small_zero_identity_shortcut_handles_atanh_square_ratio_log_pair_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "atanh((x^2 - 1)/(x^2 + 1)) - log(x)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (rewritten, steps) = try_standard_direct_small_zero_identity_shortcut(
+            &crate::phase::SimplifyOptions::default(),
+            &mut simplifier.context,
+            expr,
+            true,
+        )
+        .unwrap_or_else(|| panic!("expected direct small-zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+        assert_eq!(steps.len(), 1);
+        assert_eq!(
+            steps[0].rule_name,
+            "Collapse Exact Zero Additive Subexpression"
+        );
+    }
+
+    #[test]
+    fn atanh_square_ratio_log_zero_shortcut_handles_two_term_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "atanh((x^2 - 1)/(x^2 + 1)) - log(x)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (rewritten, steps) =
+            try_standard_atanh_square_ratio_log_zero_shortcut(&mut simplifier.context, expr, true)
+                .unwrap_or_else(|| panic!("expected direct atanh-log zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+        assert_eq!(steps.len(), 1);
+        assert_eq!(
+            steps[0].rule_name,
+            "Collapse Exact Zero Additive Subexpression"
+        );
+    }
+
+    #[test]
+    fn atanh_square_ratio_log_subset_zero_shortcut_handles_atanh_square_ratio_plus_grouped_log_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_atanh_square_ratio_log_subset_zero_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected atanh-log subset zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_atanh_square_ratio_plus_grouped_log_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        orchestrator.options.collect_steps = false;
+        orchestrator.options.shared.context_mode = crate::options::ContextMode::Standard;
+        orchestrator.options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn symbolic_root_denesting_subset_zero_shortcut_handles_root_denesting_against_atanh_plus_grouped_log_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sqrt(x + sqrt(x^2 - y^2)) - (sqrt(x+y) + sqrt(x-y))/sqrt(2)) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_symbolic_root_denesting_subset_zero_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| {
+            panic!("expected symbolic root denesting subset zero shortcut to match")
+        });
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_root_denesting_against_atanh_plus_grouped_log_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sqrt(x + sqrt(x^2 - y^2)) - (sqrt(x+y) + sqrt(x-y))/sqrt(2)) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        orchestrator.options.collect_steps = false;
+        orchestrator.options.shared.context_mode = crate::options::ContextMode::Standard;
+        orchestrator.options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn symbolic_root_denesting_subset_zero_shortcut_handles_root_denesting_against_atanh_grouped_log_exp_fraction_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sqrt(m + sqrt(m^2 - n^2)) - (sqrt(m+n) + sqrt(m-n))/sqrt(2)) + (atanh((u^2 - 1)/(u^2 + 1)) - log(u)) + (log((p*q)^2) - 2*log(p) - 2*log(q)) + (exp(r*log(s)) - s^r) + (2/(t^2 - 1) - 1/(t-1) + 1/(t+1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_symbolic_root_denesting_subset_zero_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| {
+            panic!("expected symbolic root denesting subset zero shortcut to match")
+        });
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_root_denesting_against_atanh_grouped_log_exp_fraction_regression()
+    {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sqrt(m + sqrt(m^2 - n^2)) - (sqrt(m+n) + sqrt(m-n))/sqrt(2)) + (atanh((u^2 - 1)/(u^2 + 1)) - log(u)) + (log((p*q)^2) - 2*log(p) - 2*log(q)) + (exp(r*log(s)) - s^r) + (2/(t^2 - 1) - 1/(t-1) + 1/(t+1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        orchestrator.options.collect_steps = false;
+        orchestrator.options.shared.context_mode = crate::options::ContextMode::Standard;
+        orchestrator.options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn sqrt_perfect_square_abs_subset_zero_shortcut_handles_shifted_root_square_against_atanh_plus_grouped_log_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_sqrt_perfect_square_abs_subset_zero_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| {
+            panic!("expected sqrt perfect-square abs subset zero shortcut to match")
+        });
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_shifted_root_square_against_atanh_plus_grouped_log_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        orchestrator.options.collect_steps = false;
+        orchestrator.options.shared.context_mode = crate::options::ContextMode::Standard;
+        orchestrator.options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn inverse_trig_composition_subset_zero_shortcut_handles_arcsin_atan_against_atanh_plus_grouped_log_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(asin(x/sqrt(x^2 + 1)) - atan(x)) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_inverse_trig_composition_subset_zero_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| {
+            panic!("expected inverse trig composition subset zero shortcut to match")
+        });
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn derived_shifted_root_square_residual_from_inverse_trig_mix_still_matches_sqrt_subset_zero() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1) + (asin(x/sqrt(x^2 + 1)) - atan(x)) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let view = AddView::from_expr(&simplifier.context, expr);
+        let asin_term = parse("asin(x/sqrt(x^2 + 1))", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let atan_term = parse("atan(x)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let remaining_terms: smallvec::SmallVec<[(ExprId, Sign); 8]> = view
+            .terms
+            .iter()
+            .copied()
+            .filter(|(term, sign)| {
+                !((*term == asin_term && *sign == Sign::Pos)
+                    || (*term == atan_term && *sign == Sign::Neg))
+            })
+            .collect();
+        let remaining_expr = AddView {
+            root: expr,
+            terms: remaining_terms,
+        }
+        .rebuild(&mut simplifier.context);
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_sqrt_perfect_square_abs_subset_zero_shortcut(
+            &options,
+            &mut simplifier.context,
+            remaining_expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected derived residual to match sqrt subset zero shortcut"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn inverse_trig_plus_sqrt_subset_zero_shortcut_handles_shifted_root_square_against_atanh_plus_grouped_log_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1) + (asin(x/sqrt(x^2 + 1)) - atan(x)) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_inverse_trig_plus_sqrt_subset_zero_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected inverse trig + sqrt subset zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_shifted_root_square_inverse_trig_against_atanh_plus_grouped_log_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1) + (asin(x/sqrt(x^2 + 1)) - atan(x)) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        orchestrator.options.collect_steps = false;
+        orchestrator.options.shared.context_mode = crate::options::ContextMode::Standard;
+        orchestrator.options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_shifted_root_square_inverse_trig_triple_sine_exp_log_against_atanh_plus_grouped_log_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1) + (asin(x/sqrt(x^2 + 1)) - atan(x)) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (log((x*y)^2) - 2*log(x) - 2*log(y)) + (exp(z*log(w)) - w^z) + (sin(a) + sin(b) - 2*sin((a+b)/2)*cos((a-b)/2))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        orchestrator.options.collect_steps = false;
+        orchestrator.options.shared.context_mode = crate::options::ContextMode::Standard;
+        orchestrator.options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
     fn classify_multiterm_trig_numeric_subset_status_is_candidate_ready_on_log_exp_fraction_root_perfect_square_mix_regression(
     ) {
         let mut simplifier = crate::Simplifier::with_default_rules();
@@ -29375,6 +31464,66 @@ mod tests {
                 expr
             ),
             Some("candidate_ready")
+        );
+    }
+
+    #[test]
+    fn classify_multiterm_trig_numeric_subset_status_is_no_candidate_on_single_trig_plus_numeric_noise_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sin(x) - 1 + 2) + (atanh((u^2 - 1)/(u^2 + 1)) - log(u)) + (exp(y*log(z)) - z^y)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        assert_eq!(
+            classify_root_exact_zero_multiterm_trig_numeric_subset_status(
+                &options,
+                &mut simplifier.context,
+                expr
+            ),
+            Some("no_candidate")
+        );
+    }
+
+    #[test]
+    fn classify_multiterm_trig_numeric_subset_status_is_no_candidate_on_single_partner_term_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)) + z + 1",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        assert_eq!(
+            classify_root_exact_zero_multiterm_trig_numeric_subset_status(
+                &options,
+                &mut simplifier.context,
+                expr
+            ),
+            Some("no_candidate")
+        );
+    }
+
+    #[test]
+    fn classify_multiterm_trig_numeric_subset_status_is_no_candidate_on_triple_sine_against_log_with_nested_trig_plus_polynomial_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (ln(sqrt((1+sin(y))/(1-sin(y)))) - atanh(sin(y)))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        assert_eq!(
+            classify_root_exact_zero_multiterm_trig_numeric_subset_status(
+                &options,
+                &mut simplifier.context,
+                expr
+            ),
+            Some("no_candidate")
         );
     }
 
@@ -29408,6 +31557,48 @@ mod tests {
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         let mut orchestrator = Orchestrator::new();
         let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn exact_zero_subset_passthrough_shortcut_handles_triple_sine_against_log_with_polynomial_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "-atanh(sin(y)) + ln(sqrt((sin(y) + 1) / (1 - sin(y)))) - 2*cos(2*x) + sin(3*x) / sin(x) + y^3 + x*y^2 - 1",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_exact_zero_subset_passthrough_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected exact-zero subset passthrough shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "y^3 + x * y^2");
+    }
+
+    #[test]
+    fn binary_exact_zero_subset_passthrough_pair_shortcut_handles_triple_sine_against_log_with_polynomial_partner_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(-atanh(sin(y)) + ln(sqrt((sin(y) + 1) / (1 - sin(y)))) - 2*cos(2*x) + sin(3*x) / sin(x) + y^3 + x*y^2 - 1) + ((x^4 + y^4 - 2*x^2*y^2)/(x-y) - x^3 - y*x^2)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_binary_exact_zero_subset_passthrough_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| {
+            panic!("expected binary exact-zero subset passthrough shortcut to match")
+        });
         assert_eq!(render(&simplifier.context, rewritten), "0");
     }
 
@@ -29642,6 +31833,191 @@ mod tests {
                 denominator_core,
             )
         );
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_keeps_tanh_ratio_exact_one_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((tanh(x)) + 1)/((((e^x - e^(-x))/(e^x + e^(-x)))) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_exact_one_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient exact-one shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_keeps_common_factor_monomial_exact_one_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("((((x*y)/(z*y))) + 1)/((x/z) + 1)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_exact_one_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient exact-one shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_exact_one_candidate_gate_keeps_identical_additive_core_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("((x + y) + 1)/((x + y) + 1)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (numerator, denominator) = match simplifier.context.get(expr).clone() {
+            Expr::Div(numerator, denominator) => (numerator, denominator),
+            _ => panic!("expected division root"),
+        };
+        let numerator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, numerator)
+                .unwrap_or_else(|| panic!("expected numerator core"));
+        let denominator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, denominator)
+                .unwrap_or_else(|| panic!("expected denominator core"));
+
+        assert!(
+            matches_shifted_quotient_exact_one_direct_or_passthrough_pair_root(
+                &mut simplifier.context,
+                numerator_core,
+                denominator_core,
+            )
+        );
+    }
+
+    #[test]
+    fn shifted_quotient_exact_one_candidate_gate_keeps_reordered_trinomial_square_pair_regression()
+    {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "((a + b + c)^2 + 1)/(a^2 + b^2 + c^2 + 2*a*b + 2*a*c + 2*b*c + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (numerator, denominator) = match simplifier.context.get(expr).clone() {
+            Expr::Div(numerator, denominator) => (numerator, denominator),
+            _ => panic!("expected division root"),
+        };
+        let numerator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, numerator)
+                .unwrap_or_else(|| panic!("expected numerator core"));
+        let denominator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, denominator)
+                .unwrap_or_else(|| panic!("expected denominator core"));
+
+        assert!(
+            !is_potential_shifted_quotient_exact_one_direct_pair_side_root(
+                &mut simplifier.context,
+                denominator_core,
+            )
+        );
+        assert!(matches_shifted_quotient_exact_one_root_gate_candidate(
+            &mut simplifier.context,
+            numerator_core,
+            denominator_core,
+        ));
+    }
+
+    #[test]
+    fn shifted_quotient_exact_one_candidate_gate_keeps_symbolic_difference_squares_pair_regression()
+    {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(((1/(2*a)*(1/(x-a) - 1/(x+a))) + 1))/(((1/(x^2-a^2)) + 1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (numerator, denominator) = match simplifier.context.get(expr).clone() {
+            Expr::Div(numerator, denominator) => (numerator, denominator),
+            _ => panic!("expected division root"),
+        };
+        let numerator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, numerator)
+                .unwrap_or_else(|| panic!("expected numerator core"));
+        let denominator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, denominator)
+                .unwrap_or_else(|| panic!("expected denominator core"));
+
+        assert!(
+            !is_potential_shifted_quotient_exact_one_direct_pair_side_root(
+                &mut simplifier.context,
+                numerator_core,
+            ) || !is_potential_shifted_quotient_exact_one_direct_pair_side_root(
+                &mut simplifier.context,
+                denominator_core,
+            )
+        );
+        assert!(matches_shifted_quotient_exact_one_root_gate_candidate(
+            &mut simplifier.context,
+            numerator_core,
+            denominator_core,
+        ));
+    }
+
+    #[test]
+    fn shifted_quotient_exact_one_candidate_gate_keeps_sum_cubes_quotient_shared_passthrough_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(((a^3+b^3)/(a+b)+c) + 1)/((a^2 - a*b + b^2 + c) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (numerator, denominator) = match simplifier.context.get(expr).clone() {
+            Expr::Div(numerator, denominator) => (numerator, denominator),
+            _ => panic!("expected division root"),
+        };
+        let numerator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, numerator)
+                .unwrap_or_else(|| panic!("expected numerator core"));
+        let denominator_core =
+            strip_positive_one_passthrough_root(&mut simplifier.context, denominator)
+                .unwrap_or_else(|| panic!("expected denominator core"));
+
+        assert!(matches_shifted_quotient_exact_one_root_gate_candidate(
+            &mut simplifier.context,
+            numerator_core,
+            denominator_core,
+        ));
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_identical_additive_core_shifted_quotient_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("((x + y) + 1)/((x + y) + 1)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "1");
+    }
+
+    #[test]
+    fn shifted_quotient_shortcut_handles_sum_cubes_quotient_with_shared_passthrough_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(((a^3+b^3)/(a+b)+c) + 1)/((a^2 - a*b + b^2 + c) + 1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = try_standard_shifted_quotient_exact_one_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            true,
+        )
+        .unwrap_or_else(|| panic!("expected shifted quotient exact-one shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "1");
     }
 
     #[test]
@@ -30951,6 +33327,20 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
             "sqrt(a^2 + 2*a*b + b^2) - abs(a+b)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(matches_direct_sqrt_perfect_square_abs_zero_identity_root(
+            &mut simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
+    fn detects_direct_shifted_root_square_sum_zero_identity_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1",
             &mut simplifier.context,
         )
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));

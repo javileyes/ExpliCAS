@@ -16,7 +16,7 @@ use cas_math::expr_destructure::{as_div, as_mul, as_pow};
 use cas_math::expr_extract::{extract_exp_argument, extract_i64_integer};
 use cas_math::expr_nary::{build_balanced_add, build_balanced_mul, AddView, MulView, Sign};
 use cas_math::expr_predicates::{
-    contains_division_like_term, contains_named_var, is_minus_one_expr,
+    contains_division_like_term, contains_named_var, is_minus_one_expr, is_zero_expr,
 };
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::fold_add_build_support::try_build_fold_add_fraction_rewrite;
@@ -538,6 +538,14 @@ fn expr_contains_symbolic_atom_for_cancellation(
     false
 }
 
+fn power_merge_base_supported_for_cancellation(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    expr_contains_symbolic_atom_for_cancellation(ctx, expr)
+        || matches!(ctx.get(expr), Expr::Number(_) | Expr::Constant(_))
+}
+
 fn expr_contains_any_function_call(ctx: &cas_ast::Context, root: cas_ast::ExprId) -> bool {
     let mut stack = vec![root];
 
@@ -566,7 +574,55 @@ fn expr_contains_any_function_call(ctx: &cas_ast::Context, root: cas_ast::ExprId
 fn maybe_trig_sum_to_product_zero_candidate(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
     let term_count = AddView::from_expr(ctx, expr).terms.len();
     (3..=6).contains(&term_count)
-        && expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Sin, BuiltinFn::Cos])
+        && top_level_terms_match_trig_family_or_number(
+            ctx,
+            expr,
+            &[BuiltinFn::Sin, BuiltinFn::Cos],
+            2,
+        )
+}
+
+fn top_level_terms_match_trig_family_or_number(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+    trig_fns: &[BuiltinFn],
+    min_trig_terms: usize,
+) -> bool {
+    let mut trig_term_count = 0usize;
+
+    for (term_expr, _) in AddView::from_expr(ctx, expr).terms {
+        if expr_contains_any_builtin(ctx, term_expr, trig_fns) {
+            trig_term_count += 1;
+            continue;
+        }
+        if matches!(ctx.get(term_expr), Expr::Number(_)) {
+            continue;
+        }
+        return false;
+    }
+
+    trig_term_count >= min_trig_terms
+}
+
+fn maybe_exact_trig_equivalence_zero_scope_candidate(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let term_count = AddView::from_expr(ctx, expr).terms.len();
+    (2..=6).contains(&term_count)
+        && top_level_terms_match_trig_family_or_number(
+            ctx,
+            expr,
+            &[
+                BuiltinFn::Sin,
+                BuiltinFn::Cos,
+                BuiltinFn::Tan,
+                BuiltinFn::Cot,
+                BuiltinFn::Sec,
+                BuiltinFn::Csc,
+            ],
+            2,
+        )
 }
 
 fn maybe_hyperbolic_angle_sum_diff_zero_candidate(
@@ -1010,12 +1066,16 @@ fn try_rewrite_odd_half_power_target_aware(
         .map(|rewrite| rewrite.rewritten)
 }
 
-fn run_default_simplify(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> cas_ast::ExprId {
-    thread_local! {
-        static DEFAULT_SIMPLIFY_NESTING: std::cell::Cell<usize> =
-            const { std::cell::Cell::new(0) };
-    }
+thread_local! {
+    static DEFAULT_SIMPLIFY_NESTING: std::cell::Cell<usize> =
+        const { std::cell::Cell::new(0) };
+}
 
+fn default_simplify_nesting_depth() -> usize {
+    DEFAULT_SIMPLIFY_NESTING.with(|depth| depth.get())
+}
+
+fn run_default_simplify(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> cas_ast::ExprId {
     struct DefaultSimplifyNestingGuard;
 
     impl Drop for DefaultSimplifyNestingGuard {
@@ -1219,6 +1279,13 @@ struct LogPowerProductCancellationMatch {
     focus_after: cas_ast::ExprId,
     components: Vec<(cas_ast::ExprId, Sign)>,
     needs_power_split: bool,
+}
+
+#[derive(Debug, Clone)]
+struct LogPowerProductCancellationComponentsMatch {
+    focus_expr: cas_ast::ExprId,
+    components: Vec<(cas_ast::ExprId, Sign)>,
+    changed_by_power: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1625,6 +1692,226 @@ fn try_extract_scaled_log_term_parts(
     Some((scale, log_base, log_arg))
 }
 
+fn log_arg_supports_product_power_cancellation_expansion(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    match ctx.get(expr).clone() {
+        Expr::Mul(_, _) | Expr::Div(_, _) | Expr::Pow(_, _) => true,
+        Expr::Function(fn_id, args) if ctx.is_builtin(fn_id, BuiltinFn::Abs) => args
+            .first()
+            .copied()
+            .is_some_and(|inner| log_arg_supports_product_power_cancellation_expansion(ctx, inner)),
+        _ => false,
+    }
+}
+
+fn maybe_log_product_power_zero_candidate(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 3 {
+        return false;
+    }
+
+    let mut top_level_log_terms = 0;
+    let mut top_level_nonlog_terms = 0;
+    let mut has_plausible_expandable_focus = false;
+    for (term_expr, term_sign) in view.terms.iter().copied() {
+        let (normalized_term_expr, _normalized_term_sign) =
+            normalize_signed_add_term(ctx, term_expr, term_sign);
+        let Some((_scale, _log_base, log_arg)) =
+            try_extract_scaled_log_term_parts(ctx, normalized_term_expr)
+        else {
+            top_level_nonlog_terms += 1;
+            continue;
+        };
+        top_level_log_terms += 1;
+        if !has_plausible_expandable_focus
+            && log_arg_supports_product_power_cancellation_expansion(ctx, log_arg)
+        {
+            has_plausible_expandable_focus =
+                try_match_log_product_power_cancellation_side(ctx, normalized_term_expr)
+                    .is_some_and(|matched| {
+                        matched.components.len() <= view.terms.len().saturating_sub(1)
+                    });
+        }
+    }
+
+    top_level_nonlog_terms == 0 && top_level_log_terms >= 2 && has_plausible_expandable_focus
+}
+
+fn maybe_log_abs_mul_div_zero_candidate(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 3 || !expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Abs]) {
+        return false;
+    }
+
+    let mut top_level_log_terms = 0;
+    let mut top_level_nonlog_terms = 0;
+    let mut expandable_abs_log_term = false;
+    for (term_expr, term_sign) in view.terms.iter().copied() {
+        let (normalized_term_expr, _normalized_term_sign) =
+            normalize_signed_add_term(ctx, term_expr, term_sign);
+        if try_extract_scaled_log_term_parts(ctx, normalized_term_expr).is_some() {
+            top_level_log_terms += 1;
+        } else {
+            top_level_nonlog_terms += 1;
+        }
+        if extract_scaled_log_abs_mul_div(ctx, normalized_term_expr).is_some() {
+            expandable_abs_log_term = true;
+        }
+    }
+
+    top_level_nonlog_terms == 0 && top_level_log_terms >= 2 && expandable_abs_log_term
+}
+
+fn maybe_fraction_telescoping_zero_scope_candidate(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 3 || !expr_contains_division_node(ctx, expr) {
+        return false;
+    }
+
+    view.terms
+        .iter()
+        .all(|(term_expr, _)| expr_contains_division_node(ctx, *term_expr))
+}
+
+fn maybe_two_term_trig_sum_to_product_equivalence_candidate(
+    ctx: &cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> bool {
+    let lhs_contains_trig = expr_contains_any_builtin(
+        ctx,
+        lhs_core,
+        &[
+            BuiltinFn::Sin,
+            BuiltinFn::Cos,
+            BuiltinFn::Tan,
+            BuiltinFn::Cot,
+            BuiltinFn::Sec,
+            BuiltinFn::Csc,
+        ],
+    );
+    let lhs_contains_log = expr_contains_any_builtin(
+        ctx,
+        lhs_core,
+        &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Log10],
+    );
+
+    let rhs_contains_trig = expr_contains_any_builtin(
+        ctx,
+        rhs_core,
+        &[
+            BuiltinFn::Sin,
+            BuiltinFn::Cos,
+            BuiltinFn::Tan,
+            BuiltinFn::Cot,
+            BuiltinFn::Sec,
+            BuiltinFn::Csc,
+        ],
+    );
+    let rhs_contains_log = expr_contains_any_builtin(
+        ctx,
+        rhs_core,
+        &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Log10],
+    );
+
+    if !matches!(ctx.get(lhs_core), Expr::Add(_, _) | Expr::Sub(_, _))
+        || !lhs_contains_trig
+        || lhs_contains_log
+        || !rhs_contains_trig
+        || rhs_contains_log
+    {
+        return false;
+    }
+
+    let terms = AddView::from_expr(ctx, lhs_core).terms;
+    terms.len() == 2
+        && terms.iter().all(|(term_expr, _)| {
+            expr_contains_any_builtin(
+                ctx,
+                *term_expr,
+                &[
+                    BuiltinFn::Sin,
+                    BuiltinFn::Cos,
+                    BuiltinFn::Tan,
+                    BuiltinFn::Cot,
+                    BuiltinFn::Sec,
+                    BuiltinFn::Csc,
+                ],
+            )
+        })
+}
+
+fn has_direct_trig_builtin_on_either_side(
+    ctx: &cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> bool {
+    expr_contains_direct_trig_builtin(ctx, lhs_core)
+        || expr_contains_direct_trig_builtin(ctx, rhs_core)
+}
+
+fn maybe_two_term_hyperbolic_direct_core_equivalence_candidate(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> bool {
+    let lhs_direct_hyperbolic = expr_contains_direct_hyperbolic_builtin(ctx, lhs_core);
+    let rhs_direct_hyperbolic = expr_contains_direct_hyperbolic_builtin(ctx, rhs_core);
+
+    (lhs_direct_hyperbolic && (rhs_direct_hyperbolic || contains_division_like_term(ctx, rhs_core)))
+        || (rhs_direct_hyperbolic
+            && (lhs_direct_hyperbolic || contains_division_like_term(ctx, lhs_core)))
+}
+
+fn is_plain_two_factor_direct_hyperbolic_product(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let expr = strip_unit_negation_for_phase_shift(ctx, expr).unwrap_or(expr);
+    let factors = flatten_mul_chain(ctx, expr);
+    factors.len() == 2
+        && factors
+            .iter()
+            .copied()
+            .all(|factor| extract_hyperbolic_linear_term_for_profile(ctx, factor).is_some())
+}
+
+fn maybe_two_term_hyperbolic_direct_identity_candidate(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> bool {
+    maybe_two_term_hyperbolic_direct_core_equivalence_candidate(ctx, lhs_core, rhs_core)
+        && (!is_plain_two_factor_direct_hyperbolic_product(ctx, lhs_core)
+            || !is_plain_two_factor_direct_hyperbolic_product(ctx, rhs_core)
+            || contains_division_like_term(ctx, lhs_core)
+            || contains_division_like_term(ctx, rhs_core))
+}
+
+fn maybe_two_term_tanh_exp_equivalence_candidate(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> bool {
+    let lhs_has_tanh = expr_contains_any_builtin(ctx, lhs_core, &[BuiltinFn::Tanh]);
+    let rhs_has_tanh = expr_contains_any_builtin(ctx, rhs_core, &[BuiltinFn::Tanh]);
+    let lhs_has_exp = expr_contains_any_builtin(ctx, lhs_core, &[BuiltinFn::Exp]);
+    let rhs_has_exp = expr_contains_any_builtin(ctx, rhs_core, &[BuiltinFn::Exp]);
+    let lhs_division_like = contains_division_like_term(ctx, lhs_core);
+    let rhs_division_like = contains_division_like_term(ctx, rhs_core);
+
+    (lhs_has_tanh && (rhs_has_exp || rhs_division_like))
+        || (rhs_has_tanh && (lhs_has_exp || lhs_division_like))
+}
+
 fn log_terms_match_up_to_abs_subject_for_cancellation(
     ctx: &mut cas_ast::Context,
     lhs: cas_ast::ExprId,
@@ -1685,10 +1972,10 @@ fn build_signed_add_expr(
     }
 }
 
-fn try_match_log_product_power_cancellation_side(
+fn try_match_log_product_power_cancellation_components_side(
     ctx: &mut cas_ast::Context,
     focus_expr: cas_ast::ExprId,
-) -> Option<LogPowerProductCancellationMatch> {
+) -> Option<LogPowerProductCancellationComponentsMatch> {
     let factors = flatten_mul_chain(ctx, focus_expr);
     let mut log_factor = None;
     let mut scale_factors = Vec::new();
@@ -1712,13 +1999,8 @@ fn try_match_log_product_power_cancellation_side(
         _ => build_balanced_mul(ctx, &scale_factors),
     };
 
-    let raw_expansion = cas_math::logarithm_inverse_support::try_expand_log_auto_rule_expr(
-        ctx, log_factor, log_arg,
-    )?;
-    let raw_focus_after = build_scaled_expr(ctx, scale, raw_expansion.rewritten);
-
     let mut normalized_terms = Vec::new();
-    let mut needs_power_split = false;
+    let mut changed_by_power = false;
     collect_log_arg_terms_for_cancellation(
         ctx,
         log_base,
@@ -1726,16 +2008,38 @@ fn try_match_log_product_power_cancellation_side(
         scale,
         Sign::Pos,
         &mut normalized_terms,
-        &mut needs_power_split,
+        &mut changed_by_power,
     )?;
 
-    let focus_after = build_signed_add_expr(ctx, &normalized_terms);
-    needs_power_split |= !exprs_match_for_cancellation(ctx, raw_focus_after, focus_after);
+    Some(LogPowerProductCancellationComponentsMatch {
+        focus_expr,
+        components: normalized_terms,
+        changed_by_power,
+    })
+}
+
+fn try_match_log_product_power_cancellation_side(
+    ctx: &mut cas_ast::Context,
+    focus_expr: cas_ast::ExprId,
+) -> Option<LogPowerProductCancellationMatch> {
+    let matched = try_match_log_product_power_cancellation_components_side(ctx, focus_expr)?;
+    let (scale, _log_base, log_arg) = try_extract_scaled_log_term_parts(ctx, matched.focus_expr)?;
+    let factors = flatten_mul_chain(ctx, matched.focus_expr);
+    let log_factor = factors
+        .into_iter()
+        .find(|factor| try_extract_log_parts(ctx, *factor).is_some())?;
+    let raw_expansion = cas_math::logarithm_inverse_support::try_expand_log_auto_rule_expr(
+        ctx, log_factor, log_arg,
+    )?;
+    let raw_focus_after = build_scaled_expr(ctx, scale, raw_expansion.rewritten);
+    let focus_after = build_signed_add_expr(ctx, &matched.components);
+    let needs_power_split = matched.changed_by_power
+        || !exprs_match_for_cancellation(ctx, raw_focus_after, focus_after);
 
     Some(LogPowerProductCancellationMatch {
         raw_focus_after,
         focus_after,
-        components: normalized_terms,
+        components: matched.components,
         needs_power_split,
     })
 }
@@ -1927,6 +2231,24 @@ fn exprs_match_after_default_simplify(
     exprs_match_for_cancellation(ctx, lhs_simplified, rhs_simplified)
 }
 
+fn exprs_match_shallow_noncall_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    if expr_contains_any_function_call(ctx, lhs)
+        || expr_contains_any_function_call(ctx, rhs)
+        || expr_contains_division_node(ctx, lhs)
+        || expr_contains_division_node(ctx, rhs)
+    {
+        return false;
+    }
+
+    compare_expr(ctx, lhs, rhs) == Ordering::Equal
+        || exprs_equal_up_to_add_term_order(ctx, lhs, rhs)
+        || exprs_equal_up_to_mul_factor_order_and_sign(ctx, lhs, rhs)
+}
+
 fn expr_contains_hyperbolic_builtin(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> bool {
     expr_contains_any_builtin(
         ctx,
@@ -1939,6 +2261,32 @@ fn expr_contains_hyperbolic_builtin(ctx: &mut cas_ast::Context, expr: cas_ast::E
             BuiltinFn::Acosh,
             BuiltinFn::Atanh,
         ],
+    )
+}
+
+fn expr_contains_direct_trig_builtin(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    expr_contains_any_builtin(
+        ctx,
+        expr,
+        &[
+            BuiltinFn::Sin,
+            BuiltinFn::Cos,
+            BuiltinFn::Tan,
+            BuiltinFn::Cot,
+            BuiltinFn::Sec,
+            BuiltinFn::Csc,
+        ],
+    )
+}
+
+fn expr_contains_direct_hyperbolic_builtin(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    expr_contains_any_builtin(
+        ctx,
+        expr,
+        &[BuiltinFn::Sinh, BuiltinFn::Cosh, BuiltinFn::Tanh],
     )
 }
 
@@ -1984,6 +2332,23 @@ fn build_signed_sum_expr(
         acc = ctx.add(Expr::Add(acc, term));
     }
     acc
+}
+
+fn additive_term_is_negative_like(
+    ctx: &cas_ast::Context,
+    term_expr: cas_ast::ExprId,
+    term_sign: Sign,
+) -> bool {
+    term_sign == Sign::Neg
+        || matches!(ctx.get(term_expr), Expr::Neg(_))
+        || matches!(ctx.get(term_expr), Expr::Number(n) if n.is_negative())
+}
+
+fn additive_scope_has_negative_term(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    AddView::from_expr(ctx, expr)
+        .terms
+        .into_iter()
+        .any(|(term_expr, term_sign)| additive_term_is_negative_like(ctx, term_expr, term_sign))
 }
 
 fn normalize_additive_scope_expr(
@@ -3845,6 +4210,7 @@ fn extract_square_plus_minus_one_pattern_for_cancellation(
     let mut square_term = None;
     let mut one_term = None;
     for (term_expr, term_sign) in terms {
+        let (term_expr, term_sign) = normalize_signed_add_term(ctx, term_expr, term_sign);
         if extract_i64_integer(ctx, term_expr) == Some(1) {
             if one_term.replace(term_sign).is_some() {
                 return None;
@@ -10360,7 +10726,7 @@ fn try_build_small_direct_zero_core_rewrite(
     if !(2..=3).contains(&term_count) {
         return None;
     }
-    if !view.terms.iter().any(|(_, sign)| *sign == Sign::Neg) {
+    if !additive_scope_has_negative_term(ctx, expr) {
         return None;
     }
 
@@ -10609,8 +10975,10 @@ fn try_build_direct_small_zero_core_shifted_quotient_rewrite(
     numerator_core: cas_ast::ExprId,
     denominator_core: cas_ast::ExprId,
 ) -> Option<Rewrite> {
-    let numerator_zero_rewrite = try_build_small_direct_zero_core_rewrite(ctx, numerator_core)?;
-    let denominator_zero_rewrite = try_build_small_direct_zero_core_rewrite(ctx, denominator_core)?;
+    let numerator_zero_rewrite = try_build_small_direct_zero_core_rewrite(ctx, numerator_core)
+        .or_else(|| try_build_exact_zero_identity_rewrite_direct(ctx, numerator_core))?;
+    let denominator_zero_rewrite = try_build_small_direct_zero_core_rewrite(ctx, denominator_core)
+        .or_else(|| try_build_exact_zero_identity_rewrite_direct(ctx, denominator_core))?;
 
     let description = if numerator_zero_rewrite.description == denominator_zero_rewrite.description
     {
@@ -11425,6 +11793,7 @@ fn try_build_exact_hyperbolic_equivalence_zero_scope_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
+    let nested_default_simplify = default_simplify_nesting_depth() > 0;
     let view = AddView::from_expr(ctx, expr);
     if !(2..=3).contains(&view.terms.len()) {
         return None;
@@ -11486,27 +11855,29 @@ fn try_build_exact_hyperbolic_equivalence_zero_scope_rewrite(
                     let neg_adjusted_rewritten = ctx.add(Expr::Neg(adjusted_rewritten));
                     let distributed_neg_adjusted_rewritten =
                         negate_additive_scope_expr(ctx, adjusted_rewritten);
-                    if expr_matches_negation_for_cancellation(
+                    let matches_remaining = expr_matches_negation_for_cancellation(
                         ctx,
                         adjusted_rewritten,
                         remaining_expr,
-                    ) || expr_matches_negation_after_default_simplify(
-                        ctx,
-                        adjusted_rewritten,
-                        remaining_expr,
-                    ) || exprs_match_after_default_simplify(
-                        ctx,
-                        neg_adjusted_rewritten,
-                        remaining_expr,
-                    ) || exprs_match_after_default_simplify(
-                        ctx,
-                        distributed_neg_adjusted_rewritten,
-                        remaining_expr,
-                    ) || additive_scopes_match_after_default_simplify(
-                        ctx,
-                        distributed_neg_adjusted_rewritten,
-                        remaining_expr,
-                    ) {
+                    ) || (!nested_default_simplify
+                        && (expr_matches_negation_after_default_simplify(
+                            ctx,
+                            adjusted_rewritten,
+                            remaining_expr,
+                        ) || exprs_match_after_default_simplify(
+                            ctx,
+                            neg_adjusted_rewritten,
+                            remaining_expr,
+                        ) || exprs_match_after_default_simplify(
+                            ctx,
+                            distributed_neg_adjusted_rewritten,
+                            remaining_expr,
+                        ) || additive_scopes_match_after_default_simplify(
+                            ctx,
+                            distributed_neg_adjusted_rewritten,
+                            remaining_expr,
+                        )));
+                    if matches_remaining {
                         return Some(
                             Rewrite::with_local(
                                 ctx.num(0),
@@ -12608,10 +12979,10 @@ define_rule!(
     crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
     priority: 511,
     |ctx, expr| {
-        let view = AddView::from_expr(ctx, expr);
-        if view.terms.len() < 3 {
+        if !maybe_log_product_power_zero_candidate(ctx, expr) {
             return None;
         }
+        let view = AddView::from_expr(ctx, expr);
         let prepared_terms: Vec<_> = view
             .terms
             .iter()
@@ -12629,7 +13000,9 @@ define_rule!(
             view.terms.iter().copied().enumerate()
         {
             let (focus_expr, focus_sign, _) = prepared_terms[focus_index];
-            let Some(matched) = try_match_log_product_power_cancellation_side(ctx, focus_expr) else {
+            let Some(matched) =
+                try_match_log_product_power_cancellation_components_side(ctx, focus_expr)
+            else {
                 continue;
             };
 
@@ -12676,6 +13049,7 @@ define_rule!(
             }
 
             let zero = ctx.num(0);
+            let focus_after = build_signed_add_expr(ctx, &matched.components);
             let focus_before_display = format!(
                 "{}",
                 cas_formatter::DisplayExpr {
@@ -12683,18 +13057,11 @@ define_rule!(
                     id: raw_focus_expr
                 }
             );
-            let raw_focus_after_display = format!(
-                "{}",
-                cas_formatter::DisplayExpr {
-                    context: ctx,
-                    id: matched.raw_focus_after
-                }
-            );
             let focus_after_display = format!(
                 "{}",
                 cas_formatter::DisplayExpr {
                     context: ctx,
-                    id: matched.focus_after
+                    id: focus_after
                 }
             );
 
@@ -12706,17 +13073,13 @@ define_rule!(
             )
             .substep(
                 "Expandir el logaritmo del producto o del cociente",
-                vec![format!(
-                    "Reescribir {focus_before_display} como {raw_focus_after_display}."
-                )],
+                vec![format!("Reescribir {focus_before_display} como {focus_after_display}.")],
             );
 
-            if matched.needs_power_split {
+            if matched.changed_by_power {
                 rewrite = rewrite.substep(
                     "Sacar exponentes fuera del logaritmo cuando sea necesario",
-                    vec![format!(
-                        "Reescribir {raw_focus_after_display} como {focus_after_display}."
-                    )],
+                    vec![format!("Así se obtiene {focus_after_display}.")],
                 );
             }
 
@@ -12740,10 +13103,10 @@ define_rule!(
     crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
     priority: 510,
     |ctx, expr| {
-        let view = AddView::from_expr(ctx, expr);
-        if view.terms.len() < 3 {
+        if !maybe_log_abs_mul_div_zero_candidate(ctx, expr) {
             return None;
         }
+        let view = AddView::from_expr(ctx, expr);
         let prepared_terms: Vec<_> = view
             .terms
             .iter()
@@ -13061,6 +13424,7 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
     let expr_sample = profiling.then(|| render_expr_for_orchestrator_profile(ctx, expr));
     let two_term_cores = extract_two_term_core_difference(ctx, expr);
     let direct_term_count = AddView::from_expr(ctx, expr).terms.len();
+    let has_direct_trig_expr = expr_contains_direct_trig_builtin(ctx, expr);
 
     let try_rule = |ctx: &mut cas_ast::Context, rewrite: Option<Rewrite>| -> Option<Rewrite> {
         let rewrite = rewrite?;
@@ -13068,22 +13432,30 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
     };
 
     if let Some((lhs_core, rhs_core)) = two_term_cores {
+        if has_direct_trig_builtin_on_either_side(ctx, lhs_core, rhs_core) {
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_trig_power_reduction_early",
+                &expr_sample,
+                || {
+                    try_build_direct_trig_power_reduction_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
+        }
+    }
+    if has_direct_trig_expr && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr) {
         if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
             profiling,
-            "rule.direct_identity.try.two_term_trig_power_reduction_early",
+            "rule.direct_identity.try.sin_sin_three_term_early",
             &expr_sample,
-            || try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core),
+            || try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr),
         ) {
             return Some(rewrite);
         }
-    }
-    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-        profiling,
-        "rule.direct_identity.try.sin_sin_three_term_early",
-        &expr_sample,
-        || try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr),
-    ) {
-        return Some(rewrite);
     }
     if expr_contains_sqrt_or_half_power(ctx, expr) {
         if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
@@ -13106,67 +13478,96 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
             return Some(rewrite);
         }
     }
-    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-        profiling,
-        "rule.direct_identity.try.fraction_telescoping_zero_scope",
-        &expr_sample,
-        || try_build_direct_fraction_telescoping_zero_scope_rewrite(ctx, expr),
-    ) {
-        return Some(rewrite);
+    if maybe_fraction_telescoping_zero_scope_candidate(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.fraction_telescoping_zero_scope",
+            &expr_sample,
+            || try_build_direct_fraction_telescoping_zero_scope_rewrite(ctx, expr),
+        ) {
+            return Some(rewrite);
+        }
     }
 
     if let Some((lhs_core, rhs_core)) = two_term_cores {
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_trig_product_to_sum",
-            &expr_sample,
-            || try_build_direct_trig_product_to_sum_equivalence_rewrite(ctx, lhs_core, rhs_core),
-        ) {
-            return Some(rewrite);
+        let has_direct_trig_core = has_direct_trig_builtin_on_either_side(ctx, lhs_core, rhs_core);
+        let maybe_tanh_exp_pair =
+            maybe_two_term_tanh_exp_equivalence_candidate(ctx, lhs_core, rhs_core);
+        if has_direct_trig_core {
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_trig_product_to_sum",
+                &expr_sample,
+                || {
+                    try_build_direct_trig_product_to_sum_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
+            if maybe_two_term_trig_sum_to_product_equivalence_candidate(ctx, lhs_core, rhs_core) {
+                if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                    profiling,
+                    "rule.direct_identity.try.two_term_trig_sum_to_product",
+                    &expr_sample,
+                    || {
+                        try_build_direct_trig_sum_to_product_equivalence_rewrite(
+                            ctx, lhs_core, rhs_core,
+                        )
+                    },
+                ) {
+                    return Some(rewrite);
+                }
+            }
         }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_trig_sum_to_product",
-            &expr_sample,
-            || try_build_direct_trig_sum_to_product_equivalence_rewrite(ctx, lhs_core, rhs_core),
-        ) {
-            return Some(rewrite);
+        if maybe_tanh_exp_pair {
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_tanh_exp",
+                &expr_sample,
+                || {
+                    try_build_direct_tanh_exp_definition_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
         }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_tanh_exp",
-            &expr_sample,
-            || try_build_direct_tanh_exp_definition_equivalence_rewrite(ctx, lhs_core, rhs_core),
-        ) {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_trig_power_reduction",
-            &expr_sample,
-            || try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core),
-        ) {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_mixed_double_angle_poly",
-            &expr_sample,
-            || {
-                try_build_direct_trig_mixed_double_angle_polynomial_equivalence_rewrite(
-                    ctx, lhs_core, rhs_core,
-                )
-            },
-        ) {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_trig_square",
-            &expr_sample,
-            || try_build_direct_trig_square_equivalence_rewrite(ctx, lhs_core, rhs_core),
-        ) {
-            return Some(rewrite);
+        if has_direct_trig_core {
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_trig_power_reduction",
+                &expr_sample,
+                || {
+                    try_build_direct_trig_power_reduction_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_mixed_double_angle_poly",
+                &expr_sample,
+                || {
+                    try_build_direct_trig_mixed_double_angle_polynomial_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_trig_square",
+                &expr_sample,
+                || try_build_direct_trig_square_equivalence_rewrite(ctx, lhs_core, rhs_core),
+            ) {
+                return Some(rewrite);
+            }
         }
         if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
             profiling,
@@ -13180,13 +13581,21 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         ) {
             return Some(rewrite);
         }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_safe_hyperbolic",
-            &expr_sample,
-            || try_build_direct_safe_hyperbolic_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
-        ) {
-            return Some(rewrite);
+        if expr_contains_hyperbolic_builtin(ctx, lhs_core)
+            || expr_contains_hyperbolic_builtin(ctx, rhs_core)
+        {
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_safe_hyperbolic",
+                &expr_sample,
+                || {
+                    try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
         }
     }
 
@@ -13199,22 +13608,26 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         return Some(rewrite);
     }
 
-    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-        profiling,
-        "rule.direct_identity.try.zero_scope_fast_recursive_trig",
-        &expr_sample,
-        || try_build_fast_recursive_trig_angle_sum_diff_zero_scope_rewrite(ctx, expr),
-    ) {
-        return Some(rewrite);
+    if has_direct_trig_expr && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_fast_recursive_trig",
+            &expr_sample,
+            || try_build_fast_recursive_trig_angle_sum_diff_zero_scope_rewrite(ctx, expr),
+        ) {
+            return Some(rewrite);
+        }
     }
 
-    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-        profiling,
-        "rule.direct_identity.try.sin_sin_three_term_late",
-        &expr_sample,
-        || try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr),
-    ) {
-        return Some(rewrite);
+    if has_direct_trig_expr && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.sin_sin_three_term_late",
+            &expr_sample,
+            || try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr),
+        ) {
+            return Some(rewrite);
+        }
     }
 
     if maybe_small_polynomial_expand_zero_candidate(ctx, expr) {
@@ -13240,17 +13653,20 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
     }
 
     if let Some((lhs_core, rhs_core)) = two_term_cores {
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_phase_shift_quarter_pair",
-            &expr_sample,
-            || {
-                try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
-                    ctx, lhs_core, rhs_core,
-                )
-            },
-        ) {
-            return Some(rewrite);
+        let has_direct_trig_core = has_direct_trig_builtin_on_either_side(ctx, lhs_core, rhs_core);
+        if has_direct_trig_core {
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_phase_shift_quarter_pair",
+                &expr_sample,
+                || {
+                    try_build_direct_trig_exact_quarter_phase_shift_pair_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
         }
         if direct_term_count == 2 && maybe_trig_phase_shift_zero_candidate(ctx, expr) {
             if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
@@ -13280,35 +13696,39 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         ) {
             return Some(rewrite);
         }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_cos_product_telescoping_early",
-            &expr_sample,
-            || {
-                try_build_direct_cos_product_telescoping_equivalence_rewrite(
-                    ctx, lhs_core, rhs_core,
-                )
-            },
-        ) {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_dirichlet_early",
-            &expr_sample,
-            || try_build_direct_dirichlet_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
-        ) {
-            return Some(rewrite);
+        if has_direct_trig_core {
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_cos_product_telescoping_early",
+                &expr_sample,
+                || {
+                    try_build_direct_cos_product_telescoping_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_dirichlet_early",
+                &expr_sample,
+                || try_build_direct_dirichlet_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
+            ) {
+                return Some(rewrite);
+            }
         }
     }
 
-    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-        profiling,
-        "rule.direct_identity.try.zero_scope_dirichlet",
-        &expr_sample,
-        || try_build_exact_dirichlet_zero_scope_rewrite(ctx, expr),
-    ) {
-        return Some(rewrite);
+    if has_direct_trig_expr && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_dirichlet",
+            &expr_sample,
+            || try_build_exact_dirichlet_zero_scope_rewrite(ctx, expr),
+        ) {
+            return Some(rewrite);
+        }
     }
 
     if maybe_trig_square_zero_candidate(ctx, expr) {
@@ -13333,31 +13753,41 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         }
     }
 
-    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-        profiling,
-        "rule.direct_identity.try.zero_scope_cos_double_angle_poly",
-        &expr_sample,
-        || try_build_exact_zero_trig_cos_double_angle_polynomial_zero_scope_rewrite(ctx, expr),
-    ) {
-        return Some(rewrite);
+    if has_direct_trig_expr && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_cos_double_angle_poly",
+            &expr_sample,
+            || try_build_exact_zero_trig_cos_double_angle_polynomial_zero_scope_rewrite(ctx, expr),
+        ) {
+            return Some(rewrite);
+        }
     }
 
-    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-        profiling,
-        "rule.direct_identity.try.zero_scope_double_angle_cos_variant",
-        &expr_sample,
-        || try_build_exact_zero_trig_double_angle_cos_variant_zero_scope_rewrite(ctx, expr),
-    ) {
-        return Some(rewrite);
+    if has_direct_trig_expr && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_double_angle_cos_variant",
+            &expr_sample,
+            || try_build_exact_zero_trig_double_angle_cos_variant_zero_scope_rewrite(ctx, expr),
+        ) {
+            return Some(rewrite);
+        }
     }
 
-    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-        profiling,
-        "rule.direct_identity.try.zero_scope_mixed_double_angle_poly",
-        &expr_sample,
-        || try_build_exact_zero_trig_mixed_double_angle_polynomial_zero_scope_rewrite(ctx, expr),
-    ) {
-        return Some(rewrite);
+    if has_direct_trig_expr && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_mixed_double_angle_poly",
+            &expr_sample,
+            || {
+                try_build_exact_zero_trig_mixed_double_angle_polynomial_zero_scope_rewrite(
+                    ctx, expr,
+                )
+            },
+        ) {
+            return Some(rewrite);
+        }
     }
 
     if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
@@ -13369,19 +13799,20 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         return Some(rewrite);
     }
 
-    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-        profiling,
-        "rule.direct_identity.try.zero_scope_embedded_double_angle_factor",
-        &expr_sample,
-        || try_build_exact_zero_trig_embedded_double_angle_factor_zero_scope_rewrite(ctx, expr),
-    ) {
-        return Some(rewrite);
+    if has_direct_trig_expr && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.zero_scope_embedded_double_angle_factor",
+            &expr_sample,
+            || try_build_exact_zero_trig_embedded_double_angle_factor_zero_scope_rewrite(ctx, expr),
+        ) {
+            return Some(rewrite);
+        }
     }
 
     if let Some((lhs_core, rhs_core)) = two_term_cores {
-        if expr_contains_hyperbolic_builtin(ctx, lhs_core)
-            || expr_contains_hyperbolic_builtin(ctx, rhs_core)
-        {
+        let has_direct_trig_core = has_direct_trig_builtin_on_either_side(ctx, lhs_core, rhs_core);
+        if maybe_two_term_hyperbolic_direct_identity_candidate(ctx, lhs_core, rhs_core) {
             if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
                 profiling,
                 "rule.direct_identity.try.two_term_hyperbolic_direct_core_equivalence",
@@ -13391,96 +13822,87 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
                 return Some(rewrite);
             }
         }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_cos_diff_sin_diff_quotient",
-            &expr_sample,
-            || {
-                try_build_direct_trig_cos_diff_sin_diff_quotient_equivalence_rewrite(
-                    ctx, lhs_core, rhs_core,
-                )
-            },
-        ) {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_cos_product_telescoping_late",
-            &expr_sample,
-            || {
-                try_build_direct_cos_product_telescoping_equivalence_rewrite(
-                    ctx, lhs_core, rhs_core,
-                )
-            },
-        ) {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_dirichlet_late",
-            &expr_sample,
-            || try_build_direct_dirichlet_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
-        ) {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_double_angle_contraction",
-            &expr_sample,
-            || {
-                try_build_direct_trig_double_angle_contraction_equivalence_rewrite(
-                    ctx, lhs_core, rhs_core,
-                )
-            },
-        ) {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_double_angle_cos_variant",
-            &expr_sample,
-            || {
-                try_build_direct_trig_double_angle_cos_variant_equivalence_rewrite(
-                    ctx, lhs_core, rhs_core,
-                )
-            },
-        ) {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_embedded_double_angle_expansion",
-            &expr_sample,
-            || {
-                try_build_direct_trig_embedded_double_angle_expansion_equivalence_rewrite(
-                    ctx, lhs_core, rhs_core,
-                )
-            },
-        ) {
-            return Some(rewrite);
-        }
-        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-            profiling,
-            "rule.direct_identity.try.two_term_multi_angle",
-            &expr_sample,
-            || try_build_direct_multi_angle_equivalence_rewrite(ctx, lhs_core, rhs_core),
-        ) {
-            return Some(rewrite);
+        if has_direct_trig_core {
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_cos_diff_sin_diff_quotient",
+                &expr_sample,
+                || {
+                    try_build_direct_trig_cos_diff_sin_diff_quotient_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_cos_product_telescoping_late",
+                &expr_sample,
+                || {
+                    try_build_direct_cos_product_telescoping_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_dirichlet_late",
+                &expr_sample,
+                || try_build_direct_dirichlet_core_equivalence_rewrite(ctx, lhs_core, rhs_core),
+            ) {
+                return Some(rewrite);
+            }
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_double_angle_contraction",
+                &expr_sample,
+                || {
+                    try_build_direct_trig_double_angle_contraction_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_double_angle_cos_variant",
+                &expr_sample,
+                || {
+                    try_build_direct_trig_double_angle_cos_variant_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_embedded_double_angle_expansion",
+                &expr_sample,
+                || {
+                    try_build_direct_trig_embedded_double_angle_expansion_equivalence_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                },
+            ) {
+                return Some(rewrite);
+            }
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_multi_angle",
+                &expr_sample,
+                || try_build_direct_multi_angle_equivalence_rewrite(ctx, lhs_core, rhs_core),
+            ) {
+                return Some(rewrite);
+            }
         }
     }
 
-    if expr_contains_any_builtin(
-        ctx,
-        expr,
-        &[
-            BuiltinFn::Sin,
-            BuiltinFn::Cos,
-            BuiltinFn::Tan,
-            BuiltinFn::Cot,
-            BuiltinFn::Sec,
-            BuiltinFn::Csc,
-        ],
-    ) {
+    if maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr) {
         if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
             profiling,
             "rule.direct_identity.try.zero_scope_exact_trig_equivalence",
@@ -13555,7 +13977,7 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         }
     }
 
-    if expr_contains_hyperbolic_builtin(ctx, expr) {
+    if expr_contains_direct_hyperbolic_builtin(ctx, expr) {
         if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
             profiling,
             "rule.direct_identity.try.zero_scope_fast_hyperbolic",
@@ -13627,29 +14049,35 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         }
     }
 
-    if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-        profiling,
-        "rule.direct_identity.try.expand_log_product_power",
-        &expr_sample,
-        || {
-            let log_power_candidate =
-                ExpandLogProductPowerToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
-            try_rule(ctx, log_power_candidate)
-        },
-    ) {
-        return Some(rewrite);
+    if maybe_log_product_power_zero_candidate(ctx, expr) {
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.expand_log_product_power",
+            &expr_sample,
+            || {
+                let log_power_candidate =
+                    ExpandLogProductPowerToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+                try_rule(ctx, log_power_candidate)
+            },
+        ) {
+            return Some(rewrite);
+        }
     }
 
-    run_profiled_exact_zero_direct_identity_probe(
-        profiling,
-        "rule.direct_identity.try.expand_log_abs_mul_div",
-        &expr_sample,
-        || {
-            let log_abs_candidate =
-                ExpandLogAbsMulDivToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
-            try_rule(ctx, log_abs_candidate)
-        },
-    )
+    if maybe_log_abs_mul_div_zero_candidate(ctx, expr) {
+        run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.expand_log_abs_mul_div",
+            &expr_sample,
+            || {
+                let log_abs_candidate =
+                    ExpandLogAbsMulDivToEnableCancellationRule.apply(ctx, expr, &parent_ctx);
+                try_rule(ctx, log_abs_candidate)
+            },
+        )
+    } else {
+        None
+    }
 }
 
 fn try_build_exact_zero_identity_rewrite(
@@ -13930,6 +14358,18 @@ fn strip_single_additive_zero_term(
     }
 
     Some(build_signed_sum_expr(ctx, &remaining))
+}
+
+fn additive_scope_contains_zero_term(ctx: &mut cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() < 2 {
+        return false;
+    }
+
+    let zero = ctx.num(0);
+    terms
+        .into_iter()
+        .any(|(term_expr, _term_sign)| compare_expr(ctx, term_expr, zero) == Ordering::Equal)
 }
 
 fn try_build_stripped_zero_log_identity_child_rewrite(
@@ -14733,6 +15173,101 @@ fn try_build_exact_dirichlet_zero_scope_rewrite(
             crate::ImplicitCondition::NonZero(build_dirichlet_nonzero_condition_expr(ctx, result)),
         ),
     )
+}
+
+fn maybe_shifted_quotient_exact_zero_direct_residual_candidate(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let term_count = AddView::from_expr(ctx, expr).terms.len();
+    if !(2..=4).contains(&term_count) {
+        return false;
+    }
+
+    expr_contains_division_node(ctx, expr)
+        || expr_contains_sqrt_or_half_power(ctx, expr)
+        || expr_contains_factorial_call(ctx, expr)
+        || expr_contains_any_builtin(
+            ctx,
+            expr,
+            &[
+                BuiltinFn::Sin,
+                BuiltinFn::Cos,
+                BuiltinFn::Tan,
+                BuiltinFn::Sec,
+                BuiltinFn::Csc,
+                BuiltinFn::Cot,
+                BuiltinFn::Asin,
+                BuiltinFn::Acos,
+                BuiltinFn::Atan,
+                BuiltinFn::Asec,
+                BuiltinFn::Acsc,
+                BuiltinFn::Acot,
+                BuiltinFn::Arcsin,
+                BuiltinFn::Arccos,
+                BuiltinFn::Arctan,
+                BuiltinFn::Arcsec,
+                BuiltinFn::Arccsc,
+                BuiltinFn::Arccot,
+                BuiltinFn::Sinh,
+                BuiltinFn::Cosh,
+                BuiltinFn::Tanh,
+                BuiltinFn::Asinh,
+                BuiltinFn::Acosh,
+                BuiltinFn::Atanh,
+                BuiltinFn::Ln,
+                BuiltinFn::Log,
+                BuiltinFn::Log2,
+                BuiltinFn::Log10,
+                BuiltinFn::Exp,
+                BuiltinFn::Sqrt,
+                BuiltinFn::Cbrt,
+                BuiltinFn::Root,
+                BuiltinFn::Abs,
+            ],
+        )
+}
+
+fn matches_shifted_quotient_exact_zero_direct_residual_trig_power_reduction_target(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return false;
+    };
+
+    matches!(ctx.get(*numerator), Expr::Add(_, _) | Expr::Sub(_, _))
+        && matches!(ctx.get(*denominator), Expr::Number(_))
+}
+
+fn matches_shifted_quotient_exact_zero_direct_residual_trig_power_reduction_pair(
+    ctx: &cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> bool {
+    [(lhs_core, rhs_core), (rhs_core, lhs_core)]
+        .into_iter()
+        .any(|(power_side, target_side)| {
+            (extract_scaled_trig_even_power_for_cancellation(ctx, power_side).is_some()
+                || extract_trig_square_product_same_arg_for_cancellation(ctx, power_side).is_some())
+                && matches_shifted_quotient_exact_zero_direct_residual_trig_power_reduction_target(
+                    ctx,
+                    target_side,
+                )
+        })
+}
+
+fn maybe_shifted_quotient_exact_zero_direct_residual_route_candidate(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+    residual_expr: cas_ast::ExprId,
+) -> bool {
+    maybe_shifted_quotient_exact_zero_direct_residual_candidate(ctx, residual_expr)
+        && (expr_contains_hyperbolic_builtin(ctx, residual_expr)
+            || matches_shifted_quotient_exact_zero_direct_residual_trig_power_reduction_pair(
+                ctx, lhs_core, rhs_core,
+            ))
 }
 
 fn try_build_direct_dirichlet_core_equivalence_rewrite(
@@ -16105,6 +16640,21 @@ fn try_build_small_symbolic_root_denesting_zero_core_rewrite(
     None
 }
 
+pub(crate) fn matches_direct_symbolic_root_denesting_zero_identity(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() != 2 || !view.terms.iter().any(|(_, sign)| *sign == Sign::Neg) {
+        return false;
+    }
+    if !expr_contains_sqrt_or_half_power(ctx, expr) {
+        return false;
+    }
+
+    try_build_small_symbolic_root_denesting_zero_core_rewrite(ctx, expr).is_some()
+}
+
 fn build_square_preserving_one(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -16569,10 +17119,10 @@ fn try_build_direct_fraction_telescoping_zero_scope_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
-    let view = AddView::from_expr(ctx, expr);
-    if view.terms.len() != 3 || !expr_contains_division_node(ctx, expr) {
+    if !maybe_fraction_telescoping_zero_scope_candidate(ctx, expr) {
         return None;
     }
+    let view = AddView::from_expr(ctx, expr);
 
     let one = ctx.num(1);
     let positive_terms: Vec<_> = view
@@ -16905,7 +17455,7 @@ fn try_rewrite_symbolic_difference_squares_telescoping_for_cancellation(
     None
 }
 
-fn try_build_direct_sub_fraction_combination_equivalence_rewrite(
+pub(crate) fn try_build_direct_sub_fraction_combination_equivalence_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
     rhs_core: cas_ast::ExprId,
@@ -17316,7 +17866,7 @@ fn try_build_direct_recursive_trig_equivalence_rewrite(
     None
 }
 
-fn try_build_direct_sum_diff_cubes_quotient_equivalence_rewrite(
+pub(crate) fn try_build_direct_sum_diff_cubes_quotient_equivalence_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
     rhs_core: cas_ast::ExprId,
@@ -17371,6 +17921,24 @@ fn try_rewrite_safe_direct_hyperbolic_equivalence_for_cancellation(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<(cas_ast::ExprId, &'static str)> {
+    let has_direct_hyperbolic = expr_contains_direct_hyperbolic_builtin(ctx, expr);
+
+    if let Some(rewritten) =
+        try_rewrite_atanh_square_ratio_log_equivalence_for_cancellation(ctx, expr)
+    {
+        return Some((rewritten, "Inverse Hyperbolic Log Definition"));
+    }
+
+    if let Some(rewritten) = try_rewrite_atanh_ln_definition_for_cancellation(ctx, expr) {
+        return Some((rewritten, "Inverse Hyperbolic Log Definition"));
+    }
+
+    // If the expression only contains inverse-hyperbolic structure, the reusable
+    // cancellation routes in this helper stop at the atanh/log definitions above.
+    if !has_direct_hyperbolic {
+        return None;
+    }
+
     if let Some(rewrite) = try_rewrite_hyperbolic_half_angle_squares_expr(ctx, expr) {
         return Some((rewrite.rewritten, "Hyperbolic Half-Angle Squares"));
     }
@@ -17381,16 +17949,6 @@ fn try_rewrite_safe_direct_hyperbolic_equivalence_for_cancellation(
 
     if let Some(rewritten) = try_rewrite_sinh_cosh_exp_definition_for_cancellation(ctx, expr) {
         return Some((rewritten, "Recognize Hyperbolic from Exponential"));
-    }
-
-    if let Some(rewritten) =
-        try_rewrite_atanh_square_ratio_log_equivalence_for_cancellation(ctx, expr)
-    {
-        return Some((rewritten, "Inverse Hyperbolic Log Definition"));
-    }
-
-    if let Some(rewritten) = try_rewrite_atanh_ln_definition_for_cancellation(ctx, expr) {
-        return Some((rewritten, "Inverse Hyperbolic Log Definition"));
     }
 
     if let Some(rewrite) =
@@ -17463,6 +18021,7 @@ fn try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
     lhs_core: cas_ast::ExprId,
     rhs_core: cas_ast::ExprId,
 ) -> Option<Rewrite> {
+    let nested_default_simplify = default_simplify_nesting_depth() > 0;
     if !expr_contains_hyperbolic_builtin(ctx, lhs_core)
         && !expr_contains_hyperbolic_builtin(ctx, rhs_core)
     {
@@ -17470,6 +18029,19 @@ fn try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
     }
 
     for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let source_has_direct_hyperbolic = expr_contains_direct_hyperbolic_builtin(ctx, source);
+        let source_has_atanh = expr_contains_any_builtin(ctx, source, &[BuiltinFn::Atanh]);
+        if source_has_atanh
+            && !source_has_direct_hyperbolic
+            && !expr_contains_any_builtin(
+                ctx,
+                target,
+                &[BuiltinFn::Ln, BuiltinFn::Log, BuiltinFn::Log10],
+            )
+        {
+            continue;
+        }
+
         let Some((rewritten, description)) =
             try_rewrite_safe_direct_hyperbolic_equivalence_for_cancellation(ctx, source)
         else {
@@ -17477,7 +18049,8 @@ fn try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
         };
 
         if exprs_match_for_cancellation(ctx, rewritten, target)
-            || exprs_match_after_default_simplify(ctx, rewritten, target)
+            || (!nested_default_simplify
+                && exprs_match_after_default_simplify(ctx, rewritten, target))
         {
             return Some(Rewrite::with_local(
                 ctx.num(0),
@@ -17700,6 +18273,16 @@ fn try_build_direct_core_equivalence_rewrite(
                 run_profiled_orchestrator_option_section(label, pair_sample.clone(), || Some(()));
         }
     };
+
+    if exprs_match_shallow_noncall_for_cancellation(ctx, lhs_core, rhs_core) {
+        profile_route("rule.direct_core_equivalence.route.direct_match");
+        return Some(Rewrite::with_local(
+            ctx.num(0),
+            "Equivalent Residual Cancellation",
+            lhs_core,
+            rhs_core,
+        ));
+    }
 
     if let Some(rewrite) =
         try_build_direct_tanh_exp_definition_equivalence_rewrite(ctx, lhs_core, rhs_core)
@@ -18091,6 +18674,35 @@ fn try_build_direct_core_equivalence_rewrite(
     {
         profile_route("rule.direct_core_equivalence.route.default_simplify_hyperbolic_pair_reject");
         return None;
+    }
+
+    if has_hyperbolic_core {
+        if let Some((rewritten, description)) =
+            try_rewrite_exact_hyperbolic_equivalence_for_cancellation(ctx, lhs_core)
+        {
+            if exprs_match_for_cancellation(ctx, rewritten, rhs_core) {
+                profile_route("rule.direct_core_equivalence.route.hyperbolic_exact_pre_default");
+                return Some(Rewrite::with_local(
+                    ctx.num(0),
+                    description,
+                    lhs_core,
+                    rhs_core,
+                ));
+            }
+        }
+        if let Some((rewritten, description)) =
+            try_rewrite_exact_hyperbolic_equivalence_for_cancellation(ctx, rhs_core)
+        {
+            if exprs_match_for_cancellation(ctx, rewritten, lhs_core) {
+                profile_route("rule.direct_core_equivalence.route.hyperbolic_exact_pre_default");
+                return Some(Rewrite::with_local(
+                    ctx.num(0),
+                    description,
+                    lhs_core,
+                    rhs_core,
+                ));
+            }
+        }
     }
 
     let default_simplify_match = if profiling {
@@ -22055,6 +22667,39 @@ fn run_profiled_shifted_quotient_exact_one_route(
     }
 }
 
+fn try_build_shifted_quotient_sinh_cosh_exp_definition_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    for (direct_side, exp_definition_side) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        if !expr_contains_any_builtin(ctx, direct_side, &[BuiltinFn::Sinh, BuiltinFn::Cosh])
+            || !contains_division_like_term(ctx, exp_definition_side)
+        {
+            continue;
+        }
+
+        let Some(rewritten) =
+            try_rewrite_sinh_cosh_exp_definition_for_cancellation(ctx, exp_definition_side)
+        else {
+            continue;
+        };
+
+        if exprs_match_for_cancellation(ctx, direct_side, rewritten)
+            || exprs_match_after_default_simplify(ctx, direct_side, rewritten)
+        {
+            return Some(Rewrite::with_local(
+                ctx.num(0),
+                "Recognize Hyperbolic from Exponential",
+                lhs_core,
+                rhs_core,
+            ));
+        }
+    }
+
+    None
+}
+
 fn try_build_shifted_quotient_exact_one_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -22136,6 +22781,21 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             pair_sample.clone(),
         );
     }
+    let maybe_tanh_exp_pair =
+        maybe_two_term_tanh_exp_equivalence_candidate(ctx, numerator_core, denominator_core);
+    let maybe_hyperbolic_direct_pair = maybe_two_term_hyperbolic_direct_core_equivalence_candidate(
+        ctx,
+        numerator_core,
+        denominator_core,
+    );
+    let maybe_sinh_cosh_exp_definition_pair =
+        (expr_contains_any_builtin(ctx, numerator_core, &[BuiltinFn::Sinh, BuiltinFn::Cosh])
+            && contains_division_like_term(ctx, denominator_core))
+            || (expr_contains_any_builtin(
+                ctx,
+                denominator_core,
+                &[BuiltinFn::Sinh, BuiltinFn::Cosh],
+            ) && contains_division_like_term(ctx, numerator_core));
 
     if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
         profiling,
@@ -22157,25 +22817,27 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             child_rewrite,
         ));
     }
-    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
-        profiling,
-        "rule.shifted_quotient.exact_one.try.tanh_exp",
-        &pair_sample,
-        || {
-            try_build_direct_tanh_exp_definition_equivalence_rewrite(
+    if maybe_tanh_exp_pair {
+        if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.tanh_exp",
+            &pair_sample,
+            || {
+                try_build_direct_tanh_exp_definition_equivalence_rewrite(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                )
+            },
+        ) {
+            profile_route("rule.shifted_quotient.exact_one.route.tanh_exp");
+            return Some(build_shifted_quotient_exact_one_rewrite(
                 ctx,
-                numerator_core,
-                denominator_core,
-            )
-        },
-    ) {
-        profile_route("rule.shifted_quotient.exact_one.route.tanh_exp");
-        return Some(build_shifted_quotient_exact_one_rewrite(
-            ctx,
-            numerator,
-            denominator,
-            child_rewrite,
-        ));
+                numerator,
+                denominator,
+                child_rewrite,
+            ));
+        }
     }
     if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
         profiling,
@@ -22265,27 +22927,68 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             child_rewrite,
         ));
     }
-    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
-        profiling,
-        "rule.shifted_quotient.exact_one.try.safe_hyperbolic",
-        &pair_sample,
-        || {
-            try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
+    if maybe_hyperbolic_direct_pair {
+        if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.safe_hyperbolic",
+            &pair_sample,
+            || {
+                try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                )
+            },
+        ) {
+            profile_route("rule.shifted_quotient.exact_one.route.safe_hyperbolic");
+            return Some(build_shifted_quotient_exact_one_rewrite(
+                ctx,
+                numerator,
+                denominator,
+                child_rewrite,
+            ));
+        }
+    }
+    if maybe_sinh_cosh_exp_definition_pair {
+        if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.sinh_cosh_exp_definition",
+            &pair_sample,
+            || {
+                try_build_shifted_quotient_sinh_cosh_exp_definition_rewrite(
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                )
+            },
+        ) {
+            profile_route("rule.shifted_quotient.exact_one.route.sinh_cosh_exp_definition");
+            profile_shifted_quotient_exact_one_route_pair_family(
+                "sinh_cosh_exp_definition",
                 ctx,
                 numerator_core,
                 denominator_core,
-            )
-        },
-    ) {
-        profile_route("rule.shifted_quotient.exact_one.route.safe_hyperbolic");
-        return Some(build_shifted_quotient_exact_one_rewrite(
-            ctx,
-            numerator,
-            denominator,
-            child_rewrite,
-        ));
+                pair_sample.clone(),
+            );
+            return Some(build_shifted_quotient_exact_one_rewrite(
+                ctx,
+                numerator,
+                denominator,
+                child_rewrite,
+            ));
+        }
     }
     let residual_difference = ctx.add(Expr::Sub(numerator_core, denominator_core));
+    let residual_contains_log_or_abs = expr_contains_any_builtin(
+        ctx,
+        residual_difference,
+        &[
+            BuiltinFn::Ln,
+            BuiltinFn::Log,
+            BuiltinFn::Log10,
+            BuiltinFn::Abs,
+        ],
+    );
     if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
         profiling,
         "rule.shifted_quotient.exact_one.try.repeated_phase_shift_residual",
@@ -22321,185 +23024,234 @@ fn try_build_shifted_quotient_exact_one_rewrite(
             child_rewrite,
         ));
     }
-    if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
-        profiling,
-        "rule.shifted_quotient.exact_one.try.exact_zero_direct_residual",
-        &pair_sample,
-        || try_build_exact_zero_identity_rewrite_direct(ctx, residual_difference),
+    if maybe_shifted_quotient_exact_zero_direct_residual_route_candidate(
+        ctx,
+        numerator_core,
+        denominator_core,
+        residual_difference,
     ) {
-        let zero = ctx.num(0);
-        if compare_expr(ctx, child_rewrite.final_expr(), zero) == Ordering::Equal {
-            profile_route("rule.shifted_quotient.exact_one.route.exact_zero_direct_residual");
-            profile_shifted_quotient_exact_one_route_pair_family(
-                "exact_zero_direct_residual",
-                ctx,
-                numerator_core,
-                denominator_core,
-                pair_sample.clone(),
-            );
-            return Some(build_shifted_quotient_exact_one_rewrite(
-                ctx,
-                numerator,
-                denominator,
-                child_rewrite,
-            ));
+        if let Some(child_rewrite) = run_profiled_shifted_quotient_exact_one_route(
+            profiling,
+            "rule.shifted_quotient.exact_one.try.exact_zero_direct_residual",
+            &pair_sample,
+            || try_build_exact_zero_identity_rewrite_direct(ctx, residual_difference),
+        ) {
+            let zero = ctx.num(0);
+            if compare_expr(ctx, child_rewrite.final_expr(), zero) == Ordering::Equal {
+                profile_route("rule.shifted_quotient.exact_one.route.exact_zero_direct_residual");
+                profile_shifted_quotient_exact_one_route_pair_family(
+                    "exact_zero_direct_residual",
+                    ctx,
+                    numerator_core,
+                    denominator_core,
+                    pair_sample.clone(),
+                );
+                return Some(build_shifted_quotient_exact_one_rewrite(
+                    ctx,
+                    numerator,
+                    denominator,
+                    child_rewrite,
+                ));
+            }
         }
     }
-    let residual_child_rewrite = run_profiled_shifted_quotient_exact_one_route(
-        profiling,
-        "rule.shifted_quotient.exact_one.try.stripped_zero_log_residual",
-        &pair_sample,
-        || try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_difference),
-    )
-    .inspect(|_| {
-        profile_route("rule.shifted_quotient.exact_one.route.stripped_zero_log_residual");
-    })
-    .or_else(|| {
-        run_profiled_shifted_quotient_exact_one_route(
-            profiling,
-            "rule.shifted_quotient.exact_one.try.fast_multiterm_hyperbolic_residual",
-            &pair_sample,
-            || try_build_fast_multiterm_hyperbolic_residual_child_rewrite(ctx, residual_difference),
-        )
-        .inspect(|_| {
-            profile_route(
-                "rule.shifted_quotient.exact_one.route.fast_multiterm_hyperbolic_residual",
-            );
+    let residual_contains_strippable_zero_term =
+        residual_contains_log_or_abs && additive_scope_contains_zero_term(ctx, residual_difference);
+    let residual_child_rewrite = residual_contains_strippable_zero_term
+        .then(|| {
+            run_profiled_shifted_quotient_exact_one_route(
+                profiling,
+                "rule.shifted_quotient.exact_one.try.stripped_zero_log_residual",
+                &pair_sample,
+                || try_build_stripped_zero_log_identity_child_rewrite(ctx, residual_difference),
+            )
+            .inspect(|_| {
+                profile_route("rule.shifted_quotient.exact_one.route.stripped_zero_log_residual");
+            })
         })
-    })
-    .or_else(|| {
-        run_profiled_shifted_quotient_exact_one_route(
-            profiling,
-            "rule.shifted_quotient.exact_one.try.safe_hyperbolic_residual_pair",
-            &pair_sample,
-            || {
-                try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
+        .flatten()
+        .or_else(|| {
+            run_profiled_shifted_quotient_exact_one_route(
+                profiling,
+                "rule.shifted_quotient.exact_one.try.fast_multiterm_hyperbolic_residual",
+                &pair_sample,
+                || {
+                    try_build_fast_multiterm_hyperbolic_residual_child_rewrite(
+                        ctx,
+                        residual_difference,
+                    )
+                },
+            )
+            .inspect(|_| {
+                profile_route(
+                    "rule.shifted_quotient.exact_one.route.fast_multiterm_hyperbolic_residual",
+                );
+            })
+        })
+        .or_else(|| {
+            maybe_hyperbolic_direct_pair
+                .then(|| {
+                    run_profiled_shifted_quotient_exact_one_route(
+                        profiling,
+                        "rule.shifted_quotient.exact_one.try.safe_hyperbolic_residual_pair",
+                        &pair_sample,
+                        || {
+                            try_build_direct_safe_hyperbolic_core_equivalence_rewrite(
+                                ctx,
+                                numerator_core,
+                                denominator_core,
+                            )
+                        },
+                    )
+                    .inspect(|_| {
+                        profile_route(
+                            "rule.shifted_quotient.exact_one.route.safe_hyperbolic_residual_pair",
+                        );
+                    })
+                })
+                .flatten()
+        })
+        .or_else(|| {
+            run_profiled_shifted_quotient_exact_one_route(
+                profiling,
+                "rule.shifted_quotient.exact_one.try.fast_trig_residual",
+                &pair_sample,
+                || try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_difference),
+            )
+            .inspect(|_| {
+                profile_route("rule.shifted_quotient.exact_one.route.fast_trig_residual");
+            })
+        })
+        .or_else(|| {
+            run_profiled_shifted_quotient_exact_one_route(
+                profiling,
+                "rule.shifted_quotient.exact_one.try.fast_small_polynomial_residual",
+                &pair_sample,
+                || try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_difference),
+            )
+            .inspect(|_| {
+                profile_route(
+                    "rule.shifted_quotient.exact_one.route.fast_small_polynomial_residual",
+                );
+            })
+        })
+        .or_else(|| {
+            run_profiled_shifted_quotient_exact_one_route(
+                profiling,
+                "rule.shifted_quotient.exact_one.try.power_merge_residual_narrow",
+                &pair_sample,
+                || {
+                    try_build_shifted_quotient_power_merge_residual_rewrite(
+                        ctx,
+                        numerator_core,
+                        denominator_core,
+                    )
+                },
+            )
+            .inspect(|_| {
+                profile_route("rule.shifted_quotient.exact_one.route.power_merge_residual_narrow");
+            })
+        })
+        .or_else(|| {
+            run_profiled_shifted_quotient_exact_one_route(
+                profiling,
+                "rule.shifted_quotient.exact_one.try.cancel_common_factors_residual_narrow",
+                &pair_sample,
+                || {
+                    try_build_shifted_quotient_cancel_common_factors_residual_rewrite(
+                        ctx,
+                        numerator_core,
+                        denominator_core,
+                    )
+                },
+            )
+            .inspect(|_| {
+                profile_route(
+                    "rule.shifted_quotient.exact_one.route.cancel_common_factors_residual_narrow",
+                );
+            })
+        })
+        .or_else(|| {
+            run_profiled_shifted_quotient_exact_one_route(
+                profiling,
+                "rule.shifted_quotient.exact_one.try.fraction_combine_residual_narrow",
+                &pair_sample,
+                || {
+                    try_build_shifted_quotient_fraction_combine_residual_rewrite(
+                        ctx,
+                        numerator_core,
+                        denominator_core,
+                    )
+                },
+            )
+            .inspect(|_| {
+                profile_route(
+                    "rule.shifted_quotient.exact_one.route.fraction_combine_residual_narrow",
+                );
+            })
+        })
+        .or_else(|| {
+            run_profiled_shifted_quotient_exact_one_route(
+                profiling,
+                "rule.shifted_quotient.exact_one.try.nested_fraction_residual_narrow",
+                &pair_sample,
+                || {
+                    try_build_shifted_quotient_nested_fraction_residual_rewrite(
+                        ctx,
+                        numerator_core,
+                        denominator_core,
+                    )
+                },
+            )
+            .inspect(|_| {
+                profile_route(
+                    "rule.shifted_quotient.exact_one.route.nested_fraction_residual_narrow",
+                );
+            })
+        })
+        .or_else(|| {
+            run_profiled_shifted_quotient_exact_one_route(
+                profiling,
+                "rule.shifted_quotient.exact_one.try.fraction_decompose_residual_narrow",
+                &pair_sample,
+                || {
+                    try_build_shifted_quotient_fraction_decompose_residual_rewrite(
+                        ctx,
+                        numerator_core,
+                        denominator_core,
+                    )
+                },
+            )
+            .inspect(|_| {
+                profile_route(
+                    "rule.shifted_quotient.exact_one.route.fraction_decompose_residual_narrow",
+                );
+            })
+        })
+        .or_else(|| {
+            run_profiled_shifted_quotient_exact_one_route(
+                profiling,
+                "rule.shifted_quotient.exact_one.try.direct_core_equivalence",
+                &pair_sample,
+                || try_build_direct_core_equivalence_rewrite(ctx, numerator_core, denominator_core),
+            )
+            .inspect(|_| {
+                profile_route("rule.shifted_quotient.exact_one.route.direct_core_equivalence");
+                profile_shifted_quotient_exact_one_direct_core_equivalence_family(
                     ctx,
                     numerator_core,
                     denominator_core,
-                )
-            },
-        )
-        .inspect(|_| {
-            profile_route("rule.shifted_quotient.exact_one.route.safe_hyperbolic_residual_pair");
-        })
-    })
-    .or_else(|| {
-        run_profiled_shifted_quotient_exact_one_route(
-            profiling,
-            "rule.shifted_quotient.exact_one.try.fast_trig_residual",
-            &pair_sample,
-            || try_build_fast_trig_residual_identity_child_rewrite(ctx, residual_difference),
-        )
-        .inspect(|_| {
-            profile_route("rule.shifted_quotient.exact_one.route.fast_trig_residual");
-        })
-    })
-    .or_else(|| {
-        run_profiled_shifted_quotient_exact_one_route(
-            profiling,
-            "rule.shifted_quotient.exact_one.try.fast_small_polynomial_residual",
-            &pair_sample,
-            || try_build_fast_small_polynomial_residual_child_rewrite(ctx, residual_difference),
-        )
-        .inspect(|_| {
-            profile_route("rule.shifted_quotient.exact_one.route.fast_small_polynomial_residual");
-        })
-    })
-    .or_else(|| {
-        run_profiled_shifted_quotient_exact_one_route(
-            profiling,
-            "rule.shifted_quotient.exact_one.try.power_merge_residual_narrow",
-            &pair_sample,
-            || {
-                try_build_shifted_quotient_power_merge_residual_rewrite(
+                    pair_sample.clone(),
+                );
+                profile_shifted_quotient_exact_one_route_pair_family(
+                    "direct_core_equivalence",
                     ctx,
                     numerator_core,
                     denominator_core,
-                )
-            },
-        )
-        .inspect(|_| {
-            profile_route("rule.shifted_quotient.exact_one.route.power_merge_residual_narrow");
-        })
-    })
-    .or_else(|| {
-        run_profiled_shifted_quotient_exact_one_route(
-            profiling,
-            "rule.shifted_quotient.exact_one.try.fraction_combine_residual_narrow",
-            &pair_sample,
-            || {
-                try_build_shifted_quotient_fraction_combine_residual_rewrite(
-                    ctx,
-                    numerator_core,
-                    denominator_core,
-                )
-            },
-        )
-        .inspect(|_| {
-            profile_route("rule.shifted_quotient.exact_one.route.fraction_combine_residual_narrow");
-        })
-    })
-    .or_else(|| {
-        run_profiled_shifted_quotient_exact_one_route(
-            profiling,
-            "rule.shifted_quotient.exact_one.try.nested_fraction_residual_narrow",
-            &pair_sample,
-            || {
-                try_build_shifted_quotient_nested_fraction_residual_rewrite(
-                    ctx,
-                    numerator_core,
-                    denominator_core,
-                )
-            },
-        )
-        .inspect(|_| {
-            profile_route("rule.shifted_quotient.exact_one.route.nested_fraction_residual_narrow");
-        })
-    })
-    .or_else(|| {
-        run_profiled_shifted_quotient_exact_one_route(
-            profiling,
-            "rule.shifted_quotient.exact_one.try.fraction_decompose_residual_narrow",
-            &pair_sample,
-            || {
-                try_build_shifted_quotient_fraction_decompose_residual_rewrite(
-                    ctx,
-                    numerator_core,
-                    denominator_core,
-                )
-            },
-        )
-        .inspect(|_| {
-            profile_route(
-                "rule.shifted_quotient.exact_one.route.fraction_decompose_residual_narrow",
-            );
-        })
-    })
-    .or_else(|| {
-        run_profiled_shifted_quotient_exact_one_route(
-            profiling,
-            "rule.shifted_quotient.exact_one.try.direct_core_equivalence",
-            &pair_sample,
-            || try_build_direct_core_equivalence_rewrite(ctx, numerator_core, denominator_core),
-        )
-        .inspect(|_| {
-            profile_route("rule.shifted_quotient.exact_one.route.direct_core_equivalence");
-            profile_shifted_quotient_exact_one_direct_core_equivalence_family(
-                ctx,
-                numerator_core,
-                denominator_core,
-                pair_sample.clone(),
-            );
-            profile_shifted_quotient_exact_one_route_pair_family(
-                "direct_core_equivalence",
-                ctx,
-                numerator_core,
-                denominator_core,
-                pair_sample.clone(),
-            );
-        })
-    });
+                    pair_sample.clone(),
+                );
+            })
+        });
     if let Some(child_rewrite) = residual_child_rewrite {
         return Some(build_shifted_quotient_exact_one_rewrite(
             ctx,
@@ -22565,6 +23317,16 @@ fn try_build_shifted_quotient_power_merge_residual_rewrite(
     None
 }
 
+fn try_build_shifted_quotient_cancel_common_factors_residual_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    try_rewrite_shifted_quotient_cancel_common_factors_source(ctx, lhs_core, rhs_core).or_else(
+        || try_rewrite_shifted_quotient_cancel_common_factors_source(ctx, rhs_core, lhs_core),
+    )
+}
+
 fn try_build_shifted_quotient_fraction_combine_residual_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
@@ -22582,6 +23344,74 @@ fn try_build_shifted_quotient_fraction_combine_residual_rewrite(
     }
 
     None
+}
+
+fn try_rewrite_shifted_quotient_cancel_common_factors_source(
+    ctx: &mut cas_ast::Context,
+    source_expr: cas_ast::ExprId,
+    target_expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let Expr::Div(source_num, source_den) = ctx.get(source_expr).clone() else {
+        return None;
+    };
+
+    if expr_contains_any_function_call(ctx, source_expr)
+        || expr_contains_any_function_call(ctx, target_expr)
+        || matches!(ctx.get(source_num), Expr::Add(_, _) | Expr::Sub(_, _))
+        || matches!(ctx.get(source_den), Expr::Add(_, _) | Expr::Sub(_, _))
+        || matches!(ctx.get(target_expr), Expr::Add(_, _) | Expr::Sub(_, _))
+        || contains_division_like_term(ctx, source_num)
+        || contains_division_like_term(ctx, source_den)
+    {
+        return None;
+    }
+
+    let rewrite_match = cas_math::fraction_factors::try_rewrite_cancel_common_factors_expr_with(
+        ctx,
+        source_expr,
+        |ctx, nonzero_base, emit_assumption| {
+            if is_zero_expr(ctx, nonzero_base) {
+                return cas_math::fraction_factors::CancelCommonFactorsGate {
+                    allow: false,
+                    assumed: false,
+                };
+            }
+
+            cas_math::fraction_factors::CancelCommonFactorsGate {
+                allow: true,
+                assumed: emit_assumption,
+            }
+        },
+    )?;
+
+    let rewritten = rewrite_match.rewritten;
+    let residual = ctx.add(Expr::Sub(rewritten, target_expr));
+    if !(exprs_match_for_cancellation(ctx, rewritten, target_expr)
+        || exprs_match_after_default_simplify(ctx, rewritten, target_expr)
+        || is_zero_after_default_simplify(ctx, residual))
+    {
+        return None;
+    }
+
+    let mut rewrite = Rewrite::with_local(
+        ctx.num(0),
+        "Equivalent Residual Cancellation",
+        source_expr,
+        target_expr,
+    );
+    let mut seen_nonzero_targets: Vec<cas_ast::ExprId> = Vec::new();
+    for nonzero_target in rewrite_match.assumed_nonzero_targets {
+        if seen_nonzero_targets
+            .iter()
+            .any(|existing| compare_expr(ctx, *existing, nonzero_target) == Ordering::Equal)
+        {
+            continue;
+        }
+        seen_nonzero_targets.push(nonzero_target);
+        rewrite = rewrite.requires(crate::ImplicitCondition::NonZero(nonzero_target));
+    }
+
+    Some(rewrite)
 }
 
 fn try_build_shifted_quotient_nested_fraction_residual_rewrite(
@@ -22956,7 +23786,7 @@ fn extract_shifted_quotient_power_merge_target(
         return None;
     };
 
-    if !expr_contains_symbolic_atom_for_cancellation(ctx, *base) {
+    if !power_merge_base_supported_for_cancellation(ctx, *base) {
         return None;
     }
 
@@ -22967,6 +23797,67 @@ fn extract_shifted_quotient_power_merge_source(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    if let Expr::Div(numerator, denominator) = ctx.get(expr).clone() {
+        let numerator_factors: smallvec::SmallVec<[cas_ast::ExprId; 4]> =
+            if cas_math::expr_predicates::is_one_expr(ctx, numerator) {
+                smallvec::SmallVec::new()
+            } else {
+                flatten_mul_chain(ctx, numerator).into_iter().collect()
+            };
+        let denominator_factors: smallvec::SmallVec<[cas_ast::ExprId; 4]> =
+            if cas_math::expr_predicates::is_one_expr(ctx, denominator) {
+                smallvec::SmallVec::new()
+            } else {
+                flatten_mul_chain(ctx, denominator).into_iter().collect()
+            };
+        let total_factor_count = numerator_factors.len() + denominator_factors.len();
+        if !(1..=2).contains(&total_factor_count) {
+            return None;
+        }
+
+        let mut combined_base = None;
+        let mut combined_exp = None;
+        for factor in numerator_factors {
+            let (factor_base, factor_exp) =
+                extract_shifted_quotient_power_merge_factor(ctx, factor)?;
+            if let Some(existing_base) = combined_base {
+                if compare_expr(ctx, existing_base, factor_base) != Ordering::Equal {
+                    return None;
+                }
+            } else {
+                combined_base = Some(factor_base);
+            }
+
+            combined_exp = Some(match combined_exp {
+                Some(current_exp) => {
+                    cas_math::exponents_support::add_exp(ctx, current_exp, factor_exp)
+                }
+                None => factor_exp,
+            });
+        }
+        for factor in denominator_factors {
+            let (factor_base, factor_exp) =
+                extract_shifted_quotient_power_merge_factor(ctx, factor)?;
+            if let Some(existing_base) = combined_base {
+                if compare_expr(ctx, existing_base, factor_base) != Ordering::Equal {
+                    return None;
+                }
+            } else {
+                combined_base = Some(factor_base);
+            }
+
+            let neg_factor_exp = ctx.add(Expr::Neg(factor_exp));
+            combined_exp = Some(match combined_exp {
+                Some(current_exp) => {
+                    cas_math::exponents_support::add_exp(ctx, current_exp, neg_factor_exp)
+                }
+                None => neg_factor_exp,
+            });
+        }
+
+        return Some((combined_base?, combined_exp?));
+    }
+
     let factors = flatten_mul_chain(ctx, expr);
     if factors.len() != 2 {
         return None;
@@ -22976,7 +23867,7 @@ fn extract_shifted_quotient_power_merge_source(
     let (rhs_base, rhs_exp) = extract_shifted_quotient_power_merge_factor(ctx, factors[1])?;
 
     if compare_expr(ctx, lhs_base, rhs_base) != Ordering::Equal
-        || !expr_contains_symbolic_atom_for_cancellation(ctx, lhs_base)
+        || !power_merge_base_supported_for_cancellation(ctx, lhs_base)
     {
         return None;
     }
@@ -23003,11 +23894,17 @@ fn extract_shifted_quotient_power_merge_factor(
         return None;
     }
 
-    let Expr::Pow(base, exp) = ctx.get(expr) else {
-        return None;
-    };
-
-    Some((*base, *exp))
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) if power_merge_base_supported_for_cancellation(ctx, *base) => {
+            Some((*base, *exp))
+        }
+        _ if expr_is_atomic_noncall(ctx, expr)
+            && expr_contains_symbolic_atom_for_cancellation(ctx, expr) =>
+        {
+            Some((expr, ctx.num(1)))
+        }
+        _ => None,
+    }
 }
 
 fn build_exact_zero_subset_passthrough_rewrite(
@@ -24330,6 +25227,10 @@ define_rule!(
     crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
     priority: 509,
     |ctx, expr| {
+        if default_simplify_nesting_depth() > 0 {
+            return None;
+        }
+
         let add_view = AddView::from_expr(ctx, expr);
         let term_count = add_view.terms.len();
         let normalized_terms: Vec<_> = add_view
@@ -24832,6 +25733,37 @@ mod tests {
     }
 
     #[test]
+    fn expand_log_abs_mul_div_to_enable_cancellation_rule_rejects_nonexpandable_abs_log_sum() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(abs(x)) + ln(abs(y)) - z", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandLogAbsMulDivToEnableCancellationRule;
+        let rewrite = rule.apply(&mut ctx, expr, &parent_ctx);
+
+        assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn maybe_log_abs_mul_div_zero_candidate_rejects_nonabs_log_product_scope() {
+        let mut ctx = Context::new();
+        let expr = parse("ln((p*q)^2) - 2*ln(p) - 2*ln(q)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_log_abs_mul_div_zero_candidate(&mut ctx, expr));
+    }
+
+    #[test]
+    fn maybe_log_abs_mul_div_zero_candidate_rejects_mixed_nonlog_scope() {
+        let mut ctx = Context::new();
+        let expr = parse("2*ln(abs(x*y)) - 2*ln(abs(x)) - 2*ln(abs(y)) + z", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_log_abs_mul_div_zero_candidate(&mut ctx, expr));
+    }
+
+    #[test]
     fn expand_log_product_power_to_enable_cancellation_rule_matches_mixed_power_product() {
         let mut ctx = Context::new();
         let expr = parse("ln(x^3) + ln(y^2) - ln(x^3 * y^2)", &mut ctx)
@@ -24854,6 +25786,227 @@ mod tests {
             "0"
         );
         assert_eq!(rewrite.substeps.len(), 3);
+    }
+
+    #[test]
+    fn expand_log_product_power_to_enable_cancellation_rule_rejects_nonexpandable_log_sum() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("ln(x) + ln(y) - z", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandLogProductPowerToEnableCancellationRule;
+        let rewrite = rule.apply(&mut ctx, expr, &parent_ctx);
+
+        assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn maybe_log_product_power_zero_candidate_rejects_mixed_nonlog_scope() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(x^3) + ln(y^2) - ln(x^3 * y^2) + z", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_log_product_power_zero_candidate(
+            &mut ctx, expr
+        ));
+    }
+
+    #[test]
+    fn maybe_log_product_power_zero_candidate_rejects_insufficient_cancellation_components() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("ln((x*y)^2) - 2*ln(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_log_product_power_zero_candidate(
+            &mut ctx, expr
+        ));
+    }
+
+    #[test]
+    fn maybe_two_term_trig_sum_to_product_equivalence_candidate_rejects_nontrig_partner_term() {
+        let mut ctx = Context::new();
+        let lhs_core =
+            parse("sin(x) - 2*cos(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core = parse("1", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            !super::maybe_two_term_trig_sum_to_product_equivalence_candidate(
+                &ctx, lhs_core, rhs_core
+            )
+        );
+    }
+
+    #[test]
+    fn maybe_two_term_hyperbolic_direct_core_equivalence_candidate_rejects_polynomial_partner() {
+        let mut ctx = Context::new();
+        let lhs_core = parse("sinh(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core = parse("x^2 - 1", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            !super::maybe_two_term_hyperbolic_direct_core_equivalence_candidate(
+                &mut ctx, lhs_core, rhs_core
+            )
+        );
+    }
+
+    #[test]
+    fn maybe_two_term_hyperbolic_direct_core_equivalence_candidate_accepts_tanh_ratio_partner() {
+        let mut ctx = Context::new();
+        let lhs_core = parse("tanh(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core = parse("(e^x - e^(-x))/(e^x + e^(-x))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            super::maybe_two_term_hyperbolic_direct_core_equivalence_candidate(
+                &mut ctx, lhs_core, rhs_core
+            )
+        );
+    }
+
+    #[test]
+    fn maybe_two_term_hyperbolic_direct_identity_candidate_rejects_cross_swap_pair() {
+        let mut ctx = Context::new();
+        let lhs_core =
+            parse("sinh(x)*cosh(y)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core =
+            parse("cosh(x)*sinh(y)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_two_term_hyperbolic_direct_identity_candidate(
+            &mut ctx, lhs_core, rhs_core
+        ));
+    }
+
+    #[test]
+    fn maybe_two_term_hyperbolic_direct_identity_candidate_keeps_mul_vs_function_pair() {
+        let mut ctx = Context::new();
+        let lhs_core =
+            parse("2*sinh(x)*cosh(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core = parse("sinh(2*x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::maybe_two_term_hyperbolic_direct_identity_candidate(
+            &mut ctx, lhs_core, rhs_core
+        ));
+    }
+
+    #[test]
+    fn maybe_two_term_tanh_exp_equivalence_candidate_accepts_tanh_ratio_partner() {
+        let mut ctx = Context::new();
+        let lhs_core = parse("tanh(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core = parse("(e^x - e^(-x))/(e^x + e^(-x))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::maybe_two_term_tanh_exp_equivalence_candidate(
+            &mut ctx, lhs_core, rhs_core
+        ));
+    }
+
+    #[test]
+    fn maybe_two_term_tanh_exp_equivalence_candidate_rejects_missing_exp_partner() {
+        let mut ctx = Context::new();
+        let lhs_core = parse("tanh(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core =
+            parse("sinh(x) + cosh(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_two_term_tanh_exp_equivalence_candidate(
+            &mut ctx, lhs_core, rhs_core
+        ));
+    }
+
+    #[test]
+    fn maybe_shifted_quotient_exact_zero_direct_residual_candidate_rejects_plain_multiplicative_pair(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("2*x - 3*x", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_shifted_quotient_exact_zero_direct_residual_candidate(&ctx, expr));
+    }
+
+    #[test]
+    fn maybe_shifted_quotient_exact_zero_direct_residual_candidate_accepts_hyperbolic_quotient_pair(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("cosh(x) - ((e^x + e^(-x))/2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::maybe_shifted_quotient_exact_zero_direct_residual_candidate(&ctx, expr));
+    }
+
+    #[test]
+    fn additive_scope_contains_zero_term_detects_top_level_zero_regression() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("(ln(x) - ln(x)) + 0", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::additive_scope_contains_zero_term(&mut ctx, expr));
+    }
+
+    #[test]
+    fn additive_scope_contains_zero_term_rejects_abs_sqrt_pair_without_zero_regression() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(x + 2*sqrt(x-1)) - abs(1 + sqrt(x-1))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::additive_scope_contains_zero_term(&mut ctx, expr));
+    }
+
+    #[test]
+    fn maybe_shifted_quotient_exact_zero_direct_residual_route_candidate_accepts_hyperbolic_pair() {
+        let mut ctx = Context::new();
+        let lhs_core = parse("cosh(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core =
+            parse("((e^x + e^(-x))/2)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let residual_expr = parse("cosh(x) - ((e^x + e^(-x))/2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            super::maybe_shifted_quotient_exact_zero_direct_residual_route_candidate(
+                &mut ctx,
+                lhs_core,
+                rhs_core,
+                residual_expr,
+            )
+        );
+    }
+
+    #[test]
+    fn maybe_shifted_quotient_exact_zero_direct_residual_route_candidate_accepts_trig_power_reduction_pair(
+    ) {
+        let mut ctx = Context::new();
+        let lhs_core = parse("sin(x)^4", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core = parse("(3 - 4*cos(2*x) + cos(4*x))/8", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+        let residual_expr = parse("sin(x)^4 - (3 - 4*cos(2*x) + cos(4*x))/8", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            super::maybe_shifted_quotient_exact_zero_direct_residual_route_candidate(
+                &mut ctx,
+                lhs_core,
+                rhs_core,
+                residual_expr,
+            )
+        );
+    }
+
+    #[test]
+    fn maybe_shifted_quotient_exact_zero_direct_residual_route_candidate_rejects_abs_sqrt_pair() {
+        let mut ctx = Context::new();
+        let lhs_core =
+            parse("sqrt(x + 2*sqrt(x-1))", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core =
+            parse("sqrt(x-1) + 1", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let residual_expr = parse("sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            !super::maybe_shifted_quotient_exact_zero_direct_residual_route_candidate(
+                &mut ctx,
+                lhs_core,
+                rhs_core,
+                residual_expr,
+            )
+        );
     }
 
     #[test]
@@ -25734,6 +26887,44 @@ mod tests {
     }
 
     #[test]
+    fn maybe_exact_trig_equivalence_zero_scope_candidate_accepts_pure_trig_residual() {
+        let mut ctx = Context::new();
+        let expr = parse("2*sin(x)*sin(y) - cos(x-y) + cos(x+y)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::maybe_exact_trig_equivalence_zero_scope_candidate(
+            &ctx, expr
+        ));
+    }
+
+    #[test]
+    fn maybe_exact_trig_equivalence_zero_scope_candidate_rejects_mixed_trig_log_exp_fraction_scope()
+    {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(atanh((u^2 - 1)/(u^2 + 1)) - log(u)) + (log((p*q)^2) - 2*log(p) - 2*log(q)) + (exp(r*log(s)) - s^r) + (sin(a) + sin(b) - 2*sin((a+b)/2)*cos((a-b)/2)) + (2/(t^2 - 1) - 1/(t-1) + 1/(t+1))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_exact_trig_equivalence_zero_scope_candidate(
+            &ctx, expr
+        ));
+    }
+
+    #[test]
+    fn maybe_trig_sum_to_product_zero_candidate_rejects_mixed_trig_log_exp_fraction_scope() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(atanh((u^2 - 1)/(u^2 + 1)) - log(u)) + (log((p*q)^2) - 2*log(p) - 2*log(q)) + (exp(r*log(s)) - s^r) + (sin(a) + sin(b) - 2*sin((a+b)/2)*cos((a-b)/2)) + (2/(t^2 - 1) - 1/(t-1) + 1/(t+1))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_trig_sum_to_product_zero_candidate(&ctx, expr));
+    }
+
+    #[test]
     fn collapse_exact_zero_common_scaled_difference_rule_matches_exact_shifted_sine_cosine_scaled_difference(
     ) {
         let mut ctx = Context::new();
@@ -25855,6 +27046,54 @@ mod tests {
             one
         ));
         assert_empty_or_legacy_description(&rewrite.description, "Hyperbolic Sum to Exponential");
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_cosh_exp_definition_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("(cosh(x) + 1)/(((e^x + e^(-x))/2) + 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Recognize Hyperbolic from Exponential",
+        );
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_sinh_exp_definition_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("(sinh(x) + 1)/(((e^x - e^(-x))/2) + 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Recognize Hyperbolic from Exponential",
+        );
     }
 
     #[test]
@@ -26072,6 +27311,18 @@ mod tests {
                 }
             ),
             "0"
+        );
+    }
+
+    #[test]
+    fn direct_fraction_telescoping_zero_scope_rewrite_rejects_mixed_nonfraction_three_term_shape() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("sin(x) - 1/u + 1/(u+1)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            super::try_build_direct_fraction_telescoping_zero_scope_rewrite(&mut ctx, expr)
+                .is_none()
         );
     }
 
@@ -26854,6 +28105,19 @@ mod tests {
     }
 
     #[test]
+    fn direct_safe_hyperbolic_core_equivalence_rewrite_rejects_atanh_without_log_target() {
+        let mut ctx = Context::new();
+        let lhs = parse("atanh((x^2 - 1)/(x^2 + 1))", &mut ctx)
+            .unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("sin(x) + cos(x)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_direct_safe_hyperbolic_core_equivalence_rewrite(&mut ctx, lhs, rhs);
+
+        assert!(rewrite.is_none());
+    }
+
+    #[test]
     fn atanh_common_log_definition_mismatch_pair_detector_matches_scaled_forms() {
         let mut ctx = Context::new();
         let lhs = parse("1/2*log10((1 + x)/(1 - x))", &mut ctx)
@@ -26957,6 +28221,20 @@ mod tests {
             &rewrite.description,
             "Recognize Hyperbolic from Exponential",
         );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_matches_shifted_hyperbolic_pythagorean_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("cosh(x)^2 - 1", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("sinh(x)^2", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(&rewrite.description, "Hyperbolic Pythagorean Identity");
         assert_eq!(rewrite.before_local, Some(lhs));
         assert_eq!(rewrite.after_local, Some(rhs));
     }
@@ -27066,6 +28344,23 @@ mod tests {
             .unwrap_or_else(|err| panic!("lhs: {err}"));
         let rhs = parse("x*(b + d) + x^2*(a + c + e)", &mut ctx)
             .unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_matches_reordered_additive_noncall_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("x + y + z", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("z + x + y", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
 
         let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs)
             .unwrap_or_else(|| panic!("rewrite"));
@@ -27283,6 +28578,131 @@ mod tests {
         );
         assert_eq!(rewrite.before_local, Some(lhs));
         assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn shifted_quotient_power_merge_residual_rewrite_matches_division_power_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("x^a / x^b", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("x^(a-b)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_shifted_quotient_power_merge_residual_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn shifted_quotient_power_merge_residual_rewrite_matches_reciprocal_power_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("1 / x^a", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("x^(-a)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_shifted_quotient_power_merge_residual_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn shifted_quotient_power_merge_residual_rewrite_matches_constant_division_power_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("2^a / 2^b", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("2^(a-b)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_shifted_quotient_power_merge_residual_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn shifted_quotient_power_merge_residual_rewrite_matches_constant_reciprocal_power_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("1 / 2^a", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("2^(-a)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_shifted_quotient_power_merge_residual_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn shifted_quotient_cancel_common_factors_residual_rewrite_matches_simple_monomial_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("(x*y)/y", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("x", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_shifted_quotient_cancel_common_factors_residual_rewrite(
+            &mut ctx, lhs, rhs,
+        )
+        .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+        assert_eq!(rewrite.required_conditions.len(), 1);
+    }
+
+    #[test]
+    fn shifted_quotient_cancel_common_factors_residual_rewrite_matches_fraction_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("(x*y)/(z*y)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("x/z", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_shifted_quotient_cancel_common_factors_residual_rewrite(
+            &mut ctx, lhs, rhs,
+        )
+        .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+        assert_eq!(rewrite.required_conditions.len(), 1);
+    }
+
+    #[test]
+    fn shifted_quotient_cancel_common_factors_residual_rewrite_rejects_additive_source() {
+        let mut ctx = Context::new();
+        let lhs = parse("(x+y)/y", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("x/y + 1", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_shifted_quotient_cancel_common_factors_residual_rewrite(
+            &mut ctx, lhs, rhs,
+        );
+
+        assert!(rewrite.is_none());
     }
 
     #[test]
@@ -27645,6 +29065,35 @@ mod tests {
     }
 
     #[test]
+    fn direct_small_zero_core_shifted_quotient_rewrite_matches_trig_and_tan_cot_product_core() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((2*sin(x)*cos(y) - sin(x+y) - sin(x-y)) + 1)/((tan(x)*cot(x) - 1) + 1)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let Expr::Div(numerator, denominator) = ctx.get(expr).clone() else {
+            panic!("expected quotient");
+        };
+        let numerator_core = super::strip_positive_one_passthrough(&mut ctx, numerator)
+            .unwrap_or_else(|| panic!("numerator core"));
+        let denominator_core = super::strip_positive_one_passthrough(&mut ctx, denominator)
+            .unwrap_or_else(|| panic!("denominator core"));
+
+        let rewrite = super::try_build_direct_small_zero_core_shifted_quotient_rewrite(
+            &mut ctx,
+            numerator,
+            denominator,
+            numerator_core,
+            denominator_core,
+        )
+        .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(rewrite.required_conditions.len(), 3);
+    }
+
+    #[test]
     fn collapse_exact_one_shifted_quotient_rule_matches_trig_and_sec_tan_pythagorean_core() {
         let mut ctx = Context::new();
         let expr = parse(
@@ -27827,6 +29276,152 @@ mod tests {
             &rewrite.description,
             "Equivalent Residual Cancellation",
         );
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_division_power_merge_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("((x^a/x^b) + 1)/(x^(a-b) + 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_reciprocal_power_merge_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("((1/x^a) + 1)/(x^(-a) + 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_constant_division_power_merge_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("((2^a/2^b) + 1)/(2^(a-b) + 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_constant_reciprocal_power_merge_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("((1/2^a) + 1)/(2^(-a) + 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_simple_common_factor_pair() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("(((x*y)/y) + 1)/(x + 1)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+        assert_eq!(rewrite.required_conditions.len(), 2);
+    }
+
+    #[test]
+    fn collapse_exact_one_shifted_quotient_rule_matches_fraction_common_factor_pair() {
+        let mut ctx = Context::new();
+        let expr = parse("(((x*y)/(z*y)) + 1)/((x/z) + 1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactOneShiftedQuotientRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+        let one = ctx.num(1);
+
+        assert!(super::exprs_match_after_default_simplify(
+            &mut ctx,
+            rewrite.new_expr,
+            one
+        ));
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
+        assert_eq!(rewrite.required_conditions.len(), 2);
     }
 
     #[test]
@@ -28181,11 +29776,7 @@ mod tests {
             rewrite.new_expr,
             one
         ));
-        assert!(
-            rewrite.description.contains("Dirichlet Kernel Identity"),
-            "unexpected description: {}",
-            rewrite.description
-        );
+        assert_empty_or_legacy_description(&rewrite.description, "Dirichlet Kernel Identity");
     }
 
     #[test]

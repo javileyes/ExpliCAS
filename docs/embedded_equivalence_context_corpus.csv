@@ -908,6 +908,18 @@ k*(x^a*x^b) - k*(x^(a+b)),0,scaled_difference_zero,merge_same_base_symbolic_powe
 k*(sqrt(x)*x^a) - k*(x^(a+1/2)),0,scaled_difference_zero,merge_mixed_root_and_symbolic_power,power_merge,sqrt(x)*x^a,x^(a+1/2),combine powers
 ((sqrt(x)*x^a)/q) - ((x^(a+1/2))/q),0,common_denominator_zero,merge_mixed_root_and_symbolic_power,power_merge,sqrt(x)*x^a,x^(a+1/2),combine powers
 ((sqrt(x)*x^a) + 1)/((x^(a+1/2)) + 1),1,shifted_quotient_one,merge_mixed_root_and_symbolic_power,power_merge,sqrt(x)*x^a,x^(a+1/2),combine powers
+((x^a/x^b) + m) - ((x^(a-b)) + m),0,additive_passthrough_zero,merge_same_base_symbolic_quotient_powers,power_merge,x^a/x^b,x^(a-b),combine powers
+k*(x^a/x^b) - k*(x^(a-b)),0,scaled_difference_zero,merge_same_base_symbolic_quotient_powers,power_merge,x^a/x^b,x^(a-b),combine powers
+((x^a/x^b)/q) - ((x^(a-b))/q),0,common_denominator_zero,merge_same_base_symbolic_quotient_powers,power_merge,x^a/x^b,x^(a-b),combine powers
+((x^a/x^b) + 1)/((x^(a-b)) + 1),1,shifted_quotient_one,merge_same_base_symbolic_quotient_powers,power_merge,x^a/x^b,x^(a-b),combine powers
+((2^a/2^b) + m) - ((2^(a-b)) + m),0,additive_passthrough_zero,merge_same_base_constant_quotient_powers,power_merge,2^a/2^b,2^(a-b),combine powers
+k*(2^a/2^b) - k*(2^(a-b)),0,scaled_difference_zero,merge_same_base_constant_quotient_powers,power_merge,2^a/2^b,2^(a-b),combine powers
+((2^a/2^b)/q) - ((2^(a-b))/q),0,common_denominator_zero,merge_same_base_constant_quotient_powers,power_merge,2^a/2^b,2^(a-b),combine powers
+((2^a/2^b) + 1)/((2^(a-b)) + 1),1,shifted_quotient_one,merge_same_base_constant_quotient_powers,power_merge,2^a/2^b,2^(a-b),combine powers
+(((x*y)/(z*y)) + m) - ((x/z) + m),0,additive_passthrough_zero,cancel_common_factor_monomial_quotient,simplify,(x*y)/(z*y),x/z,cancel common factors
+k*(((x*y)/(z*y))) - k*(x/z),0,scaled_difference_zero,cancel_common_factor_monomial_quotient,simplify,(x*y)/(z*y),x/z,cancel common factors
+((((x*y)/(z*y))/q) - ((x/z)/q)),0,common_denominator_zero,cancel_common_factor_monomial_quotient,simplify,(x*y)/(z*y),x/z,cancel common factors
+((((x*y)/(z*y)) + 1)/((x/z) + 1)),1,shifted_quotient_one,cancel_common_factor_monomial_quotient,simplify,(x*y)/(z*y),x/z,cancel common factors
 ((ln(x^3) + ln(y^2) - ln(x^3*y^2)) + m) - ((0) + m),0,additive_passthrough_zero,log_sum_difference_cancels_to_zero,simplify,ln(x^3) + ln(y^2) - ln(x^3*y^2),0,expand_log
 k*(ln(x^3) + ln(y^2) - ln(x^3*y^2)) - k*(0),0,scaled_difference_zero,log_sum_difference_cancels_to_zero,simplify,ln(x^3) + ln(y^2) - ln(x^3*y^2),0,expand_log
 ((ln(x^3) + ln(y^2) - ln(x^3*y^2))/q) - ((0)/q),0,common_denominator_zero,log_sum_difference_cancels_to_zero,simplify,ln(x^3) + ln(y^2) - ln(x^3*y^2),0,expand_log

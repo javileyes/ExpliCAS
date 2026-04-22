@@ -2,7 +2,6 @@
 
 use super::*;
 use cas_ast::{BuiltinFn, Expr};
-use cas_math::expr_nary::AddView;
 
 fn expr_contains_any_builtin_local(
     ctx: &cas_ast::Context,
@@ -139,38 +138,29 @@ impl Engine {
         let (mut res, mut steps, stats) =
             ctx_simplifier.simplify_with_stats(expr_to_simplify, simplify_opts);
 
-        let hyperbolic_zero_rewrite = if (2..=4).contains(
-            &AddView::from_expr(&ctx_simplifier.context, expr_to_simplify)
-                .terms
-                .len(),
-        ) && expr_contains_hyperbolic_builtin_local(
-            &ctx_simplifier.context,
-            expr_to_simplify,
-        ) {
+        let hyperbolic_zero_rewrite =
             crate::rules::hyperbolic::try_build_atanh_square_ratio_log_zero_rewrite(
                 &mut ctx_simplifier.context,
                 expr_to_simplify,
             )
-        } else if (2..=4).contains(&AddView::from_expr(&ctx_simplifier.context, res).terms.len())
-            && expr_contains_hyperbolic_builtin_local(&ctx_simplifier.context, res)
-        {
-            crate::rules::hyperbolic::try_build_atanh_square_ratio_log_zero_rewrite(
-                &mut ctx_simplifier.context,
-                res,
-            )
-        } else {
-            None
-        };
-        if let Some(rewrite) = hyperbolic_zero_rewrite {
-            let before = res;
-            res = rewrite.final_expr();
+            .map(|rewrite| (expr_to_simplify, rewrite))
+            .or_else(|| {
+                crate::rules::hyperbolic::try_build_atanh_square_ratio_log_zero_rewrite(
+                    &mut ctx_simplifier.context,
+                    res,
+                )
+                .map(|rewrite| (res, rewrite))
+            });
+        if let Some((rewrite_source, rewrite)) = hyperbolic_zero_rewrite {
+            let final_expr = rewrite.final_expr();
+            res = final_expr;
             if effective_opts.steps_mode != crate::options::StepsMode::Off {
                 steps.clear();
                 let mut step = crate::Step::new(
                     &rewrite.description,
                     &rewrite.description,
-                    before,
-                    res,
+                    rewrite_source,
+                    final_expr,
                     Vec::new(),
                     Some(&ctx_simplifier.context),
                 );

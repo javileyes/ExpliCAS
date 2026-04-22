@@ -103,6 +103,17 @@ fn extract_square_power_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
+fn normalize_signed_add_term_local(
+    ctx: &Context,
+    term_expr: ExprId,
+    term_sign: Sign,
+) -> (ExprId, Sign) {
+    match ctx.get(term_expr) {
+        Expr::Neg(inner) => (*inner, term_sign.negate()),
+        _ => (term_expr, term_sign),
+    }
+}
+
 fn extract_square_plus_minus_one_pattern(
     ctx: &Context,
     expr: ExprId,
@@ -115,6 +126,7 @@ fn extract_square_plus_minus_one_pattern(
     let mut square_term = None;
     let mut one_term = None;
     for (term_expr, term_sign) in terms {
+        let (term_expr, term_sign) = normalize_signed_add_term_local(ctx, term_expr, term_sign);
         if is_one_expr(ctx, term_expr) {
             if one_term.replace(term_sign).is_some() {
                 return None;

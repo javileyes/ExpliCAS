@@ -1,6 +1,6 @@
 use crate::expr_destructure::{as_add, as_div, as_mul, as_pow};
 use crate::expr_extract::{
-    extract_log_base_argument, extract_log_base_argument_relaxed_view,
+    extract_exp_argument, extract_log_base_argument, extract_log_base_argument_relaxed_view,
     extract_log_base_argument_view, log10_base_sentinel,
 };
 use crate::expr_nary::{add_terms_signed, build_balanced_add, MulView, Sign};
@@ -1487,7 +1487,12 @@ pub fn try_rewrite_exponential_log_inverse_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ExponentialLogInverseRewrite> {
-    let (base, exp) = as_pow(ctx, expr)?;
+    let (base, exp) = if let Some(exp_arg) = extract_exp_argument(ctx, expr) {
+        let e = ctx.add(Expr::Constant(Constant::E));
+        (e, exp_arg)
+    } else {
+        as_pow(ctx, expr)?
+    };
 
     let matches_base = |ctx: &Context, log_base: ExprId, target_base: ExprId| {
         cas_ast::ordering::compare_expr(ctx, log_base, target_base) == Ordering::Equal
@@ -2500,6 +2505,20 @@ mod tests {
             Ordering::Equal
         );
         assert_eq!(rw_direct.positive_subject, x);
+    }
+
+    #[test]
+    fn rewrites_exponential_log_inverse_builtin_exp_form() {
+        let mut ctx = Context::new();
+        let expr = parse("exp(y*log(x))", &mut ctx).expect("expr");
+        let expected = parse("x^y", &mut ctx).expect("expected");
+
+        let rw = try_rewrite_exponential_log_inverse_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rw.rewritten, expected),
+            Ordering::Equal
+        );
     }
 
     #[test]

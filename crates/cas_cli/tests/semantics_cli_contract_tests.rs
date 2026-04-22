@@ -8515,6 +8515,49 @@ fn eval_atanh_square_ratio_log_difference_steps_hide_noop_negation_cleanup() {
 }
 
 #[test]
+fn eval_composed_log_hyperbolic_inverse_trig_zero_mix_collapses_to_zero() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "((exp(y * log(x)) - x^y) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (asin(x/sqrt(x^2 + 1)) - atan(x)))",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "0");
+}
+
+#[test]
+fn eval_composed_log_hyperbolic_inverse_trig_zero_mix_keeps_exact_zero_subset_step() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "((exp(y * log(x)) - x^y) + (atanh((x^2 - 1)/(x^2 + 1)) - log(x)) + (asin(x/sqrt(x^2 + 1)) - atan(x)))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Collapse Exact Zero Additive Subexpression"),
+        "expected composed simplification to retain exact-zero subset step: {steps:?}"
+    );
+}
+
+#[test]
 fn eval_log10_power_difference_collapses_to_zero() {
     let (output, code) = run_cli(&["eval", "10^(y*log10(x)) - x^y", "--format", "json"]);
     assert_eq!(
