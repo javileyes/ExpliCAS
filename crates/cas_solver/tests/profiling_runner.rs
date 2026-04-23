@@ -110,6 +110,10 @@ fn create_full_simplifier() -> Simplifier {
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI skips profiling-only smoke tables; representative identities remain covered by dedicated regressions elsewhere"
+)]
 fn profile_torture_tests() {
     let cases = vec![
         (

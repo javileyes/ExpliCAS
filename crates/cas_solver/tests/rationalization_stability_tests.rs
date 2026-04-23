@@ -198,6 +198,10 @@ fn test_cancel_4th_root_factor_diff() {
 
 /// Test (F): Sum of 4th powers should NOT simplify (n even)
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI covers 4th-root even-sum no-apply via cas_math helper tests"
+)]
 fn test_cancel_4th_root_factor_sum_no_apply() {
     let json = eval_str_to_wire("(x + 1) / (x^(1/4) + 1)", "{}");
     assert!(json.contains("\"ok\":true"));

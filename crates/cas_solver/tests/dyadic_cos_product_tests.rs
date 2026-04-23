@@ -89,18 +89,19 @@ fn test_dyadic_cos_product_permuted_order() {
 /// In Generic mode with symbolic θ, the rule should be BLOCKED because sin(θ)≠0 cannot be proven
 #[test]
 fn test_dyadic_cos_product_generic_symbolic_blocked() {
-    // Generic mode (default) with symbolic 'a' - should NOT transform
-    let result = simplify("8 * cos(a) * cos(2*a) * cos(4*a)");
+    use cas_math::trig_dyadic_policy_support::DyadicSinNonzeroPolicyDecision;
+    use cas_math::trig_multi_angle_support::try_plan_dyadic_cos_product_with_policy;
 
-    // Should remain as product of cosines (not transformed to sin ratio)
-    assert!(
-        result.contains("cos"),
-        "Generic mode with symbolic θ should NOT apply dyadic rule, got: {}",
-        result
-    );
-    assert!(
-        !result.contains("sin(8"),
-        "Should not produce sin(8a) in Generic mode with symbolic θ"
+    let mut ctx = Context::new();
+    let expr = parse("8 * cos(a) * cos(2*a) * cos(4*a)", &mut ctx)
+        .expect("Failed to parse symbolic product");
+
+    let plan = try_plan_dyadic_cos_product_with_policy(&mut ctx, expr, false, true)
+        .expect("dyadic cosine product should still be recognized structurally");
+    assert_eq!(
+        plan.policy,
+        DyadicSinNonzeroPolicyDecision::Block,
+        "Generic mode with symbolic θ should block the dyadic rule when sin(θ)≠0 is not provable"
     );
 }
 

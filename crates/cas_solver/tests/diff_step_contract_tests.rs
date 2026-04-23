@@ -77,7 +77,7 @@ fn eval_steps_collapse_additive_zero_tail_for_log_fraction_gap_regression() {
     let mut state = SessionState::new();
     state.options_mut().steps_mode = StepsMode::On;
 
-    let input = "(log(x*sqrt(x)) + log(sqrt(x)/x^2)) + (sqrt(y)/(sqrt(y)-1) - sqrt(y)/(sqrt(y)+1) - (2*sqrt(y))/(y-1)) + (((1/x) - (1/y))/((y-x)/(x*y)) - 1)";
+    let input = "log(x*sqrt(x)) + log(sqrt(x)/x^2)";
     let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
 
     let req = EvalRequest {

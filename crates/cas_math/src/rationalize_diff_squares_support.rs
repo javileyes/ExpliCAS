@@ -687,6 +687,13 @@ mod tests {
     }
 
     #[test]
+    fn rejects_even_sum_4th_root_binomial_factor() {
+        let mut ctx = Context::new();
+        let expr = parse("(x+1)/(x^(1/4)+1)", &mut ctx).expect("parse");
+        assert!(try_rewrite_cancel_nth_root_binomial_factor_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
     fn matches_sqrt_conjugate_collapse_pattern() {
         let mut ctx = Context::new();
         let expr = parse("sqrt(x+sqrt(y))*(x-sqrt(y))", &mut ctx).expect("parse");

@@ -2359,6 +2359,242 @@ Do not create entries for:
 - status:
   - `fixed in test`
 
+### 2026-04-23: `context_aware_expansion_tests`
+
+- area:
+  - `cas_solver`
+  - context-aware expansion smoke harness
+- repro:
+  - `cargo test -p cas_solver --test context_aware_expansion_tests -- --nocapture`
+  - `cargo test -p cas_solver --test context_aware_expansion_tests multinomial_cancel_via_context_expansion -- --exact --nocapture`
+- latest measured time before fix:
+  - full bin: `35.36s`
+  - `multinomial_cancel_via_context_expansion`: `35.80s`
+- latest measured time after fix:
+  - exact multinomial smoke: `ignored` in debug CI
+  - full bin: pending exact remeasure in current tree
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the bin was already almost fully compressed, but it still kept one very
+    heavy representative for contextual multinomial cancellation:
+    `(a+b+c)^2 - (a^2+b^2+c^2+2ab+2ac+2bc)`
+  - that all-symbolic trinomial square dominated the entire debug bin even
+    though the actual contract only needed one 3-term contextual-expansion
+    smoke beyond the cheaper binomial and no-overlap regressors
+- retained action:
+  - keep the broad trinomial contextual-cancel smoke for non-debug/manual runs
+  - mark it `ignored` in debug CI
+  - rely on the existing active regression net for debug coverage:
+    - `scanner_marks_trinomial_square_sub_as_auto_expand_context`
+    - `standard_preserves_trinomial_squared`
+    - the cheaper contextual binomial and solve-path smokes in the same file
+  - keep the other tests unchanged so the bin still covers:
+    - contextual binomial cancellation
+    - no-overlap conservatism
+    - solve-path identity detection
+    - large-exponent guard
+    - compact simplify outside cancel context
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `derive_contract_tests`
+
+- area:
+  - `cas_solver`
+  - derive corpus contract harness
+- repro:
+  - `cargo test -p cas_solver --test derive_contract_tests -- --nocapture`
+- latest measured time before fix:
+  - full bin: `11.61s`
+  - dominant exact: `derive_pairs_follow_expected_outcomes`
+- latest measured time after fix:
+  - full bin: `0.24s-0.26s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the bin only had three tests, and one of them serially replayed the entire
+    derive corpus end-to-end just to verify per-case outcome contracts and print
+    summary metrics
+  - that broad smoke was becoming the entire wall-clock tail of the bin in
+    debug CI
+- retained action:
+  - keep the broad `derive_pairs_follow_expected_outcomes` sweep for manual and
+    release-oriented runs, but mark it ignored in debug CI
+  - split the active debug coverage into four initial buckets:
+    - `trig`
+    - `simplify_log`
+    - `expansion_fraction`
+    - `structural`
+  - then split the two slow debug buckets again and leave their broad versions
+    ignored in debug:
+    - `expansion_fraction` -> `expand` + `fractional`
+    - `structural` -> `factor_collect` + `prep_telescoping` + `poly_merge`
+  - add `derive_pairs_partition_covers_corpus` so the slices are guaranteed to
+    cover the same corpus exactly once
+  - add `derive_pairs_perf_slices_cover_corpus` so the narrower debug slices
+    still cover the same corpus exactly once
+  - for the two remaining heavy debug slices, keep the broad sweeps only for
+    manual/release and replace them in debug with representative cases:
+    - `expand` stays covered by:
+      - `expand_symbolic_binomial`
+      - `expand_symbolic_trinomial_square`
+      - `expand_sophie_germain`
+      - `expand_hyperbolic_sinh_sum_to_product_exact`
+      - `expand_trig_product_to_sum_to_cosine_difference_polynomial`
+      - `expand_then_cancel_to_square`
+    - `prep_telescoping` stays covered by:
+      - `finite_telescoping_sum_basic`
+      - `integrate_prep_morrie_basic`
+      - `integrate_prep_dirichlet_basic`
+      - `solve_prep_complete_square_symbolic_negative_linear_coeff`
+      - `split_telescoping_fraction_affine_symbolic_shift_gap`
+      - `combine_telescoping_fraction_symbolic_difference_squares_unfactored`
+  - repeat the same pattern for the last three active broad slices that still
+    dominated the bin in debug:
+    - `trig` stays covered by:
+      - `expand_trig_product_to_sum_sin_sin`
+      - `contract_trig_phase_shift_sum_to_shifted_sine`
+      - `expand_trig_phase_shift_general_shifted_sine_to_sum`
+      - `contract_trig_tan_quotient_after_arg_simplify`
+      - `expand_trig_double_cos_as_two_cos_sq_minus_one`
+      - `contract_trig_half_angle_tangent`
+      - `expand_trig_sine_eighth_power_reduction`
+      - `contract_trig_triple_angle_cosine`
+      - `expand_trig_angle_diff_sine`
+      - `contract_trig_cos_diff_sin_diff_quotient`
+    - `simplify_log` stays covered by:
+      - `combine_like_terms`
+      - `hyperbolic_pythagorean_identity_with_passthrough`
+      - `inverse_tan_identity`
+      - `perfect_square_root_to_abs_with_passthrough`
+      - `expand_log_general_base_powered_two_denominator_factors_with_powered_denominator`
+      - `contract_general_base_logs_to_grouped_power_with_passthrough`
+      - `rationalize_then_cancel_to_zero`
+      - `radical_notable_quotient`
+      - `expand_odd_half_power_after_simplify_with_passthrough`
+      - `consecutive_factorial_ratio_gap_two`
+      - `sec_tan_pythagorean_to_one`
+      - `contract_exponential_power`
+      - `expand_trig_sine_cosine_square_product_reduction`
+    - `factor_collect` stays covered by:
+      - `collect_multiple_power_groups`
+      - `factor_out_with_division_quadratic`
+      - `factor_difference_squares`
+      - `factor_perfect_square_trinomial_symbolic`
+      - `factor_sophie_germain`
+      - `factor_symbolic_binomial_cube`
+      - `factor_symbolic_sixth_power_difference`
+      - `non_equivalent_mismatch`
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `dyadic_cos_product_tests`
+
+- area:
+  - `cas_solver`
+  - dyadic cosine product harness
+- repro:
+  - `cargo test -p cas_solver --test dyadic_cos_product_tests -- --nocapture`
+  - `cargo test -p cas_solver --test dyadic_cos_product_tests test_dyadic_cos_product_generic_symbolic_blocked -- --exact --nocapture`
+- latest measured time before fix:
+  - full bin: `11.38s`
+  - `test_dyadic_cos_product_generic_symbolic_blocked`: `11.48s`
+- latest measured time after fix:
+  - full bin: pending exact remeasure in current tree
+  - dominant exact replaced with helper-level policy assertion
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the symbolic Generic-mode blocker test was replaying the entire simplify
+    pipeline just to prove that the dyadic product policy resolves to `Block`
+  - all other exacts in the bin were already cheap (`0.00s-0.01s`)
+- retained action:
+  - replace the heavy end-to-end Generic blocker smoke with a direct assertion
+    on `try_plan_dyadic_cos_product_with_policy(...).policy == Block`
+  - keep the cheap end-to-end `Assume` smoke to preserve solver-path coverage
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `diff_step_contract_tests`
+
+- area:
+  - `cas_solver`
+  - diff step contract harness
+- repro:
+  - `cargo test -p cas_solver --test diff_step_contract_tests -- --nocapture`
+  - `cargo test -p cas_solver --test diff_step_contract_tests eval_steps_collapse_additive_zero_tail_for_log_fraction_gap_regression -- --exact --nocapture`
+- latest measured time before fix:
+  - full bin: `2.99s`
+  - dominant exact: `3.04s`
+- latest measured time after fix:
+  - full bin: pending exact remeasure in current tree
+  - dominant exact replaced with a narrow log-gap slice
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the exact only wanted to pin that the final step collapses a zero tail to
+    `0`, but it was driving three independent zero-producing families at once:
+    log gap, rationalized fraction gap, and quotient identity noise
+  - the expensive part was unnecessary because the same contract is already
+    visible on the pure log-gap slice
+- retained action:
+  - keep the contract test
+  - replace the monolithic expression with the narrow log-gap component:
+    `log(x*sqrt(x)) + log(sqrt(x)/x^2)`
+  - still assert that the last step's `global_after` is `0`
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `context_no_contamination`
+
+- area:
+  - `cas_solver`
+  - context-specific rule contamination harness
+- repro:
+  - `cargo test -p cas_solver --test context_no_contamination -- --nocapture`
+  - `cargo test -p cas_solver --test context_no_contamination test_standard_no_telescoping_basic -- --exact --nocapture`
+- latest measured time before fix:
+  - full bin: `5.94s`
+  - `test_standard_no_telescoping_basic`: `5.68s`
+- latest measured time after fix:
+  - full bin: `0.16s`
+  - `test_solve_no_product_to_sum`: `3.94s -> 0.01s`
+  - telescoping no-contamination smokes: `ignored` in debug CI
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the `no_telescoping` smokes were replaying a broad trigonometric simplify path
+    that loops through double-angle expansion/factor extraction even though the
+    contract they wanted was only "this context does not enable Morrie
+    telescoping"
+  - that loop is not representative of the context-gating contract itself
+- retained action:
+  - mark the three heavy telescoping no-contamination smokes ignored in debug CI:
+    - `test_standard_no_telescoping_basic`
+    - `test_standard_no_telescoping_permuted`
+    - `test_solve_no_telescoping`
+  - narrow `test_solve_no_product_to_sum` from the expensive same-variable shape
+    `2*sin(3*x)*cos(x)` to the cheaper representative `2*sin(x)*cos(y)`, because
+    the contract is only "Solve mode must not enable ProductToSum"
+  - keep active coverage through:
+    - positive IntegratePrep telescoping smokes in the same file
+    - `cas_engine` structural matcher tests in `integration_prep_support`
+    - the remaining active no-contamination smokes for `ProductToSum`
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+
 ### 2026-04-23: `stress_solve_tests`
 
 - area:
@@ -2432,6 +2668,234 @@ Do not create entries for:
     - `top_level_block_pairings_proves_multivar_plus_{quadratic,cubic}_context`
     - `raw_pressure_proof_can_use_original_engine_texts_for_curated_pair`
     - the direct `sum_of_squares_anchor_partner_identity_matches_*` regressions
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `inv_trig_n_angle_tests`
+
+- area:
+  - `cas_solver`
+  - inverse-trig n-angle recurrence harness
+- repro:
+  - `cargo test -p cas_solver --test inv_trig_n_angle_tests -- --nocapture`
+  - `cargo test -p cas_solver --test inv_trig_n_angle_tests numeric_tan_acos_n5 -- --exact --nocapture`
+  - `cargo test -p cas_solver --test inv_trig_n_angle_tests negative_tan_acos_n4_is_negated -- --exact --nocapture`
+- latest measured time before fix:
+  - full bin: `1.19s`
+  - `numeric_tan_acos_n5`: `1.12s`
+  - `negative_tan_acos_n4_is_negated`: `0.47s`
+- latest measured time after fix:
+  - full bin: `0.74s`
+  - `numeric_tan_acos_n4`: `0.25s`
+  - `negative_tan_acos_n2_is_negated`: `0.01s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the bin was dominated by a high-order `tan(n·arccos)` numeric check and a
+    sign-parity regression that used a more expensive `n=4` representative than
+    the property actually required
+  - both tests were exercising the right family, but with heavier shapes than
+    needed for debug CI
+- retained action:
+  - narrow the higher-order numeric representative from `tan(5*arccos(t))` to
+    `tan(4*arccos(t))`, keeping coverage beyond the already-present `n=2/3`
+    cases while reusing the cheaper structural path already fixed by
+    `tan_acos_n4_fires`
+  - narrow the sign-parity regression from `tan(±4*arccos(t))` to
+    `tan(±2*arccos(t))`, because the contract is only that `tan(-n·θ)` negates
+    `tan(n·θ)`
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `safe_window_parametrized_proof_closes_inverse_trig_branch_even_if_raw_engine_improves`
+
+- area:
+  - `cas_solver`
+  - `metamorphic_simplification_tests`
+- repro:
+  - `cargo test -p cas_solver --test metamorphic_simplification_tests safe_window_parametrized_proof_closes_inverse_trig_branch_even_if_raw_engine_improves -- --exact --nocapture`
+  - `cargo test -p cas_solver --test metamorphic_simplification_tests -- --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - exact case: `6.44s`
+  - `metamorphic_simplification_tests`: `6.53s`
+  - `cas_solver --tests`: `22.84s`
+- latest measured time after fix:
+  - exact case: removed as redundant
+  - `metamorphic_simplification_tests`: `4.33s`
+  - `cas_solver --tests`: `19.14s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the exact replayed a single inverse-trig safe-window pair that was already
+    covered three ways:
+    - direct proof in `safe_window_parametrized_proof_closes_log_square_and_sqrt_product_pairs`
+    - catalog membership via `known_domain_frontier_safe_pairs.csv`
+    - domain-frontier classification via `known_domain_frontier_detects_mul_inverse_trig_pair`
+  - despite that duplication, it still ran the heavy proof path on its own and
+    dominated the entire `metamorphic_simplification_tests` bin
+- retained action:
+  - remove the redundant exact
+  - keep active coverage through:
+    - `safe_window_parametrized_proof_closes_log_square_and_sqrt_product_pairs`
+    - `known_domain_frontier_detects_mul_inverse_trig_pair`
+    - `known_domain_frontier_safe_catalog_covers_all_safe_csv_pairs`
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `metamorphic_simplification_tests` residual raw-pressure smokes
+
+- area:
+  - `cas_solver`
+  - `metamorphic_simplification_tests`
+- repro:
+  - `cargo test -p cas_solver --test metamorphic_simplification_tests -- --nocapture`
+  - `cargo test -p cas_solver --test metamorphic_simplification_tests raw_pressure_proof_can_use_original_engine_texts -- --exact --nocapture`
+  - `cargo test -p cas_solver --test metamorphic_simplification_tests raw_pressure_child_process_can_use_engine_direct_pair_texts_for_special_angle_double_angle_pair -- --exact --nocapture`
+  - `cargo test -p cas_solver --test metamorphic_simplification_tests engine_proves_alternating_cubic_vandermonde_identity -- --exact --nocapture`
+  - `cargo test -p cas_solver --test metamorphic_simplification_tests top_level_block_pairings_proves_multivar_plus_cubic_context -- --exact --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `metamorphic_simplification_tests`: `4.33s`
+  - `engine_proves_alternating_cubic_vandermonde_identity`: `3.08s`
+  - `top_level_block_pairings_proves_multivar_plus_cubic_context`: `2.21s`
+  - `raw_pressure_child_process_can_use_engine_direct_pair_texts_for_special_angle_double_angle_pair`: `1.14s`
+  - `raw_pressure_proof_can_use_original_engine_texts`: `1.00s`
+  - `cas_solver --tests`: `15.14s`
+- latest measured time after fix:
+  - `metamorphic_simplification_tests`: `1.99s`
+  - `cas_solver --tests`: `12.51s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - after removing the inverse-trig safe-window duplicate, the bin was still
+    dominated by four expensive exacts whose coverage already existed in
+    narrower or cheaper places:
+    - alternating cubic Vandermonde factorization
+    - cubic contextual sum-of-squares block pairing
+    - raw-pressure polynomial identity smoke
+    - special-angle double-angle child-process smoke
+- retained action:
+  - keep those four exacts out of debug CI
+  - preserve the same families through existing active coverage:
+    - alternating cubic Vandermonde: direct factor tests, derive/embedded corpus
+    - contextual cubic partnering: quadratic contextual representative plus
+      sum-of-squares partner matcher regressions
+    - raw-pressure polynomial identity: engine polynomial identity support and
+      CLI torture coverage
+    - special-angle double-angle pair: direct engine regressions around
+      `cot(5*pi/12)` and `2 - sqrt(3)`
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `profiling_runner`
+
+- area:
+  - `cas_solver`
+  - `profiling_runner`
+- repro:
+  - `cargo test -p cas_solver --test profiling_runner -- --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `profiling_runner`: `0.94s`
+  - `cas_solver --tests`: `12.51s`
+- latest measured time after fix:
+  - `profiling_runner`: `ignored` in debug CI
+  - `cas_solver --tests`: `12.30s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the bin was a profiling-only smoke that printed a markdown table over a long
+    list of representative identities but made no behavioral assertions
+  - it was useful for manual diagnosis, but not for fast debug CI loops
+- retained action:
+  - keep `profile_torture_tests` out of debug CI
+  - preserve the covered families through the dedicated regressions already
+    present in solver, engine, CLI and didactic suites
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `fraction_opposite_denominators_tests`
+
+- area:
+  - `cas_solver`
+  - opposite-denominator fraction harness
+- repro:
+  - `cargo test -p cas_solver --test fraction_opposite_denominators_tests -- --nocapture`
+  - `cargo test -p cas_solver --test fraction_opposite_denominators_tests test_sqrt_opposite_denominators_with_coefficients_numeric -- --exact --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `fraction_opposite_denominators_tests`: `0.51s-0.53s`
+  - `test_sqrt_opposite_denominators_with_coefficients_numeric`: `0.54s`
+  - `cas_solver --tests`: `~11.0s`
+- latest measured time after fix:
+  - `fraction_opposite_denominators_tests`: `0.40s`
+  - `test_sqrt_opposite_denominators_with_coefficients_numeric`: `0.41s`
+  - `cas_solver --tests`: `10.83s-10.93s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the bin was almost entirely dominated by one root-opposite-denominator smoke
+    with coefficients
+  - the original representative used the harder `sqrt(x)-1` / `1-sqrt(x)`
+    branch, which dragged the simplifier through a more expensive singular
+    normalization path than the test contract actually needed
+- retained action:
+  - keep the same family coverage (`root + opposite denominators + coefficients`)
+    but swap the representative to the cheaper non-unit-shift case:
+    - `2/(sqrt(x)+2) + 3/(-2-sqrt(x))`
+    - expected `-1/(sqrt(x)+2)`
+  - keep the neighboring bridge and conjugate smokes unchanged; attempted debug
+    ignores there did not improve the broad guardrail and were reverted
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `rationalization_stability_tests`
+
+- area:
+  - `cas_solver`
+  - rationalization stability harness
+- repro:
+  - `cargo test -p cas_solver --test rationalization_stability_tests -- --nocapture`
+  - `cargo test -p cas_math --lib rationalize_diff_squares_support::tests::rejects_even_sum_4th_root_binomial_factor -- --exact --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `rationalization_stability_tests`: `0.63s-0.66s`
+  - dominant exacts:
+    - `test_cancel_4th_root_factor_sum_no_apply`: `0.64s`
+    - `test_cancel_4th_root_factor_diff`: `0.53s`
+  - `cas_solver --tests`: `10.83s-10.93s`
+- latest measured time after fix:
+  - `rationalization_stability_tests`: `0.53s`
+  - `cas_solver --tests`: `10.51s-10.53s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the slowest exact in the bin only asserted that the even-sum 4th-root case
+    did not crash; it did not fix a concrete simplified form or narrative
+  - that no-apply property is cheaper to verify directly at the nth-root
+    binomial-factor helper level than through the full CLI/wire path
+- retained action:
+  - keep the expensive solver smoke `test_cancel_4th_root_factor_sum_no_apply`
+    out of debug CI
+  - add a direct helper-level replacement in
+    `/Users/javiergimenezmoya/developer/math/crates/cas_math/src/rationalize_diff_squares_support.rs`
+    that proves `(x+1)/(x^(1/4)+1)` does not match the nth-root binomial-factor
+    cancellation rewrite
+  - keep the more specific end-to-end 4th-root denominator rationalization smoke
+    and the 4th-root difference case active
 - embedded corpus guardrail:
   - unchanged engine runtime path
 - status:

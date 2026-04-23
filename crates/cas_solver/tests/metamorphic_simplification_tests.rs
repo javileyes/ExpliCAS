@@ -4973,6 +4973,10 @@ fn prove_zero_from_metamorphic_texts_with_flavor(
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI keeps the quadratic contextual representative plus dedicated sum-of-squares partner matchers"
+)]
 fn top_level_block_pairings_proves_multivar_plus_cubic_context() {
     let lhs = "((x^2 + y^2)*(a^2 + b^2)) + ((u+1)*(u+2)*(u+3))";
     let rhs = "((x*a + y*b)^2 + (x*b - y*a)^2) + (u^3 + 6*u^2 + 11*u + 6)";
@@ -4987,6 +4991,10 @@ fn top_level_block_pairings_proves_multivar_plus_quadratic_context() {
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI keeps cheaper factor and embedded-corpus coverage for this heavy symbolic Vandermonde identity"
+)]
 fn engine_proves_alternating_cubic_vandermonde_identity() {
     let lhs = "a^3*(b-c) + b^3*(c-a) + c^3*(a-b)";
     let rhs = "(a-b)*(a-c)*(b-c)*(a+b+c)";
@@ -5285,6 +5293,10 @@ fn residual_pair_corpus_detects_inverse_trig_rational_ctx_pair() {
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI keeps engine and torture coverage for this raw-pressure polynomial identity smoke"
+)]
 fn raw_pressure_proof_can_use_original_engine_texts() {
     let lhs = "((u/(u + 1))+1)^4";
     let rhs = "(u/(u + 1))^4 + 4*(u/(u + 1))^3 + 6*(u/(u + 1))^2 + 4*(u/(u + 1)) + 1";
@@ -5311,6 +5323,10 @@ fn raw_pressure_proof_can_use_original_engine_texts() {
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI keeps direct engine regressions for this special-angle double-angle child-process smoke"
+)]
 fn raw_pressure_child_process_can_use_engine_direct_pair_texts_for_special_angle_double_angle_pair()
 {
     let lhs = "((cot(5*pi/12)) * (sin(2*x)))";
@@ -17917,21 +17933,6 @@ fn safe_window_parametrized_proof_closes_log_square_and_sqrt_product_pairs() {
     assert!(prove_zero_from_safe_window_parametrized_texts(
         "(sin(2*arcsin(x)))*(abs(sin(u/2)))",
         "(2*x*sqrt(1-x^2))*(sqrt((1-cos(u))/2))"
-    ));
-}
-
-#[test]
-fn safe_window_parametrized_proof_closes_inverse_trig_branch_even_if_raw_engine_improves() {
-    let lhs = "((exp(x)-exp(-x))/2)*(sin(2*arcsin(u)))";
-    let rhs = "(sinh(x))*(2*u*sqrt(1-u^2))";
-    assert!(
-        prove_zero_from_engine_texts(lhs, rhs)
-            || prove_zero_from_safe_window_parametrized_texts(lhs, rhs)
-    );
-    assert!(prove_zero_from_safe_window_parametrized_texts(lhs, rhs));
-    assert!(prove_zero_from_safe_window_parametrized_texts(
-        "((exp(x)-exp(-x))/2)*(sin(2*arcsin(u)))",
-        "(sinh(x))*(2*u*sqrt(1-u^2))"
     ));
 }
 
