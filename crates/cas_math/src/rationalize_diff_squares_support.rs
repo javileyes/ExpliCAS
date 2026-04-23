@@ -680,6 +680,23 @@ mod tests {
     }
 
     #[test]
+    fn cancels_4th_root_binomial_factor_difference() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let one_fourth = ctx.rational(1, 4);
+        let x_fourth = ctx.add(Expr::Pow(x, one_fourth));
+        let numerator = ctx.add(Expr::Sub(x, one));
+        let denominator = ctx.add(Expr::Sub(x_fourth, one));
+        let expr = ctx.add(Expr::Div(numerator, denominator));
+        let rewrite = try_rewrite_cancel_nth_root_binomial_factor_expr(&mut ctx, expr)
+            .expect("rewrite should apply");
+        let rendered = cas_formatter::render_expr(&ctx, rewrite.rewritten);
+        assert!(rendered.contains("x^(3/4)") || rendered.contains("x^(1/2)"));
+        assert_eq!(rewrite.desc, "Cancel 4th root binomial factor");
+    }
+
+    #[test]
     fn rejects_cancel_when_numerator_not_matching_power_pattern() {
         let mut ctx = Context::new();
         let expr = parse("(x+2)/(x^(1/3)+1)", &mut ctx).expect("parse");

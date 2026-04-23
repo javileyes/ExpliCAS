@@ -7020,7 +7020,7 @@ fn validate_identity_pair_text(label: &str, text: &str, line_num: usize) {
     }
 }
 
-fn load_identity_pairs() -> Vec<IdentityPair> {
+fn parse_identity_pairs() -> Vec<IdentityPair> {
     let csv_path = find_test_data_file("identity_pairs.csv");
     let content = std::fs::read_to_string(csv_path).expect("Failed to read identity_pairs.csv");
 
@@ -7113,6 +7113,11 @@ fn load_identity_pairs() -> Vec<IdentityPair> {
     }
 
     pairs
+}
+
+fn load_identity_pairs() -> Vec<IdentityPair> {
+    static IDENTITY_PAIRS: OnceLock<Vec<IdentityPair>> = OnceLock::new();
+    IDENTITY_PAIRS.get_or_init(parse_identity_pairs).clone()
 }
 
 /// Get legacy bucket from environment variable (for migration flexibility)
@@ -11037,7 +11042,7 @@ fn text_substitute(template: &str, var: &str, replacement: &str) -> String {
 }
 
 /// Load substitution identity pairs from CSV
-fn load_substitution_identities() -> Vec<IdentityPair> {
+fn parse_substitution_identities() -> Vec<IdentityPair> {
     let csv_path = find_test_data_file("substitution_identities.csv");
     let content =
         std::fs::read_to_string(csv_path).expect("Failed to read substitution_identities.csv");
@@ -11088,8 +11093,15 @@ fn load_substitution_identities() -> Vec<IdentityPair> {
     pairs
 }
 
+fn load_substitution_identities() -> Vec<IdentityPair> {
+    static SUBSTITUTION_IDENTITIES: OnceLock<Vec<IdentityPair>> = OnceLock::new();
+    SUBSTITUTION_IDENTITIES
+        .get_or_init(parse_substitution_identities)
+        .clone()
+}
+
 /// Load substitution expressions from CSV
-fn load_substitution_expressions_from(filename: &str) -> Vec<SubstitutionExpr> {
+fn parse_substitution_expressions_from(filename: &str) -> Vec<SubstitutionExpr> {
     let csv_path = find_test_data_file(filename);
     let content = std::fs::read_to_string(&csv_path)
         .unwrap_or_else(|_| panic!("Failed to read {}", filename));
@@ -11121,11 +11133,19 @@ fn load_substitution_expressions_from(filename: &str) -> Vec<SubstitutionExpr> {
 }
 
 fn load_substitution_expressions() -> Vec<SubstitutionExpr> {
-    load_substitution_expressions_from("substitution_expressions.csv")
+    static SUBSTITUTION_EXPRESSIONS: OnceLock<Vec<SubstitutionExpr>> = OnceLock::new();
+    SUBSTITUTION_EXPRESSIONS
+        .get_or_init(|| parse_substitution_expressions_from("substitution_expressions.csv"))
+        .clone()
 }
 
 fn load_structural_substitution_expressions() -> Vec<SubstitutionExpr> {
-    load_substitution_expressions_from("substitution_structural_expressions.csv")
+    static STRUCTURAL_SUBSTITUTION_EXPRESSIONS: OnceLock<Vec<SubstitutionExpr>> = OnceLock::new();
+    STRUCTURAL_SUBSTITUTION_EXPRESSIONS
+        .get_or_init(|| {
+            parse_substitution_expressions_from("substitution_structural_expressions.csv")
+        })
+        .clone()
 }
 
 fn filter_substitutions_by_labels(
@@ -11164,7 +11184,7 @@ fn parse_filter_specs(spec: &str, vars_len: usize, line_num: usize) -> Vec<Filte
     filters
 }
 
-fn load_direct_pairs(file_name: &str) -> Vec<ContextualPair> {
+fn parse_direct_pairs(file_name: &str) -> Vec<ContextualPair> {
     let csv_path = find_test_data_file(file_name);
     let content = std::fs::read_to_string(csv_path)
         .unwrap_or_else(|_| panic!("Failed to read {}", file_name));
@@ -11210,35 +11230,59 @@ fn load_direct_pairs(file_name: &str) -> Vec<ContextualPair> {
 }
 
 fn load_contextual_pairs() -> Vec<ContextualPair> {
-    load_direct_pairs("contextual_pairs.csv")
+    static CONTEXTUAL_PAIRS: OnceLock<Vec<ContextualPair>> = OnceLock::new();
+    CONTEXTUAL_PAIRS
+        .get_or_init(|| parse_direct_pairs("contextual_pairs.csv"))
+        .clone()
 }
 
 fn load_contextual_rational_pairs() -> Vec<ContextualPair> {
-    load_direct_pairs("contextual_rational_pairs.csv")
+    static CONTEXTUAL_RATIONAL_PAIRS: OnceLock<Vec<ContextualPair>> = OnceLock::new();
+    CONTEXTUAL_RATIONAL_PAIRS
+        .get_or_init(|| parse_direct_pairs("contextual_rational_pairs.csv"))
+        .clone()
 }
 
 fn load_contextual_trig_pairs() -> Vec<ContextualPair> {
-    load_direct_pairs("contextual_trig_pairs.csv")
+    static CONTEXTUAL_TRIG_PAIRS: OnceLock<Vec<ContextualPair>> = OnceLock::new();
+    CONTEXTUAL_TRIG_PAIRS
+        .get_or_init(|| parse_direct_pairs("contextual_trig_pairs.csv"))
+        .clone()
 }
 
 fn load_contextual_polynomial_pairs() -> Vec<ContextualPair> {
-    load_direct_pairs("contextual_polynomial_pairs.csv")
+    static CONTEXTUAL_POLYNOMIAL_PAIRS: OnceLock<Vec<ContextualPair>> = OnceLock::new();
+    CONTEXTUAL_POLYNOMIAL_PAIRS
+        .get_or_init(|| parse_direct_pairs("contextual_polynomial_pairs.csv"))
+        .clone()
 }
 
 fn load_contextual_radical_pairs() -> Vec<ContextualPair> {
-    load_direct_pairs("contextual_radical_pairs.csv")
+    static CONTEXTUAL_RADICAL_PAIRS: OnceLock<Vec<ContextualPair>> = OnceLock::new();
+    CONTEXTUAL_RADICAL_PAIRS
+        .get_or_init(|| parse_direct_pairs("contextual_radical_pairs.csv"))
+        .clone()
 }
 
 fn load_residual_pairs() -> Vec<ContextualPair> {
-    load_direct_pairs("residual_pairs.csv")
+    static RESIDUAL_PAIRS: OnceLock<Vec<ContextualPair>> = OnceLock::new();
+    RESIDUAL_PAIRS
+        .get_or_init(|| parse_direct_pairs("residual_pairs.csv"))
+        .clone()
 }
 
 fn load_known_domain_frontier_pairs() -> Vec<ContextualPair> {
-    load_direct_pairs("known_domain_frontier_pairs.csv")
+    static KNOWN_DOMAIN_FRONTIER_PAIRS: OnceLock<Vec<ContextualPair>> = OnceLock::new();
+    KNOWN_DOMAIN_FRONTIER_PAIRS
+        .get_or_init(|| parse_direct_pairs("known_domain_frontier_pairs.csv"))
+        .clone()
 }
 
 fn load_known_domain_frontier_safe_pairs() -> Vec<ContextualPair> {
-    load_direct_pairs("known_domain_frontier_safe_pairs.csv")
+    static KNOWN_DOMAIN_FRONTIER_SAFE_PAIRS: OnceLock<Vec<ContextualPair>> = OnceLock::new();
+    KNOWN_DOMAIN_FRONTIER_SAFE_PAIRS
+        .get_or_init(|| parse_direct_pairs("known_domain_frontier_safe_pairs.csv"))
+        .clone()
 }
 
 fn load_idempotence_expressions() -> Vec<IdempotenceExpr> {

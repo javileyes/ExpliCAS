@@ -119,7 +119,7 @@ fn test_standard_no_product_to_sum_negative() {
 
 #[test]
 fn test_standard_no_product_to_sum_negative_cos() {
-    let (_, steps) = run_simplify("2*sin(x)*(-cos(y))", &standard_opts());
+    let (_, steps) = run_simplify("sin(x)*(-cos(y))", &standard_opts());
     assert_no_rule(&steps, "ProductToSum");
 }
 

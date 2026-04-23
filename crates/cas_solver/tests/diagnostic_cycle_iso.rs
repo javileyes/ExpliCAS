@@ -23,6 +23,10 @@ fn solve_and_print(label: &str, eq_str: &str, var: &str) {
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI does not need the cycle diagnostic print harness"
+)]
 fn diagnostic_cycle_failures() {
     eprintln!();
     eprintln!("=== Cycle diagnostic ===");
@@ -60,6 +64,10 @@ fn diagnostic_cycle_failures() {
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI does not need the isolation diagnostic print harness"
+)]
 fn diagnostic_isolation_failures() {
     eprintln!();
     eprintln!("=== Isolation diagnostic ===");

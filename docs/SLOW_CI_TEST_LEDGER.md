@@ -2594,6 +2594,139 @@ Do not create entries for:
 - status:
   - `fixed in test`
 
+### 2026-04-23: `fraction_opposite_denominators_tests`
+
+- area:
+  - `cas_solver`
+  - opposite-denominator numeric harness
+- repro:
+  - `cargo test -p cas_solver --test fraction_opposite_denominators_tests -- --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `test_sqrt_opposite_denominators_with_coefficients_numeric`: `0.46s`
+  - `fraction_opposite_denominators_tests`: `0.39s`
+  - `cas_solver --tests`: recent hot band around `9.9s`
+- latest measured time after fix:
+  - `fraction_opposite_denominators_tests`: `0.34s`
+  - `cas_solver --tests`: `9.43s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the debug bottleneck was a single radical opposite-denominator numeric smoke
+    with coefficient propagation, but that contract was already covered by the
+    cheaper polynomial coefficient smoke and the neighboring radical
+    opposite-denominator checks
+- retained action:
+  - mark `test_sqrt_opposite_denominators_with_coefficients_numeric` ignored in
+    debug
+  - keep the surrounding radical and polynomial opposite-denominator smokes
+    active so coverage remains in CI
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `trig_quotient_contract_tests`
+
+- area:
+  - `cas_solver`
+  - trig quotient runtime-contract harness
+- repro:
+  - `cargo test -p cas_solver --test trig_quotient_contract_tests -- --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `trig_quotient_contract_tests`: `0.27s-0.30s`
+  - `cas_solver --tests`: `9.43s`
+- latest measured time after fix:
+  - `trig_quotient_contract_tests`: `ignored` in debug
+  - `cas_solver --tests`: `9.21s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the bin contained a single runtime smoke for the cos-difference / sin-difference
+    quotient contract, but the actual semantic behavior was already covered in
+    derive, CLI, didactic, and metamorphic suites
+  - keeping this extra runtime-only smoke active in debug added wall-clock cost
+    without materially increasing CI signal
+- retained action:
+  - mark `cos_diff_over_sin_diff_contracts_to_tan_avg_with_nonzero_guards`
+    ignored in debug
+  - keep the broader family covered by:
+    - `analysis_command_eval_tests`
+    - `semantics_cli_contract_tests`
+    - `derive/trig.rs`
+    - `metamorphic_simplification_tests`
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `diagnostic_cubic` / `diagnostic_cycle_iso`
+
+- area:
+  - `cas_solver`
+  - pure diagnostic print harnesses
+- repro:
+  - `cargo test -p cas_solver --test diagnostic_cubic -- --nocapture`
+  - `cargo test -p cas_solver --test diagnostic_cycle_iso -- --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `diagnostic_cubic`: `0.29s-0.32s`
+  - `diagnostic_cycle_iso`: `0.22s-0.23s`
+  - `cas_solver --tests`: hot band around `9.4s`
+- latest measured time after fix:
+  - both diagnostic bins: `ignored` in debug
+  - `cas_solver --tests`: `9.09s`
+- classification:
+  - `runner noise`
+- root cause:
+  - both bins were diagnostic-only print harnesses with no contract assertions
+  - they consumed noticeable wall-clock in debug CI while adding no pass/fail
+    signal to the automated suite
+- retained action:
+  - mark the diagnostic tests ignored in debug:
+    - `diagnostic_cubic_failures`
+    - `diagnostic_cycle_failures`
+    - `diagnostic_isolation_failures`
+  - keep them available for manual/non-debug investigative runs
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `auto_expand_contract_tests`
+
+- area:
+  - `cas_solver`
+  - auto-expand contract harness
+- repro:
+  - `cargo test -p cas_solver --test auto_expand_contract_tests budget_rejects_too_many_terms -- --exact --nocapture`
+  - `cargo test -p cas_solver --test auto_expand_contract_tests -- --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `budget_rejects_too_many_terms`: `0.21s`
+  - `auto_expand_contract_tests`: `0.20s`
+  - `cas_solver --tests`: `10.47s`
+- latest measured time after fix:
+  - `budget_rejects_too_many_terms`: `0.17s`
+  - `auto_expand_contract_tests`: `0.16s`
+  - `cas_solver --tests`: `10.20s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the “too many terms” budget smoke only needed to prove that a 5-term base
+    exceeds the `max_base_terms=4` gate
+  - using a cubic representative paid extra expansion/normalization cost that
+    did not add coverage beyond the already-tested exponent budget path
+- retained action:
+  - keep the same 5-term over-budget contract
+  - narrow the representative from `((a+b+c+d+e)^3 - a^3)/a` to
+    `((a+b+c+d+e)^2 - a^2)/a`
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
 
 ### 2026-04-23: `stress_solve_tests`
 
@@ -2862,6 +2995,43 @@ Do not create entries for:
 - status:
   - `fixed in test`
 
+### 2026-04-23: `golden_corpus_tests`
+
+- area:
+  - `cas_solver`
+  - golden corpus no-panic harness
+- repro:
+  - `cargo test -p cas_solver --test golden_corpus_tests -- --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `golden_corpus_tests`: `0.306s`
+  - hot `cas_solver --tests`: `9.049s`
+- latest measured time after fix:
+  - `golden_corpus_tests`: `0.179s`
+  - hot `cas_solver --tests`: `8.586s-8.908s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - `corpus_solve_commands_no_panic` swept every `solve` command from the basic
+    corpus in debug, even though the contract was only "representative solve
+    commands do not panic"
+  - the 13 solve rows include multiple near-duplicate algebraic families, so
+    the full sweep left avoidable wall-clock cost in fast CI
+- retained action:
+  - keep the full sweep outside debug builds
+  - in debug, route `corpus_solve_commands_no_panic` through a representative
+    subset covering:
+    - linear
+    - real quadratic
+    - quadratic with no real solutions
+    - exponential/log
+    - trig
+    - symbolic affine solve
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
 ### 2026-04-23: `rationalization_stability_tests`
 
 - area:
@@ -2896,6 +3066,141 @@ Do not create entries for:
     cancellation rewrite
   - keep the more specific end-to-end 4th-root denominator rationalization smoke
     and the 4th-root difference case active
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `metamorphic_simplification_tests` corpus loader cache
+
+- area:
+  - `cas_solver`
+  - metamorphic simplification harness
+- repro:
+  - `cargo test -p cas_solver --test metamorphic_simplification_tests -- --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `metamorphic_simplification_tests`: `0.57s-0.58s`
+  - `cas_solver --tests`: `10.51s-10.53s`
+- latest measured time after fix:
+  - `metamorphic_simplification_tests`: `0.54s`
+  - `cas_solver --tests`: `10.20s-10.30s`
+- classification:
+  - `test harness overhead`
+- root cause:
+  - the bin repeatedly re-read and re-parsed the same CSV corpora
+    (`identity_pairs`, `substitution_identities`, contextual/residual/frontier
+    pair files, and substitution expression files) across many active tests
+  - the cost was mostly shared initialization, not one pathological exact
+- retained action:
+  - cache the parsed corpora with `OnceLock<Vec<_>>` in:
+    - `load_identity_pairs`
+    - `load_substitution_identities`
+    - `load_substitution_expressions`
+    - `load_structural_substitution_expressions`
+    - all active `load_*pairs()` wrappers used by curated/residual/frontier tests
+  - keep call sites unchanged by returning cloned cached vectors, so coverage and
+    existing test structure stay intact
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `depth_stress_test`
+
+- area:
+  - `cas_solver`
+  - depth stress harness
+- repro:
+  - `cargo test -p cas_solver --test depth_stress_test test_depth_continued_fraction_ci -- --exact --nocapture`
+  - `cargo test -p cas_solver --test depth_stress_test -- --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `test_depth_continued_fraction_ci`: `0.49s-0.51s`
+  - `depth_stress_test`: `0.50s`
+  - `cas_solver --tests`: `10.20s-10.30s`
+- latest measured time after fix:
+  - `test_depth_continued_fraction_ci`: `0.38s` after the first trim, then the
+    retained `[5, 10]` debug band left the bin at `0.11s`
+  - `depth_stress_test`: `0.11s`
+  - `cas_solver --tests`: `9.43s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the continued-fraction CI guard was carrying the depth-50 representative in
+    debug, and that single exact dominated the whole bin
+  - the file already keeps the deep manual coverage in the ignored full sweep,
+    so the debug smoke did not need to keep the deepest sample in its active band
+- retained action:
+  - keep `test_depth_continued_fraction_ci` on `[5, 10]` in debug
+  - preserve `[5, 10, 20, 50]` outside debug builds
+  - leave the ignored full sweep untouched for deep/manual coverage
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `rationalization_stability_tests`
+
+- area:
+  - `cas_solver`
+  - rationalization stability harness
+- repro:
+  - `cargo test -p cas_solver --test rationalization_stability_tests -- --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `test_cancel_4th_root_factor_diff`: `0.67s`
+  - `rationalization_stability_tests`: `0.52s`
+  - `cas_solver --tests`: `10.20s-10.30s` recent hot band before this trim
+- latest measured time after fix:
+  - helper coverage in `cas_math`: `0.00s`
+  - `rationalization_stability_tests`: `0.09s`
+  - `cas_solver --tests`: `9.91s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the wire-level smoke for 4th-root diff cancellation was re-running an
+    expensive end-to-end path even though the structural cancellation itself is
+    a small matcher/rewrite contract
+  - that single exact dominated the whole bin
+- retained action:
+  - add a helper-level unit test in
+    `cas_math::rationalize_diff_squares_support` for
+    `try_rewrite_cancel_nth_root_binomial_factor_expr` on the 4th-root diff case
+  - mark the wire-level smoke `test_cancel_4th_root_factor_diff` ignored in
+    debug, keeping the broader solver coverage in non-debug/manual runs
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-04-23: `context_no_contamination`
+
+- area:
+  - `cas_solver`
+  - context no-contamination harness
+- repro:
+  - `cargo test -p cas_solver --test context_no_contamination -- --nocapture`
+  - `cargo test -p cas_solver --test context_no_contamination test_standard_no_product_to_sum_negative_cos -- --exact --nocapture`
+  - `cargo test -p cas_solver --tests -- --nocapture`
+- latest measured time before fix:
+  - `test_standard_no_product_to_sum_negative_cos`: `0.16s`
+  - `context_no_contamination`: `0.32s`
+  - `cas_solver --tests`: `10.99s` on the reverted A/B run
+- latest measured time after fix:
+  - `test_standard_no_product_to_sum_negative_cos`: `0.01s`
+  - `context_no_contamination`: `0.03s`
+  - `cas_solver --tests`: `10.47s`
+- classification:
+  - `test verification pathology`
+- root cause:
+  - the negative-cos no-contamination smoke carried an extra scalar factor that
+    did not add coverage, but did pull the simplifier through a much heavier
+    normalization path in debug
+- retained action:
+  - keep the same semantic contract (`ProductToSum` must not fire when the
+    cosine factor is explicitly negated in `Standard` mode)
+  - narrow the representative from `2*sin(x)*(-cos(y))` to `sin(x)*(-cos(y))`
 - embedded corpus guardrail:
   - unchanged engine runtime path
 - status:

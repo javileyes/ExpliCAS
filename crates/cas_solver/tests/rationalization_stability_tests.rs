@@ -185,6 +185,10 @@ fn test_cancel_cube_root_factor_r_equals_2_diff() {
 
 /// Test (E): Diff of 4th powers
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI covers 4th-root diff cancellation via cas_math helper tests"
+)]
 fn test_cancel_4th_root_factor_diff() {
     let json = eval_str_to_wire("(x - 1) / (x^(1/4) - 1)", "{}");
     assert!(json.contains("\"ok\":true"));

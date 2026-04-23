@@ -23,6 +23,10 @@ fn solve_and_print(label: &str, eq_str: &str, var: &str) {
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI does not need the cubic diagnostic print harness"
+)]
 fn diagnostic_cubic_failures() {
     eprintln!();
     eprintln!("=== Cubic diagnostic ===");

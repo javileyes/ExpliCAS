@@ -6,6 +6,10 @@ use cas_solver::api::ImplicitCondition;
 use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult};
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI keeps trig-quotient contraction covered by derive/CLI/metamorphic contracts; this runtime guard smoke stays for non-debug/manual runs"
+)]
 fn cos_diff_over_sin_diff_contracts_to_tan_avg_with_nonzero_guards() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();

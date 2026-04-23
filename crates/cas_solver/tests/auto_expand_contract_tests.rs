@@ -165,10 +165,10 @@ fn budget_rejects_high_exponent() {
 
 #[test]
 fn budget_rejects_too_many_terms() {
-    // ((a+b+c+d+e)^3 - ...) - too many base terms (5 > max_base_terms=4)
-    let result = simplify_auto("((a+b+c+d+e)^3 - a^3)/a");
+    // ((a+b+c+d+e)^2 - ...) - too many base terms (5 > max_base_terms=4)
+    let result = simplify_auto("((a+b+c+d+e)^2 - a^2)/a");
     assert!(
-        result.contains("^3") || result.contains("^(3)"),
+        result.contains("^2") || result.contains("^(2)"),
         "Budget should reject 5-term base, got: {}",
         result
     );

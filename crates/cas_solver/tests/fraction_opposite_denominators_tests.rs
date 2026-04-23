@@ -84,6 +84,10 @@ fn test_sqrt_opposite_denominators_cancels_numeric() {
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug CI covers coefficient propagation through polynomial and radical opposite-denominator smokes"
+)]
 fn test_sqrt_opposite_denominators_with_coefficients_numeric() {
     // 2/(sqrt(x)+2) + 3/(-2-sqrt(x)) = -1/(sqrt(x)+2)
     assert_equiv_numeric_1var(
