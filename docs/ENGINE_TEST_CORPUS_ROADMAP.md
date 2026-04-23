@@ -9,20 +9,34 @@ corpus work is the right vehicle for a `robustness` iteration.
 This document proposes the next high-ROI test corpora to improve the
 simplification engine itself, not only the didactic layer.
 
-It is motivated by the recent `0/1` mixed-corpus work:
+This document now serves two purposes at once:
+
+- durable corpus policy
+- current promotion priority guidance
+
+Read it with this status in mind:
+
+- `embedded_equivalence_context_corpus.csv` already exists and is already part
+  of the live scorecard guardrail
+- high-temperature generation is still primarily a discovery feeder, not an
+  automatic promotion lane
+- the next corpus move is therefore usually growth and rebalance of existing
+  guardrails, not creation of a brand-new corpus from zero
+
+It is motivated by the `0/1` mixed-corpus work:
 
 - `/Users/javiergimenezmoya/developer/math/docs/simplify_to_zero_step_by_step_review.csv`
 - `/Users/javiergimenezmoya/developer/math/docs/simplify_zero_mixed_corpus.csv`
 - `/Users/javiergimenezmoya/developer/math/docs/generated/simplify_zero_mixed_corpus_failures.csv`
 
-The main lesson from that corpus is important:
+The main lesson from that corpus remains important:
 
 - the engine already knew many exact identities
 - but often failed when those identities appeared inside a larger context
 - targeted corpus generation exposed that gap much better than isolated manual
   examples
 
-So the next step is to design corpora that force the engine to solve real
+So the continuing job is to design corpora that force the engine to solve real
 structural problems:
 
 - local equivalence inside context
@@ -89,6 +103,13 @@ For the orchestrator-specific side of that work, see
 That is the model to repeat.
 
 ## Corpus Roles: Frozen, Live, Stress
+
+These are corpus-role labels, not the current scorecard profile names.
+
+Today the runnable scorecard profiles are `fast`, `guardrail`, `pressure`, and
+`full`.
+This file uses `frozen / live / stress` to describe how a corpus should behave
+strategically over time.
 
 Not every corpus should play the same role.
 
@@ -331,7 +352,7 @@ Operationally, keep the current slow-test state in:
 Use the embedded corpus as the guardrail only for retained engine-side fixes,
 not as a reason to avoid fixing a pathological test harness.
 
-## Corpus 2: High-Temperature Composition Discovery
+## Discovery Feeder: High-Temperature Composition
 
 ### Purpose
 
@@ -665,8 +686,8 @@ normalization across family boundaries.
 
 ### Why This Has High ROI
 
-The remaining six failures in the current mixed `0/1` corpus are exactly this
-kind of problem.
+The mixed `0/1` corpus repeatedly exposes exactly this kind of problem whenever
+residual failures remain after a broader cleanup pass.
 
 ## Suggested Priority Order
 
@@ -680,9 +701,10 @@ Recommended order for maximum engine ROI:
 6. Budget and performance stability
 7. Didactic fidelity review
 
-## Recommended Immediate Next Step
+## Current Promotion Priority
 
-The most useful next corpus after the current `0/1` mixed corpus is:
+The highest-ROI current move is to keep growing and rebalancing the existing
+embedded contextual guardrail:
 
 ### Embedded Equivalence In Context
 
@@ -694,9 +716,12 @@ Use already validated equivalence pairs and generate:
 - shifted quotients
 - passthrough terms
 
-This is the most likely corpus to produce another real leap in engine quality,
-because it directly tests whether equivalence is usable locally, not only in a
-top-level naked identity.
+Treat this as growth of an existing live guardrail, not as a proposal to create
+that corpus from scratch.
+
+It is still the most likely place to produce another real leap in engine
+quality, because it directly tests whether equivalence is usable locally, not
+only in a top-level naked identity.
 
 ## How To Grow `embedded_equivalence_context_corpus.csv`
 
@@ -743,7 +768,7 @@ That separation matters:
 - `embedded` is for curated contextual guardrails
 - metamorphic slices are for exploration and pressure
 
-## Concrete Example Seeds
+## Current Promotion Seeds
 
 Good seeds for this next corpus:
 

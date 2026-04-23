@@ -50,7 +50,7 @@ SUITES: dict[str, SuiteSpec] = {
     "embedded_equivalence_context": SuiteSpec(
         name="embedded_equivalence_context",
         category="equivalence",
-        profile_tags=("guardrail", "full"),
+        profile_tags=("guardrail", "fast_embedded", "full"),
         command=[
             "cargo",
             "run",
@@ -92,12 +92,15 @@ SUITES: dict[str, SuiteSpec] = {
         command=[
             "cargo",
             "test",
+            "--release",
             "-q",
             "-p",
             "cas_solver",
             "--test",
             "derive_contract_tests",
+            "derive_pairs_follow_expected_outcomes",
             "--",
+            "--exact",
             "--nocapture",
         ],
         env={},
@@ -159,7 +162,7 @@ SUITES: dict[str, SuiteSpec] = {
     "simplify_add_small": SuiteSpec(
         name="simplify_add_small",
         category="simplify",
-        profile_tags=("fast",),
+        profile_tags=("fast", "fast_embedded"),
         command=[
             "cargo",
             "test",
@@ -180,7 +183,7 @@ SUITES: dict[str, SuiteSpec] = {
     "contextual_strict_fast": SuiteSpec(
         name="contextual_strict_fast",
         category="equivalence",
-        profile_tags=("fast",),
+        profile_tags=("fast", "fast_embedded"),
         command=[
             "cargo",
             "test",
@@ -209,7 +212,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--profile",
-        choices=("fast", "guardrail", "pressure", "full"),
+        choices=("fast", "fast_embedded", "guardrail", "pressure", "full"),
         default="guardrail",
         help="Predefined suite set to run.",
     )
@@ -391,6 +394,10 @@ def parse_corpus(output: str) -> dict[str, Any]:
     if complexity_rows:
         metrics["complexity_rows"] = complexity_rows
 
+    composition_rows = parse_composition_rows(output)
+    if composition_rows:
+        metrics["composition_rows"] = composition_rows
+
     shell_depth_rows = parse_shell_depth_rows(output)
     if shell_depth_rows:
         metrics["shell_depth_rows"] = shell_depth_rows
@@ -451,6 +458,41 @@ def parse_complexity_rows(output: str) -> dict[str, dict[str, Any]]:
             "max_shell_depth": int(match.group("max_shell_depth")),
         }
     return complexity_rows
+
+
+def parse_composition_rows(output: str) -> dict[str, dict[str, Any]]:
+    composition_rows: dict[str, dict[str, Any]] = {}
+    in_block = False
+    row_pattern = re.compile(
+        r"^\s+(?P<composition>\S+): total=(?P<total>\d+) passed=(?P<passed>\d+) failed=(?P<failed>\d+)"
+        r"(?: elapsed=(?P<elapsed_value>[0-9.]+)(?P<elapsed_unit>[a-zµ]+) avg_case_ms=(?P<avg_case_ms>[0-9.]+))?$"
+    )
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped == "By composition:":
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if not stripped:
+            break
+        match = row_pattern.match(line)
+        if not match:
+            continue
+        row = {
+            "total": int(match.group("total")),
+            "passed": int(match.group("passed")),
+            "failed": int(match.group("failed")),
+        }
+        if match.group("elapsed_value") and match.group("elapsed_unit"):
+            row["elapsed_seconds"] = duration_to_seconds(
+                float(match.group("elapsed_value")), match.group("elapsed_unit")
+            )
+        if match.group("avg_case_ms"):
+            row["avg_case_ms"] = float(match.group("avg_case_ms"))
+        composition_rows[match.group("composition")] = row
+    return composition_rows
 
 
 def parse_shell_depth_rows(output: str) -> dict[int, dict[str, int]]:
@@ -720,11 +762,23 @@ def parse_unified_benchmark(output: str) -> dict[str, Any]:
         output,
     )
     if proved_breakdown:
+        quotient = int(proved_breakdown.group(1))
+        difference = int(proved_breakdown.group(2))
+        composed = int(proved_breakdown.group(3))
         metrics["proved_breakdown"] = {
-            "quotient": int(proved_breakdown.group(1)),
-            "difference": int(proved_breakdown.group(2)),
-            "composed": int(proved_breakdown.group(3)),
+            "quotient": quotient,
+            "difference": difference,
+            "composed": composed,
         }
+        total_symbolic = quotient + difference + composed
+        if total_symbolic > 0:
+            metrics["proof_shape_mix"] = {
+                "non_composed_symbolic": quotient + difference,
+                "non_composed_share_percent": round(
+                    (quotient + difference) * 100.0 / total_symbolic, 1
+                ),
+                "composed_share_percent": round(composed * 100.0 / total_symbolic, 1),
+            }
 
     metrics["suite_rows"] = suites
     return metrics
@@ -1066,18 +1120,96 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 "",
                 "- Dimension: source-to-target bridgeability and path quality.",
                 "- Interpretation: measures planner/strategy reachability; not contextual wrapper strength.",
-                (
-                    f"- Outcomes: derived={derive_metrics['derived']} "
-                    f"unsupported={derive_metrics['unsupported']} "
-                    f"not_equivalent={derive_metrics['not_equivalent']}"
-                ),
-                (
-                    f"- Path quality: mean_step_count={derive_metrics['mean_step_count']:.2f} "
-                    f"long_path_rate={derive_metrics['long_path_rate']:.2f}"
-                ),
-                "",
             ]
         )
+        if "parse_error" in derive_metrics:
+            lines.extend(
+                [
+                    f"- Parser status: `parse_error={derive_metrics['parse_error']}`",
+                    "",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    (
+                        f"- Outcomes: derived={derive_metrics['derived']} "
+                        f"unsupported={derive_metrics['unsupported']} "
+                        f"not_equivalent={derive_metrics['not_equivalent']}"
+                    ),
+                    (
+                        f"- Path quality: mean_step_count={derive_metrics['mean_step_count']:.2f} "
+                        f"long_path_rate={derive_metrics['long_path_rate']:.2f}"
+                    ),
+                    "",
+                ]
+            )
+
+    strict_suite = scorecard["suites"].get("simplify_strict")
+    if strict_suite:
+        strict_metrics = strict_suite["metrics"]
+        proof_shape_mix = strict_metrics.get("proof_shape_mix")
+        proved_breakdown = strict_metrics.get("proved_breakdown")
+        if isinstance(proof_shape_mix, dict) and isinstance(proved_breakdown, dict):
+            lines.extend(
+                [
+                    "## Simplify Benchmark Interpretation",
+                    "",
+                    "- Dimension: broad semantic closure under metamorphic composition.",
+                    (
+                        "- Proof-shape mix: "
+                        f"quotient={proved_breakdown['quotient']} "
+                        f"diff={proved_breakdown['difference']} "
+                        f"composed={proved_breakdown['composed']} "
+                        f"(non-composed {proof_shape_mix['non_composed_share_percent']:.1f}%, "
+                        f"composed {proof_shape_mix['composed_share_percent']:.1f}%)."
+                    ),
+                    (
+                        "- Caveat: high `proved-composed` is a strong semantic/robustness signal, "
+                        "but a weaker direct runtime proxy because part of the closure is shaped by "
+                        "the benchmark harness rather than by one raw engine path."
+                    ),
+                    (
+                        "- Runtime interpretation: use `embedded_equivalence_context`, "
+                        "`simplify_zero_mixed`, and orchestrator profiling to localize real engine cost."
+                    ),
+                    "",
+                ]
+            )
+
+    mixed_suite = scorecard["suites"].get("simplify_zero_mixed")
+    if mixed_suite:
+        mixed_metrics = mixed_suite["metrics"]
+        lines.extend(
+            [
+                "## Mixed Zero Pressure",
+                "",
+                "- Dimension: raw engine pressure on composed zero-target expressions through the canonical eval path.",
+                "- Interpretation: better runtime proxy than unified `proved-composed` counts for mixed additive/multiplicative workloads.",
+            ]
+        )
+        composition_rows = mixed_metrics.get("composition_rows")
+        if isinstance(composition_rows, dict) and composition_rows:
+            ordered_rows = sorted(
+                composition_rows.items(),
+                key=lambda item: (
+                    -item[1].get("elapsed_seconds", 0.0),
+                    -item[1].get("failed", 0),
+                    item[0],
+                ),
+            )
+            top_rows = []
+            for composition, row in ordered_rows[:4]:
+                fragment = (
+                    f"{composition} total={row['total']} failed={row['failed']}"
+                )
+                if "elapsed_seconds" in row:
+                    fragment += f" elapsed={row['elapsed_seconds']:.2f}s"
+                if "avg_case_ms" in row:
+                    fragment += f" avg_case_ms={row['avg_case_ms']:.2f}"
+                top_rows.append(fragment)
+            lines.append(f"- Composition hotspots: {', '.join(top_rows)}")
+        lines.append("")
 
     lines.extend(
         [

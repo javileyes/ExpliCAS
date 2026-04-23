@@ -37,6 +37,7 @@ struct CompositionSummary {
     total: usize,
     passed: usize,
     failed: usize,
+    elapsed_seconds: f64,
 }
 
 #[derive(Debug)]
@@ -81,9 +82,12 @@ fn run(config: RunnerConfig) -> i32 {
         {
             eprintln!("TRACE case {}: {}", index + 1, case.expression);
         }
+        let case_start = Instant::now();
         let failure = evaluate_case(case);
+        let case_elapsed_seconds = case_start.elapsed().as_secs_f64();
         let entry = by_composition.entry(case.composition.clone()).or_default();
         entry.total += 1;
+        entry.elapsed_seconds += case_elapsed_seconds;
         if failure.is_some() {
             entry.failed += 1;
         } else {
@@ -112,9 +116,19 @@ fn run(config: RunnerConfig) -> i32 {
     println!();
     println!("By composition:");
     for (composition, summary) in &by_composition {
+        let avg_case_ms = if summary.total > 0 {
+            summary.elapsed_seconds * 1_000.0 / summary.total as f64
+        } else {
+            0.0
+        };
         println!(
-            "  {}: total={} passed={} failed={}",
-            composition, summary.total, summary.passed, summary.failed
+            "  {}: total={} passed={} failed={} elapsed={} avg_case_ms={:.2}",
+            composition,
+            summary.total,
+            summary.passed,
+            summary.failed,
+            format_duration(summary.elapsed_seconds),
+            avg_case_ms
         );
     }
 
@@ -242,6 +256,14 @@ fn split_csv_line(line: &str) -> Vec<String> {
 
     parts.push(current.trim().to_string());
     parts
+}
+
+fn format_duration(seconds: f64) -> String {
+    if seconds >= 1.0 {
+        format!("{seconds:.2}s")
+    } else {
+        format!("{:.2}ms", seconds * 1_000.0)
+    }
 }
 
 fn evaluate_case(case: &CorpusCase) -> Option<FailureRecord> {

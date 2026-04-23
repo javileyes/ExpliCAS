@@ -20,6 +20,7 @@ help:
 	@echo "  make ci-msrv       -> ci + MSRV (if rust-version set)"
 	@echo "  make ci-quick      -> fmt + lints + tests + build --release (no clippy)"
 	@echo "  make engine-fast   -> fast engine iteration lane"
+	@echo "  make engine-fast-embedded -> fast lane plus embedded contextual corpus"
 	@echo "  make engine-scorecard -> run guardrail engine-improvement scorecard"
 	@echo "  make engine-scorecard-pressure -> run pressure scorecard"
 	@echo "  make engine-scorecard-full -> run full scorecard"
@@ -216,6 +217,9 @@ fmt:
 
 engine-fast:
 	python3 ./scripts/engine_improvement_scorecard.py --profile fast
+
+engine-fast-embedded:
+	python3 ./scripts/engine_improvement_scorecard.py --profile fast_embedded
 
 engine-scorecard:
 	python3 ./scripts/engine_improvement_scorecard.py --profile guardrail

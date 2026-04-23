@@ -161,6 +161,39 @@ Each automatic iteration should do this in order:
 8. if the change fails global retention, revert the runtime change and preserve
    the learning in observability and/or the combination ledger
 
+### Per-Iteration Capture Template
+
+The ROI formula is only useful if each iteration writes down the same minimum
+evidence in a comparable shape.
+
+Use a short capture like this before and after the edit:
+
+```text
+investment_class:
+success_condition:
+primary_dimension:
+secondary_dimension:
+hypothesis:
+relevant_lanes:
+promotion_target:
+retain_if:
+reject_if:
+retain_or_reject_reason:
+```
+
+Minimum expectations:
+
+- `investment_class`
+  - one of `runtime`, `coverage`, `robustness`, `observability`, `combination`
+- `success_condition`
+  - concrete and measurable, not narrative
+- `relevant_lanes`
+  - the exact profiles/suites to rerun
+- `promotion_target`
+  - `none`, `unit`, `live`, `frozen`, or `stress`
+- `retain_or_reject_reason`
+  - the shortest defensible explanation after validation
+
 ## Generated High-Temperature Discovery
 
 The automation loop should also include a deliberate `generated discovery`
@@ -268,15 +301,23 @@ check:
 If the didactic improvement is too case-specific, prefer a narrow regression
 test instead of broad narration changes.
 
-## Current Automation Base
+## Profiles Implemented Today
 
 Use [engine_improvement_scorecard.py](/Users/javiergimenezmoya/developer/math/scripts/engine_improvement_scorecard.py) as the unified runner.
 
-It groups the existing embedded and metamorphic checks into profiles:
+Benchmark interpretation caveats and the next-level evaluation roadmap live in
+[ENGINE_BENCHMARK_IMPROVEMENT.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_BENCHMARK_IMPROVEMENT.md).
+
+These are the runnable profiles exposed by the current scorecard runner:
 
 - `fast`
   - `metatest_csv_combinations_small`
   - `metatest_csv_contextual_pairs_strict`
+- `fast_embedded`
+  - `fast`
+  - `embedded_equivalence_context`
+  - use when the change touches orchestration, contextual equivalence, or
+    broad simplify routing and `fast` alone would be too weak
 - `guardrail`
   - embedded equivalence context corpus
   - derive contract corpus
@@ -287,10 +328,13 @@ It groups the existing embedded and metamorphic checks into profiles:
 - `full`
   - `guardrail + pressure`
 
-Outputs:
+When the runner is executed, it writes:
 
 - JSON scorecard at [docs/generated/engine_improvement_scorecard.json](/Users/javiergimenezmoya/developer/math/docs/generated/engine_improvement_scorecard.json)
 - Markdown summary at [docs/generated/engine_improvement_scorecard.md](/Users/javiergimenezmoya/developer/math/docs/generated/engine_improvement_scorecard.md)
+
+Those generated files are on-demand artifacts.
+They may be absent in a clean checkout until the scorecard has been run.
 
 When a previous scorecard is passed through `--baseline`, the runner should also
 surface:
@@ -308,6 +352,21 @@ At minimum, it should make room for:
 - how many collapsed into an already-known failure cluster
 - how many were promoted to `unit`, `live`, `frozen`, or `stress`
 - whether the retained fix changed `embedded` elapsed time materially
+
+## Target Benchmark Role Model
+
+The next section describes the benchmark-role model the campaign should reason
+about.
+
+Important distinction:
+
+- `fast / guardrail / pressure / full`
+  - executable scorecard profiles that exist today
+- `frozen / live / stress`
+  - benchmark roles the campaign should reason about, but which are not yet
+    fully exposed as first-class scorecard profile names
+
+Do not treat those two vocabularies as interchangeable.
 
 ## Benchmark Stratification
 

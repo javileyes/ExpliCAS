@@ -37,7 +37,8 @@ La scorecard automatizada que agrupa estas señales vive en:
 > la propiedad canónica de estas suites vive hoy en
 > [metamorphic_simplification_tests.rs](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_simplification_tests.rs)
 > y [metamorphic_equation_tests.rs](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/metamorphic_equation_tests.rs).
-> Los wrappers bajo `cas_engine/tests` existen por compatibilidad.
+> Los wrappers bajo `cas_engine/tests` existen por compatibilidad, pero los
+> comandos y rutas de este documento usan `cas_solver` como ubicación primaria.
 
 ---
 
@@ -413,7 +414,7 @@ impl NumericEquivStats {
 ### Output Diagnóstico (`METATEST_DIAG=1`)
 
 ```
-METATEST_DIAG=1 cargo test --package cas_engine --test metamorphic_simplification_tests -- metatest_individual --ignored --nocapture 2>&1
+METATEST_DIAG=1 cargo test --package cas_solver --test metamorphic_simplification_tests -- metatest_individual --ignored --nocapture 2>&1
 
 📊 Diagnostic Classification (METATEST_DIAG=1):
    Summary: ✅ Ok=97 | 🐛 BugSignal=0 | ⚙️ ConfigError=0 | 🔧 NeedsFilter=0 | ⚠️ Fragile=0
@@ -460,7 +461,7 @@ enum FragilityLevel {
 
 ```bash
 # Modo genérico (default)
-cargo test --package cas_engine --test metamorphic_simplification_tests \
+cargo test --package cas_solver --test metamorphic_simplification_tests \
     -- metatest_individual --ignored --nocapture
 
 # Modo assume
@@ -512,27 +513,27 @@ cuyo divisor evalúa cerca de cero.
 
 ```bash
 # CI (Add, 30 pares estratificados, ~435 combinaciones dobles)
-cargo test -p cas_engine --test metamorphic_simplification_tests \
+cargo test -p cas_solver --test metamorphic_simplification_tests \
     metatest_csv_combinations_small -- --nocapture 2>&1
 
 # Add completo (150 pares estratificados)
-cargo test -p cas_engine --test metamorphic_simplification_tests \
+cargo test -p cas_solver --test metamorphic_simplification_tests \
     metatest_csv_combinations_add -- --nocapture --ignored 2>&1
 
 # Subtraction (150 pares estratificados)
-cargo test -p cas_engine --test metamorphic_simplification_tests \
+cargo test -p cas_solver --test metamorphic_simplification_tests \
     metatest_csv_combinations_sub -- --nocapture --ignored 2>&1
 
 # Multiplication (150 pares estratificados, 2s per-combo timeout)
-cargo test --release -p cas_engine --test metamorphic_simplification_tests \
+cargo test --release -p cas_solver --test metamorphic_simplification_tests \
     metatest_csv_combinations_mul -- --nocapture --ignored 2>&1
 
 # Division (50 pares estratificados, divisor safety guard)
-cargo test --release -p cas_engine --test metamorphic_simplification_tests \
+cargo test --release -p cas_solver --test metamorphic_simplification_tests \
     metatest_csv_combinations_div -- --nocapture --ignored 2>&1
 
 # Add legacy (100 pares + triples)
-cargo test -p cas_engine --test metamorphic_simplification_tests \
+cargo test -p cas_solver --test metamorphic_simplification_tests \
     metatest_csv_combinations_full -- --nocapture --ignored 2>&1
 ```
 
@@ -542,7 +543,7 @@ Test diagnóstico que ejecuta las 4 operaciones y muestra una tabla comparativa 
 regresión/mejora. **No aserta sobre fallos** — solo imprime métricas.
 
 ```bash
-cargo test --release -p cas_engine --test metamorphic_simplification_tests \
+cargo test --release -p cas_solver --test metamorphic_simplification_tests \
     metatest_benchmark_all_ops -- --nocapture --ignored 2>&1
 ```
 
@@ -589,7 +590,7 @@ con tabla unificada. Usa pair counts reducidos para un runtime de ~7 minutos:
 | `⇄sub` | 75 identidades × 20 sustituciones |
 
 ```bash
-cargo test --release -p cas_engine --test metamorphic_simplification_tests \
+cargo test --release -p cas_solver --test metamorphic_simplification_tests \
     metatest_unified_benchmark -- --ignored --nocapture
 ```
 
@@ -691,7 +692,7 @@ engine se vuelve innecesariamente lento.
 Para ver el **informe detallado con clasificación por niveles**:
 
 ```bash
-METATEST_VERBOSE=1 cargo test --release -p cas_engine \
+METATEST_VERBOSE=1 cargo test --release -p cas_solver \
     --test metamorphic_simplification_tests metatest_csv_combinations_mul \
     -- --nocapture --ignored 2>&1
 ```
@@ -1005,8 +1006,11 @@ El sistema de baseline permite detectar regresiones en la calidad del engine ent
 ### Archivo Baseline
 
 ```
-crates/cas_engine/tests/baselines/metatest_baseline.jsonl
+crates/cas_solver/tests/baselines/metatest_baseline.jsonl
 ```
+
+Si la suite se ejecuta a través del wrapper de compatibilidad, el runtime
+también acepta el fallback bajo `crates/cas_engine/tests`.
 
 **Primera línea**: Header de configuración con `cfg_hash`:
 
@@ -1024,11 +1028,11 @@ crates/cas_engine/tests/baselines/metatest_baseline.jsonl
 
 ```bash
 # Generar/actualizar baseline (después de cambios confirmados)
-METATEST_DIAG=1 METATEST_UPDATE_BASELINE=1 cargo test --package cas_engine \
+METATEST_DIAG=1 METATEST_UPDATE_BASELINE=1 cargo test --package cas_solver \
     --test metamorphic_simplification_tests -- metatest_individual --ignored --nocapture
 
 # Comparar vs baseline (en CI o antes de PR)
-METATEST_DIAG=1 METATEST_SNAPSHOT=1 cargo test --package cas_engine \
+METATEST_DIAG=1 METATEST_SNAPSHOT=1 cargo test --package cas_solver \
     --test metamorphic_simplification_tests -- metatest_individual --ignored --nocapture
 ```
 
@@ -1106,11 +1110,11 @@ Verifica que `simplify(E) == simplify(shuffle(E))` para detectar bugs de canonic
 
 ```bash
 # Modo métrica (no bloquea, reporta)
-METATEST_SHUFFLE=1 cargo test --package cas_engine \
+METATEST_SHUFFLE=1 cargo test --package cas_solver \
     --test metamorphic_simplification_tests -- metatest_shuffle --ignored --nocapture
 
 # Modo estricto (falla si hay structural diffs)
-METATEST_SHUFFLE=1 METATEST_STRICT_CANON=1 cargo test --package cas_engine \
+METATEST_SHUFFLE=1 METATEST_STRICT_CANON=1 cargo test --package cas_solver \
     --test metamorphic_simplification_tests -- metatest_shuffle --ignored --nocapture
 ```
 
@@ -1151,11 +1155,11 @@ Verifica que identidades se mantienen bajo transformaciones: `A(T(x)) ≡ B(T(x)
 
 ```bash
 # Defaults: scale(2), scale(-1)
-METATEST_TRANSFORMS_DEFAULT=1 cargo test --package cas_engine \
+METATEST_TRANSFORMS_DEFAULT=1 cargo test --package cas_solver \
     --test metamorphic_simplification_tests -- metatest_transform --ignored --nocapture
 
 # Custom transforms
-METATEST_TRANSFORMS=scale:2,shift:1,square cargo test --package cas_engine \
+METATEST_TRANSFORMS=scale:2,shift:1,square cargo test --package cas_solver \
     --test metamorphic_simplification_tests -- metatest_transform --ignored --nocapture
 ```
 
@@ -1242,17 +1246,17 @@ Clases de sustitución: `trig`, `inv_trig`, `poly`, `exp_log`, `composed`, `rati
 
 ```bash
 # Test de sustitución completo
-cargo test --release -p cas_engine \
+cargo test --release -p cas_solver \
     --test metamorphic_simplification_tests metatest_csv_substitution \
     -- --ignored --nocapture
 
 # Con tabla cross-product (familia × clase de sustitución)
-METATEST_TABLE=1 cargo test --release -p cas_engine \
+METATEST_TABLE=1 cargo test --release -p cas_solver \
     --test metamorphic_simplification_tests metatest_csv_substitution \
     -- --ignored --nocapture
 
 # Con ejemplos verbose de numeric-only
-METATEST_VERBOSE=1 cargo test --release -p cas_engine \
+METATEST_VERBOSE=1 cargo test --release -p cas_solver \
     --test metamorphic_simplification_tests metatest_csv_substitution \
     -- --ignored --nocapture
 ```
@@ -1285,12 +1289,12 @@ Comandos recomendados:
 
 ```bash
 # Curated regression suite
-cargo test --release -p cas_engine \
+cargo test --release -p cas_solver \
     --test metamorphic_simplification_tests metatest_csv_substitution_structural \
     -- --ignored --exact --nocapture
 
 # Raw pressure suite
-cargo test --release -p cas_engine \
+cargo test --release -p cas_solver \
     --test metamorphic_simplification_tests metatest_csv_substitution_structural_raw \
     -- --ignored --exact --nocapture
 ```
@@ -1693,19 +1697,19 @@ Misma filosofía que los tests de combinaciones:
 
 ```bash
 # Ejecutar todos los chains
-cargo test --release -p cas_engine --test round_trip_tests \
+cargo test --release -p cas_solver --test round_trip_tests \
     -- --ignored --nocapture
 
 # Con detalle por expresión
-ROUNDTRIP_VERBOSE=1 cargo test --release -p cas_engine --test round_trip_tests \
+ROUNDTRIP_VERBOSE=1 cargo test --release -p cas_solver --test round_trip_tests \
     -- --ignored --nocapture
 
 # Solo Chain 1 (expand→simplify)
-cargo test --release -p cas_engine --test round_trip_tests \
+cargo test --release -p cas_solver --test round_trip_tests \
     roundtrip_expand_simplify -- --ignored --nocapture
 
 # Solo Chain 2 (factor→expand)
-cargo test --release -p cas_engine --test round_trip_tests \
+cargo test --release -p cas_solver --test round_trip_tests \
     roundtrip_factor_expand -- --ignored --nocapture
 ```
 
@@ -1744,7 +1748,7 @@ Si el solver es correcto, añadir ruido identitario $A$ (LHS) y $B$ (RHS) no deb
 
 ```bash
 # S2 benchmark completo (500 samples, seed=42)
-METATEST_VERBOSE=1 cargo test --release -p cas_engine \
+METATEST_VERBOSE=1 cargo test --release -p cas_solver \
   --test metamorphic_equation_tests metatest_equation_identity_transforms \
   -- --ignored --nocapture
 ```
@@ -1844,7 +1848,7 @@ Nuevo paso expand+simplify en `solve_core.rs` para cancelar ruido identitario:
 ## Archivo de Referencia
 
 ```
-crates/cas_engine/tests/
+crates/cas_solver/tests/
 ├── identity_pairs.csv                   # Base de identidades (~400)
 ├── substitution_identities.csv          # Identidades para sustitución (~110)
 ├── substitution_expressions.csv         # Sub-expresiones de sustitución (~34)

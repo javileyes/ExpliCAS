@@ -2,6 +2,31 @@
 
 This document defines the technical roadmap for turning `derive` into a first-class educational feature of ExpliCAS.
 
+## Status Note
+
+This document is now best read as the baseline roadmap that established the
+direction for `derive`.
+
+Several foundations described here are already implemented in the current
+codebase:
+
+- derive corpus and family-labeled contract tests
+- derive-specific reachability and step-count stats
+- target classification
+- ordered strategy selection
+- many target-aware family rewrites
+- a separate didactic audit layer
+
+The active forward-looking roadmap for the next leap is now:
+
+- [DERIVE_NEXT_LEVEL_ROADMAP.md](/Users/javiergimenezmoya/developer/math/docs/DERIVE_NEXT_LEVEL_ROADMAP.md)
+
+Read this file as:
+
+- durable design principles and success criteria
+- a historical phase breakdown
+- context for why the next roadmap focuses on bounded multi-step planning
+
 Current public behavior:
 
 - `derive <expr1>, <expr2>`
@@ -10,16 +35,29 @@ Current public behavior:
 Current implementation entrypoint:
 
 - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive_command.rs`
+- `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/mod.rs`
+- `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/strategy.rs`
+- `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive/target_classifier.rs`
 
-Today, `derive` is intentionally conservative. It only succeeds when the target can be reached through a short list of safe strategies:
+Today, `derive` is still intentionally conservative, but it is broader than the
+original five-strategy baseline.
+
+It already supports a target-aware ordered strategy set that covers, among
+others:
 
 - `simplify`
 - `collect`
 - `factor`
+- `expand`
+- `log expand / contract`
+- `trig expand / contract`
+- `rationalize`
+- fraction, radical, hyperbolic, exponential, and solve/integrate prep families
 - `simplify -> collect`
 - `simplify -> factor`
 
-That is a good base, but it is not enough to make `derive` the flagship educational tool.
+That is a good base, but it is still not enough to make `derive` the flagship
+educational tool.
 
 ## Goal
 
@@ -122,15 +160,36 @@ Current strengths:
 - safe surface API
 - equivalent-vs-not-equivalent distinction
 - clear unsupported-target fallback
-- existing reuse of `simplify`, `factor`, and `collect`
+- target classification exists
+- ordered strategy selection exists
+- many target-aware family rewrites already exist
+- derive-specific corpus and metrics exist
+- didactic audit exists
 
 Current limitations:
 
-- no explicit target-form classification layer
-- no strategy registry beyond a hardcoded list
-- no derive-specific test corpus by family
-- no planner-level scoring of alternative paths
-- no dedicated derive metrics
+- planning is still mostly a shallow ordered attempt sequence
+- there is little deliberate exploration of short alternative paths
+- there is no general transition-provider abstraction yet
+- family coverage is uneven outside the already-curated targets
+- didactic cleanup is still inconsistent on longer or less direct routes
+
+## Phase Status Snapshot
+
+As of the current repo state:
+
+- mostly complete:
+  - baseline instrumentation and derive corpus
+  - target classification
+  - ordered strategy registry
+- partially complete:
+  - expand/log/trig/rationalize/radical/fraction family support
+  - derive-specific didactic auditing
+  - CLI/REPL/JSON surface parity
+- current next step:
+  - strengthen `derive` from a shallow ordered planner into a bounded,
+    deterministic multi-step planner that can score and choose short teachable
+    paths
 
 ## Success Metrics
 
@@ -194,6 +253,8 @@ Suggested module shape:
 - `derive/target_form.rs`
 - `derive/target_classifier.rs`
 
+This now exists in the codebase and should be extended, not reinvented.
+
 ### C. Strategy Registry
 
 Replace the current fixed if-chain with a registry of derive strategies.
@@ -211,9 +272,13 @@ Suggested module shape:
 - `derive/strategy.rs`
 - `derive/strategies/*`
 
+The current codebase already has a lightweight strategy-order registry.
+The next step is richer metadata and transition generation, not a return to one
+large hardcoded chain.
+
 ### D. Planner
 
-The planner should stay shallow.
+The planner should stay bounded.
 
 Recommended behavior:
 
@@ -223,7 +288,12 @@ Recommended behavior:
 4. stop on first exact target hit
 5. if none succeed, report equivalent-but-unsupported
 
-This is not a graph search engine. It is a bounded strategy planner.
+This is not a graph search engine.
+It is a bounded strategy planner.
+
+Today the implementation is still closer to a shallow ordered attempt list.
+The active next-level roadmap is about strengthening this part without opening
+unbounded search.
 
 Suggested module shape:
 
@@ -273,9 +343,16 @@ These are common in textbook transformations and often requested by users explic
 
 These are useful, but more domain-sensitive.
 
-## Roadmap
+## Historical Phase Plan
 
-## Phase 0. Baseline and Instrumentation
+The remaining phase breakdown in this file should be read as the original
+decomposition of the work.
+
+Several phases below are already fully or partially implemented.
+Use [DERIVE_NEXT_LEVEL_ROADMAP.md](/Users/javiergimenezmoya/developer/math/docs/DERIVE_NEXT_LEVEL_ROADMAP.md)
+for the active frontier.
+
+## Phase 0. Baseline and Instrumentation `[Mostly Completed]`
 
 Goal:
 
@@ -317,7 +394,7 @@ Acceptance criteria:
 - corpus cases are representative by branch, not inflated by x/y, numeric, or scaled near-duplicates
 - generality belongs in tabulated rule/classifier tests, not in repeating the same branch in the CSV
 
-## Phase 1. Extract Target Classification
+## Phase 1. Extract Target Classification `[Completed]`
 
 Goal:
 
@@ -353,7 +430,7 @@ Acceptance criteria:
 - target classifier routes existing `simplify/factor/collect` cases correctly
 - no regression in `make ci`
 
-## Phase 2. Strategy Registry and Planner
+## Phase 2. Strategy Registry and Planner `[Partially Completed]`
 
 Goal:
 
@@ -372,7 +449,7 @@ Acceptance criteria:
 - planner tries a bounded set only
 - unsupported-but-equivalent remains explicit
 
-## Phase 3. Add Expand As A First-Class Derive Strategy
+## Phase 3. Add Expand As A First-Class Derive Strategy `[Partially Completed]`
 
 Goal:
 
@@ -394,7 +471,7 @@ Acceptance criteria:
 - no major step explosion
 - derive steps remain human-readable
 
-## Phase 4. Logarithmic Families
+## Phase 4. Logarithmic Families `[Partially Completed]`
 
 Goal:
 
@@ -416,7 +493,7 @@ Acceptance criteria:
 - curated log corpus reaches target forms
 - no domain loss in displayed requirements
 
-## Phase 5. Trigonometric Families
+## Phase 5. Trigonometric Families `[Partially Completed]`
 
 Goal:
 
@@ -438,7 +515,7 @@ Acceptance criteria:
 - no new metamorphic regressions
 - no planner loops
 
-## Phase 6. Rationalization and Radical/Power Families
+## Phase 6. Rationalization and Radical/Power Families `[Partially Completed]`
 
 Goal:
 
@@ -460,7 +537,7 @@ Acceptance criteria:
 - web/JSON output stays stylistically coherent
 - derive can reach radical targets and power targets intentionally
 
-## Phase 7. Didactic Quality Pass
+## Phase 7. Didactic Quality Pass `[In Progress]`
 
 Goal:
 
@@ -490,7 +567,7 @@ Acceptance criteria:
 - self-explanatory direct steps are allowed to stay direct, with zero substeps
 - derive examples in web and CLI read naturally
 
-## Phase 8. UX and Surface Parity
+## Phase 8. UX and Surface Parity `[In Progress]`
 
 Goal:
 
@@ -578,7 +655,7 @@ residuals, `derive` still regresses in practice.
 
 ## Suggested Initial Corpus
 
-These are good early targets for the derive roadmap:
+These remain good representative targets for the derive corpus:
 
 - `derive x + x, 2*x`
 - `derive a*x + b*x + c, (a+b)*x + c`
@@ -592,7 +669,8 @@ These are good early targets for the derive roadmap:
 
 ## Recommended File Layout
 
-If the roadmap is executed, a clean structure would be:
+The current codebase already approximates this structure.
+Keep evolving toward it rather than reorganizing for its own sake:
 
 - `/Users/javiergimenezmoya/developer/math/crates/cas_solver/src/derive_command.rs`
   - thin public orchestration layer
@@ -610,12 +688,13 @@ Do not start by chasing a universal derive engine.
 
 Start with:
 
-1. derive corpus + metrics
-2. target classification
-3. strategy registry
-4. expand/log families
+1. bounded multi-step planning over trusted transition families
+2. path scoring and state deduplication
+3. closing high-value family gaps that still miss reachable targets
+4. continued didactic cleanup and surface parity
 
-That path gives the highest ROI while preserving the current conservative architecture.
+That path gives the highest ROI while preserving the current conservative
+architecture.
 
 ## Definition of Done
 

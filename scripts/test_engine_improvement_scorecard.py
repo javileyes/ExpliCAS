@@ -28,6 +28,10 @@ Max expression depth: 5
 Average wrapper overhead nodes: 10.00
 Wrappers: additive_passthrough_zero, shifted_quotient_one
 
+By composition:
+  sum: total=3 passed=3 failed=0 elapsed=12.00ms avg_case_ms=4.00
+  product: total=5 passed=5 failed=0 elapsed=5.10ms avg_case_ms=1.02
+
 By shell depth:
   depth 1: total=2 passed=2 failed=0
   depth 2: total=6 passed=6 failed=0
@@ -97,6 +101,9 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(
             metrics["wrapper_complexity_rows"][0]["avg_wrapper_overhead_nodes"], 11.2
         )
+        self.assertEqual(metrics["composition_rows"]["sum"]["total"], 3)
+        self.assertAlmostEqual(metrics["composition_rows"]["sum"]["elapsed_seconds"], 0.012)
+        self.assertEqual(metrics["composition_rows"]["sum"]["avg_case_ms"], 4.0)
 
         profile = metrics["orchestrator_profile"]
         self.assertEqual(profile["section_count"], 2)
@@ -139,6 +146,57 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("Dominant wrapper x complexity buckets", markdown)
         self.assertIn("pipeline.phase.core", markdown)
         self.assertIn("No-match hotspot 1", markdown)
+
+    def test_render_markdown_includes_mixed_pressure_and_proof_shape_caveat(self):
+        metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "pressure",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "simplify_zero_mixed": {
+                    "status": "pass",
+                    "elapsed_seconds": 2.5,
+                    "metrics": metrics,
+                    "delta": {},
+                },
+                "simplify_strict": {
+                    "status": "pass",
+                    "elapsed_seconds": 40.0,
+                    "metrics": {
+                        "total_combos": 100,
+                        "nf_convergent": 0,
+                        "proved_symbolic": 100,
+                        "numeric_only": 0,
+                        "inconclusive": 0,
+                        "failed": 0,
+                        "timeouts": 0,
+                        "cycles": 0,
+                        "skipped": 0,
+                        "suite_rows": {},
+                        "proved_breakdown": {
+                            "quotient": 8,
+                            "difference": 2,
+                            "composed": 90,
+                        },
+                        "proof_shape_mix": {
+                            "non_composed_symbolic": 10,
+                            "non_composed_share_percent": 10.0,
+                            "composed_share_percent": 90.0,
+                        },
+                    },
+                    "delta": {},
+                },
+            },
+        }
+
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn("## Simplify Benchmark Interpretation", markdown)
+        self.assertIn("composed 90.0%", markdown)
+        self.assertIn("## Mixed Zero Pressure", markdown)
+        self.assertIn("Composition hotspots", markdown)
+        self.assertIn("sum total=3 failed=0", markdown)
 
 
 if __name__ == "__main__":

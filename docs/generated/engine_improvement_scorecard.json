@@ -1,0 +1,308 @@
+{
+  "generated_at": "2026-04-23T13:21:29.895804+00:00",
+  "git": {
+    "branch": "main",
+    "commit": "a0c9063ca1f1cad435d6cbb133df9539e9992683"
+  },
+  "orchestrator_profile_requested": false,
+  "profile": "fast_embedded",
+  "suites": {
+    "contextual_strict_fast": {
+      "category": "equivalence",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-q",
+        "-p",
+        "cas_solver",
+        "--test",
+        "metamorphic_simplification_tests",
+        "metatest_csv_contextual_pairs_strict",
+        "--",
+        "--ignored",
+        "--exact",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 16.253,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "cargo_status": "ok",
+        "failed": 0,
+        "filtered_out": 138,
+        "ignored": 0,
+        "inconclusive": 0,
+        "measured": 0,
+        "nf_convergent": 0,
+        "numeric_only": 0,
+        "passed": 1,
+        "proved_symbolic": 64,
+        "timeouts": 0
+      },
+      "process_elapsed_seconds": 16.253,
+      "returncode": 0,
+      "status": "pass"
+    },
+    "embedded_equivalence_context": {
+      "category": "equivalence",
+      "command": [
+        "cargo",
+        "run",
+        "--release",
+        "-q",
+        "-p",
+        "cas_solver",
+        "--example",
+        "run_embedded_equivalence_context_corpus",
+        "--"
+      ],
+      "delta": {},
+      "elapsed_seconds": 17.75,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "average_wrapper_overhead_nodes": 11.29,
+        "complexity_level_count": 4,
+        "complexity_rows": {
+          "l0_root_pair": {
+            "avg_shell_depth": 0.0,
+            "avg_wrapper_overhead_nodes": 0.0,
+            "failed": 0,
+            "max_shell_depth": 0,
+            "passed": 2,
+            "total": 2
+          },
+          "l1_single_wrapper": {
+            "avg_shell_depth": 1.0,
+            "avg_wrapper_overhead_nodes": 3.0,
+            "failed": 0,
+            "max_shell_depth": 1,
+            "passed": 1,
+            "total": 1
+          },
+          "l2_wrapper_plus_noise": {
+            "avg_shell_depth": 1.9,
+            "avg_wrapper_overhead_nodes": 10.19,
+            "failed": 0,
+            "max_shell_depth": 2,
+            "passed": 969,
+            "total": 969
+          },
+          "l3_nested_or_composed": {
+            "avg_shell_depth": 1.88,
+            "avg_wrapper_overhead_nodes": 17.62,
+            "failed": 0,
+            "max_shell_depth": 3,
+            "passed": 173,
+            "total": 173
+          }
+        },
+        "failed": 0,
+        "family_count": 23,
+        "largest_wrapper_complexity_share_percent": 21.4,
+        "largest_wrapper_share_percent": 25.1,
+        "max_expression_depth": 18,
+        "max_shell_depth": 3,
+        "passed": 1145,
+        "reported_elapsed": "17.75s",
+        "reported_elapsed_seconds": 17.75,
+        "shell_depth_count": 4,
+        "shell_depth_rows": {
+          "0": {
+            "failed": 0,
+            "passed": 2,
+            "total": 2
+          },
+          "1": {
+            "failed": 0,
+            "passed": 124,
+            "total": 124
+          },
+          "2": {
+            "failed": 0,
+            "passed": 1010,
+            "total": 1010
+          },
+          "3": {
+            "failed": 0,
+            "passed": 9,
+            "total": 9
+          }
+        },
+        "total_cases": 1145,
+        "wrapper_complexity_rows": [
+          {
+            "avg_shell_depth": 1.88,
+            "avg_wrapper_overhead_nodes": 10.16,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 2,
+            "passed": 245,
+            "total": 245,
+            "wrapper": "additive_passthrough_zero"
+          },
+          {
+            "avg_shell_depth": 2.0,
+            "avg_wrapper_overhead_nodes": 10.2,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 2,
+            "passed": 241,
+            "total": 241,
+            "wrapper": "common_denominator_zero"
+          },
+          {
+            "avg_shell_depth": 1.87,
+            "avg_wrapper_overhead_nodes": 10.2,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 2,
+            "passed": 241,
+            "total": 241,
+            "wrapper": "scaled_difference_zero"
+          },
+          {
+            "avg_shell_depth": 1.88,
+            "avg_wrapper_overhead_nodes": 10.2,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 2,
+            "passed": 241,
+            "total": 241,
+            "wrapper": "shifted_quotient_one"
+          },
+          {
+            "avg_shell_depth": 1.68,
+            "avg_wrapper_overhead_nodes": 17.88,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 2,
+            "passed": 41,
+            "total": 41,
+            "wrapper": "additive_passthrough_zero"
+          },
+          {
+            "avg_shell_depth": 2.0,
+            "avg_wrapper_overhead_nodes": 17.88,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 2,
+            "passed": 41,
+            "total": 41,
+            "wrapper": "common_denominator_zero"
+          },
+          {
+            "avg_shell_depth": 1.9,
+            "avg_wrapper_overhead_nodes": 17.88,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 2,
+            "passed": 41,
+            "total": 41,
+            "wrapper": "scaled_difference_zero"
+          },
+          {
+            "avg_shell_depth": 1.68,
+            "avg_wrapper_overhead_nodes": 17.88,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 2,
+            "passed": 41,
+            "total": 41,
+            "wrapper": "shifted_quotient_one"
+          },
+          {
+            "avg_shell_depth": 3.0,
+            "avg_wrapper_overhead_nodes": 12.89,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 3,
+            "passed": 9,
+            "total": 9,
+            "wrapper": "squared_passthrough_zero"
+          },
+          {
+            "avg_shell_depth": 0.0,
+            "avg_wrapper_overhead_nodes": 0.0,
+            "failed": 0,
+            "level": "l0_root_pair",
+            "max_shell_depth": 0,
+            "passed": 2,
+            "total": 2,
+            "wrapper": "combined_additive_zero"
+          },
+          {
+            "avg_shell_depth": 1.0,
+            "avg_wrapper_overhead_nodes": 3.0,
+            "failed": 0,
+            "level": "l1_single_wrapper",
+            "max_shell_depth": 1,
+            "passed": 1,
+            "total": 1,
+            "wrapper": "additive_passthrough_zero"
+          },
+          {
+            "avg_shell_depth": 1.0,
+            "avg_wrapper_overhead_nodes": 12.0,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 1,
+            "passed": 1,
+            "total": 1,
+            "wrapper": "combined_additive_zero"
+          }
+        ],
+        "wrapper_count": 6,
+        "wrapper_names": [
+          "additive_passthrough_zero",
+          "combined_additive_zero",
+          "common_denominator_zero",
+          "scaled_difference_zero",
+          "shifted_quotient_one",
+          "squared_passthrough_zero"
+        ]
+      },
+      "process_elapsed_seconds": 18.028,
+      "returncode": 0,
+      "status": "pass"
+    },
+    "simplify_add_small": {
+      "category": "simplify",
+      "command": [
+        "cargo",
+        "test",
+        "-q",
+        "-p",
+        "cas_solver",
+        "--test",
+        "metamorphic_simplification_tests",
+        "metatest_csv_combinations_small",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 0.629,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "cargo_status": "ok",
+        "failed": 0,
+        "filtered_out": 138,
+        "ignored": 0,
+        "inconclusive": 0,
+        "measured": 0,
+        "nf_convergent": 0,
+        "numeric_only": 0,
+        "passed": 1,
+        "proved_symbolic": 435,
+        "timeouts": 0
+      },
+      "process_elapsed_seconds": 0.629,
+      "returncode": 0,
+      "status": "pass"
+    }
+  }
+}
