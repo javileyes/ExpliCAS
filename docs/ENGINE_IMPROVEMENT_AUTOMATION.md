@@ -964,6 +964,106 @@ This matters because not every engine fix deserves promotion into the heaviest b
 When the change affects derive routing, the loop should also include the derive
 contract corpus, not only generic simplify/equivalence suites.
 
+## Slow CI Test Triage
+
+Slow tests observed during `make ci` are useful signals, but they must be
+classified before they influence engine runtime work.
+
+Treat every slow-test report as belonging to one of these buckets:
+
+- `runner noise`
+  - compile time, package cache lock, build directory lock, or unrelated test
+    binary startup cost
+- `engine runtime pathology`
+  - the test is slow because the engine or planner itself takes too long on the
+    semantic workload being tested
+- `test verification pathology`
+  - the product behavior is already correct, but the assertion route used by the
+    test is much more expensive than the real product path
+
+This distinction is mandatory.
+
+Without it, the campaign will eventually add engine shortcuts or broad gates
+just to accelerate a pathological assertion, which is exactly how we end up
+taxing the embedded corpus for no product benefit.
+
+### Default Workflow For A Slow Test
+
+When a test appears slow inside `make ci`, do this in order:
+
+1. reproduce it outside `make ci` with the narrowest exact command possible
+2. measure the test body itself, not the surrounding compile or lock time
+3. classify it as `runner noise`, `engine runtime pathology`, or
+   `test verification pathology`
+4. record the command, timing, and current hypothesis in the slow-test ledger:
+   - [SLOW_CI_TEST_LEDGER.md](/Users/javiergimenezmoya/developer/math/docs/SLOW_CI_TEST_LEDGER.md)
+5. choose the smallest correct fix:
+   - test-side fix for verification pathology
+   - engine/planner fix for real runtime pathology
+6. if the retained fix touches runtime behavior, rerun the embedded equivalence
+   guardrail and compare elapsed time explicitly
+
+### Fix Selection Rules
+
+Prefer a test-side fix when:
+
+- the engine already reaches the correct result quickly in CLI or normal
+  simplify/equivalence flow
+- the slowdown comes from `isolated_simplify_rewrites_to_zero`,
+  didactic expansion, or another assertion-only path
+- the test is checking semantic equivalence through a route broader than the
+  product contract it is supposed to guard
+
+Prefer an engine/runtime fix when:
+
+- the product path itself is slow or nonterminating
+- the same structural pocket affects real corpus traffic
+- the root cause is reusable and not tied to one test harness shape
+
+Do not count these as slow-test targets:
+
+- compile time before the specific test starts
+- cargo package-cache or build-directory lock waits
+- broad suite startup tax that disappears when the test is rerun narrowly
+
+### Relationship To Embedded Runtime
+
+Any retained engine-side fix motivated by a slow test must still obey the same
+global rule as ordinary engine work:
+
+- a local test-speed win is not sufficient
+- embedded equivalence runtime remains the main broad guardrail
+
+So the correct closure for a real engine-side slow-test fix is:
+
+1. reproduce and fix the specific slow test
+2. rerun the exact narrow test
+3. rerun the relevant neighboring tests
+4. rerun the embedded equivalence corpus and compare elapsed time
+
+If the narrow fix wins locally but loses globally, do not retain it.
+Instead, capture the attempt in the appropriate ledger:
+
+- [ENGINE_COMBINATION_LEDGER.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COMBINATION_LEDGER.md)
+  for local runtime wins that fail global retention
+- [SLOW_CI_TEST_LEDGER.md](/Users/javiergimenezmoya/developer/math/docs/SLOW_CI_TEST_LEDGER.md)
+  for the reproducible slow test itself and its current classification
+
+### Worktree Rule
+
+Use worktrees only when the slow-test investigation raises a real runtime
+regression hypothesis across recent commits.
+
+Do not use worktrees for every slow-test report by default.
+They are justified when we need to answer one of these questions:
+
+- did this slowdown exist `1..N` commits ago?
+- is the regression coming from local dirty changes or from retained history?
+- which file family is responsible for the broad runtime delta?
+
+When the answer is instead “the test harness is pathological but the engine is
+already fine”, stay in the current tree and fix the test narrowly.
+
 ## Metrics We Should Treat As First-Class
 
 For simplification/equivalence:

@@ -13,6 +13,7 @@
 
 use crate::engine::{eval_f64, Simplifier};
 use proptest::prelude::*;
+use proptest::test_runner::TestRunner;
 use std::collections::HashMap;
 
 /// Tolerance for numeric comparison
@@ -50,6 +51,18 @@ fn cos_diff_sin_diff_safe(x: f64, a_coeff: i64, b_coeff: i64) -> bool {
     let den = b.sin() - a.sin();
     let avg = ((a_coeff + b_coeff) as f64 * x) / 2.0;
     den.abs() > 0.1 && avg.cos().abs() > 0.1
+}
+
+fn simplified_sin_diff_quotient_fixture() -> (cas_ast::Context, cas_ast::ExprId, cas_ast::ExprId) {
+    let mut ctx = cas_ast::Context::new();
+    let expr = cas_parser::parse("(sin(5*x) - sin(3*x)) / (cos(5*x) + cos(3*x))", &mut ctx)
+        .expect("parse failed");
+
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.context = ctx;
+
+    let (result, _) = simplifier.simplify(expr);
+    (simplifier.context, expr, result)
 }
 
 proptest! {
@@ -120,38 +133,6 @@ proptest! {
             "Cos diff / sin diff identity failed at x={}: got {}, expected {}",
             x, input_val, expected_val
         );
-    }
-
-    /// Test the simplified result matches the original expression
-    #[test]
-    fn numeric_simplification_preserves_value(x in -1.5f64..1.5) {
-        prop_assume!(sum_quotient_safe(x, 5, 3));
-
-        // Parse and simplify (sin(5x) - sin(3x)) / (cos(5x) + cos(3x))
-        let mut ctx = cas_ast::Context::new();
-        let expr = cas_parser::parse("(sin(5*x) - sin(3*x)) / (cos(5*x) + cos(3*x))", &mut ctx)
-            .expect("parse failed");
-
-        let mut simplifier = Simplifier::with_default_rules();
-        simplifier.context = ctx;
-
-        let (result, _) = simplifier.simplify(expr);
-
-        // Evaluate both original and result
-        let mut var_map = HashMap::new();
-        var_map.insert("x".to_string(), x);
-
-        let orig_val = eval_f64(&simplifier.context, expr, &var_map);
-        let result_val = eval_f64(&simplifier.context, result, &var_map);
-
-        if let (Some(orig), Some(res)) = (orig_val, result_val) {
-            prop_assert!(
-                approx_eq(orig, res, EPS),
-                "Simplification changed value at x={}: original = {}, simplified = {}",
-                x, orig, res
-            );
-        }
-        // If evaluation fails (e.g., due to singularity), that's OK - skip
     }
 
     /// Test inverse tan relation: atan(t) + atan(1/t) ≈ π/2 for t > 0
@@ -230,6 +211,36 @@ proptest! {
             x, result
         );
     }
+}
+
+#[test]
+fn numeric_simplification_preserves_value() {
+    let (ctx, expr, result) = simplified_sin_diff_quotient_fixture();
+    let mut runner = TestRunner::new(ProptestConfig::with_cases(256));
+
+    runner
+        .run(&(-1.5f64..1.5), |x| {
+            prop_assume!(sum_quotient_safe(x, 5, 3));
+
+            let mut var_map = HashMap::new();
+            var_map.insert("x".to_string(), x);
+
+            let orig_val = eval_f64(&ctx, expr, &var_map);
+            let result_val = eval_f64(&ctx, result, &var_map);
+
+            if let (Some(orig), Some(res)) = (orig_val, result_val) {
+                prop_assert!(
+                    approx_eq(orig, res, EPS),
+                    "Simplification changed value at x={}: original = {}, simplified = {}",
+                    x,
+                    orig,
+                    res
+                );
+            }
+
+            Ok(())
+        })
+        .expect("numeric simplification property should hold");
 }
 
 /// Deterministic regression test for the exact bug that was fixed

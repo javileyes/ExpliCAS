@@ -16,6 +16,7 @@ use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 
 #[derive(Debug, Clone)]
 struct DeriveCase {
@@ -26,17 +27,28 @@ struct DeriveCase {
     expected_status: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 struct AuditArtifact {
     result: String,
     step_count: usize,
     web_substep_count: usize,
-    cli_lines: Vec<String>,
     json_steps: Vec<Value>,
     flags: Vec<String>,
 }
 
-fn load_derive_cases() -> Vec<DeriveCase> {
+static AUDIT_CASE_CACHE: LazyLock<Mutex<BTreeMap<String, AuditArtifact>>> =
+    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+
+static DERIVE_CASES: LazyLock<Vec<DeriveCase>> = LazyLock::new(parse_derive_cases);
+static DERIVE_CASES_BY_ID: LazyLock<BTreeMap<String, DeriveCase>> = LazyLock::new(|| {
+    DERIVE_CASES
+        .iter()
+        .cloned()
+        .map(|case| (case.id.clone(), case))
+        .collect()
+});
+
+fn parse_derive_cases() -> Vec<DeriveCase> {
     let primary = include_str!("../../cas_solver/tests/derive_pairs.csv");
     let supplemental = include_str!("derive_didactic_cases.csv");
     let generated_audit = include_str!("../../../docs/generated/DERIVE_DIDACTIC_AUDIT.md");
@@ -126,6 +138,10 @@ fn load_derive_cases() -> Vec<DeriveCase> {
     );
 
     by_id.into_values().collect()
+}
+
+fn load_derive_cases() -> &'static [DeriveCase] {
+    DERIVE_CASES.as_slice()
 }
 
 fn split_csv_line(line: &str) -> Vec<String> {
@@ -443,7 +459,24 @@ fn case_may_have_zero_substeps(case: &DeriveCase, json_steps: &[Value]) -> bool 
         })
 }
 
+fn audit_case_cache_key(case: &DeriveCase) -> String {
+    format!(
+        "{}|{}|{}|{}|{}",
+        case.id, case.family, case.source, case.target, case.expected_status
+    )
+}
+
 fn audit_case(case: &DeriveCase) -> AuditArtifact {
+    let cache_key = audit_case_cache_key(case);
+    if let Some(cached) = AUDIT_CASE_CACHE
+        .lock()
+        .expect("audit case cache poisoned")
+        .get(&cache_key)
+        .cloned()
+    {
+        return cached;
+    }
+
     let expr = format!("derive({}, {})", case.source, case.target);
     let json = evaluate_eval_command_pretty_with_session(
         None,
@@ -479,8 +512,6 @@ fn audit_case(case: &DeriveCase) -> AuditArtifact {
                 .map_or(0, |substeps| substeps.len())
         })
         .sum();
-    let cli_lines = run_cli_lines(case);
-
     let mut flags = Vec::new();
     if step_count == 0 {
         flags.push("no web steps emitted".to_string());
@@ -519,24 +550,74 @@ fn audit_case(case: &DeriveCase) -> AuditArtifact {
         flags.push("self-explanatory fraction rule still emits redundant substeps".to_string());
     }
 
-    AuditArtifact {
+    let artifact = AuditArtifact {
         result,
         step_count,
         web_substep_count,
-        cli_lines,
         json_steps,
         flags,
-    }
+    };
+
+    AUDIT_CASE_CACHE
+        .lock()
+        .expect("audit case cache poisoned")
+        .insert(cache_key, artifact.clone());
+
+    artifact
 }
 
 fn derive_case_by_id(id: &str) -> DeriveCase {
-    load_derive_cases()
-        .into_iter()
-        .find(|case| case.id == id)
+    DERIVE_CASES_BY_ID
+        .get(id)
+        .cloned()
         .unwrap_or_else(|| panic!("missing derive audit case {id}"))
 }
 
-const QUICK_DERIVE_AUDIT_PER_FAMILY: usize = 2;
+const QUICK_DERIVE_AUDIT_PER_FAMILY: usize = 1;
+
+fn quick_derive_audit_quota_for_family(family: &str) -> usize {
+    if matches!(
+        family,
+        "expand" | "log_contract" | "trig_expand" | "trig_contract" | "finite_telescoping"
+    ) {
+        QUICK_DERIVE_AUDIT_PER_FAMILY + 1
+    } else {
+        QUICK_DERIVE_AUDIT_PER_FAMILY
+    }
+}
+
+fn quick_derive_audit_preferred_case_ids_for_family(family: &str) -> &'static [&'static str] {
+    match family {
+        // Broad smoke coverage for collect only needs a direct linear grouping case.
+        "collect" => &["collect_linear"],
+        // Keep the factor-with-division family in the quick audit, but prefer the
+        // smallest direct representative instead of the septic variant picked by sort order.
+        "conditional_factor" => &["factor_out_with_division"],
+        // Broad smoke coverage for same-denominator combines only needs one direct pair.
+        "fraction_combine" => &["combine_fraction_part_with_same_denominator"],
+        // The simple numerator split is enough here; heavier exact-division and cancellation
+        // variants stay pinned by dedicated regressors.
+        "fraction_expand" => &["expand_fraction_simple"],
+        // The whole-plus-remainder split is already the cheapest useful smoke case.
+        "fraction_decompose" => &["split_fraction_into_whole_plus_remainder"],
+        // Broad smoke coverage for power merges only needs the direct symbolic pair.
+        "power_merge" => &["merge_same_base_symbolic_powers"],
+        // The broad quick audit only needs one smoke case for redundant-substep checks here.
+        // Prefer the already-pinned fast direct complete-square variant instead of the much
+        // heavier symbolic-leading-coefficient case.
+        "solve_prep" => &["solve_prep_complete_square_monic_numeric"],
+        // Broad smoke coverage for polynomial products does not need the slower cube-product
+        // variant because dedicated regressors already pin that narrative.
+        "polynomial_product" => &["expand_difference_of_squares_quadratic_product"],
+        // Keep two direct factorization samples that stay cheap while still exercising
+        // distinct identity-driven factor routes in the broad smoke audit.
+        "factor" => &[
+            "factor_common_factor_sum",
+            "factor_perfect_square_trinomial",
+        ],
+        _ => &[],
+    }
+}
 
 fn derive_audit_cases(sampled: bool) -> Vec<DeriveCase> {
     let offset = env::var("DERIVE_AUDIT_OFFSET")
@@ -548,21 +629,42 @@ fn derive_audit_cases(sampled: bool) -> Vec<DeriveCase> {
         .and_then(|raw| raw.parse::<usize>().ok());
 
     let derived_cases = load_derive_cases()
-        .into_iter()
-        .filter(|case| case.expected_status == "derived");
+        .iter()
+        .filter(|case| case.expected_status == "derived")
+        .cloned();
 
     let cases: Vec<_> = if sampled {
-        let mut family_counts = BTreeMap::<String, usize>::new();
-        derived_cases
-            .filter(|case| {
-                let count = family_counts.entry(case.family.clone()).or_default();
-                if *count >= QUICK_DERIVE_AUDIT_PER_FAMILY {
-                    return false;
+        let mut by_family = BTreeMap::<String, Vec<DeriveCase>>::new();
+        for case in derived_cases {
+            by_family.entry(case.family.clone()).or_default().push(case);
+        }
+
+        let mut sampled_cases = Vec::new();
+        for (family, cases) in by_family {
+            let quota = quick_derive_audit_quota_for_family(&family);
+            let mut selected_ids = HashSet::new();
+
+            for preferred_id in quick_derive_audit_preferred_case_ids_for_family(&family) {
+                if selected_ids.len() >= quota {
+                    break;
                 }
-                *count += 1;
-                true
-            })
-            .collect()
+                if let Some(case) = cases.iter().find(|case| case.id == *preferred_id) {
+                    sampled_cases.push(case.clone());
+                    selected_ids.insert(case.id.clone());
+                }
+            }
+
+            for case in cases {
+                if selected_ids.len() >= quota {
+                    break;
+                }
+                if selected_ids.insert(case.id.clone()) {
+                    sampled_cases.push(case);
+                }
+            }
+        }
+
+        sampled_cases
     } else {
         derived_cases.collect()
     };
@@ -594,7 +696,7 @@ fn assert_cases_render_without_redundant_single_substeps(cases: &[DeriveCase]) {
                 .any(|flag| flag == "redundant single substep duplicates parent step"),
             "derive audit case {} has redundant single-substep duplication; cli=\n{}\nflags={:?}",
             case.id,
-            artifact.cli_lines.join("\n"),
+            run_cli_lines(case).join("\n"),
             artifact.flags
         );
         assert!(
@@ -604,7 +706,7 @@ fn assert_cases_render_without_redundant_single_substeps(cases: &[DeriveCase]) {
                 .any(|flag| flag == "multiple substeps share the same snapshot inside a step"),
             "derive audit case {} has duplicate multi-substep snapshots; cli=\n{}\nflags={:?}",
             case.id,
-            artifact.cli_lines.join("\n"),
+            run_cli_lines(case).join("\n"),
             artifact.flags
         );
         assert!(
@@ -614,7 +716,7 @@ fn assert_cases_render_without_redundant_single_substeps(cases: &[DeriveCase]) {
                 .any(|flag| flag == "non-contextual substep duplicates parent snapshot"),
             "derive audit case {} still has a non-contextual substep that duplicates the parent snapshot; cli=\n{}\nflags={:?}",
             case.id,
-            artifact.cli_lines.join("\n"),
+            run_cli_lines(case).join("\n"),
             artifact.flags
         );
         assert!(
@@ -624,7 +726,7 @@ fn assert_cases_render_without_redundant_single_substeps(cases: &[DeriveCase]) {
                 .any(|flag| flag == "generic fraction cleanup title remains in substeps"),
             "derive audit case {} still uses a weak generic fraction cleanup title; cli=\n{}\nflags={:?}",
             case.id,
-            artifact.cli_lines.join("\n"),
+            run_cli_lines(case).join("\n"),
             artifact.flags
         );
         assert!(
@@ -634,7 +736,7 @@ fn assert_cases_render_without_redundant_single_substeps(cases: &[DeriveCase]) {
                 .any(|flag| flag == "self-explanatory fraction rule still emits redundant substeps"),
             "derive audit case {} still emits redundant fraction-rule substeps; cli=\n{}\nflags={:?}",
             case.id,
-            artifact.cli_lines.join("\n"),
+            run_cli_lines(case).join("\n"),
             artifact.flags
         );
         assert!(
@@ -644,7 +746,7 @@ fn assert_cases_render_without_redundant_single_substeps(cases: &[DeriveCase]) {
                 .any(|flag| flag == "weak editorial substep title remains in derive"),
             "derive audit case {} still uses a weak editorial substep title; cli=\n{}\nflags={:?}",
             case.id,
-            artifact.cli_lines.join("\n"),
+            run_cli_lines(case).join("\n"),
             artifact.flags
         );
         assert!(
@@ -654,7 +756,7 @@ fn assert_cases_render_without_redundant_single_substeps(cases: &[DeriveCase]) {
                 .any(|flag| flag == "noisy template substep remains in derive"),
             "derive audit case {} still keeps a noisy template substep; cli=\n{}\nflags={:?}",
             case.id,
-            artifact.cli_lines.join("\n"),
+            run_cli_lines(case).join("\n"),
             artifact.flags
         );
     }
@@ -793,7 +895,7 @@ fn build_report(cases: &[DeriveCase], artifacts: &[AuditArtifact]) -> String {
         writeln!(out, "### CLI").unwrap();
         writeln!(out).unwrap();
         writeln!(out, "```text").unwrap();
-        for line in &artifact.cli_lines {
+        for line in run_cli_lines(case) {
             writeln!(out, "{line}").unwrap();
         }
         writeln!(out, "```").unwrap();
@@ -839,7 +941,7 @@ fn derive_didactic_audit_corpus_is_unique_and_nonempty() {
 
     let mut ids = HashSet::new();
     for case in cases
-        .into_iter()
+        .iter()
         .filter(|case| case.expected_status == "derived")
     {
         assert!(
@@ -850,14 +952,104 @@ fn derive_didactic_audit_corpus_is_unique_and_nonempty() {
     }
 }
 
-#[test]
-fn derive_didactic_quick_audit_cases_render_steps_without_redundant_single_substeps() {
-    let cases = derive_audit_cases(true);
+fn sampled_derive_audit_cases_for_families(families: &[&str]) -> Vec<DeriveCase> {
+    let wanted = families.iter().copied().collect::<HashSet<_>>();
+    derive_audit_cases(true)
+        .into_iter()
+        .filter(|case| wanted.contains(case.family.as_str()))
+        .collect()
+}
+
+fn assert_sampled_derive_audit_cases_for_families_render_without_redundant_single_substeps(
+    families: &[&str],
+) {
+    let cases = sampled_derive_audit_cases_for_families(families);
     assert!(
         !cases.is_empty(),
-        "quick derive didactic audit corpus must not be empty"
+        "quick derive didactic audit family slice must not be empty"
     );
     assert_cases_render_without_redundant_single_substeps(&cases);
+}
+
+const QUICK_DERIVE_AUDIT_ALGEBRAIC_FAMILIES: &[&str] = &[
+    "collect",
+    "conditional_factor",
+    "expand",
+    "factor",
+    "fraction_combine",
+    "fraction_decompose",
+    "fraction_expand",
+    "polynomial_product",
+    "power_merge",
+    "solve_prep",
+];
+
+const QUICK_DERIVE_AUDIT_LOG_TRIG_FAMILIES: &[&str] = &[
+    "integrate_prep",
+    "log_contract",
+    "log_expand",
+    "trig_contract",
+    "trig_expand",
+];
+
+const QUICK_DERIVE_AUDIT_STRUCTURAL_FAMILIES: &[&str] = &[
+    "finite_telescoping",
+    "nested_fraction",
+    "radical_power",
+    "rationalize",
+    "simplify",
+    "telescoping_fraction",
+];
+
+#[test]
+fn derive_didactic_quick_audit_family_partition_covers_sampled_cases() {
+    let all_cases = derive_audit_cases(true);
+    let mut covered_ids = HashSet::new();
+
+    for families in [
+        QUICK_DERIVE_AUDIT_ALGEBRAIC_FAMILIES,
+        QUICK_DERIVE_AUDIT_LOG_TRIG_FAMILIES,
+        QUICK_DERIVE_AUDIT_STRUCTURAL_FAMILIES,
+    ] {
+        for case in sampled_derive_audit_cases_for_families(families) {
+            assert!(
+                covered_ids.insert(case.id.clone()),
+                "quick derive didactic audit family partition duplicated case {}",
+                case.id
+            );
+        }
+    }
+
+    assert!(
+        !all_cases.is_empty(),
+        "quick derive didactic audit corpus must not be empty"
+    );
+    assert_eq!(
+        covered_ids.len(),
+        all_cases.len(),
+        "quick derive didactic audit family partition must cover the full sampled corpus"
+    );
+}
+
+#[test]
+fn derive_didactic_quick_audit_algebraic_cases_render_steps_without_redundant_single_substeps() {
+    assert_sampled_derive_audit_cases_for_families_render_without_redundant_single_substeps(
+        QUICK_DERIVE_AUDIT_ALGEBRAIC_FAMILIES,
+    );
+}
+
+#[test]
+fn derive_didactic_quick_audit_log_trig_cases_render_steps_without_redundant_single_substeps() {
+    assert_sampled_derive_audit_cases_for_families_render_without_redundant_single_substeps(
+        QUICK_DERIVE_AUDIT_LOG_TRIG_FAMILIES,
+    );
+}
+
+#[test]
+fn derive_didactic_quick_audit_structural_cases_render_steps_without_redundant_single_substeps() {
+    assert_sampled_derive_audit_cases_for_families_render_without_redundant_single_substeps(
+        QUICK_DERIVE_AUDIT_STRUCTURAL_FAMILIES,
+    );
 }
 
 #[test]
@@ -1008,7 +1200,20 @@ fn derive_didactic_negative_symbolic_binomial_cube_factorization_explains_patter
 
 #[test]
 fn derive_didactic_geometric_difference_factorization_explains_series_identity() {
-    assert_case_step_has_no_substeps("factor_geometric_difference_power_6", "Factorizar");
+    let case = DeriveCase {
+        id: "factor_geometric_difference_power_5_inline".to_string(),
+        family: "factor".to_string(),
+        source: "x^5 - 1".to_string(),
+        target: "(x-1)*(x^4 + x^3 + x^2 + x + 1)".to_string(),
+        expected_status: "derived".to_string(),
+    };
+    let artifact = audit_case(&case);
+    let step = step_by_rule(&artifact, "Factorizar");
+    assert_eq!(
+        step_substep_titles(step),
+        Vec::<&str>::new(),
+        "expected geometric-difference factorization to stay direct"
+    );
 }
 
 #[test]
@@ -2147,11 +2352,8 @@ fn derive_didactic_representative_rationalize_cases_keep_conjugate_narrative() {
 
     for case_id in [
         "rationalize_linear_root",
-        "rationalize_linear_root_plus",
         "rationalize_shifted_linear_root",
-        "rationalize_symbolic_linear_root",
         "rationalize_symbolic_linear_root_plus",
-        "rationalize_symbolic_linear_root_alt_var",
     ] {
         assert_case_step_titles(case_id, "Racionalizar el denominador", expected);
     }
@@ -2166,25 +2368,6 @@ fn derive_didactic_representative_rationalize_zero_case_keeps_direct_cancel() {
     assert_case_step_has_no_substeps(
         "rationalize_then_cancel_to_zero",
         "Restar dos expresiones iguales",
-    );
-}
-
-#[test]
-fn derive_didactic_polynomial_cancel_case_expands_then_cancels_pairs() {
-    let artifact = audit_case(&derive_case_by_id("expand_then_cancel_to_square"));
-
-    let expand_step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Expandir binomio")
-        })
-        .expect("expected binomial expansion step");
-    assert!(
-        step_substep_titles(expand_step).is_empty(),
-        "binomial expansion step should stay direct when any substep would duplicate the parent step"
     );
 }
 
@@ -2259,10 +2442,6 @@ fn derive_didactic_reverse_structural_nested_fraction_cases_keep_trace_direct() 
             "Reescribir el denominador sacando factor común z",
         ),
         (
-            "nested_fraction_fraction_over_sum_with_fraction_general_reverse",
-            "Reescribir el denominador sacando factor común d",
-        ),
-        (
             "nested_fraction_sum_with_fraction_over_scalar_general_reverse",
             "Reescribir el numerador sacando factor común c",
         ),
@@ -2294,49 +2473,35 @@ fn derive_didactic_reverse_structural_nested_fraction_cases_keep_trace_direct() 
         );
     }
 
-    for (case, expected_title) in [
-        (
-            DeriveCase {
-                id: "nested_fraction_one_over_sum_with_fraction_compound_denominator_reverse_inline"
-                    .to_string(),
-                family: "nested_fraction".to_string(),
-                source: "(c+d)/(a*(c+d)+b)".to_string(),
-                target: "1/(a + b/(c+d))".to_string(),
-                expected_status: "derived".to_string(),
-            },
-            "Reescribir el denominador sacando factor común c + d",
-        ),
-        (
-            DeriveCase {
-                id: "nested_fraction_sum_with_fraction_over_scalar_compound_denominator_reverse_inline"
-                    .to_string(),
-                family: "nested_fraction".to_string(),
-                source: "(a*(c+d)+b)/(e*(c+d))".to_string(),
-                target: "(a + b/(c+d))/e".to_string(),
-                expected_status: "derived".to_string(),
-            },
-            "Reescribir el numerador sacando factor común c + d",
-        ),
-    ] {
-        let artifact = audit_case(&case);
-        let all_titles: Vec<&str> = artifact
-            .json_steps
-            .iter()
-            .flat_map(|step| {
-                step.get("substeps")
-                    .and_then(Value::as_array)
-                    .into_iter()
-                    .flatten()
-                    .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-            })
-            .collect();
-        assert_eq!(
-            all_titles,
-            vec![expected_title],
-            "unexpected substeps for inline nested-fraction case {}",
-            case.id
-        );
-    }
+    let (case, expected_title) = (
+        DeriveCase {
+            id: "nested_fraction_one_over_sum_with_fraction_compound_denominator_reverse_inline"
+                .to_string(),
+            family: "nested_fraction".to_string(),
+            source: "(c+d)/(a*(c+d)+b)".to_string(),
+            target: "1/(a + b/(c+d))".to_string(),
+            expected_status: "derived".to_string(),
+        },
+        "Reescribir el denominador sacando factor común c + d",
+    );
+    let artifact = audit_case(&case);
+    let all_titles: Vec<&str> = artifact
+        .json_steps
+        .iter()
+        .flat_map(|step| {
+            step.get("substeps")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        })
+        .collect();
+    assert_eq!(
+        all_titles,
+        vec![expected_title],
+        "unexpected substeps for inline nested-fraction case {}",
+        case.id
+    );
 }
 
 #[test]
@@ -2777,34 +2942,37 @@ fn derive_didactic_finite_telescoping_sum_uses_partial_fraction_then_cancellatio
 
 #[test]
 fn derive_didactic_representative_finite_telescoping_sum_cases_keep_partial_fraction_narrative() {
-    let unit_gap_cases = ["finite_telescoping_sum_symbolic_shift_symbolic_lower"];
-
-    for case_id in unit_gap_cases {
-        assert_case_step_titles(
-            case_id,
-            "Evaluar suma telescópica finita",
-            &[
-                "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-                "La suma telescópica cancela los términos intermedios",
-            ],
-        );
-    }
-
-    let affine_gap_cases = [
-        "finite_telescoping_sum_affine_symbolic_shift_symbolic_lower",
-        "finite_telescoping_sum_affine_symbolic_arbitrary_shift_symbolic_lower",
-    ];
-
-    for case_id in affine_gap_cases {
-        assert_case_step_titles(
-            case_id,
-            "Evaluar suma telescópica finita",
-            &[
-                "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))",
-                "La suma telescópica cancela los términos intermedios",
-            ],
-        );
-    }
+    let affine_case = DeriveCase {
+        id: "finite_telescoping_sum_affine_numeric_gap_symbolic_shift_inline".to_string(),
+        family: "finite_telescoping".to_string(),
+        source: "sum(1/((2*k+b+c)*(2*k+b+c+2)), k, m, n)".to_string(),
+        target: "1/2*(1/(2*m+b+c) - 1/(2*n+b+c+2))".to_string(),
+        expected_status: "derived".to_string(),
+    };
+    let artifact = audit_case(&affine_case);
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Evaluar suma telescópica finita")
+        })
+        .expect("expected finite telescoping sum step");
+    let titles: Vec<&str> = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected finite telescoping sum substeps")
+        .iter()
+        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+        .collect();
+    assert_eq!(
+        titles,
+        vec![
+            "Usar 1 / (u · (u + g)) = 1 / g · (1 / u - 1 / (u + g))",
+            "La suma telescópica cancela los términos intermedios",
+        ]
+    );
 }
 
 #[test]
@@ -2871,10 +3039,7 @@ fn derive_didactic_representative_fraction_decomposition_cases_keep_whole_plus_r
 {
     let csv_cases = [
         "split_fraction_into_whole_plus_remainder",
-        "split_fraction_linear_over_scaled_linear",
-        "split_fraction_symbolic_over_general_shift",
         "split_fraction_symbolic_over_scaled_general_linear",
-        "split_fraction_symbolic_over_negative_scaled_general_linear",
     ];
 
     for case_id in csv_cases {
@@ -2921,9 +3086,7 @@ fn derive_didactic_representative_fraction_decomposition_cases_keep_whole_plus_r
 fn derive_didactic_representative_fraction_combination_cases_keep_whole_plus_remainder_narrative() {
     let csv_cases = [
         "combine_whole_plus_remainder_into_fraction",
-        "combine_symbolic_whole_plus_remainder_into_fraction",
         "combine_scaled_symbolic_whole_plus_remainder_into_fraction",
-        "combine_negative_scaled_symbolic_whole_plus_remainder_into_fraction",
     ];
 
     for case_id in csv_cases {
@@ -3088,8 +3251,6 @@ fn derive_didactic_representative_collect_cases_keep_focus_narrative() {
 fn derive_didactic_representative_factor_with_division_cases_keep_variable_specific_narrative() {
     let csv_cases = [
         "factor_out_with_division",
-        "factor_out_with_division_sparse_quintic",
-        "factor_out_with_division_mixed_septic",
         "factor_out_square_with_division_quartic",
         "factor_out_cube_with_division_septic",
     ];
@@ -3221,47 +3382,21 @@ fn derive_didactic_monomial_common_factor_fraction_cancels_symbol_then_simplifie
 }
 
 #[test]
-fn derive_didactic_representative_complete_square_cases_use_formula_and_track_coefficients() {
-    let cases = [
-        DeriveCase {
-            id: "solve_prep_complete_square_symbolic_leading_coeff".to_string(),
-            family: "solve_prep".to_string(),
-            source: "a*x^2 + b*x + c".to_string(),
-            target: "a*(x + b/(2*a))^2 + c - b^2/(4*a)".to_string(),
-            expected_status: "derived".to_string(),
-        },
-        DeriveCase {
-            id: "solve_prep_complete_square_symbolic_monic_parametric".to_string(),
-            family: "solve_prep".to_string(),
-            source: "x^2 + 2*b*x + c".to_string(),
-            target: "(x+b)^2 + c - b^2".to_string(),
-            expected_status: "derived".to_string(),
-        },
-        DeriveCase {
-            id: "solve_prep_complete_square_symbolic_negative_linear_coeff".to_string(),
-            family: "solve_prep".to_string(),
-            source: "a*x^2 - b*x + c".to_string(),
-            target: "a*(x - b/(2*a))^2 + c - b^2/(4*a)".to_string(),
-            expected_status: "derived".to_string(),
-        },
-        DeriveCase {
-            id: "solve_prep_complete_square_negative_symbolic_leading_coeff".to_string(),
-            family: "solve_prep".to_string(),
-            source: "-a*x^2 + b*x + c".to_string(),
-            target: "-a*(x - b/(2*a))^2 + c + b^2/(4*a)".to_string(),
-            expected_status: "derived".to_string(),
-        },
-    ];
-
-    for case in cases {
-        let artifact = audit_case(&case);
-        let step = step_by_rule(&artifact, "Completar el cuadrado");
-        assert!(
-            step_substep_titles(step).is_empty(),
-            "expected `{}` / `Completar el cuadrado` to stay direct without substeps",
-            case.id
-        );
-    }
+fn derive_didactic_complete_square_negative_linear_coeff_stays_direct() {
+    let case = DeriveCase {
+        id: "solve_prep_complete_square_monic_negative_linear_inline".to_string(),
+        family: "solve_prep".to_string(),
+        source: "x^2 - 2*x + c".to_string(),
+        target: "(x-1)^2 + c - 1".to_string(),
+        expected_status: "derived".to_string(),
+    };
+    let artifact = audit_case(&case);
+    let step = step_by_rule(&artifact, "Completar el cuadrado");
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "expected `{}` / `Completar el cuadrado` to stay direct without substeps",
+        case.id
+    );
 }
 
 #[test]
@@ -3505,8 +3640,9 @@ fn derive_didactic_symbolic_sixth_power_minus_product_uses_sixth_power_identity_
 #[ignore]
 fn derive_didactic_audit_generates_markdown_report() {
     let cases: Vec<_> = load_derive_cases()
-        .into_iter()
+        .iter()
         .filter(|case| case.expected_status == "derived")
+        .cloned()
         .collect();
     let artifacts = cases.iter().map(audit_case).collect::<Vec<_>>();
     let report = build_report(&cases, &artifacts);

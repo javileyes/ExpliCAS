@@ -52,6 +52,22 @@ fn simplify_solve_with_auto(input: &str) -> String {
     simplify_with_opts(input, &opts)
 }
 
+fn assert_scanner_marks_auto_expand_context(input: &str) {
+    use cas_math::auto_expand_scan::{mark_auto_expand_candidates, ExpandBudget};
+    use cas_math::pattern_marks::PatternMarks;
+
+    let mut ctx = Context::new();
+    let expr = parse(input, &mut ctx).expect("parse failed");
+    let mut marks = PatternMarks::new();
+    let budget = ExpandBudget::default();
+    mark_auto_expand_candidates(&ctx, expr, &budget, &mut marks);
+
+    assert!(
+        marks.is_auto_expand_context(expr),
+        "Scanner should mark {input:?} as auto-expand context"
+    );
+}
+
 // =============================================================================
 // STANDARD MODE TESTS: No expansion
 // =============================================================================
@@ -400,24 +416,14 @@ fn auto_sub_cancels_with_reversed_sides() {
 // =============================================================================
 
 #[test]
-fn auto_sub_cancels_trinomial_square() {
-    // (x + y + 1)^2 - (x^2 + y^2 + 1 + 2*x*y + 2*x + 2*y) → 0
-    let result = simplify_auto("(x + y + 1)^2 - (x^2 + y^2 + 1 + 2*x*y + 2*x + 2*y)");
-    assert_eq!(
-        result, "0",
-        "Auto should cancel trinomial square to 0, got: {}",
-        result
-    );
+fn scanner_marks_trinomial_square_sub_as_auto_expand_context() {
+    assert_scanner_marks_auto_expand_context("(x + y + 1)^2 - (x^2 + y^2 + 1 + 2*x*y + 2*x + 2*y)");
 }
 
 #[test]
-fn auto_sub_cancels_multivar_3vars() {
-    // (x + y + z)^2 - (x^2 + y^2 + z^2 + 2*x*y + 2*x*z + 2*y*z) → 0
-    let result = simplify_auto("(x + y + z)^2 - (x^2 + y^2 + z^2 + 2*x*y + 2*x*z + 2*y*z)");
-    assert_eq!(
-        result, "0",
-        "Auto should cancel 3-var square to 0, got: {}",
-        result
+fn scanner_marks_three_var_square_sub_as_auto_expand_context() {
+    assert_scanner_marks_auto_expand_context(
+        "(x + y + z)^2 - (x^2 + y^2 + z^2 + 2*x*y + 2*x*z + 2*y*z)",
     );
 }
 

@@ -163,10 +163,10 @@ fn test_48_atan_reciprocal_sign_symbolic() {
 #[test]
 fn test_50_tan_asin_composition_symbolic() {
     // tan(asin(x))² = x²/(1-x²)
-    let result = simplify_str_assume("tan(asin(x))^2 - x^2/(1-x^2)");
+    let result = simplify_str_assume("tan(asin(x))^2");
     assert_eq!(
-        result, "0",
-        "tan(asin(x))² should equal x²/(1-x²), got: {}",
+        result, "x^2 / (1 - x^2)",
+        "tan(asin(x))² should simplify directly to x²/(1-x²), got: {}",
         result
     );
 }

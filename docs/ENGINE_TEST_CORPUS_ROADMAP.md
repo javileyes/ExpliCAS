@@ -295,6 +295,42 @@ to capture:
 That ledger is especially useful for corpus-guided work because many
 performance-sensitive ideas are only wrong in *placement*, not in mathematics.
 
+## Slow CI Tests And Embedded Runtime
+
+Slow tests observed in `make ci` are relevant to corpus strategy only after
+they are classified correctly.
+
+There are three different phenomena that can look like the same problem:
+
+- compile / runner noise
+- real engine runtime pathology
+- test verification pathology
+
+That distinction matters because only the second class should normally drive
+engine runtime changes.
+
+The third class is especially dangerous for corpus work:
+
+- the engine may already be fast on the real product path
+- but the test verifies equivalence through a much more expensive isolated or
+  assertion-only route
+- “fixing” that by broadening engine shortcuts can easily slow down the
+  embedded corpus for no real product gain
+
+So the policy is:
+
+1. reproduce the slow test narrowly outside `make ci`
+2. classify it before editing engine code
+3. prefer a test-side fix when the engine already behaves well on the real path
+4. require an embedded corpus rerun for any retained engine-side fix
+
+Operationally, keep the current slow-test state in:
+
+- [SLOW_CI_TEST_LEDGER.md](/Users/javiergimenezmoya/developer/math/docs/SLOW_CI_TEST_LEDGER.md)
+
+Use the embedded corpus as the guardrail only for retained engine-side fixes,
+not as a reason to avoid fixing a pathological test harness.
+
 ## Corpus 2: High-Temperature Composition Discovery
 
 ### Purpose

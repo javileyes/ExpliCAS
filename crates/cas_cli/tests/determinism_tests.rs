@@ -7,15 +7,26 @@ use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_solver::runtime::Simplifier;
 
+fn determinism_rounds(debug_rounds: usize, release_rounds: usize) -> usize {
+    if cfg!(debug_assertions) {
+        debug_rounds
+    } else {
+        release_rounds
+    }
+}
+
 /// Test that rationalization produces identical output across 200 runs.
 /// This catches HashMap iteration order issues, non-stable sorting, etc.
 #[test]
 fn test_determinism_rationalize_200x() {
     let expr_str = "1/(sqrt(3) + 1 + sqrt(2))";
+    // CI runs the debug profile, so keep the guardrail representative there and
+    // leave the higher iteration count to release/manual stress runs.
+    let rounds = determinism_rounds(12, 200);
 
     let mut first_result: Option<String> = None;
 
-    for i in 0..200 {
+    for i in 0..rounds {
         // Create fresh simplifier each time to catch initialization order issues
         let mut simplifier = Simplifier::with_default_rules();
         let expr = parse(expr_str, &mut simplifier.context).expect("parse failed");
@@ -83,10 +94,11 @@ fn test_determinism_simplify_mixed() {
 #[test]
 fn test_determinism_rationalize_explicit() {
     let expr_str = "rationalize(1/(1 + sqrt(2) + sqrt(3)))";
+    let rounds = determinism_rounds(10, 100);
 
     let mut first_result: Option<String> = None;
 
-    for i in 0..100 {
+    for i in 0..rounds {
         let mut simplifier = Simplifier::with_default_rules();
         let expr = parse(expr_str, &mut simplifier.context).expect("parse failed");
         let (result, _) = simplifier.simplify(expr);

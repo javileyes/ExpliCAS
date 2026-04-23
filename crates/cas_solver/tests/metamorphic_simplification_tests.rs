@@ -5248,6 +5248,10 @@ fn raw_pressure_proof_can_use_original_engine_texts_for_curated_pair() {
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug builds are not performance-representative for raw-pressure contextual proofs; component coverage remains in contextual smoke and raw-pressure direct regressions"
+)]
 fn raw_pressure_proof_can_use_original_engine_texts_for_contextual_pair() {
     let lhs = "((x^2 + y^2)*(a^2 + b^2)) + (sec((1/(u - 1) + 1/(u + 1)))^2 - tan((1/(u - 1) + 1/(u + 1)))^2)";
     let rhs = "((x*a + y*b)^2 + (x*b - y*a)^2) + 1";

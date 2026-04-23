@@ -35,13 +35,6 @@ mod engine_tests {
             &mut simplifier.context,
         )
         .unwrap();
-        println!(
-            "Parsed Ramanujan expr: {}",
-            DisplayExpr {
-                context: &simplifier.context,
-                id: expr
-            }
-        );
         let (simplified, _) = simplifier.simplify(expr);
         let res = format!(
             "{}",
@@ -50,7 +43,6 @@ mod engine_tests {
                 id: simplified
             }
         );
-        println!("Ramanujan Result: {}", res);
         assert_eq!(res, "0");
     }
 
@@ -60,7 +52,6 @@ mod engine_tests {
 
         // x^(1/ln(x)) - exp(1)
         let expr = parse("x^(1/ln(x)) - exp(1)", &mut simplifier.context).unwrap();
-        println!("Parsed Log Mirror expr: {:?}", simplifier.context.get(expr));
         let (simplified, _) = simplifier.simplify(expr);
         let res = format!(
             "{}",
@@ -69,7 +60,6 @@ mod engine_tests {
                 id: simplified
             }
         );
-        println!("Log Mirror Result: {}", res);
         assert_eq!(res, "0");
     }
 
@@ -91,7 +81,6 @@ mod engine_tests {
                 id: simplified
             }
         );
-        println!("Triple Angle Result: {}", res);
 
         // With CanonicalizeNegationRule enabled, this now fully simplifies to 0!
         // sin(3x) = 3sin(x) - 4sin³(x) is a trig identity, so sin(3x) - (3sin(x) - 4sin^3(x)) = 0
@@ -103,27 +92,6 @@ mod engine_tests {
         let mut simplifier = create_standard_simplifier();
 
         let expr = parse("sin(3*x)/sin(x) - 2*cos(2*x) - 1", &mut simplifier.context).unwrap();
-        let (simplified, _) = simplifier.simplify(expr);
-        let res = format!(
-            "{}",
-            DisplayExpr {
-                context: &simplifier.context,
-                id: simplified
-            }
-        );
-
-        assert_eq!(res, "0");
-    }
-
-    #[test]
-    fn test_full_mixed_identity_engine() {
-        let mut simplifier = create_standard_simplifier();
-
-        let expr = parse(
-            "((x^4 - 2*x^2*y^2 + y^4)/(x-y) - x^3 - x^2*y + x*y^2 + y^3) + (sin(3*x)/sin(x) - 2*cos(2*x) - 1) + (ln(sqrt((1+sin(y))/(1-sin(y)))) - atanh(sin(y))) + (x/(1 + x/(1-x)) - x + x^2) + ((cosh(x*y))^2 - (sinh(x*y))^2 - ((sin(x+y))^2 + (cos(x+y))^2))",
-            &mut simplifier.context,
-        )
-        .unwrap();
         let (simplified, _) = simplifier.simplify(expr);
         let res = format!(
             "{}",

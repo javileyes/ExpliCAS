@@ -107,6 +107,39 @@ fn simplify_case(case: &AuditCase) -> AuditArtifact {
     }
 }
 
+fn partition_audit_cases(cases: &[AuditCase], bucket: usize, buckets: usize) -> Vec<&AuditCase> {
+    cases
+        .iter()
+        .enumerate()
+        .filter(|(index, _)| index % buckets == bucket)
+        .map(|(_, case)| case)
+        .collect()
+}
+
+fn assert_cases_simplify_and_emit_steps(cases: &[&AuditCase]) {
+    for case in cases {
+        let artifact = simplify_case(case);
+        assert!(
+            artifact.step_count > 0,
+            "case {} should emit at least one step; expr={}",
+            case.id,
+            case.expr
+        );
+        assert!(
+            !artifact.cli_lines.is_empty(),
+            "case {} should emit CLI didactic lines; expr={}",
+            case.id,
+            case.expr
+        );
+        assert!(
+            !artifact.wire_steps.is_empty(),
+            "case {} should emit wire steps; expr={}",
+            case.id,
+            case.expr
+        );
+    }
+}
+
 fn allows_direct_single_step_without_substeps(wire_steps: &[StepWire]) -> bool {
     if wire_steps.len() != 1 || !wire_steps[0].substeps.is_empty() {
         return false;
@@ -246,7 +279,7 @@ fn didactic_step_quality_corpus_is_unique_and_nonempty() {
     assert!(!cases.is_empty(), "didactic audit corpus must not be empty");
 
     let mut ids = HashSet::new();
-    for case in cases {
+    for case in &cases {
         assert!(
             ids.insert(case.id.clone()),
             "duplicate didactic audit case id: {}",
@@ -261,30 +294,38 @@ fn didactic_step_quality_corpus_is_unique_and_nonempty() {
 }
 
 #[test]
-fn didactic_step_quality_cases_simplify_and_emit_steps() {
+fn didactic_step_quality_cases_simplify_and_emit_steps_partition_0() {
     let cases = load_audit_cases();
+    let partition = partition_audit_cases(&cases, 0, 3);
+    assert_cases_simplify_and_emit_steps(&partition);
+}
 
-    for case in &cases {
-        let artifact = simplify_case(case);
-        assert!(
-            artifact.step_count > 0,
-            "case {} should emit at least one step; expr={}",
-            case.id,
-            case.expr
-        );
-        assert!(
-            !artifact.cli_lines.is_empty(),
-            "case {} should emit CLI didactic lines; expr={}",
-            case.id,
-            case.expr
-        );
-        assert!(
-            !artifact.wire_steps.is_empty(),
-            "case {} should emit wire steps; expr={}",
-            case.id,
-            case.expr
-        );
-    }
+#[test]
+fn didactic_step_quality_cases_simplify_and_emit_steps_partition_1() {
+    let cases = load_audit_cases();
+    let partition = partition_audit_cases(&cases, 1, 3);
+    assert_cases_simplify_and_emit_steps(&partition);
+}
+
+#[test]
+fn didactic_step_quality_cases_simplify_and_emit_steps_partition_2() {
+    let cases = load_audit_cases();
+    let partition = partition_audit_cases(&cases, 2, 3);
+    assert_cases_simplify_and_emit_steps(&partition);
+}
+
+#[test]
+fn didactic_step_quality_cases_partition_covers_all_cases() {
+    let cases = load_audit_cases();
+    let covered = (0..3)
+        .flat_map(|bucket| partition_audit_cases(&cases, bucket, 3))
+        .map(|case| case.id.as_str())
+        .collect::<HashSet<_>>();
+    let all_ids = cases
+        .iter()
+        .map(|case| case.id.as_str())
+        .collect::<HashSet<_>>();
+    assert_eq!(covered, all_ids);
 }
 
 #[test]

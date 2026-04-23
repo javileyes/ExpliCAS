@@ -37,6 +37,11 @@ pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {
         return res;
     }
 
+    // 6. Try binomial cube identity: a^3 ± 3a^2b + 3ab^2 ± b^3 = (a ± b)^3
+    if let Some(res) = factor_binomial_cube_identity(ctx, expr) {
+        return res;
+    }
+
     // 5. Recursive factorization?
     // For now, just return original if no top-level factorization applies.
     // Ideally we should factor sub-expressions too.
@@ -44,6 +49,67 @@ pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {
     // Let's stick to top-level for now, or maybe recurse if it's a product/sum?
 
     expr
+}
+
+pub fn factor_binomial_cube_identity(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    use crate::expr_nary::{AddView, Sign};
+
+    let add_view = AddView::from_expr(ctx, expr);
+    if add_view.terms.len() != 4 {
+        return None;
+    }
+
+    let cube_terms: Vec<_> = add_view
+        .terms
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (term, sign))| {
+            get_cube_root_base(ctx, *term).map(|base| (index, base, *sign))
+        })
+        .collect();
+    if cube_terms.len() != 2 {
+        return None;
+    }
+
+    let ((first_index, first_base, first_sign), (second_index, second_base, second_sign)) =
+        (cube_terms[0], cube_terms[1]);
+    if compare_expr(ctx, first_base, second_base) == Ordering::Equal {
+        return None;
+    }
+
+    let remaining_terms: Vec<_> = add_view
+        .terms
+        .iter()
+        .enumerate()
+        .filter_map(|(index, (term, sign))| {
+            (![first_index, second_index].contains(&index)).then_some((*term, *sign))
+        })
+        .collect();
+    if remaining_terms.len() != 2 {
+        return None;
+    }
+
+    if first_sign == Sign::Pos && second_sign == Sign::Pos {
+        for (left_base, right_base) in [(first_base, second_base), (second_base, first_base)] {
+            if remaining_terms_match_binomial_cube(
+                ctx,
+                &remaining_terms,
+                left_base,
+                right_base,
+                false,
+            ) {
+                return Some(build_binomial_cube(ctx, left_base, right_base, false));
+            }
+        }
+    }
+
+    let (positive_base, negative_base) = match (first_sign, second_sign) {
+        (Sign::Pos, Sign::Neg) => (first_base, second_base),
+        (Sign::Neg, Sign::Pos) => (second_base, first_base),
+        _ => return None,
+    };
+    remaining_terms_match_binomial_cube(ctx, &remaining_terms, positive_base, negative_base, true)
+        .then(|| build_binomial_cube(ctx, positive_base, negative_base, true))
 }
 
 /// Factors the alternating cubic Vandermonde identity:
@@ -370,6 +436,58 @@ pub fn factor_perfect_square_trinomial(ctx: &mut Context, expr: ExprId) -> Optio
     None
 }
 
+fn build_binomial_cube(ctx: &mut Context, a: ExprId, b: ExprId, is_sub: bool) -> ExprId {
+    let three = ctx.num(3);
+    let binomial = if is_sub {
+        ctx.add(Expr::Sub(a, b))
+    } else {
+        ctx.add(Expr::Add(a, b))
+    };
+    ctx.add(Expr::Pow(binomial, three))
+}
+
+fn remaining_terms_match_binomial_cube(
+    ctx: &Context,
+    remaining_terms: &[(ExprId, crate::expr_nary::Sign)],
+    a: ExprId,
+    b: ExprId,
+    is_sub: bool,
+) -> bool {
+    let mut has_a_sq_b = false;
+    let mut has_a_b_sq = false;
+
+    for (term, outer_sign) in remaining_terms {
+        if let Some(embedded_positive) = is_3a2b_term(ctx, *term, a, b) {
+            let overall_positive = combine_add_view_sign(*outer_sign, embedded_positive);
+            if overall_positive != is_sub {
+                has_a_sq_b = true;
+                continue;
+            }
+        }
+        if let Some(embedded_positive) = is_3ab2_term(ctx, *term, a, b) {
+            let overall_positive = combine_add_view_sign(*outer_sign, embedded_positive);
+            if overall_positive {
+                has_a_b_sq = true;
+                continue;
+            }
+        }
+        return false;
+    }
+
+    has_a_sq_b && has_a_b_sq
+}
+
+fn combine_add_view_sign(outer_sign: crate::expr_nary::Sign, embedded_positive: bool) -> bool {
+    use crate::expr_nary::Sign;
+
+    match (outer_sign, embedded_positive) {
+        (Sign::Pos, true) => true,
+        (Sign::Neg, true) => false,
+        (Sign::Pos, false) => false,
+        (Sign::Neg, false) => true,
+    }
+}
+
 fn build_canonical_perfect_square(ctx: &mut Context, a: ExprId, b: ExprId, is_sub: bool) -> ExprId {
     let two = ctx.num(2);
     let binomial = if is_sub {
@@ -395,6 +513,79 @@ fn get_square_root_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
             None
         }
         _ => None,
+    }
+}
+
+fn get_cube_root_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            if let Expr::Number(n) = ctx.get(*exp) {
+                if n.is_integer() && *n.numer() == 3.into() {
+                    return Some(*base);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn is_3a2b_term(ctx: &Context, expr: ExprId, a: ExprId, b: ExprId) -> Option<bool> {
+    is_3_mixed_term(ctx, expr, a, b, true)
+}
+
+fn is_3ab2_term(ctx: &Context, expr: ExprId, a: ExprId, b: ExprId) -> Option<bool> {
+    is_3_mixed_term(ctx, expr, a, b, false)
+}
+
+fn is_3_mixed_term(
+    ctx: &Context,
+    expr: ExprId,
+    a: ExprId,
+    b: ExprId,
+    a_is_squared: bool,
+) -> Option<bool> {
+    use crate::expr_nary::MulView;
+
+    let mul_view = MulView::from_expr(ctx, expr);
+    if mul_view.factors.len() != 3 {
+        return None;
+    }
+
+    let mut coef_sign: Option<bool> = None;
+    let mut has_first = false;
+    let mut has_second = false;
+
+    for &factor in mul_view.factors.iter() {
+        if let Expr::Number(n) = ctx.get(factor) {
+            if n.is_integer() {
+                if *n.numer() == 3.into() {
+                    coef_sign = Some(true);
+                    continue;
+                }
+                if *n.numer() == (-3).into() {
+                    coef_sign = Some(false);
+                    continue;
+                }
+            }
+        }
+        if factor_matches_squared_base(ctx, factor, if a_is_squared { a } else { b }) {
+            has_first = true;
+        } else if compare_expr(ctx, factor, if a_is_squared { b } else { a }) == Ordering::Equal {
+            has_second = true;
+        }
+    }
+
+    (coef_sign.is_some() && has_first && has_second).then_some(coef_sign?)
+}
+
+fn factor_matches_squared_base(ctx: &Context, factor: ExprId, base: ExprId) -> bool {
+    match ctx.get(factor) {
+        Expr::Pow(inner_base, exp) => {
+            matches!(ctx.get(*exp), Expr::Number(n) if n.is_integer() && *n.numer() == 2.into())
+                && compare_expr(ctx, *inner_base, base) == Ordering::Equal
+        }
+        _ => false,
     }
 }
 
@@ -533,6 +724,24 @@ mod tests {
         let expr = parse("9*x^2 - 6*x + 1", &mut ctx).unwrap();
         let res = factor(&mut ctx, expr);
         let expected = parse("(3*x - 1)^2", &mut ctx).unwrap();
+        assert!(poly_eq(&ctx, res, expected));
+    }
+
+    #[test]
+    fn test_factor_symbolic_binomial_cube_sum() {
+        let mut ctx = Context::new();
+        let expr = parse("a^3 + 3*a^2*b + 3*a*b^2 + b^3", &mut ctx).unwrap();
+        let res = factor(&mut ctx, expr);
+        let expected = parse("(a + b)^3", &mut ctx).unwrap();
+        assert!(poly_eq(&ctx, res, expected));
+    }
+
+    #[test]
+    fn test_factor_symbolic_binomial_cube_difference() {
+        let mut ctx = Context::new();
+        let expr = parse("a^3 - 3*a^2*b + 3*a*b^2 - b^3", &mut ctx).unwrap();
+        let res = factor(&mut ctx, expr);
+        let expected = parse("(a - b)^3", &mut ctx).unwrap();
         assert!(poly_eq(&ctx, res, expected));
     }
 

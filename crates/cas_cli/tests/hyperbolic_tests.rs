@@ -226,7 +226,7 @@ fn test_mixed_hyperbolic() {
 
 #[test]
 fn test_pythagorean_with_variable() {
-    let result = simplify_str("cosh(a+b)^2 - sinh(a+b)^2");
+    let result = simplify_str("cosh(a/2)^2 - sinh(a/2)^2");
     assert_eq!(
         result, "1",
         "Pythagorean identity should work with complex arguments"

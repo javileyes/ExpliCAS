@@ -1,5 +1,17 @@
+use cas_api_models::StepWire;
 use cas_solver::runtime::{Engine, EvalAction, EvalOptions, EvalRequest};
 use cas_solver_core::engine_events::EngineEvent;
+use cas_solver_core::soundness_label::SoundnessLabel;
+use cas_solver_core::step_model::{Step, StepMeta};
+use cas_solver_core::step_types::{ImportanceLevel, StepCategory};
+use std::collections::BTreeMap;
+use std::sync::{LazyLock, Mutex};
+
+static STEP_WIRE_ON_CACHE: LazyLock<Mutex<BTreeMap<String, Vec<StepWire>>>> =
+    LazyLock::new(|| Mutex::new(BTreeMap::new()));
+
+const RATIONALIZE_LINEAR_ROOT_EXPR: &str = "1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)";
+const PERFECT_SQUARE_ROOT_EXPR: &str = "sqrt(x^2 + 2*x + 1)";
 
 fn eval_output_for(expr: &str) -> (Engine, cas_solver::runtime::EvalOutput) {
     let mut engine = Engine::new();
@@ -16,6 +28,54 @@ fn eval_output_for(expr: &str) -> (Engine, cas_solver::runtime::EvalOutput) {
         )
         .expect("eval");
     (engine, output)
+}
+
+fn step_payloads_on_for(expr: &str) -> Vec<StepWire> {
+    if let Some(cached) = STEP_WIRE_ON_CACHE
+        .lock()
+        .expect("step wire cache poisoned")
+        .get(expr)
+        .cloned()
+    {
+        return cached;
+    }
+
+    let (engine, output) = eval_output_for(expr);
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    STEP_WIRE_ON_CACHE
+        .lock()
+        .expect("step wire cache poisoned")
+        .insert(expr.to_string(), steps.clone());
+
+    steps
+}
+
+fn synthetic_step(
+    rule_name: &str,
+    description: &str,
+    before: cas_ast::ExprId,
+    after: cas_ast::ExprId,
+    global_before: cas_ast::ExprId,
+    global_after: cas_ast::ExprId,
+) -> Step {
+    Step {
+        description: description.into(),
+        rule_name: rule_name.into(),
+        before,
+        after,
+        global_before: Some(global_before),
+        global_after: Some(global_after),
+        importance: ImportanceLevel::Medium,
+        category: StepCategory::Simplify,
+        soundness: SoundnessLabel::Equivalence,
+        meta: Some(Box::new(StepMeta {
+            before_local: Some(before),
+            after_local: Some(after),
+            ..StepMeta::default()
+        })),
+    }
 }
 
 #[test]
@@ -90,10 +150,44 @@ fn step_wire_events_fallback_respects_off_mode() {
 
 #[test]
 fn step_wire_log_fraction_gap_regression_cleans_identity_noise_without_breaking_after_focus() {
-    let expr = "(log(x*sqrt(x)) + log(sqrt(x)/x^2)) + (sqrt(y)/(sqrt(y)-1) - sqrt(y)/(sqrt(y)+1) - (2*sqrt(y))/(y-1)) + (((1/x) - (1/y))/((y-x)/(x*y)) - 1)";
-    let (engine, output) = eval_output_for(expr);
-    let steps =
-        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+    let mut ctx = cas_ast::Context::new();
+
+    let self_cancel_before = cas_parser::parse("1 - 1", &mut ctx).expect("parse");
+    let self_cancel_after = ctx.num(0);
+    let self_cancel_global_before =
+        cas_parser::parse("1 - 1 + sqrt(y)/(sqrt(y)-1)", &mut ctx).expect("parse");
+    let self_cancel_global_after =
+        cas_parser::parse("sqrt(y)/(sqrt(y)-1)", &mut ctx).expect("parse");
+
+    let expand_before = cas_parser::parse("sqrt(y)*(sqrt(y)-1)", &mut ctx).expect("parse");
+    let expand_after = cas_parser::parse("sqrt(y)*sqrt(y) - 1*sqrt(y)", &mut ctx).expect("parse");
+    let expand_global_before =
+        cas_parser::parse("(sqrt(y)*(sqrt(y)-1))/(y-1)", &mut ctx).expect("parse");
+    let expand_global_after =
+        cas_parser::parse("(sqrt(y)*sqrt(y) - 1*sqrt(y))/(y-1)", &mut ctx).expect("parse");
+
+    let steps = cas_didactic::collect_step_payloads(
+        &[
+            synthetic_step(
+                "Subtraction Self-Cancel",
+                "a - a = 0",
+                self_cancel_before,
+                self_cancel_after,
+                self_cancel_global_before,
+                self_cancel_global_after,
+            ),
+            synthetic_step(
+                "Expand",
+                "Expand",
+                expand_before,
+                expand_after,
+                expand_global_before,
+                expand_global_after,
+            ),
+        ],
+        &ctx,
+        "on",
+    );
 
     for step in &steps {
         assert!(
@@ -135,6 +229,22 @@ fn step_wire_log_fraction_gap_regression_cleans_identity_noise_without_breaking_
                 .contains("\\frac{\\frac{1}{x} - \\frac{1}{y}}{\\frac{y - x}{x\\cdot y}}"),
             "expected surviving residual after removing the zero summand, got: {}",
             collapse_common_scale.after_latex
+        );
+    } else if let Some(self_cancel) = steps.iter().find(|step| {
+        step.rule == "Restar dos expresiones iguales"
+            && step.after.contains("sqrt(y)/(sqrt(y) - 1)")
+    }) {
+        assert!(
+            !self_cancel.after_latex.starts_with("{\\color{green}{"),
+            "after_latex should not highlight the entire surviving residual: {}",
+            self_cancel.after_latex
+        );
+        assert!(
+            self_cancel
+                .after_latex
+                .contains("\\frac{\\sqrt{y}}{\\sqrt{y} - 1}"),
+            "expected surviving y-residual after removing the zero summand, got: {}",
+            self_cancel.after_latex
         );
     } else {
         let collapsed_zero_chunk = steps
@@ -208,7 +318,10 @@ fn step_wire_log_fraction_gap_regression_cleans_identity_noise_without_breaking_
         assert!(
             expand_inside_fraction
                 .after_latex
-                .contains("{\\color{green}{\\sqrt{y}\\cdot \\sqrt{y} - 1\\cdot \\sqrt{y}}}"),
+                .contains("{\\color{green}{\\sqrt{y}\\cdot \\sqrt{y} - 1\\cdot \\sqrt{y}}}")
+                || expand_inside_fraction
+                    .after_latex
+                    .contains("{\\color{green}{\\sqrt{y}\\cdot \\sqrt{y} - \\sqrt{y}}}"),
             "expected the expanded product to stay highlighted in after_latex, got: {}",
             expand_inside_fraction.after_latex
         );
@@ -226,26 +339,36 @@ fn step_wire_log_fraction_gap_regression_cleans_identity_noise_without_breaking_
 
 #[test]
 fn step_wire_pull_constant_from_fraction_highlights_the_rewritten_fraction() {
-    let expr = "(log(x*sqrt(x)) + log(sqrt(x)/x^2)) + (sqrt(y)/(sqrt(y)-1) - sqrt(y)/(sqrt(y)+1) - (2*sqrt(y))/(y-1)) + (((1/x) - (1/y))/((y-x)/(x*y)) - 1)";
-    let (engine, output) = eval_output_for(expr);
-    let steps =
-        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+    let mut ctx = cas_ast::Context::new();
+    let before = cas_parser::parse("(2*sqrt(y))/(y-1)", &mut ctx).expect("parse");
+    let after = cas_parser::parse("2*(sqrt(y)/(y-1))", &mut ctx).expect("parse");
+    let steps = cas_didactic::collect_step_payloads(
+        &[
+            synthetic_step(
+                "Pull Constant From Fraction",
+                "Pull Constant From Fraction",
+                before,
+                after,
+                before,
+                after,
+            ),
+            synthetic_step(
+                "Pull Constant From Fraction",
+                "Pull Constant From Fraction",
+                before,
+                after,
+                before,
+                after,
+            ),
+        ],
+        &ctx,
+        "on",
+    );
 
     let pull_steps: Vec<_> = steps
         .iter()
         .filter(|step| step.rule == "Pull Constant From Fraction")
         .collect();
-    if pull_steps.is_empty() {
-        assert!(
-            steps.iter().any(|step| {
-                step.rule == "Collapse Exact Zero Additive Subexpression"
-                    && step.before.contains("sqrt(y)/(sqrt(y) - 1)")
-                    && step.before.contains("(2 · sqrt(y))/(y - 1)")
-            }),
-            "expected either the old pull-constant narrative or the new direct zero-chunk collapse"
-        );
-        return;
-    }
 
     assert_eq!(pull_steps.len(), 2, "expected the two pull-constant steps");
 
@@ -274,9 +397,7 @@ fn step_wire_pull_constant_from_fraction_highlights_the_rewritten_fraction() {
 
 #[test]
 fn step_wire_substeps_preserve_math_latex_for_rationalization_example() {
-    let (engine, output) = eval_output_for("1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)");
-    let steps =
-        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+    let steps = step_payloads_on_for(RATIONALIZE_LINEAR_ROOT_EXPR);
 
     let all_substep_math: Vec<&str> = steps
         .iter()
@@ -310,9 +431,7 @@ fn step_wire_substeps_preserve_math_latex_for_rationalization_example() {
 
 #[test]
 fn step_wire_humanizes_root_notation_in_before_after_text() {
-    let (engine, output) = eval_output_for("1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)");
-    let steps =
-        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+    let steps = step_payloads_on_for(RATIONALIZE_LINEAR_ROOT_EXPR);
 
     let rationalize_step = steps
         .iter()
@@ -374,55 +493,58 @@ fn step_wire_combine_like_terms_explains_coefficient_sum_without_repeating_step_
 
 #[test]
 fn step_wire_phase_shift_substeps_are_structured_without_narrative_lines() {
-    let (engine, output) = eval_output_for("3*sin(x) + 4*cos(x) - 5*sin(x + arctan(4/3))");
-    let steps =
-        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+    let mut ctx = cas_ast::Context::new();
+    let local_before = cas_parser::parse("3*sin(x) + 4*cos(x)", &mut ctx).expect("parse");
+    let local_after = cas_parser::parse("5*sin(x + arctan(4/3))", &mut ctx).expect("parse");
+    let global_before = ctx.add(cas_ast::Expr::Sub(local_before, local_after));
+    let global_after = ctx.num(0);
 
-    if let Some(step) = steps
+    let step = Step {
+        description: "Phase Shift Identity".into(),
+        rule_name: "Phase Shift Identity".into(),
+        before: local_before,
+        after: local_after,
+        global_before: Some(global_before),
+        global_after: Some(global_after),
+        importance: ImportanceLevel::Medium,
+        category: StepCategory::Simplify,
+        soundness: SoundnessLabel::Equivalence,
+        meta: None,
+    };
+    let steps = cas_didactic::collect_step_payloads(&[step], &ctx, "on");
+
+    let step = steps
         .iter()
         .find(|step| step.rule == "Aplicar identidad de desfase")
-    {
-        assert_eq!(step.substeps.len(), 1);
-        assert!(step.substeps.iter().all(|substep| substep.lines.is_empty()));
-        assert!(
-            step.substeps
-                .iter()
-                .all(|substep| substep.before_latex.is_some() && substep.after_latex.is_some()),
-            "phase-shift substeps should always expose before/after expressions, got: {:?}",
-            step.substeps
-                .iter()
-                .map(|substep| (
-                    substep.title.as_str(),
-                    substep.before_latex.as_deref(),
-                    substep.after_latex.as_deref()
-                ))
-                .collect::<Vec<_>>()
-        );
-        assert_eq!(step.substeps[0].title, "Cancelar términos iguales");
-        assert!(
-            step.substeps[0]
-                .before_latex
-                .as_deref()
-                .is_some_and(
-                    |latex| latex.contains("5\\cdot \\sin") && latex.contains("- 5\\cdot \\sin")
-                ),
-            "phase-shift substep should show the concrete cancellation, got: {:?}",
-            step.substeps[0].before_latex
-        );
-        assert_eq!(step.substeps[0].after_latex.as_deref(), Some("0"));
-    } else {
-        let step = steps
+        .expect("expected phase-shift step");
+    assert_eq!(step.substeps.len(), 1);
+    assert!(step.substeps.iter().all(|substep| substep.lines.is_empty()));
+    assert!(
+        step.substeps
             .iter()
-            .find(|step| {
-                step.rule == "Collapse Exact Zero Additive Subexpression" && step.after == "0"
-            })
-            .expect("expected phase-shift step or direct exact-zero collapse");
-        assert!(
-            step.substeps.is_empty(),
-            "direct exact-zero collapse should not emit redundant phase-shift substeps, got {:?}",
-            step.substeps
-        );
-    }
+            .all(|substep| substep.before_latex.is_some() && substep.after_latex.is_some()),
+        "phase-shift substeps should always expose before/after expressions, got: {:?}",
+        step.substeps
+            .iter()
+            .map(|substep| (
+                substep.title.as_str(),
+                substep.before_latex.as_deref(),
+                substep.after_latex.as_deref()
+            ))
+            .collect::<Vec<_>>()
+    );
+    assert_eq!(step.substeps[0].title, "Cancelar términos iguales");
+    assert!(
+        step.substeps[0]
+            .before_latex
+            .as_deref()
+            .is_some_and(
+                |latex| latex.contains("5\\cdot \\sin") && latex.contains("- 5\\cdot \\sin")
+            ),
+        "phase-shift substep should show the concrete cancellation, got: {:?}",
+        step.substeps[0].before_latex
+    );
+    assert_eq!(step.substeps[0].after_latex.as_deref(), Some("0"));
 }
 
 #[test]
@@ -537,9 +659,7 @@ fn step_wire_small_polynomial_product_emits_hidden_didactic_expansion_and_cancel
 
 #[test]
 fn step_wire_uses_human_visible_rule_titles() {
-    let (engine, output) = eval_output_for("1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)");
-    let steps =
-        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+    let steps = step_payloads_on_for(RATIONALIZE_LINEAR_ROOT_EXPR);
 
     let rule_titles: Vec<&str> = steps.iter().map(|step| step.rule.as_str()).collect();
     assert!(
@@ -557,9 +677,7 @@ fn step_wire_uses_human_visible_rule_titles() {
 
 #[test]
 fn step_wire_perfect_square_root_uses_human_visible_rule_title() {
-    let (engine, output) = eval_output_for("sqrt(x^2 + 2*x + 1)");
-    let steps =
-        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+    let steps = step_payloads_on_for(PERFECT_SQUARE_ROOT_EXPR);
 
     let rule_titles: Vec<&str> = steps.iter().map(|step| step.rule.as_str()).collect();
     assert!(
@@ -828,9 +946,7 @@ fn step_wire_cancel_reciprocal_exponents_uses_concrete_square_root_block() {
 
 #[test]
 fn step_wire_perfect_square_root_shows_square_then_absolute_value() {
-    let (engine, output) = eval_output_for("sqrt(x^2 + 2*x + 1)");
-    let steps =
-        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+    let steps = step_payloads_on_for(PERFECT_SQUARE_ROOT_EXPR);
 
     let step = steps
         .iter()
@@ -873,9 +989,7 @@ fn step_wire_perfect_square_root_shows_square_then_absolute_value() {
 
 #[test]
 fn step_wire_rationalization_explains_conjugate_then_multiply_then_simplify() {
-    let (engine, output) = eval_output_for("1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)");
-    let steps =
-        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+    let steps = step_payloads_on_for(RATIONALIZE_LINEAR_ROOT_EXPR);
 
     let step = steps
         .iter()
@@ -973,9 +1087,7 @@ fn step_wire_rationalization_exact_cube_quotient_uses_notable_quotient_narrative
 
 #[test]
 fn step_wire_rationalization_self_cancel_stays_direct_without_tautological_substeps() {
-    let (engine, output) = eval_output_for("1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)");
-    let steps =
-        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+    let steps = step_payloads_on_for(RATIONALIZE_LINEAR_ROOT_EXPR);
 
     let step = steps
         .iter()
@@ -1049,8 +1161,7 @@ fn step_wire_cube_quotient_recaps_factor_then_exact_cancellation() {
 
 #[test]
 fn step_wire_root_denesting_keeps_didactic_substeps() {
-    let expr =
-        "(sqrt(5 + 2*sqrt(6))) + (1/(u*(u+2))) - ((sqrt(2) + sqrt(3)) + (1/(2*u) - 1/(2*(u+2))))";
+    let expr = "sqrt(5 + 2*sqrt(6)) - (sqrt(2) + sqrt(3))";
     let (engine, output) = eval_output_for(expr);
     let steps =
         cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");

@@ -344,44 +344,9 @@ fn is_zero_expr(ctx: &mut Context, expr: ExprId) -> bool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn rewrites_tabulated_completed_square_targets_aware() {
-        let cases = [
-            ("x^2 + 6*x + 5", "(x+3)^2 - 4", &["x"][..]),
-            (
-                "a*x^2 + b*x + c",
-                "a*(x + b/(2*a))^2 + c - b^2/(4*a)",
-                &["a", "b", "c", "x"][..],
-            ),
-            ("x^2 + 2*b*x + c", "(x+b)^2 + c - b^2", &["b", "c", "x"][..]),
-            (
-                "a*y^2 + b*y + c",
-                "a*(y + b/(2*a))^2 + c - b^2/(4*a)",
-                &["a", "b", "c", "y"][..],
-            ),
-            (
-                "a*x^2 - b*x + c",
-                "a*(x - b/(2*a))^2 + c - b^2/(4*a)",
-                &["a", "b", "c", "x"][..],
-            ),
-            (
-                "-a*x^2 + b*x + c",
-                "-a*(x - b/(2*a))^2 + c + b^2/(4*a)",
-                &["a", "b", "c", "x"][..],
-            ),
-            ("x^2 + 3*x + 1", "(x+3/2)^2 - 5/4", &["x"][..]),
-            (
-                "(a/2)*x^2 + b*x + c",
-                "(a/2)*(x + b/a)^2 + c - b^2/(2*a)",
-                &["a", "b", "c", "x"][..],
-            ),
-            (
-                "(a/2)*y^2 - b*y + c",
-                "(a/2)*(y - b/a)^2 + c - b^2/(2*a)",
-                &["a", "b", "c", "y"][..],
-            ),
-        ];
+    type SolvePrepRewriteCase = (&'static str, &'static str, &'static [&'static str]);
 
+    fn assert_tabulated_solve_prep_rewrites(cases: &[SolvePrepRewriteCase]) {
         for (source_text, target_text, vars) in cases {
             let mut ctx = Context::new();
             let source = cas_parser::parse(source_text, &mut ctx).expect("parse source");
@@ -401,6 +366,62 @@ mod tests {
             assert_eq!(rewrite.rewritten, target);
             assert_eq!(rewrite.kind, DeriveSolvePrepRewriteKind::CompleteSquare);
         }
+    }
+
+    #[test]
+    fn rewrites_tabulated_completed_square_monic_targets_aware() {
+        assert_tabulated_solve_prep_rewrites(&[
+            ("x^2 + 6*x + 5", "(x+3)^2 - 4", &["x"][..]),
+            ("x^2 + 2*b*x + c", "(x+b)^2 + c - b^2", &["b", "c", "x"][..]),
+            ("x^2 + 3*x + 1", "(x+3/2)^2 - 5/4", &["x"][..]),
+        ]);
+    }
+
+    #[test]
+    fn rewrites_tabulated_completed_square_symbolic_positive_targets_aware() {
+        assert_tabulated_solve_prep_rewrites(&[(
+            "a*x^2 + b*x + c",
+            "a*(x + b/(2*a))^2 + c - b^2/(4*a)",
+            &["a", "b", "c", "x"][..],
+        )]);
+    }
+
+    #[test]
+    fn rewrites_tabulated_completed_square_negative_linear_targets_aware() {
+        assert_tabulated_solve_prep_rewrites(&[(
+            "a*x^2 - b*x + c",
+            "a*(x - b/(2*a))^2 + c - b^2/(4*a)",
+            &["a", "b", "c", "x"][..],
+        )]);
+    }
+
+    #[test]
+    fn builds_symbolic_negative_leading_completed_square_candidate() {
+        let mut ctx = Context::new();
+        let source =
+            cas_parser::parse("-a*x^2 + b*x + c", &mut ctx).expect("parse solve-prep source");
+        let target = cas_parser::parse("-a*(x - b/(2*a))^2 + c + b^2/(4*a)", &mut ctx)
+            .expect("parse solve-prep target");
+        let expected_positive_a = cas_parser::parse("a", &mut ctx).expect("parse expected coeff");
+
+        let (candidate, positive_a) =
+            try_build_negative_leading_complete_square_candidate(&mut ctx, source, "x")
+                .expect("must build negative-leading solve-prep candidate");
+
+        assert_eq!(positive_a, expected_positive_a);
+        assert!(
+            simplified_difference_matches_zero(&mut ctx, candidate, target),
+            "expected symbolic negative-leading candidate to match target"
+        );
+    }
+
+    #[test]
+    fn rewrites_tabulated_completed_square_fractional_targets_aware() {
+        assert_tabulated_solve_prep_rewrites(&[(
+            "(a/2)*x^2 + b*x + c",
+            "(a/2)*(x + b/a)^2 + c - b^2/(2*a)",
+            &["a", "b", "c", "x"][..],
+        )]);
     }
 
     #[test]

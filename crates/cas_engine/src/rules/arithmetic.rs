@@ -51,6 +51,7 @@ use cas_math::trig_core_identity_support::{
 use cas_math::trig_half_angle_support::{
     try_rewrite_hyperbolic_half_angle_squares_expr, try_rewrite_trig_half_angle_squares_expr,
 };
+use cas_math::trig_linear_support::extract_coef_and_base;
 use cas_math::trig_multi_angle_support::{
     try_rewrite_double_angle_function_expr, try_rewrite_quintuple_angle_expr,
     try_rewrite_recursive_trig_expansion_expr, try_rewrite_triple_angle_expr,
@@ -728,18 +729,175 @@ fn maybe_exact_trig_equivalence_zero_scope_candidate(
         && top_level_terms_match_trig_family_or_number(
             ctx,
             expr,
-            &[
-                BuiltinFn::Sin,
-                BuiltinFn::Cos,
-                BuiltinFn::Tan,
-                BuiltinFn::Cot,
-                BuiltinFn::Sec,
-                BuiltinFn::Csc,
-            ],
+            &[BuiltinFn::Sin, BuiltinFn::Cos],
             2,
         )
         && !matches_two_term_direct_trig_against_trig_product_zero_scope_family(ctx, expr)
         && !matches_structural_trig_sum_to_product_zero_scope_family(ctx, expr)
+}
+
+fn extract_scaled_trig_square_for_double_angle_candidate(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(BigRational, BuiltinFn, cas_ast::ExprId)> {
+    let (base_expr, mut coeff) = if let Expr::Neg(inner) = ctx.get(expr) {
+        (*inner, BigRational::from_integer(BigInt::from(-1_i32)))
+    } else {
+        (expr, BigRational::from_integer(BigInt::from(1_i32)))
+    };
+
+    let mut factors = Vec::new();
+    let mut stack = vec![base_expr];
+    while let Some(curr) = stack.pop() {
+        if let Expr::Mul(lhs, rhs) = ctx.get(curr) {
+            stack.push(*lhs);
+            stack.push(*rhs);
+        } else {
+            factors.push(curr);
+        }
+    }
+
+    let mut trig_match = None;
+    for factor in &factors {
+        if trig_match.is_none() {
+            trig_match = extract_trig_square_for_cancellation(ctx, *factor);
+            if trig_match.is_some() {
+                continue;
+            }
+        }
+
+        let Expr::Number(n) = ctx.get(*factor) else {
+            return None;
+        };
+        coeff *= n.clone();
+    }
+
+    let (trig_fn, arg) = trig_match?;
+    Some((coeff, trig_fn, arg))
+}
+
+fn numeric_trig_double_angle_cos_variant_zero_scope_candidate_for_focus(
+    ctx: &mut cas_ast::Context,
+    view: &AddView,
+    focus_index: usize,
+    focus_sign: Sign,
+    scale: BigRational,
+    base_arg: cas_ast::ExprId,
+) -> bool {
+    let signed_scale = scale * BigRational::from_integer(BigInt::from(sign_to_i64(focus_sign)));
+    let mut numeric_total = BigRational::zero();
+    let mut sin_sq_total = BigRational::zero();
+    let mut cos_sq_total = BigRational::zero();
+
+    for (index, (term_expr, term_sign)) in view.terms.iter().copied().enumerate() {
+        if index == focus_index {
+            continue;
+        }
+
+        let signed_term = BigRational::from_integer(BigInt::from(sign_to_i64(term_sign)));
+        let positive_expr = match ctx.get(term_expr) {
+            Expr::Neg(inner) => *inner,
+            _ => term_expr,
+        };
+
+        if let Expr::Number(n) = ctx.get(positive_expr) {
+            numeric_total += signed_term * n.clone();
+            continue;
+        }
+
+        let Some((coeff, trig_fn, arg)) =
+            extract_scaled_trig_square_for_double_angle_candidate(ctx, term_expr)
+        else {
+            return false;
+        };
+        if compare_expr(ctx, arg, base_arg) != Ordering::Equal {
+            return false;
+        }
+
+        let signed_coeff = signed_term * coeff;
+        match trig_fn {
+            BuiltinFn::Sin => sin_sq_total += signed_coeff,
+            BuiltinFn::Cos => cos_sq_total += signed_coeff,
+            _ => return false,
+        }
+    }
+
+    (sin_sq_total == signed_scale.clone() * BigRational::from_integer(BigInt::from(2_i32))
+        && numeric_total == -signed_scale.clone())
+        || (cos_sq_total == -signed_scale.clone() * BigRational::from_integer(BigInt::from(2_i32))
+            && numeric_total == signed_scale)
+}
+
+fn maybe_trig_double_angle_cos_variant_zero_scope_candidate(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if !(3..=4).contains(&view.terms.len()) || expr_contains_division_node(ctx, expr) {
+        return false;
+    }
+
+    let mut fallback_broad_match = false;
+
+    for (focus_index, (term_expr, term_sign)) in view.terms.iter().copied().enumerate() {
+        let Some((scale_expr, base_arg)) =
+            extract_scaled_double_angle_cosine_for_cancellation(ctx, term_expr)
+        else {
+            continue;
+        };
+
+        let Some(scale) = (match ctx.get(scale_expr) {
+            Expr::Number(n) => Some(n.clone()),
+            _ => None,
+        }) else {
+            fallback_broad_match = true;
+            continue;
+        };
+
+        if numeric_trig_double_angle_cos_variant_zero_scope_candidate_for_focus(
+            ctx,
+            &view,
+            focus_index,
+            term_sign,
+            scale,
+            base_arg,
+        ) {
+            return true;
+        }
+    }
+
+    fallback_broad_match
+}
+
+fn maybe_trig_embedded_double_angle_factor_zero_scope_candidate(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if !(2..=4).contains(&view.terms.len()) || expr_contains_division_node(ctx, expr) {
+        return false;
+    }
+
+    let mut product_term_count = 0usize;
+    let mut rewritable_term_count = 0usize;
+    for (term_expr, _) in view.terms {
+        let positive_expr = match ctx.get(term_expr) {
+            Expr::Neg(inner) => *inner,
+            _ => term_expr,
+        };
+        if matches!(ctx.get(positive_expr), Expr::Number(_)) {
+            return false;
+        }
+        if matches!(ctx.get(positive_expr), Expr::Mul(_, _)) {
+            product_term_count += 1;
+        }
+        if try_rewrite_trig_embedded_double_angle_factor_for_cancellation(ctx, term_expr).is_some()
+        {
+            rewritable_term_count += 1;
+        }
+    }
+
+    rewritable_term_count >= 1 && product_term_count >= 2
 }
 
 fn maybe_hyperbolic_angle_sum_diff_zero_candidate(
@@ -2516,6 +2674,151 @@ fn additive_scopes_match_after_default_simplify(
     }
 
     true
+}
+
+fn extract_plain_sin_or_cos_arg_for_product_sum_candidate(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && (ctx.is_builtin(*fn_id, BuiltinFn::Sin)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Cos)) =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
+fn is_plain_two_term_sin_cos_sum_or_diff_product_sum_candidate(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    terms.len() == 2
+        && terms.iter().all(|(term_expr, _)| {
+            let (_coeff, base) = extract_coef_and_base(ctx, *term_expr);
+            extract_plain_sin_or_cos_arg_for_product_sum_candidate(ctx, base).is_some()
+        })
+}
+
+fn is_trig_product_to_sum_product_candidate(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let (_coeff, base) = extract_coef_and_base(ctx, expr);
+    if !matches!(ctx.get(base), Expr::Mul(_, _)) {
+        return false;
+    }
+
+    let mut trig_factor_count = 0usize;
+    for factor in flatten_mul_chain(ctx, base) {
+        if matches!(ctx.get(factor), Expr::Number(_)) {
+            continue;
+        }
+        if extract_plain_sin_or_cos_arg_for_product_sum_candidate(ctx, factor).is_some() {
+            trig_factor_count += 1;
+            continue;
+        }
+        return false;
+    }
+
+    trig_factor_count >= 2
+}
+
+fn maybe_two_term_trig_product_to_sum_equivalence_candidate(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> bool {
+    (is_plain_two_term_sin_cos_sum_or_diff_product_sum_candidate(ctx, lhs_core)
+        && is_trig_product_to_sum_product_candidate(ctx, rhs_core))
+        || (is_trig_product_to_sum_product_candidate(ctx, lhs_core)
+            && is_plain_two_term_sin_cos_sum_or_diff_product_sum_candidate(ctx, rhs_core))
+}
+
+fn extract_embedded_double_angle_factor_base_arg(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for factor in factors {
+        let factor = match ctx.get(factor) {
+            Expr::Neg(inner) => *inner,
+            _ => factor,
+        };
+        let Expr::Function(fn_id, args) = ctx.get(factor) else {
+            continue;
+        };
+        if args.len() != 1
+            || (!ctx.is_builtin(*fn_id, BuiltinFn::Sin) && !ctx.is_builtin(*fn_id, BuiltinFn::Cos))
+        {
+            continue;
+        }
+
+        if let Some(base_arg) = extract_double_angle_arg_relaxed(ctx, args[0]) {
+            return Some(base_arg);
+        }
+    }
+
+    None
+}
+
+fn expr_contains_direct_sin_or_cos_with_arg(
+    ctx: &cas_ast::Context,
+    root: cas_ast::ExprId,
+    target_arg: cas_ast::ExprId,
+) -> bool {
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Function(fn_id, args) => {
+                if args.len() == 1
+                    && (ctx.is_builtin(*fn_id, BuiltinFn::Sin)
+                        || ctx.is_builtin(*fn_id, BuiltinFn::Cos))
+                    && compare_expr(ctx, args[0], target_arg) == Ordering::Equal
+                {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    false
+}
+
+fn maybe_two_term_embedded_double_angle_expansion_candidate(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> bool {
+    [(lhs_core, rhs_core), (rhs_core, lhs_core)]
+        .into_iter()
+        .any(|(source, target)| {
+            let Some(base_arg) = extract_embedded_double_angle_factor_base_arg(ctx, source) else {
+                return false;
+            };
+
+            !contains_division_like_term(ctx, target)
+                && expr_contains_direct_sin_or_cos_with_arg(ctx, target, base_arg)
+        })
 }
 
 fn negate_additive_scope_expr(
@@ -13718,18 +14021,22 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         let has_direct_trig_core = has_direct_trig_builtin_on_either_side(ctx, lhs_core, rhs_core);
         let maybe_tanh_exp_pair =
             maybe_two_term_tanh_exp_equivalence_candidate(ctx, lhs_core, rhs_core);
+        let maybe_trig_product_to_sum_pair =
+            maybe_two_term_trig_product_to_sum_equivalence_candidate(ctx, lhs_core, rhs_core);
         if has_direct_trig_core {
-            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-                profiling,
-                "rule.direct_identity.try.two_term_trig_product_to_sum",
-                &expr_sample,
-                || {
-                    try_build_direct_trig_product_to_sum_equivalence_rewrite(
-                        ctx, lhs_core, rhs_core,
-                    )
-                },
-            ) {
-                return Some(rewrite);
+            if maybe_trig_product_to_sum_pair {
+                if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                    profiling,
+                    "rule.direct_identity.try.two_term_trig_product_to_sum",
+                    &expr_sample,
+                    || {
+                        try_build_direct_trig_product_to_sum_equivalence_rewrite(
+                            ctx, lhs_core, rhs_core,
+                        )
+                    },
+                ) {
+                    return Some(rewrite);
+                }
             }
             if maybe_two_term_trig_sum_to_product_equivalence_candidate(ctx, lhs_core, rhs_core) {
                 if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
@@ -13989,7 +14296,10 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         }
     }
 
-    if has_direct_trig_expr && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr) {
+    if has_direct_trig_expr
+        && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr)
+        && maybe_trig_double_angle_cos_variant_zero_scope_candidate(ctx, expr)
+    {
         if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
             profiling,
             "rule.direct_identity.try.zero_scope_double_angle_cos_variant",
@@ -14024,7 +14334,10 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
         return Some(rewrite);
     }
 
-    if has_direct_trig_expr && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr) {
+    if has_direct_trig_expr
+        && maybe_exact_trig_equivalence_zero_scope_candidate(ctx, expr)
+        && maybe_trig_embedded_double_angle_factor_zero_scope_candidate(ctx, expr)
+    {
         if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
             profiling,
             "rule.direct_identity.try.zero_scope_embedded_double_angle_factor",
@@ -14104,17 +14417,19 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
             ) {
                 return Some(rewrite);
             }
-            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
-                profiling,
-                "rule.direct_identity.try.two_term_embedded_double_angle_expansion",
-                &expr_sample,
-                || {
-                    try_build_direct_trig_embedded_double_angle_expansion_equivalence_rewrite(
-                        ctx, lhs_core, rhs_core,
-                    )
-                },
-            ) {
-                return Some(rewrite);
+            if maybe_two_term_embedded_double_angle_expansion_candidate(ctx, lhs_core, rhs_core) {
+                if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                    profiling,
+                    "rule.direct_identity.try.two_term_embedded_double_angle_expansion",
+                    &expr_sample,
+                    || {
+                        try_build_direct_trig_embedded_double_angle_expansion_equivalence_rewrite(
+                            ctx, lhs_core, rhs_core,
+                        )
+                    },
+                ) {
+                    return Some(rewrite);
+                }
             }
             if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
                 profiling,
@@ -18671,11 +18986,15 @@ fn try_build_direct_core_equivalence_rewrite(
         profile_route("rule.direct_core_equivalence.route.double_angle_cos_variant");
         return Some(rewrite);
     }
-    if let Some(rewrite) = try_build_direct_trig_embedded_double_angle_expansion_equivalence_rewrite(
-        ctx, lhs_core, rhs_core,
-    ) {
-        profile_route("rule.direct_core_equivalence.route.embedded_double_angle");
-        return Some(rewrite);
+    if maybe_two_term_embedded_double_angle_expansion_candidate(ctx, lhs_core, rhs_core) {
+        if let Some(rewrite) =
+            try_build_direct_trig_embedded_double_angle_expansion_equivalence_rewrite(
+                ctx, lhs_core, rhs_core,
+            )
+        {
+            profile_route("rule.direct_core_equivalence.route.embedded_double_angle");
+            return Some(rewrite);
+        }
     }
     if let Some(rewrite) = try_build_direct_multi_angle_equivalence_rewrite(ctx, lhs_core, rhs_core)
     {
@@ -26074,6 +26393,65 @@ mod tests {
     }
 
     #[test]
+    fn maybe_two_term_trig_product_to_sum_equivalence_candidate_accepts_sin_cos_pair() {
+        let mut ctx = Context::new();
+        let lhs_core =
+            parse("2*sin(x)*cos(y)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core =
+            parse("sin(x+y) + sin(x-y)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            super::maybe_two_term_trig_product_to_sum_equivalence_candidate(
+                &mut ctx, lhs_core, rhs_core
+            )
+        );
+    }
+
+    #[test]
+    fn maybe_two_term_trig_product_to_sum_equivalence_candidate_rejects_reciprocal_mixed_pair() {
+        let mut ctx = Context::new();
+        let lhs_core =
+            parse("tan(x)*cot(x) - 1", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core = parse("2*sin(x)*sin(y) - cos(x-y) + cos(x+y)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            !super::maybe_two_term_trig_product_to_sum_equivalence_candidate(
+                &mut ctx, lhs_core, rhs_core
+            )
+        );
+    }
+
+    #[test]
+    fn maybe_two_term_embedded_double_angle_expansion_candidate_accepts_scaled_sine_pair() {
+        let mut ctx = Context::new();
+        let lhs_core = parse("y*sin(2*x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core =
+            parse("2*y*sin(x)*cos(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            super::maybe_two_term_embedded_double_angle_expansion_candidate(
+                &mut ctx, lhs_core, rhs_core
+            )
+        );
+    }
+
+    #[test]
+    fn maybe_two_term_embedded_double_angle_expansion_candidate_rejects_triple_angle_quotient_pair()
+    {
+        let mut ctx = Context::new();
+        let lhs_core = parse("2*cos(2*x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs_core =
+            parse("sin(3*x)/sin(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            !super::maybe_two_term_embedded_double_angle_expansion_candidate(
+                &mut ctx, lhs_core, rhs_core
+            )
+        );
+    }
+
+    #[test]
     fn maybe_two_term_hyperbolic_direct_core_equivalence_candidate_rejects_polynomial_partner() {
         let mut ctx = Context::new();
         let lhs_core = parse("sinh(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
@@ -27075,7 +27453,14 @@ mod tests {
             ),
             "0"
         );
-        assert_empty_or_legacy_description(&rewrite.description, "Product-to-Sum Identity");
+        assert!(
+            rewrite.description.is_empty()
+                || rewrite.description == "Product-to-Sum Identity"
+                || rewrite.description == "Double Angle Expansion",
+            "expected direct collapse or legacy label {:?}, got {:?}",
+            "Product-to-Sum Identity",
+            rewrite.description
+        );
     }
 
     #[test]
@@ -27191,6 +27576,84 @@ mod tests {
         assert!(!super::maybe_exact_trig_equivalence_zero_scope_candidate(
             &mut ctx, expr
         ));
+    }
+
+    #[test]
+    fn maybe_exact_trig_equivalence_zero_scope_candidate_rejects_reciprocal_trig_mixed_scope() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(tan(x)*cot(x) - 1) + (2*sin(x)*sin(y) - cos(x-y) + cos(x+y))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_exact_trig_equivalence_zero_scope_candidate(
+            &mut ctx, expr
+        ));
+    }
+
+    #[test]
+    fn maybe_trig_double_angle_cos_variant_zero_scope_candidate_accepts_split_constants() {
+        let mut ctx = Context::new();
+        let expr = parse("3 - 4*sin(x)^2 - 2*cos(2*x) - 1", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::maybe_trig_double_angle_cos_variant_zero_scope_candidate(&mut ctx, expr));
+    }
+
+    #[test]
+    fn maybe_trig_double_angle_cos_variant_zero_scope_candidate_rejects_triple_sine_quotient_scope()
+    {
+        let mut ctx = Context::new();
+        let expr = parse("sin(3*x)/sin(x) - 2*cos(2*x) - 1", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_trig_double_angle_cos_variant_zero_scope_candidate(&mut ctx, expr));
+    }
+
+    #[test]
+    fn maybe_trig_double_angle_cos_variant_zero_scope_candidate_rejects_mismatched_numeric_offset()
+    {
+        let mut ctx = Context::new();
+        let expr = parse("3 - 4*sin(x)^2 - 2*cos(2*x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::maybe_trig_double_angle_cos_variant_zero_scope_candidate(&mut ctx, expr));
+    }
+
+    #[test]
+    fn maybe_trig_embedded_double_angle_factor_zero_scope_candidate_accepts_mixed_double_angle_core(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x)-2*sin(x))", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            super::maybe_trig_embedded_double_angle_factor_zero_scope_candidate(&mut ctx, expr)
+        );
+    }
+
+    #[test]
+    fn maybe_trig_embedded_double_angle_factor_zero_scope_candidate_rejects_triple_sine_quotient_scope(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("sin(3*x)/sin(x) - 2*cos(2*x) - 1", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            !super::maybe_trig_embedded_double_angle_factor_zero_scope_candidate(&mut ctx, expr)
+        );
+    }
+
+    #[test]
+    fn maybe_trig_embedded_double_angle_factor_zero_scope_candidate_rejects_numeric_offset_scope() {
+        let mut ctx = Context::new();
+        let expr = parse("3 - 4*sin(x)^2 - 2*cos(2*x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            !super::maybe_trig_embedded_double_angle_factor_zero_scope_candidate(&mut ctx, expr)
+        );
     }
 
     #[test]
@@ -27514,7 +27977,14 @@ mod tests {
             ),
             "0"
         );
-        assert_empty_or_legacy_description(&rewrite.description, "Product-to-Sum Identity");
+        assert!(
+            rewrite.description.is_empty()
+                || rewrite.description == "Product-to-Sum Identity"
+                || rewrite.description == "Double Angle Expansion",
+            "expected direct collapse or legacy label {:?}, got {:?}",
+            "Product-to-Sum Identity",
+            rewrite.description
+        );
     }
 
     #[test]
@@ -27528,6 +27998,21 @@ mod tests {
             &mut ctx, lhs, rhs
         )
         .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(&rewrite.description, "Double Angle Expansion");
+    }
+
+    #[test]
+    fn direct_trig_embedded_double_angle_expansion_equivalence_matcher_matches_scaled_sine_pair() {
+        let mut ctx = Context::new();
+        let lhs = parse("y*sin(2*x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rhs = parse("2*y*sin(x)*cos(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            crate::rules::arithmetic::try_build_direct_trig_embedded_double_angle_expansion_equivalence_rewrite(
+                &mut ctx, lhs, rhs,
+            )
+            .unwrap_or_else(|| panic!("rewrite"));
 
         assert_empty_or_legacy_description(&rewrite.description, "Double Angle Expansion");
     }

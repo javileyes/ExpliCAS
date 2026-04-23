@@ -7,13 +7,20 @@ use cas_ast::Context;
 use cas_parser::parse;
 use cas_solver::runtime::EvalOptions;
 use cas_solver::runtime::Simplifier;
+use std::sync::LazyLock;
 
+const SUM_QUOTIENT_EXPR: &str = "(sin(x) + sin(3*x)) / (cos(x) + cos(3*x))";
+const REVERSED_SUM_QUOTIENT_EXPR: &str = "(sin(3*x) + sin(x)) / (cos(3*x) + cos(x))";
+const DIFF_QUOTIENT_EXPR: &str = "(sin(3*x) - sin(x)) / (cos(3*x) + cos(x))";
+const REVERSED_DIFF_QUOTIENT_EXPR: &str = "(sin(x) - sin(3*x)) / (cos(x) + cos(3*x))";
+
+#[derive(Clone)]
 struct StepInfo {
     description: String,
     rule_name: String,
 }
 
-fn eval_with_steps(input: &str) -> (String, Vec<StepInfo>) {
+fn eval_with_steps_uncached(input: &str) -> (String, Vec<StepInfo>) {
     let opts = EvalOptions::default();
     let mut ctx = Context::new();
     let expr = parse(input, &mut ctx).expect("parse failed");
@@ -38,6 +45,25 @@ fn eval_with_steps(input: &str) -> (String, Vec<StepInfo>) {
         .collect();
 
     (result_str, step_infos)
+}
+
+static SUM_QUOTIENT_EVAL: LazyLock<(String, Vec<StepInfo>)> =
+    LazyLock::new(|| eval_with_steps_uncached(SUM_QUOTIENT_EXPR));
+static REVERSED_SUM_QUOTIENT_EVAL: LazyLock<(String, Vec<StepInfo>)> =
+    LazyLock::new(|| eval_with_steps_uncached(REVERSED_SUM_QUOTIENT_EXPR));
+static DIFF_QUOTIENT_EVAL: LazyLock<(String, Vec<StepInfo>)> =
+    LazyLock::new(|| eval_with_steps_uncached(DIFF_QUOTIENT_EXPR));
+static REVERSED_DIFF_QUOTIENT_EVAL: LazyLock<(String, Vec<StepInfo>)> =
+    LazyLock::new(|| eval_with_steps_uncached(REVERSED_DIFF_QUOTIENT_EXPR));
+
+fn eval_with_steps(input: &str) -> (String, Vec<StepInfo>) {
+    match input {
+        SUM_QUOTIENT_EXPR => SUM_QUOTIENT_EVAL.clone(),
+        REVERSED_SUM_QUOTIENT_EXPR => REVERSED_SUM_QUOTIENT_EVAL.clone(),
+        DIFF_QUOTIENT_EXPR => DIFF_QUOTIENT_EVAL.clone(),
+        REVERSED_DIFF_QUOTIENT_EXPR => REVERSED_DIFF_QUOTIENT_EVAL.clone(),
+        _ => eval_with_steps_uncached(input),
+    }
 }
 
 #[test]
@@ -134,8 +160,8 @@ fn test_didactic_steps_exist() {
 #[test]
 fn test_sin_cos_diff_quotient() {
     // This tests the difference pattern: (sin(A)-sin(B))/(cos(A)+cos(B)) → tan((A-B)/2)
-    // For A=5x, B=3x: half_diff = (5x-3x)/2 = x, so result should be tan(x)
-    let (result, steps) = eval_with_steps("(sin(5*x) - sin(3*x)) / (cos(5*x) + cos(3*x))");
+    // For A=3x, B=x: half_diff = (3x-x)/2 = x, so result should be tan(x)
+    let (result, steps) = eval_with_steps(DIFF_QUOTIENT_EXPR);
 
     let rule_names: Vec<&str> = steps.iter().map(|s| s.rule_name.as_str()).collect();
 
@@ -167,22 +193,15 @@ fn test_sin_cos_diff_quotient() {
 /// inverted the sign when numerator was sin(A)-sin(B)
 #[test]
 fn test_sin_diff_sign_correctness() {
-    // Case 1: sin(5x) - sin(3x) with A=5x, B=3x should give tan(x)
-    let (result1, _) = eval_with_steps("(sin(5*x) - sin(3*x)) / (cos(5*x) + cos(3*x))");
-    assert_eq!(
-        result1, "tan(x)",
-        "Bug: wrong sign. Expected tan(x), got {}",
-        result1
-    );
-
-    // Case 2: sin(3x) - sin(5x) with A=3x, B=5x should give tan(-x) or -tan(x)
-    let (result2, _) = eval_with_steps("(sin(3*x) - sin(5*x)) / (cos(3*x) + cos(5*x))");
-    // Since (3x-5x)/2 = -x, result should be tan(-x) or equivalently -tan(x)
+    // The positive orientation is already covered by test_sin_cos_diff_quotient.
+    // Here we only keep the reversed case, which is the actual sign-regression guard.
+    let (result, _) = eval_with_steps(REVERSED_DIFF_QUOTIENT_EXPR);
+    // Since (x-3x)/2 = -x, result should be tan(-x) or equivalently -tan(x)
     assert!(
-        result2 == "tan(-x)"
-            || result2 == "-tan(x)"
-            || result2.contains("-1") && result2.contains("tan"),
+        result == "tan(-x)"
+            || result == "-tan(x)"
+            || result.contains("-1") && result.contains("tan"),
         "Bug: wrong sign. Expected tan(-x) or -tan(x), got {}",
-        result2
+        result
     );
 }

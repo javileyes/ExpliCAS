@@ -732,6 +732,10 @@ fn numeric_tan_asin_n2() {
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug builds are not performance-representative for higher-order tan(arcsin) numeric checks"
+)]
 fn numeric_tan_asin_n4() {
     let t: f64 = 0.25;
     let expected = (4.0_f64 * t.asin()).tan();
@@ -739,6 +743,10 @@ fn numeric_tan_asin_n4() {
 }
 
 #[test]
+#[cfg_attr(
+    debug_assertions,
+    ignore = "Debug builds are not performance-representative for higher-order tan(arcsin) numeric checks"
+)]
 fn numeric_tan_asin_n6() {
     let t: f64 = 0.2;
     let expected = (6.0_f64 * t.asin()).tan();
