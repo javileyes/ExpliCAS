@@ -3837,8 +3837,7 @@ fn matches_direct_small_pow_expansion_pair_root(
             },
         )
         .map(|expanded| cas_ast::hold::unwrap_hold(ctx, expanded))
-        .or_else(|| try_expand_binomial_pow_expr(ctx, source, 2, 6).map(|plan| plan.expanded))
-        else {
+        .or_else(|| try_expand_binomial_pow_expr(ctx, source, 2, 6).map(|plan| plan.expanded)) else {
             continue;
         };
         if compare_expr(ctx, expanded, target) == Ordering::Equal {
@@ -3883,7 +3882,8 @@ fn matches_direct_short_geometric_pair_root(
             }
         }
 
-        let Some(base) = extract_direct_short_geometric_product_base_root(ctx, factored_expr) else {
+        let Some(base) = extract_direct_short_geometric_product_base_root(ctx, factored_expr)
+        else {
             continue;
         };
         let expanded = build_direct_short_geometric_sum_expanded_target_root(ctx, base);
@@ -11535,14 +11535,13 @@ fn run_named_rebuilt_root_shortcut_simplify(
         },
     );
     std::mem::swap(&mut simplifier.context, ctx);
-    let (result, mut closure_steps) =
-        if let Some((closed, steps)) =
-            try_finalize_trivial_additive_closure_root(options, ctx, result, collect_steps)
-        {
-            (closed, steps)
-        } else {
-            (result, Vec::new())
-        };
+    let (result, mut closure_steps) = if let Some((closed, steps)) =
+        try_finalize_trivial_additive_closure_root(options, ctx, result, collect_steps)
+    {
+        (closed, steps)
+    } else {
+        (result, Vec::new())
+    };
 
     let mut shortcut_steps = Vec::new();
     if collect_steps {
@@ -18315,145 +18314,6 @@ fn build_small_two_chunk_additive_partitions_root(
     partitions
 }
 
-fn is_potential_embedded_additive_direct_pair_chunk_root(ctx: &Context, expr: ExprId) -> bool {
-    if cas_ast::count_nodes(ctx, expr) > 24 {
-        return false;
-    }
-
-    match ctx.get(expr) {
-        Expr::Add(_, _) | Expr::Sub(_, _) => {
-            let term_count = AddView::from_expr(ctx, expr).terms.len();
-            (2..=4).contains(&term_count)
-                && (expr_contains_builtin_function_local(ctx, expr)
-                    || expr_contains_division_node_local(ctx, expr))
-        }
-        Expr::Mul(_, _) | Expr::Div(_, _) | Expr::Pow(_, _) | Expr::Function(_, _) => true,
-        Expr::Neg(inner) => is_potential_embedded_additive_direct_pair_chunk_root(ctx, *inner),
-        Expr::Number(_)
-        | Expr::Constant(_)
-        | Expr::Variable(_)
-        | Expr::Matrix { .. }
-        | Expr::SessionRef(_)
-        | Expr::Hold(_) => false,
-    }
-}
-
-fn try_standard_embedded_additive_direct_pair_shortcut(
-    options: &crate::phase::SimplifyOptions,
-    ctx: &mut Context,
-    expr: ExprId,
-    collect_steps: bool,
-) -> Option<(ExprId, Vec<Step>)> {
-    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
-        return None;
-    }
-
-    let mut current = AddView::from_expr(ctx, expr).rebuild(ctx);
-    let mut shortcut_steps = Vec::new();
-    let mut changed = false;
-
-    for _ in 0..3 {
-        let terms = AddView::from_expr(ctx, current).terms;
-        if !(3..=8).contains(&terms.len()) {
-            break;
-        }
-
-        let mut next_rewrite = None;
-        for (lhs_chunk, rhs_chunk) in build_small_two_chunk_additive_partitions_root(ctx, &terms) {
-            for (chunk_expr, passthrough_expr) in [(lhs_chunk, rhs_chunk), (rhs_chunk, lhs_chunk)] {
-                if !is_potential_embedded_additive_direct_pair_chunk_root(ctx, chunk_expr) {
-                    continue;
-                }
-
-                let Some(rewritten_chunk) =
-                    isolated_simplify_expr_if_changed(options, ctx, chunk_expr)
-                else {
-                    continue;
-                };
-                let Some(rule_name) =
-                    passthrough_direct_pair_rule_name_root(ctx, chunk_expr, rewritten_chunk)
-                else {
-                    continue;
-                };
-
-                let rebuilt = ctx.add(Expr::Add(rewritten_chunk, passthrough_expr));
-                let rebuilt = AddView::from_expr(ctx, rebuilt).rebuild(ctx);
-                if compare_expr(ctx, rebuilt, current) == Ordering::Equal {
-                    continue;
-                }
-                next_rewrite = Some((rebuilt, rule_name));
-                break;
-            }
-            if next_rewrite.is_some() {
-                break;
-            }
-        }
-
-        let Some((rebuilt, rule_name)) = next_rewrite else {
-            break;
-        };
-
-        let before = current;
-        current = rebuilt;
-        changed = true;
-        if collect_steps {
-            let mut step = Step::new_compact(rule_name, rule_name, before, current);
-            step.importance = crate::step::ImportanceLevel::High;
-            shortcut_steps.push(step);
-        }
-    }
-
-    if !changed {
-        return None;
-    }
-
-    if let Some((closed, mut closure_steps)) =
-        try_finalize_trivial_additive_closure_root(options, ctx, current, collect_steps)
-    {
-        current = closed;
-        if collect_steps {
-            shortcut_steps.append(&mut closure_steps);
-        }
-    }
-
-    let zero = ctx.num(0);
-    if let Some(rule_name) = passthrough_residual_zero_rule_name_root(ctx, current) {
-        return Some(run_named_rebuilt_root_shortcut_simplify(
-            options,
-            ctx,
-            expr,
-            zero,
-            rule_name,
-            rule_name,
-            collect_steps,
-        ));
-    }
-    if matches_direct_small_zero_identity_root(ctx, current)
-        || child_isolated_exact_zero(options, ctx, current)
-        || try_standard_exact_zero_equivalence_shortcut(options, ctx, current, false).is_some()
-    {
-        return Some(run_named_rebuilt_root_shortcut_simplify(
-            options,
-            ctx,
-            expr,
-            zero,
-            "Collapse Exact Zero Additive Subexpression",
-            "Collapse Exact Zero Additive Subexpression",
-            collect_steps,
-        ));
-    }
-
-    if collect_steps {
-        if let Some(first) = shortcut_steps.first_mut() {
-            first.global_before = Some(expr);
-        }
-        if let Some(last) = shortcut_steps.last_mut() {
-            last.global_after = Some(current);
-        }
-    }
-    Some((current, shortcut_steps))
-}
-
 fn try_extract_partitioned_direct_small_zero_sum_chunks_root(
     ctx: &mut Context,
     expr: ExprId,
@@ -23875,14 +23735,6 @@ impl Orchestrator {
                             )
                         );
                     }
-                    return_root_shortcut_pair!(
-                        try_standard_embedded_additive_direct_pair_shortcut(
-                            &self.options,
-                            &mut simplifier.context,
-                            expr,
-                            collect_steps,
-                        )
-                    );
                     return_root_shortcut_pair!(try_standard_nested_exact_zero_child_shortcut(
                         &self.options,
                         &mut simplifier.context,
@@ -24002,12 +23854,6 @@ impl Orchestrator {
                         )
                     );
                 }
-                return_root_shortcut_pair!(try_standard_embedded_additive_direct_pair_shortcut(
-                    &self.options,
-                    &mut simplifier.context,
-                    expr,
-                    collect_steps,
-                ));
                 return_root_shortcut_pair!(try_standard_repeated_phase_shift_pair_shortcut(
                     &mut simplifier.context,
                     expr,
@@ -25720,8 +25566,8 @@ mod tests {
     #[test]
     fn standard_exact_additive_pair_chain_shortcut_cancels_symbolic_passthrough_tail() {
         let mut ctx = Context::new();
-        let expr = parse("m + 1 - m - 1", &mut ctx)
-            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let expr =
+            parse("m + 1 - m - 1", &mut ctx).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         let (rewritten, _) = try_standard_exact_additive_pair_chain_shortcut(
             &crate::SimplifyOptions::default(),
             &mut ctx,
@@ -27168,7 +27014,9 @@ mod tests {
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         let (rewritten, _steps) =
             try_standard_direct_pythagorean_extended_zero_shortcut(&mut ctx, expr, false)
-                .unwrap_or_else(|| panic!("expected direct pythagorean-extended shortcut to match"));
+                .unwrap_or_else(|| {
+                    panic!("expected direct pythagorean-extended shortcut to match")
+                });
         assert_eq!(render(&ctx, rewritten), "0");
     }
 
@@ -34508,7 +34356,12 @@ mod tests {
         let mut orchestrator = Orchestrator::new();
         orchestrator.options.collect_steps = false;
         let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
-        assert_eq!(render(&simplifier.context, rewritten), "(2 * u + 1) / (u * (u + 1)) + 1");
+        let expected = parse("(2 * u + 1) / (u * (u + 1)) + 1", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let equivalence = simplifier.context.add(Expr::Sub(rewritten, expected));
+        let (equivalence, _steps, _stats) =
+            orchestrator.simplify_pipeline(equivalence, &mut simplifier);
+        assert_eq!(render(&simplifier.context, equivalence), "0");
     }
 
     #[test]
@@ -34697,8 +34550,7 @@ mod tests {
                 .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
             let mut orchestrator = Orchestrator::new();
             orchestrator.options.collect_steps = false;
-            let (rewritten, _steps, _stats) =
-                orchestrator.simplify_pipeline(expr, &mut simplifier);
+            let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
             assert_eq!(render(&simplifier.context, rewritten), "0");
         }
     }

@@ -7,11 +7,13 @@ use cas_session::eval::{evaluate_eval_command_with_session, EvalCommandConfig};
 use std::collections::BTreeMap;
 use std::env;
 use std::fs;
+use std::panic::{self, AssertUnwindSafe};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 #[derive(Debug, Clone)]
 struct CorpusCase {
+    case_number: usize,
     expression: String,
     expected_result: String,
     composition: String,
@@ -21,6 +23,7 @@ struct CorpusCase {
 
 #[derive(Debug, Clone)]
 struct FailureRecord {
+    case_number: usize,
     expression: String,
     expected_result: String,
     actual_result: String,
@@ -44,6 +47,7 @@ struct CompositionSummary {
 struct RunnerConfig {
     csv_path: PathBuf,
     failures_path: PathBuf,
+    offset: usize,
     limit: Option<usize>,
     composition_filter: Option<String>,
     trace_from: Option<usize>,
@@ -54,13 +58,20 @@ fn main() {
     // Keep pressure corpora on the same canonical eval path as `cas_cli eval`
     // and the embedded corpus runner. This benchmark is intended to measure
     // engine robustness, not differences between frontend entrypoints.
-    std::process::exit(run(config));
+    let panic_hook = panic::take_hook();
+    panic::set_hook(Box::new(|_| {}));
+    let exit_code = run(config);
+    panic::set_hook(panic_hook);
+    std::process::exit(exit_code);
 }
 
 fn run(config: RunnerConfig) -> i32 {
     let mut cases = load_cases(&config.csv_path);
     if let Some(filter) = &config.composition_filter {
         cases.retain(|case| &case.composition == filter);
+    }
+    if config.offset > 0 {
+        cases = cases.into_iter().skip(config.offset).collect();
     }
     if let Some(limit) = config.limit {
         cases.truncate(limit);
@@ -80,10 +91,29 @@ fn run(config: RunnerConfig) -> i32 {
             .trace_from
             .is_some_and(|trace_from| index + 1 >= trace_from)
         {
-            eprintln!("TRACE case {}: {}", index + 1, case.expression);
+            eprintln!(
+                "TRACE case {} (source #{}) : {}",
+                index + 1,
+                case.case_number,
+                case.expression
+            );
         }
         let case_start = Instant::now();
-        let failure = evaluate_case(case);
+        let failure = match panic::catch_unwind(AssertUnwindSafe(|| evaluate_case(case))) {
+            Ok(failure) => failure,
+            Err(payload) => Some(FailureRecord {
+                case_number: case.case_number,
+                expression: case.expression.clone(),
+                expected_result: case.expected_result.clone(),
+                actual_result: String::new(),
+                ok: false,
+                composition: case.composition.clone(),
+                source_expr_1: case.source_expr_1.clone(),
+                source_expr_2: case.source_expr_2.clone(),
+                error_kind: "panic".to_string(),
+                error_message: panic_payload_to_string(payload),
+            }),
+        };
         let case_elapsed_seconds = case_start.elapsed().as_secs_f64();
         let entry = by_composition.entry(case.composition.clone()).or_default();
         entry.total += 1;
@@ -139,7 +169,8 @@ fn run(config: RunnerConfig) -> i32 {
         println!("Sample failures:");
         for failure in failures.iter().take(10) {
             println!(
-                "  [{}] expected={} actual={} expr={}",
+                "  [#{} {}] expected={} actual={} expr={}",
+                failure.case_number,
                 failure.composition,
                 failure.expected_result,
                 failure.actual_result,
@@ -165,6 +196,7 @@ fn parse_args() -> RunnerConfig {
 
     let mut csv_path = default_csv;
     let mut failures_path = default_failures;
+    let mut offset = 0usize;
     let mut limit = None;
     let mut composition_filter = None;
     let mut trace_from = None;
@@ -179,6 +211,12 @@ fn parse_args() -> RunnerConfig {
             "--failures" => {
                 let value = args.next().expect("--failures requires a path");
                 failures_path = PathBuf::from(value);
+            }
+            "--offset" => {
+                let value = args.next().expect("--offset requires a number");
+                offset = value
+                    .parse::<usize>()
+                    .unwrap_or_else(|_| panic!("invalid --offset value: {value}"));
             }
             "--limit" => {
                 let value = args.next().expect("--limit requires a number");
@@ -207,6 +245,7 @@ fn parse_args() -> RunnerConfig {
     RunnerConfig {
         csv_path,
         failures_path,
+        offset,
         limit,
         composition_filter,
         trace_from,
@@ -220,7 +259,8 @@ fn load_cases(path: &Path) -> Vec<CorpusCase> {
         .lines()
         .skip(1)
         .filter(|line| !line.trim().is_empty())
-        .map(|line| {
+        .enumerate()
+        .map(|(index, line)| {
             let parts = split_csv_line(line);
             assert_eq!(
                 parts.len(),
@@ -228,6 +268,7 @@ fn load_cases(path: &Path) -> Vec<CorpusCase> {
                 "unexpected mixed corpus csv columns: {line}"
             );
             CorpusCase {
+                case_number: index + 1,
                 expression: parts[0].trim().to_string(),
                 expected_result: parts[1].trim().to_string(),
                 composition: parts[2].trim().to_string(),
@@ -263,6 +304,16 @@ fn format_duration(seconds: f64) -> String {
         format!("{seconds:.2}s")
     } else {
         format!("{:.2}ms", seconds * 1_000.0)
+    }
+}
+
+fn panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&'static str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "unknown panic payload".to_string()
     }
 }
 
@@ -312,6 +363,7 @@ fn evaluate_case(case: &CorpusCase) -> Option<FailureRecord> {
     }
 
     Some(FailureRecord {
+        case_number: case.case_number,
         expression: case.expression.clone(),
         expected_result: case.expected_result.clone(),
         actual_result,
@@ -331,9 +383,11 @@ fn write_failures_csv(path: &Path, failures: &[FailureRecord]) {
     }
 
     let mut output = String::from(
-        "expression,expected_result,actual_result,ok,composition,source_expr_1,source_expr_2,error_kind,error_message\n",
+        "case_number,expression,expected_result,actual_result,ok,composition,source_expr_1,source_expr_2,error_kind,error_message\n",
     );
     for failure in failures {
+        output.push_str(&failure.case_number.to_string());
+        output.push(',');
         output.push_str(&csv_escape(&failure.expression));
         output.push(',');
         output.push_str(&csv_escape(&failure.expected_result));

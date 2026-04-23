@@ -1,1 +1,2 @@
-expression,expected_result,actual_result,ok,composition,source_expr_1,source_expr_2,error_kind,error_message
+case_number,expression,expected_result,actual_result,ok,composition,source_expr_1,source_expr_2,error_kind,error_message
+2809,(ln((x*y)^2) - ln(x^2) - ln(y^2)) + (ln(x^3) + ln(y^2) - ln(x^3 * y^2)),0,ln(x^3) + ln((x * y)^2) - ln(x^2) - ln(x^3 * y^2),false,sum,ln((x*y)^2) - ln(x^2) - ln(y^2),ln(x^3) + ln(y^2) - ln(x^3 * y^2),result_mismatch,

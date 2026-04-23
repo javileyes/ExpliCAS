@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-04-23T13:21:29.895804+00:00",
+  "generated_at": "2026-04-23T13:57:04.651431+00:00",
   "git": {
     "branch": "main",
-    "commit": "a0c9063ca1f1cad435d6cbb133df9539e9992683"
+    "commit": "fb9cddef07c6bb928107a0f037f68b4a5962f38a"
   },
   "orchestrator_profile_requested": false,
   "profile": "fast_embedded",
@@ -25,7 +25,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 16.253,
+      "elapsed_seconds": 6.376,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -41,7 +41,7 @@
         "proved_symbolic": 64,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 16.253,
+      "process_elapsed_seconds": 6.376,
       "returncode": 0,
       "status": "pass"
     },
@@ -59,7 +59,7 @@
         "--"
       ],
       "delta": {},
-      "elapsed_seconds": 17.75,
+      "elapsed_seconds": 3.88,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -106,8 +106,8 @@
         "max_expression_depth": 18,
         "max_shell_depth": 3,
         "passed": 1145,
-        "reported_elapsed": "17.75s",
-        "reported_elapsed_seconds": 17.75,
+        "reported_elapsed": "3.88s",
+        "reported_elapsed_seconds": 3.88,
         "shell_depth_count": 4,
         "shell_depth_rows": {
           "0": {
@@ -264,7 +264,7 @@
           "squared_passthrough_zero"
         ]
       },
-      "process_elapsed_seconds": 18.028,
+      "process_elapsed_seconds": 4.186,
       "returncode": 0,
       "status": "pass"
     },
@@ -284,7 +284,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.629,
+      "elapsed_seconds": 0.643,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -300,7 +300,7 @@
         "proved_symbolic": 435,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 0.629,
+      "process_elapsed_seconds": 0.643,
       "returncode": 0,
       "status": "pass"
     }
