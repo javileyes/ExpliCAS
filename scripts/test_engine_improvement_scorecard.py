@@ -32,6 +32,10 @@ By composition:
   sum: total=3 passed=3 failed=0 elapsed=12.00ms avg_case_ms=4.00
   product: total=5 passed=5 failed=0 elapsed=5.10ms avg_case_ms=1.02
 
+By window:
+  sum@0+3: total=3 passed=3 failed=0 elapsed=12.00ms avg_case_ms=4.00
+  product@0+5: total=5 passed=5 failed=0 elapsed=5.10ms avg_case_ms=1.02
+
 By shell depth:
   depth 1: total=2 passed=2 failed=0
   depth 2: total=6 passed=6 failed=0
@@ -104,6 +108,8 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(metrics["composition_rows"]["sum"]["total"], 3)
         self.assertAlmostEqual(metrics["composition_rows"]["sum"]["elapsed_seconds"], 0.012)
         self.assertEqual(metrics["composition_rows"]["sum"]["avg_case_ms"], 4.0)
+        self.assertEqual(metrics["window_rows"]["sum@0+3"]["total"], 3)
+        self.assertAlmostEqual(metrics["window_rows"]["product@0+5"]["elapsed_seconds"], 0.0051)
 
         profile = metrics["orchestrator_profile"]
         self.assertEqual(profile["section_count"], 2)
@@ -196,6 +202,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("composed 90.0%", markdown)
         self.assertIn("## Mixed Zero Pressure", markdown)
         self.assertIn("Composition hotspots", markdown)
+        self.assertIn("Window slices", markdown)
         self.assertIn("sum total=3 failed=0", markdown)
 
 

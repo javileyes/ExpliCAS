@@ -3,6 +3,10 @@ use cas_api_models::{
     EvalContextMode, EvalDomainMode, EvalExpandPolicy, EvalInvTrigPolicy, EvalStepsMode,
     EvalValueDomain,
 };
+use cas_engine::{
+    clear_orchestrator_shortcut_profile, orchestrator_shortcut_profile_report,
+    orchestrator_shortcut_profiling_enabled,
+};
 use cas_session::eval::{evaluate_eval_command_with_session, EvalCommandConfig};
 use std::collections::BTreeMap;
 use std::env;
@@ -24,6 +28,7 @@ struct CorpusCase {
 #[derive(Debug, Clone)]
 struct FailureRecord {
     case_number: usize,
+    window_label: String,
     expression: String,
     expected_result: String,
     actual_result: String,
@@ -43,6 +48,35 @@ struct CompositionSummary {
     elapsed_seconds: f64,
 }
 
+#[derive(Debug, Clone)]
+struct WindowSpec {
+    composition_filter: Option<String>,
+    offset: usize,
+    limit: usize,
+}
+
+impl WindowSpec {
+    fn label(&self) -> String {
+        let composition = self.composition_filter.as_deref().unwrap_or("all");
+        format!("{composition}@{}+{}", self.offset, self.limit)
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SelectedCase {
+    case: CorpusCase,
+    window_label: String,
+}
+
+#[derive(Debug, Clone)]
+struct SlowCaseRecord {
+    case_number: usize,
+    window_label: String,
+    composition: String,
+    elapsed_seconds: f64,
+    expression: String,
+}
+
 #[derive(Debug)]
 struct RunnerConfig {
     csv_path: PathBuf,
@@ -50,6 +84,8 @@ struct RunnerConfig {
     offset: usize,
     limit: Option<usize>,
     composition_filter: Option<String>,
+    windows: Vec<WindowSpec>,
+    case_numbers: Vec<usize>,
     trace_from: Option<usize>,
 }
 
@@ -60,24 +96,30 @@ fn main() {
     // engine robustness, not differences between frontend entrypoints.
     let panic_hook = panic::take_hook();
     panic::set_hook(Box::new(|_| {}));
-    let exit_code = run(config);
+    let exit_code = if orchestrator_shortcut_profiling_enabled() {
+        std::thread::Builder::new()
+            .name("mixed-zero-orchestrator-profile".to_string())
+            .stack_size(64 * 1024 * 1024)
+            .spawn(move || run(config))
+            .expect("failed to spawn mixed zero profiling thread")
+            .join()
+            .expect("mixed zero profiling thread panicked")
+    } else {
+        run(config)
+    };
     panic::set_hook(panic_hook);
     std::process::exit(exit_code);
 }
 
 fn run(config: RunnerConfig) -> i32 {
-    let mut cases = load_cases(&config.csv_path);
-    if let Some(filter) = &config.composition_filter {
-        cases.retain(|case| &case.composition == filter);
-    }
-    if config.offset > 0 {
-        cases = cases.into_iter().skip(config.offset).collect();
-    }
-    if let Some(limit) = config.limit {
-        cases.truncate(limit);
+    if orchestrator_shortcut_profiling_enabled() {
+        clear_orchestrator_shortcut_profile();
     }
 
-    if cases.is_empty() {
+    let all_cases = load_cases(&config.csv_path);
+    let selected_cases = select_cases(&all_cases, &config);
+
+    if selected_cases.is_empty() {
         eprintln!("No corpus cases matched the requested filters.");
         return 0;
     }
@@ -85,16 +127,20 @@ fn run(config: RunnerConfig) -> i32 {
     let start = Instant::now();
     let mut failures = Vec::new();
     let mut by_composition = BTreeMap::<String, CompositionSummary>::new();
+    let mut by_window = BTreeMap::<String, CompositionSummary>::new();
+    let mut slow_cases = Vec::<SlowCaseRecord>::new();
 
-    for (index, case) in cases.iter().enumerate() {
+    for (index, selected_case) in selected_cases.iter().enumerate() {
+        let case = &selected_case.case;
         if config
             .trace_from
             .is_some_and(|trace_from| index + 1 >= trace_from)
         {
             eprintln!(
-                "TRACE case {} (source #{}) : {}",
+                "TRACE case {} (source #{} {}) : {}",
                 index + 1,
                 case.case_number,
+                selected_case.window_label,
                 case.expression
             );
         }
@@ -103,6 +149,7 @@ fn run(config: RunnerConfig) -> i32 {
             Ok(failure) => failure,
             Err(payload) => Some(FailureRecord {
                 case_number: case.case_number,
+                window_label: selected_case.window_label.clone(),
                 expression: case.expression.clone(),
                 expected_result: case.expected_result.clone(),
                 actual_result: String::new(),
@@ -115,6 +162,13 @@ fn run(config: RunnerConfig) -> i32 {
             }),
         };
         let case_elapsed_seconds = case_start.elapsed().as_secs_f64();
+        slow_cases.push(SlowCaseRecord {
+            case_number: case.case_number,
+            window_label: selected_case.window_label.clone(),
+            composition: case.composition.clone(),
+            elapsed_seconds: case_elapsed_seconds,
+            expression: case.expression.clone(),
+        });
         let entry = by_composition.entry(case.composition.clone()).or_default();
         entry.total += 1;
         entry.elapsed_seconds += case_elapsed_seconds;
@@ -123,23 +177,36 @@ fn run(config: RunnerConfig) -> i32 {
         } else {
             entry.passed += 1;
         }
+        if !selected_case.window_label.is_empty() {
+            let window_entry = by_window
+                .entry(selected_case.window_label.clone())
+                .or_default();
+            window_entry.total += 1;
+            window_entry.elapsed_seconds += case_elapsed_seconds;
+            if failure.is_some() {
+                window_entry.failed += 1;
+            } else {
+                window_entry.passed += 1;
+            }
+        }
 
-        if let Some(failure) = failure {
+        if let Some(mut failure) = failure {
+            failure.window_label = selected_case.window_label.clone();
             failures.push(failure);
         }
 
-        if (index + 1) % 250 == 0 || index + 1 == cases.len() {
-            eprintln!("Processed {}/{} cases...", index + 1, cases.len());
+        if (index + 1) % 250 == 0 || index + 1 == selected_cases.len() {
+            eprintln!("Processed {}/{} cases...", index + 1, selected_cases.len());
         }
     }
 
     write_failures_csv(&config.failures_path, &failures);
 
-    let passed = cases.len().saturating_sub(failures.len());
+    let passed = selected_cases.len().saturating_sub(failures.len());
     let elapsed = start.elapsed();
     println!("Corpus file: {}", config.csv_path.display());
     println!("Failures file: {}", config.failures_path.display());
-    println!("Total cases: {}", cases.len());
+    println!("Total cases: {}", selected_cases.len());
     println!("Passed: {}", passed);
     println!("Failed: {}", failures.len());
     println!("Elapsed: {:.2?}", elapsed);
@@ -161,15 +228,60 @@ fn run(config: RunnerConfig) -> i32 {
             avg_case_ms
         );
     }
+    if !by_window.is_empty() {
+        println!();
+        println!("By window:");
+        for (window_label, summary) in &by_window {
+            let avg_case_ms = if summary.total > 0 {
+                summary.elapsed_seconds * 1_000.0 / summary.total as f64
+            } else {
+                0.0
+            };
+            println!(
+                "  {}: total={} passed={} failed={} elapsed={} avg_case_ms={:.2}",
+                window_label,
+                summary.total,
+                summary.passed,
+                summary.failed,
+                format_duration(summary.elapsed_seconds),
+                avg_case_ms
+            );
+        }
+    }
 
-    if failures.is_empty() {
+    slow_cases.sort_by(|lhs, rhs| rhs.elapsed_seconds.total_cmp(&lhs.elapsed_seconds));
+    println!();
+    println!("Top slow cases:");
+    for slow_case in slow_cases.into_iter().take(10) {
+        let window_prefix = if slow_case.window_label.is_empty() {
+            String::new()
+        } else {
+            format!("{} ", slow_case.window_label)
+        };
+        println!(
+            "  [{}#{} {}] elapsed={} expr={}",
+            window_prefix,
+            slow_case.case_number,
+            slow_case.composition,
+            format_duration(slow_case.elapsed_seconds),
+            slow_case.expression
+        );
+    }
+
+    let status_code = if failures.is_empty() {
         0
     } else {
         println!();
         println!("Sample failures:");
         for failure in failures.iter().take(10) {
+            let window_prefix = if failure.window_label.is_empty() {
+                String::new()
+            } else {
+                format!("{} ", failure.window_label)
+            };
             println!(
-                "  [#{} {}] expected={} actual={} expr={}",
+                "  [{}#{} {}] expected={} actual={} expr={}",
+                window_prefix,
                 failure.case_number,
                 failure.composition,
                 failure.expected_result,
@@ -181,7 +293,80 @@ fn run(config: RunnerConfig) -> i32 {
             }
         }
         1
+    };
+
+    if orchestrator_shortcut_profiling_enabled() {
+        eprintln!();
+        eprintln!("{}", orchestrator_shortcut_profile_report());
     }
+
+    status_code
+}
+
+fn select_cases(all_cases: &[CorpusCase], config: &RunnerConfig) -> Vec<SelectedCase> {
+    if !config.case_numbers.is_empty() {
+        return config
+            .case_numbers
+            .iter()
+            .map(|case_number| {
+                let case = all_cases
+                    .iter()
+                    .find(|case| case.case_number == *case_number)
+                    .unwrap_or_else(|| panic!("unknown --case-number: {case_number}"));
+                SelectedCase {
+                    case: case.clone(),
+                    window_label: format!("case#{case_number}"),
+                }
+            })
+            .collect();
+    }
+
+    if !config.windows.is_empty() {
+        let mut selected_cases = Vec::new();
+        for window in &config.windows {
+            selected_cases.extend(select_window_cases(all_cases, window));
+        }
+        return selected_cases;
+    }
+
+    let mut cases = all_cases.to_vec();
+    if let Some(filter) = &config.composition_filter {
+        cases.retain(|case| &case.composition == filter);
+    }
+    if config.offset > 0 {
+        cases = cases.into_iter().skip(config.offset).collect();
+    }
+    if let Some(limit) = config.limit {
+        cases.truncate(limit);
+    }
+
+    cases
+        .into_iter()
+        .map(|case| SelectedCase {
+            case,
+            window_label: String::new(),
+        })
+        .collect()
+}
+
+fn select_window_cases(all_cases: &[CorpusCase], window: &WindowSpec) -> Vec<SelectedCase> {
+    let mut cases: Vec<CorpusCase> = all_cases.to_vec();
+    if let Some(filter) = &window.composition_filter {
+        cases.retain(|case| &case.composition == filter);
+    }
+    if window.offset > 0 {
+        cases = cases.into_iter().skip(window.offset).collect();
+    }
+    cases.truncate(window.limit);
+
+    let window_label = window.label();
+    cases
+        .into_iter()
+        .map(|case| SelectedCase {
+            case,
+            window_label: window_label.clone(),
+        })
+        .collect()
 }
 
 fn parse_args() -> RunnerConfig {
@@ -199,6 +384,8 @@ fn parse_args() -> RunnerConfig {
     let mut offset = 0usize;
     let mut limit = None;
     let mut composition_filter = None;
+    let mut windows = Vec::new();
+    let mut case_numbers = Vec::new();
     let mut trace_from = None;
 
     let mut args = env::args().skip(1);
@@ -230,6 +417,20 @@ fn parse_args() -> RunnerConfig {
                 let value = args.next().expect("--composition requires a value");
                 composition_filter = Some(value);
             }
+            "--window" => {
+                let value = args
+                    .next()
+                    .expect("--window requires composition:offset:limit");
+                windows.push(parse_window_spec(&value));
+            }
+            "--case-number" => {
+                let value = args.next().expect("--case-number requires a number");
+                case_numbers.push(
+                    value
+                        .parse::<usize>()
+                        .unwrap_or_else(|_| panic!("invalid --case-number value: {value}")),
+                );
+            }
             "--trace-from" => {
                 let value = args.next().expect("--trace-from requires a number");
                 trace_from = Some(
@@ -248,7 +449,36 @@ fn parse_args() -> RunnerConfig {
         offset,
         limit,
         composition_filter,
+        windows,
+        case_numbers,
         trace_from,
+    }
+}
+
+fn parse_window_spec(raw: &str) -> WindowSpec {
+    let mut parts = raw.split(':');
+    let composition = parts
+        .next()
+        .unwrap_or_else(|| panic!("invalid --window value: {raw}"));
+    let offset = parts
+        .next()
+        .unwrap_or_else(|| panic!("invalid --window value: {raw}"))
+        .parse::<usize>()
+        .unwrap_or_else(|_| panic!("invalid --window offset: {raw}"));
+    let limit = parts
+        .next()
+        .unwrap_or_else(|| panic!("invalid --window value: {raw}"))
+        .parse::<usize>()
+        .unwrap_or_else(|_| panic!("invalid --window limit: {raw}"));
+    assert!(parts.next().is_none(), "invalid --window value: {raw}");
+
+    WindowSpec {
+        composition_filter: match composition {
+            "all" | "*" => None,
+            _ => Some(composition.to_string()),
+        },
+        offset,
+        limit,
     }
 }
 
@@ -364,6 +594,7 @@ fn evaluate_case(case: &CorpusCase) -> Option<FailureRecord> {
 
     Some(FailureRecord {
         case_number: case.case_number,
+        window_label: String::new(),
         expression: case.expression.clone(),
         expected_result: case.expected_result.clone(),
         actual_result,
@@ -383,10 +614,12 @@ fn write_failures_csv(path: &Path, failures: &[FailureRecord]) {
     }
 
     let mut output = String::from(
-        "case_number,expression,expected_result,actual_result,ok,composition,source_expr_1,source_expr_2,error_kind,error_message\n",
+        "case_number,window,expression,expected_result,actual_result,ok,composition,source_expr_1,source_expr_2,error_kind,error_message\n",
     );
     for failure in failures {
         output.push_str(&failure.case_number.to_string());
+        output.push(',');
+        output.push_str(&csv_escape(&failure.window_label));
         output.push(',');
         output.push_str(&csv_escape(&failure.expression));
         output.push(',');

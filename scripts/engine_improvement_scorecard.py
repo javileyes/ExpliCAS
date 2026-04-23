@@ -33,6 +33,13 @@ DEFAULT_OUTPUT = ROOT / "docs" / "generated" / "engine_improvement_scorecard.jso
 EMBEDDED_RUNTIME_DELTA_RATIO_THRESHOLD = 0.10
 EMBEDDED_RUNTIME_DELTA_SECONDS_THRESHOLD = 5.0
 EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT = 480
+SIMPLIFY_ZERO_MIXED_PRESSURE_WINDOWS = (
+    ("sum", 0, 100),
+    ("sum", 700, 100),
+    ("difference", 0, 50),
+    ("product", 0, 100),
+    ("shifted_quotient", 0, 100),
+)
 
 
 @dataclass(frozen=True)
@@ -44,6 +51,23 @@ class SuiteSpec:
     env: dict[str, str]
     parser: str
     description: str
+
+
+def build_simplify_zero_mixed_pressure_command() -> list[str]:
+    command = [
+        "cargo",
+        "run",
+        "--release",
+        "-q",
+        "-p",
+        "cas_solver",
+        "--example",
+        "run_simplify_zero_mixed_corpus",
+        "--",
+    ]
+    for composition, offset, limit in SIMPLIFY_ZERO_MIXED_PRESSURE_WINDOWS:
+        command.extend(["--window", f"{composition}:{offset}:{limit}"])
+    return command
 
 
 SUITES: dict[str, SuiteSpec] = {
@@ -70,20 +94,10 @@ SUITES: dict[str, SuiteSpec] = {
         name="simplify_zero_mixed",
         category="simplify",
         profile_tags=("pressure", "full"),
-        command=[
-            "cargo",
-            "run",
-            "--release",
-            "-q",
-            "-p",
-            "cas_solver",
-            "--example",
-            "run_simplify_zero_mixed_corpus",
-            "--",
-        ],
+        command=build_simplify_zero_mixed_pressure_command(),
         env={},
         parser="corpus",
-        description="Mixed zero corpus exercising composed simplification/equivalence.",
+        description="Mixed zero pressure windows over fixed composed simplification/equivalence slices.",
     ),
     "derive_contract": SuiteSpec(
         name="derive_contract",
@@ -398,6 +412,10 @@ def parse_corpus(output: str) -> dict[str, Any]:
     if composition_rows:
         metrics["composition_rows"] = composition_rows
 
+    window_rows = parse_window_rows(output)
+    if window_rows:
+        metrics["window_rows"] = window_rows
+
     shell_depth_rows = parse_shell_depth_rows(output)
     if shell_depth_rows:
         metrics["shell_depth_rows"] = shell_depth_rows
@@ -493,6 +511,41 @@ def parse_composition_rows(output: str) -> dict[str, dict[str, Any]]:
             row["avg_case_ms"] = float(match.group("avg_case_ms"))
         composition_rows[match.group("composition")] = row
     return composition_rows
+
+
+def parse_window_rows(output: str) -> dict[str, dict[str, Any]]:
+    window_rows: dict[str, dict[str, Any]] = {}
+    in_block = False
+    row_pattern = re.compile(
+        r"^\s+(?P<window>\S+): total=(?P<total>\d+) passed=(?P<passed>\d+) failed=(?P<failed>\d+)"
+        r"(?: elapsed=(?P<elapsed_value>[0-9.]+)(?P<elapsed_unit>[a-zµ]+) avg_case_ms=(?P<avg_case_ms>[0-9.]+))?$"
+    )
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped == "By window:":
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if not stripped:
+            break
+        match = row_pattern.match(line)
+        if not match:
+            continue
+        row = {
+            "total": int(match.group("total")),
+            "passed": int(match.group("passed")),
+            "failed": int(match.group("failed")),
+        }
+        if match.group("elapsed_value") and match.group("elapsed_unit"):
+            row["elapsed_seconds"] = duration_to_seconds(
+                float(match.group("elapsed_value")), match.group("elapsed_unit")
+            )
+        if match.group("avg_case_ms"):
+            row["avg_case_ms"] = float(match.group("avg_case_ms"))
+        window_rows[match.group("window")] = row
+    return window_rows
 
 
 def parse_shell_depth_rows(output: str) -> dict[int, dict[str, int]]:
@@ -1186,6 +1239,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 "",
                 "- Dimension: raw engine pressure on composed zero-target expressions through the canonical eval path.",
                 "- Interpretation: better runtime proxy than unified `proved-composed` counts for mixed additive/multiplicative workloads.",
+                "- Harness: fixed corpus windows, not a full sweep, so pressure stays reproducible and cheap enough for routine iteration.",
             ]
         )
         composition_rows = mixed_metrics.get("composition_rows")
@@ -1209,6 +1263,25 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     fragment += f" avg_case_ms={row['avg_case_ms']:.2f}"
                 top_rows.append(fragment)
             lines.append(f"- Composition hotspots: {', '.join(top_rows)}")
+        window_rows = mixed_metrics.get("window_rows")
+        if isinstance(window_rows, dict) and window_rows:
+            ordered_windows = sorted(
+                window_rows.items(),
+                key=lambda item: (
+                    -item[1].get("failed", 0),
+                    -item[1].get("elapsed_seconds", 0.0),
+                    item[0],
+                ),
+            )
+            window_fragments = []
+            for window, row in ordered_windows[:5]:
+                fragment = f"{window} failed={row['failed']}"
+                if "elapsed_seconds" in row:
+                    fragment += f" elapsed={row['elapsed_seconds']:.2f}s"
+                if "avg_case_ms" in row:
+                    fragment += f" avg_case_ms={row['avg_case_ms']:.2f}"
+                window_fragments.append(fragment)
+            lines.append(f"- Window slices: {', '.join(window_fragments)}")
         lines.append("")
 
     lines.extend(

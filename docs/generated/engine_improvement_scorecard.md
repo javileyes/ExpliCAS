@@ -1,15 +1,15 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-04-23T13:57:04.651431+00:00
+- Generated: 2026-04-23T17:59:04.094241+00:00
 - Git branch: main
-- Git commit: `fb9cddef07c6bb928107a0f037f68b4a5962f38a`
+- Git commit: `d89a50d841710c1e1e97c30126804d6c9c86b89e`
 - Profile: `fast_embedded`
 
 ## Embedded Runtime Guardrail
 
 - Dimension: contextual simplify/equivalence under real wrappers.
 - Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 3.88s
+- Elapsed: 2.94s
 - Coverage axes: 6 wrappers across 23 families
 - Context axes: 4 complexity levels across 4 shell depths
 - Largest wrapper share: 25.1%
@@ -22,6 +22,6 @@
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 3.88s | passed=1145 failed=0 total=1145 wrappers=6 families=23 |
-| `simplify_add_small` | `pass` | 0.64s | passed=1 failed=0 nf=0 proved=435 timeouts=0 |
-| `contextual_strict_fast` | `pass` | 6.38s | passed=1 failed=0 nf=0 proved=64 timeouts=0 |
+| `embedded_equivalence_context` | `pass` | 2.94s | passed=1145 failed=0 total=1145 wrappers=6 families=23 |
+| `simplify_add_small` | `pass` | 2.17s | passed=1 failed=0 nf=0 proved=435 timeouts=0 |
+| `contextual_strict_fast` | `pass` | 11.43s | passed=1 failed=0 nf=0 proved=64 timeouts=0 |
