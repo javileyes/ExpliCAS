@@ -8623,6 +8623,36 @@ fn matches_general_phase_shift_shifted_term_candidate_for_cancellation(
     else {
         return false;
     };
+    let numeric_fast_match = extract_literal_rational_for_cancellation(ctx, target_ratio_arg)
+        .zip(extract_literal_rational_for_cancellation(ctx, sin_coeff))
+        .zip(extract_literal_rational_for_cancellation(ctx, cos_coeff))
+        .zip(extract_literal_rational_for_cancellation(
+            ctx,
+            target_data.coeff,
+        ))
+        .and_then(
+            |(((target_ratio, sin_numeric), cos_numeric), target_coeff_numeric)| {
+                let expected_ratio_numeric = match target_data.trig_fn {
+                    BuiltinFn::Sin if !sin_numeric.is_zero() => {
+                        Some(cos_numeric.clone() / sin_numeric.clone())
+                    }
+                    BuiltinFn::Cos if !cos_numeric.is_zero() => {
+                        Some(sin_numeric.clone() / cos_numeric.clone())
+                    }
+                    _ => None,
+                }?;
+                let amplitude_sq =
+                    sin_numeric.clone() * sin_numeric + cos_numeric.clone() * cos_numeric;
+                let amplitude_numeric = rational_sqrt(&amplitude_sq)?;
+                Some(
+                    target_ratio == expected_ratio_numeric
+                        && target_coeff_numeric == amplitude_numeric,
+                )
+            },
+        );
+    if let Some(matched) = numeric_fast_match {
+        return matched;
+    }
     if !exprs_match_for_cancellation(ctx, target_ratio_arg, expected_ratio) {
         return false;
     }
@@ -9480,6 +9510,59 @@ fn try_find_trig_phase_shift_cancellation_match(
     if !focus_has_plain_trig || !target_has_plain_trig {
         return None;
     }
+
+    let mut try_direct_general_signature_match = || -> Option<TrigPhaseShiftCancellationMatch> {
+        let (arg, sin_coeff, cos_coeff, sin_sign, cos_sign) =
+            extract_weighted_phase_shift_linear_combination_for_cancellation(ctx, focus_expr)?;
+        let target_data = extract_general_phase_shift_term_data_for_cancellation(ctx, target_expr)?;
+        if matches_general_phase_shift_shifted_term_candidate_for_cancellation(
+            ctx,
+            target_data,
+            (arg, sin_coeff, cos_coeff, sin_sign, cos_sign),
+            target_is_negated,
+        ) {
+            return Some(TrigPhaseShiftCancellationMatch {
+                local_before: focus_expr,
+                local_after: target_expr,
+                mode: TrigPhaseShiftCancellationMode::LinearToShifted,
+            });
+        }
+        let (target_arg, target_sin_coeff, target_cos_coeff, target_sin_sign, target_cos_sign) =
+            extract_general_phase_shift_linear_signature_for_cancellation(ctx, target_data)?;
+        let expected_sin_sign = if target_is_negated {
+            -sin_sign
+        } else {
+            sin_sign
+        };
+        let expected_cos_sign = if target_is_negated {
+            -cos_sign
+        } else {
+            cos_sign
+        };
+
+        (compare_expr(ctx, target_arg, arg) == Ordering::Equal
+            && target_sin_sign == expected_sin_sign
+            && target_cos_sign == expected_cos_sign
+            && exprs_match_for_cancellation(ctx, target_sin_coeff, sin_coeff)
+            && exprs_match_for_cancellation(ctx, target_cos_coeff, cos_coeff))
+        .then_some(TrigPhaseShiftCancellationMatch {
+            local_before: focus_expr,
+            local_after: target_expr,
+            mode: TrigPhaseShiftCancellationMode::LinearToShifted,
+        })
+    };
+    if let Some(rewrite_match) = if profiling {
+        run_profiled_orchestrator_option_section(
+            "rule.phase_shift.route.general_direct_try",
+            pair_sample.clone(),
+            &mut try_direct_general_signature_match,
+        )
+    } else {
+        try_direct_general_signature_match()
+    } {
+        return Some(rewrite_match);
+    }
+
     let focus_has_shift_signal = expr_has_phase_shift_signal_for_cancellation(ctx, focus_expr);
     let target_has_shift_signal = expr_has_phase_shift_signal_for_cancellation(ctx, target_expr);
     let focus_is_additive = matches!(ctx.get(focus_expr), Expr::Add(_, _) | Expr::Sub(_, _));
@@ -10506,6 +10589,16 @@ fn try_find_trig_phase_shift_cancellation_match(
     None
 }
 
+pub(crate) fn matches_trig_phase_shift_cancellation_pair(
+    ctx: &mut cas_ast::Context,
+    focus_expr: cas_ast::ExprId,
+    target_expr: cas_ast::ExprId,
+    target_is_negated: bool,
+) -> bool {
+    try_find_trig_phase_shift_cancellation_match(ctx, focus_expr, target_expr, target_is_negated)
+        .is_some()
+}
+
 fn build_trig_phase_shift_zero_rewrite(
     ctx: &mut cas_ast::Context,
     rewrite_match: TrigPhaseShiftCancellationMatch,
@@ -11137,7 +11230,7 @@ fn expr_contains_division_node(ctx: &cas_ast::Context, root: cas_ast::ExprId) ->
     false
 }
 
-fn try_build_small_direct_zero_core_rewrite(
+pub(crate) fn try_build_small_direct_zero_core_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
@@ -31752,6 +31845,33 @@ mod tests {
     }
 
     #[test]
+    fn shifted_general_target_match_detects_general_shifted_sine_pair_regression() {
+        let mut ctx = Context::new();
+        let focus_expr = parse("3*sin(x) + 4*cos(x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("focus parse: {err}"));
+        let target_expr = parse("5*sin(x + arctan(4/3))", &mut ctx)
+            .unwrap_or_else(|err| panic!("target parse: {err}"));
+
+        let (arg, sin_coeff, cos_coeff, sin_sign, cos_sign) =
+            super::extract_weighted_phase_shift_linear_combination_for_cancellation(
+                &mut ctx, focus_expr,
+            )
+            .unwrap_or_else(|| panic!("focus linear signature"));
+        let target_data =
+            super::extract_general_phase_shift_term_data_for_cancellation(&mut ctx, target_expr)
+                .unwrap_or_else(|| panic!("target data"));
+
+        assert!(
+            super::matches_general_phase_shift_shifted_term_candidate_for_cancellation(
+                &mut ctx,
+                target_data,
+                (arg, sin_coeff, cos_coeff, sin_sign, cos_sign),
+                false,
+            )
+        );
+    }
+
+    #[test]
     fn expand_trig_phase_shift_to_enable_cancellation_rule_matches_exact_sixth_shifted_sine() {
         let mut ctx = Context::new();
         let expr = parse("cos(x) + sqrt(3)*sin(x) - 2*sin(x + pi/6)", &mut ctx)
@@ -32005,6 +32125,29 @@ mod tests {
         );
 
         assert!(rewrite_match.is_none());
+    }
+
+    #[test]
+    fn trig_phase_shift_cancellation_match_matches_general_shifted_sine_direct_linear_pair_regression(
+    ) {
+        let mut ctx = Context::new();
+        let focus_expr = parse("3*sin(x) + 4*cos(x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("focus parse: {err}"));
+        let target_expr = parse("5*sin(x + arctan(4/3))", &mut ctx)
+            .unwrap_or_else(|err| panic!("target parse: {err}"));
+
+        let rewrite_match = super::try_find_trig_phase_shift_cancellation_match(
+            &mut ctx,
+            focus_expr,
+            target_expr,
+            false,
+        )
+        .unwrap_or_else(|| panic!("rewrite match"));
+
+        assert_eq!(
+            rewrite_match.mode,
+            super::TrigPhaseShiftCancellationMode::LinearToShifted
+        );
     }
 
     #[test]

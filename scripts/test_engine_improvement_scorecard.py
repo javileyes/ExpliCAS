@@ -29,12 +29,12 @@ Average wrapper overhead nodes: 10.00
 Wrappers: additive_passthrough_zero, shifted_quotient_one
 
 By composition:
-  sum: total=3 passed=3 failed=0 elapsed=12.00ms avg_case_ms=4.00
-  product: total=5 passed=5 failed=0 elapsed=5.10ms avg_case_ms=1.02
+  sum: total=3 passed=3 failed=0 elapsed=12.00ms avg_case_ms=4.00 wire_elapsed=3.00ms avg_wire_ms=1.00 parse_elapsed=1.20ms avg_parse_ms=0.40 simplify_elapsed=0.90ms avg_simplify_ms=0.30
+  product: total=5 passed=5 failed=0 elapsed=5.10ms avg_case_ms=1.02 wire_elapsed=1.60ms avg_wire_ms=0.32 parse_elapsed=0.55ms avg_parse_ms=0.11 simplify_elapsed=0.45ms avg_simplify_ms=0.09
 
 By window:
-  sum@0+3: total=3 passed=3 failed=0 elapsed=12.00ms avg_case_ms=4.00
-  product@0+5: total=5 passed=5 failed=0 elapsed=5.10ms avg_case_ms=1.02
+  sum@0+3: total=3 passed=3 failed=0 elapsed=12.00ms avg_case_ms=4.00 wire_elapsed=3.00ms avg_wire_ms=1.00 parse_elapsed=1.20ms avg_parse_ms=0.40 simplify_elapsed=0.90ms avg_simplify_ms=0.30
+  product@0+5: total=5 passed=5 failed=0 elapsed=5.10ms avg_case_ms=1.02 wire_elapsed=1.60ms avg_wire_ms=0.32 parse_elapsed=0.55ms avg_parse_ms=0.11 simplify_elapsed=0.45ms avg_simplify_ms=0.09
 
 By shell depth:
   depth 1: total=2 passed=2 failed=0
@@ -46,6 +46,10 @@ By complexity level:
 Top wrapper x complexity buckets:
   additive_passthrough_zero x l2_wrapper_plus_noise: total=5 passed=5 failed=0 avg_wrapper_overhead_nodes=11.20 avg_shell_depth=2.00 max_shell_depth=2
   shifted_quotient_one x l2_wrapper_plus_noise: total=3 passed=3 failed=0 avg_wrapper_overhead_nodes=8.00 avg_shell_depth=1.33 max_shell_depth=2
+
+Steady-state engine-heavy reruns:
+  [sum@0+3 #9 sum] runs=3 median_simplify=0.25ms median_wire=0.40ms median_parse=0.05ms median_elapsed=1.20ms expr=(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + (1/(x - 1) - 1/(x + 1) - 2/(x^2 - 1))
+  [product@0+5 #12 product] runs=3 median_simplify=0.09ms median_wire=0.12ms median_parse=0.03ms median_elapsed=0.55ms expr=a*b - b*a
 
 Orchestrator Profiling Report
 ──────────────────────────────────────────────────────────────────────────────────────────────
@@ -108,8 +112,21 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(metrics["composition_rows"]["sum"]["total"], 3)
         self.assertAlmostEqual(metrics["composition_rows"]["sum"]["elapsed_seconds"], 0.012)
         self.assertEqual(metrics["composition_rows"]["sum"]["avg_case_ms"], 4.0)
+        self.assertAlmostEqual(
+            metrics["composition_rows"]["sum"]["simplify_elapsed_seconds"], 0.0009
+        )
+        self.assertEqual(metrics["composition_rows"]["sum"]["avg_simplify_ms"], 0.30)
         self.assertEqual(metrics["window_rows"]["sum@0+3"]["total"], 3)
         self.assertAlmostEqual(metrics["window_rows"]["product@0+5"]["elapsed_seconds"], 0.0051)
+        self.assertAlmostEqual(
+            metrics["window_rows"]["product@0+5"]["parse_elapsed_seconds"], 0.00055
+        )
+        self.assertEqual(metrics["steady_engine_heavy_rows"][0]["case_number"], 9)
+        self.assertEqual(metrics["steady_engine_heavy_rows"][0]["window_label"], "sum@0+3")
+        self.assertEqual(metrics["steady_engine_heavy_rows"][0]["runs"], 3)
+        self.assertAlmostEqual(
+            metrics["steady_engine_heavy_rows"][0]["median_simplify_seconds"], 0.00025
+        )
 
         profile = metrics["orchestrator_profile"]
         self.assertEqual(profile["section_count"], 2)
@@ -202,7 +219,10 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("composed 90.0%", markdown)
         self.assertIn("## Mixed Zero Pressure", markdown)
         self.assertIn("Composition hotspots", markdown)
+        self.assertIn("Engine hotspots", markdown)
         self.assertIn("Window slices", markdown)
+        self.assertIn("Steady-state engine reruns", markdown)
+        self.assertIn("#9 sum", markdown)
         self.assertIn("sum total=3 failed=0", markdown)
 
 

@@ -416,6 +416,10 @@ def parse_corpus(output: str) -> dict[str, Any]:
     if window_rows:
         metrics["window_rows"] = window_rows
 
+    steady_engine_heavy_rows = parse_steady_engine_heavy_rows(output)
+    if steady_engine_heavy_rows:
+        metrics["steady_engine_heavy_rows"] = steady_engine_heavy_rows
+
     shell_depth_rows = parse_shell_depth_rows(output)
     if shell_depth_rows:
         metrics["shell_depth_rows"] = shell_depth_rows
@@ -481,10 +485,6 @@ def parse_complexity_rows(output: str) -> dict[str, dict[str, Any]]:
 def parse_composition_rows(output: str) -> dict[str, dict[str, Any]]:
     composition_rows: dict[str, dict[str, Any]] = {}
     in_block = False
-    row_pattern = re.compile(
-        r"^\s+(?P<composition>\S+): total=(?P<total>\d+) passed=(?P<passed>\d+) failed=(?P<failed>\d+)"
-        r"(?: elapsed=(?P<elapsed_value>[0-9.]+)(?P<elapsed_unit>[a-zµ]+) avg_case_ms=(?P<avg_case_ms>[0-9.]+))?$"
-    )
 
     for line in output.splitlines():
         stripped = line.strip()
@@ -495,31 +495,18 @@ def parse_composition_rows(output: str) -> dict[str, dict[str, Any]]:
             continue
         if not stripped:
             break
-        match = row_pattern.match(line)
-        if not match:
+        if ":" not in stripped:
             continue
-        row = {
-            "total": int(match.group("total")),
-            "passed": int(match.group("passed")),
-            "failed": int(match.group("failed")),
-        }
-        if match.group("elapsed_value") and match.group("elapsed_unit"):
-            row["elapsed_seconds"] = duration_to_seconds(
-                float(match.group("elapsed_value")), match.group("elapsed_unit")
-            )
-        if match.group("avg_case_ms"):
-            row["avg_case_ms"] = float(match.group("avg_case_ms"))
-        composition_rows[match.group("composition")] = row
+        label, payload = stripped.split(":", 1)
+        row = parse_summary_kv_payload(payload.strip())
+        if row:
+            composition_rows[label] = row
     return composition_rows
 
 
 def parse_window_rows(output: str) -> dict[str, dict[str, Any]]:
     window_rows: dict[str, dict[str, Any]] = {}
     in_block = False
-    row_pattern = re.compile(
-        r"^\s+(?P<window>\S+): total=(?P<total>\d+) passed=(?P<passed>\d+) failed=(?P<failed>\d+)"
-        r"(?: elapsed=(?P<elapsed_value>[0-9.]+)(?P<elapsed_unit>[a-zµ]+) avg_case_ms=(?P<avg_case_ms>[0-9.]+))?$"
-    )
 
     for line in output.splitlines():
         stripped = line.strip()
@@ -530,22 +517,100 @@ def parse_window_rows(output: str) -> dict[str, dict[str, Any]]:
             continue
         if not stripped:
             break
+        if ":" not in stripped:
+            continue
+        label, payload = stripped.split(":", 1)
+        row = parse_summary_kv_payload(payload.strip())
+        if row:
+            window_rows[label] = row
+    return window_rows
+
+
+def parse_summary_kv_payload(payload: str) -> dict[str, Any]:
+    row: dict[str, Any] = {}
+    for token in payload.split():
+        if "=" not in token:
+            continue
+        key, value = token.split("=", 1)
+        if key in {"total", "passed", "failed"}:
+            row[key] = int(value)
+        elif key in {
+            "elapsed",
+            "wire_elapsed",
+            "parse_elapsed",
+            "simplify_elapsed",
+        }:
+            match = re.fullmatch(r"([0-9.]+)([a-zµ]+)", value)
+            if not match:
+                continue
+            seconds = duration_to_seconds(float(match.group(1)), match.group(2))
+            normalized_key = {
+                "elapsed": "elapsed_seconds",
+                "wire_elapsed": "wire_elapsed_seconds",
+                "parse_elapsed": "parse_elapsed_seconds",
+                "simplify_elapsed": "simplify_elapsed_seconds",
+            }[key]
+            row[normalized_key] = seconds
+        elif key in {
+            "avg_case_ms",
+            "avg_wire_ms",
+            "avg_parse_ms",
+            "avg_simplify_ms",
+        }:
+            row[key] = float(value)
+    return row
+
+
+def parse_steady_engine_heavy_rows(output: str) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    in_block = False
+    row_pattern = re.compile(
+        r"^\s+\[(?:(?P<window_label>.+?) )?#(?P<case_number>\d+) (?P<composition>\S+)\] "
+        r"runs=(?P<runs>\d+) "
+        r"median_simplify=(?P<median_simplify>[0-9.]+[a-zµ]+) "
+        r"median_wire=(?P<median_wire>[0-9.]+[a-zµ]+) "
+        r"median_parse=(?P<median_parse>[0-9.]+[a-zµ]+) "
+        r"median_elapsed=(?P<median_elapsed>[0-9.]+[a-zµ]+) "
+        r"expr=(?P<expr>.+)$"
+    )
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped == "Steady-state engine-heavy reruns:":
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if not stripped:
+            break
         match = row_pattern.match(line)
         if not match:
             continue
-        row = {
-            "total": int(match.group("total")),
-            "passed": int(match.group("passed")),
-            "failed": int(match.group("failed")),
-        }
-        if match.group("elapsed_value") and match.group("elapsed_unit"):
-            row["elapsed_seconds"] = duration_to_seconds(
-                float(match.group("elapsed_value")), match.group("elapsed_unit")
-            )
-        if match.group("avg_case_ms"):
-            row["avg_case_ms"] = float(match.group("avg_case_ms"))
-        window_rows[match.group("window")] = row
-    return window_rows
+        rows.append(
+            {
+                "window_label": match.group("window_label") or "",
+                "case_number": int(match.group("case_number")),
+                "composition": match.group("composition"),
+                "runs": int(match.group("runs")),
+                "median_simplify_seconds": parse_duration_token(
+                    match.group("median_simplify")
+                ),
+                "median_wire_seconds": parse_duration_token(match.group("median_wire")),
+                "median_parse_seconds": parse_duration_token(match.group("median_parse")),
+                "median_elapsed_seconds": parse_duration_token(
+                    match.group("median_elapsed")
+                ),
+                "expression": match.group("expr"),
+            }
+        )
+    return rows
+
+
+def parse_duration_token(token: str) -> float:
+    match = re.fullmatch(r"([0-9.]+)([a-zµ]+)", token)
+    if not match:
+        raise ValueError(f"invalid duration token: {token}")
+    return duration_to_seconds(float(match.group(1)), match.group(2))
 
 
 def parse_shell_depth_rows(output: str) -> dict[int, dict[str, int]]:
@@ -1261,8 +1326,34 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     fragment += f" elapsed={row['elapsed_seconds']:.2f}s"
                 if "avg_case_ms" in row:
                     fragment += f" avg_case_ms={row['avg_case_ms']:.2f}"
+                if "simplify_elapsed_seconds" in row:
+                    fragment += f" simplify={row['simplify_elapsed_seconds']:.2f}s"
+                if "avg_simplify_ms" in row:
+                    fragment += f" avg_simplify_ms={row['avg_simplify_ms']:.2f}"
                 top_rows.append(fragment)
             lines.append(f"- Composition hotspots: {', '.join(top_rows)}")
+            engine_rows = sorted(
+                composition_rows.items(),
+                key=lambda item: (
+                    -item[1].get("simplify_elapsed_seconds", 0.0),
+                    -item[1].get("elapsed_seconds", 0.0),
+                    item[0],
+                ),
+            )
+            top_engine_rows = []
+            for composition, row in engine_rows[:4]:
+                if "simplify_elapsed_seconds" not in row:
+                    break
+                fragment = (
+                    f"{composition} simplify={row['simplify_elapsed_seconds']:.2f}s"
+                )
+                if "avg_simplify_ms" in row:
+                    fragment += f" avg_simplify_ms={row['avg_simplify_ms']:.2f}"
+                if "elapsed_seconds" in row:
+                    fragment += f" wall={row['elapsed_seconds']:.2f}s"
+                top_engine_rows.append(fragment)
+            if top_engine_rows:
+                lines.append(f"- Engine hotspots: {', '.join(top_engine_rows)}")
         window_rows = mixed_metrics.get("window_rows")
         if isinstance(window_rows, dict) and window_rows:
             ordered_windows = sorted(
@@ -1280,8 +1371,27 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     fragment += f" elapsed={row['elapsed_seconds']:.2f}s"
                 if "avg_case_ms" in row:
                     fragment += f" avg_case_ms={row['avg_case_ms']:.2f}"
+                if "avg_simplify_ms" in row:
+                    fragment += f" avg_simplify_ms={row['avg_simplify_ms']:.2f}"
                 window_fragments.append(fragment)
             lines.append(f"- Window slices: {', '.join(window_fragments)}")
+        steady_engine_heavy_rows = mixed_metrics.get("steady_engine_heavy_rows")
+        if isinstance(steady_engine_heavy_rows, list) and steady_engine_heavy_rows:
+            steady_fragments = []
+            for row in steady_engine_heavy_rows[:5]:
+                label = f"#{row['case_number']} {row['composition']}"
+                if row.get("window_label"):
+                    label = f"{row['window_label']} {label}"
+                fragment = (
+                    f"{label} runs={row['runs']} "
+                    f"median_simplify={row['median_simplify_seconds']:.2f}s "
+                    f"median_wire={row['median_wire_seconds']:.2f}s "
+                    f"median_wall={row['median_elapsed_seconds']:.2f}s"
+                )
+                steady_fragments.append(fragment)
+            lines.append(
+                "- Steady-state engine reruns: " + ", ".join(steady_fragments)
+            )
         lines.append("")
 
     lines.extend(
