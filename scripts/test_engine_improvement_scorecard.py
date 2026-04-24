@@ -67,6 +67,12 @@ Top wrapper x complexity buckets:
   combined_additive_zero x l0_root_pair: total=1 passed=1 failed=0 avg_wrapper_overhead_nodes=0.00 avg_shell_depth=0.00 max_shell_depth=0
   shifted_quotient_one x l2_wrapper_plus_noise: total=3 passed=3 failed=0 avg_wrapper_overhead_nodes=8.00 avg_shell_depth=1.33 max_shell_depth=2
 
+Sparse wrapper x complexity family buckets:
+  combined_additive_zero x l0_root_pair x simplify: total=1 passed=1 failed=0
+  combined_additive_zero x l3_nested_or_composed x simplify: total=1 passed=1 failed=0
+  shifted_quotient_one x l2_wrapper_plus_noise x expand: total=2 passed=2 failed=0
+  shifted_quotient_one x l2_wrapper_plus_noise x log_expand: total=1 passed=1 failed=0
+
 Sparse wrapper x family buckets:
   combined_additive_zero x simplify: total=1 passed=1 failed=0
   shifted_quotient_one x expand: total=2 passed=2 failed=0
@@ -190,6 +196,15 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(
             metrics["wrapper_complexity_rows"][0]["avg_wrapper_overhead_nodes"], 11.2
         )
+        self.assertEqual(
+            metrics["wrapper_complexity_family_rows"][0]["wrapper"],
+            "combined_additive_zero",
+        )
+        self.assertEqual(
+            metrics["wrapper_complexity_family_rows"][1]["level"],
+            "l3_nested_or_composed",
+        )
+        self.assertEqual(metrics["wrapper_complexity_family_rows"][2]["family"], "expand")
         self.assertEqual(metrics["wrapper_family_rows"][0]["wrapper"], "combined_additive_zero")
         self.assertEqual(metrics["wrapper_family_rows"][0]["family"], "simplify")
         self.assertEqual(metrics["wrapper_family_rows"][1]["total"], 2)
@@ -260,6 +275,8 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("Sparse wrapper x complexity buckets", markdown)
         self.assertIn("combined_additive_zero x l0_root_pair total=1 failed=0", markdown)
         self.assertIn("Dominant wrapper x complexity buckets", markdown)
+        self.assertIn("Sparse wrapper l3 family breadth", markdown)
+        self.assertIn("combined_additive_zero l3_families=1/2 missing=1 cases=1", markdown)
         self.assertIn("Sparse wrapper family breadth", markdown)
         self.assertIn("combined_additive_zero families=1/2 cases=1", markdown)
         self.assertIn("Sparse wrapper family gaps", markdown)

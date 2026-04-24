@@ -8,6 +8,7 @@ k*(a*x + b*x + c) - k*((a + b)*x + c),0,scaled_difference_zero,collect_linear,co
 ((a*x + b*x + c)/q) - (((a + b)*x + c)/q),0,common_denominator_zero,collect_linear,collect,a*x + b*x + c,(a + b)*x + c,collect
 ((a*x + b*x + c) + 1)/(((a + b)*x + c) + 1),1,shifted_quotient_one,collect_linear,collect,a*x + b*x + c,(a + b)*x + c,collect
 a*x + b*x + c - ((a + b)*x + c),0,combined_additive_zero,collect_linear,collect,a*x + b*x + c,(a + b)*x + c,collect
+(((a + b)*x + c) - (a*x + b*x + c)) + (sin(2*y) - 2*sin(y)*cos(y)),0,combined_additive_zero,collect_linear_reversed_trig_combined_zero,collect,a*x + b*x + c,(a + b)*x + c,collapse exact zero additive subexpressions
 ((x*y + x*z + w) + m) - ((x*(y + z) + w) + m),0,additive_passthrough_zero,collect_common_symbolic_coefficients,collect,x*y + x*z + w,x*(y + z) + w,collect
 k*(x*y + x*z + w) - k*(x*(y + z) + w),0,scaled_difference_zero,collect_common_symbolic_coefficients,collect,x*y + x*z + w,x*(y + z) + w,collect
 ((x*y + x*z + w)/q) - ((x*(y + z) + w)/q),0,common_denominator_zero,collect_common_symbolic_coefficients,collect,x*y + x*z + w,x*(y + z) + w,collect
@@ -21,6 +22,7 @@ k*(a*x^2 + b*x + c) - k*(x*(a*x + b + c/x)),0,scaled_difference_zero,factor_out_
 ((a*x^2 + b*x + c)/q) - ((x*(a*x + b + c/x))/q),0,common_denominator_zero,factor_out_with_division_quadratic,conditional_factor,a*x^2 + b*x + c,x*(a*x + b + c/x),factor out with division
 ((a*x^2 + b*x + c) + 1)/((x*(a*x + b + c/x)) + 1),1,shifted_quotient_one,factor_out_with_division_quadratic,conditional_factor,a*x^2 + b*x + c,x*(a*x + b + c/x),factor out with division
 a*x^2 + b*x + c - x*(a*x + b + c/x),0,combined_additive_zero,factor_out_with_division_quadratic_zero,conditional_factor,a*x^2 + b*x + c,x*(a*x + b + c/x),factor out with division
+(a*x^2 + b*x + c - x*(a*x + b + c/x)) + (((u+v)*(u-v)) - (u^2-v^2)),0,combined_additive_zero,conditional_factor_factor_combined_zero,conditional_factor,a*x^2 + b*x + c,x*(a*x + b + c/x),collapse exact zero additive subexpressions
 (((a*x^2 + b*x + c)^2) + m) - (((x*(a*x + b + c/x))^2) + m),0,squared_passthrough_zero,factor_out_with_division_quadratic_squared,conditional_factor,a*x^2 + b*x + c,x*(a*x + b + c/x),factor out with division
 ((a*x^4 + b*x^3 + c*x^2 + d) + m) - ((x^2*(a*x^2 + b*x + c + d/x^2)) + m),0,additive_passthrough_zero,factor_out_square_with_division_quartic,conditional_factor,a*x^4 + b*x^3 + c*x^2 + d,x^2*(a*x^2 + b*x + c + d/x^2),factor out with division
 k*(a*x^4 + b*x^3 + c*x^2 + d) - k*(x^2*(a*x^2 + b*x + c + d/x^2)),0,scaled_difference_zero,factor_out_square_with_division_quartic,conditional_factor,a*x^4 + b*x^3 + c*x^2 + d,x^2*(a*x^2 + b*x + c + d/x^2),factor out with division
@@ -185,6 +187,7 @@ k*(x^2 + 2*b*x + c) - k*((x+b)^2 + c - b^2),0,scaled_difference_zero,solve_prep_
 ((x^2 + 2*b*x + c)/q) - (((x+b)^2 + c - b^2)/q),0,common_denominator_zero,solve_prep_complete_square_symbolic_monic_parametric,solve_prep,x^2 + 2*b*x + c,(x+b)^2 + c - b^2,solve prep
 ((x^2 + 2*b*x + c) + 1)/(((x+b)^2 + c - b^2) + 1),1,shifted_quotient_one,solve_prep_complete_square_symbolic_monic_parametric,solve_prep,x^2 + 2*b*x + c,(x+b)^2 + c - b^2,solve prep
 x^2 + 2*b*x + c - ((x+b)^2 + c - b^2),0,combined_additive_zero,solve_prep_complete_square_symbolic_monic_parametric_zero,solve_prep,x^2 + 2*b*x + c,(x+b)^2 + c - b^2,solve prep
+(x^2 + 2*b*x + c - ((x+b)^2 + c - b^2)) + (((u+v)*(u-v)) - (u^2-v^2)),0,combined_additive_zero,solve_prep_factor_combined_zero,solve_prep,x^2 + 2*b*x + c,(x+b)^2 + c - b^2,collapse exact zero additive subexpressions
 (((x^2 + 2*b*x + c)^2) + m) - ((((x+b)^2 + c - b^2)^2) + m),0,squared_passthrough_zero,solve_prep_complete_square_symbolic_monic_parametric_squared,solve_prep,x^2 + 2*b*x + c,(x+b)^2 + c - b^2,solve prep
 ((a*x^2 - b*x + c) + m) - ((a*(x - b/(2*a))^2 + c - b^2/(4*a)) + m),0,additive_passthrough_zero,solve_prep_complete_square_symbolic_negative_linear_coeff,solve_prep,a*x^2 - b*x + c,a*(x - b/(2*a))^2 + c - b^2/(4*a),solve prep
 k*(a*x^2 - b*x + c) - k*(a*(x - b/(2*a))^2 + c - b^2/(4*a)),0,scaled_difference_zero,solve_prep_complete_square_symbolic_negative_linear_coeff,solve_prep,a*x^2 - b*x + c,a*(x - b/(2*a))^2 + c - b^2/(4*a),solve prep
@@ -203,6 +206,7 @@ k*(a*b + a*c) - k*(a*(b+c)),0,scaled_difference_zero,factor_common_factor_sum,fa
 ((a*b + a*c)/q) - ((a*(b+c))/q),0,common_denominator_zero,factor_common_factor_sum,factor,a*b + a*c,a*(b+c),factor
 ((a*b + a*c) + 1)/((a*(b+c)) + 1),1,shifted_quotient_one,factor_common_factor_sum,factor,a*b + a*c,a*(b+c),factor
 a*b + a*c - (a*(b+c)),0,combined_additive_zero,factor_common_factor_sum,factor,a*b + a*c,a*(b+c),factor
+(a*b + a*c - (a*(b+c))) + (sin(2*x) - 2*sin(x)*cos(x)),0,combined_additive_zero,factor_trig_expand_combined_zero,factor,a*b + a*c,a*(b+c),collapse exact zero additive subexpressions
 ((a*(b+c)) + m) - ((a*b + a*c) + m),0,additive_passthrough_zero,expand_common_factor_sum,expand,a*(b+c),a*b + a*c,expand
 k*(a*(b+c)) - k*(a*b + a*c),0,scaled_difference_zero,expand_common_factor_sum,expand,a*(b+c),a*b + a*c,expand
 ((a*(b+c))/q) - ((a*b + a*c)/q),0,common_denominator_zero,expand_common_factor_sum,expand,a*(b+c),a*b + a*c,expand
@@ -310,8 +314,13 @@ k*(ln(x^2-y^2)) - k*(ln(x-y)+ln(x+y)),0,scaled_difference_zero,expand_log_factor
 ((ln(x^2-y^2))/q) - ((ln(x-y)+ln(x+y))/q),0,common_denominator_zero,expand_log_factored_difference_squares,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),expand_log
 ((ln(x^2-y^2)) + 1)/((ln(x-y)+ln(x+y)) + 1),1,shifted_quotient_one,expand_log_factored_difference_squares,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),expand_log
 ln(x^2-y^2) - (ln(x-y)+ln(x+y)),0,combined_additive_zero,expand_log_factored_difference_squares,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),expand_log
+(ln(x^2-y^2) - (ln(x-y)+ln(x+y))) + (((u+v)*(u-v)) - (u^2-v^2)),0,combined_additive_zero,log_expand_factor_combined_zero,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),collapse exact zero additive subexpressions
 ((x^(log(log(x))/log(x))) + m) - ((log(x)) + m),0,additive_passthrough_zero,log_inverse_power_unary_natural_alias,log_inverse_power,x^(log(log(x))/log(x)),log(x),log inverse power
+x^(log(log(x))/log(x)) - log(x),0,combined_additive_zero,log_inverse_power_unary_natural_alias_zero,log_inverse_power,x^(log(log(x))/log(x)),log(x),log inverse power
+(((x^(log(log(x))/log(x)))^2) + m) - (((log(x))^2) + m),0,squared_passthrough_zero,log_inverse_power_unary_natural_alias_squared,log_inverse_power,x^(log(log(x))/log(x)),log(x),log inverse power
 ((exp(y*log(x))) + m) - ((x^y) + m),0,additive_passthrough_zero,exp_natural_log_power_alias,log_exp_inverse,exp(y*log(x)),x^y,log alias
+exp(y*log(x)) - x^y,0,combined_additive_zero,exp_natural_log_power_alias_zero,log_exp_inverse,exp(y*log(x)),x^y,log alias
+(((exp(y*log(x)))^2) + m) - (((x^y)^2) + m),0,squared_passthrough_zero,exp_natural_log_power_alias_squared,log_exp_inverse,exp(y*log(x)),x^y,log alias
 ((10^(y*log10(x))) + m) - ((x^y) + m),0,additive_passthrough_zero,log10_power_alias,log_exp_inverse,10^(y*log10(x)),x^y,log10 alias
 ((ln((x*y)^2)+a) + m) - ((ln(x^2)+ln(y^2)+a) + m),0,additive_passthrough_zero,expand_log_grouped_power_with_passthrough,log_expand,ln((x*y)^2)+a,ln(x^2)+ln(y^2)+a,expand_log
 k*(ln((x*y)^2)+a) - k*(ln(x^2)+ln(y^2)+a),0,scaled_difference_zero,expand_log_grouped_power_with_passthrough,log_expand,ln((x*y)^2)+a,ln(x^2)+ln(y^2)+a,expand_log
@@ -374,6 +383,7 @@ k*(sin(2*x)) - k*(2*sin(x)*cos(x)),0,scaled_difference_zero,expand_trig_double_s
 ((sin(2*x))/q) - ((2*sin(x)*cos(x))/q),0,common_denominator_zero,expand_trig_double_sin,trig_expand,sin(2*x),2*sin(x)*cos(x),expand trig
 ((sin(2*x)) + 1)/((2*sin(x)*cos(x)) + 1),1,shifted_quotient_one,expand_trig_double_sin,trig_expand,sin(2*x),2*sin(x)*cos(x),expand trig
 (sin(2*x)) - (2*sin(x)*cos(x)),0,combined_additive_zero,expand_trig_double_sin_zero,trig_expand,sin(2*x),2*sin(x)*cos(x),expand trig
+(sin(x-y) - (sin(x)*cos(y)-cos(x)*sin(y))) + (((u+v)*(u-v)) - (u^2-v^2)),0,combined_additive_zero,trig_expand_angle_diff_factor_combined_zero,trig_expand,sin(x-y),sin(x)*cos(y)-cos(x)*sin(y),collapse exact zero additive subexpressions
 (((sin(2*x))^2) + m) - (((2*sin(x)*cos(x))^2) + m),0,squared_passthrough_zero,expand_trig_double_sin_squared,trig_expand,sin(2*x),2*sin(x)*cos(x),expand trig
 ((2*sin(x)*cos(y)) + m) - ((sin(x+y) + sin(x-y)) + m),0,additive_passthrough_zero,expand_trig_product_to_sum_sin_cos,trig_expand,2*sin(x)*cos(y),sin(x+y) + sin(x-y),expand trig
 k*(2*sin(x)*cos(y)) - k*(sin(x+y) + sin(x-y)),0,scaled_difference_zero,expand_trig_product_to_sum_sin_cos,trig_expand,2*sin(x)*cos(y),sin(x+y) + sin(x-y),expand trig
@@ -843,6 +853,7 @@ k*(a/d - b/d) - k*((a-b)/d),0,scaled_difference_zero,combine_same_denominator_fr
 k*(a/x - b/y) - k*((a*y-b*x)/(x*y)),0,scaled_difference_zero,combine_general_fraction_difference,fraction_combine,a/x - b/y,(a*y-b*x)/(x*y),combine fraction
 ((a/x - b/y)/q) - (((a*y-b*x)/(x*y))/q),0,common_denominator_zero,combine_general_fraction_difference,fraction_combine,a/x - b/y,(a*y-b*x)/(x*y),combine fraction
 ((a/x - b/y) + 1)/(((a*y-b*x)/(x*y)) + 1),1,shifted_quotient_one,combine_general_fraction_difference,fraction_combine,a/x - b/y,(a*y-b*x)/(x*y),combine fraction
+(a/x - b/y - ((a*y-b*x)/(x*y))) + (((u+v)*(u-v)) - (u^2-v^2)),0,combined_additive_zero,fraction_combine_general_difference_factor_combined_zero,fraction_combine,a/x - b/y,(a*y-b*x)/(x*y),collapse exact zero additive subexpressions
 ((a - b/a) + m) - (((a^2-b)/a) + m),0,additive_passthrough_zero,combine_term_and_fraction_subtraction,fraction_combine,a - b/a,(a^2-b)/a,combine fraction
 k*(a - b/a) - k*((a^2-b)/a),0,scaled_difference_zero,combine_term_and_fraction_subtraction,fraction_combine,a - b/a,(a^2-b)/a,combine fraction
 ((a - b/a)/q) - (((a^2-b)/a)/q),0,common_denominator_zero,combine_term_and_fraction_subtraction,fraction_combine,a - b/a,(a^2-b)/a,combine fraction
@@ -852,6 +863,7 @@ k*((a*x+b)/(x+c)) - k*(a + (b-a*c)/(x+c)),0,scaled_difference_zero,split_fractio
 (((a*x+b)/(x+c))/q) - ((a + (b-a*c)/(x+c))/q),0,common_denominator_zero,split_fraction_symbolic_over_general_shift,fraction_decompose,(a*x+b)/(x+c),a + (b-a*c)/(x+c),split fraction
 (((a*x+b)/(x+c)) + 1)/((a + (b-a*c)/(x+c)) + 1),1,shifted_quotient_one,split_fraction_symbolic_over_general_shift,fraction_decompose,(a*x+b)/(x+c),a + (b-a*c)/(x+c),split fraction
 (a*x+b)/(x+c) - (a + (b-a*c)/(x+c)),0,combined_additive_zero,split_fraction_symbolic_over_general_shift_zero,fraction_decompose,(a*x+b)/(x+c),a + (b-a*c)/(x+c),split fraction
+(a + (b-a*c)/(x+c) - ((a*x+b)/(x+c))) + (((u+v)*(u-v)) - (u^2-v^2)),0,combined_additive_zero,fraction_decompose_reversed_product_combined_zero,fraction_decompose,(a*x+b)/(x+c),a + (b-a*c)/(x+c),collapse exact zero additive subexpressions
 ((((a*x+b)/(x+c))^2) + m) - (((a + (b-a*c)/(x+c))^2) + m),0,squared_passthrough_zero,split_fraction_symbolic_over_general_shift_squared,fraction_decompose,(a*x+b)/(x+c),a + (b-a*c)/(x+c),split fraction
 (((a*x+b)/(c*x+d)) + m) - ((a/c + (b-a*d/c)/(c*x+d)) + m),0,additive_passthrough_zero,split_fraction_symbolic_over_scaled_general_linear,fraction_decompose,(a*x+b)/(c*x+d),a/c + (b-a*d/c)/(c*x+d),split fraction
 k*((a*x+b)/(c*x+d)) - k*(a/c + (b-a*d/c)/(c*x+d)),0,scaled_difference_zero,split_fraction_symbolic_over_scaled_general_linear,fraction_decompose,(a*x+b)/(c*x+d),a/c + (b-a*d/c)/(c*x+d),split fraction
@@ -869,6 +881,9 @@ k*(1/(c-b)*(1/(a*n+b) - 1/(a*n+c))) - k*(1/((a*n+b)*(a*n+c))),0,scaled_differenc
 k*(1/(x+b) - 1/(x+c)) - k*((c-b)/(x^2+(b+c)*x+b*c)),0,scaled_difference_zero,combine_telescoping_fraction_shifted_quadratic_unfactored,telescoping_fraction,1/(x+b) - 1/(x+c),(c-b)/(x^2+(b+c)*x+b*c),combine fraction
 ((1/(x+b) - 1/(x+c))/q) - (((c-b)/(x^2+(b+c)*x+b*c))/q),0,common_denominator_zero,combine_telescoping_fraction_shifted_quadratic_unfactored,telescoping_fraction,1/(x+b) - 1/(x+c),(c-b)/(x^2+(b+c)*x+b*c),combine fraction
 ((1/(x+b) - 1/(x+c)) + 1)/(((c-b)/(x^2+(b+c)*x+b*c)) + 1),1,shifted_quotient_one,combine_telescoping_fraction_shifted_quadratic_unfactored,telescoping_fraction,1/(x+b) - 1/(x+c),(c-b)/(x^2+(b+c)*x+b*c),combine fraction
+(1/(x+b) - 1/(x+c)) - ((c-b)/(x^2+(b+c)*x+b*c)),0,combined_additive_zero,combine_telescoping_fraction_shifted_quadratic_unfactored_zero,telescoping_fraction,1/(x+b) - 1/(x+c),(c-b)/(x^2+(b+c)*x+b*c),combine fraction
+((c-b)/(x^2+(b+c)*x+b*c) - (1/(x+b) - 1/(x+c))) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,telescoping_fraction_reversed_collect_combined_zero,telescoping_fraction,1/(x+b) - 1/(x+c),(c-b)/(x^2+(b+c)*x+b*c),collapse exact zero additive subexpressions
+(((1/(x+b) - 1/(x+c))^2) + m) - ((((c-b)/(x^2+(b+c)*x+b*c))^2) + m),0,squared_passthrough_zero,combine_telescoping_fraction_shifted_quadratic_unfactored_squared,telescoping_fraction,1/(x+b) - 1/(x+c),(c-b)/(x^2+(b+c)*x+b*c),combine fraction
 ((1/(x^2-a^2)) + m) - ((1/(2*a)*(1/(x-a) - 1/(x+a))) + m),0,additive_passthrough_zero,split_telescoping_fraction_symbolic_difference_squares_unfactored,telescoping_fraction,1/(x^2-a^2),1/(2*a)*(1/(x-a) - 1/(x+a)),expand fraction
 k*(1/(x^2-a^2)) - k*(1/(2*a)*(1/(x-a) - 1/(x+a))),0,scaled_difference_zero,split_telescoping_fraction_symbolic_difference_squares_unfactored,telescoping_fraction,1/(x^2-a^2),1/(2*a)*(1/(x-a) - 1/(x+a)),expand fraction
 ((1/(x^2-a^2))/q) - ((1/(2*a)*(1/(x-a) - 1/(x+a)))/q),0,common_denominator_zero,split_telescoping_fraction_symbolic_difference_squares_unfactored,telescoping_fraction,1/(x^2-a^2),1/(2*a)*(1/(x-a) - 1/(x+a)),expand fraction
@@ -902,6 +917,7 @@ k*((x+a)*(x^2-a*x+a^2)) - k*(x^3+a^3),0,scaled_difference_zero,expand_symbolic_c
 (((x+a)*(x^2-a*x+a^2))/q) - ((x^3+a^3)/q),0,common_denominator_zero,expand_symbolic_cube_sum_product,polynomial_product,(x+a)*(x^2-a*x+a^2),x^3+a^3,expand
 (((x+a)*(x^2-a*x+a^2)) + 1)/((x^3+a^3) + 1),1,shifted_quotient_one,expand_symbolic_cube_sum_product,polynomial_product,(x+a)*(x^2-a*x+a^2),x^3+a^3,expand
 ((x+a)*(x^2-a*x+a^2)) - (x^3+a^3),0,combined_additive_zero,expand_symbolic_cube_sum_product_zero,polynomial_product,(x+a)*(x^2-a*x+a^2),x^3+a^3,expand
+(((x+a)*(x^2-a*x+a^2)) - (x^3+a^3)) + (sin(2*y) - 2*sin(y)*cos(y)),0,combined_additive_zero,polynomial_product_trig_expand_combined_zero,polynomial_product,(x+a)*(x^2-a*x+a^2),x^3+a^3,collapse exact zero additive subexpressions
 ((((x+a)*(x^2-a*x+a^2))^2) + m) - (((x^3+a^3)^2) + m),0,squared_passthrough_zero,expand_symbolic_cube_sum_product_squared,polynomial_product,(x+a)*(x^2-a*x+a^2),x^3+a^3,expand
 (((x-a)*(x^2+a*x+a^2)) + m) - ((x^3-a^3) + m),0,additive_passthrough_zero,expand_symbolic_cube_difference_product,polynomial_product,(x-a)*(x^2+a*x+a^2),x^3-a^3,expand
 k*((x-a)*(x^2+a*x+a^2)) - k*(x^3-a^3),0,scaled_difference_zero,expand_symbolic_cube_difference_product,polynomial_product,(x-a)*(x^2+a*x+a^2),x^3-a^3,expand
