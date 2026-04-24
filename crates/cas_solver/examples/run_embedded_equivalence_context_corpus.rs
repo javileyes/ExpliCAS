@@ -10,7 +10,7 @@ use cas_engine::{
 };
 use cas_parser::parse;
 use cas_session::eval::{evaluate_eval_command_with_session, EvalCommandConfig};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -102,6 +102,7 @@ struct ComplexitySummary {
     failed: usize,
     total_wrapper_overhead_nodes: usize,
     total_shell_depth: usize,
+    max_wrapper_overhead_nodes: usize,
     max_shell_depth: usize,
 }
 
@@ -115,6 +116,9 @@ impl ComplexitySummary {
         }
         self.total_wrapper_overhead_nodes += complexity.wrapper_overhead_nodes;
         self.total_shell_depth += complexity.shell_depth;
+        self.max_wrapper_overhead_nodes = self
+            .max_wrapper_overhead_nodes
+            .max(complexity.wrapper_overhead_nodes);
         self.max_shell_depth = self.max_shell_depth.max(complexity.shell_depth);
     }
 
@@ -195,7 +199,10 @@ fn run(config: RunnerConfig) -> i32 {
     let mut by_family = BTreeMap::<String, Summary>::new();
     let mut by_shell_depth = BTreeMap::<usize, Summary>::new();
     let mut by_complexity = BTreeMap::<ComplexityLevel, ComplexitySummary>::new();
+    let mut by_wrapper_structure = BTreeMap::<String, ComplexitySummary>::new();
     let mut by_wrapper_complexity = BTreeMap::<(String, ComplexityLevel), ComplexitySummary>::new();
+    let mut by_wrapper_family = BTreeMap::<(String, String), Summary>::new();
+    let mut by_wrapper_shell_depth = BTreeMap::<(String, usize), Summary>::new();
 
     for (index, case) in cases.iter().enumerate() {
         let failure = evaluate_case(case);
@@ -207,6 +214,16 @@ fn run(config: RunnerConfig) -> i32 {
         let family_entry = by_family.entry(case.family.clone()).or_default();
         family_entry.total += 1;
 
+        let wrapper_family_entry = by_wrapper_family
+            .entry((case.wrapper.clone(), case.family.clone()))
+            .or_default();
+        wrapper_family_entry.total += 1;
+
+        let wrapper_shell_depth_entry = by_wrapper_shell_depth
+            .entry((case.wrapper.clone(), case.complexity.shell_depth))
+            .or_default();
+        wrapper_shell_depth_entry.total += 1;
+
         let shell_depth_entry = by_shell_depth
             .entry(case.complexity.shell_depth)
             .or_default();
@@ -214,6 +231,10 @@ fn run(config: RunnerConfig) -> i32 {
 
         by_complexity
             .entry(case.complexity.level)
+            .or_default()
+            .record(case.complexity, failed);
+        by_wrapper_structure
+            .entry(case.wrapper.clone())
             .or_default()
             .record(case.complexity, failed);
         by_wrapper_complexity
@@ -224,11 +245,15 @@ fn run(config: RunnerConfig) -> i32 {
         if let Some(failure) = failure {
             wrapper_entry.failed += 1;
             family_entry.failed += 1;
+            wrapper_family_entry.failed += 1;
+            wrapper_shell_depth_entry.failed += 1;
             shell_depth_entry.failed += 1;
             failures.push(failure);
         } else {
             wrapper_entry.passed += 1;
             family_entry.passed += 1;
+            wrapper_family_entry.passed += 1;
+            wrapper_shell_depth_entry.passed += 1;
             shell_depth_entry.passed += 1;
         }
 
@@ -252,6 +277,12 @@ fn run(config: RunnerConfig) -> i32 {
     } else {
         largest_wrapper_cases as f64 / cases.len() as f64
     };
+    let sparse_wrapper_cutoff = largest_wrapper_cases as f64 * 0.25;
+    let sparse_wrappers = by_wrapper
+        .iter()
+        .filter(|(_, summary)| (summary.total as f64) <= sparse_wrapper_cutoff)
+        .map(|(wrapper, _)| wrapper.clone())
+        .collect::<BTreeSet<_>>();
     let largest_wrapper_complexity_cases = by_wrapper_complexity
         .values()
         .map(|summary| summary.total)
@@ -319,6 +350,46 @@ fn run(config: RunnerConfig) -> i32 {
         );
     }
     println!();
+    println!("Sparse wrapper x shell-depth buckets:");
+    let mut wrapper_shell_depth_rows = by_wrapper_shell_depth
+        .iter()
+        .filter(|((wrapper, _), _)| sparse_wrappers.contains(wrapper))
+        .collect::<Vec<_>>();
+    wrapper_shell_depth_rows.sort_by(
+        |((left_wrapper, left_shell_depth), _), ((right_wrapper, right_shell_depth), _)| {
+            left_wrapper
+                .cmp(right_wrapper)
+                .then_with(|| left_shell_depth.cmp(right_shell_depth))
+        },
+    );
+    for ((wrapper, shell_depth), summary) in wrapper_shell_depth_rows {
+        println!(
+            "  {} x depth {}: total={} passed={} failed={}",
+            wrapper, shell_depth, summary.total, summary.passed, summary.failed
+        );
+    }
+    println!();
+    println!("Sparse wrapper noise-budget rows:");
+    let mut wrapper_structure_rows = by_wrapper_structure
+        .iter()
+        .filter(|(wrapper, _)| sparse_wrappers.contains(*wrapper))
+        .collect::<Vec<_>>();
+    wrapper_structure_rows
+        .sort_by(|(left_wrapper, _), (right_wrapper, _)| left_wrapper.cmp(right_wrapper));
+    for (wrapper, summary) in wrapper_structure_rows {
+        println!(
+            "  {}: total={} passed={} failed={} avg_wrapper_overhead_nodes={:.2} max_wrapper_overhead_nodes={} avg_shell_depth={:.2} max_shell_depth={}",
+            wrapper,
+            summary.total,
+            summary.passed,
+            summary.failed,
+            summary.avg_wrapper_overhead_nodes(),
+            summary.max_wrapper_overhead_nodes,
+            summary.avg_shell_depth(),
+            summary.max_shell_depth,
+        );
+    }
+    println!();
     println!("By complexity level:");
     for (level, summary) in &by_complexity {
         println!(
@@ -347,6 +418,27 @@ fn run(config: RunnerConfig) -> i32 {
             summary.avg_wrapper_overhead_nodes(),
             summary.avg_shell_depth(),
             summary.max_shell_depth,
+        );
+    }
+    println!();
+    println!("Sparse wrapper x family buckets:");
+    let mut wrapper_family_rows = by_wrapper_family
+        .iter()
+        .filter(|((wrapper, _), _)| sparse_wrappers.contains(wrapper))
+        .collect::<Vec<_>>();
+    wrapper_family_rows.sort_by(
+        |((left_wrapper, left_family), left_summary),
+         ((right_wrapper, right_family), right_summary)| {
+            left_wrapper
+                .cmp(right_wrapper)
+                .then_with(|| right_summary.total.cmp(&left_summary.total))
+                .then_with(|| left_family.cmp(right_family))
+        },
+    );
+    for ((wrapper, family), summary) in wrapper_family_rows {
+        println!(
+            "  {} x {}: total={} passed={} failed={}",
+            wrapper, family, summary.total, summary.passed, summary.failed
         );
     }
     println!();

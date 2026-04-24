@@ -22,10 +22,10 @@ Elapsed: 17.10ms
 Distinct wrappers: 3
 Distinct families: 2
 Distinct complexity levels: 1
-Distinct shell depths: 2
+Distinct shell depths: 5
 Largest wrapper share: 25.0%
 Largest wrapper x complexity share: 25.0%
-Max shell depth: 2
+Max shell depth: 4
 Max expression depth: 5
 Average wrapper overhead nodes: 10.00
 Wrappers: additive_passthrough_zero, combined_additive_zero, shifted_quotient_one
@@ -44,8 +44,20 @@ By window:
   product@0+5: total=5 passed=5 failed=0 elapsed=5.10ms avg_case_ms=1.02 wire_elapsed=1.60ms avg_wire_ms=0.32 parse_elapsed=0.55ms avg_parse_ms=0.11 simplify_elapsed=0.45ms avg_simplify_ms=0.09
 
 By shell depth:
+  depth 0: total=1 passed=1 failed=0
   depth 1: total=2 passed=2 failed=0
-  depth 2: total=6 passed=6 failed=0
+  depth 2: total=3 passed=3 failed=0
+  depth 3: total=1 passed=1 failed=0
+  depth 4: total=1 passed=1 failed=0
+
+Sparse wrapper x shell-depth buckets:
+  combined_additive_zero x depth 0: total=1 passed=1 failed=0
+  shifted_quotient_one x depth 1: total=1 passed=1 failed=0
+  shifted_quotient_one x depth 2: total=2 passed=2 failed=0
+
+Sparse wrapper noise-budget rows:
+  combined_additive_zero: total=1 passed=1 failed=0 avg_wrapper_overhead_nodes=0.00 max_wrapper_overhead_nodes=0 avg_shell_depth=0.00 max_shell_depth=0
+  shifted_quotient_one: total=3 passed=3 failed=0 avg_wrapper_overhead_nodes=8.00 max_wrapper_overhead_nodes=12 avg_shell_depth=1.33 max_shell_depth=2
 
 By complexity level:
   l2_wrapper_plus_noise: total=8 passed=8 failed=0 avg_wrapper_overhead_nodes=10.00 avg_shell_depth=1.75 max_shell_depth=2
@@ -54,6 +66,11 @@ Top wrapper x complexity buckets:
   additive_passthrough_zero x l2_wrapper_plus_noise: total=5 passed=5 failed=0 avg_wrapper_overhead_nodes=11.20 avg_shell_depth=2.00 max_shell_depth=2
   combined_additive_zero x l0_root_pair: total=1 passed=1 failed=0 avg_wrapper_overhead_nodes=0.00 avg_shell_depth=0.00 max_shell_depth=0
   shifted_quotient_one x l2_wrapper_plus_noise: total=3 passed=3 failed=0 avg_wrapper_overhead_nodes=8.00 avg_shell_depth=1.33 max_shell_depth=2
+
+Sparse wrapper x family buckets:
+  combined_additive_zero x simplify: total=1 passed=1 failed=0
+  shifted_quotient_one x expand: total=2 passed=2 failed=0
+  shifted_quotient_one x log_expand: total=1 passed=1 failed=0
 
 Steady-state engine-heavy reruns:
   [sum@0+3 #9 sum] runs=3 median_simplify=0.25ms median_wire=0.40ms median_parse=0.05ms median_elapsed=1.20ms expr=(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + (1/(x - 1) - 1/(x + 1) - 2/(x^2 - 1))
@@ -147,19 +164,35 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
 
         self.assertEqual(metrics["complexity_level_count"], 1)
-        self.assertEqual(metrics["shell_depth_count"], 2)
-        self.assertEqual(metrics["max_shell_depth"], 2)
+        self.assertEqual(metrics["shell_depth_count"], 5)
+        self.assertEqual(metrics["max_shell_depth"], 4)
         self.assertEqual(metrics["max_expression_depth"], 5)
         self.assertEqual(metrics["average_wrapper_overhead_nodes"], 10.0)
         self.assertEqual(
             metrics["complexity_rows"]["l2_wrapper_plus_noise"]["avg_shell_depth"], 1.75
         )
-        self.assertEqual(metrics["shell_depth_rows"][2]["total"], 6)
+        self.assertEqual(metrics["shell_depth_rows"][2]["total"], 3)
+        self.assertEqual(metrics["shell_depth_rows"][4]["total"], 1)
+        self.assertEqual(metrics["wrapper_shell_depth_rows"][0]["wrapper"], "combined_additive_zero")
+        self.assertEqual(metrics["wrapper_shell_depth_rows"][0]["shell_depth"], 0)
+        self.assertEqual(metrics["wrapper_shell_depth_rows"][2]["total"], 2)
+        self.assertEqual(metrics["sparse_wrapper_noise_budget_rows"][0]["wrapper"], "combined_additive_zero")
+        self.assertEqual(
+            metrics["sparse_wrapper_noise_budget_rows"][1]["avg_wrapper_overhead_nodes"],
+            8.0,
+        )
+        self.assertEqual(
+            metrics["sparse_wrapper_noise_budget_rows"][1]["max_wrapper_overhead_nodes"],
+            12,
+        )
         self.assertEqual(metrics["wrapper_rows"]["shifted_quotient_one"]["total"], 3)
         self.assertEqual(metrics["wrapper_complexity_rows"][0]["wrapper"], "additive_passthrough_zero")
         self.assertEqual(
             metrics["wrapper_complexity_rows"][0]["avg_wrapper_overhead_nodes"], 11.2
         )
+        self.assertEqual(metrics["wrapper_family_rows"][0]["wrapper"], "combined_additive_zero")
+        self.assertEqual(metrics["wrapper_family_rows"][0]["family"], "simplify")
+        self.assertEqual(metrics["wrapper_family_rows"][1]["total"], 2)
         self.assertEqual(metrics["composition_rows"]["sum"]["total"], 3)
         self.assertAlmostEqual(metrics["composition_rows"]["sum"]["elapsed_seconds"], 0.012)
         self.assertEqual(metrics["composition_rows"]["sum"]["avg_case_ms"], 4.0)
@@ -217,13 +250,65 @@ class EngineImprovementScorecardTests(unittest.TestCase):
 
         self.assertIn("## Embedded Orchestrator Profile", markdown)
         self.assertIn("Shell-depth mix", markdown)
+        self.assertIn("depth 4 total=1 failed=0", markdown)
+        self.assertIn("Sparse wrapper x shell-depth buckets", markdown)
+        self.assertIn("shifted_quotient_one x depth 2 total=2 failed=0", markdown)
+        self.assertIn("Sparse wrapper noise budgets", markdown)
+        self.assertIn("shifted_quotient_one total=3 failed=0 avg_overhead=8.00 max_overhead=12", markdown)
         self.assertIn("Sparse wrappers", markdown)
         self.assertIn("combined_additive_zero total=1 failed=0", markdown)
         self.assertIn("Sparse wrapper x complexity buckets", markdown)
         self.assertIn("combined_additive_zero x l0_root_pair total=1 failed=0", markdown)
         self.assertIn("Dominant wrapper x complexity buckets", markdown)
+        self.assertIn("Sparse wrapper family breadth", markdown)
+        self.assertIn("combined_additive_zero families=1/2 cases=1", markdown)
+        self.assertIn("Sparse wrapper family gaps", markdown)
+        self.assertIn(
+            "combined_additive_zero missing_families=1/2 covered=1 cases=1",
+            markdown,
+        )
+        self.assertIn("Sparse wrapper x family buckets", markdown)
+        self.assertIn("combined_additive_zero x simplify total=1 failed=0", markdown)
         self.assertIn("pipeline.phase.core", markdown)
         self.assertIn("No-match hotspot 1", markdown)
+
+    def test_render_markdown_does_not_truncate_sparse_wrapper_family_rows(self):
+        metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
+        metrics["wrapper_family_rows"] = [
+            {
+                "wrapper": "combined_additive_zero",
+                "family": f"family_{idx:02}",
+                "total": 1,
+                "passed": 1,
+                "failed": 0,
+            }
+            for idx in range(13)
+        ]
+        metrics["family_count"] = 13
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "embedded_equivalence_context": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.017,
+                    "metrics": metrics,
+                    "guardrail": None,
+                    "delta": {},
+                }
+            },
+        }
+
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn("combined_additive_zero families=13/13 cases=13", markdown)
+        self.assertIn(
+            "combined_additive_zero missing_families=0/13 covered=13 cases=13",
+            markdown,
+        )
+        self.assertIn("combined_additive_zero x family_00 total=1 failed=0", markdown)
+        self.assertIn("combined_additive_zero x family_12 total=1 failed=0", markdown)
 
     def test_render_markdown_includes_mixed_pressure_and_proof_shape_caveat(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
