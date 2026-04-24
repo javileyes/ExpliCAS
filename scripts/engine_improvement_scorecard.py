@@ -21,8 +21,10 @@ import json
 import os
 import pathlib
 import re
+import signal
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -33,6 +35,7 @@ DEFAULT_OUTPUT = ROOT / "docs" / "generated" / "engine_improvement_scorecard.jso
 EMBEDDED_RUNTIME_DELTA_RATIO_THRESHOLD = 0.10
 EMBEDDED_RUNTIME_DELTA_SECONDS_THRESHOLD = 5.0
 EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT = 480
+NF_FIRST_FULL_TIMEOUT_SECONDS = 15 * 60
 SIMPLIFY_ZERO_MIXED_PRESSURE_WINDOWS = (
     ("sum", 0, 100),
     ("sum", 700, 100),
@@ -51,6 +54,7 @@ class SuiteSpec:
     env: dict[str, str]
     parser: str
     description: str
+    timeout_seconds: float | None = None
 
 
 def build_simplify_zero_mixed_pressure_command() -> list[str]:
@@ -150,7 +154,7 @@ SUITES: dict[str, SuiteSpec] = {
     "simplify_nf_first": SuiteSpec(
         name="simplify_nf_first",
         category="simplify",
-        profile_tags=("pressure", "full"),
+        profile_tags=("full",),
         command=[
             "cargo",
             "test",
@@ -172,6 +176,7 @@ SUITES: dict[str, SuiteSpec] = {
         },
         parser="unified_benchmark",
         description="Unified metamorphic regression benchmark in NF-first mode.",
+        timeout_seconds=NF_FIRST_FULL_TIMEOUT_SECONDS,
     ),
     "simplify_add_small": SuiteSpec(
         name="simplify_add_small",
@@ -318,31 +323,88 @@ def run_command(
     spec: SuiteSpec,
     suite_env: dict[str, str] | None = None,
     command: list[str] | None = None,
-) -> tuple[int, str, float]:
+) -> tuple[int, str, float, bool]:
     env = os.environ.copy()
     env.update(spec.env)
     if suite_env:
         env.update(suite_env)
     start = time.time()
+    effective_command = command or spec.command
     process = subprocess.Popen(
-        command or spec.command,
+        effective_command,
         cwd=ROOT,
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         bufsize=1,
+        start_new_session=True,
     )
 
     assert process.stdout is not None
+    timeout_seconds = spec.timeout_seconds
+    if timeout_seconds is not None:
+        chunks: list[str] = []
+        reader = threading.Thread(
+            target=stream_process_stdout,
+            args=(process.stdout, chunks),
+            daemon=True,
+        )
+        reader.start()
+        timed_out = False
+        try:
+            returncode = process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            timed_out = True
+            terminate_process_group(process, signal.SIGTERM)
+            try:
+                returncode = process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                terminate_process_group(process, signal.SIGKILL)
+                returncode = process.wait(timeout=5)
+        reader.join(timeout=5)
+        process.stdout.close()
+        elapsed = time.time() - start
+        output = "".join(chunks)
+        if timed_out:
+            timeout_message = (
+                f"\n[scorecard] suite timeout after {timeout_seconds:.1f}s; "
+                "process group terminated.\n"
+            )
+            output += timeout_message
+            sys.stdout.write(timeout_message)
+            return returncode or -int(signal.SIGTERM), output, elapsed, True
+        return returncode, output, elapsed, False
+
     chunks: list[str] = []
     for line in process.stdout:
         sys.stdout.write(line)
         chunks.append(line)
 
     returncode = process.wait()
+    process.stdout.close()
     elapsed = time.time() - start
-    return returncode, "".join(chunks), elapsed
+    return returncode, "".join(chunks), elapsed, False
+
+
+def stream_process_stdout(stdout: Any, chunks: list[str]) -> None:
+    for line in stdout:
+        sys.stdout.write(line)
+        chunks.append(line)
+
+
+def terminate_process_group(process: subprocess.Popen[str], sig: signal.Signals) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, sig)
+    except ProcessLookupError:
+        return
+    except PermissionError:
+        if sig == signal.SIGTERM:
+            process.terminate()
+        else:
+            process.kill()
 
 
 def leading_int(text: str) -> int:
@@ -396,6 +458,10 @@ def parse_corpus(output: str) -> dict[str, Any]:
         metrics["wrapper_names"] = [
             part.strip() for part in match.group(1).split(",") if part.strip()
         ]
+
+    wrapper_rows = parse_named_summary_rows(output, "By wrapper:")
+    if wrapper_rows:
+        metrics["wrapper_rows"] = wrapper_rows
 
     match = re.search(r"Elapsed:\s+([0-9.]+)([a-z]+)", output)
     if match:
@@ -524,6 +590,28 @@ def parse_window_rows(output: str) -> dict[str, dict[str, Any]]:
         if row:
             window_rows[label] = row
     return window_rows
+
+
+def parse_named_summary_rows(output: str, heading: str) -> dict[str, dict[str, Any]]:
+    rows: dict[str, dict[str, Any]] = {}
+    in_block = False
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped == heading:
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if not stripped:
+            break
+        if ":" not in stripped:
+            continue
+        label, payload = stripped.split(":", 1)
+        row = parse_summary_kv_payload(payload.strip())
+        if row:
+            rows[label] = row
+    return rows
 
 
 def parse_summary_kv_payload(payload: str) -> dict[str, Any]:
@@ -1057,6 +1145,21 @@ def effective_elapsed_seconds(metrics: dict[str, Any], process_elapsed_seconds: 
     return process_elapsed_seconds
 
 
+def sparse_wrapper_names(wrapper_rows: dict[str, dict[str, Any]]) -> set[str]:
+    wrapper_totals = [
+        total
+        for row in wrapper_rows.values()
+        if isinstance(total := row.get("total"), int)
+    ]
+    largest_wrapper_total = max(wrapper_totals) if wrapper_totals else 0
+    sparse_cutoff = largest_wrapper_total * 0.25
+    return {
+        wrapper
+        for wrapper, row in wrapper_rows.items()
+        if row.get("total", 0) <= sparse_cutoff
+    }
+
+
 def render_markdown(scorecard: dict[str, Any]) -> str:
     lines = [
         "# Engine Improvement Scorecard",
@@ -1105,6 +1208,25 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             )
         if isinstance(wrapper_names, list) and wrapper_names:
             lines.append(f"- Wrappers: {', '.join(wrapper_names)}")
+        wrapper_rows = embedded_metrics.get("wrapper_rows")
+        sparse_wrappers: set[str] = set()
+        if isinstance(wrapper_rows, dict) and wrapper_rows:
+            sparse_wrappers = sparse_wrapper_names(wrapper_rows)
+            sparse_wrapper_rows = [
+                (wrapper, row)
+                for wrapper, row in sorted(
+                    wrapper_rows.items(),
+                    key=lambda item: (item[1].get("total", 0), item[0]),
+                )
+                if wrapper in sparse_wrappers
+            ][:3]
+            sparse_summary = ", ".join(
+                f"{wrapper} total={row['total']} failed={row['failed']}"
+                for wrapper, row in sparse_wrapper_rows
+                if "total" in row and "failed" in row
+            )
+            if sparse_summary:
+                lines.append(f"- Sparse wrappers: {sparse_summary}")
         max_shell_depth = embedded_metrics.get("max_shell_depth")
         max_expression_depth = embedded_metrics.get("max_expression_depth")
         avg_wrapper_overhead_nodes = embedded_metrics.get("average_wrapper_overhead_nodes")
@@ -1143,6 +1265,26 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             lines.append(f"- Shell-depth mix: {shell_depth_summary}")
         wrapper_complexity_rows = embedded_metrics.get("wrapper_complexity_rows")
         if isinstance(wrapper_complexity_rows, list) and wrapper_complexity_rows:
+            sparse_wrapper_complexity_rows = [
+                row
+                for row in wrapper_complexity_rows
+                if row.get("wrapper") in sparse_wrappers
+            ]
+            if sparse_wrapper_complexity_rows:
+                sparse_bucket_summary = ", ".join(
+                    (
+                        f"{row['wrapper']} x {row['level']} total={row['total']} "
+                        f"failed={row['failed']} avg_shell_depth={row['avg_shell_depth']:.2f}"
+                    )
+                    for row in sorted(
+                        sparse_wrapper_complexity_rows,
+                        key=lambda row: (row["wrapper"], row["level"]),
+                    )[:4]
+                )
+                lines.append(
+                    "- Sparse wrapper x complexity buckets: "
+                    f"{sparse_bucket_summary}"
+                )
             dominant_bucket_summary = ", ".join(
                 (
                     f"{row['wrapper']} x {row['level']} total={row['total']} "
@@ -1482,7 +1624,14 @@ def main() -> int:
             suite_env = effective_suite_env(spec, args)
             env_prefix = " ".join(f"{k}={v}" for k, v in sorted(suite_env.items()))
             command = " ".join(spec.command)
-            print(f"[dry-run] {spec.name}: {env_prefix} {command}".strip())
+            timeout_suffix = (
+                f" [timeout={spec.timeout_seconds:.1f}s]"
+                if spec.timeout_seconds is not None
+                else ""
+            )
+            print(
+                f"[dry-run] {spec.name}: {env_prefix} {command}{timeout_suffix}".strip()
+            )
             profile_env = orchestrator_profile_env(spec, args)
             profile_command = orchestrator_profile_command(spec)
             if profile_env and profile_command:
@@ -1501,20 +1650,28 @@ def main() -> int:
         print(f"=== {spec.name} ===")
         print(spec.description)
         suite_env = effective_suite_env(spec, args)
-        returncode, output, elapsed = run_command(spec, suite_env)
-        try:
-            metrics = PARSERS[spec.parser](output)
-        except ValueError as exc:
-            parse_error = str(exc)
-            if "stack overflow" in output:
-                parse_error = "stack overflow"
-            elif "fatal runtime error" in output:
-                parse_error = "fatal runtime error"
-            metrics = {"parse_error": parse_error}
+        returncode, output, elapsed, timed_out = run_command(spec, suite_env)
+        if timed_out:
+            metrics = {
+                "parse_error": "timeout",
+                "timeout_seconds": spec.timeout_seconds,
+            }
             status = "fail"
             overall_exit = 1
         else:
-            status = suite_status(spec.name, metrics, returncode)
+            try:
+                metrics = PARSERS[spec.parser](output)
+            except ValueError as exc:
+                parse_error = str(exc)
+                if "stack overflow" in output:
+                    parse_error = "stack overflow"
+                elif "fatal runtime error" in output:
+                    parse_error = "fatal runtime error"
+                metrics = {"parse_error": parse_error}
+                status = "fail"
+                overall_exit = 1
+            else:
+                status = suite_status(spec.name, metrics, returncode)
         measured_elapsed = effective_elapsed_seconds(metrics, elapsed)
         guardrail = compute_embedded_runtime_guardrail(
             baseline_data, spec.name, measured_elapsed
@@ -1532,6 +1689,8 @@ def main() -> int:
             "process_elapsed_seconds": round(elapsed, 3),
             "command": spec.command,
             "env": suite_env,
+            "timed_out": timed_out,
+            "timeout_seconds": spec.timeout_seconds,
             "metrics": metrics,
             "delta": compute_deltas(
                 baseline_data, spec.name, metrics, measured_elapsed
@@ -1547,36 +1706,44 @@ def main() -> int:
                 f"=== {spec.name}.orchestrator_profile ===\n"
                 f"Profiled observability slice (limit {EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT})"
             )
-            profile_returncode, profile_output, profile_elapsed = run_command(
+            (
+                profile_returncode,
+                profile_output,
+                profile_elapsed,
+                profile_timed_out,
+            ) = run_command(
                 spec,
                 profile_env,
                 profile_command,
             )
-            try:
-                profile_metrics = PARSERS[spec.parser](profile_output)
-            except ValueError as exc:
-                metrics["orchestrator_profile_error"] = str(exc)
+            if profile_timed_out:
+                metrics["orchestrator_profile_error"] = "timeout"
             else:
-                if profile_returncode != 0:
-                    metrics["orchestrator_profile_error"] = (
-                        f"returncode={profile_returncode}"
-                    )
-                elif "orchestrator_profile" in profile_metrics:
-                    metrics["orchestrator_profile"] = profile_metrics["orchestrator_profile"]
-                    metrics["orchestrator_profile_slice"] = {
-                        "limit": EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT,
-                        "total_cases": profile_metrics["total_cases"],
-                        "wrapper_count": profile_metrics.get("wrapper_count", 0),
-                        "family_count": profile_metrics.get("family_count", 0),
-                        "elapsed_seconds": round(
-                            effective_elapsed_seconds(profile_metrics, profile_elapsed),
-                            3,
-                        ),
-                    }
+                try:
+                    profile_metrics = PARSERS[spec.parser](profile_output)
+                except ValueError as exc:
+                    metrics["orchestrator_profile_error"] = str(exc)
                 else:
-                    metrics["orchestrator_profile_error"] = (
-                        "missing orchestrator_profile in profiled slice output"
-                    )
+                    if profile_returncode != 0:
+                        metrics["orchestrator_profile_error"] = (
+                            f"returncode={profile_returncode}"
+                        )
+                    elif "orchestrator_profile" in profile_metrics:
+                        metrics["orchestrator_profile"] = profile_metrics["orchestrator_profile"]
+                        metrics["orchestrator_profile_slice"] = {
+                            "limit": EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT,
+                            "total_cases": profile_metrics["total_cases"],
+                            "wrapper_count": profile_metrics.get("wrapper_count", 0),
+                            "family_count": profile_metrics.get("family_count", 0),
+                            "elapsed_seconds": round(
+                                effective_elapsed_seconds(profile_metrics, profile_elapsed),
+                                3,
+                            ),
+                        }
+                    else:
+                        metrics["orchestrator_profile_error"] = (
+                            "missing orchestrator_profile in profiled slice output"
+                        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(scorecard, indent=2, sort_keys=True) + "\n")

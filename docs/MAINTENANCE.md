@@ -591,9 +591,11 @@ Use them with this intent:
   - catches semantic regressions, overflows, and timeout growth
 - `engine-scorecard-pressure`
   - improvement lane
-  - stresses normalization and mixed composed traffic
+  - runs bounded mixed composed traffic pressure
 - `engine-scorecard-full`
   - campaign-level validation
+  - includes the full `nf-first` metamorphic benchmark
+  - reports a suite timeout instead of hanging indefinitely
 
 Do not treat engine improvement as “rule count goes up”.
 The scorecard is there to ensure improvements in completeness do not reopen:

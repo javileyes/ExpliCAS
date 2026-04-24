@@ -985,7 +985,8 @@ earlier if the change is more structural.
 Typical choices:
 
 - `make engine-scorecard`
-- `make engine-scorecard-pressure` when normalization or orchestration changed
+- `make engine-scorecard-pressure` when normalization or orchestration changed,
+  using bounded mixed composed traffic
 - `make ci` when the campaign has accumulated enough retained changes
 
 ### Full closure loop
@@ -1390,3 +1391,7 @@ python3 scripts/engine_improvement_scorecard.py --profile guardrail
 python3 scripts/engine_improvement_scorecard.py --profile pressure
 python3 scripts/engine_improvement_scorecard.py --profile full
 ```
+
+`pressure` is the routine bounded campaign lane. `full` is the closure lane and
+includes the full `nf-first` metamorphic benchmark under a suite-level timeout
+so nontermination becomes an explicit scorecard failure instead of a hung run.

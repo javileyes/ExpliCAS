@@ -1,4 +1,6 @@
 import argparse
+import contextlib
+import io
 import importlib.util
 import pathlib
 import sys
@@ -17,7 +19,7 @@ SAMPLE_CORPUS_OUTPUT = """Total cases: 8
 Passed: 8
 Failed: 0
 Elapsed: 17.10ms
-Distinct wrappers: 4
+Distinct wrappers: 3
 Distinct families: 2
 Distinct complexity levels: 1
 Distinct shell depths: 2
@@ -26,7 +28,12 @@ Largest wrapper x complexity share: 25.0%
 Max shell depth: 2
 Max expression depth: 5
 Average wrapper overhead nodes: 10.00
-Wrappers: additive_passthrough_zero, shifted_quotient_one
+Wrappers: additive_passthrough_zero, combined_additive_zero, shifted_quotient_one
+
+By wrapper:
+  additive_passthrough_zero: total=5 passed=5 failed=0
+  combined_additive_zero: total=1 passed=1 failed=0
+  shifted_quotient_one: total=3 passed=3 failed=0
 
 By composition:
   sum: total=3 passed=3 failed=0 elapsed=12.00ms avg_case_ms=4.00 wire_elapsed=3.00ms avg_wire_ms=1.00 parse_elapsed=1.20ms avg_parse_ms=0.40 simplify_elapsed=0.90ms avg_simplify_ms=0.30
@@ -45,6 +52,7 @@ By complexity level:
 
 Top wrapper x complexity buckets:
   additive_passthrough_zero x l2_wrapper_plus_noise: total=5 passed=5 failed=0 avg_wrapper_overhead_nodes=11.20 avg_shell_depth=2.00 max_shell_depth=2
+  combined_additive_zero x l0_root_pair: total=1 passed=1 failed=0 avg_wrapper_overhead_nodes=0.00 avg_shell_depth=0.00 max_shell_depth=0
   shifted_quotient_one x l2_wrapper_plus_noise: total=3 passed=3 failed=0 avg_wrapper_overhead_nodes=8.00 avg_shell_depth=1.33 max_shell_depth=2
 
 Steady-state engine-heavy reruns:
@@ -93,6 +101,48 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIsNone(pressure_env)
         self.assertIsNone(pressure_command)
 
+    def test_pressure_profile_stays_bounded_and_full_keeps_nf_first(self):
+        pressure_args = argparse.Namespace(profile="pressure", suite=[])
+        full_args = argparse.Namespace(profile="full", suite=[])
+
+        pressure_names = [spec.name for spec in MODULE.selected_suites(pressure_args)]
+        full_names = [spec.name for spec in MODULE.selected_suites(full_args)]
+
+        self.assertEqual(pressure_names, ["simplify_zero_mixed"])
+        self.assertIn("simplify_nf_first", full_names)
+        self.assertIn("simplify_zero_mixed", full_names)
+        self.assertEqual(
+            MODULE.SUITES["simplify_nf_first"].timeout_seconds,
+            MODULE.NF_FIRST_FULL_TIMEOUT_SECONDS,
+        )
+
+    def test_run_command_timeout_marks_timeout_and_captures_output(self):
+        spec = MODULE.SuiteSpec(
+            name="synthetic_timeout",
+            category="test",
+            profile_tags=("test",),
+            command=[
+                sys.executable,
+                "-c",
+                "import time; print('started', flush=True); time.sleep(5)",
+            ],
+            env={},
+            parser="cargo_test_basic",
+            description="Synthetic timeout command.",
+            timeout_seconds=0.2,
+        )
+
+        captured_stdout = io.StringIO()
+        with contextlib.redirect_stdout(captured_stdout):
+            returncode, output, elapsed, timed_out = MODULE.run_command(spec)
+
+        self.assertTrue(timed_out)
+        self.assertNotEqual(returncode, 0)
+        self.assertLess(elapsed, 3.0)
+        self.assertIn("started", output)
+        self.assertIn("suite timeout after 0.2s", output)
+        self.assertEqual(captured_stdout.getvalue(), output)
+
     def test_parse_corpus_extracts_complexity_and_orchestrator_profile_metrics(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
 
@@ -105,6 +155,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             metrics["complexity_rows"]["l2_wrapper_plus_noise"]["avg_shell_depth"], 1.75
         )
         self.assertEqual(metrics["shell_depth_rows"][2]["total"], 6)
+        self.assertEqual(metrics["wrapper_rows"]["shifted_quotient_one"]["total"], 3)
         self.assertEqual(metrics["wrapper_complexity_rows"][0]["wrapper"], "additive_passthrough_zero")
         self.assertEqual(
             metrics["wrapper_complexity_rows"][0]["avg_wrapper_overhead_nodes"], 11.2
@@ -166,6 +217,10 @@ class EngineImprovementScorecardTests(unittest.TestCase):
 
         self.assertIn("## Embedded Orchestrator Profile", markdown)
         self.assertIn("Shell-depth mix", markdown)
+        self.assertIn("Sparse wrappers", markdown)
+        self.assertIn("combined_additive_zero total=1 failed=0", markdown)
+        self.assertIn("Sparse wrapper x complexity buckets", markdown)
+        self.assertIn("combined_additive_zero x l0_root_pair total=1 failed=0", markdown)
         self.assertIn("Dominant wrapper x complexity buckets", markdown)
         self.assertIn("pipeline.phase.core", markdown)
         self.assertIn("No-match hotspot 1", markdown)

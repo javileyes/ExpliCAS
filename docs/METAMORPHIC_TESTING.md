@@ -664,7 +664,7 @@ La scorecard junta:
 - embedded equivalence context corpus
 - simplify-zero mixed corpus
 - benchmark metamórfico `strict`
-- benchmark metamórfico `nf-first`
+- benchmark metamórfico `nf-first` en `full`
 - derive contract corpus
 
 Eso evita el error clásico de declarar “mejorado” un engine que:
@@ -682,7 +682,9 @@ La estrategia operativa recomendada es:
 2. `make engine-fast`
 3. cada pocas iteraciones: `make engine-scorecard`
 4. cuando tocas rutas profundas: `make engine-scorecard-pressure`
+   para las ventanas bounded de tráfico compuesto
 5. antes de cerrar: `make ci` y, si el bloque es importante, `make engine-scorecard-full`
+   para incluir el benchmark `nf-first` completo con timeout de suite
 
 Sin esta jerarquía, el coste de feedback se dispara y el trabajo de mejora del
 engine se vuelve innecesariamente lento.

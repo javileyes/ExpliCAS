@@ -297,6 +297,10 @@ k*(2*ln(abs(x*y))) - k*(2*ln(abs(x))+2*ln(abs(y))),0,scaled_difference_zero,expa
 "k*(log(b,(x*y)^2)) - k*(2*log(b,x)+2*log(b,y))",0,scaled_difference_zero,expand_log_grouped_general_base_power,log_expand,"log(b,(x*y)^2)","2*log(b,x)+2*log(b,y)",expand_log
 "((log(b,(x*y)^2))/q) - ((2*log(b,x)+2*log(b,y))/q)",0,common_denominator_zero,expand_log_grouped_general_base_power,log_expand,"log(b,(x*y)^2)","2*log(b,x)+2*log(b,y)",expand_log
 "((log(b,(x*y)^2)) + 1)/((2*log(b,x)+2*log(b,y)) + 1)",1,shifted_quotient_one,expand_log_grouped_general_base_power,log_expand,"log(b,(x*y)^2)","2*log(b,x)+2*log(b,y)",expand_log
+((ln(x^2-y^2)) + m) - ((ln(x-y)+ln(x+y)) + m),0,additive_passthrough_zero,expand_log_factored_difference_squares,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),expand_log
+k*(ln(x^2-y^2)) - k*(ln(x-y)+ln(x+y)),0,scaled_difference_zero,expand_log_factored_difference_squares,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),expand_log
+((ln(x^2-y^2))/q) - ((ln(x-y)+ln(x+y))/q),0,common_denominator_zero,expand_log_factored_difference_squares,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),expand_log
+((ln(x^2-y^2)) + 1)/((ln(x-y)+ln(x+y)) + 1),1,shifted_quotient_one,expand_log_factored_difference_squares,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),expand_log
 ((x^(log(log(x))/log(x))) + m) - ((log(x)) + m),0,additive_passthrough_zero,log_inverse_power_unary_natural_alias,log_inverse_power,x^(log(log(x))/log(x)),log(x),log inverse power
 ((exp(y*log(x))) + m) - ((x^y) + m),0,additive_passthrough_zero,exp_natural_log_power_alias,log_exp_inverse,exp(y*log(x)),x^y,log alias
 ((10^(y*log10(x))) + m) - ((x^y) + m),0,additive_passthrough_zero,log10_power_alias,log_exp_inverse,10^(y*log10(x)),x^y,log10 alias
@@ -1142,5 +1146,11 @@ k*(5*sin(x+arctan(4/3))+a) - k*(5*cos(x-arctan(3/4))+a),0,scaled_difference_zero
 (((a^2 - b^2)^2) + m) - ((((a - b)*(a + b))^2) + m),0,squared_passthrough_zero,factor_difference_squares,factor,a^2 - b^2,(a - b)*(a + b),factor
 (((x^4 + 4*y^4)^2) + m) - ((((x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2))^2) + m),0,squared_passthrough_zero,factor_sophie_germain,factor,x^4 + 4*y^4,(x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2),factor
 "(((sum(1/(k*(k+1)), k, 1, n))^2) + m) - (((1 - 1/(n+1))^2) + m)",0,squared_passthrough_zero,finite_telescoping_sum_basic,finite_telescoping,"sum(1/(k*(k+1)), k, 1, n)",1 - 1/(n+1),finite sums/products
+(((1/(sqrt(a)+sqrt(b)))^2) + m) - ((((sqrt(a)-sqrt(b))/(a-b))^2) + m),0,squared_passthrough_zero,rationalize_linear_root_sum_squared,rationalize,1/(sqrt(a)+sqrt(b)),(sqrt(a)-sqrt(b))/(a-b),rationalize
+(((ln(x^2-y^2))^2) + m) - (((ln(x-y)+ln(x+y))^2) + m),0,squared_passthrough_zero,expand_log_factored_difference_squares_squared,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),expand_log
 "(exp(y*log(x)) - x^y) + (sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)) + (2/(x^2 - 1) - 1/(x-1) + 1/(x+1)) + (sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1)",0,combined_additive_zero,log_exp_trig_fraction_root_perfect_square_mix,simplify,"(exp(y*log(x)) - x^y) + (sin(x) + sin(y) - 2*sin((x+y)/2)*cos((x-y)/2)) + (2/(x^2 - 1) - 1/(x-1) + 1/(x+1)) + (sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1)",0,collapse exact zero additive subexpressions
 "(atanh((x^2 - 1)/(x^2 + 1)) - log(x))",0,combined_additive_zero,atanh_square_ratio_log_pair,log_contract,"atanh((x^2 - 1)/(x^2 + 1)) - log(x)",0,collapse exact zero additive subexpressions
+"(ln(x^2-y^2) - ln(x-y) - ln(x+y)) + (1/(sqrt(a)+sqrt(b)) - (sqrt(a)-sqrt(b))/(a-b))",0,combined_additive_zero,log_expand_rationalize_combined_zero,simplify,"(ln(x^2-y^2) - ln(x-y) - ln(x+y)) + (1/(sqrt(a)+sqrt(b)) - (sqrt(a)-sqrt(b))/(a-b))",0,collapse exact zero additive subexpressions
+"(sinh(x+y)-sinh(x)*cosh(y)-cosh(x)*sinh(y)) + ((u^3-b^3)/(u-b) - (u^2+u*b+b^2))",0,combined_additive_zero,hyperbolic_polynomial_quotient_combined_zero,simplify,"(sinh(x+y)-sinh(x)*cosh(y)-cosh(x)*sinh(y)) + ((u^3-b^3)/(u-b) - (u^2+u*b+b^2))",0,collapse exact zero additive subexpressions
+"(x^p*x^r - x^(p+r)) + (1/(1/a + 1/b) - (a*b)/(a+b))",0,combined_additive_zero,power_merge_nested_fraction_combined_zero,simplify,"(x^p*x^r - x^(p+r)) + (1/(1/a + 1/b) - (a*b)/(a+b))",0,collapse exact zero additive subexpressions
+(1/cos(x) - sec(x)) + (cosh(y)^2 - sinh(y)^2 - 1),0,combined_additive_zero,trig_reciprocal_hyperbolic_identity_combined_zero,simplify,1/cos(x),sec(x),collapse exact zero additive subexpressions
