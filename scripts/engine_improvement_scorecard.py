@@ -16,6 +16,7 @@ It is intentionally profile-based:
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import json
 import os
@@ -32,6 +33,9 @@ from typing import Any
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_OUTPUT = ROOT / "docs" / "generated" / "engine_improvement_scorecard.json"
+EMBEDDED_EQUIVALENCE_CONTEXT_CORPUS = (
+    ROOT / "docs" / "embedded_equivalence_context_corpus.csv"
+)
 EMBEDDED_RUNTIME_DELTA_RATIO_THRESHOLD = 0.10
 EMBEDDED_RUNTIME_DELTA_SECONDS_THRESHOLD = 5.0
 EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT = 480
@@ -518,6 +522,132 @@ def parse_corpus(output: str) -> dict[str, Any]:
     if orchestrator_profile:
         metrics["orchestrator_profile"] = orchestrator_profile
     return metrics
+
+
+def embedded_corpus_structure_metrics(
+    csv_path: pathlib.Path = EMBEDDED_EQUIVALENCE_CONTEXT_CORPUS,
+) -> dict[str, Any]:
+    """Summarize corpus-only axes the runner output does not expose."""
+    if not csv_path.exists():
+        return {"parse_error": f"missing corpus csv: {csv_path}"}
+
+    with csv_path.open(newline="") as handle:
+        rows = list(csv.DictReader(handle))
+
+    families = sorted({row["family"] for row in rows if row.get("family")})
+    combined_rows = [
+        row
+        for row in rows
+        if row.get("wrapper") == "combined_additive_zero"
+    ]
+    combined_family_counts = count_by_field(combined_rows, "family")
+    collapse_rows = [
+        row
+        for row in combined_rows
+        if row.get("expected_strategy") == "collapse exact zero additive subexpressions"
+    ]
+    depth4_rows = [
+        row
+        for row in combined_rows
+        if "depth4" in row.get("pair_id", "")
+    ]
+    orientation_rows = [
+        row
+        for row in combined_rows
+        if is_orientation_variation_pair_id(row.get("pair_id", ""))
+    ]
+    multi_core_rows = [
+        row
+        for row in combined_rows
+        if is_multi_core_pair_id(row.get("pair_id", ""))
+    ]
+    depth4_families = unique_field_values(depth4_rows, "family")
+    orientation_families = unique_field_values(orientation_rows, "family")
+    multi_core_families = unique_field_values(multi_core_rows, "family")
+    family_set = set(families)
+
+    min_family_case_count = (
+        min(combined_family_counts.values()) if combined_family_counts else 0
+    )
+    low_family_counts = {
+        family: count
+        for family, count in sorted(combined_family_counts.items())
+        if count == min_family_case_count
+    }
+    above_min_family_counts = {
+        family: count
+        for family, count in sorted(combined_family_counts.items())
+        if count > min_family_case_count
+    }
+
+    return {
+        "row_count": len(rows),
+        "family_count": len(families),
+        "combined_additive_zero": {
+            "total": len(combined_rows),
+            "family_count": len(combined_family_counts),
+            "family_counts": combined_family_counts,
+            "collapse_rows": len(collapse_rows),
+            "collapse_family_count": unique_field_count(collapse_rows, "family"),
+            "depth4_rows": len(depth4_rows),
+            "depth4_family_count": len(depth4_families),
+            "depth4_missing_families": sorted(family_set - depth4_families),
+            "orientation_rows": len(orientation_rows),
+            "orientation_family_count": len(orientation_families),
+            "orientation_missing_families": sorted(
+                family_set - orientation_families
+            ),
+            "multi_core_rows": len(multi_core_rows),
+            "multi_core_family_count": len(multi_core_families),
+            "multi_core_missing_families": sorted(
+                family_set - multi_core_families
+            ),
+            "min_family_case_count": min_family_case_count,
+            "low_family_count": len(low_family_counts),
+            "low_family_counts": low_family_counts,
+            "above_min_family_counts": above_min_family_counts,
+        },
+    }
+
+
+def count_by_field(rows: list[dict[str, str]], field: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for row in rows:
+        value = row.get(field, "")
+        if not value:
+            continue
+        counts[value] = counts.get(value, 0) + 1
+    return counts
+
+
+def unique_field_count(rows: list[dict[str, str]], field: str) -> int:
+    return len({row[field] for row in rows if row.get(field)})
+
+
+def unique_field_values(rows: list[dict[str, str]], field: str) -> set[str]:
+    return {row[field] for row in rows if row.get(field)}
+
+
+def is_orientation_variation_pair_id(pair_id: str) -> bool:
+    tokens = pair_id.split("_")
+    return (
+        "reversed" in tokens
+        or "reverse" in tokens
+        or "negative" in tokens
+    )
+
+
+def is_multi_core_pair_id(pair_id: str) -> bool:
+    return any(
+        marker in pair_id
+        for marker in (
+            "three_core",
+            "four_",
+            "five_",
+            "_mix",
+            "mixed_core",
+        )
+    )
 
 
 def duration_to_seconds(value: float, unit: str) -> float:
@@ -1434,6 +1564,101 @@ def sparse_wrapper_family_gap_summary(
     return ", ".join(fragments)
 
 
+def combined_additive_structure_summary(corpus_structure: dict[str, Any]) -> str:
+    combined = corpus_structure.get("combined_additive_zero")
+    if not isinstance(combined, dict):
+        return ""
+
+    family_count = corpus_structure.get("family_count")
+    total_families = family_count if isinstance(family_count, int) else None
+    fragments = [
+        f"total={combined.get('total', 0)}",
+        f"families={combined.get('family_count', 0)}",
+        f"collapse_rows={combined.get('collapse_rows', 0)}",
+        family_coverage_fragment(
+            "collapse_families",
+            combined.get("collapse_family_count"),
+            total_families,
+        ),
+        f"depth4_rows={combined.get('depth4_rows', 0)}",
+        family_coverage_fragment(
+            "depth4_families",
+            combined.get("depth4_family_count"),
+            total_families,
+        ),
+        f"orientation_rows={combined.get('orientation_rows', 0)}",
+        family_coverage_fragment(
+            "orientation_families",
+            combined.get("orientation_family_count"),
+            total_families,
+        ),
+        f"multi_core_rows={combined.get('multi_core_rows', 0)}",
+        family_coverage_fragment(
+            "multi_core_families",
+            combined.get("multi_core_family_count"),
+            total_families,
+        ),
+    ]
+
+    for label, field in (
+        ("depth4_missing", "depth4_missing_families"),
+        ("orientation_missing", "orientation_missing_families"),
+    ):
+        missing = combined.get(field)
+        if isinstance(missing, list) and missing:
+            fragments.append(f"{label}={format_family_list(missing)}")
+
+    min_case_count = combined.get("min_family_case_count")
+    low_family_count = combined.get("low_family_count")
+    if isinstance(min_case_count, int):
+        fragments.append(f"min_family_case_count={min_case_count}")
+    if isinstance(low_family_count, int):
+        if isinstance(total_families, int) and total_families > 0:
+            fragments.append(f"families_at_min={low_family_count}/{total_families}")
+        else:
+            fragments.append(f"families_at_min={low_family_count}")
+
+    low_family_counts = combined.get("low_family_counts")
+    if isinstance(low_family_counts, dict) and low_family_counts:
+        if len(low_family_counts) <= 8:
+            low_summary = ", ".join(
+                f"{family}:{count}" for family, count in sorted(low_family_counts.items())
+            )
+            fragments.append(f"low_family_counts={low_summary}")
+        else:
+            above_min_counts = combined.get("above_min_family_counts")
+            if isinstance(above_min_counts, dict) and above_min_counts:
+                above_min_summary = ", ".join(
+                    f"{family}:{count}"
+                    for family, count in sorted(above_min_counts.items())
+                )
+                fragments.append(f"above_min_family_counts={above_min_summary}")
+
+    return " ".join(fragment for fragment in fragments if fragment)
+
+
+def format_family_list(families: list[Any], max_items: int = 8) -> str:
+    names = sorted(family for family in families if isinstance(family, str))
+    if not names:
+        return ""
+    if len(names) <= max_items:
+        return ",".join(names)
+    visible = ",".join(names[:max_items])
+    return f"{visible},+{len(names) - max_items}"
+
+
+def family_coverage_fragment(
+    label: str,
+    covered: Any,
+    total_families: int | None,
+) -> str:
+    if not isinstance(covered, int):
+        return ""
+    if isinstance(total_families, int) and total_families > 0:
+        return f"{label}={covered}/{total_families}"
+    return f"{label}={covered}"
+
+
 def sparse_wrapper_complexity_family_breadth_summary(
     wrapper_complexity_family_rows: list[dict[str, Any]],
     sparse_wrappers: set[str],
@@ -1572,6 +1797,14 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             lines.append(
                 f"- Largest wrapper x complexity share: {largest_wrapper_complexity_share:.1f}%"
             )
+        corpus_structure = embedded_metrics.get("corpus_structure")
+        if isinstance(corpus_structure, dict):
+            combined_summary = combined_additive_structure_summary(corpus_structure)
+            if combined_summary:
+                lines.append(
+                    "- Combined additive composition: "
+                    f"{combined_summary}"
+                )
         if isinstance(wrapper_names, list) and wrapper_names:
             lines.append(f"- Wrappers: {', '.join(wrapper_names)}")
         wrapper_rows = embedded_metrics.get("wrapper_rows")
@@ -2162,6 +2395,8 @@ def main() -> int:
                 overall_exit = 1
             else:
                 status = suite_status(spec.name, metrics, returncode)
+                if spec.name == "embedded_equivalence_context":
+                    metrics["corpus_structure"] = embedded_corpus_structure_metrics()
         measured_elapsed = effective_elapsed_seconds(metrics, elapsed)
         guardrail = compute_embedded_runtime_guardrail(
             baseline_data, spec.name, measured_elapsed

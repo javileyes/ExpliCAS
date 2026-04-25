@@ -95,6 +95,42 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-04-25: Nested-Fraction Three-Core Live Corpus Promotion
+
+- area:
+  - corpus generation / embedded equivalence live promotion
+  - [embedded_equivalence_context_corpus.csv](/Users/javiergimenezmoya/developer/math/docs/embedded_equivalence_context_corpus.csv)
+- status:
+  - `rejected`
+- local lane:
+  - `python3 scripts/engine_embedded_candidate_smoke.py --json --row '((u*v)/(u+v) - 1/(1/u + 1/v)) + (sec(y) - 1/cos(y)) + (ln(a)+ln(b)-ln(a*b)),0,combined_additive_zero,nested_fraction_trigreciprocal_log_contract_three_core_combined_zero,nested_fraction,(u*v)/(u+v),1/(1/u + 1/v),collapse exact zero additive subexpressions'`
+  - `cargo run --release -q -p cas_solver --example run_embedded_equivalence_context_corpus -- --wrapper combined_additive_zero --family nested_fraction`
+- local value:
+  - smoke passed `1/1`
+  - local `nested_fraction` slice passed `4/4`
+  - projected coverage gain was `combined_additive_zero.multi_core_families: 2/23 -> 3/23`
+- global result:
+  - retained baseline before the attempt:
+    - `embedded_equivalence_context`: `1332/1332`, `Elapsed: 3.87s`
+  - attempted promotion:
+    - first guardrail: `1333/1333`, `Elapsed: 5.06s`
+    - rerun guardrail: `1333/1333`, `Elapsed: 5.10s`
+  - pressure suite still passed:
+    - `simplify_zero_mixed`: `450/450`
+  - decision:
+    - rejected as live corpus promotion
+- best current explanation:
+  - the three-core row combines nested-fraction cancellation, trig reciprocal,
+    and symbolic log contraction in a way that is semantically valid but too
+    expensive for a single live row
+  - the smoke lane itself took `1.35s`, so the cost appears attached to this
+    candidate shape rather than to scorecard noise
+- plausible combination later:
+  - keep this shape as a discovery/stress candidate, not live
+  - find a cheaper `nested_fraction` multi-core representative without symbolic
+    log contraction, or first add profiling that isolates which sub-block makes
+    this exact composition hot
+
 ### 2026-04-21: Fast Solve-Prep Neg-Rewritten Default-Simplify Route
 
 - area:
@@ -689,3 +725,73 @@ The burden of proof stays the same:
   - it should be either:
     - a dedicated negative-linear symbolic route that keeps `c` normalized
     - or a prefilter earlier than coefficient extraction
+
+### 2026-04-25: `nested_fraction` Three-Core Coverage Candidate
+
+- area:
+  - [embedded_equivalence_context_corpus.csv](/Users/javiergimenezmoya/developer/math/docs/embedded_equivalence_context_corpus.csv)
+  - `combined_additive_zero`
+- status:
+  - `rejected as live coverage row`
+- attempted row:
+  - `nested_fraction_trigreciprocal_factor_three_core_combined_zero`
+  - `(1/(1/u + 1/v) - (u*v)/(u+v)) + (sec(y) - 1/cos(y)) + (a^2-b^2 - (a-b)*(a+b))`
+- local result:
+  - candidate smoke passed:
+    - `1/1` cases
+    - `runner_elapsed=1.34s`
+    - `wall=1.664s`
+  - focused slice passed:
+    - `combined_additive_zero` x `nested_fraction`
+    - `4/4` cases
+    - `Elapsed: 1.30s`
+  - `make engine-fast` passed
+- global result:
+  - `make engine-scorecard` passed correctness:
+    - `embedded_equivalence_context: 1344/1344`
+    - `combined_additive_zero: 102`
+    - `nested_fraction: 4`
+    - `multi_core_family_count: 14`
+  - but the embedded lane cost rose from the retained baseline:
+    - `Elapsed: 4.89s -> 6.13s`
+- decision:
+  - reverted the live corpus row
+  - keep the expression as a discovered stress candidate, not as retained
+    coverage
+- best current explanation:
+  - the candidate proves the missing structural axis, but the nested fraction
+    core is expensive enough that composing it with two additional exact-zero
+    cores is a poor live guardrail tradeoff
+- plausible combination later:
+  - find a cheaper `nested_fraction` representative for the same three-core
+    axis
+  - or improve nested fraction runtime before promoting this shape
+
+### 2026-04-25: `fraction_decompose` Three-Core Coverage Candidate
+
+- area:
+  - [embedded_equivalence_context_corpus.csv](/Users/javiergimenezmoya/developer/math/docs/embedded_equivalence_context_corpus.csv)
+  - `combined_additive_zero`
+- status:
+  - `rejected before live promotion`
+- attempted row:
+  - `fraction_decompose_trigreciprocal_factor_three_core_combined_zero`
+  - `((a*x+b)/(x+c) - (a + (b-a*c)/(x+c))) + (sec(y) - 1/cos(y)) + (p^2-q^2 - (p-q)*(p+q))`
+- local lane:
+  - `python3 scripts/engine_embedded_candidate_smoke.py --timeout-seconds 6 --expect pass --row ...`
+- local result:
+  - timed out before promotion:
+    - `status=timeout`
+    - `wall=6.005s`
+- decision:
+  - did not add the row to the live corpus
+  - keep this exact shape as stress/discovery only
+- best current explanation:
+  - the `fraction_decompose` core is stable in existing wrappers, but this
+    three-core composition is too hot for live guardrail promotion
+  - the low family count should not be closed by adding a broad
+    `trig reciprocal + factor` companion around this core
+- plausible combination later:
+  - look for a cheaper `fraction_decompose` multi-core representative
+  - or improve the fraction-decompose residual route before attempting this
+    coverage axis again
