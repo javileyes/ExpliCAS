@@ -1,15 +1,15 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-04-25T17:30:15.475629+00:00
+- Generated: 2026-04-25T19:49:43.396046+00:00
 - Git branch: main
-- Git commit: `8136a3b3fae36cce956234ac41d5e330ebb94dc3`
+- Git commit: `cd6daf80700b0b69ae042cd0b6c14dfa1ca0ffc4`
 - Profile: `guardrail`
 
 ## Embedded Runtime Guardrail
 
 - Dimension: contextual simplify/equivalence under real wrappers.
 - Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 5.06s
+- Elapsed: 4.74s
 - Coverage axes: 7 wrappers across 23 families
 - Context axes: 4 complexity levels across 6 shell depths
 - Largest wrapper share: 21.4%
@@ -35,7 +35,7 @@
 
 - Dimension: source-to-target bridgeability and path quality.
 - Interpretation: measures planner/strategy reachability; not contextual wrapper strength.
-- Outcomes: derived=279 unsupported=0 not_equivalent=1
+- Outcomes: derived=280 unsupported=0 not_equivalent=1
 - Path quality: mean_step_count=1.03 long_path_rate=0.00
 
 ## Simplify Benchmark Interpretation
@@ -47,6 +47,6 @@
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 5.06s | passed=1347 failed=0 total=1347 wrappers=7 families=23 |
-| `derive_contract` | `pass` | 2.67s | derived=279 unsupported=0 not_equivalent=1 mean_step_count=1.03 |
-| `simplify_strict` | `pass` | 17.84s | nf=0 proved=16475 numeric=0 inconclusive=0 timeouts=0 |
+| `embedded_equivalence_context` | `pass` | 4.74s | passed=1347 failed=0 total=1347 wrappers=7 families=23 |
+| `derive_contract` | `pass` | 2.62s | derived=280 unsupported=0 not_equivalent=1 mean_step_count=1.03 |
+| `simplify_strict` | `pass` | 17.38s | nf=0 proved=16475 numeric=0 inconclusive=0 timeouts=0 |

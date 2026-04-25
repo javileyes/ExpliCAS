@@ -28,7 +28,10 @@ pub(super) fn should_absorb_preparatory_step_at(
         if is_inverse_tan_preparatory_step(next_step) {
             continue;
         }
-        return next_step.rule_name == "Inverse Tan Relations";
+        return matches!(
+            next_step.rule_name.as_str(),
+            "Inverse Tan Relations" | "Inverse Trig Composition"
+        );
     }
 
     false

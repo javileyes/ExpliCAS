@@ -2,7 +2,9 @@ use std::collections::BTreeSet;
 
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_engine::NormalFormGoal;
-use cas_math::inverse_trig_composition_support::try_plan_inverse_atan_reciprocal_add_expr;
+use cas_math::inverse_trig_composition_support::{
+    try_plan_inverse_atan_reciprocal_add_expr, try_plan_inverse_trig_composition_expr,
+};
 use cas_math::summation_support::{
     try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation,
 };
@@ -801,6 +803,16 @@ fn detect_inverse_trig_rewritten_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
+    if let Some(plan) = try_plan_inverse_trig_composition_expr(ctx, source_expr, false, true) {
+        if strong_target_match(ctx, plan.rewritten, target_expr) {
+            return true;
+        }
+        let simplified = run_default_simplify(ctx, plan.rewritten);
+        if simplified != plan.rewritten && strong_target_match(ctx, simplified, target_expr) {
+            return true;
+        }
+    }
+
     let Some(plan) = try_plan_inverse_atan_reciprocal_add_expr(ctx, source_expr, false) else {
         return false;
     };
@@ -1611,8 +1623,13 @@ mod tests {
 
     #[test]
     fn classifies_tabulated_inverse_trig_rewritten_targets() {
-        let profile = classify("arctan(a) + arctan(1/a)", "pi/2");
-        assert_eq!(profile.form, DeriveTargetForm::InverseTrigRewritten);
+        for (source, target) in [
+            ("arctan(a) + arctan(1/a)", "pi/2"),
+            ("asin(x/sqrt(x^2 + 1))", "arctan(x)"),
+        ] {
+            let profile = classify(source, target);
+            assert_eq!(profile.form, DeriveTargetForm::InverseTrigRewritten);
+        }
     }
 
     #[test]

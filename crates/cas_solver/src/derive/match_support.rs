@@ -22,6 +22,10 @@ pub(crate) fn presentational_target_match(
         return true;
     }
 
+    if inverse_trig_alias_match(ctx, actual, target) {
+        return true;
+    }
+
     if projected_root_power_match(ctx, actual, target) {
         return true;
     }
@@ -116,6 +120,90 @@ fn normalized_structural_match(ctx: &mut cas_ast::Context, actual: ExprId, targe
     let normalized_actual = cas_math::canonical_forms::normalize_core(ctx, actual);
     let normalized_target = cas_math::canonical_forms::normalize_core(ctx, target);
     cas_ast::ordering::compare_expr(ctx, normalized_actual, normalized_target) == Ordering::Equal
+}
+
+fn inverse_trig_alias_match(ctx: &mut cas_ast::Context, actual: ExprId, target: ExprId) -> bool {
+    let canonical_actual = canonicalize_inverse_trig_aliases(ctx, actual);
+    let canonical_target = canonicalize_inverse_trig_aliases(ctx, target);
+
+    if canonical_actual == actual && canonical_target == target {
+        return false;
+    }
+
+    let normalized_actual = cas_math::canonical_forms::normalize_core(ctx, canonical_actual);
+    let normalized_target = cas_math::canonical_forms::normalize_core(ctx, canonical_target);
+    cas_ast::ordering::compare_expr(ctx, normalized_actual, normalized_target) == Ordering::Equal
+}
+
+fn canonicalize_inverse_trig_aliases(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            let left = canonicalize_inverse_trig_aliases(ctx, left);
+            let right = canonicalize_inverse_trig_aliases(ctx, right);
+            ctx.add(Expr::Add(left, right))
+        }
+        Expr::Sub(left, right) => {
+            let left = canonicalize_inverse_trig_aliases(ctx, left);
+            let right = canonicalize_inverse_trig_aliases(ctx, right);
+            ctx.add(Expr::Sub(left, right))
+        }
+        Expr::Mul(left, right) => {
+            let left = canonicalize_inverse_trig_aliases(ctx, left);
+            let right = canonicalize_inverse_trig_aliases(ctx, right);
+            ctx.add(Expr::Mul(left, right))
+        }
+        Expr::Div(left, right) => {
+            let left = canonicalize_inverse_trig_aliases(ctx, left);
+            let right = canonicalize_inverse_trig_aliases(ctx, right);
+            ctx.add(Expr::Div(left, right))
+        }
+        Expr::Pow(left, right) => {
+            let left = canonicalize_inverse_trig_aliases(ctx, left);
+            let right = canonicalize_inverse_trig_aliases(ctx, right);
+            ctx.add(Expr::Pow(left, right))
+        }
+        Expr::Neg(inner) => {
+            let inner = canonicalize_inverse_trig_aliases(ctx, inner);
+            ctx.add(Expr::Neg(inner))
+        }
+        Expr::Hold(inner) => {
+            let inner = canonicalize_inverse_trig_aliases(ctx, inner);
+            ctx.add(Expr::Hold(inner))
+        }
+        Expr::Function(fn_id, args) => {
+            let args = args
+                .into_iter()
+                .map(|arg| canonicalize_inverse_trig_aliases(ctx, arg))
+                .collect::<Vec<_>>();
+            match ctx
+                .builtin_of(fn_id)
+                .and_then(canonical_inverse_trig_builtin)
+            {
+                Some(builtin) => ctx.call_builtin(builtin, args),
+                None => ctx.add(Expr::Function(fn_id, args)),
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let data = data
+                .into_iter()
+                .map(|entry| canonicalize_inverse_trig_aliases(ctx, entry))
+                .collect();
+            ctx.add(Expr::Matrix { rows, cols, data })
+        }
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
+    }
+}
+
+fn canonical_inverse_trig_builtin(builtin: BuiltinFn) -> Option<BuiltinFn> {
+    match builtin {
+        BuiltinFn::Asin => Some(BuiltinFn::Arcsin),
+        BuiltinFn::Acos => Some(BuiltinFn::Arccos),
+        BuiltinFn::Atan => Some(BuiltinFn::Arctan),
+        BuiltinFn::Asec => Some(BuiltinFn::Arcsec),
+        BuiltinFn::Acsc => Some(BuiltinFn::Arccsc),
+        BuiltinFn::Acot => Some(BuiltinFn::Arccot),
+        _ => None,
+    }
 }
 
 fn projected_root_power_match(ctx: &mut cas_ast::Context, actual: ExprId, target: ExprId) -> bool {
@@ -422,6 +510,15 @@ mod tests {
         let mut ctx = cas_ast::Context::new();
         let actual = cas_parser::parse("a - b - c", &mut ctx).expect("actual");
         let target = cas_parser::parse("a - c - b", &mut ctx).expect("target");
+        assert!(strong_target_match(&mut ctx, actual, target));
+        assert!(strong_target_match(&mut ctx, target, actual));
+    }
+
+    #[test]
+    fn matches_inverse_trig_alias_targets() {
+        let mut ctx = cas_ast::Context::new();
+        let actual = cas_parser::parse("arctan(x)", &mut ctx).expect("actual");
+        let target = cas_parser::parse("atan(x)", &mut ctx).expect("target");
         assert!(strong_target_match(&mut ctx, actual, target));
         assert!(strong_target_match(&mut ctx, target, actual));
     }

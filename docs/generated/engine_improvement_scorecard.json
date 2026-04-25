@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-04-25T17:30:15.475629+00:00",
+  "generated_at": "2026-04-25T19:49:43.396046+00:00",
   "git": {
     "branch": "main",
-    "commit": "8136a3b3fae36cce956234ac41d5e330ebb94dc3"
+    "commit": "cd6daf80700b0b69ae042cd0b6c14dfa1ca0ffc4"
   },
   "orchestrator_profile_requested": false,
   "profile": "guardrail",
@@ -24,11 +24,11 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 2.674,
+      "elapsed_seconds": 2.615,
       "env": {},
       "guardrail": null,
       "metrics": {
-        "derived": 279,
+        "derived": 280,
         "long_path_rate": 0.0,
         "mean_step_count": 1.03,
         "not_equivalent": 1,
@@ -36,7 +36,7 @@
         "supported_equiv_rate": 1.0,
         "unsupported": 0
       },
-      "process_elapsed_seconds": 2.674,
+      "process_elapsed_seconds": 2.615,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -56,7 +56,7 @@
         "--"
       ],
       "delta": {},
-      "elapsed_seconds": 5.06,
+      "elapsed_seconds": 4.74,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -185,8 +185,8 @@
         "max_expression_depth": 18,
         "max_shell_depth": 5,
         "passed": 1347,
-        "reported_elapsed": "5.06s",
-        "reported_elapsed_seconds": 5.06,
+        "reported_elapsed": "4.74s",
+        "reported_elapsed_seconds": 4.74,
         "shell_depth_count": 6,
         "shell_depth_rows": {
           "0": {
@@ -1912,7 +1912,7 @@
           }
         ]
       },
-      "process_elapsed_seconds": 5.382,
+      "process_elapsed_seconds": 5.051,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1935,7 +1935,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 17.836,
+      "elapsed_seconds": 17.383,
       "env": {
         "METATEST_MAX_EXAMPLES": "20",
         "METATEST_PROGRESS_EVERY": "1000",
@@ -2086,7 +2086,7 @@
         "timeouts": 0,
         "total_combos": 16475
       },
-      "process_elapsed_seconds": 17.836,
+      "process_elapsed_seconds": 17.383,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,

@@ -84,6 +84,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Pre-order Sum/Difference of Cubes Cancel" => "Cancelar factor tras factorizar cubos",
         "Cancel Sum/Difference of Cubes Fraction" => "Factorizar cubos y cancelar",
         "Inverse Tan Relations" => "Aplicar identidad de arctangentes",
+        "Inverse Trig Composition" => "Aplicar composición trigonométrica inversa",
         "Sqrt Perfect Square" | "Simplify Square Root" | "Simplify perfect square root" => {
             "Reconocer un cuadrado perfecto bajo la raíz"
         }

@@ -34,6 +34,7 @@ hyperbolic_expand_cosh_to_exp_definition,simplify,cosh(x),(e^x + e^(-x))/2,deriv
 hyperbolic_expand_sinh_to_exp_definition,simplify,sinh(x),(e^x - e^(-x))/2,derived,rewrite hyperbolics
 hyperbolic_expand_tanh_to_exp_definition,simplify,tanh(x),(e^x - e^(-x))/(e^x + e^(-x)),derived,rewrite hyperbolics
 inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,derived,rewrite inverse trigs
+arcsin_sin_arctan_safe_composition,simplify,asin(x/sqrt(x^2 + 1)),atan(x),derived,rewrite inverse trigs
 cancel_fraction_difference_squares,simplify,(a^2-b^2)/(a-b),a+b,derived,cancel fraction
 cancel_fraction_difference_squares_with_passthrough,simplify,(a^2-b^2)/(a-b)+c,a+b+c,derived,cancel fraction
 cancel_fraction_difference_cubes,simplify,(a^3-b^3)/(a-b),a^2+a*b+b^2,derived,cancel fraction

@@ -27,7 +27,10 @@ use crate::derive::{
 
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_engine::NormalFormGoal;
-use cas_math::inverse_trig_composition_support::try_plan_inverse_atan_reciprocal_add_expr;
+use cas_math::inverse_trig_composition_support::{
+    try_plan_inverse_atan_reciprocal_add_expr, try_plan_inverse_trig_composition_expr,
+    InverseTrigCompositionKind,
+};
 use cas_math::summation_support::{
     try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation, FiniteAggregateCall,
     ProductEvaluationKind, SumEvaluationKind,
@@ -4419,6 +4422,12 @@ fn run_inverse_trig_rewrite_stage(
     target_expr: ExprId,
     collect_steps: bool,
 ) -> DeriveStageOutput {
+    if let Some(output) =
+        run_inverse_trig_composition_rewrite_stage(simplifier, expr, target_expr, collect_steps)
+    {
+        return output;
+    }
+
     let Some(plan) =
         try_plan_inverse_atan_reciprocal_add_expr(&mut simplifier.context, expr, false)
     else {
@@ -4470,6 +4479,64 @@ fn run_inverse_trig_rewrite_stage(
         expr: rewritten,
         steps,
     }
+}
+
+fn inverse_trig_composition_derive_desc(kind: InverseTrigCompositionKind) -> &'static str {
+    match kind {
+        InverseTrigCompositionKind::SinArcsin => "sin(arcsin(x)) = x",
+        InverseTrigCompositionKind::CosArccos => "cos(arccos(x)) = x",
+        InverseTrigCompositionKind::TanArctan => "tan(arctan(x)) = x",
+        InverseTrigCompositionKind::ArctanTanArctan => "arctan(tan(arctan(u))) = arctan(u)",
+        InverseTrigCompositionKind::ArcsinSinArctan => "arcsin(x/sqrt(1+x^2)) = arctan(x)",
+    }
+}
+
+fn run_inverse_trig_composition_rewrite_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<DeriveStageOutput> {
+    let plan = try_plan_inverse_trig_composition_expr(&mut simplifier.context, expr, false, true)?;
+
+    let rewritten = if strong_target_match(&mut simplifier.context, plan.rewritten, target_expr) {
+        plan.rewritten
+    } else {
+        let (simplified, _, _) = simplifier.simplify_with_stats(
+            plan.rewritten,
+            crate::SimplifyOptions {
+                suppress_depth_overflow_warnings: true,
+                ..crate::SimplifyOptions::default()
+            },
+        );
+        if !strong_target_match(&mut simplifier.context, simplified, target_expr) {
+            return None;
+        }
+        simplified
+    };
+
+    let steps = if collect_steps {
+        let mut step = crate::Step::with_snapshots(
+            inverse_trig_composition_derive_desc(plan.kind),
+            "Inverse Trig Composition",
+            expr,
+            rewritten,
+            Vec::new(),
+            Some(&simplifier.context),
+            expr,
+            plan.rewritten,
+        );
+        step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        vec![step]
+    } else {
+        Vec::new()
+    };
+
+    Some(DeriveStageOutput {
+        expr: rewritten,
+        steps,
+    })
 }
 
 fn run_fraction_cancel_stage(
@@ -6753,6 +6820,30 @@ mod tests {
         assert_eq!(derived.2, DeriveStrategy::FactorialRewrite);
         assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.1[0].rule_name, "Consecutive Factorial Ratio");
+    }
+
+    #[test]
+    fn direct_derive_rewrites_safe_arcsin_arctan_composition_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("asin(x/sqrt(x^2 + 1))", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("arctan(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::InverseTrigRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Inverse Trig Composition");
     }
 
     #[test]

@@ -160,6 +160,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
             generate_sum_difference_cubes_cancel_substeps(ctx, step)
         }
         "Inverse Tan Relations" => generate_inverse_tan_relation_substeps(ctx, step),
+        "Inverse Trig Composition" => generate_inverse_trig_composition_substeps(ctx, step),
         "Subtraction Self-Cancel" => generate_subtraction_self_cancel_substeps(ctx, step),
         "Cancel Reciprocal Exponents" => generate_cancel_reciprocal_exponents_substeps(ctx, step),
         "Polynomial Identity" => generate_polynomial_identity_exact_cancel_substeps(ctx, step),
@@ -6420,6 +6421,64 @@ fn generate_inverse_tan_relation_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     }
 
     out
+}
+
+fn generate_inverse_trig_composition_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if !step.description.contains("arcsin") || !step.description.contains("arctan") {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some(arcsin_arg) =
+        inverse_trig_unary_arg(ctx, before, &[BuiltinFn::Arcsin, BuiltinFn::Asin])
+    else {
+        return Vec::new();
+    };
+    let Some(x) = inverse_trig_unary_arg(ctx, after, &[BuiltinFn::Arctan, BuiltinFn::Atan]) else {
+        return Vec::new();
+    };
+
+    let mut work = ctx.clone();
+    let arctan_x = work.call_builtin(BuiltinFn::Arctan, vec![x]);
+    let sin_arctan_x = work.call_builtin(BuiltinFn::Sin, vec![arctan_x]);
+    let arcsin_sin_arctan_x = work.call_builtin(BuiltinFn::Arcsin, vec![sin_arctan_x]);
+
+    vec![
+        temp_ctx_substep(
+            "Reconocer x/sqrt(1+x^2) como sin(arctan(x))",
+            &work,
+            arcsin_arg,
+            sin_arctan_x,
+        ),
+        temp_ctx_substep(
+            "Sustituir dentro de arcsin",
+            &work,
+            before,
+            arcsin_sin_arctan_x,
+        ),
+        temp_ctx_substep(
+            "Usar asin(sin(u)) = u en el rango principal",
+            &work,
+            arcsin_sin_arctan_x,
+            arctan_x,
+        ),
+    ]
+}
+
+fn inverse_trig_unary_arg(
+    ctx: &Context,
+    expr: ExprId,
+    accepted_builtins: &[BuiltinFn],
+) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(*fn_id)?;
+    accepted_builtins.contains(&builtin).then_some(args[0])
 }
 
 fn generate_sqrt_perfect_square_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {

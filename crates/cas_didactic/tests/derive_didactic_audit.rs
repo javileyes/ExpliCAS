@@ -1773,6 +1773,30 @@ fn derive_didactic_inverse_tan_identity_uses_exact_angle_language() {
 }
 
 #[test]
+fn derive_didactic_arcsin_arctan_composition_uses_inverse_trig_language() {
+    let artifact = audit_case(&derive_case_by_id("arcsin_sin_arctan_safe_composition"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Aplicar composición trigonométrica inversa")
+        })
+        .expect("expected inverse-trig composition step");
+
+    assert_eq!(
+        step_substep_titles(step),
+        [
+            "Reconocer x/sqrt(1+x^2) como sin(arctan(x))",
+            "Sustituir dentro de arcsin",
+            "Usar asin(sin(u)) = u en el rango principal"
+        ]
+    );
+}
+
+#[test]
 fn derive_didactic_trig_quotient_explains_identities_then_tangent() {
     let artifact = audit_case(&derive_case_by_id(
         "contract_trig_cos_diff_sin_diff_quotient",

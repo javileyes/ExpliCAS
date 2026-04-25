@@ -610,6 +610,7 @@ fn derive_pairs_follow_expected_outcomes_simplify_log_representatives() {
             "combine_like_terms",
             "hyperbolic_pythagorean_identity_with_passthrough",
             "inverse_tan_identity",
+            "arcsin_sin_arctan_safe_composition",
             "perfect_square_root_to_abs_with_passthrough",
             "expand_log_general_base_powered_two_denominator_factors_with_powered_denominator",
             "contract_general_base_logs_to_grouped_power_with_passthrough",
