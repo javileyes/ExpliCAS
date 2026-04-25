@@ -32,6 +32,10 @@ The rest of the campaign policies should derive from it:
 - orchestrator observability is the strategy for `observability` iterations
 - corpus growth is the strategy for `coverage` and part of `robustness`
 - the combination ledger is the strategy for `combination` iterations
+- cohesion refactoring is the strategy for structural work on large engine
+  files when the goal is safer future iteration rather than immediate
+  mathematical coverage:
+  [ENGINE_COHESION_REFACTORING_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COHESION_REFACTORING_STRATEGY.md)
 
 Each iteration should choose one primary investment class before touching code:
 
@@ -142,6 +146,19 @@ Also allow dimensional coverage to steer the class choice:
 - prefer `runtime` only if the hotspot is not merely the byproduct of severe
   concentration in an under-grown dimension that should be expanded instead
 
+Also allow structural cohesion to steer the class choice:
+
+- prefer `observability` when a large file or route family is too opaque to
+  safely continue adding shortcuts
+- prefer `robustness` when a god-file pattern creates stack, timeout, or
+  harness fragility risk
+- prefer `runtime` only when a structural boundary removes measured hot-path
+  work
+- do not classify refactoring as a separate goal; classify the retained value it
+  creates
+- for this track, follow
+  [ENGINE_COHESION_REFACTORING_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COHESION_REFACTORING_STRATEGY.md)
+
 ### Per-Iteration Loop
 
 Each automatic iteration should do this in order:
@@ -160,6 +177,11 @@ Each automatic iteration should do this in order:
 7. validate against the relevant benchmark roles
 8. if the change fails global retention, revert the runtime change and preserve
    the learning in observability and/or the combination ledger
+
+For cohesion refactors, prefer extraction-only iterations before algorithmic
+generalization. A behavior-preserving extraction can be retained as
+`observability` or `robustness` only if the same scorecard guardrails remain
+green and the new module boundary makes ownership clearer.
 
 ### Per-Iteration Capture Template
 

@@ -1,0 +1,130 @@
+Quiero que ejecutes exactamente una iteración de automejora del engine matemático y/o de sus steps didácticos en este repo.
+
+Antes de tocar código, lee y sigue estas fuentes de verdad actuales del repo:
+- docs/ENGINE_IMPROVEMENT_AUTOMATION.md
+- docs/ENGINE_TEST_CORPUS_ROADMAP.md
+- docs/METAMORPHIC_TESTING.md
+- docs/DERIVE_NEXT_LEVEL_ROADMAP.md
+- docs/DERIVE_ROADMAP.md sólo como contexto histórico/base
+- scripts/engine_improvement_scorecard.py
+- docs/generated/ si contiene artefactos recientes
+
+Fuentes condicionales:
+- Si el hotspot cae en orquestación, lee docs/ORCHESTRATOR_OBSERVABILITY_STRATEGY.md
+- Si el trabajo toca cohesión/refactor estructural de god files como orchestrator.rs o arithmetic.rs, lee docs/ENGINE_COHESION_REFACTORING_STRATEGY.md
+- Si tocas calidad didáctica de derive/steps, lee docs/DERIVE_DIDACTIC_AUDIT.md si existe
+- Si una idea gana localmente pero pierde globalmente, registra el aprendizaje en docs/ENGINE_COMBINATION_LEDGER.md
+- Si aparece un slow test de CI, clasifícalo siguiendo docs/SLOW_CI_TEST_LEDGER.md
+
+Si este prompt entra en conflicto con los documentos actuales del repo, obedecen los documentos del repo.
+
+Objetivo:
+- Ejecuta una única mejora concreta, acotada y validable con el mayor ROI retenible.
+- No persigas “hacer el engine más listo” en abstracto.
+- No hagas una gran reescritura.
+- Si el problema es de harness/test y no del engine, arréglalo como harness y dilo explícitamente.
+
+Optimiza en este orden:
+1. mantener failed = 0
+2. reducir timeouts, stack overflows, no terminación o rutas claramente frágiles
+3. preservar o mejorar runtime en lanes promovidos, especialmente embedded
+4. expandir completitud matemática útil en dimensiones infracubiertas:
+   - wrapper spread
+   - shell_depth
+   - noise_budget
+   - cross-family composition
+   - sign/orientation robustness
+   - semantic/domain regime cuando aplique
+5. aumentar cobertura útil o NF-convergent sólo si es reutilizable y no degrada 1-4
+6. mejorar reachability y calidad didáctica de derive sin abrir búsqueda ciega
+7. reducir deuda estructural sólo si mejora observabilidad, robustez o runtime medible
+
+Modelo de trabajo:
+- Usa perfiles ejecutables actuales:
+  - fast
+  - guardrail
+  - pressure
+  - full
+- Usa frozen / live / stress sólo como roles conceptuales de benchmark/corpus.
+- No confundas ambos vocabularios.
+
+Proceso obligatorio:
+1. Lee las fuentes anteriores y revisa artefactos recientes en docs/generated/.
+2. Inspecciona el estado actual del repo sin revertir cambios ajenos.
+3. Clasifica los candidatos en una sola clase principal:
+   - runtime
+   - coverage
+   - robustness
+   - observability
+   - combination
+4. Si el trabajo es refactor/cohesión, no inventes una clase nueva: clasifícalo por el valor retenible que aporta.
+5. Antes de editar, escribe este capture mínimo:
+   - investment_class:
+   - success_condition:
+   - primary_dimension:
+   - secondary_dimension:
+   - hypothesis:
+   - relevant_lanes:
+   - promotion_target:
+   - retain_if:
+   - reject_if:
+6. Si eliges coverage, añade:
+   - structural_axis:
+   - why_this_is_not_a_duplicate:
+   - discovery_or_promotion:
+   - if_promoted_why_minimal_representative:
+7. Si eliges refactor/cohesión, añade:
+   - cohesion_scope:
+   - behavior_change_expected:
+8. Elige una única hipótesis y aplica el cambio mínimo retenible.
+9. Valida con la cadencia adecuada:
+   - inner loop: tests tocados + make engine-fast
+   - guardrail: make engine-scorecard
+   - pressure: make engine-scorecard-pressure si tocas normalización, orquestación, arithmetic, tráfico profundo, refactor estructural o casos muy compuestos
+   - make ci sólo como cierre si realmente corresponde
+10. Si la mejora gana localmente pero pierde en embedded o guardrails globales:
+   - no la fuerces
+   - revierte la parte no retenible
+   - conserva el aprendizaje en docs/ENGINE_COMBINATION_LEDGER.md
+11. Si generas casos nuevos, promuévelos de forma conservadora:
+   - primero presión/descubrimiento
+   - luego unit o live si el caso ya es estable y representativo
+   - frozen sólo para mínimos estables y duraderos
+   - variantes grandes o calientes van a stress, no a live
+12. Si tocas derive, prioriza:
+   - planner acotado
+   - target-awareness
+   - path quality
+   - didactic quality
+   - nunca BFS ciego ni búsqueda no acotada
+
+Guardrails:
+- No aceptes una mejora que degrade materialmente embedded sin justificación fuerte, medible y reutilizable.
+- No sobreoptimices un hotspot local dentro de una zona saturada del scorecard.
+- No promociones complejidad sintáctica por sí misma.
+- Una expresión más anidada o con más términos sólo cuenta si añade una dimensión nueva o expone una debilidad reutilizable.
+- Usa casos calientes como feeder de descubrimiento; promueve a live sólo el subconjunto mínimo representativo.
+- No conviertas el corpus en dumping ground de anécdotas o near-duplicates.
+- No confundas mejoras de harness con mejoras reales del motor.
+- No trates DERIVE_ROADMAP.md como roadmap activo si entra en conflicto con DERIVE_NEXT_LEVEL_ROADMAP.md.
+- Para refactors estructurales: extrae antes de abstraer, conserva orden de rutas y valida como trabajo de engine.
+
+Criterio de decisión:
+- Prefiere candidatos con mejor ROI retenible:
+  - impacto real
+  - breadth
+  - confidence
+  - retention probability
+  - bajo coste de implementación
+- En empates, prioriza el candidato que expanda una dimensión débil, cierre una ruta frágil o deje el guardrail/corpus más mantenible.
+
+Entregable:
+- Resume primero el candidato elegido y por qué fue el mayor ROI retenible.
+- Luego implementa y valida.
+- Al final informa:
+  - qué cambiaste
+  - qué métricas, suites o lanes mejoraron o se mantuvieron
+  - qué guardrails corriste
+  - si la iteración fue retenida o rechazada
+  - qué aprendizaje quedó documentado si hubo rechazo parcial
+  - cuál sería la siguiente iteración recomendada

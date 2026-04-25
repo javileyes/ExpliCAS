@@ -32,7 +32,7 @@ use cas_session::SessionState;
 use cas_solver::api::{
     eval_f64, eval_f64_checked, EquivalenceResult, EvalCheckedError, EvalCheckedOptions,
 };
-use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult, Simplifier};
+use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult, Simplifier, StepsMode};
 use cas_solver::wire::eval_str_to_wire;
 use num_traits::Signed;
 use serde_json::Value;
@@ -18183,22 +18183,19 @@ fn rational_ctx_log_square_rule_is_domain_sensitive_without_filter() {
 }
 
 #[test]
-#[ignore = "Debug symbolic proof still overflows stack for this residual; quotient and residual coverage remain in narrower tests"]
 fn trig_square_cube_substitution_now_proves_zero_symbolically() {
     let mut simplifier = Simplifier::with_default_rules();
-    let lhs = parse(
-        "((sin(u)^2)^3 - 1)/((sin(u)^2) - 1)",
+    // This is a symbolic-closure tracker, not a didactic trace test. Exercise
+    // the retained full-expression zero route instead of pre-simplifying both
+    // sides separately, which is a known debug-only trace/proof blow-up path.
+    simplifier.set_steps_mode(StepsMode::Off);
+    let expr = parse(
+        "(((sin(u)^2)^3 - 1)/((sin(u)^2) - 1)) - (sin(u)^4 + sin(u)^2 + 1)",
         &mut simplifier.context,
     )
-    .expect("lhs");
-    let rhs = parse("(sin(u)^4 + sin(u)^2 + 1)", &mut simplifier.context).expect("rhs");
+    .expect("expr");
 
-    let (lhs_simp, _) = simplifier.simplify(lhs);
-    let (rhs_simp, _) = simplifier.simplify(rhs);
-    let diff = simplifier
-        .context
-        .add(cas_ast::Expr::Sub(lhs_simp, rhs_simp));
-    let (diff_simp, _) = simplifier.simplify(diff);
+    let (diff_simp, _) = simplifier.simplify(expr);
     assert_eq!(
         format!(
             "{}",

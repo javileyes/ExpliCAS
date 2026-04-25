@@ -9,6 +9,11 @@ more observable, more locally understandable, and safer to evolve.
 This document is a derived strategy under
 [ENGINE_IMPROVEMENT_AUTOMATION.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_IMPROVEMENT_AUTOMATION.md).
 
+For the broader structural-cohesion policy that also covers
+[arithmetic.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/arithmetic.rs),
+see
+[ENGINE_COHESION_REFACTORING_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COHESION_REFACTORING_STRATEGY.md).
+
 It should lead an iteration only when the ROI selector chooses
 `observability` or when orchestrator observability is the cheapest way to
 unlock a higher-confidence `runtime`, `coverage`, or `combination` change.
@@ -168,6 +173,17 @@ Each extraction should:
 - preserve behavior
 - reduce duplication or clarify ownership
 - come with the same benchmark checks before and after
+
+When the same pattern also lives in `arithmetic.rs`, apply the broader cohesion
+policy:
+
+- first extract the family boundary without changing behavior
+- then compare the extracted families for genuinely shared helper shapes
+- only then introduce a bounded shared algorithm
+
+Do not move a helper out of `orchestrator.rs` merely because it looks similar to
+an arithmetic helper. Shared ownership is justified only when the domain policy,
+candidate gate, step behavior, and embedded-runtime profile all match.
 
 ### Phase 4: Separate Cheap Match From Expensive Rewrite
 

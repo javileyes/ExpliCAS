@@ -885,6 +885,77 @@ fn matches_direct_three_small_zero_cores_root(ctx: &mut Context, expr: ExprId) -
     false
 }
 
+fn matches_direct_four_or_five_small_zero_core_groups_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if !(8..=11).contains(&terms.len()) {
+        return false;
+    }
+
+    let group_count = match terms.len() {
+        8 | 9 => 4,
+        10 | 11 => 5,
+        _ => return false,
+    };
+
+    matches_direct_small_zero_core_groups_root(ctx, &terms, group_count)
+}
+
+fn matches_direct_small_zero_core_groups_root(
+    ctx: &mut Context,
+    terms: &[(ExprId, Sign)],
+    group_count: usize,
+) -> bool {
+    if group_count == 0 {
+        return terms.is_empty();
+    }
+    if terms.len() < group_count * 2 || terms.len() > group_count * 3 {
+        return false;
+    }
+
+    for second_index in 1..terms.len() {
+        let first_group = [terms[0], terms[second_index]];
+        if matches_direct_small_zero_core_group_root(ctx, &first_group) {
+            let remaining: Vec<_> = terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| (index != 0 && index != second_index).then_some(term))
+                .collect();
+            if matches_direct_small_zero_core_groups_root(ctx, &remaining, group_count - 1) {
+                return true;
+            }
+        }
+
+        for third_index in (second_index + 1)..terms.len() {
+            let first_group = [terms[0], terms[second_index], terms[third_index]];
+            if !matches_direct_small_zero_core_group_root(ctx, &first_group) {
+                continue;
+            }
+
+            let remaining: Vec<_> = terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| {
+                    (index != 0 && index != second_index && index != third_index).then_some(term)
+                })
+                .collect();
+            if matches_direct_small_zero_core_groups_root(ctx, &remaining, group_count - 1) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
 fn matches_direct_two_small_zero_core_groups_root(
     ctx: &mut Context,
     terms: &[(ExprId, Sign)],
@@ -947,6 +1018,7 @@ fn is_direct_small_zero_composition_candidate_root(ctx: &mut Context, expr: Expr
         Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => {
             matches_direct_small_zero_pair_root(ctx, *lhs, *rhs)
                 || matches_direct_three_small_zero_cores_root(ctx, expr)
+                || matches_direct_four_or_five_small_zero_core_groups_root(ctx, expr)
         }
         Expr::Mul(lhs, rhs) => matches_direct_small_zero_pair_root(ctx, *lhs, *rhs),
         _ => false,
@@ -7329,6 +7401,7 @@ fn matches_known_direct_pair_root(ctx: &mut Context, lhs_core: ExprId, rhs_core:
         || matches_direct_trig_power_mixed_square_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_half_angle_square_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_scaled_half_angle_square_pair_root(ctx, lhs_core, rhs_core)
+        || matches_direct_half_angle_tan_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_cos_fourth_power_reduction_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_hyperbolic_half_angle_square_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_trig_product_to_sum_sin_sin_pair_root(ctx, lhs_core, rhs_core)
@@ -7345,6 +7418,8 @@ fn matches_known_direct_pair_root(ctx: &mut Context, lhs_core: ExprId, rhs_core:
         || matches_direct_hyperbolic_cosh_difference_to_product_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_recursive_hyperbolic_sinh_sum_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_recursive_hyperbolic_cosh_sum_pair_root(ctx, lhs_core, rhs_core)
+        || matches_direct_hyperbolic_sinh_double_angle_pair_root(ctx, lhs_core, rhs_core)
+        || matches_direct_hyperbolic_cosh_double_angle_square_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_hyperbolic_double_angle_sum_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_pure_double_angle_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_double_angle_inverse_trig_pair_root(ctx, lhs_core, rhs_core)
@@ -7373,6 +7448,8 @@ fn matches_known_direct_pair_root(ctx: &mut Context, lhs_core: ExprId, rhs_core:
         || matches_direct_csc_cot_pythagorean_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_hyperbolic_pythagorean_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_trig_reciprocal_pair_root(ctx, lhs_core, rhs_core)
+        || matches_direct_trig_ratio_pair_root(ctx, lhs_core, rhs_core)
+        || matches_direct_trig_ratio_alias_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_reciprocal_trig_product_one_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_trig_triple_angle_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_hyperbolic_triple_angle_pair_root(ctx, lhs_core, rhs_core)
@@ -10537,18 +10614,9 @@ fn matches_direct_log_square_product_split_zero_identity_root(
                 break;
             }
 
-            let Some((other_base_opt, other_arg)) =
-                cas_math::expr_extract::extract_log_base_argument_view(ctx, other_expr)
+            let Some(other_base) =
+                extract_log_square_split_factor_arg_root(ctx, other_expr, candidate_base_opt)
             else {
-                ok = false;
-                break;
-            };
-            if other_base_opt != candidate_base_opt {
-                ok = false;
-                break;
-            }
-
-            let Some(other_base) = extract_square_power_base_root(ctx, other_arg) else {
                 ok = false;
                 break;
             };
@@ -10572,6 +10640,29 @@ fn matches_direct_log_square_product_split_zero_identity_root(
     }
 
     false
+}
+
+fn extract_log_square_split_factor_arg_root(
+    ctx: &mut Context,
+    expr: ExprId,
+    expected_base_opt: Option<ExprId>,
+) -> Option<ExprId> {
+    if let Some((base_opt, arg)) = cas_math::expr_extract::extract_log_base_argument_view(ctx, expr)
+    {
+        if base_opt == expected_base_opt {
+            if let Some(base) = extract_square_power_base_root(ctx, arg) {
+                return Some(base);
+            }
+        }
+    }
+
+    let (coeff, base_expr) = extract_coef_and_base(ctx, expr);
+    if coeff != BigRational::from_integer(2.into()) {
+        return None;
+    }
+
+    let (base_opt, arg) = cas_math::expr_extract::extract_log_base_argument_view(ctx, base_expr)?;
+    (base_opt == expected_base_opt).then_some(arg)
 }
 
 fn matches_direct_log_product_contract_zero_identity_root(ctx: &mut Context, expr: ExprId) -> bool {
@@ -10794,6 +10885,42 @@ fn matches_direct_ln_abs_product_split_zero_identity_root(ctx: &mut Context, exp
 
         if ok && saw_factor_a && saw_factor_b {
             return true;
+        }
+    }
+
+    false
+}
+
+fn matches_direct_log_cancellation_zero_identity_root(ctx: &mut Context, expr: ExprId) -> bool {
+    matches_direct_log_product_contract_zero_identity_root(ctx, expr)
+        || matches_direct_log_square_product_split_zero_identity_root(ctx, expr)
+        || matches_direct_log_difference_squares_split_zero_identity_root(ctx, expr)
+        || matches_direct_ln_abs_product_split_zero_identity_root(ctx, expr)
+}
+
+fn contains_direct_log_cancellation_zero_group_root(ctx: &mut Context, expr: ExprId) -> bool {
+    if matches_direct_log_cancellation_zero_identity_root(ctx, expr) {
+        return true;
+    }
+
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if !(4..=11).contains(&terms.len()) {
+        return false;
+    }
+
+    for first_index in 0..terms.len().saturating_sub(2) {
+        for second_index in (first_index + 1)..terms.len().saturating_sub(1) {
+            for third_index in (second_index + 1)..terms.len() {
+                let group_terms = [terms[first_index], terms[second_index], terms[third_index]];
+                let group_expr = build_signed_sum_expr_root(ctx, &group_terms);
+                if matches_direct_log_cancellation_zero_identity_root(ctx, group_expr) {
+                    return true;
+                }
+            }
         }
     }
 
@@ -18931,13 +19058,13 @@ fn try_standard_direct_small_zero_pair_shortcut(
     match ctx.get(expr) {
         Expr::Mul(_, _) | Expr::Add(_, _) | Expr::Sub(_, _) => {
             let zero = ctx.num(0);
-            let rewrite =
-                crate::rule::Rewrite::with_local(zero, "Exact Zero Core Composition", expr, zero);
+            let rule_name = exact_zero_leaf_rule_name_root(ctx, expr);
+            let rewrite = crate::rule::Rewrite::with_local(zero, rule_name, expr, zero);
             Some(finish_root_shortcut_with_rewrite_meta(
                 ctx,
                 expr,
                 rewrite,
-                "Collapse Exact Zero Additive Subexpression",
+                rule_name,
                 collect_steps,
             ))
         }
@@ -20661,8 +20788,8 @@ fn exact_zero_leaf_rule_name_root(ctx: &mut Context, expr: ExprId) -> &'static s
         return "Restar fracciones y cancelar términos iguales";
     }
 
-    if matches_direct_log_square_product_split_zero_identity_root(ctx, expr)
-        || matches_direct_ln_abs_product_split_zero_identity_root(ctx, expr)
+    if !expr_contains_trig_or_hyperbolic_builtin_local(ctx, expr)
+        && contains_direct_log_cancellation_zero_group_root(ctx, expr)
     {
         return "Expandir logaritmos y cancelar términos iguales";
     }
@@ -33685,6 +33812,265 @@ mod tests {
     }
 
     #[test]
+    fn direct_small_zero_pair_shortcut_handles_four_two_term_core_sum_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        for core in [
+            "1/(sqrt(a)+sqrt(b)) - (sqrt(a)-sqrt(b))/(a-b)",
+            "sec(z)-1/cos(z)",
+            "csc(w)-1/sin(w)",
+            "1/(1 + 1/(1+u)) - (1+u)/(2+u)",
+        ] {
+            let core_expr = parse(core, &mut simplifier.context)
+                .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+            assert!(
+                super::matches_direct_small_zero_or_known_pair_base_root(
+                    &mut simplifier.context,
+                    core_expr,
+                ),
+                "expected core to match: {core}"
+            );
+        }
+        let expr = parse(
+            "(1/(sqrt(a)+sqrt(b)) - (sqrt(a)-sqrt(b))/(a-b)) + (sec(z)-1/cos(z)) + (csc(w)-1/sin(w)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = super::try_standard_direct_small_zero_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            options.collect_steps,
+        )
+        .unwrap_or_else(|| panic!("expected direct small zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn direct_small_zero_pair_shortcut_handles_four_two_term_core_sum_with_trig_ratio_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lhs = parse("tan(c)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let rhs = parse("sin(c)/cos(c)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(super::matches_direct_trig_ratio_pair_root(
+            &mut simplifier.context,
+            lhs,
+            rhs,
+        ));
+        assert!(super::matches_known_direct_pair_root(
+            &mut simplifier.context,
+            lhs,
+            rhs,
+        ));
+
+        for core in [
+            "sec(a)-1/cos(a)",
+            "csc(b)-1/sin(b)",
+            "tan(c)-sin(c)/cos(c)",
+            "1/(1 + 1/(1+u)) - (1+u)/(2+u)",
+        ] {
+            let core_expr = parse(core, &mut simplifier.context)
+                .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+            assert!(
+                super::matches_direct_small_zero_or_known_pair_base_root(
+                    &mut simplifier.context,
+                    core_expr,
+                ),
+                "expected core to match: {core}"
+            );
+        }
+        let expr = parse(
+            "(sec(a)-1/cos(a)) + (csc(b)-1/sin(b)) + (tan(c)-sin(c)/cos(c)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = super::try_standard_direct_small_zero_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            options.collect_steps,
+        )
+        .unwrap_or_else(|| panic!("expected direct small zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn direct_small_zero_pair_shortcut_handles_four_two_term_core_sum_with_trig_ratio_alias_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lhs = parse("tan(2*c)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let rhs = parse("sin(2*c)/cos(c+c)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(super::matches_direct_trig_ratio_alias_pair_root(
+            &mut simplifier.context,
+            lhs,
+            rhs,
+        ));
+        assert!(super::matches_known_direct_pair_root(
+            &mut simplifier.context,
+            lhs,
+            rhs,
+        ));
+
+        for core in [
+            "sec(a)-1/cos(a)",
+            "csc(b)-1/sin(b)",
+            "tan(2*c)-sin(2*c)/cos(c+c)",
+            "1/(1 + 1/(1+u)) - (1+u)/(2+u)",
+        ] {
+            let core_expr = parse(core, &mut simplifier.context)
+                .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+            assert!(
+                super::matches_direct_small_zero_or_known_pair_base_root(
+                    &mut simplifier.context,
+                    core_expr,
+                ),
+                "expected core to match: {core}"
+            );
+        }
+        let expr = parse(
+            "(sec(a)-1/cos(a)) + (csc(b)-1/sin(b)) + (tan(2*c)-sin(2*c)/cos(c+c)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = super::try_standard_direct_small_zero_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            options.collect_steps,
+        )
+        .unwrap_or_else(|| panic!("expected direct small zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn direct_small_zero_pair_shortcut_handles_four_two_term_core_sum_with_half_angle_tan_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lhs = parse("tan(x)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let rhs = parse("(1-cos(2*x))/sin(2*x)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(super::matches_direct_half_angle_tan_pair_root(
+            &mut simplifier.context,
+            lhs,
+            rhs,
+        ));
+        assert!(super::matches_known_direct_pair_root(
+            &mut simplifier.context,
+            lhs,
+            rhs,
+        ));
+
+        for core in [
+            "sec(a)-1/cos(a)",
+            "csc(b)-1/sin(b)",
+            "tan(x)-(1-cos(2*x))/sin(2*x)",
+            "1/(1 + 1/(1+u)) - (1+u)/(2+u)",
+        ] {
+            let core_expr = parse(core, &mut simplifier.context)
+                .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+            assert!(
+                super::matches_direct_small_zero_or_known_pair_base_root(
+                    &mut simplifier.context,
+                    core_expr,
+                ),
+                "expected core to match: {core}"
+            );
+        }
+        let expr = parse(
+            "(sec(a)-1/cos(a)) + (csc(b)-1/sin(b)) + (tan(x)-(1-cos(2*x))/sin(2*x)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = super::try_standard_direct_small_zero_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            options.collect_steps,
+        )
+        .unwrap_or_else(|| panic!("expected direct small zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn direct_small_zero_pair_shortcut_handles_five_two_term_core_sum_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        for core in [
+            "sec(a)-1/cos(a)",
+            "csc(b)-1/sin(b)",
+            "tan(c)-sin(c)/cos(c)",
+            "sin(2*d)-2*sin(d)*cos(d)",
+            "2*sinh(e)*cosh(e)-sinh(2*e)",
+        ] {
+            let core_expr = parse(core, &mut simplifier.context)
+                .unwrap_or_else(|err| panic!("parse failed: {err:?}"));
+            assert!(
+                super::matches_direct_small_zero_or_known_pair_base_root(
+                    &mut simplifier.context,
+                    core_expr,
+                ),
+                "expected core to match: {core}"
+            );
+        }
+        let expr = parse(
+            "(sec(a)-1/cos(a)) + (csc(b)-1/sin(b)) + (tan(c)-sin(c)/cos(c)) + (sin(2*d)-2*sin(d)*cos(d)) + (2*sinh(e)*cosh(e)-sinh(2*e))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|err| panic!("parse failed: {err:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = super::try_standard_direct_small_zero_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            options.collect_steps,
+        )
+        .unwrap_or_else(|| panic!("expected direct small zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn direct_small_zero_pair_shortcut_handles_five_core_sum_with_one_three_term_core_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        for core in [
+            "sec(a)-1/cos(a)",
+            "csc(b)-1/sin(b)",
+            "tan(c)-sin(c)/cos(c)",
+            "sin(2*d)-2*sin(d)*cos(d)",
+            "cosh(e)^2-sinh(e)^2-1",
+        ] {
+            let core_expr = parse(core, &mut simplifier.context)
+                .unwrap_or_else(|err| panic!("parse failed: {err:?}"));
+            assert!(
+                super::matches_direct_small_zero_or_known_pair_base_root(
+                    &mut simplifier.context,
+                    core_expr,
+                ),
+                "expected core to match: {core}"
+            );
+        }
+        let expr = parse(
+            "(sec(a)-1/cos(a)) + (csc(b)-1/sin(b)) + (tan(c)-sin(c)/cos(c)) + (sin(2*d)-2*sin(d)*cos(d)) + (cosh(e)^2-sinh(e)^2-1)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|err| panic!("parse failed: {err:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = super::try_standard_direct_small_zero_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            options.collect_steps,
+        )
+        .unwrap_or_else(|| panic!("expected direct small zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
     fn direct_small_zero_pair_shortcut_handles_nested_fraction_vs_small_quotient_cancel_sum_regression(
     ) {
         let mut simplifier = crate::Simplifier::with_default_rules();
@@ -38842,6 +39228,52 @@ mod tests {
             &mut simplifier.context,
             expr
         ));
+    }
+
+    #[test]
+    fn detects_direct_log_square_product_split_zero_identity_with_scaled_general_base_terms_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "log(b,(x*y)^2) - 2*log(b,x) - 2*log(b,y)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(matches_direct_log_square_product_split_zero_identity_root(
+            &mut simplifier.context,
+            expr
+        ));
+        assert!(matches_direct_small_zero_identity_root(
+            &mut simplifier.context,
+            expr
+        ));
+
+        let squared_expr = parse(
+            "log(b,(x*y)^2)^2 - (2*log(b,x)+2*log(b,y))^2",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(matches_direct_squared_exact_one_zero_identity_root(
+            &mut simplifier.context,
+            squared_expr
+        ));
+        assert!(matches_direct_small_zero_identity_root(
+            &mut simplifier.context,
+            squared_expr
+        ));
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_general_base_log_grouped_power_squared_passthrough_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(((log(b,(x*y)^2))^2) + m) - (((2*log(b,x)+2*log(b,y))^2) + m)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
     }
 
     #[test]
