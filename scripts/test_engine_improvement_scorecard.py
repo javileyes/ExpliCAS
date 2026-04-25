@@ -54,6 +54,13 @@ Sparse wrapper x shell-depth buckets:
   combined_additive_zero x depth 0: total=1 passed=1 failed=0
   shifted_quotient_one x depth 1: total=1 passed=1 failed=0
   shifted_quotient_one x depth 2: total=2 passed=2 failed=0
+  combined_additive_zero x depth 4: total=1 passed=1 failed=0
+
+Sparse wrapper x shell-depth family buckets:
+  combined_additive_zero x depth 0 x simplify: total=1 passed=1 failed=0
+  shifted_quotient_one x depth 1 x log_expand: total=1 passed=1 failed=0
+  shifted_quotient_one x depth 2 x expand: total=2 passed=2 failed=0
+  combined_additive_zero x depth 4 x simplify: total=1 passed=1 failed=0
 
 Sparse wrapper noise-budget rows:
   combined_additive_zero: total=1 passed=1 failed=0 avg_wrapper_overhead_nodes=0.00 max_wrapper_overhead_nodes=0 avg_shell_depth=0.00 max_shell_depth=0
@@ -182,6 +189,15 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(metrics["wrapper_shell_depth_rows"][0]["wrapper"], "combined_additive_zero")
         self.assertEqual(metrics["wrapper_shell_depth_rows"][0]["shell_depth"], 0)
         self.assertEqual(metrics["wrapper_shell_depth_rows"][2]["total"], 2)
+        self.assertEqual(metrics["wrapper_shell_depth_rows"][3]["shell_depth"], 4)
+        self.assertEqual(
+            metrics["wrapper_shell_depth_family_rows"][0]["wrapper"],
+            "combined_additive_zero",
+        )
+        self.assertEqual(metrics["wrapper_shell_depth_family_rows"][0]["shell_depth"], 0)
+        self.assertEqual(metrics["wrapper_shell_depth_family_rows"][2]["family"], "expand")
+        self.assertEqual(metrics["wrapper_shell_depth_family_rows"][2]["total"], 2)
+        self.assertEqual(metrics["wrapper_shell_depth_family_rows"][3]["shell_depth"], 4)
         self.assertEqual(metrics["sparse_wrapper_noise_budget_rows"][0]["wrapper"], "combined_additive_zero")
         self.assertEqual(
             metrics["sparse_wrapper_noise_budget_rows"][1]["avg_wrapper_overhead_nodes"],
@@ -268,6 +284,13 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("depth 4 total=1 failed=0", markdown)
         self.assertIn("Sparse wrapper x shell-depth buckets", markdown)
         self.assertIn("shifted_quotient_one x depth 2 total=2 failed=0", markdown)
+        self.assertIn("Sparse wrapper x shell-depth family buckets", markdown)
+        self.assertIn("shifted_quotient_one x depth 2 x expand total=2 failed=0", markdown)
+        self.assertIn("Sparse wrapper depth 4 family breadth", markdown)
+        self.assertIn(
+            "combined_additive_zero depth4_families=1/2 missing=1 cases=1",
+            markdown,
+        )
         self.assertIn("Sparse wrapper noise budgets", markdown)
         self.assertIn("shifted_quotient_one total=3 failed=0 avg_overhead=8.00 max_overhead=12", markdown)
         self.assertIn("Sparse wrappers", markdown)

@@ -494,6 +494,10 @@ def parse_corpus(output: str) -> dict[str, Any]:
     if wrapper_shell_depth_rows:
         metrics["wrapper_shell_depth_rows"] = wrapper_shell_depth_rows
 
+    wrapper_shell_depth_family_rows = parse_wrapper_shell_depth_family_rows(output)
+    if wrapper_shell_depth_family_rows:
+        metrics["wrapper_shell_depth_family_rows"] = wrapper_shell_depth_family_rows
+
     sparse_wrapper_noise_budget_rows = parse_sparse_wrapper_noise_budget_rows(output)
     if sparse_wrapper_noise_budget_rows:
         metrics["sparse_wrapper_noise_budget_rows"] = sparse_wrapper_noise_budget_rows
@@ -813,6 +817,39 @@ def parse_wrapper_shell_depth_rows(output: str) -> list[dict[str, Any]]:
             }
         )
     return wrapper_shell_depth_rows
+
+
+def parse_wrapper_shell_depth_family_rows(output: str) -> list[dict[str, Any]]:
+    wrapper_shell_depth_family_rows: list[dict[str, Any]] = []
+    in_block = False
+    row_pattern = re.compile(
+        r"^\s+(?P<wrapper>.+?) x depth (?P<shell_depth>\d+) x (?P<family>.+?): "
+        r"total=(?P<total>\d+) passed=(?P<passed>\d+) failed=(?P<failed>\d+)$"
+    )
+
+    for line in output.splitlines():
+        stripped = line.strip()
+        if stripped == "Sparse wrapper x shell-depth family buckets:":
+            in_block = True
+            continue
+        if not in_block:
+            continue
+        if not stripped:
+            break
+        match = row_pattern.match(line)
+        if not match:
+            continue
+        wrapper_shell_depth_family_rows.append(
+            {
+                "wrapper": match.group("wrapper"),
+                "shell_depth": int(match.group("shell_depth")),
+                "family": match.group("family"),
+                "total": int(match.group("total")),
+                "passed": int(match.group("passed")),
+                "failed": int(match.group("failed")),
+            }
+        )
+    return wrapper_shell_depth_family_rows
 
 
 def parse_sparse_wrapper_noise_budget_rows(output: str) -> list[dict[str, Any]]:
@@ -1437,6 +1474,48 @@ def sparse_wrapper_complexity_family_breadth_summary(
     return ", ".join(fragments)
 
 
+def sparse_wrapper_shell_depth_family_breadth_summary(
+    wrapper_shell_depth_family_rows: list[dict[str, Any]],
+    sparse_wrappers: set[str],
+    family_count: int | None,
+    shell_depth: int,
+) -> str:
+    family_names_by_wrapper: dict[str, set[str]] = {}
+    case_totals_by_wrapper: dict[str, int] = {}
+    for row in wrapper_shell_depth_family_rows:
+        wrapper = row.get("wrapper")
+        row_shell_depth = row.get("shell_depth")
+        family = row.get("family")
+        total = row.get("total")
+        if not isinstance(wrapper, str) or wrapper not in sparse_wrappers:
+            continue
+        if row_shell_depth != shell_depth or not isinstance(family, str):
+            continue
+        family_names_by_wrapper.setdefault(wrapper, set()).add(family)
+        if isinstance(total, int):
+            case_totals_by_wrapper[wrapper] = (
+                case_totals_by_wrapper.get(wrapper, 0) + total
+            )
+
+    fragments = []
+    for wrapper in sorted(family_names_by_wrapper):
+        covered_families = len(family_names_by_wrapper[wrapper])
+        total_cases = case_totals_by_wrapper.get(wrapper, 0)
+        if isinstance(family_count, int) and family_count > 0:
+            missing_families = max(family_count - covered_families, 0)
+            fragments.append(
+                f"{wrapper} depth{shell_depth}_families="
+                f"{covered_families}/{family_count} missing={missing_families} "
+                f"cases={total_cases}"
+            )
+        else:
+            fragments.append(
+                f"{wrapper} depth{shell_depth}_families={covered_families} "
+                f"cases={total_cases}"
+            )
+    return ", ".join(fragments)
+
+
 def shell_depth_summary_rows(
     shell_depth_rows: dict[int, dict[str, Any]],
 ) -> list[tuple[int, dict[str, Any]]]:
@@ -1562,6 +1641,40 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 "- Sparse wrapper x shell-depth buckets: "
                 f"{sparse_shell_depth_summary}"
             )
+        wrapper_shell_depth_family_rows = embedded_metrics.get(
+            "wrapper_shell_depth_family_rows"
+        )
+        if (
+            isinstance(wrapper_shell_depth_family_rows, list)
+            and wrapper_shell_depth_family_rows
+        ):
+            sparse_shell_depth_family_summary = ", ".join(
+                (
+                    f"{row['wrapper']} x depth {row['shell_depth']} x {row['family']} "
+                    f"total={row['total']} failed={row['failed']}"
+                )
+                for row in wrapper_shell_depth_family_rows
+            )
+            lines.append(
+                "- Sparse wrapper x shell-depth family buckets: "
+                f"{sparse_shell_depth_family_summary}"
+            )
+            family_count_for_shell_depth = (
+                family_count if isinstance(family_count, int) else None
+            )
+            depth4_family_breadth_summary = (
+                sparse_wrapper_shell_depth_family_breadth_summary(
+                    wrapper_shell_depth_family_rows,
+                    sparse_wrappers,
+                    family_count_for_shell_depth,
+                    4,
+                )
+            )
+            if depth4_family_breadth_summary:
+                lines.append(
+                    "- Sparse wrapper depth 4 family breadth: "
+                    f"{depth4_family_breadth_summary}"
+                )
         sparse_wrapper_noise_budget_rows = embedded_metrics.get(
             "sparse_wrapper_noise_budget_rows"
         )

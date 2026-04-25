@@ -205,6 +205,7 @@ fn run(config: RunnerConfig) -> i32 {
         BTreeMap::<(String, ComplexityLevel, String), Summary>::new();
     let mut by_wrapper_family = BTreeMap::<(String, String), Summary>::new();
     let mut by_wrapper_shell_depth = BTreeMap::<(String, usize), Summary>::new();
+    let mut by_wrapper_shell_depth_family = BTreeMap::<(String, usize, String), Summary>::new();
 
     for (index, case) in cases.iter().enumerate() {
         let failure = evaluate_case(case);
@@ -235,6 +236,15 @@ fn run(config: RunnerConfig) -> i32 {
             .or_default();
         wrapper_shell_depth_entry.total += 1;
 
+        let wrapper_shell_depth_family_entry = by_wrapper_shell_depth_family
+            .entry((
+                case.wrapper.clone(),
+                case.complexity.shell_depth,
+                case.family.clone(),
+            ))
+            .or_default();
+        wrapper_shell_depth_family_entry.total += 1;
+
         let shell_depth_entry = by_shell_depth
             .entry(case.complexity.shell_depth)
             .or_default();
@@ -259,6 +269,7 @@ fn run(config: RunnerConfig) -> i32 {
             wrapper_family_entry.failed += 1;
             wrapper_complexity_family_entry.failed += 1;
             wrapper_shell_depth_entry.failed += 1;
+            wrapper_shell_depth_family_entry.failed += 1;
             shell_depth_entry.failed += 1;
             failures.push(failure);
         } else {
@@ -267,6 +278,7 @@ fn run(config: RunnerConfig) -> i32 {
             wrapper_family_entry.passed += 1;
             wrapper_complexity_family_entry.passed += 1;
             wrapper_shell_depth_entry.passed += 1;
+            wrapper_shell_depth_family_entry.passed += 1;
             shell_depth_entry.passed += 1;
         }
 
@@ -379,6 +391,28 @@ fn run(config: RunnerConfig) -> i32 {
         println!(
             "  {} x depth {}: total={} passed={} failed={}",
             wrapper, shell_depth, summary.total, summary.passed, summary.failed
+        );
+    }
+    println!();
+    println!("Sparse wrapper x shell-depth family buckets:");
+    let mut wrapper_shell_depth_family_rows = by_wrapper_shell_depth_family
+        .iter()
+        .filter(|((wrapper, _, _), _)| sparse_wrappers.contains(wrapper))
+        .collect::<Vec<_>>();
+    wrapper_shell_depth_family_rows.sort_by(
+        |((left_wrapper, left_shell_depth, left_family), left_summary),
+         ((right_wrapper, right_shell_depth, right_family), right_summary)| {
+            left_wrapper
+                .cmp(right_wrapper)
+                .then_with(|| left_shell_depth.cmp(right_shell_depth))
+                .then_with(|| right_summary.total.cmp(&left_summary.total))
+                .then_with(|| left_family.cmp(right_family))
+        },
+    );
+    for ((wrapper, shell_depth, family), summary) in wrapper_shell_depth_family_rows {
+        println!(
+            "  {} x depth {} x {}: total={} passed={} failed={}",
+            wrapper, shell_depth, family, summary.total, summary.passed, summary.failed
         );
     }
     println!();

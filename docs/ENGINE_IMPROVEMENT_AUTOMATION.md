@@ -245,7 +245,10 @@ Higher temperature should therefore mean:
 For each generated candidate, the default workflow should be:
 
 1. generate from trusted equivalence seeds or already-retained identity families
-2. run the expression through the cheap iteration lane
+2. run the expression through the cheap iteration lane; for one-off
+   `embedded_equivalence_context` rows, prefer
+   `scripts/engine_embedded_candidate_smoke.py --row '<csv row>'` so pass,
+   fail, and timeout candidates are classified before promotion
 3. if it fails semantically, panics, loops, overflows, or degrades didactic
    quality badly, classify the failure by structural signature
 4. fix the family-level weakness, not only the anecdotal string instance

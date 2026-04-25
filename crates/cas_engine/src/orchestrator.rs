@@ -835,11 +835,120 @@ fn matches_direct_small_zero_pair_root(ctx: &mut Context, lhs: ExprId, rhs: Expr
                 && matches_direct_small_zero_or_known_pair_base_root(ctx, rhs)))
 }
 
+fn matches_direct_three_small_zero_cores_root(ctx: &mut Context, expr: ExprId) -> bool {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if !(6..=7).contains(&terms.len()) {
+        return false;
+    }
+
+    for second_index in 1..terms.len() {
+        let first_group = [terms[0], terms[second_index]];
+        if matches_direct_small_zero_core_group_root(ctx, &first_group) {
+            let remaining: Vec<_> = terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| (index != 0 && index != second_index).then_some(term))
+                .collect();
+            if matches_direct_two_small_zero_core_groups_root(ctx, &remaining) {
+                return true;
+            }
+        }
+
+        if terms.len() == 7 {
+            for third_index in (second_index + 1)..terms.len() {
+                let first_group = [terms[0], terms[second_index], terms[third_index]];
+                if !matches_direct_small_zero_core_group_root(ctx, &first_group) {
+                    continue;
+                }
+
+                let remaining: Vec<_> = terms
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter_map(|(index, term)| {
+                        (index != 0 && index != second_index && index != third_index)
+                            .then_some(term)
+                    })
+                    .collect();
+                if matches_direct_two_small_zero_core_groups_root(ctx, &remaining) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+fn matches_direct_two_small_zero_core_groups_root(
+    ctx: &mut Context,
+    terms: &[(ExprId, Sign)],
+) -> bool {
+    if !(4..=5).contains(&terms.len()) {
+        return false;
+    }
+
+    for second_index in 1..terms.len() {
+        let first_group = [terms[0], terms[second_index]];
+        if matches_direct_small_zero_core_group_root(ctx, &first_group) {
+            let tail: Vec<_> = terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(index, term)| (index != 0 && index != second_index).then_some(term))
+                .collect();
+            if matches_direct_small_zero_core_group_root(ctx, &tail) {
+                return true;
+            }
+        }
+
+        if terms.len() == 5 {
+            for third_index in (second_index + 1)..terms.len() {
+                let first_group = [terms[0], terms[second_index], terms[third_index]];
+                if !matches_direct_small_zero_core_group_root(ctx, &first_group) {
+                    continue;
+                }
+
+                let tail: Vec<_> = terms
+                    .iter()
+                    .copied()
+                    .enumerate()
+                    .filter_map(|(index, term)| {
+                        (index != 0 && index != second_index && index != third_index)
+                            .then_some(term)
+                    })
+                    .collect();
+                if matches_direct_small_zero_core_group_root(ctx, &tail) {
+                    return true;
+                }
+            }
+        }
+    }
+
+    false
+}
+
+fn matches_direct_small_zero_core_group_root(ctx: &mut Context, terms: &[(ExprId, Sign)]) -> bool {
+    if !(2..=3).contains(&terms.len()) {
+        return false;
+    }
+
+    let expr = build_signed_sum_expr_root(ctx, terms);
+    matches_direct_small_zero_or_known_pair_base_root(ctx, expr)
+}
+
 fn is_direct_small_zero_composition_candidate_root(ctx: &mut Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
-        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) | Expr::Mul(lhs, rhs) => {
+        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => {
             matches_direct_small_zero_pair_root(ctx, *lhs, *rhs)
+                || matches_direct_three_small_zero_cores_root(ctx, expr)
         }
+        Expr::Mul(lhs, rhs) => matches_direct_small_zero_pair_root(ctx, *lhs, *rhs),
         _ => false,
     }
 }
@@ -2852,6 +2961,28 @@ fn matches_direct_nested_fraction_simplified_pair_root(
     rhs_core: ExprId,
 ) -> bool {
     for (continued_fraction_expr, rational_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        if let Some(arg) = extract_depth_two_unit_reciprocal_continued_fraction_arg_root(
+            ctx,
+            continued_fraction_expr,
+        ) {
+            if matches_depth_two_unit_continued_fraction_target_root(ctx, rational_expr, arg) {
+                return true;
+            }
+        }
+
+        if let Some(arg) = extract_depth_three_unit_reciprocal_continued_fraction_arg_root(
+            ctx,
+            continued_fraction_expr,
+        ) {
+            if matches_depth_three_unit_reciprocal_continued_fraction_target_root(
+                ctx,
+                rational_expr,
+                arg,
+            ) {
+                return true;
+            }
+        }
+
         let Some(arg) =
             extract_depth_three_unit_continued_fraction_arg_root(ctx, continued_fraction_expr)
         else {
@@ -2863,6 +2994,67 @@ fn matches_direct_nested_fraction_simplified_pair_root(
     }
 
     false
+}
+
+fn extract_depth_two_unit_reciprocal_continued_fraction_arg_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let denominator = extract_unit_fraction_denominator_root(ctx, expr)?;
+    let first_tail = extract_positive_one_plus_other_term_root(ctx, denominator)?;
+    let inner_sum = extract_unit_fraction_denominator_root(ctx, first_tail)?;
+    extract_positive_one_plus_other_term_root(ctx, inner_sum)
+}
+
+fn extract_depth_three_unit_reciprocal_continued_fraction_arg_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let denominator = extract_unit_fraction_denominator_root(ctx, expr)?;
+    let first_tail = extract_positive_one_plus_other_term_root(ctx, denominator)?;
+    let inner_sum = extract_unit_fraction_denominator_root(ctx, first_tail)?;
+    let second_tail = extract_positive_one_plus_other_term_root(ctx, inner_sum)?;
+    let second_inner_sum = extract_unit_fraction_denominator_root(ctx, second_tail)?;
+    extract_positive_one_plus_other_term_root(ctx, second_inner_sum)
+}
+
+fn matches_depth_two_unit_continued_fraction_target_root(
+    ctx: &mut Context,
+    expr: ExprId,
+    arg: ExprId,
+) -> bool {
+    let (numerator, denominator) = match ctx.get(expr) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return false,
+    };
+
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let expected_numerator = ctx.add(Expr::Add(arg, one));
+    let expected_denominator = ctx.add(Expr::Add(arg, two));
+
+    compare_expr(ctx, numerator, expected_numerator) == Ordering::Equal
+        && compare_expr(ctx, denominator, expected_denominator) == Ordering::Equal
+}
+
+fn matches_depth_three_unit_reciprocal_continued_fraction_target_root(
+    ctx: &mut Context,
+    expr: ExprId,
+    arg: ExprId,
+) -> bool {
+    let (numerator, denominator) = match ctx.get(expr) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return false,
+    };
+
+    let two = ctx.num(2);
+    let three = ctx.num(3);
+    let expected_numerator = ctx.add(Expr::Add(arg, two));
+    let two_times_arg = smart_mul(ctx, two, arg);
+    let expected_denominator = ctx.add(Expr::Add(two_times_arg, three));
+
+    compare_expr(ctx, numerator, expected_numerator) == Ordering::Equal
+        && compare_expr(ctx, denominator, expected_denominator) == Ordering::Equal
 }
 
 fn matches_direct_depth_three_unit_continued_fraction_zero_identity_terms_root(
@@ -7180,6 +7372,7 @@ fn matches_known_direct_pair_root(ctx: &mut Context, lhs_core: ExprId, rhs_core:
         || matches_direct_cot_to_csc_pythagorean_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_csc_cot_pythagorean_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_hyperbolic_pythagorean_pair_root(ctx, lhs_core, rhs_core)
+        || matches_direct_trig_reciprocal_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_reciprocal_trig_product_one_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_trig_triple_angle_pair_root(ctx, lhs_core, rhs_core)
         || matches_direct_hyperbolic_triple_angle_pair_root(ctx, lhs_core, rhs_core)
@@ -28666,6 +28859,39 @@ mod tests {
     }
 
     #[test]
+    fn detects_direct_nested_fraction_reciprocal_depth_two_zero_identity_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("1/(1 + 1/(1+u)) - (1+u)/(2+u)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(matches_direct_small_zero_identity_root(
+            &mut simplifier.context,
+            expr
+        ));
+        assert!(super::matches_direct_small_zero_or_known_pair_base_root(
+            &mut simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
+    fn detects_direct_nested_fraction_reciprocal_deeper_zero_identity_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "1/(1 + 1/(1 + 1/(1+u))) - (2+u)/(3+2*u)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(matches_direct_small_zero_identity_root(
+            &mut simplifier.context,
+            expr
+        ));
+        assert!(super::matches_direct_small_zero_or_known_pair_base_root(
+            &mut simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
     fn simplify_pipeline_handles_nested_fraction_shifted_quotient_regression() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
@@ -33354,6 +33580,96 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
             "(1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) + (1/(u*(u+1)) - 1/u + 1/(u+1))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = super::try_standard_direct_small_zero_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            options.collect_steps,
+        )
+        .unwrap_or_else(|| panic!("expected direct small zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn direct_small_zero_pair_shortcut_handles_integrate_prep_vs_reciprocal_nested_fraction_sum_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(cos(x)*cos(2*x)*cos(4*x) - sin(8*x)/(8*sin(x))) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = super::try_standard_direct_small_zero_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            options.collect_steps,
+        )
+        .unwrap_or_else(|| panic!("expected direct small zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn direct_small_zero_pair_shortcut_handles_negative_trig_reciprocal_nested_fraction_three_core_sum_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        for core in [
+            "-sin(2*x) + 2*sin(x)*cos(x)",
+            "sec(y) - 1/cos(y)",
+            "1/(1 + 1/(1+u)) - (1+u)/(2+u)",
+        ] {
+            let core_expr = parse(core, &mut simplifier.context)
+                .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+            assert!(
+                super::matches_direct_small_zero_or_known_pair_base_root(
+                    &mut simplifier.context,
+                    core_expr,
+                ),
+                "expected core to match: {core}"
+            );
+        }
+        let expr = parse(
+            "(-sin(2*x) + 2*sin(x)*cos(x)) + (sec(y) - 1/cos(y)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = super::try_standard_direct_small_zero_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            options.collect_steps,
+        )
+        .unwrap_or_else(|| panic!("expected direct small zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn direct_small_zero_pair_shortcut_handles_log_trig_reciprocal_nested_fraction_three_core_sum_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        for core in [
+            "ln(x^3)+ln(y^2)-ln(x^3*y^2)",
+            "sec(z)-1/cos(z)",
+            "1/(1 + 1/(1+u)) - (1+u)/(2+u)",
+        ] {
+            let core_expr = parse(core, &mut simplifier.context)
+                .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+            assert!(
+                super::matches_direct_small_zero_or_known_pair_base_root(
+                    &mut simplifier.context,
+                    core_expr,
+                ),
+                "expected core to match: {core}"
+            );
+        }
+        let expr = parse(
+            "(ln(x^3)+ln(y^2)-ln(x^3*y^2)) + (sec(z)-1/cos(z)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
             &mut simplifier.context,
         )
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));

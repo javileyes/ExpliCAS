@@ -11236,13 +11236,18 @@ pub(crate) fn try_build_small_direct_zero_core_rewrite(
 ) -> Option<Rewrite> {
     let view = AddView::from_expr(ctx, expr);
     let term_count = view.terms.len();
-    if !(2..=3).contains(&term_count) {
+    if !(2..=4).contains(&term_count) {
         return None;
     }
     if !additive_scope_has_negative_term(ctx, expr) {
         return None;
     }
 
+    let solve_prep_candidate = maybe_solve_prep_exact_additive_candidate(ctx, expr);
+    let integrate_prep_candidate = maybe_integrate_prep_exact_additive_candidate(ctx, expr);
+    if term_count > 3 && !solve_prep_candidate && !integrate_prep_candidate {
+        return None;
+    }
     let has_trig_or_hyper = expr_contains_any_builtin(
         ctx,
         expr,
@@ -11258,15 +11263,28 @@ pub(crate) fn try_build_small_direct_zero_core_rewrite(
             BuiltinFn::Tanh,
         ],
     );
-    let has_supported_shape = (has_trig_or_hyper
-        || expr_contains_division_node(ctx, expr)
-        || expr_contains_sqrt_or_half_power(ctx, expr)
-        || expr_contains_factorial_call(ctx, expr))
-        && !(has_trig_or_hyper && expr_contains_division_node(ctx, expr));
+    let has_division = expr_contains_division_node(ctx, expr);
+    let has_supported_shape = solve_prep_candidate
+        || integrate_prep_candidate
+        || ((has_trig_or_hyper
+            || has_division
+            || expr_contains_sqrt_or_half_power(ctx, expr)
+            || expr_contains_factorial_call(ctx, expr))
+            && !(has_trig_or_hyper && has_division));
     if !has_supported_shape {
         return None;
     }
 
+    if solve_prep_candidate {
+        if let Some(rewrite) = try_build_fast_solve_prep_exact_zero_scope_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+    }
+    if integrate_prep_candidate {
+        if let Some(rewrite) = try_build_direct_integrate_prep_exact_zero_scope_rewrite(ctx, expr) {
+            return Some(rewrite);
+        }
+    }
     if has_trig_or_hyper {
         if let Some(rewrite) =
             try_build_exact_trig_product_to_sum_sin_sin_three_term_zero_rewrite(ctx, expr)
@@ -11290,6 +11308,9 @@ pub(crate) fn try_build_small_direct_zero_core_rewrite(
         if let Some(rewrite) =
             try_build_direct_reciprocal_sum_difference_nested_fraction_zero_scope_rewrite(ctx, expr)
         {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = try_build_direct_nested_fraction_zero_scope_rewrite(ctx, expr) {
             return Some(rewrite);
         }
         if let Some(rewrite) =
@@ -11324,7 +11345,7 @@ pub(crate) fn try_build_small_direct_zero_core_rewrite(
 }
 
 fn has_plausible_small_zero_partition_term_shape(terms: &[(cas_ast::ExprId, Sign)]) -> bool {
-    (2..=3).contains(&terms.len()) && terms.iter().any(|(_, sign)| *sign == Sign::Neg)
+    (2..=4).contains(&terms.len()) && terms.iter().any(|(_, sign)| *sign == Sign::Neg)
 }
 
 fn has_plausible_small_zero_partition_core_shape(
@@ -11358,6 +11379,8 @@ fn small_zero_additive_combination_supported_partition_core(
     let has_division = expr_contains_division_node(ctx, candidate);
     let has_radical = expr_contains_sqrt_or_half_power(ctx, candidate);
     let has_factorial = expr_contains_factorial_call(ctx, candidate);
+    let has_solve_prep = maybe_solve_prep_exact_additive_candidate(ctx, candidate);
+    let has_integrate_prep = maybe_integrate_prep_exact_additive_candidate(ctx, candidate);
     let has_log = expr_contains_any_builtin(
         ctx,
         candidate,
@@ -11377,12 +11400,20 @@ fn small_zero_additive_combination_supported_partition_core(
     if !has_trig_or_hyper
         && has_radical
         && has_division
+        && !has_solve_prep
+        && !has_integrate_prep
         && !has_top_level_division_with_radical_denominator
     {
         return false;
     }
 
-    if !has_trig_or_hyper && has_division && !has_radical && !has_factorial {
+    if !has_trig_or_hyper
+        && has_division
+        && !has_radical
+        && !has_factorial
+        && !has_solve_prep
+        && !has_integrate_prep
+    {
         let all_terms_are_division_like = terms
             .iter()
             .all(|(term_expr, _)| expr_contains_division_node(ctx, *term_expr));
@@ -11391,8 +11422,13 @@ fn small_zero_additive_combination_supported_partition_core(
         }
     }
 
-    (has_trig_or_hyper || has_division || has_radical || has_factorial)
-        && !(has_trig_or_hyper && has_division)
+    (has_trig_or_hyper
+        || has_division
+        || has_radical
+        || has_factorial
+        || has_solve_prep
+        || has_integrate_prep)
+        && !(has_trig_or_hyper && has_division && !has_integrate_prep)
 }
 
 pub(crate) fn maybe_direct_small_zero_additive_combination_candidate(
@@ -11404,7 +11440,7 @@ pub(crate) fn maybe_direct_small_zero_additive_combination_candidate(
         return false;
     }
 
-    for subset_len in 2..=3 {
+    for subset_len in 2..=4 {
         if subset_len >= view.terms.len() {
             continue;
         }
@@ -11429,7 +11465,7 @@ pub(crate) fn maybe_direct_small_zero_additive_combination_candidate(
                     .enumerate()
                     .filter_map(|(index, term)| (!chosen.contains(&index)).then_some(term))
                     .collect();
-                if !(2..=3).contains(&second_terms.len()) {
+                if !(2..=4).contains(&second_terms.len()) {
                     continue;
                 }
                 if !has_plausible_small_zero_partition_term_shape(&first_terms)
@@ -11532,7 +11568,7 @@ pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
         return None;
     }
 
-    for subset_len in 2..=3 {
+    for subset_len in 2..=4 {
         if subset_len >= view.terms.len() {
             continue;
         }
@@ -11557,7 +11593,7 @@ pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
                     .enumerate()
                     .filter_map(|(index, term)| (!chosen.contains(&index)).then_some(term))
                     .collect();
-                if !(2..=3).contains(&second_terms.len()) {
+                if !(2..=4).contains(&second_terms.len()) {
                     continue;
                 }
                 if !has_plausible_small_zero_partition_term_shape(&first_terms)
@@ -15927,6 +15963,28 @@ fn try_build_direct_dirichlet_core_equivalence_rewrite(
     )
 }
 
+fn try_build_direct_integrate_prep_exact_zero_scope_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let (lhs_core, rhs_core) = extract_two_term_core_difference(ctx, expr)?;
+    try_build_direct_cos_product_telescoping_equivalence_rewrite(ctx, lhs_core, rhs_core)
+        .or_else(|| try_build_direct_dirichlet_core_equivalence_rewrite(ctx, lhs_core, rhs_core))
+}
+
+fn maybe_integrate_prep_exact_additive_candidate(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    if !expr_contains_division_node(ctx, expr)
+        || !expr_contains_any_builtin(ctx, expr, &[BuiltinFn::Sin, BuiltinFn::Cos])
+    {
+        return false;
+    }
+
+    try_build_direct_integrate_prep_exact_zero_scope_rewrite(ctx, expr).is_some()
+}
+
 fn try_build_direct_finite_product_equivalence_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
@@ -17125,6 +17183,41 @@ fn try_build_direct_reciprocal_sum_difference_nested_fraction_zero_scope_rewrite
     None
 }
 
+fn try_build_direct_nested_fraction_zero_scope_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let (lhs_core, rhs_core) = extract_two_term_core_difference(ctx, expr)?;
+
+    for (source_expr, target_expr) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        if expr_contains_any_function_call(ctx, source_expr)
+            || expr_contains_any_function_call(ctx, target_expr)
+            || !matches!(ctx.get(target_expr), Expr::Div(_, _))
+        {
+            continue;
+        }
+
+        let Some(rewrite) = try_rewrite_simplify_nested_fraction_expr(ctx, source_expr) else {
+            continue;
+        };
+        let rewritten = rewrite.rewritten;
+        let residual = ctx.add(Expr::Sub(rewritten, target_expr));
+        if exprs_match_for_cancellation(ctx, rewritten, target_expr)
+            || exprs_match_after_default_simplify(ctx, rewritten, target_expr)
+            || is_zero_after_default_simplify(ctx, residual)
+        {
+            return Some(Rewrite::with_local(
+                ctx.num(0),
+                "Simplify Nested Fraction",
+                source_expr,
+                target_expr,
+            ));
+        }
+    }
+
+    None
+}
+
 fn try_build_small_odd_half_power_zero_core_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -17186,6 +17279,116 @@ fn extract_difference_of_square_bases(
     }
 
     Some((positive_base?, negative_base?))
+}
+
+fn split_numeric_coefficient_for_square_shell(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> (BigRational, cas_ast::ExprId) {
+    let factors = flatten_mul_chain(ctx, expr);
+    let mut coefficient = BigRational::one();
+    let mut non_numeric = Vec::new();
+
+    for factor in factors {
+        match ctx.get(factor).clone() {
+            Expr::Number(value) => coefficient *= value,
+            _ => non_numeric.push(factor),
+        }
+    }
+
+    let residual = match non_numeric.as_slice() {
+        [] => ctx.num(1),
+        [single] => *single,
+        _ => build_balanced_mul(ctx, &non_numeric),
+    };
+
+    (coefficient, residual)
+}
+
+fn build_rational_scaled_expr_for_square_shell(
+    ctx: &mut cas_ast::Context,
+    scale: BigRational,
+    expr: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    if scale == BigRational::one() {
+        expr
+    } else {
+        let scale_expr = ctx.add(Expr::Number(scale));
+        smart_mul(ctx, scale_expr, expr)
+    }
+}
+
+fn extract_scaled_square_base_for_shell(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let (coefficient, residual) = split_numeric_coefficient_for_square_shell(ctx, expr);
+    if !coefficient.is_positive() {
+        return None;
+    }
+    let root = rational_sqrt(&coefficient)?;
+    let base = extract_square_power_base(ctx, residual)?;
+    Some(build_rational_scaled_expr_for_square_shell(ctx, root, base))
+}
+
+fn extract_expanded_binomial_square_base_for_shell(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let terms: Vec<_> = AddView::from_expr(ctx, expr)
+        .terms
+        .iter()
+        .copied()
+        .map(|(term_expr, term_sign)| normalize_signed_add_term(ctx, term_expr, term_sign))
+        .collect();
+    if terms.len() != 3 {
+        return None;
+    }
+
+    for first_index in 0..terms.len() {
+        for second_index in (first_index + 1)..terms.len() {
+            let cross_index =
+                (0..terms.len()).find(|index| *index != first_index && *index != second_index)?;
+
+            let (first_square, first_sign) = terms[first_index];
+            let (second_square, second_sign) = terms[second_index];
+            if first_sign != Sign::Pos || second_sign != Sign::Pos {
+                continue;
+            }
+
+            let Some(first_base) = extract_scaled_square_base_for_shell(ctx, first_square) else {
+                continue;
+            };
+            let Some(second_base) = extract_scaled_square_base_for_shell(ctx, second_square) else {
+                continue;
+            };
+
+            let (cross_term, cross_sign) = terms[cross_index];
+            let product = smart_mul(ctx, first_base, second_base);
+            let two = ctx.num(2);
+            let expected_cross = smart_mul(ctx, two, product);
+            if !(exprs_match_for_cancellation(ctx, cross_term, expected_cross)
+                || exprs_match_after_default_simplify(ctx, cross_term, expected_cross))
+            {
+                continue;
+            }
+
+            return Some(match cross_sign {
+                Sign::Pos => ctx.add(Expr::Add(first_base, second_base)),
+                Sign::Neg => ctx.add(Expr::Sub(first_base, second_base)),
+            });
+        }
+    }
+
+    None
+}
+
+fn extract_square_equivalence_base_for_shell(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    extract_scaled_square_base_for_shell(ctx, expr)
+        .or_else(|| extract_expanded_binomial_square_base_for_shell(ctx, expr))
 }
 
 fn try_match_symbolic_root_denesting_pair(
@@ -25291,6 +25494,67 @@ fn has_plausible_shared_additive_passthrough_difference_shape(
     positive_count >= 2 && negative_count >= 2
 }
 
+fn build_exact_zero_squared_shared_passthrough_rewrite(
+    ctx: &mut cas_ast::Context,
+    whole_expr: cas_ast::ExprId,
+    child_rewrite: Rewrite,
+) -> Rewrite {
+    let mut rewrite = Rewrite::with_local(
+        ctx.num(0),
+        child_rewrite.description.clone(),
+        whole_expr,
+        ctx.num(0),
+    )
+    .requires_all(child_rewrite.required_conditions.clone())
+    .assume_all(child_rewrite.assumption_events.clone())
+    .substep(
+        "Pelar el wrapper cuadrático compartido",
+        vec![
+            "Ambos lados tienen la forma (core^2 + p)^2 con el mismo término de paso p."
+                .to_string(),
+        ],
+    );
+
+    if let Some(poly_proof) = child_rewrite.poly_proof.clone() {
+        rewrite = rewrite.poly_proof(poly_proof);
+    }
+    rewrite.substeps.extend(child_rewrite.substeps.clone());
+    rewrite
+}
+
+fn try_build_exact_zero_squared_shared_passthrough_difference_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let (lhs_outer, rhs_outer) = extract_two_term_core_difference(ctx, expr)?;
+    let lhs_shell = extract_square_power_base(ctx, lhs_outer)?;
+    let rhs_shell = extract_square_power_base(ctx, rhs_outer)?;
+
+    let shell_difference = ctx.add(Expr::Sub(lhs_shell, rhs_shell));
+    let (lhs_core, rhs_core) =
+        extract_shared_additive_passthrough_difference_cores(ctx, shell_difference)?;
+
+    let child_rewrite =
+        try_build_direct_sub_fraction_combination_equivalence_rewrite(ctx, lhs_core, rhs_core)
+            .or_else(|| {
+                let lhs_base = extract_square_equivalence_base_for_shell(ctx, lhs_core)?;
+                let rhs_base = extract_square_equivalence_base_for_shell(ctx, rhs_core)?;
+                try_build_direct_sub_fraction_combination_equivalence_rewrite(
+                    ctx, lhs_base, rhs_base,
+                )
+                .or_else(|| try_build_direct_core_equivalence_rewrite(ctx, lhs_base, rhs_base))
+                .or_else(|| {
+                    let base_residual = ctx.add(Expr::Sub(lhs_base, rhs_base));
+                    try_build_exact_zero_identity_rewrite_direct(ctx, base_residual)
+                })
+            })
+            .or_else(|| try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core))?;
+
+    let zero = ctx.num(0);
+    (compare_expr(ctx, child_rewrite.final_expr(), zero) == Ordering::Equal)
+        .then(|| build_exact_zero_squared_shared_passthrough_rewrite(ctx, expr, child_rewrite))
+}
+
 fn run_profiled_shared_passthrough_probe(
     profiling: bool,
     name: &'static str,
@@ -25903,6 +26167,11 @@ define_rule!(
             }
             if let Some(rewrite) =
                 try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core)
+            {
+                return Some(rewrite);
+            }
+            if let Some(rewrite) =
+                try_build_exact_zero_squared_shared_passthrough_difference_rewrite(ctx, expr)
             {
                 return Some(rewrite);
             }
@@ -28684,6 +28953,84 @@ mod tests {
     }
 
     #[test]
+    fn maybe_direct_small_zero_additive_combination_candidate_accepts_solve_prep_and_nested_fraction_sum(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(x^2 + 2*b*x - ((x+b)^2 - b^2)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::maybe_direct_small_zero_additive_combination_candidate(&mut ctx, expr));
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_solve_prep_and_nested_fraction_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(x^2 + 2*b*x - ((x+b)^2 - b^2)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn maybe_direct_small_zero_additive_combination_candidate_accepts_integrate_prep_and_nested_fraction_sum(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(cos(x)*cos(2*x)*cos(4*x) - sin(8*x)/(8*sin(x))) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::maybe_direct_small_zero_additive_combination_candidate(&mut ctx, expr));
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_integrate_prep_and_nested_fraction_sum(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(cos(x)*cos(2*x)*cos(4*x) - sin(8*x)/(8*sin(x))) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+        assert!(!rewrite.required_conditions.is_empty());
+    }
+
+    #[test]
     fn maybe_direct_small_zero_additive_combination_candidate_rejects_nontrig_polynomial_scope() {
         let mut ctx = Context::new();
         let expr =
@@ -30167,6 +30514,119 @@ mod tests {
             ),
             "0"
         );
+    }
+
+    #[test]
+    fn collapse_exact_zero_additive_subexpression_matches_log_expand_double_squared_passthrough() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((((ln(x^2-y^2))^2) + m)^2) - ((((ln(x-y)+ln(x+y))^2) + m)^2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn collapse_exact_zero_additive_subexpression_matches_log_contract_double_squared_passthrough()
+    {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((((ln(x^2)+ln(y^2))^2) + m)^2) - ((((ln((x*y)^2))^2) + m)^2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn collapse_exact_zero_additive_subexpression_matches_telescoping_fraction_double_squared_passthrough(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((((1/(x+b) - 1/(x+c))^2) + m)^2) - (((((c-b)/(x^2+(b+c)*x+b*c))^2) + m)^2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_empty_or_legacy_description(&rewrite.description, "Subtract Fractions");
+    }
+
+    #[test]
+    fn collapse_exact_zero_additive_subexpression_matches_morrie_double_squared_passthrough() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((((cos(x)*cos(2*x)*cos(4*x))^2) + m)^2) - ((((sin(8*x)/(8*sin(x)))^2) + m)^2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_empty_or_legacy_description(&rewrite.description, "Apply Morrie's law");
+        assert!(!rewrite.required_conditions.is_empty());
     }
 
     #[test]
