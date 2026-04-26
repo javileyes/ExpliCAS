@@ -1620,21 +1620,27 @@ def combined_additive_structure_summary(corpus_structure: dict[str, Any]) -> str
 
     low_family_counts = combined.get("low_family_counts")
     if isinstance(low_family_counts, dict) and low_family_counts:
-        if len(low_family_counts) <= 8:
-            low_summary = ", ".join(
-                f"{family}:{count}" for family, count in sorted(low_family_counts.items())
-            )
-            fragments.append(f"low_family_counts={low_summary}")
-        else:
-            above_min_counts = combined.get("above_min_family_counts")
-            if isinstance(above_min_counts, dict) and above_min_counts:
-                above_min_summary = ", ".join(
-                    f"{family}:{count}"
-                    for family, count in sorted(above_min_counts.items())
-                )
-                fragments.append(f"above_min_family_counts={above_min_summary}")
+        fragments.append(f"low_family_counts={format_family_counts(low_family_counts)}")
+
+    above_min_counts = combined.get("above_min_family_counts")
+    if isinstance(above_min_counts, dict) and above_min_counts:
+        fragments.append(
+            f"above_min_family_counts={format_family_counts(above_min_counts)}"
+        )
 
     return " ".join(fragment for fragment in fragments if fragment)
+
+
+def format_family_counts(counts: dict[Any, Any]) -> str:
+    items = [
+        (family, count)
+        for family, count in counts.items()
+        if isinstance(family, str) and isinstance(count, int)
+    ]
+    return ", ".join(
+        f"{family}:{count}"
+        for family, count in sorted(items)
+    )
 
 
 def format_family_list(families: list[Any], max_items: int = 8) -> str:

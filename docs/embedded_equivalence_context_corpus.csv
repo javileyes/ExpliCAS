@@ -156,6 +156,9 @@ k*(arctan(a)+arctan(1/a)) - k*(pi/2),0,scaled_difference_zero,inverse_tan_identi
 ((arctan(a)+arctan(1/a))/q) - ((pi/2)/q),0,common_denominator_zero,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,rewrite inverse trigs
 ((arctan(a)+arctan(1/a)) + 1)/((pi/2) + 1),1,shifted_quotient_one,inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,rewrite inverse trigs
 (asin(x/sqrt(x^2 + 1)) - atan(x)),0,additive_passthrough_zero,arcsin_sin_arctan_safe_composition,simplify,asin(x/sqrt(x^2 + 1)),atan(x),rewrite inverse trigs
+k*(asin(x/sqrt(x^2 + 1))) - k*(atan(x)),0,scaled_difference_zero,arcsin_sin_arctan_safe_composition,simplify,asin(x/sqrt(x^2 + 1)),atan(x),rewrite inverse trigs
+((asin(x/sqrt(x^2 + 1)))/q) - ((atan(x))/q),0,common_denominator_zero,arcsin_sin_arctan_safe_composition,simplify,asin(x/sqrt(x^2 + 1)),atan(x),rewrite inverse trigs
+((asin(x/sqrt(x^2 + 1))) + 1)/((atan(x)) + 1),1,shifted_quotient_one,arcsin_sin_arctan_safe_composition,simplify,asin(x/sqrt(x^2 + 1)),atan(x),rewrite inverse trigs
 (((a^2-b^2)/(a-b)) + m) - ((a+b) + m),0,additive_passthrough_zero,cancel_fraction_difference_squares,simplify,(a^2-b^2)/(a-b),a+b,cancel fraction
 k*((a^2-b^2)/(a-b)) - k*(a+b),0,scaled_difference_zero,cancel_fraction_difference_squares,simplify,(a^2-b^2)/(a-b),a+b,cancel fraction
 (((a^2-b^2)/(a-b))/q) - ((a+b)/q),0,common_denominator_zero,cancel_fraction_difference_squares,simplify,(a^2-b^2)/(a-b),a+b,cancel fraction
@@ -185,6 +188,9 @@ k*(sqrt(a^2 + 2*a*b + b^2)) - k*(abs(a+b)),0,scaled_difference_zero,perfect_squa
 ((sqrt(a^2 + 2*a*b + b^2))/q) - ((abs(a+b))/q),0,common_denominator_zero,perfect_square_root_to_abs,simplify,sqrt(a^2 + 2*a*b + b^2),abs(a+b),rewrite radicals
 ((sqrt(a^2 + 2*a*b + b^2)) + 1)/((abs(a+b)) + 1),1,shifted_quotient_one,perfect_square_root_to_abs,simplify,sqrt(a^2 + 2*a*b + b^2),abs(a+b),rewrite radicals
 (sqrt(x + 2*sqrt(x-1)) - sqrt(x-1) - 1),0,additive_passthrough_zero,collapsed_shifted_root_square_to_linear,simplify,sqrt(x + 2*sqrt(x-1)),sqrt(x-1)+1,rewrite radicals
+k*(sqrt(x + 2*sqrt(x-1))) - k*(sqrt(x-1)+1),0,scaled_difference_zero,collapsed_shifted_root_square_to_linear,simplify,sqrt(x + 2*sqrt(x-1)),sqrt(x-1)+1,rewrite radicals
+((sqrt(x + 2*sqrt(x-1)))/q) - ((sqrt(x-1)+1)/q),0,common_denominator_zero,collapsed_shifted_root_square_to_linear,simplify,sqrt(x + 2*sqrt(x-1)),sqrt(x-1)+1,rewrite radicals
+((sqrt(x + 2*sqrt(x-1))) + 1)/((sqrt(x-1)+1) + 1),1,shifted_quotient_one,collapsed_shifted_root_square_to_linear,simplify,sqrt(x + 2*sqrt(x-1)),sqrt(x-1)+1,rewrite radicals
 ((sqrt(a^2 + 2*a*b + b^2)+c) + m) - ((abs(a+b)+c) + m),0,additive_passthrough_zero,perfect_square_root_to_abs_with_passthrough,simplify,sqrt(a^2 + 2*a*b + b^2)+c,abs(a+b)+c,rewrite radicals
 k*(sqrt(a^2 + 2*a*b + b^2)+c) - k*(abs(a+b)+c),0,scaled_difference_zero,perfect_square_root_to_abs_with_passthrough,simplify,sqrt(a^2 + 2*a*b + b^2)+c,abs(a+b)+c,rewrite radicals
 ((sqrt(a^2 + 2*a*b + b^2)+c)/q) - ((abs(a+b)+c)/q),0,common_denominator_zero,perfect_square_root_to_abs_with_passthrough,simplify,sqrt(a^2 + 2*a*b + b^2)+c,abs(a+b)+c,rewrite radicals
@@ -202,6 +208,7 @@ k*(x^2 + 2*b*x + c) - k*((x+b)^2 + c - b^2),0,scaled_difference_zero,solve_prep_
 x^2 + 2*b*x + c - ((x+b)^2 + c - b^2),0,combined_additive_zero,solve_prep_complete_square_symbolic_monic_parametric_zero,solve_prep,x^2 + 2*b*x + c,(x+b)^2 + c - b^2,solve prep
 (x^2 + 2*b*x + c - ((x+b)^2 + c - b^2)) + (((u+v)*(u-v)) - (u^2-v^2)),0,combined_additive_zero,solve_prep_factor_combined_zero,solve_prep,x^2 + 2*b*x + c,(x+b)^2 + c - b^2,collapse exact zero additive subexpressions
 (x^2 + 2*b*x - ((x+b)^2 - b^2)) + k*(1/(1 + 1/(1+u)) - (1+u)/(2+u)),0,combined_additive_zero,solve_prep_no_constant_scaled_nested_fraction_depth4_combined_zero,solve_prep,x^2 + 2*b*x,(x+b)^2 - b^2,collapse exact zero additive subexpressions
+(x^2 + 2*b*x - ((x+b)^2 - b^2)) + (p^2-q^2 - (p-q)*(p+q)) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,solve_prep_no_constant_factor_collect_three_core_combined_zero,solve_prep,x^2 + 2*b*x,(x+b)^2 - b^2,collapse exact zero additive subexpressions
 (((x^2 + 2*b*x + c)^2) + m) - ((((x+b)^2 + c - b^2)^2) + m),0,squared_passthrough_zero,solve_prep_complete_square_symbolic_monic_parametric_squared,solve_prep,x^2 + 2*b*x + c,(x+b)^2 + c - b^2,solve prep
 ((((x^2 + 2*b*x + c)^2) + m)^2) - (((((x+b)^2 + c - b^2)^2) + m)^2),0,squared_passthrough_zero,solve_prep_complete_square_symbolic_monic_parametric_double_squared,solve_prep,x^2 + 2*b*x + c,(x+b)^2 + c - b^2,solve prep
 ((a*x^2 - b*x + c) + m) - ((a*(x - b/(2*a))^2 + c - b^2/(4*a)) + m),0,additive_passthrough_zero,solve_prep_complete_square_symbolic_negative_linear_coeff,solve_prep,a*x^2 - b*x + c,a*(x - b/(2*a))^2 + c - b^2/(4*a),solve prep
@@ -222,6 +229,7 @@ k*(a*b + a*c) - k*(a*(b+c)),0,scaled_difference_zero,factor_common_factor_sum,fa
 ((a*b + a*c) + 1)/((a*(b+c)) + 1),1,shifted_quotient_one,factor_common_factor_sum,factor,a*b + a*c,a*(b+c),factor
 a*b + a*c - (a*(b+c)),0,combined_additive_zero,factor_common_factor_sum,factor,a*b + a*c,a*(b+c),factor
 (a*b + a*c - (a*(b+c))) + (sin(2*x) - 2*sin(x)*cos(x)),0,combined_additive_zero,factor_trig_expand_combined_zero,factor,a*b + a*c,a*(b+c),collapse exact zero additive subexpressions
+(a^2-b^2 - (a-b)*(a+b)) + (sec(y) - 1/cos(y)) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,factor_trigreciprocal_collect_three_core_combined_zero,factor,a^2-b^2,(a-b)*(a+b),collapse exact zero additive subexpressions
 ((a*(b+c)) + m) - ((a*b + a*c) + m),0,additive_passthrough_zero,expand_common_factor_sum,expand,a*(b+c),a*b + a*c,expand
 k*(a*(b+c)) - k*(a*b + a*c),0,scaled_difference_zero,expand_common_factor_sum,expand,a*(b+c),a*b + a*c,expand
 ((a*(b+c))/q) - ((a*b + a*c)/q),0,common_denominator_zero,expand_common_factor_sum,expand,a*(b+c),a*b + a*c,expand
@@ -337,6 +345,7 @@ k*(ln(x^2-y^2)) - k*(ln(x-y)+ln(x+y)),0,scaled_difference_zero,expand_log_factor
 ((ln(x^2-y^2)) + 1)/((ln(x-y)+ln(x+y)) + 1),1,shifted_quotient_one,expand_log_factored_difference_squares,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),expand_log
 ln(x^2-y^2) - (ln(x-y)+ln(x+y)),0,combined_additive_zero,expand_log_factored_difference_squares,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),expand_log
 (ln(x^2-y^2) - (ln(x-y)+ln(x+y))) + (((u+v)*(u-v)) - (u^2-v^2)),0,combined_additive_zero,log_expand_factor_combined_zero,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),collapse exact zero additive subexpressions
+(ln(x*y) - (ln(x)+ln(y))) + (a^2-b^2 - (a-b)*(a+b)) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,log_expand_factor_collect_three_core_combined_zero,log_expand,ln(x*y),ln(x)+ln(y),collapse exact zero additive subexpressions
 (ln(x^2-y^2) - (ln(x-y)+ln(x+y))) + k*(1/(1 + 1/(1+u)) - (1+u)/(2+u)),0,combined_additive_zero,log_expand_scaled_nested_fraction_depth4_combined_zero,log_expand,ln(x^2-y^2),ln(x-y)+ln(x+y),collapse exact zero additive subexpressions
 ((x^(log(log(x))/log(x))) + m) - ((log(x)) + m),0,additive_passthrough_zero,log_inverse_power_unary_natural_alias,log_inverse_power,x^(log(log(x))/log(x)),log(x),log inverse power
 k*(x^(log(log(x))/log(x))) - k*(log(x)),0,scaled_difference_zero,log_inverse_power_unary_natural_alias,log_inverse_power,x^(log(log(x))/log(x)),log(x),log inverse power
@@ -361,6 +370,10 @@ exp(y*log(x)) - x^y,0,combined_additive_zero,exp_natural_log_power_alias_zero,lo
 (((exp(y*log(x)))^2) + m) - (((x^y)^2) + m),0,squared_passthrough_zero,exp_natural_log_power_alias_squared,log_exp_inverse,exp(y*log(x)),x^y,log alias
 ((((exp(y*log(x)))^2) + m)^2) - ((((x^y)^2) + m)^2),0,squared_passthrough_zero,exp_natural_log_power_alias_double_squared,log_exp_inverse,exp(y*log(x)),x^y,log alias
 ((10^(y*log10(x))) + m) - ((x^y) + m),0,additive_passthrough_zero,log10_power_alias,log_exp_inverse,10^(y*log10(x)),x^y,log10 alias
+k*(10^(y*log10(x))) - k*(x^y),0,scaled_difference_zero,log10_power_alias,log_exp_inverse,10^(y*log10(x)),x^y,log10 alias
+((10^(y*log10(x)))/q) - ((x^y)/q),0,common_denominator_zero,log10_power_alias,log_exp_inverse,10^(y*log10(x)),x^y,log10 alias
+((10^(y*log10(x))) + 1)/((x^y) + 1),1,shifted_quotient_one,log10_power_alias,log_exp_inverse,10^(y*log10(x)),x^y,log10 alias
+(x^y - 10^(y*log10(x))) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,log10_power_alias_reversed_collect_combined_zero,log_exp_inverse,10^(y*log10(x)),x^y,collapse exact zero additive subexpressions
 ((ln((x*y)^2)+a) + m) - ((ln(x^2)+ln(y^2)+a) + m),0,additive_passthrough_zero,expand_log_grouped_power_with_passthrough,log_expand,ln((x*y)^2)+a,ln(x^2)+ln(y^2)+a,expand_log
 k*(ln((x*y)^2)+a) - k*(ln(x^2)+ln(y^2)+a),0,scaled_difference_zero,expand_log_grouped_power_with_passthrough,log_expand,ln((x*y)^2)+a,ln(x^2)+ln(y^2)+a,expand_log
 ((ln((x*y)^2)+a)/q) - ((ln(x^2)+ln(y^2)+a)/q),0,common_denominator_zero,expand_log_grouped_power_with_passthrough,log_expand,ln((x*y)^2)+a,ln(x^2)+ln(y^2)+a,expand_log
@@ -428,6 +441,7 @@ k*(sin(2*x)) - k*(2*sin(x)*cos(x)),0,scaled_difference_zero,expand_trig_double_s
 1/(((sin(2*x))+r/s)+c) - 1/(((2*sin(x)*cos(x))+r/s)+c),0,reciprocal_shifted_difference_zero,expand_trig_double_sin_noise_fraction,trig_expand,sin(2*x),2*sin(x)*cos(x),reciprocal shifted difference noise budget
 (sin(2*x)) - (2*sin(x)*cos(x)),0,combined_additive_zero,expand_trig_double_sin_zero,trig_expand,sin(2*x),2*sin(x)*cos(x),expand trig
 (sin(x-y) - (sin(x)*cos(y)-cos(x)*sin(y))) + (((u+v)*(u-v)) - (u^2-v^2)),0,combined_additive_zero,trig_expand_angle_diff_factor_combined_zero,trig_expand,sin(x-y),sin(x)*cos(y)-cos(x)*sin(y),collapse exact zero additive subexpressions
+(sin(2*x) - 2*sin(x)*cos(x)) + (sec(y) - 1/cos(y)) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,trig_expand_trigreciprocal_collect_three_core_combined_zero,trig_expand,sin(2*x),2*sin(x)*cos(x),collapse exact zero additive subexpressions
 ((sin(2*x)) - (2*sin(x)*cos(x))) + k*(1/(1 + 1/(1+u)) - (1+u)/(2+u)),0,combined_additive_zero,trig_expand_double_angle_scaled_nested_fraction_depth4_combined_zero,trig_expand,sin(2*x),2*sin(x)*cos(x),collapse exact zero additive subexpressions
 (((sin(2*x))^2) + m) - (((2*sin(x)*cos(x))^2) + m),0,squared_passthrough_zero,expand_trig_double_sin_squared,trig_expand,sin(2*x),2*sin(x)*cos(x),expand trig
 ((((sin(2*x))^2) + m)^2) - ((((2*sin(x)*cos(x))^2) + m)^2),0,squared_passthrough_zero,expand_trig_double_sin_double_squared,trig_expand,sin(2*x),2*sin(x)*cos(x),expand trig
@@ -906,6 +920,7 @@ a/d + b/d - ((a+b)/d),0,combined_additive_zero,combine_same_denominator_fraction
 k*(a/x + b/y) - k*((a*y+b*x)/(x*y)),0,scaled_difference_zero,combine_general_fraction_sum,fraction_combine,a/x + b/y,(a*y+b*x)/(x*y),combine fraction
 ((a/x + b/y)/q) - (((a*y+b*x)/(x*y))/q),0,common_denominator_zero,combine_general_fraction_sum,fraction_combine,a/x + b/y,(a*y+b*x)/(x*y),combine fraction
 ((a/x + b/y) + 1)/(((a*y+b*x)/(x*y)) + 1),1,shifted_quotient_one,combine_general_fraction_sum,fraction_combine,a/x + b/y,(a*y+b*x)/(x*y),combine fraction
+(1/x + 1/(x+1) - ((2*x+1)/(x*(x+1)))) + (sec(y) - 1/cos(y)) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,fraction_combine_adjacent_denominator_trigreciprocal_collect_three_core_combined_zero,fraction_combine,1/x + 1/(x+1),(2*x+1)/(x*(x+1)),collapse exact zero additive subexpressions
 ((a/d - b/d) + m) - (((a-b)/d) + m),0,additive_passthrough_zero,combine_same_denominator_fraction_difference,fraction_combine,a/d - b/d,(a-b)/d,combine fraction
 k*(a/d - b/d) - k*((a-b)/d),0,scaled_difference_zero,combine_same_denominator_fraction_difference,fraction_combine,a/d - b/d,(a-b)/d,combine fraction
 ((a/d - b/d)/q) - (((a-b)/d)/q),0,common_denominator_zero,combine_same_denominator_fraction_difference,fraction_combine,a/d - b/d,(a-b)/d,combine fraction
@@ -928,6 +943,7 @@ k*((a*x+b)/(x+c)) - k*(a + (b-a*c)/(x+c)),0,scaled_difference_zero,split_fractio
 (a*x+b)/(x+c) - (a + (b-a*c)/(x+c)),0,combined_additive_zero,split_fraction_symbolic_over_general_shift_zero,fraction_decompose,(a*x+b)/(x+c),a + (b-a*c)/(x+c),split fraction
 (a + (b-a*c)/(x+c) - ((a*x+b)/(x+c))) + (((u+v)*(u-v)) - (u^2-v^2)),0,combined_additive_zero,fraction_decompose_reversed_product_combined_zero,fraction_decompose,(a*x+b)/(x+c),a + (b-a*c)/(x+c),collapse exact zero additive subexpressions
 ((a*x+b)/(x+c) - (a + (b-a*c)/(x+c))) + (1/(1 + 1/(1 + 1/(1+u))) - (2+u)/(3+2*u)),0,combined_additive_zero,fraction_decompose_nested_fraction_depth4_combined_zero,fraction_decompose,(a*x+b)/(x+c),a + (b-a*c)/(x+c),collapse exact zero additive subexpressions
+((a*x+b)/(x+c) - (a + (b-a*c)/(x+c))) + (p^2-q^2 - (p-q)*(p+q)) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,fraction_decompose_general_shift_factor_collect_three_core_combined_zero,fraction_decompose,(a*x+b)/(x+c),a + (b-a*c)/(x+c),collapse exact zero additive subexpressions
 ((((a*x+b)/(x+c))^2) + m) - (((a + (b-a*c)/(x+c))^2) + m),0,squared_passthrough_zero,split_fraction_symbolic_over_general_shift_squared,fraction_decompose,(a*x+b)/(x+c),a + (b-a*c)/(x+c),split fraction
 (((((a*x+b)/(x+c))^2) + m)^2) - ((((a + (b-a*c)/(x+c))^2) + m)^2),0,squared_passthrough_zero,split_fraction_symbolic_over_general_shift_double_squared,fraction_decompose,(a*x+b)/(x+c),a + (b-a*c)/(x+c),split fraction
 (((a*x+b)/(c*x+d)) + m) - ((a/c + (b-a*d/c)/(c*x+d)) + m),0,additive_passthrough_zero,split_fraction_symbolic_over_scaled_general_linear,fraction_decompose,(a*x+b)/(c*x+d),a/c + (b-a*d/c)/(c*x+d),split fraction
@@ -990,6 +1006,7 @@ k*((x+a)*(x^2-a*x+a^2)) - k*(x^3+a^3),0,scaled_difference_zero,expand_symbolic_c
 ((x+a)*(x^2-a*x+a^2)) - (x^3+a^3),0,combined_additive_zero,expand_symbolic_cube_sum_product_zero,polynomial_product,(x+a)*(x^2-a*x+a^2),x^3+a^3,expand
 (((x+a)*(x^2-a*x+a^2)) - (x^3+a^3)) + (sin(2*y) - 2*sin(y)*cos(y)),0,combined_additive_zero,polynomial_product_trig_expand_combined_zero,polynomial_product,(x+a)*(x^2-a*x+a^2),x^3+a^3,collapse exact zero additive subexpressions
 (((x+a)*(x^2-a*x+a^2)) - (x^3+a^3)) + (1/(1 + 1/(1 + 1/(1+u))) - (2+u)/(3+2*u)),0,combined_additive_zero,polynomial_product_nested_fraction_depth4_combined_zero,polynomial_product,(x+a)*(x^2-a*x+a^2),x^3+a^3,collapse exact zero additive subexpressions
+(((x+a)*(x^2-a*x+a^2)) - (x^3+a^3)) + (p^2-q^2 - (p-q)*(p+q)) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,polynomial_product_factor_collect_three_core_combined_zero,polynomial_product,(x+a)*(x^2-a*x+a^2),x^3+a^3,collapse exact zero additive subexpressions
 ((((x+a)*(x^2-a*x+a^2))^2) + m) - (((x^3+a^3)^2) + m),0,squared_passthrough_zero,expand_symbolic_cube_sum_product_squared,polynomial_product,(x+a)*(x^2-a*x+a^2),x^3+a^3,expand
 (((((x+a)*(x^2-a*x+a^2))^2) + m)^2) - ((((x^3+a^3)^2) + m)^2),0,squared_passthrough_zero,expand_symbolic_cube_sum_product_double_squared,polynomial_product,(x+a)*(x^2-a*x+a^2),x^3+a^3,expand
 (((x-a)*(x^2+a*x+a^2)) + m) - ((x^3-a^3) + m),0,additive_passthrough_zero,expand_symbolic_cube_difference_product,polynomial_product,(x-a)*(x^2+a*x+a^2),x^3-a^3,expand
@@ -1310,6 +1327,7 @@ k*(5*sin(x+arctan(4/3))+a) - k*(5*cos(x-arctan(3/4))+a),0,scaled_difference_zero
 (1/(sqrt(a)+sqrt(b)) - (sqrt(a)-sqrt(b))/(a-b)) + (1/(1/u + 1/v) - (u*v)/(u+v)),0,combined_additive_zero,rationalize_nested_fraction_combined_zero,rationalize,1/(sqrt(a)+sqrt(b)),(sqrt(a)-sqrt(b))/(a-b),collapse exact zero additive subexpressions
 (1/(sqrt(a)+sqrt(b)) - (sqrt(a)-sqrt(b))/(a-b)) + k*(1/(1 + 1/(1+u)) - (1+u)/(2+u)),0,combined_additive_zero,rationalize_scaled_nested_fraction_depth4_combined_zero,rationalize,1/(sqrt(a)+sqrt(b)),(sqrt(a)-sqrt(b))/(a-b),collapse exact zero additive subexpressions
 ((u*v)/(u+v) - 1/(1/u + 1/v)) + (2*sin(x)*cos(x) - sin(2*x)),0,combined_additive_zero,nested_fraction_trig_reverse_combined_zero,nested_fraction,(u*v)/(u+v),1/(1/u + 1/v),collapse exact zero additive subexpressions
+(1/(1/u + 1/v) - (u*v)/(u+v)) + (sec(y) - 1/cos(y)) + (csc(z) - 1/sin(z)),0,combined_additive_zero,nested_fraction_double_trigreciprocal_three_core_combined_zero,nested_fraction,1/(1/u + 1/v),(u*v)/(u+v),collapse exact zero additive subexpressions
 "(sum(1/(k*(k+1)), k, 1, n) - (1 - 1/(n+1))) + ((a^2 - b^2) - (a-b)*(a+b))",0,combined_additive_zero,finite_telescoping_factor_combined_zero,finite_telescoping,"sum(1/(k*(k+1)), k, 1, n)",1 - 1/(n+1),collapse exact zero additive subexpressions
 "(sum(1/(k*(k+1)), k, 1, n) - (1 - 1/(n+1))) + (1/(1 + 1/(1 + 1/(1+u))) - (2+u)/(3+2*u))",0,combined_additive_zero,finite_telescoping_nested_fraction_depth4_combined_zero,finite_telescoping,"sum(1/(k*(k+1)), k, 1, n)",1 - 1/(n+1),collapse exact zero additive subexpressions
 (sec(x) - 1/cos(x)) + (sin(2*y) - 2*sin(y)*cos(y)),0,combined_additive_zero,trig_contract_reverse_reciprocal_double_angle_combined_zero,trig_contract,sec(x),1/cos(x),collapse exact zero additive subexpressions
@@ -1332,8 +1350,11 @@ k*(5*sin(x+arctan(4/3))+a) - k*(5*cos(x-arctan(3/4))+a),0,scaled_difference_zero
 ((a*b - a*c) - a*(b-c)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u)),0,combined_additive_zero,expand_signed_difference_reversed_nested_fraction_depth4_combined_zero,expand,a*(b-c),a*b - a*c,collapse exact zero additive subexpressions
 (((a + b)*x + c) - (a*x + b*x + c)) + (sec(y) - 1/cos(y)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u)),0,combined_additive_zero,collect_reversed_trigreciprocal_nested_fraction_three_core_combined_zero,collect,a*x + b*x + c,(a + b)*x + c,collapse exact zero additive subexpressions
 ((a+b)/d - (a/d + b/d)) + (sec(y) - 1/cos(y)) + (p^2-q^2 - (p-q)*(p+q)),0,combined_additive_zero,fraction_expand_trigreciprocal_factor_three_core_combined_zero,fraction_expand,(a+b)/d,a/d + b/d,collapse exact zero additive subexpressions
+(((a*x+b*y)/(x*y)) - (a/y + b/x)) + (p^2-q^2 - (p-q)*(p+q)) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,fraction_expand_mixed_variable_factor_collect_three_core_combined_zero,fraction_expand,(a*x+b*y)/(x*y),a/y + b/x,collapse exact zero additive subexpressions
 "(sum(1/(k*(k+1)), k, 1, n) - (1 - 1/(n+1))) + (sec(y) - 1/cos(y)) + (a^2-b^2 - (a-b)*(a+b))",0,combined_additive_zero,finite_telescoping_trigreciprocal_factor_three_core_combined_zero,finite_telescoping,"sum(1/(k*(k+1)), k, 1, n)",1 - 1/(n+1),collapse exact zero additive subexpressions
+"(product((k+1)/k, k, 1, n) - (n+1)) + (a^2-b^2 - (a-b)*(a+b)) + (u*v + u*w - u*(v+w))",0,combined_additive_zero,finite_telescoping_product_factor_collect_three_core_combined_zero,finite_telescoping,"product((k+1)/k, k, 1, n)",n+1,collapse exact zero additive subexpressions
 (sec(x) - 1/cos(x)) + (a^2-b^2 - (a-b)*(a+b)) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,trig_contract_factor_collect_three_core_combined_zero,trig_contract,sec(x),1/cos(x),collapse exact zero additive subexpressions
+(tan(x) - sin(x)/cos(x)) + (a^2-b^2 - (a-b)*(a+b)) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,trig_contract_tan_ratio_factor_collect_three_core_combined_zero,trig_contract,tan(x),sin(x)/cos(x),collapse exact zero additive subexpressions
 ((1/(x+b) - 1/(x+c)) - ((c-b)/(x^2+(b+c)*x+b*c))) + (sec(y) - 1/cos(y)) + (a^2-b^2 - (a-b)*(a+b)),0,combined_additive_zero,telescoping_fraction_trigreciprocal_factor_three_core_combined_zero,telescoping_fraction,1/(x+b) - 1/(x+c),(c-b)/(x^2+(b+c)*x+b*c),collapse exact zero additive subexpressions
 (cos(x)*cos(2*x)*cos(4*x) - sin(8*x)/(8*sin(x))) + (sec(y) - 1/cos(y)) + (a^2-b^2 - (a-b)*(a+b)),0,combined_additive_zero,integrate_prep_trigreciprocal_factor_three_core_combined_zero,integrate_prep,cos(x)*cos(2*x)*cos(4*x),sin(8*x)/(8*sin(x)),collapse exact zero additive subexpressions
 (1/(sqrt(a)+sqrt(b)) - (sqrt(a)-sqrt(b))/(a-b)) + (sec(y) - 1/cos(y)) + (p^2-q^2 - (p-q)*(p+q)),0,combined_additive_zero,rationalize_trigreciprocal_factor_three_core_combined_zero,rationalize,1/(sqrt(a)+sqrt(b)),(sqrt(a)-sqrt(b))/(a-b),collapse exact zero additive subexpressions
@@ -1342,6 +1363,7 @@ k*(5*sin(x+arctan(4/3))+a) - k*(5*cos(x-arctan(3/4))+a),0,scaled_difference_zero
 (x^(log(log(x))/log(x)) - log(x)) + (sec(y) - 1/cos(y)) + (a^2-b^2 - (a-b)*(a+b)),0,combined_additive_zero,log_inverse_power_trigreciprocal_factor_three_core_combined_zero,log_inverse_power,x^(log(log(x))/log(x)),log(x),collapse exact zero additive subexpressions
 (sqrt(x^3) - abs(x)*sqrt(x)) + (sec(y) - 1/cos(y)) + (a^2-b^2 - (a-b)*(a+b)),0,combined_additive_zero,radical_power_trigreciprocal_factor_three_core_combined_zero,radical_power,sqrt(x^3),abs(x)*sqrt(x),collapse exact zero additive subexpressions
 (ln(x)+ln(y)-ln(x*y)) + (sec(z) - 1/cos(z)) + (a^2-b^2 - (a-b)*(a+b)),0,combined_additive_zero,log_contract_trigreciprocal_factor_three_core_combined_zero,log_contract,ln(x)+ln(y),ln(x*y),collapse exact zero additive subexpressions
+(ln(x^2)+ln(y^2)-ln((x*y)^2)) + (a^2-b^2 - (a-b)*(a+b)) + (u*v + u*w - u*(v+w)),0,combined_additive_zero,log_contract_grouped_power_factor_collect_three_core_combined_zero,log_contract,ln(x^2)+ln(y^2),ln((x*y)^2),collapse exact zero additive subexpressions
 (1/(1/u + 1/v) - (u*v)/(u+v)) + (a^2-b^2 - (a-b)*(a+b)),0,combined_additive_zero,nested_fraction_factor_forward_combined_zero,nested_fraction,1/(1/u + 1/v),(u*v)/(u+v),collapse exact zero additive subexpressions
 ((a*x+b)/(c*x+d) - (a/c + (b-a*d/c)/(c*x+d))) + (p^2-q^2 - (p-q)*(p+q)),0,combined_additive_zero,fraction_decompose_scaled_linear_factor_combined_zero,fraction_decompose,(a*x+b)/(c*x+d),a/c + (b-a*d/c)/(c*x+d),collapse exact zero additive subexpressions
 (a*x^2 + b*x + c - x*(a*x + b + c/x)) + (u*v + u*w - u*(v+w)) + (p^2-q^2 - (p-q)*(p+q)),0,combined_additive_zero,conditional_factor_collect_factor_three_core_combined_zero,conditional_factor,a*x^2 + b*x + c,x*(a*x + b + c/x),collapse exact zero additive subexpressions

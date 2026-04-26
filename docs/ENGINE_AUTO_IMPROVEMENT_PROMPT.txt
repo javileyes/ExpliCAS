@@ -14,6 +14,10 @@ Fuentes condicionales:
 - Si el trabajo toca cohesión/refactor estructural de god files como orchestrator.rs o arithmetic.rs, lee docs/ENGINE_COHESION_REFACTORING_STRATEGY.md
 - Si tocas calidad didáctica de derive/steps, lee docs/DERIVE_DIDACTIC_AUDIT.md si existe
 - Si una idea gana localmente pero pierde globalmente, registra el aprendizaje en docs/ENGINE_COMBINATION_LEDGER.md
+- Si un candidato generado falla en smoke antes de promoción pero los probes
+  mínimos revelan una debilidad estructural reproducible, anótalo también en
+  docs/ENGINE_COMBINATION_LEDGER.md como discovery/observe-only. No anotes
+  errores triviales, typos, duplicados claros ni ruido sin firma reutilizable.
 - Si aparece un slow test de CI, clasifícalo siguiendo docs/SLOW_CI_TEST_LEDGER.md
 
 Si este prompt entra en conflicto con los documentos actuales del repo, obedecen los documentos del repo.
@@ -86,12 +90,17 @@ Proceso obligatorio:
    - no la fuerces
    - revierte la parte no retenible
    - conserva el aprendizaje en docs/ENGINE_COMBINATION_LEDGER.md
-11. Si generas casos nuevos, promuévelos de forma conservadora:
+11. Si un candidato generado falla antes de promoción:
+   - acota la firma con uno o dos probes baratos cuando sea razonable
+   - si el fallo apunta a una debilidad reutilizable, registra el aprendizaje en
+     docs/ENGINE_COMBINATION_LEDGER.md como discovery/observe-only
+   - si sólo es un caso mal formado, duplicado o ruido, descártalo sin ledger
+12. Si generas casos nuevos, promuévelos de forma conservadora:
    - primero presión/descubrimiento
    - luego unit o live si el caso ya es estable y representativo
    - frozen sólo para mínimos estables y duraderos
    - variantes grandes o calientes van a stress, no a live
-12. Si tocas derive, prioriza:
+13. Si tocas derive, prioriza:
    - planner acotado
    - target-awareness
    - path quality

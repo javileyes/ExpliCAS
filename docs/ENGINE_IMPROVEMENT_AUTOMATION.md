@@ -288,6 +288,28 @@ Generated candidates should be clustered by:
 That clustering matters because several hot generated expressions often expose
 the same missing abstraction.
 
+### Discovery Failures Worth Preserving
+
+Not every failed generated candidate deserves a durable note. A failed smoke
+case should normally be discarded without ceremony when it is malformed, a
+near-duplicate, a parser artifact, or an isolated anecdote with no reusable
+signature.
+
+Do preserve the discovery when cheap isolating probes show a structural pattern:
+
+- the root identity passes but a wrapper or composition fails
+- a two-core composition passes but a three-core composition fails
+- removing one syntactic companion makes the candidate pass
+- reordering does not remove the failure
+- the failure repeats across related companions or wrappers
+
+In those cases, record the smallest useful signature in
+[ENGINE_COMBINATION_LEDGER.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COMBINATION_LEDGER.md)
+with status `observe-only discovery`. The note should state what passed, what
+failed, and the current suspected family-level weakness. This keeps generated
+discovery useful without turning the live corpus or the ledger into a backlog
+of random rejected strings.
+
 ### Promotion Policy For Generated Cases
 
 Generated high-temperature cases should not go straight into the `live` corpus

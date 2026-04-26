@@ -350,6 +350,36 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("combined_additive_zero x family_00 total=1 failed=0", markdown)
         self.assertIn("combined_additive_zero x family_12 total=1 failed=0", markdown)
 
+    def test_combined_additive_summary_names_low_families_when_many_are_at_min(self):
+        summary = MODULE.combined_additive_structure_summary(
+            {
+                "family_count": 10,
+                "combined_additive_zero": {
+                    "total": 40,
+                    "family_count": 10,
+                    "collapse_rows": 30,
+                    "collapse_family_count": 10,
+                    "depth4_rows": 10,
+                    "depth4_family_count": 10,
+                    "orientation_rows": 10,
+                    "orientation_family_count": 10,
+                    "multi_core_rows": 10,
+                    "multi_core_family_count": 10,
+                    "min_family_case_count": 4,
+                    "low_family_count": 9,
+                    "low_family_counts": {
+                        f"family_{idx:02}": 4 for idx in range(9)
+                    },
+                    "above_min_family_counts": {"family_09": 5},
+                },
+            }
+        )
+
+        self.assertIn("families_at_min=9/10", summary)
+        self.assertIn("low_family_counts=family_00:4", summary)
+        self.assertIn("family_08:4", summary)
+        self.assertIn("above_min_family_counts=family_09:5", summary)
+
     def test_render_markdown_includes_mixed_pressure_and_proof_shape_caveat(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
         scorecard = {

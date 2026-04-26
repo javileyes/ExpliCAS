@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-04-25T19:49:43.396046+00:00",
+  "generated_at": "2026-04-26T10:18:03.873109+00:00",
   "git": {
     "branch": "main",
-    "commit": "cd6daf80700b0b69ae042cd0b6c14dfa1ca0ffc4"
+    "commit": "a698263507574258b3d4a1ad8a9adf1f3dedf5ac"
   },
   "orchestrator_profile_requested": false,
   "profile": "guardrail",
@@ -24,7 +24,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 2.615,
+      "elapsed_seconds": 2.544,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -36,7 +36,7 @@
         "supported_equiv_rate": 1.0,
         "unsupported": 0
       },
-      "process_elapsed_seconds": 2.615,
+      "process_elapsed_seconds": 2.544,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -56,11 +56,11 @@
         "--"
       ],
       "delta": {},
-      "elapsed_seconds": 4.74,
+      "elapsed_seconds": 4.84,
       "env": {},
       "guardrail": null,
       "metrics": {
-        "average_wrapper_overhead_nodes": 12.72,
+        "average_wrapper_overhead_nodes": 12.89,
         "complexity_level_count": 4,
         "complexity_rows": {
           "l0_root_pair": {
@@ -81,19 +81,19 @@
           },
           "l2_wrapper_plus_noise": {
             "avg_shell_depth": 1.9,
-            "avg_wrapper_overhead_nodes": 10.18,
+            "avg_wrapper_overhead_nodes": 10.17,
             "failed": 0,
             "max_shell_depth": 2,
-            "passed": 986,
-            "total": 986
+            "passed": 995,
+            "total": 995
           },
           "l3_nested_or_composed": {
             "avg_shell_depth": 2.61,
-            "avg_wrapper_overhead_nodes": 20.37,
+            "avg_wrapper_overhead_nodes": 20.82,
             "failed": 0,
             "max_shell_depth": 5,
-            "passed": 346,
-            "total": 346
+            "passed": 359,
+            "total": 359
           }
         },
         "corpus_structure": {
@@ -101,10 +101,23 @@
             "above_min_family_counts": {
               "conditional_factor": 5,
               "expand": 5,
-              "simplify": 15
+              "factor": 5,
+              "finite_telescoping": 5,
+              "fraction_combine": 5,
+              "fraction_decompose": 5,
+              "fraction_expand": 5,
+              "log_contract": 5,
+              "log_exp_inverse": 5,
+              "log_expand": 5,
+              "nested_fraction": 5,
+              "polynomial_product": 5,
+              "simplify": 15,
+              "solve_prep": 5,
+              "trig_contract": 5,
+              "trig_expand": 5
             },
             "collapse_family_count": 23,
-            "collapse_rows": 88,
+            "collapse_rows": 101,
             "depth4_family_count": 23,
             "depth4_missing_families": [],
             "depth4_rows": 34,
@@ -113,80 +126,58 @@
               "collect": 4,
               "conditional_factor": 5,
               "expand": 5,
-              "factor": 4,
-              "finite_telescoping": 4,
-              "fraction_combine": 4,
-              "fraction_decompose": 4,
-              "fraction_expand": 4,
+              "factor": 5,
+              "finite_telescoping": 5,
+              "fraction_combine": 5,
+              "fraction_decompose": 5,
+              "fraction_expand": 5,
               "integrate_prep": 4,
-              "log_contract": 4,
-              "log_exp_inverse": 4,
-              "log_expand": 4,
+              "log_contract": 5,
+              "log_exp_inverse": 5,
+              "log_expand": 5,
               "log_inverse_power": 4,
-              "nested_fraction": 4,
-              "polynomial_product": 4,
+              "nested_fraction": 5,
+              "polynomial_product": 5,
               "power_merge": 4,
               "radical_power": 4,
               "rationalize": 4,
               "simplify": 15,
-              "solve_prep": 4,
+              "solve_prep": 5,
               "telescoping_fraction": 4,
-              "trig_contract": 4,
-              "trig_expand": 4
+              "trig_contract": 5,
+              "trig_expand": 5
             },
-            "low_family_count": 20,
+            "low_family_count": 7,
             "low_family_counts": {
               "collect": 4,
-              "factor": 4,
-              "finite_telescoping": 4,
-              "fraction_combine": 4,
-              "fraction_decompose": 4,
-              "fraction_expand": 4,
               "integrate_prep": 4,
-              "log_contract": 4,
-              "log_exp_inverse": 4,
-              "log_expand": 4,
               "log_inverse_power": 4,
-              "nested_fraction": 4,
-              "polynomial_product": 4,
               "power_merge": 4,
               "radical_power": 4,
               "rationalize": 4,
-              "solve_prep": 4,
-              "telescoping_fraction": 4,
-              "trig_contract": 4,
-              "trig_expand": 4
+              "telescoping_fraction": 4
             },
             "min_family_case_count": 4,
-            "multi_core_family_count": 15,
-            "multi_core_missing_families": [
-              "factor",
-              "fraction_combine",
-              "fraction_decompose",
-              "log_expand",
-              "nested_fraction",
-              "polynomial_product",
-              "solve_prep",
-              "trig_expand"
-            ],
-            "multi_core_rows": 22,
+            "multi_core_family_count": 23,
+            "multi_core_missing_families": [],
+            "multi_core_rows": 34,
             "orientation_family_count": 23,
             "orientation_missing_families": [],
-            "orientation_rows": 28,
-            "total": 105
+            "orientation_rows": 29,
+            "total": 118
           },
           "family_count": 23,
-          "row_count": 1347
+          "row_count": 1369
         },
         "failed": 0,
         "family_count": 23,
-        "largest_wrapper_complexity_share_percent": 18.3,
-        "largest_wrapper_share_percent": 21.4,
+        "largest_wrapper_complexity_share_percent": 18.0,
+        "largest_wrapper_share_percent": 21.0,
         "max_expression_depth": 18,
         "max_shell_depth": 5,
-        "passed": 1347,
-        "reported_elapsed": "4.74s",
-        "reported_elapsed_seconds": 4.74,
+        "passed": 1369,
+        "reported_elapsed": "4.84s",
+        "reported_elapsed_seconds": 4.84,
         "shell_depth_count": 6,
         "shell_depth_rows": {
           "0": {
@@ -201,13 +192,13 @@
           },
           "2": {
             "failed": 0,
-            "passed": 1048,
-            "total": 1048
+            "passed": 1060,
+            "total": 1060
           },
           "3": {
             "failed": 0,
-            "passed": 71,
-            "total": 71
+            "passed": 81,
+            "total": 81
           },
           "4": {
             "failed": 0,
@@ -242,7 +233,7 @@
             "wrapper": "squared_passthrough_zero"
           }
         ],
-        "total_cases": 1347,
+        "total_cases": 1369,
         "wrapper_complexity_family_rows": [
           {
             "failed": 0,
@@ -615,6 +606,36 @@
         ],
         "wrapper_complexity_rows": [
           {
+            "avg_shell_depth": 2.0,
+            "avg_wrapper_overhead_nodes": 10.17,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 2,
+            "passed": 247,
+            "total": 247,
+            "wrapper": "common_denominator_zero"
+          },
+          {
+            "avg_shell_depth": 1.87,
+            "avg_wrapper_overhead_nodes": 10.17,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 2,
+            "passed": 247,
+            "total": 247,
+            "wrapper": "scaled_difference_zero"
+          },
+          {
+            "avg_shell_depth": 1.88,
+            "avg_wrapper_overhead_nodes": 10.17,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 2,
+            "passed": 247,
+            "total": 247,
+            "wrapper": "shifted_quotient_one"
+          },
+          {
             "avg_shell_depth": 1.88,
             "avg_wrapper_overhead_nodes": 10.17,
             "failed": 0,
@@ -625,43 +646,13 @@
             "wrapper": "additive_passthrough_zero"
           },
           {
-            "avg_shell_depth": 2.0,
-            "avg_wrapper_overhead_nodes": 10.19,
-            "failed": 0,
-            "level": "l2_wrapper_plus_noise",
-            "max_shell_depth": 2,
-            "passed": 244,
-            "total": 244,
-            "wrapper": "common_denominator_zero"
-          },
-          {
-            "avg_shell_depth": 1.87,
-            "avg_wrapper_overhead_nodes": 10.19,
-            "failed": 0,
-            "level": "l2_wrapper_plus_noise",
-            "max_shell_depth": 2,
-            "passed": 244,
-            "total": 244,
-            "wrapper": "scaled_difference_zero"
-          },
-          {
-            "avg_shell_depth": 1.88,
-            "avg_wrapper_overhead_nodes": 10.19,
-            "failed": 0,
-            "level": "l2_wrapper_plus_noise",
-            "max_shell_depth": 2,
-            "passed": 244,
-            "total": 244,
-            "wrapper": "shifted_quotient_one"
-          },
-          {
-            "avg_shell_depth": 3.16,
-            "avg_wrapper_overhead_nodes": 27.76,
+            "avg_shell_depth": 3.1,
+            "avg_wrapper_overhead_nodes": 28.44,
             "failed": 0,
             "level": "l3_nested_or_composed",
             "max_shell_depth": 5,
-            "passed": 83,
-            "total": 83,
+            "passed": 96,
+            "total": 96,
             "wrapper": "combined_additive_zero"
           },
           {
@@ -1107,13 +1098,13 @@
           },
           "combined_additive_zero": {
             "failed": 0,
-            "passed": 105,
-            "total": 105
+            "passed": 118,
+            "total": 118
           },
           "common_denominator_zero": {
             "failed": 0,
-            "passed": 285,
-            "total": 285
+            "passed": 288,
+            "total": 288
           },
           "reciprocal_shifted_difference_zero": {
             "failed": 0,
@@ -1122,13 +1113,13 @@
           },
           "scaled_difference_zero": {
             "failed": 0,
-            "passed": 285,
-            "total": 285
+            "passed": 288,
+            "total": 288
           },
           "shifted_quotient_one": {
             "failed": 0,
-            "passed": 285,
-            "total": 285
+            "passed": 288,
+            "total": 288
           },
           "squared_passthrough_zero": {
             "failed": 0,
@@ -1912,7 +1903,7 @@
           }
         ]
       },
-      "process_elapsed_seconds": 5.051,
+      "process_elapsed_seconds": 5.161,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1935,7 +1926,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 17.383,
+      "elapsed_seconds": 17.317,
       "env": {
         "METATEST_MAX_EXAMPLES": "20",
         "METATEST_PROGRESS_EVERY": "1000",
@@ -2086,7 +2077,7 @@
         "timeouts": 0,
         "total_combos": 16475
       },
-      "process_elapsed_seconds": 17.383,
+      "process_elapsed_seconds": 17.317,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,

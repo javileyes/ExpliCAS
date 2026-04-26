@@ -95,6 +95,48 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-04-26: `collect` Common-Tail Three-Core Discovery
+
+- area:
+  - generated discovery / embedded equivalence candidate smoke
+  - [embedded_equivalence_context_corpus.csv](/Users/javiergimenezmoya/developer/math/docs/embedded_equivalence_context_corpus.csv)
+  - `combined_additive_zero` x `collect`
+- status:
+  - `observe-only discovery`
+- attempted row:
+  - `collect_common_symbolic_factor_trigexpand_three_core_combined_zero`
+  - `(x*y + x*z + w - (x*(y+z) + w)) + (p^2-q^2 - (p-q)*(p+q)) + (sin(2*t) - 2*sin(t)*cos(t))`
+- local lane:
+  - `python3 scripts/engine_embedded_candidate_smoke.py --json --timeout-seconds 6 --row ...`
+- local result:
+  - attempted three-core candidate failed before live promotion:
+    - `status=fail`
+    - `passed=0`
+    - `failed=1`
+    - `runner_elapsed=11.15ms`
+  - isolating probes passed:
+    - root collect shape with the `+ w` passthrough: pass
+    - collect plus factor two-core shape: pass
+    - collect plus trig two-core shape: pass
+    - three-core shape without the `+ w` passthrough: pass
+  - related probes failed:
+    - reordered three-core shape with the `+ w` passthrough: fail
+    - same collect/factor shape with trig reciprocal instead of trig expand: fail
+- decision:
+  - do not promote the row to the live corpus
+  - keep the expression as generated-discovery pressure for a future `collect`
+    isolation or runtime cycle
+- best current explanation:
+  - this is not evidence that `collect` is generally broken
+  - the current signature points to a narrower composition gap: a collect core
+    with an unchanged additive passthrough term becomes fragile when it is part
+    of a three-core additive-zero composition
+- plausible follow-up:
+  - isolate whether the miss is in additive flattening, common-tail
+    cancellation, or the exact-zero decomposition route before changing runtime
+  - if runtime is changed, retain a focused regression around the minimal
+    failing shape rather than the full generated three-core row
+
 ### 2026-04-25: Nested-Fraction Three-Core Live Corpus Promotion
 
 - area:
