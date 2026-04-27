@@ -105,31 +105,83 @@ root.div.01.shifted_quotient_exact_one_gate
   - x + x + 1  ||  2 * x + 1
 """
 
+SAMPLE_DISCOVERY_LEDGER = """# Engine Combination Ledger
+
+## Current Entries
+
+### 2026-04-27: `integrate_prep` Dirichlet Timeout Discovery
+
+- area:
+  - generated discovery / embedded equivalence candidate smoke
+  - `combined_additive_zero` x `integrate_prep`
+- status:
+  - `observe-only discovery`
+
+### 2026-04-27: `radical_power` Passthrough Discovery
+
+- area:
+  - generated discovery / embedded equivalence candidate smoke
+  - `combined_additive_zero` x `radical_power`
+- status:
+  - `observe-only discovery`
+
+### 2026-04-24: Local Runtime Patch
+
+- area:
+  - orchestrator
+- status:
+  - `rejected`
+"""
+
 
 class EngineImprovementScorecardTests(unittest.TestCase):
     def test_orchestrator_profile_env_and_command_only_apply_to_embedded_suite(self):
-        args = argparse.Namespace(orchestrator_profile=True)
+        args = argparse.Namespace(
+            orchestrator_profile=True,
+            orchestrator_profile_filter="pipeline.,root.",
+            orchestrator_profile_limit=17,
+        )
 
         embedded_env = MODULE.orchestrator_profile_env(
             MODULE.SUITES["embedded_equivalence_context"], args
         )
         embedded_command = MODULE.orchestrator_profile_command(
-            MODULE.SUITES["embedded_equivalence_context"]
+            MODULE.SUITES["embedded_equivalence_context"], args
         )
         pressure_env = MODULE.orchestrator_profile_env(
             MODULE.SUITES["simplify_zero_mixed"], args
         )
         pressure_command = MODULE.orchestrator_profile_command(
-            MODULE.SUITES["simplify_zero_mixed"]
+            MODULE.SUITES["simplify_zero_mixed"], args
         )
 
         self.assertEqual(embedded_env["CAS_PROFILE_ORCHESTRATOR_SHORTCUTS"], "1")
         self.assertEqual(
             embedded_env["CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER"], "pipeline.,root."
         )
-        self.assertEqual(embedded_command[-2:], ["--limit", str(MODULE.EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT)])
+        self.assertEqual(embedded_command[-2:], ["--limit", "17"])
         self.assertIsNone(pressure_env)
         self.assertIsNone(pressure_command)
+
+    def test_orchestrator_profile_env_and_command_accept_custom_filter_and_limit(self):
+        args = argparse.Namespace(
+            orchestrator_profile=True,
+            orchestrator_profile_filter="rule.direct_identity.",
+            orchestrator_profile_limit=9,
+        )
+
+        embedded_env = MODULE.orchestrator_profile_env(
+            MODULE.SUITES["embedded_equivalence_context"], args
+        )
+        embedded_command = MODULE.orchestrator_profile_command(
+            MODULE.SUITES["embedded_equivalence_context"], args
+        )
+
+        self.assertEqual(
+            embedded_env["CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER"],
+            "rule.direct_identity.",
+        )
+        self.assertEqual(embedded_command[-2:], ["--limit", "9"])
 
     def test_pressure_profile_stays_bounded_and_full_keeps_nf_first(self):
         pressure_args = argparse.Namespace(profile="pressure", suite=[])
@@ -145,6 +197,11 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             MODULE.SUITES["simplify_nf_first"].timeout_seconds,
             MODULE.NF_FIRST_FULL_TIMEOUT_SECONDS,
         )
+
+    def test_format_runtime_duration_preserves_subsecond_signal(self):
+        self.assertEqual(MODULE.format_runtime_duration(0.00025), "0.25ms")
+        self.assertEqual(MODULE.format_runtime_duration(0.15), "150.00ms")
+        self.assertEqual(MODULE.format_runtime_duration(1.234), "1.23s")
 
     def test_run_command_timeout_marks_timeout_and_captures_output(self):
         spec = MODULE.SuiteSpec(
@@ -181,6 +238,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(metrics["max_shell_depth"], 4)
         self.assertEqual(metrics["max_expression_depth"], 5)
         self.assertEqual(metrics["average_wrapper_overhead_nodes"], 10.0)
+        self.assertAlmostEqual(metrics["reported_elapsed_per_case_ms"], 2.1375)
         self.assertEqual(
             metrics["complexity_rows"]["l2_wrapper_plus_noise"]["avg_shell_depth"], 1.75
         )
@@ -254,8 +312,40 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         )
         self.assertEqual(profile["top_hot_sections"][0]["samples"], ["0"])
 
+    def test_parse_orchestrator_profile_recovers_truncated_section_samples(self):
+        output = """Orchestrator Profiling Report
+──────────────────────────────────────────────────────────────────────────────────────────────
+Section                                          Attempts     Hits   Misses     Total ms       Avg us
+──────────────────────────────────────────────────────────────────────────────────────────────
+root.direct_small_zero_composition.candidate.th…       75       19       56       71.683       955.78
+TOTAL                                                  75       19       56       71.683       955.78
+──────────────────────────────────────────────────────────────────────────────────────────────
+Sample expressions
+──────────────────────────────────────────────────────────────────────────────────────────────
+root.direct_small_zero_composition.candidate.three_core_groups
+  - sub(add, add)
+"""
+
+        profile = MODULE.parse_orchestrator_profile(output)
+
+        assert profile is not None
+        row = profile["top_hot_sections"][0]
+        self.assertEqual(
+            row["section"],
+            "root.direct_small_zero_composition.candidate.three_core_groups",
+        )
+        self.assertEqual(row["samples"], ["sub(add, add)"])
+
     def test_render_markdown_includes_embedded_orchestrator_profile_summary(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
+        metrics["orchestrator_profile_slice"] = {
+            "elapsed_seconds": 0.043,
+            "family_count": 2,
+            "filter": "pipeline.,root.",
+            "limit": 17,
+            "total_cases": 8,
+            "wrapper_count": 3,
+        }
         scorecard = {
             "generated_at": "2026-04-20T00:00:00+00:00",
             "profile": "guardrail",
@@ -279,7 +369,12 @@ class EngineImprovementScorecardTests(unittest.TestCase):
 
         markdown = MODULE.render_markdown(scorecard)
 
+        self.assertIn("- Per-case runtime: 2.138ms/case", markdown)
         self.assertIn("## Embedded Orchestrator Profile", markdown)
+        self.assertIn(
+            "Profiled slice: 8 cases (limit 17), 3 wrappers, 2 families, 0.04s elapsed, filter `pipeline.,root.`.",
+            markdown,
+        )
         self.assertIn("Shell-depth mix", markdown)
         self.assertIn("depth 4 total=1 failed=0", markdown)
         self.assertIn("Sparse wrapper x shell-depth buckets", markdown)
@@ -366,8 +461,13 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                     "multi_core_rows": 10,
                     "multi_core_family_count": 10,
                     "min_family_case_count": 4,
+                    "target_family_case_count": 6,
                     "low_family_count": 9,
                     "low_family_counts": {
+                        f"family_{idx:02}": 4 for idx in range(9)
+                    },
+                    "under_target_family_count": 9,
+                    "under_target_family_counts": {
                         f"family_{idx:02}": 4 for idx in range(9)
                     },
                     "above_min_family_counts": {"family_09": 5},
@@ -376,9 +476,151 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         )
 
         self.assertIn("families_at_min=9/10", summary)
+        self.assertIn("target_family_case_count=6", summary)
+        self.assertIn("families_under_target=9/10", summary)
         self.assertIn("low_family_counts=family_00:4", summary)
+        self.assertIn("under_target_family_counts=family_00:4", summary)
         self.assertIn("family_08:4", summary)
         self.assertIn("above_min_family_counts=family_09:5", summary)
+
+    def test_generated_discovery_ledger_metrics_and_markdown(self):
+        metrics = MODULE.parse_generated_discovery_ledger(SAMPLE_DISCOVERY_LEDGER)
+
+        self.assertEqual(metrics["observe_only_discoveries"], 2)
+        self.assertEqual(metrics["families"]["integrate_prep"], 1)
+        self.assertEqual(metrics["families"]["radical_power"], 1)
+        self.assertEqual(metrics["wrappers"]["combined_additive_zero"], 2)
+        self.assertEqual(metrics["recent"][0]["family"], "integrate_prep")
+
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "generated_discovery": metrics,
+            "suites": {},
+        }
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn("## Generated Discovery Ledger", markdown)
+        self.assertIn("Observe-only discoveries: total=2", markdown)
+        self.assertIn("integrate_prep:1", markdown)
+        self.assertIn("combined_additive_zero:2", markdown)
+        self.assertIn("Recent 1: `integrate_prep`", markdown)
+
+    def test_generated_discovery_ledger_markdown_reports_clean_state(self):
+        metrics = MODULE.parse_generated_discovery_ledger(
+            "### 2026-04-27: Resolved Discovery\n\n"
+            "- status:\n"
+            "  - `resolved`\n"
+        )
+
+        self.assertEqual(metrics["observe_only_discoveries"], 0)
+
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "generated_discovery": metrics,
+            "suites": {},
+        }
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn("## Generated Discovery Ledger", markdown)
+        self.assertIn("Observe-only discoveries: total=0", markdown)
+        self.assertIn("no open observe-only generated discoveries", markdown)
+        self.assertNotIn("- By family:", markdown)
+        self.assertNotIn("- Recent 1:", markdown)
+
+    def test_generated_discovery_pressure_marks_low_family_intersection(self):
+        metrics = MODULE.parse_generated_discovery_ledger(SAMPLE_DISCOVERY_LEDGER)
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "generated_discovery": metrics,
+            "suites": {
+                "embedded_equivalence_context": {
+                    "status": "pass",
+                    "elapsed_seconds": 1.0,
+                    "metrics": {
+                        "total_cases": 2,
+                        "passed": 2,
+                        "failed": 0,
+                        "corpus_structure": {
+                            "family_count": 3,
+                            "combined_additive_zero": {
+                                "low_family_counts": {
+                                    "collect": 4,
+                                    "integrate_prep": 4,
+                                }
+                            },
+                        },
+                    },
+                    "delta": {},
+                }
+            },
+        }
+
+        pressure = MODULE.generated_discovery_pressure_metrics(scorecard)
+
+        self.assertEqual(pressure["low_family_count"], 2)
+        self.assertEqual(pressure["blocked_low_family_count"], 1)
+        self.assertEqual(
+            pressure["blocked_low_families"]["integrate_prep"]["live_count"],
+            4,
+        )
+        self.assertEqual(
+            pressure["blocked_low_families"]["integrate_prep"][
+                "observe_only_discoveries"
+            ],
+            1,
+        )
+        self.assertEqual(pressure["unblocked_low_families"]["collect"], 4)
+
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn("Low-family discovery pressure: blocked=1/2", markdown)
+        self.assertIn("integrate_prep:live=4,observe_only=1", markdown)
+
+    def test_generated_discovery_pressure_ignores_balanced_floor_families(self):
+        metrics = MODULE.parse_generated_discovery_ledger(SAMPLE_DISCOVERY_LEDGER)
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "generated_discovery": metrics,
+            "suites": {
+                "embedded_equivalence_context": {
+                    "status": "pass",
+                    "elapsed_seconds": 1.0,
+                    "metrics": {
+                        "total_cases": 2,
+                        "passed": 2,
+                        "failed": 0,
+                        "corpus_structure": {
+                            "family_count": 3,
+                            "combined_additive_zero": {
+                                "low_family_counts": {
+                                    "collect": 6,
+                                    "integrate_prep": 6,
+                                },
+                                "under_target_family_counts": {},
+                            },
+                        },
+                    },
+                    "delta": {},
+                }
+            },
+        }
+
+        pressure = MODULE.generated_discovery_pressure_metrics(scorecard)
+
+        self.assertEqual(pressure["low_family_count"], 0)
+        self.assertEqual(pressure["blocked_low_family_count"], 0)
+
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertNotIn("Low-family discovery pressure", markdown)
 
     def test_render_markdown_includes_mixed_pressure_and_proof_shape_caveat(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
@@ -433,6 +675,16 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("Window slices", markdown)
         self.assertIn("Steady-state engine reruns", markdown)
         self.assertIn("#9 sum", markdown)
+        self.assertIn("sum total=3 failed=0 elapsed=12.00ms", markdown)
+        self.assertIn("simplify=0.90ms", markdown)
+        self.assertIn("sum simplify=0.90ms", markdown)
+        self.assertIn("wall=12.00ms", markdown)
+        self.assertIn("sum@0+3 failed=0 elapsed=12.00ms", markdown)
+        self.assertIn("median_simplify=0.25ms", markdown)
+        self.assertIn("median_wire=0.40ms", markdown)
+        self.assertIn("median_wall=1.20ms", markdown)
+        self.assertNotIn("simplify=0.00s", markdown)
+        self.assertNotIn("median_simplify=0.00s", markdown)
         self.assertIn("sum total=3 failed=0", markdown)
 
 

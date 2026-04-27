@@ -36,10 +36,12 @@ DEFAULT_OUTPUT = ROOT / "docs" / "generated" / "engine_improvement_scorecard.jso
 EMBEDDED_EQUIVALENCE_CONTEXT_CORPUS = (
     ROOT / "docs" / "embedded_equivalence_context_corpus.csv"
 )
+ENGINE_COMBINATION_LEDGER = ROOT / "docs" / "ENGINE_COMBINATION_LEDGER.md"
 EMBEDDED_RUNTIME_DELTA_RATIO_THRESHOLD = 0.10
 EMBEDDED_RUNTIME_DELTA_SECONDS_THRESHOLD = 5.0
 EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT = 480
 NF_FIRST_FULL_TIMEOUT_SECONDS = 15 * 60
+COMBINED_ADDITIVE_FAMILY_TARGET_CASE_COUNT = 6
 SIMPLIFY_ZERO_MIXED_PRESSURE_WINDOWS = (
     ("sum", 0, 100),
     ("sum", 700, 100),
@@ -274,6 +276,23 @@ def parse_args() -> argparse.Namespace:
             "corpus suite."
         ),
     )
+    parser.add_argument(
+        "--orchestrator-profile-filter",
+        default="pipeline.,root.",
+        help=(
+            "Comma-separated orchestrator shortcut profile filter used with "
+            "--orchestrator-profile."
+        ),
+    )
+    parser.add_argument(
+        "--orchestrator-profile-limit",
+        type=int,
+        default=EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT,
+        help=(
+            "Embedded corpus case limit for the orchestrator profiling slice "
+            "used with --orchestrator-profile."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -313,14 +332,16 @@ def orchestrator_profile_env(
         return None
     return {
         "CAS_PROFILE_ORCHESTRATOR_SHORTCUTS": "1",
-        "CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER": "pipeline.,root.",
+        "CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER": args.orchestrator_profile_filter,
     }
 
 
-def orchestrator_profile_command(spec: SuiteSpec) -> list[str] | None:
+def orchestrator_profile_command(
+    spec: SuiteSpec, args: argparse.Namespace
+) -> list[str] | None:
     if spec.name != "embedded_equivalence_context":
         return None
-    return [*spec.command, "--limit", str(EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT)]
+    return [*spec.command, "--limit", str(args.orchestrator_profile_limit)]
 
 
 def run_command(
@@ -473,6 +494,12 @@ def parse_corpus(output: str) -> dict[str, Any]:
         metrics["reported_elapsed_seconds"] = duration_to_seconds(
             float(match.group(1)), match.group(2)
         )
+        total_cases = metrics.get("total_cases")
+        if isinstance(total_cases, int) and total_cases > 0:
+            metrics["reported_elapsed_per_case_ms"] = round(
+                metrics["reported_elapsed_seconds"] * 1000.0 / total_cases,
+                4,
+            )
 
     complexity_rows = parse_complexity_rows(output)
     if complexity_rows:
@@ -579,6 +606,11 @@ def embedded_corpus_structure_metrics(
         for family, count in sorted(combined_family_counts.items())
         if count > min_family_case_count
     }
+    under_target_family_counts = {
+        family: count
+        for family, count in sorted(combined_family_counts.items())
+        if count < COMBINED_ADDITIVE_FAMILY_TARGET_CASE_COUNT
+    }
 
     return {
         "row_count": len(rows),
@@ -603,10 +635,109 @@ def embedded_corpus_structure_metrics(
                 family_set - multi_core_families
             ),
             "min_family_case_count": min_family_case_count,
+            "target_family_case_count": COMBINED_ADDITIVE_FAMILY_TARGET_CASE_COUNT,
             "low_family_count": len(low_family_counts),
             "low_family_counts": low_family_counts,
+            "under_target_family_count": len(under_target_family_counts),
+            "under_target_family_counts": under_target_family_counts,
             "above_min_family_counts": above_min_family_counts,
         },
+    }
+
+
+def generated_discovery_ledger_metrics(
+    ledger_path: pathlib.Path = ENGINE_COMBINATION_LEDGER,
+) -> dict[str, Any]:
+    """Summarize observe-only generated discoveries retained outside live corpus."""
+    if not ledger_path.exists():
+        return {"parse_error": f"missing combination ledger: {ledger_path}"}
+    return parse_generated_discovery_ledger(ledger_path.read_text())
+
+
+def parse_generated_discovery_ledger(text: str) -> dict[str, Any]:
+    discoveries: list[dict[str, str]] = []
+    section_pattern = re.compile(
+        r"^###\s+(?P<title>.+?)\n(?P<body>.*?)(?=^###\s+|\Z)",
+        re.M | re.S,
+    )
+    axis_pattern = re.compile(r"`(?P<wrapper>[^`]+)`\s+x\s+`(?P<family>[^`]+)`")
+
+    for match in section_pattern.finditer(text):
+        title = match.group("title").strip()
+        body = match.group("body")
+        if "`observe-only discovery`" not in body:
+            continue
+        axis_match = axis_pattern.search(body)
+        discoveries.append(
+            {
+                "title": title,
+                "status": "observe-only discovery",
+                "wrapper": axis_match.group("wrapper") if axis_match else "unknown",
+                "family": axis_match.group("family") if axis_match else "unknown",
+            }
+        )
+
+    by_family: dict[str, int] = {}
+    by_wrapper: dict[str, int] = {}
+    for discovery in discoveries:
+        family = discovery["family"]
+        wrapper = discovery["wrapper"]
+        by_family[family] = by_family.get(family, 0) + 1
+        by_wrapper[wrapper] = by_wrapper.get(wrapper, 0) + 1
+
+    return {
+        "observe_only_discoveries": len(discoveries),
+        "families": by_family,
+        "wrappers": by_wrapper,
+        "recent": discoveries[:5],
+    }
+
+
+def generated_discovery_pressure_metrics(scorecard: dict[str, Any]) -> dict[str, Any]:
+    discovery_metrics = scorecard.get("generated_discovery")
+    if not isinstance(discovery_metrics, dict):
+        return {}
+    discovery_families = discovery_metrics.get("families")
+    if not isinstance(discovery_families, dict):
+        return {}
+
+    embedded_suite = scorecard.get("suites", {}).get("embedded_equivalence_context")
+    if not isinstance(embedded_suite, dict):
+        return {}
+    metrics = embedded_suite.get("metrics")
+    if not isinstance(metrics, dict):
+        return {}
+    corpus_structure = metrics.get("corpus_structure")
+    if not isinstance(corpus_structure, dict):
+        return {}
+    combined = corpus_structure.get("combined_additive_zero")
+    if not isinstance(combined, dict):
+        return {}
+    target_family_counts = combined.get("under_target_family_counts")
+    if not isinstance(target_family_counts, dict):
+        target_family_counts = combined.get("low_family_counts")
+    if not isinstance(target_family_counts, dict):
+        return {}
+
+    blocked: dict[str, dict[str, int]] = {}
+    unblocked: dict[str, int] = {}
+    for family, live_count in sorted(target_family_counts.items()):
+        if not isinstance(family, str) or not isinstance(live_count, int):
+            continue
+        discovery_count = discovery_families.get(family, 0)
+        if isinstance(discovery_count, int) and discovery_count > 0:
+            blocked[family] = {
+                "live_count": live_count,
+                "observe_only_discoveries": discovery_count,
+            }
+        else:
+            unblocked[family] = live_count
+
+    return {
+        "low_family_count": len(blocked) + len(unblocked),
+        "blocked_low_family_count": len(blocked),
+        "blocked_low_families": blocked,
+        "unblocked_low_families": unblocked,
     }
 
 
@@ -1159,7 +1290,20 @@ def parse_orchestrator_profile(output: str) -> dict[str, Any] | None:
             sections.append(row)
 
     for row in sections:
-        row["samples"] = samples_by_section.get(row["section"], [])
+        section = row["section"]
+        samples = samples_by_section.get(section)
+        if samples is None and section.endswith("…"):
+            prefix = section[:-1]
+            sample_section_matches = [
+                sample_section
+                for sample_section in samples_by_section
+                if sample_section.startswith(prefix)
+            ]
+            if len(sample_section_matches) == 1:
+                section = sample_section_matches[0]
+                row["section"] = section
+                samples = samples_by_section[section]
+        row["samples"] = samples or []
 
     if total_row is None:
         total_attempts = sum(row["attempts"] for row in sections)
@@ -1458,6 +1602,12 @@ def format_elapsed_with_delta(
     return summary
 
 
+def format_runtime_duration(seconds: float) -> str:
+    if seconds < 1.0:
+        return f"{seconds * 1000.0:.2f}ms"
+    return f"{seconds:.2f}s"
+
+
 def effective_elapsed_seconds(metrics: dict[str, Any], process_elapsed_seconds: float) -> float:
     reported = metrics.get("reported_elapsed_seconds")
     if isinstance(reported, (int, float)):
@@ -1609,18 +1759,36 @@ def combined_additive_structure_summary(corpus_structure: dict[str, Any]) -> str
             fragments.append(f"{label}={format_family_list(missing)}")
 
     min_case_count = combined.get("min_family_case_count")
+    target_case_count = combined.get("target_family_case_count")
     low_family_count = combined.get("low_family_count")
     if isinstance(min_case_count, int):
         fragments.append(f"min_family_case_count={min_case_count}")
+    if isinstance(target_case_count, int):
+        fragments.append(f"target_family_case_count={target_case_count}")
     if isinstance(low_family_count, int):
         if isinstance(total_families, int) and total_families > 0:
             fragments.append(f"families_at_min={low_family_count}/{total_families}")
         else:
             fragments.append(f"families_at_min={low_family_count}")
 
+    under_target_family_count = combined.get("under_target_family_count")
+    if isinstance(under_target_family_count, int):
+        if isinstance(total_families, int) and total_families > 0:
+            fragments.append(
+                f"families_under_target={under_target_family_count}/{total_families}"
+            )
+        else:
+            fragments.append(f"families_under_target={under_target_family_count}")
+
     low_family_counts = combined.get("low_family_counts")
     if isinstance(low_family_counts, dict) and low_family_counts:
         fragments.append(f"low_family_counts={format_family_counts(low_family_counts)}")
+
+    under_target_counts = combined.get("under_target_family_counts")
+    if isinstance(under_target_counts, dict) and under_target_counts:
+        fragments.append(
+            f"under_target_family_counts={format_family_counts(under_target_counts)}"
+        )
 
     above_min_counts = combined.get("above_min_family_counts")
     if isinstance(above_min_counts, dict) and above_min_counts:
@@ -1641,6 +1809,21 @@ def format_family_counts(counts: dict[Any, Any]) -> str:
         f"{family}:{count}"
         for family, count in sorted(items)
     )
+
+
+def format_blocked_low_family_discoveries(counts: dict[Any, Any]) -> str:
+    fragments = []
+    for family, row in sorted(counts.items()):
+        if not isinstance(family, str) or not isinstance(row, dict):
+            continue
+        live_count = row.get("live_count")
+        discovery_count = row.get("observe_only_discoveries")
+        if not isinstance(live_count, int) or not isinstance(discovery_count, int):
+            continue
+        fragments.append(
+            f"{family}:live={live_count},observe_only={discovery_count}"
+        )
+    return ", ".join(fragments)
 
 
 def format_family_list(families: list[Any], max_items: int = 8) -> str:
@@ -1780,6 +1963,9 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 f"- Elapsed: {embedded_suite['elapsed_seconds']:.2f}s",
             ]
         )
+        elapsed_per_case_ms = embedded_metrics.get("reported_elapsed_per_case_ms")
+        if isinstance(elapsed_per_case_ms, (int, float)):
+            lines.append(f"- Per-case runtime: {elapsed_per_case_ms:.3f}ms/case")
         wrapper_count = embedded_metrics.get("wrapper_count")
         family_count = embedded_metrics.get("family_count")
         largest_wrapper_share = embedded_metrics.get("largest_wrapper_share_percent")
@@ -2053,6 +2239,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 ]
             )
             if isinstance(profile_slice, dict):
+                profile_filter = profile_slice.get("filter", "unknown")
                 lines.append(
                     (
                         "- Profiled slice: "
@@ -2060,7 +2247,8 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"(limit {profile_slice['limit']}), "
                         f"{profile_slice['wrapper_count']} wrappers, "
                         f"{profile_slice['family_count']} families, "
-                        f"{profile_slice['elapsed_seconds']:.2f}s elapsed."
+                        f"{profile_slice['elapsed_seconds']:.2f}s elapsed, "
+                        f"filter `{profile_filter}`."
                     )
                 )
             lines.append(
@@ -2097,6 +2285,61 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             f"(misses {row['misses']} of {row['attempts']})"
                             f"{sample_suffix}"
                         )
+                    )
+            lines.append("")
+
+    discovery_metrics = scorecard.get("generated_discovery")
+    if isinstance(discovery_metrics, dict):
+        observe_only_total = discovery_metrics.get("observe_only_discoveries")
+        if isinstance(observe_only_total, int):
+            families = discovery_metrics.get("families")
+            wrappers = discovery_metrics.get("wrappers")
+            recent = discovery_metrics.get("recent")
+            discovery_pressure = scorecard.get("generated_discovery_pressure")
+            if not isinstance(discovery_pressure, dict):
+                discovery_pressure = generated_discovery_pressure_metrics(scorecard)
+            lines.extend(
+                [
+                    "## Generated Discovery Ledger",
+                    "",
+                    "- Purpose: keep failed generated candidates visible without promoting them to live corpus.",
+                    f"- Observe-only discoveries: total={observe_only_total}",
+                ]
+            )
+            if observe_only_total == 0:
+                lines.append("- Status: no open observe-only generated discoveries.")
+            if isinstance(families, dict) and families:
+                lines.append(f"- By family: {format_family_counts(families)}")
+            if isinstance(wrappers, dict) and wrappers:
+                lines.append(f"- By wrapper: {format_family_counts(wrappers)}")
+            blocked_low_families = discovery_pressure.get("blocked_low_families")
+            blocked_low_count = discovery_pressure.get("blocked_low_family_count")
+            low_family_count = discovery_pressure.get("low_family_count")
+            if (
+                isinstance(blocked_low_families, dict)
+                and blocked_low_families
+                and isinstance(blocked_low_count, int)
+                and isinstance(low_family_count, int)
+            ):
+                lines.append(
+                    "- Low-family discovery pressure: "
+                    f"blocked={blocked_low_count}/{low_family_count} "
+                    f"{format_blocked_low_family_discoveries(blocked_low_families)}"
+                )
+            if isinstance(recent, list) and recent:
+                for idx, row in enumerate(recent[:3], start=1):
+                    if not isinstance(row, dict):
+                        continue
+                    title = row.get("title")
+                    family = row.get("family")
+                    wrapper = row.get("wrapper")
+                    if not all(
+                        isinstance(value, str)
+                        for value in (title, family, wrapper)
+                    ):
+                        continue
+                    lines.append(
+                        f"- Recent {idx}: `{family}` in `{wrapper}` - {title}"
                     )
             lines.append("")
 
@@ -2194,11 +2437,16 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     f"{composition} total={row['total']} failed={row['failed']}"
                 )
                 if "elapsed_seconds" in row:
-                    fragment += f" elapsed={row['elapsed_seconds']:.2f}s"
+                    fragment += (
+                        f" elapsed={format_runtime_duration(row['elapsed_seconds'])}"
+                    )
                 if "avg_case_ms" in row:
                     fragment += f" avg_case_ms={row['avg_case_ms']:.2f}"
                 if "simplify_elapsed_seconds" in row:
-                    fragment += f" simplify={row['simplify_elapsed_seconds']:.2f}s"
+                    fragment += (
+                        " simplify="
+                        f"{format_runtime_duration(row['simplify_elapsed_seconds'])}"
+                    )
                 if "avg_simplify_ms" in row:
                     fragment += f" avg_simplify_ms={row['avg_simplify_ms']:.2f}"
                 top_rows.append(fragment)
@@ -2216,12 +2464,15 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 if "simplify_elapsed_seconds" not in row:
                     break
                 fragment = (
-                    f"{composition} simplify={row['simplify_elapsed_seconds']:.2f}s"
+                    f"{composition} simplify="
+                    f"{format_runtime_duration(row['simplify_elapsed_seconds'])}"
                 )
                 if "avg_simplify_ms" in row:
                     fragment += f" avg_simplify_ms={row['avg_simplify_ms']:.2f}"
                 if "elapsed_seconds" in row:
-                    fragment += f" wall={row['elapsed_seconds']:.2f}s"
+                    fragment += (
+                        f" wall={format_runtime_duration(row['elapsed_seconds'])}"
+                    )
                 top_engine_rows.append(fragment)
             if top_engine_rows:
                 lines.append(f"- Engine hotspots: {', '.join(top_engine_rows)}")
@@ -2239,7 +2490,9 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             for window, row in ordered_windows[:5]:
                 fragment = f"{window} failed={row['failed']}"
                 if "elapsed_seconds" in row:
-                    fragment += f" elapsed={row['elapsed_seconds']:.2f}s"
+                    fragment += (
+                        f" elapsed={format_runtime_duration(row['elapsed_seconds'])}"
+                    )
                 if "avg_case_ms" in row:
                     fragment += f" avg_case_ms={row['avg_case_ms']:.2f}"
                 if "avg_simplify_ms" in row:
@@ -2255,9 +2508,9 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     label = f"{row['window_label']} {label}"
                 fragment = (
                     f"{label} runs={row['runs']} "
-                    f"median_simplify={row['median_simplify_seconds']:.2f}s "
-                    f"median_wire={row['median_wire_seconds']:.2f}s "
-                    f"median_wall={row['median_elapsed_seconds']:.2f}s"
+                    f"median_simplify={format_runtime_duration(row['median_simplify_seconds'])} "
+                    f"median_wire={format_runtime_duration(row['median_wire_seconds'])} "
+                    f"median_wall={format_runtime_duration(row['median_elapsed_seconds'])}"
                 )
                 steady_fragments.append(fragment)
             lines.append(
@@ -2288,6 +2541,10 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 pieces.append(f"wrappers={metrics['wrapper_count']}")
             if "family_count" in metrics:
                 pieces.append(f"families={metrics['family_count']}")
+            if "reported_elapsed_per_case_ms" in metrics:
+                pieces.append(
+                    f"avg_case={metrics['reported_elapsed_per_case_ms']:.3f}ms"
+                )
             summary = " ".join(pieces)
         elif "derived" in metrics:
             summary = (
@@ -2341,6 +2598,13 @@ def main() -> int:
         "generated_at": dt.datetime.now(dt.timezone.utc).isoformat(),
         "profile": args.profile,
         "orchestrator_profile_requested": args.orchestrator_profile,
+        "orchestrator_profile_filter": (
+            args.orchestrator_profile_filter if args.orchestrator_profile else None
+        ),
+        "orchestrator_profile_limit": (
+            args.orchestrator_profile_limit if args.orchestrator_profile else None
+        ),
+        "generated_discovery": generated_discovery_ledger_metrics(),
         "git": {
             "branch": git_value(["rev-parse", "--abbrev-ref", "HEAD"]),
             "commit": git_value(["rev-parse", "HEAD"]),
@@ -2362,7 +2626,7 @@ def main() -> int:
                 f"[dry-run] {spec.name}: {env_prefix} {command}{timeout_suffix}".strip()
             )
             profile_env = orchestrator_profile_env(spec, args)
-            profile_command = orchestrator_profile_command(spec)
+            profile_command = orchestrator_profile_command(spec, args)
             if profile_env and profile_command:
                 profile_prefix = " ".join(
                     f"{k}={v}" for k, v in sorted(profile_env.items())
@@ -2430,12 +2694,14 @@ def main() -> int:
         }
 
         profile_env = orchestrator_profile_env(spec, args)
-        profile_command = orchestrator_profile_command(spec)
+        profile_command = orchestrator_profile_command(spec, args)
         if profile_env and profile_command and "parse_error" not in metrics:
             print()
             print(
                 f"=== {spec.name}.orchestrator_profile ===\n"
-                f"Profiled observability slice (limit {EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT})"
+                f"Profiled observability slice "
+                f"(limit {args.orchestrator_profile_limit}, "
+                f"filter {args.orchestrator_profile_filter})"
             )
             (
                 profile_returncode,
@@ -2462,7 +2728,8 @@ def main() -> int:
                     elif "orchestrator_profile" in profile_metrics:
                         metrics["orchestrator_profile"] = profile_metrics["orchestrator_profile"]
                         metrics["orchestrator_profile_slice"] = {
-                            "limit": EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT,
+                            "filter": args.orchestrator_profile_filter,
+                            "limit": args.orchestrator_profile_limit,
                             "total_cases": profile_metrics["total_cases"],
                             "wrapper_count": profile_metrics.get("wrapper_count", 0),
                             "family_count": profile_metrics.get("family_count", 0),
@@ -2475,6 +2742,10 @@ def main() -> int:
                         metrics["orchestrator_profile_error"] = (
                             "missing orchestrator_profile in profiled slice output"
                         )
+
+    scorecard["generated_discovery_pressure"] = (
+        generated_discovery_pressure_metrics(scorecard)
+    )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(scorecard, indent=2, sort_keys=True) + "\n")

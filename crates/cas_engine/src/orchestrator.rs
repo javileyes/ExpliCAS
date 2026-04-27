@@ -212,6 +212,69 @@ fn render_expr_for_orchestrator_profile(ctx: &Context, expr: ExprId) -> String {
     crate::orchestrator_shortcut_profiler::render_expr_shape_for_orchestrator_profile(ctx, expr)
 }
 
+fn direct_small_zero_profile_tags_root(ctx: &Context, expr: ExprId) -> String {
+    let flags = scan_hot_direct_small_zero_family_flags_root(ctx, expr);
+    let mut tags = Vec::new();
+    if flags.has_log {
+        tags.push("log");
+    }
+    if flags.has_trig {
+        tags.push("trig");
+    }
+    if flags.has_hyperbolic {
+        tags.push("hyp");
+    }
+    if flags.has_division {
+        tags.push("div");
+    }
+    if expr_contains_sqrt_or_half_power_local(ctx, expr) {
+        tags.push("sqrt");
+    }
+    if expr_contains_factorial_call_local(ctx, expr) {
+        tags.push("fact");
+    }
+
+    if tags.is_empty() {
+        "plain".to_string()
+    } else {
+        tags.join("+")
+    }
+}
+
+fn render_direct_small_zero_profile_sample_root(ctx: &Context, expr: ExprId) -> String {
+    match ctx.get(expr) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => {
+            let terms = AddView::from_expr(ctx, expr).terms;
+            let mut pieces = terms
+                .iter()
+                .take(6)
+                .map(|(term, sign)| {
+                    let sign_label = match sign {
+                        Sign::Pos => "+",
+                        Sign::Neg => "-",
+                    };
+                    format!(
+                        "{}{}:{}",
+                        sign_label,
+                        render_expr_for_orchestrator_profile(ctx, *term),
+                        direct_small_zero_profile_tags_root(ctx, *term)
+                    )
+                })
+                .collect::<Vec<_>>();
+            if terms.len() > pieces.len() {
+                pieces.push("...".to_string());
+            }
+            format!("terms={} [{}]", terms.len(), pieces.join(" "))
+        }
+        Expr::Mul(lhs, rhs) => format!(
+            "product_pair lhs={} rhs={}",
+            render_direct_small_zero_profile_sample_root(ctx, *lhs),
+            render_direct_small_zero_profile_sample_root(ctx, *rhs)
+        ),
+        _ => render_expr_for_orchestrator_profile(ctx, expr),
+    }
+}
+
 fn record_profiled_orchestrator_route_hit(ctx: &mut Context, expr: ExprId, name: &'static str) {
     if !crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(name) {
         return;
@@ -220,6 +283,16 @@ fn record_profiled_orchestrator_route_hit(ctx: &mut Context, expr: ExprId, name:
         name,
         Some(render_expr_for_orchestrator_profile(ctx, expr)),
         || (),
+    );
+}
+
+fn record_orchestrator_shortcut_profile_sample(ctx: &Context, expr: ExprId, name: &'static str) {
+    if !crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(name) {
+        return;
+    }
+    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+        name,
+        render_direct_small_zero_profile_sample_root(ctx, expr),
     );
 }
 
@@ -664,6 +737,12 @@ fn expr_contains_guarded_small_zero_family_local(ctx: &Context, expr: ExprId) ->
         || expr_contains_factorial_call_local(ctx, expr)
 }
 
+fn expr_contains_direct_small_zero_multicore_marker_root(ctx: &Context, expr: ExprId) -> bool {
+    expr_contains_trig_or_hyperbolic_builtin_local(ctx, expr)
+        || expr_contains_log_builtin_local(ctx, expr)
+        || expr_contains_guarded_small_zero_family_local(ctx, expr)
+}
+
 fn matches_guarded_small_zero_pair_root(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
     (expr_contains_trig_or_hyperbolic_builtin_local(ctx, lhs)
         && expr_contains_guarded_small_zero_family_local(ctx, rhs))
@@ -835,13 +914,42 @@ fn matches_direct_small_zero_pair_root(ctx: &mut Context, lhs: ExprId, rhs: Expr
                 && matches_direct_small_zero_or_known_pair_base_root(ctx, rhs)))
 }
 
-fn matches_direct_three_small_zero_cores_root(ctx: &mut Context, expr: ExprId) -> bool {
-    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+fn direct_small_zero_term_has_cancellation_marker_root(
+    ctx: &Context,
+    term: ExprId,
+    sign: Sign,
+) -> bool {
+    sign == Sign::Neg || expr_contains_explicit_negative_marker_local(ctx, term)
+}
+
+fn direct_small_zero_cancellation_marker_count_root(
+    ctx: &Context,
+    terms: &[(ExprId, Sign)],
+) -> usize {
+    terms
+        .iter()
+        .filter(|(term, sign)| {
+            direct_small_zero_term_has_cancellation_marker_root(ctx, *term, *sign)
+        })
+        .count()
+}
+
+fn has_enough_direct_small_zero_cancellation_markers_root(
+    ctx: &Context,
+    terms: &[(ExprId, Sign)],
+    group_count: usize,
+) -> bool {
+    direct_small_zero_cancellation_marker_count_root(ctx, terms) >= group_count
+}
+
+fn matches_direct_three_small_zero_cores_terms_root(
+    ctx: &mut Context,
+    terms: &[(ExprId, Sign)],
+) -> bool {
+    if !(6..=7).contains(&terms.len()) {
         return false;
     }
-
-    let terms = AddView::from_expr(ctx, expr).terms;
-    if !(6..=7).contains(&terms.len()) {
+    if !has_enough_direct_small_zero_cancellation_markers_root(ctx, terms, 3) {
         return false;
     }
 
@@ -885,15 +993,10 @@ fn matches_direct_three_small_zero_cores_root(ctx: &mut Context, expr: ExprId) -
     false
 }
 
-fn matches_direct_four_or_five_small_zero_core_groups_root(
+fn matches_direct_four_or_five_small_zero_core_groups_terms_root(
     ctx: &mut Context,
-    expr: ExprId,
+    terms: &[(ExprId, Sign)],
 ) -> bool {
-    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
-        return false;
-    }
-
-    let terms = AddView::from_expr(ctx, expr).terms;
     if !(8..=11).contains(&terms.len()) {
         return false;
     }
@@ -904,7 +1007,7 @@ fn matches_direct_four_or_five_small_zero_core_groups_root(
         _ => return false,
     };
 
-    matches_direct_small_zero_core_groups_root(ctx, &terms, group_count)
+    matches_direct_small_zero_core_groups_root(ctx, terms, group_count)
 }
 
 fn matches_direct_small_zero_core_groups_root(
@@ -916,6 +1019,9 @@ fn matches_direct_small_zero_core_groups_root(
         return terms.is_empty();
     }
     if terms.len() < group_count * 2 || terms.len() > group_count * 3 {
+        return false;
+    }
+    if !has_enough_direct_small_zero_cancellation_markers_root(ctx, terms, group_count) {
         return false;
     }
 
@@ -961,6 +1067,9 @@ fn matches_direct_two_small_zero_core_groups_root(
     terms: &[(ExprId, Sign)],
 ) -> bool {
     if !(4..=5).contains(&terms.len()) {
+        return false;
+    }
+    if !has_enough_direct_small_zero_cancellation_markers_root(ctx, terms, 2) {
         return false;
     }
 
@@ -1009,19 +1118,70 @@ fn matches_direct_small_zero_core_group_root(ctx: &mut Context, terms: &[(ExprId
         return false;
     }
 
+    if !has_enough_direct_small_zero_cancellation_markers_root(ctx, terms, 1) {
+        return false;
+    }
+
     let expr = build_signed_sum_expr_root(ctx, terms);
     matches_direct_small_zero_or_known_pair_base_root(ctx, expr)
 }
 
 fn is_direct_small_zero_composition_candidate_root(ctx: &mut Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => {
-            matches_direct_small_zero_pair_root(ctx, *lhs, *rhs)
-                || matches_direct_three_small_zero_cores_root(ctx, expr)
-                || matches_direct_four_or_five_small_zero_core_groups_root(ctx, expr)
+    let profile_direct_small_zero =
+        crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled();
+    let sample =
+        profile_direct_small_zero.then(|| render_direct_small_zero_profile_sample_root(ctx, expr));
+    macro_rules! profiled_direct_small_zero_bool {
+        ($name:literal, $body:expr) => {{
+            if profile_direct_small_zero {
+                if let Some(sample) = sample.clone() {
+                    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                        $name, sample,
+                    );
+                }
+                run_profiled_orchestrator_bool_section($name, || $body)
+            } else {
+                $body
+            }
+        }};
+    }
+
+    let direct_small_zero_shape = match ctx.get(expr) {
+        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => Some((true, *lhs, *rhs)),
+        Expr::Mul(lhs, rhs) => Some((false, *lhs, *rhs)),
+        _ => None,
+    };
+
+    match direct_small_zero_shape {
+        Some((true, lhs, rhs)) => {
+            profiled_direct_small_zero_bool!(
+                "root.direct_small_zero_composition.candidate.pair",
+                matches_direct_small_zero_pair_root(ctx, lhs, rhs)
+            ) || {
+                let terms = AddView::from_expr(ctx, expr).terms;
+                match terms.len() {
+                    6 | 7 => profiled_direct_small_zero_bool!(
+                        "root.direct_small_zero_composition.candidate.three_core_groups",
+                        matches_direct_three_small_zero_cores_terms_root(ctx, terms.as_slice())
+                    ),
+                    8..=11 if expr_contains_direct_small_zero_multicore_marker_root(ctx, expr) => {
+                        profiled_direct_small_zero_bool!(
+                            "root.direct_small_zero_composition.candidate.four_or_five_core_groups",
+                            matches_direct_four_or_five_small_zero_core_groups_terms_root(
+                                ctx,
+                                terms.as_slice()
+                            )
+                        )
+                    }
+                    _ => false,
+                }
+            }
         }
-        Expr::Mul(lhs, rhs) => matches_direct_small_zero_pair_root(ctx, *lhs, *rhs),
-        _ => false,
+        Some((false, lhs, rhs)) => profiled_direct_small_zero_bool!(
+            "root.direct_small_zero_composition.candidate.product_pair",
+            matches_direct_small_zero_pair_root(ctx, lhs, rhs)
+        ),
+        None => false,
     }
 }
 
@@ -19072,6 +19232,46 @@ fn try_standard_direct_small_zero_pair_shortcut(
     }
 }
 
+fn matches_compact_tan_cot_half_angle_zero_pair_root(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> bool {
+    (matches_direct_tan_cot_product_zero_identity_root(ctx, lhs)
+        && matches_direct_half_angle_square_zero_identity_root(ctx, rhs))
+        || (matches_direct_tan_cot_product_zero_identity_root(ctx, rhs)
+            && matches_direct_half_angle_square_zero_identity_root(ctx, lhs))
+}
+
+fn try_standard_compact_tan_cot_half_angle_zero_pair_shortcut(
+    _options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let (lhs, rhs) = match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => (lhs, rhs),
+        _ => return None,
+    };
+
+    if !matches_compact_tan_cot_half_angle_zero_pair_root(ctx, lhs, rhs) {
+        return None;
+    }
+
+    let zero = ctx.num(0);
+    let steps = if collect_steps {
+        vec![build_root_shortcut_compact_step(
+            expr,
+            zero,
+            "Collapse Exact Zero Additive Subexpression",
+            "Collapse Exact Zero Additive Subexpression",
+        )]
+    } else {
+        Vec::new()
+    };
+    Some((zero, steps))
+}
+
 fn try_standard_trig_power_reduction_zero_shortcut(
     _options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
@@ -21124,6 +21324,10 @@ fn try_standard_direct_small_zero_identity_shortcut(
         return None;
     }
 
+    if AddView::from_expr(ctx, expr).terms.len() > 6 {
+        return None;
+    }
+
     if let Some((first_chunk, second_chunk)) =
         extract_partitioned_phase_shift_zero_chunks_root(ctx, expr)
     {
@@ -21390,9 +21594,7 @@ fn try_standard_direct_small_zero_identity_shortcut(
     }
 
     let view = AddView::from_expr(ctx, expr);
-    if !(2..=6).contains(&view.terms.len())
-        || !view.terms.iter().any(|(_, sign)| *sign == Sign::Neg)
-    {
+    if view.terms.len() < 2 || !view.terms.iter().any(|(_, sign)| *sign == Sign::Neg) {
         return None;
     }
 
@@ -21510,15 +21712,39 @@ fn try_standard_direct_known_pair_zero_shortcut(
     None
 }
 
+fn is_potential_small_exact_zero_leaf_root(ctx: &Context, expr: ExprId) -> bool {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() > 4 || cas_ast::count_nodes(ctx, expr) > 48 {
+        return false;
+    }
+
+    let has_cancellation_marker = terms.iter().any(|(_, sign)| *sign == Sign::Neg)
+        || terms
+            .iter()
+            .any(|(term, _)| expr_contains_explicit_negative_marker_local(ctx, *term));
+    let has_structural_zero_family_marker =
+        expr_contains_trig_or_hyperbolic_builtin_local(ctx, expr)
+            || expr_contains_log_builtin_local(ctx, expr)
+            || expr_contains_division_node_local(ctx, expr)
+            || expr_contains_sqrt_or_half_power_local(ctx, expr)
+            || expr_contains_factorial_call_local(ctx, expr);
+    if !has_cancellation_marker && !has_structural_zero_family_marker {
+        return false;
+    }
+
+    true
+}
+
 fn child_is_small_exact_zero_leaf_root(
     options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
 ) -> bool {
-    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
-        || AddView::from_expr(ctx, expr).terms.len() > 4
-        || cas_ast::count_nodes(ctx, expr) > 48
-    {
+    if !is_potential_small_exact_zero_leaf_root(ctx, expr) {
         return false;
     }
 
@@ -21607,7 +21833,11 @@ fn is_targeted_early_small_zero_additive_combination_candidate_root(
             return false;
         }
         let terms = AddView::from_expr(ctx, child).terms;
-        (2..=3).contains(&terms.len()) && terms.iter().any(|(_, sign)| *sign == Sign::Neg)
+        ((2..=3).contains(&terms.len())
+            || (terms.len() == 4
+                && expr_contains_division_node_local(ctx, child)
+                && expr_contains_any_builtin_local(ctx, child, &[BuiltinFn::Sin, BuiltinFn::Cos])))
+            && terms.iter().any(|(_, sign)| *sign == Sign::Neg)
     };
 
     if !child_shape_ok(ctx, lhs) || !child_shape_ok(ctx, rhs) {
@@ -21621,9 +21851,21 @@ fn is_targeted_early_small_zero_additive_combination_candidate_root(
             || matches_direct_ln_abs_product_split_zero_identity_root(ctx, child)
             || matches_direct_sophie_germain_zero_identity_root(ctx, child)
             || is_potential_direct_three_term_phase_shift_zero_subset_root(ctx, child)
+            || crate::rules::arithmetic::try_build_small_direct_zero_core_rewrite(ctx, child)
+                .is_some()
     };
 
     child_hits_target_family(ctx, lhs) || child_hits_target_family(ctx, rhs)
+}
+
+fn direct_small_zero_additive_combination_max_terms_root(ctx: &Context, expr: ExprId) -> usize {
+    if expr_contains_division_node_local(ctx, expr)
+        && expr_contains_any_builtin_local(ctx, expr, &[BuiltinFn::Sin, BuiltinFn::Cos])
+    {
+        7
+    } else {
+        6
+    }
 }
 
 fn try_standard_direct_small_zero_additive_combination_shortcut(
@@ -21637,8 +21879,24 @@ fn try_standard_direct_small_zero_additive_combination_shortcut(
     }
 
     let term_count = AddView::from_expr(ctx, expr).terms.len();
-    if !(4..=6).contains(&term_count) {
+    if term_count < 4
+        || term_count > direct_small_zero_additive_combination_max_terms_root(ctx, expr)
+    {
         return None;
+    }
+
+    if term_count > 6 {
+        let rewrite =
+            crate::rules::arithmetic::try_build_direct_small_zero_additive_combination_rewrite(
+                ctx, expr,
+            )?;
+        return Some(finish_root_shortcut_with_rewrite_meta(
+            ctx,
+            expr,
+            rewrite,
+            "Collapse Exact Zero Additive Subexpression",
+            collect_steps,
+        ));
     }
 
     if matches_direct_trig_product_to_sum_and_odd_half_partition_root(ctx, expr) {
@@ -23106,11 +23364,31 @@ fn try_standard_shifted_quotient_nested_zero_core_shortcut(
             ));
         }
 
-        let both_small_exact_zero_leaf =
-            profiled_nested_zero_bool!("root.div.03b2.nested_zero.both_small_exact_zero_leaf", {
-                child_is_small_exact_zero_leaf_root(options, ctx, numerator_core)
-                    && child_is_small_exact_zero_leaf_root(options, ctx, denominator_core)
+        let both_small_exact_zero_leaf_possible =
+            is_potential_small_exact_zero_leaf_root(ctx, numerator_core)
+                && is_potential_small_exact_zero_leaf_root(ctx, denominator_core);
+        let small_exact_zero_leaf_pair_sample =
+            (profile_nested_zero && both_small_exact_zero_leaf_possible).then(|| {
+                format!(
+                    "{}  ||  {}",
+                    render_expr_for_orchestrator_profile(ctx, numerator_core),
+                    render_expr_for_orchestrator_profile(ctx, denominator_core)
+                )
             });
+        if let Some(sample) = small_exact_zero_leaf_pair_sample {
+            crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                "root.div.03b2.nested_zero.both_small_exact_zero_leaf",
+                sample,
+            );
+        }
+        let both_small_exact_zero_leaf = both_small_exact_zero_leaf_possible
+            && profiled_nested_zero_bool!(
+                "root.div.03b2.nested_zero.both_small_exact_zero_leaf",
+                {
+                    child_is_small_exact_zero_leaf_root(options, ctx, numerator_core)
+                        && child_is_small_exact_zero_leaf_root(options, ctx, denominator_core)
+                }
+            );
         if both_small_exact_zero_leaf {
             return Some(run_shifted_quotient_rebuilt_root_shortcut_simplify(
                 options,
@@ -25830,6 +26108,51 @@ impl Orchestrator {
                 );
             }
             if add_root || sub_root {
+                if collect_steps
+                    && simplifier.get_steps_mode() == crate::options::StepsMode::Compact
+                {
+                    return_profiled_root_shortcut!(
+                        "root.addsub.00.tan_cot_half_angle_pair.compact_first",
+                        try_standard_compact_tan_cot_half_angle_zero_pair_shortcut(
+                            &self.options,
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    );
+                    record_orchestrator_shortcut_profile_sample(
+                        &simplifier.context,
+                        expr,
+                        "root.addsub.00.direct_small_zero_pair.compact_first",
+                    );
+                    return_profiled_root_shortcut!(
+                        "root.addsub.00.direct_small_zero_pair.compact_first",
+                        try_standard_direct_small_zero_pair_shortcut(
+                            &self.options,
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    );
+                }
+                if is_targeted_early_small_zero_additive_combination_candidate_root(
+                    &mut simplifier.context,
+                    expr,
+                ) {
+                    return_root_shortcut_pair!(
+                        try_standard_direct_small_zero_additive_combination_shortcut(
+                            &self.options,
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    );
+                }
+                record_orchestrator_shortcut_profile_sample(
+                    &simplifier.context,
+                    expr,
+                    "root.addsub.00.direct_small_zero_pair",
+                );
                 return_profiled_root_shortcut!(
                     "root.addsub.00.direct_small_zero_pair",
                     try_standard_direct_small_zero_pair_shortcut(
@@ -25848,19 +26171,6 @@ impl Orchestrator {
                         collect_steps,
                     )
                 );
-                if is_targeted_early_small_zero_additive_combination_candidate_root(
-                    &mut simplifier.context,
-                    expr,
-                ) {
-                    return_root_shortcut_pair!(
-                        try_standard_direct_small_zero_additive_combination_shortcut(
-                            &self.options,
-                            &mut simplifier.context,
-                            expr,
-                            collect_steps,
-                        )
-                    );
-                }
                 return_profiled_root_shortcut!(
                     "root.addsub.00.direct_cos_square_diff_zero",
                     try_standard_direct_cos_square_diff_zero_shortcut(
@@ -33439,6 +33749,83 @@ mod tests {
     }
 
     #[test]
+    fn direct_small_zero_core_group_requires_cancellation_marker() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let positive_expr = parse("x + y", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let positive_terms = AddView::from_expr(&simplifier.context, positive_expr).terms;
+        assert!(!super::matches_direct_small_zero_core_group_root(
+            &mut simplifier.context,
+            positive_terms.as_slice(),
+        ));
+
+        let zero_expr = parse("p^2 - q^2 - (p-q)*(p+q)", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let zero_terms = AddView::from_expr(&simplifier.context, zero_expr).terms;
+        assert!(super::matches_direct_small_zero_core_group_root(
+            &mut simplifier.context,
+            zero_terms.as_slice(),
+        ));
+    }
+
+    #[test]
+    fn direct_small_zero_core_groups_require_enough_cancellation_markers_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let sparse_expr = parse("a + b + c + d - e - f", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let sparse_terms = AddView::from_expr(&simplifier.context, sparse_expr).terms;
+        assert_eq!(
+            super::direct_small_zero_cancellation_marker_count_root(
+                &simplifier.context,
+                sparse_terms.as_slice(),
+            ),
+            2
+        );
+        assert!(
+            !super::has_enough_direct_small_zero_cancellation_markers_root(
+                &simplifier.context,
+                sparse_terms.as_slice(),
+                3,
+            )
+        );
+        assert!(!super::matches_direct_three_small_zero_cores_terms_root(
+            &mut simplifier.context,
+            sparse_terms.as_slice(),
+        ));
+
+        let dense_expr = parse("a - b + c - d + e - f", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let dense_terms = AddView::from_expr(&simplifier.context, dense_expr).terms;
+        assert!(
+            super::has_enough_direct_small_zero_cancellation_markers_root(
+                &simplifier.context,
+                dense_terms.as_slice(),
+                3,
+            )
+        );
+    }
+
+    #[test]
+    fn compact_tan_cot_half_angle_pair_shortcut_handles_sum_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(tan(x)*cot(x) - 1) + (sin(x)^2 - (1 - cos(2*x))/2)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, steps) = super::try_standard_compact_tan_cot_half_angle_zero_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            true,
+        )
+        .unwrap_or_else(|| panic!("expected compact tan-cot plus half-angle shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+        assert_eq!(steps.len(), 1);
+    }
+
+    #[test]
     fn detects_direct_rationalized_sum_of_sqrts_pair_regression() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lhs = parse("1/(sqrt(a) + sqrt(b))", &mut simplifier.context)
@@ -33594,6 +33981,27 @@ mod tests {
     }
 
     #[test]
+    fn cached_compact_simplify_pipeline_handles_log_product_vs_trig_mixed_double_angle_sum_regression(
+    ) {
+        let profile = crate::profile_cache::default_rule_profile();
+        let mut simplifier = crate::Simplifier::from_profile(profile);
+        simplifier.set_steps_mode(crate::options::StepsMode::Compact);
+        let expr = parse(
+            "(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + (2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x) - 2*sin(x)))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut options = SimplifyOptions::default();
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        let (rewritten, _steps, stats) = simplifier.simplify_with_stats(expr, options);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+        assert!(
+            stats.core.phase.is_none(),
+            "expected root shortcut before Core, got stats: {stats:?}"
+        );
+    }
+
+    #[test]
     fn direct_small_zero_pair_shortcut_handles_log_product_vs_phase_shift_sum_regression() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
@@ -33742,6 +34150,70 @@ mod tests {
     }
 
     #[test]
+    fn direct_small_zero_additive_combination_shortcut_handles_dirichlet_vs_factor_sum_regression()
+    {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sin(5*x/2)/sin(x/2) - (1 + 2*cos(x) + 2*cos(2*x))) + (p^2-q^2 - (p-q)*(p+q))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) =
+            super::try_standard_direct_small_zero_additive_combination_shortcut(
+                &options,
+                &mut simplifier.context,
+                expr,
+                true,
+            )
+            .unwrap_or_else(|| panic!("expected direct small zero additive combination shortcut"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn targeted_early_small_zero_additive_combination_accepts_dirichlet_vs_factor_sum_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sin(5*x/2)/sin(x/2) - (1 + 2*cos(x) + 2*cos(2*x))) + (p^2-q^2 - (p-q)*(p+q))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(
+            super::is_targeted_early_small_zero_additive_combination_candidate_root(
+                &mut simplifier.context,
+                expr,
+            )
+        );
+    }
+
+    #[test]
+    fn dirichlet_root_shortcut_skips_dirichlet_vs_factor_sum_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sin(5*x/2)/sin(x/2) - (1 + 2*cos(x) + 2*cos(2*x))) + (p^2-q^2 - (p-q)*(p+q))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        assert!(
+            super::try_finish_dirichlet_kernel_root_shortcut(&mut simplifier, expr, false)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn simplify_pipeline_handles_dirichlet_vs_factor_sum_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(sin(5*x/2)/sin(x/2) - (1 + 2*cos(x) + 2*cos(2*x))) + (p^2-q^2 - (p-q)*(p+q))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
     fn direct_small_zero_pair_shortcut_handles_negative_trig_reciprocal_nested_fraction_three_core_sum_regression(
     ) {
         let mut simplifier = crate::Simplifier::with_default_rules();
@@ -33809,6 +34281,22 @@ mod tests {
         )
         .unwrap_or_else(|| panic!("expected direct small zero shortcut to match"));
         assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn direct_small_zero_profile_sample_includes_term_tags_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(ln(x^3)+ln(y^2)-ln(x^3*y^2)) + (sec(z)-1/cos(z)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+
+        let sample = super::render_direct_small_zero_profile_sample_root(&simplifier.context, expr);
+        assert!(sample.contains("terms="), "{sample}");
+        assert!(sample.contains(":log"), "{sample}");
+        assert!(sample.contains(":trig"), "{sample}");
+        assert!(sample.contains(":div"), "{sample}");
     }
 
     #[test]
@@ -36333,10 +36821,60 @@ mod tests {
             &mut simplifier.context,
             cubic,
         ));
+        assert!(child_is_small_exact_zero_leaf_root(
+            &options,
+            &mut simplifier.context,
+            cubic,
+        ));
         assert!(exact_zero_leaf_rewrites_to_zero_root(
             &options,
             &mut simplifier.context,
             tan_chunk,
+        ));
+        assert!(child_is_small_exact_zero_leaf_root(
+            &options,
+            &mut simplifier.context,
+            tan_chunk,
+        ));
+    }
+
+    #[test]
+    fn small_exact_zero_leaf_guard_rejects_positive_linear_sum_without_zero_family_markers() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("x + y", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = crate::phase::SimplifyOptions::default();
+        assert!(!child_is_small_exact_zero_leaf_root(
+            &options,
+            &mut simplifier.context,
+            expr,
+        ));
+    }
+
+    #[test]
+    fn small_exact_zero_leaf_prefilter_matches_child_guard_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let markerless_sum = parse("x + y", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let non_additive =
+            parse("2*x", &mut simplifier.context).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let trig_leaf = parse(
+            "(cos(x))^3 - (3*cos(x) + cos(3*x))/4",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+
+        assert!(!is_potential_small_exact_zero_leaf_root(
+            &simplifier.context,
+            markerless_sum,
+        ));
+        assert!(!is_potential_small_exact_zero_leaf_root(
+            &simplifier.context,
+            non_additive,
+        ));
+        assert!(is_potential_small_exact_zero_leaf_root(
+            &simplifier.context,
+            trig_leaf,
         ));
     }
 
