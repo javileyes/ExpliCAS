@@ -27,6 +27,9 @@ Objetivo:
 - No persigas “hacer el engine más listo” en abstracto.
 - No hagas una gran reescritura.
 - Si el problema es de harness/test y no del engine, arréglalo como harness y dilo explícitamente.
+- Evalúa el ROI cruzado engine↔derive: una mejora de engine/cobertura puede
+  ser mejor si deja una transición didáctica reutilizable, y una mejora de
+  derive puede ser mejor si revela una capacidad reusable del engine.
 
 Optimiza en este orden:
 1. mantener failed = 0
@@ -39,8 +42,11 @@ Optimiza en este orden:
    - cross-family composition
    - sign/orientation robustness
    - semantic/domain regime cuando aplique
-5. aumentar cobertura útil o NF-convergent sólo si es reutilizable y no degrada 1-4
-6. mejorar reachability y calidad didáctica de derive sin abrir búsqueda ciega
+5. aumentar cobertura útil, NF-convergent o bridgeability de derive sólo si es
+   reutilizable y no degrada 1-4
+6. mejorar reachability y calidad didáctica de derive sin abrir búsqueda ciega,
+   especialmente cuando una familia ya funciona en simplify/equivalence pero
+   no tiene una ruta `source -> target` explicable
 7. reducir deuda estructural sólo si mejora observabilidad, robustez o runtime medible
 
 Modelo de trabajo:
@@ -70,6 +76,8 @@ Proceso obligatorio:
    - hypothesis:
    - relevant_lanes:
    - promotion_target:
+   - derive_bridge_check:
+   - engine_feedback_check:
    - retain_if:
    - reject_if:
 6. Si eliges coverage, añade:
@@ -86,21 +94,31 @@ Proceso obligatorio:
    - guardrail: make engine-scorecard
    - pressure: make engine-scorecard-pressure si tocas normalización, orquestación, arithmetic, tráfico profundo, refactor estructural o casos muy compuestos
    - make ci sólo como cierre si realmente corresponde
-10. Si la mejora gana localmente pero pierde en embedded o guardrails globales:
+10. Para cualquier mejora de engine/cobertura que toque una familia matemática:
+   - decide si existe un caso sombra mínimo para derive
+   - promuévelo sólo si añade target-family, ruta multi-step, calidad didáctica
+     o corrige un salto mágico
+   - si no lo promueves, anota en el capture por qué se difiere o rechaza
+11. Para cualquier mejora de derive:
+   - clasifica si el fallo era target classifier, estrategia/planner,
+     didactic-quality, dominio/branch, o falta de capacidad reusable del engine
+   - si falta capacidad reusable del engine, deja el siguiente candidato claro
+     como engine/cobertura, no como hack derive-only
+12. Si la mejora gana localmente pero pierde en embedded o guardrails globales:
    - no la fuerces
    - revierte la parte no retenible
    - conserva el aprendizaje en docs/ENGINE_COMBINATION_LEDGER.md
-11. Si un candidato generado falla antes de promoción:
+13. Si un candidato generado falla antes de promoción:
    - acota la firma con uno o dos probes baratos cuando sea razonable
    - si el fallo apunta a una debilidad reutilizable, registra el aprendizaje en
      docs/ENGINE_COMBINATION_LEDGER.md como discovery/observe-only
    - si sólo es un caso mal formado, duplicado o ruido, descártalo sin ledger
-12. Si generas casos nuevos, promuévelos de forma conservadora:
+14. Si generas casos nuevos, promuévelos de forma conservadora:
    - primero presión/descubrimiento
    - luego unit o live si el caso ya es estable y representativo
    - frozen sólo para mínimos estables y duraderos
    - variantes grandes o calientes van a stress, no a live
-13. Si tocas derive, prioriza:
+15. Si tocas derive, prioriza:
    - planner acotado
    - target-awareness
    - path quality
@@ -116,6 +134,9 @@ Guardrails:
 - No conviertas el corpus en dumping ground de anécdotas o near-duplicates.
 - No confundas mejoras de harness con mejoras reales del motor.
 - No trates DERIVE_ROADMAP.md como roadmap activo si entra en conflicto con DERIVE_NEXT_LEVEL_ROADMAP.md.
+- No dejes que `derive_contract` verde bloquee toda inversión en derive si la
+  mejora engine/cobertura revela familias sin bridge o transformaciones
+  equivalentes que se explican mágicamente.
 - Para refactors estructurales: extrae antes de abstraer, conserva orden de rutas y valida como trabajo de engine.
 
 Criterio de decisión:
@@ -124,8 +145,13 @@ Criterio de decisión:
   - breadth
   - confidence
   - retention probability
+  - derive_bridge_value
+  - engine_feedback_value
   - bajo coste de implementación
 - En empates, prioriza el candidato que expanda una dimensión débil, cierre una ruta frágil o deje el guardrail/corpus más mantenible.
+- También en empates, prioriza el candidato que conecte una capacidad del engine
+  con una ruta derive explicable o que use un fallo de derive para identificar
+  una capacidad reusable del engine.
 
 Entregable:
 - Resume primero el candidato elegido y por qué fue el mayor ROI retenible.
@@ -136,4 +162,5 @@ Entregable:
   - qué guardrails corriste
   - si la iteración fue retenida o rechazada
   - qué aprendizaje quedó documentado si hubo rechazo parcial
+  - qué decisión tomaste sobre el puente engine↔derive
   - cuál sería la siguiente iteración recomendada

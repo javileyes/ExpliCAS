@@ -249,6 +249,19 @@ Add new entries when they introduce:
 - a new cross-family composition
 - a regression-prone structural interaction already observed in engine work
 
+For every promoted mathematical family, also evaluate a `derive` shadow case:
+
+- if the family has a natural target-form direction, add the smallest
+  representative `source -> target` pair to derive only when it improves
+  reachability, multi-step path quality, or removes a magical jump
+- if the family is already represented in derive, do not add a duplicate row
+  just because the embedded wrapper changed
+- if branch/domain semantics are unresolved, record the defer reason rather
+  than promoting an unsound or fake derivation
+
+This keeps engine coverage and derive coverage coupled without turning either
+corpus into a dumping ground.
+
 Do not add large batches of near-duplicate variants that all exercise the same
 matcher route.
 
@@ -796,6 +809,7 @@ A corpus is worth keeping only if it improves at least one of:
 - convergence stability
 - didactic path quality
 - performance predictability
+- derive bridgeability when the same identity has a meaningful target form
 
 For `embedded_equivalence_context_corpus.csv`, add one more filter:
 

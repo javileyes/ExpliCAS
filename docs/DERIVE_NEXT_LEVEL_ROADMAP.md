@@ -104,6 +104,68 @@ In other words:
 - but "search a small number of good next moves, score them, and keep only the
   best short paths"
 
+## Coupling With Engine Improvement
+
+`derive` should not evolve as a separate feature track that only receives
+manual examples after the engine is done.
+
+The strongest strategy is bidirectional:
+
+- engine -> derive:
+  every retained mathematical engine/corpus improvement should be checked for a
+  minimal `source -> target` derive shadow case
+- derive -> engine:
+  every unsupported-but-equivalent derive case should be classified to decide
+  whether the gap belongs in planner/strategy/didactic code or in a reusable
+  engine transition
+
+This prevents two failure modes:
+
+- the engine learns to prove or simplify an identity, but `derive` still renders
+  it as a magical one-step jump or cannot target the desired form
+- `derive` grows one-off routes that do not correspond to real engine
+  transformations and therefore do not help simplification, equivalence, or
+  contextual wrappers
+
+Operationally, any new stable engine family should answer:
+
+1. Is there a natural expanded -> contracted derive direction?
+2. Is there a natural contracted -> expanded derive direction?
+3. Does the route need an intentional 2-4 step path rather than one generic
+   simplify step?
+4. Is the case small enough to live in `derive_pairs.csv`, or should broader
+   variants stay in family-local tests?
+
+Any derive miss should answer:
+
+1. Is the target family not classified?
+2. Is the family classified but missing a strategy or transition provider?
+3. Does the engine already prove equivalence but lack a reusable visible
+   transition?
+4. Is the only blocker branch/domain semantics, in which case it should be
+   tracked separately and not patched with a fake derivation?
+
+The best derive improvements should therefore either consume a real engine
+capability or create pressure for one. They should not merely inflate the derive
+corpus with easy one-step variants.
+
+### Equivalent-But-Not-Derived Pressure
+
+The current `derive_contract` can look green while still under-testing real
+target-form reachability.
+
+The scorecard should grow a diagnostic pressure lane that samples identities
+already proved by simplify/metamorphic/embedded coverage and asks:
+
+- can `derive` bridge the same pair?
+- is the result unsupported even though equivalence is known?
+- does it succeed only through a generic or magical one-step simplification?
+- does the visible path stay within a small, teachable step budget?
+
+This lane should initially be diagnostic, not a hard gate. Its purpose is to
+expose families where the engine knows the algebra but `derive` does not yet
+teach the transformation.
+
 ## Architectural Direction
 
 ### 1. Keep The Target Classifier
@@ -333,6 +395,8 @@ New metrics to add:
 - planner mean explored nodes
 - planner timeout rate
 - unsupported-equivalent count by family
+- equivalent-but-not-derived count by family
+- magical-one-step count for transformations that should have visible substeps
 - average visible steps for planner-produced paths
 
 ## Delivery Phases
@@ -735,6 +799,9 @@ From this point on, every derive improvement should answer these questions:
 3. Does this improve reachability, didactic quality, or both?
 4. Can this be expressed as a reusable transition instead of a one-off hack?
 5. Does this move us toward bounded multi-step planning?
+6. Does this consume a real engine capability, or expose a reusable engine gap?
+7. If the corresponding engine family was just improved, is this the minimal
+   derive shadow case for that family?
 
 If the answer to the last question is "no", the change is probably not on the
 critical path for making `derive` truly powerful.

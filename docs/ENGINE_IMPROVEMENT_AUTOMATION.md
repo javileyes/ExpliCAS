@@ -59,6 +59,22 @@ It should choose the next iteration by expected retained value:
 
 `expected_roi ~= impact * breadth * confidence * retention_probability / implementation_cost`
 
+For work that touches mathematical families, the selector must also score
+cross-system value:
+
+```text
+cross_system_roi ~= engine_value
+                  + derive_bridge_value
+                  + corpus_reuse_value
+                  + didactic_value
+                  - runtime_risk
+                  - complexity_cost
+```
+
+This does not replace the main ROI formula. It prevents the loop from treating
+`derive` as a separate afterthought when the same engine capability could also
+become a teachable `source -> target` bridge.
+
 Interpretation:
 
 - `impact`
@@ -71,6 +87,14 @@ Interpretation:
   - probability that the change survives the global guardrails
 - `implementation_cost`
   - code complexity, risk, and validation cost
+- `derive_bridge_value`
+  - whether the change exposes a reusable target-form transition for `derive`
+- `corpus_reuse_value`
+  - whether one minimal case can serve both engine coverage and derive
+    reachability/didactic checks
+- `didactic_value`
+  - whether the change turns a magical or opaque transformation into an
+    intentional step path
 
 This matters because the campaign repeatedly encounters ideas with:
 
@@ -91,6 +115,12 @@ At minimum, each candidate should be evaluated across these lenses:
   - whether it expands an under-covered axis such as wrapper spread,
     `noise_budget`, `shell_depth`, `cross_family_composition`, semantic regime,
     or a derive-specific dimension
+- `derive bridge ROI`
+  - whether a simplification/equivalence improvement can become a stable
+    `derive` transition or a minimal derive contract row
+- `engine feedback ROI`
+  - whether a `derive` miss reveals a missing reusable engine transition rather
+    than only a planner or wording issue
 - `promotion ROI`
   - whether the result is stable enough to become a lasting guardrail or corpus
     promotion
@@ -98,6 +128,41 @@ At minimum, each candidate should be evaluated across these lenses:
 These lenses do not replace the main ROI formula.
 They make it harder for the selector to overfit to a narrow hotspot that sits
 inside an already overrepresented slice of the scorecard.
+
+### Engine/Derive Cross-Pollination
+
+Every mathematical improvement should be read in both directions:
+
+- engine -> derive:
+  when the engine gains or stabilizes a family, ask whether there is a minimal
+  `source -> target` pair that should be added as a derive shadow case
+- derive -> engine:
+  when `derive` cannot bridge an equivalent pair, classify whether the gap is a
+  missing target classifier, missing strategy, didactic-quality problem, or a
+  missing reusable engine transition
+
+The loop should prefer candidates that improve both sides without increasing
+runtime risk:
+
+- a new simplification family that also provides a real transition provider is
+  higher ROI than the same family used only as a root shortcut
+- a derive planner improvement that exposes reusable engine normalization is
+  higher ROI than a one-off derive-only route
+- a corpus promotion that can serve as both contextual engine coverage and a
+  derive bridge is higher ROI than an isolated anecdote
+
+Do not automatically add derive rows for every engine case. Promote only the
+smallest target-form representative when it adds one of:
+
+- new target family reachability
+- multi-step route coverage
+- didactic-path quality pressure
+- a known magical one-step transformation that should become explainable
+
+If several automatic iterations pass without any retained derive work while
+`derive_contract` remains trivially green, the selector should raise the weight
+of `derive_bridge_value` and run a small equivalent-but-not-derived discovery
+pass before choosing the next non-runtime coverage candidate.
 
 ### ROI Tie-Breakers
 
@@ -107,12 +172,15 @@ one that:
 - expands a weakly covered dimension
 - reduces concentration in an already dominant wrapper or family pocket
 - improves both a hotspot and a corpus promotion path
+- improves both engine behavior and a plausible derive bridge
 - increases the chance of promoting a stable new guardrail
 
 Be more skeptical of candidates that:
 
 - improve a hotspot inside an already saturated wrapper axis
 - add complexity without changing scorecard dimensions
+- add engine-only coverage for a target-form family that is absent from derive
+  without at least recording why no derive shadow case is appropriate
 - only win on a narrow local profiler slice with no plausible promotion path
 
 ### Default Selection Rules
@@ -141,6 +209,8 @@ Also allow dimensional coverage to steer the class choice:
 
 - prefer `coverage` when a stable new wrapper, shell-depth level, or
   composition axis can be promoted cheaply
+- prefer `coverage` or `derive`-oriented work when a stable engine family lacks
+  any representative derive bridge and the case is not branch/domain-hard
 - prefer `observability` when the current scorecard shows an under-covered
   dimension but the profitable next promotion is still unclear
 - prefer `runtime` only if the hotspot is not merely the byproduct of severe
@@ -172,6 +242,7 @@ Each automatic iteration should do this in order:
    - secondary dimension affected
    - whether it is a hotspot move, a dimensional coverage move, or both
    - whether it has a realistic promotion path into corpus or guardrail
+   - whether it creates or consumes a derive bridge
 5. choose one primary class for the iteration
 6. write down the success condition before editing code
 7. validate against the relevant benchmark roles
@@ -198,6 +269,8 @@ secondary_dimension:
 hypothesis:
 relevant_lanes:
 promotion_target:
+derive_bridge_check:
+engine_feedback_check:
 retain_if:
 reject_if:
 retain_or_reject_reason:
@@ -213,6 +286,12 @@ Minimum expectations:
   - the exact profiles/suites to rerun
 - `promotion_target`
   - `none`, `unit`, `live`, `frozen`, or `stress`
+- `derive_bridge_check`
+  - for engine/corpus work: whether a minimal derive shadow case exists, was
+    promoted, deferred, or rejected with reason
+- `engine_feedback_check`
+  - for derive work: whether the miss is planner-only, didactic-only, or points
+    to a reusable engine capability gap
 - `retain_or_reject_reason`
   - the shortest defensible explanation after validation
 
