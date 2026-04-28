@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-04-28T07:41:03.855304+00:00",
+  "generated_at": "2026-04-28T17:21:36.399590+00:00",
   "generated_discovery": {
     "families": {},
     "observe_only_discoveries": 0,
@@ -14,7 +14,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "a7b1899b735d0be886f956e63d733a8a6d05d590"
+    "commit": "72d1ec7b49fef51c7beb97df58a0c1c85e5e9db7"
   },
   "orchestrator_profile_filter": null,
   "orchestrator_profile_limit": null,
@@ -38,7 +38,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 2.871,
+      "elapsed_seconds": 4.083,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -52,7 +52,7 @@
         "supported_equiv_rate": 1.0,
         "unsupported": 0
       },
-      "process_elapsed_seconds": 2.871,
+      "process_elapsed_seconds": 4.083,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -75,25 +75,25 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.134,
+      "elapsed_seconds": 0.163,
       "env": {},
       "guardrail": null,
       "metrics": {
         "classification_rate": 1.0,
-        "classified": 30,
-        "derived": 30,
-        "distinct_actual_strategies": 15,
+        "classified": 43,
+        "derived": 43,
+        "distinct_actual_strategies": 28,
         "generic_simplify_strategy_ids": [],
         "generic_simplify_strategy_successes": 0,
-        "mean_step_count": 1.1,
+        "mean_step_count": 1.07,
         "multi_step_successes": 3,
         "not_equivalent": 0,
         "reachability_rate": 1.0,
-        "sampled": 30,
-        "single_step_successes": 27,
+        "sampled": 43,
+        "single_step_successes": 40,
         "unsupported": 0
       },
-      "process_elapsed_seconds": 0.134,
+      "process_elapsed_seconds": 0.163,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -113,7 +113,7 @@
         "--"
       ],
       "delta": {},
-      "elapsed_seconds": 4.0,
+      "elapsed_seconds": 4.14,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -236,9 +236,9 @@
         "max_expression_depth": 18,
         "max_shell_depth": 5,
         "passed": 1417,
-        "reported_elapsed": "4.00s",
-        "reported_elapsed_per_case_ms": 2.8229,
-        "reported_elapsed_seconds": 4.0,
+        "reported_elapsed": "4.14s",
+        "reported_elapsed_per_case_ms": 2.9217,
+        "reported_elapsed_seconds": 4.14,
         "shell_depth_count": 6,
         "shell_depth_rows": {
           "0": {
@@ -1964,7 +1964,7 @@
           }
         ]
       },
-      "process_elapsed_seconds": 4.311,
+      "process_elapsed_seconds": 5.536,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1987,7 +1987,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 16.931,
+      "elapsed_seconds": 17.053,
       "env": {
         "METATEST_MAX_EXAMPLES": "20",
         "METATEST_PROGRESS_EVERY": "1000",
@@ -2006,11 +2006,11 @@
           "non_composed_symbolic": 3497
         },
         "proved_breakdown": {
-          "composed": 12978,
+          "composed": 13021,
           "difference": 0,
           "quotient": 3497
         },
-        "proved_symbolic": 16475,
+        "proved_symbolic": 16518,
         "skipped": 0,
         "suite_rows": {
           "add": {
@@ -2025,13 +2025,13 @@
             "timeouts": 0
           },
           "div": {
-            "combos": 933,
+            "combos": 976,
             "cycles": 0,
             "failed": 0,
             "inconclusive": 0,
             "nf_convergent": 0,
             "numeric_only": 0,
-            "proved_symbolic": 933,
+            "proved_symbolic": 976,
             "skipped": 0,
             "timeouts": 0
           },
@@ -2136,9 +2136,9 @@
           }
         },
         "timeouts": 0,
-        "total_combos": 16475
+        "total_combos": 16518
       },
-      "process_elapsed_seconds": 16.931,
+      "process_elapsed_seconds": 17.053,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,

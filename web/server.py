@@ -11,7 +11,7 @@ Usage:
     cd /path/to/math
     python web/server.py
     
-Then open http://localhost:8080
+Then open http://localhost:8081
 """
 
 import http.server
@@ -35,6 +35,7 @@ from app_config import (
     render_frontend_build_config_js,
 )
 
+#get from .env
 PORT = env_int("PORT", 8080)
 CAS_CLI = "./target/release/cas_cli"
 # Calibrated below the visible 2s SLA because the engine deadline is cooperative

@@ -192,8 +192,41 @@ pub(crate) fn try_rewrite_nested_fraction_target_aware(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> Option<ExprId> {
-    let rewrite = try_rewrite_simplify_nested_fraction_expr(ctx, source_expr)?;
-    strong_target_match(ctx, rewrite.rewritten, target_expr).then_some(rewrite.rewritten)
+    let rewritten = try_rewrite_simplify_nested_fraction_expr(ctx, source_expr)
+        .map(|rewrite| rewrite.rewritten)
+        .or_else(|| try_rewrite_unit_over_unit_fraction(ctx, source_expr))?;
+
+    if strong_target_match(ctx, rewritten, target_expr) {
+        return Some(rewritten);
+    }
+
+    let normalized = cas_math::canonical_forms::normalize_core(ctx, rewritten);
+    if strong_target_match(ctx, normalized, target_expr) {
+        return Some(rewritten);
+    }
+
+    strip_division_by_one(ctx, rewritten)
+        .filter(|stripped| strong_target_match(ctx, *stripped, target_expr))
+}
+
+fn try_rewrite_unit_over_unit_fraction(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    if !is_one(ctx, *numerator) {
+        return None;
+    }
+    let Expr::Div(inner_numerator, inner_denominator) = ctx.get(*denominator) else {
+        return None;
+    };
+    is_one(ctx, *inner_numerator).then_some(*inner_denominator)
+}
+
+fn strip_division_by_one(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    is_one(ctx, *denominator).then_some(*numerator)
 }
 
 pub(crate) fn try_build_combined_fraction_from_fold_add(
@@ -1189,6 +1222,7 @@ mod tests {
     #[test]
     fn rewrites_nested_fraction_targets_aware() {
         let cases = [
+            ("1/(1/a)", "a"),
             ("1/(1/a + 1/b)", "(a*b)/(a+b)"),
             ("a/(b + c/d)", "a*d/(b*d+c)"),
             ("(a + b/c)/d", "(a*c+b)/(c*d)"),

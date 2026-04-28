@@ -2575,6 +2575,26 @@ fn derive_didactic_log_change_of_base_cases_stay_direct() {
 }
 
 #[test]
+fn derive_didactic_direct_log_change_of_base_cases_expose_components() {
+    assert_case_step_titles(
+        "expand_log_change_of_base_direct",
+        "Change of Base",
+        &[
+            "Poner el argumento en el numerador",
+            "Poner la base en el denominador",
+        ],
+    );
+    assert_case_step_titles(
+        "contract_log_change_of_base_direct",
+        "Change of Base",
+        &[
+            "Leer el argumento desde el numerador",
+            "Leer la base desde el denominador",
+        ],
+    );
+}
+
+#[test]
 fn derive_didactic_cos_double_angle_expansion_keeps_an_explicit_identity_step() {
     let artifact = audit_case(&derive_case_by_id(
         "expand_trig_double_cos_as_one_minus_sin_sq",
@@ -3445,8 +3465,16 @@ fn derive_didactic_same_denominator_focus_only_combines_three_fraction_part() {
 
 #[test]
 fn derive_didactic_representative_telescoping_fraction_split_cases_keep_gap_narrative() {
-    let cases = [
+    assert_case_step_titles(
         "split_telescoping_fraction_consecutive",
+        "Descomponer en fracciones telescópicas",
+        &[
+            "Introducir el numerador telescópico",
+            "Separar sobre el denominador común",
+        ],
+    );
+
+    let cases = [
         "split_telescoping_fraction_gap_two",
         "split_telescoping_fraction_negative_gap_two",
         "split_telescoping_fraction_affine_gap_two",
@@ -3462,8 +3490,16 @@ fn derive_didactic_representative_telescoping_fraction_split_cases_keep_gap_narr
 
 #[test]
 fn derive_didactic_representative_telescoping_fraction_combine_cases_keep_inverse_gap_narrative() {
-    let no_substep_cases = [
+    assert_case_step_titles(
         "combine_telescoping_fraction_consecutive",
+        "Recomponer fracción telescópica",
+        &[
+            "Llevar las fracciones al denominador común",
+            "Simplificar el numerador telescópico",
+        ],
+    );
+
+    let no_substep_cases = [
         "combine_telescoping_fraction_gap_two",
         "combine_telescoping_fraction_negative_gap_two",
         "combine_telescoping_fraction_affine_gap_two",
@@ -4296,7 +4332,25 @@ fn derive_didactic_monomial_common_factor_fraction_cancels_symbol_then_simplifie
 }
 
 #[test]
-fn derive_didactic_complete_square_negative_linear_coeff_stays_direct() {
+fn derive_didactic_complete_square_monic_cases_show_hidden_square_balance() {
+    for case_id in [
+        "solve_prep_complete_square_monic_numeric",
+        "solve_prep_complete_square_fractional_monic_numeric",
+        "solve_prep_complete_square_symbolic_monic_parametric",
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Completar el cuadrado",
+            &[
+                "Añadir y restar el cuadrado del semicoeficiente",
+                "Agrupar el trinomio como cuadrado perfecto",
+            ],
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_complete_square_negative_linear_coeff_shows_hidden_square_balance() {
     let case = DeriveCase {
         id: "solve_prep_complete_square_monic_negative_linear_inline".to_string(),
         family: "solve_prep".to_string(),
@@ -4306,9 +4360,13 @@ fn derive_didactic_complete_square_negative_linear_coeff_stays_direct() {
     };
     let artifact = audit_case(&case);
     let step = step_by_rule(&artifact, "Completar el cuadrado");
-    assert!(
-        step_substep_titles(step).is_empty(),
-        "expected `{}` / `Completar el cuadrado` to stay direct without substeps",
+    assert_eq!(
+        step_substep_titles(step),
+        [
+            "Añadir y restar el cuadrado del semicoeficiente",
+            "Agrupar el trinomio como cuadrado perfecto"
+        ],
+        "unexpected complete-square narrative for `{}`",
         case.id
     );
 }

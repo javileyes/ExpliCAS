@@ -95,6 +95,48 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-04-28: Factor-Out-With-Division Identity Seed Rejected
+
+- area:
+  - corpus generation / derive shadow pressure / conditional factor bridge
+- status:
+  - `observe-only`
+- attempted case:
+  - `a*x^2 + b*x + c -> x*(a*x + b + c/x)`
+  - identity seed used `conditional_requires` with `away_from(0;eps=0.01)`
+- local lane:
+  - CLI derive probe:
+    `printf 'derive a*x^2 + b*x + c, x*(a*x + b + c/x)\n' | cargo run -q -p cas_cli -- repl --no-pretty`
+  - exact shadow:
+    `cargo test --release -q -p cas_solver --test derive_contract_tests derive_engine_identity_shadow_pressure_reports_reachability -- --exact --nocapture`
+- local result:
+  - `derive` used `Strategy: factor out with division`
+  - shadow improved from `sampled=39` / `distinct_actual_strategies=24`
+    to `sampled=40` / `distinct_actual_strategies=25`
+  - `generic_simplify_strategy_successes` stayed `0`
+- global result:
+  - rejected during `make engine-scorecard`
+  - `simplify_strict` multiplication combinations began timing out after the
+    new seed changed the stratified identity sample; by `9000/11175` mul
+    combinations it had reported `T/O 93`
+  - the run was killed and the identity/shadow promotion was reverted
+- why it regressed globally:
+  - the seed itself is a valid derive bridge, but promoting it through
+    `identity_pairs.csv` perturbed the strict metamorphic sample enough to pair
+    many families with the hot `Multiple angle formulas` representative
+    `cos(4*x)`
+  - this exposed a product-combination timeout corridor around multiple-angle
+    trig expansion, not a correctness issue in factor-out-with-division
+- what could make it combinable later:
+  - isolate and fix/gate the `mul x Multiple angle formulas` timeout corridor
+  - or add a narrower derive-shadow source mechanism that can sample a
+    documented engine seed without perturbing the broad strict identity
+    selection
+- decision:
+  - do not promote this seed to `identity_pairs.csv` yet
+  - keep `factor out with division` as the next bridge candidate only after the
+    multiple-angle product timeout corridor is addressed or isolated
+
 ### 2026-04-28: Derive Hyperbolic Negative Exponential Probe Hang
 
 - area:

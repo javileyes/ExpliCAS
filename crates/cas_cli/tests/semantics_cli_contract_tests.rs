@@ -8659,7 +8659,7 @@ fn derive_exponential_sum_difference_drops_redundant_nonzero_requires() {
 }
 
 #[test]
-fn derive_consecutive_telescoping_fraction_split_omits_trivial_substitution_substep() {
+fn derive_consecutive_telescoping_fraction_split_uses_concrete_nontrivial_substeps() {
     let (output, _code) = run_cli(&[
         "eval",
         "derive 1/(u*(u+1)), 1/u - 1/(u+1)",
@@ -8674,14 +8674,18 @@ fn derive_consecutive_telescoping_fraction_split_omits_trivial_substitution_subs
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     assert_rule_eq(&steps[0]["rule"], "Descomponer en fracciones telescópicas");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(substeps[0]["title"], "Introducir el numerador telescópico");
+    assert_eq!(substeps[1]["title"], "Separar sobre el denominador común");
     assert!(
-        steps[0].get("substeps").is_none(),
+        !output.contains("Aquí u = u"),
         "literal telescoping split should not emit the tautological 'Aquí u = u' substep"
     );
 }
 
 #[test]
-fn derive_consecutive_telescoping_fraction_combine_omits_trivial_substitution_substep() {
+fn derive_consecutive_telescoping_fraction_combine_uses_concrete_nontrivial_substeps() {
     let (output, _code) = run_cli(&[
         "eval",
         "derive 1/u - 1/(u+1), 1/(u*(u+1))",
@@ -8696,8 +8700,15 @@ fn derive_consecutive_telescoping_fraction_combine_omits_trivial_substitution_su
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     assert_rule_eq(&steps[0]["rule"], "Recomponer fracción telescópica");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps.len(), 2);
+    assert_eq!(
+        substeps[0]["title"],
+        "Llevar las fracciones al denominador común"
+    );
+    assert_eq!(substeps[1]["title"], "Simplificar el numerador telescópico");
     assert!(
-        steps[0].get("substeps").is_none(),
+        !output.contains("Aquí u = u"),
         "literal telescoping combine should not emit the tautological 'Aquí u = u' substep"
     );
 }

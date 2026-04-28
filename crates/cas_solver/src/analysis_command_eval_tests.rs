@@ -249,7 +249,7 @@ mod tests {
 
     #[test]
     fn evaluate_derive_command_lines_reaches_tabulated_solve_prep_monic_targets() {
-        assert_tabulated_solve_prep_eval_cases(&[
+        let cases: &[SolvePrepEvalCase] = &[
             (
                 "derive x^2 + 6*x + 5, (x+3)^2 - 4",
                 &["(x+3)^(2)", "-4"][..],
@@ -262,7 +262,19 @@ mod tests {
                 "derive x^2 + 3*x + 1, (x+3/2)^2 - 5/4",
                 &["(3/2+x)^(2)", "-5/4"][..],
             ),
-        ]);
+        ];
+
+        assert_tabulated_solve_prep_eval_cases(cases);
+        for (input, _fragments) in cases {
+            let lines = derive_lines(input);
+            assert!(lines.iter().any(|line| line.trim() == "Subpasos:"));
+            assert!(lines
+                .iter()
+                .any(|line| line.contains("Añadir y restar el cuadrado del semicoeficiente")));
+            assert!(lines
+                .iter()
+                .any(|line| line.contains("Agrupar el trinomio como cuadrado perfecto")));
+        }
     }
 
     #[test]
@@ -2655,6 +2667,13 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.contains("Telescoping Fraction Split")));
+        assert!(lines.iter().any(|line| line.trim() == "Subpasos:"));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Introducir el numerador telescópico")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Separar sobre el denominador común")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("1 / n")
@@ -3004,6 +3023,13 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.contains("Telescoping Fraction Combine")));
+        assert!(lines.iter().any(|line| line.trim() == "Subpasos:"));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Llevar las fracciones al denominador común")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Simplificar el numerador telescópico")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("1 /")
@@ -5165,6 +5191,81 @@ mod tests {
                 assert!(
                     result_line.contains(fragment),
                     "missing fragment `{fragment}` in `{result_line}` for `{command}`"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_explains_safe_arcsin_arctan_composition() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive asin(x/sqrt(x^2 + 1)), arctan(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("rewrite inverse trigs")));
+        assert!(lines.iter().any(|line| line.trim() == "Subpasos:"));
+        assert!(lines.iter().any(|line| line.contains("sin(arctan(x))")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("arcsin(sin(arctan(x)))")));
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Result:") && line.contains("arctan(x)")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_explains_direct_log_change_of_base() {
+        for (command, strategy, expected_lines) in [
+            (
+                "derive log(2, x), ln(x)/ln(2)",
+                "expand_log",
+                &[
+                    "Poner el argumento en el numerador",
+                    "x -> ln(x)",
+                    "Poner la base en el denominador",
+                    "2 -> ln(2)",
+                    "Formar el cociente de cambio de base",
+                ][..],
+            ),
+            (
+                "derive ln(x)/ln(2), log(2, x)",
+                "contract logs",
+                &[
+                    "Leer el argumento desde el numerador",
+                    "ln(x) -> argumento x",
+                    "Leer la base desde el denominador",
+                    "ln(2) -> base 2",
+                    "Reconstruir el logaritmo de base indicada",
+                ][..],
+            ),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let lines = evaluate_derive_command_lines_with_resolver(
+                &mut simplifier,
+                command,
+                crate::FullSimplifyDisplayMode::Normal,
+                crate::SimplifyOptions::default(),
+                |_ctx, expr| Ok(expr),
+            )
+            .expect("derive should evaluate");
+
+            assert!(lines
+                .iter()
+                .any(|line| { line.starts_with("Strategy:") && line.contains(strategy) }));
+            assert!(lines.iter().any(|line| line.trim() == "Subpasos:"));
+            for expected in expected_lines {
+                assert!(
+                    lines.iter().any(|line| line.contains(expected)),
+                    "missing `{expected}` in CLI output for `{command}`:\n{}",
+                    lines.join("\n")
                 );
             }
         }

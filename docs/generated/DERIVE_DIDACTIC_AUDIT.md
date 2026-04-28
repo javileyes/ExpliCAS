@@ -8,30 +8,30 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 - Derived cases audited: `403`
 - Mean top-level step count: `1.06`
-- Total web substeps: `306`
+- Total web substeps: `320`
 
 ## Flag Summary
 
-- Cases with flags: `89`
-- Cases flagged as no web substeps emitted: `89`
+- Cases with flags: `82`
+- Cases flagged as no web substeps emitted: `82`
 
 | flag | cases |
 | --- | ---: |
-| no web substeps emitted | 89 |
+| no web substeps emitted | 82 |
 
 | family | cases | flagged | no-substeps flag | web substeps |
 | --- | ---: | ---: | ---: | ---: |
 | `expand` | 33 | 14 | 14 | 28 |
-| `telescoping_fraction` | 15 | 14 | 14 | 2 |
 | `integrate_prep` | 12 | 12 | 12 | 0 |
+| `telescoping_fraction` | 15 | 12 | 12 | 6 |
 | `trig_expand` | 68 | 9 | 9 | 46 |
-| `solve_prep` | 8 | 8 | 8 | 0 |
 | `factor` | 15 | 6 | 6 | 9 |
-| `log_expand` | 17 | 6 | 6 | 0 |
 | `fraction_decompose` | 5 | 5 | 5 | 0 |
+| `log_expand` | 17 | 5 | 5 | 2 |
+| `solve_prep` | 8 | 5 | 5 | 6 |
 | `polynomial_product` | 11 | 4 | 4 | 16 |
-| `log_contract` | 19 | 3 | 3 | 0 |
 | `fraction_expand` | 10 | 2 | 2 | 8 |
+| `log_contract` | 19 | 2 | 2 | 2 |
 | `nested_fraction` | 9 | 2 | 2 | 11 |
 | `rationalize` | 8 | 2 | 2 | 20 |
 | `simplify` | 62 | 1 | 1 | 57 |
@@ -82,7 +82,7 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `combine_symbolic_whole_plus_remainder_into_fraction` | `fraction_combine` | 1 | 0 | none |
 | `combine_telescoping_fraction_affine_gap_two` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
 | `combine_telescoping_fraction_affine_symbolic_shift_gap` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
-| `combine_telescoping_fraction_consecutive` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
+| `combine_telescoping_fraction_consecutive` | `telescoping_fraction` | 1 | 2 | none |
 | `combine_telescoping_fraction_difference_squares_unfactored` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
 | `combine_telescoping_fraction_gap_two` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
 | `combine_telescoping_fraction_negative_gap_two` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
@@ -107,7 +107,7 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `contract_hyperbolic_sinh_difference` | `simplify` | 1 | 1 | none |
 | `contract_hyperbolic_sinh_sum` | `simplify` | 1 | 1 | none |
 | `contract_log_change_of_base_chain` | `log_contract` | 1 | 0 | none |
-| `contract_log_change_of_base_direct` | `log_contract` | 1 | 0 | no web substeps emitted |
+| `contract_log_change_of_base_direct` | `log_contract` | 1 | 2 | none |
 | `contract_log_difference` | `log_contract` | 1 | 0 | none |
 | `contract_log_difference_with_scaled_powers` | `log_contract` | 1 | 0 | none |
 | `contract_log_even_power_abs` | `log_contract` | 1 | 0 | no web substeps emitted |
@@ -199,7 +199,7 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `expand_hyperbolic_tanh_sum` | `simplify` | 1 | 1 | none |
 | `expand_hyperbolic_tanh_triple_angle` | `simplify` | 1 | 0 | none |
 | `expand_log_change_of_base_chain` | `log_expand` | 1 | 0 | none |
-| `expand_log_change_of_base_direct` | `log_expand` | 1 | 0 | no web substeps emitted |
+| `expand_log_change_of_base_direct` | `log_expand` | 1 | 2 | none |
 | `expand_log_even_power_abs` | `log_expand` | 1 | 0 | no web substeps emitted |
 | `expand_log_general_base_power` | `log_expand` | 1 | 0 | no web substeps emitted |
 | `expand_log_general_base_powered_two_denominator_factors_with_powered_denominator` | `log_expand` | 2 | 0 | no web substeps emitted |
@@ -432,12 +432,12 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `simplify_sqrt_arithmetic_difference` | `simplify` | 1 | 1 | none |
 | `simplify_sqrt_arithmetic_sum` | `simplify` | 1 | 2 | none |
 | `solve_prep_complete_square_alt_variable_symbolic_leading_coeff` | `solve_prep` | 1 | 0 | no web substeps emitted |
-| `solve_prep_complete_square_fractional_monic_numeric` | `solve_prep` | 1 | 0 | no web substeps emitted |
+| `solve_prep_complete_square_fractional_monic_numeric` | `solve_prep` | 1 | 2 | none |
 | `solve_prep_complete_square_fractional_symbolic_leading_coeff` | `solve_prep` | 1 | 0 | no web substeps emitted |
-| `solve_prep_complete_square_monic_numeric` | `solve_prep` | 1 | 0 | no web substeps emitted |
+| `solve_prep_complete_square_monic_numeric` | `solve_prep` | 1 | 2 | none |
 | `solve_prep_complete_square_negative_symbolic_leading_coeff` | `solve_prep` | 1 | 0 | no web substeps emitted |
 | `solve_prep_complete_square_symbolic_leading_coeff` | `solve_prep` | 1 | 0 | no web substeps emitted |
-| `solve_prep_complete_square_symbolic_monic_parametric` | `solve_prep` | 1 | 0 | no web substeps emitted |
+| `solve_prep_complete_square_symbolic_monic_parametric` | `solve_prep` | 1 | 2 | none |
 | `solve_prep_complete_square_symbolic_negative_linear_coeff` | `solve_prep` | 1 | 0 | no web substeps emitted |
 | `split_fraction_into_whole_plus_remainder` | `fraction_decompose` | 1 | 0 | no web substeps emitted |
 | `split_fraction_linear_over_scaled_linear` | `fraction_decompose` | 1 | 0 | no web substeps emitted |
@@ -446,7 +446,7 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `split_fraction_symbolic_over_scaled_general_linear` | `fraction_decompose` | 1 | 0 | no web substeps emitted |
 | `split_telescoping_fraction_affine_gap_two` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
 | `split_telescoping_fraction_affine_symbolic_shift_gap` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
-| `split_telescoping_fraction_consecutive` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
+| `split_telescoping_fraction_consecutive` | `telescoping_fraction` | 1 | 2 | none |
 | `split_telescoping_fraction_difference_squares_unfactored` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
 | `split_telescoping_fraction_gap_two` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
 | `split_telescoping_fraction_negative_gap_two` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
@@ -471,6 +471,13 @@ Strategy: rewrite inverse trigs
 Steps (Aggressive Mode):
 1. arcsin(x/sqrt(1+x^2)) = arctan(x)  [Inverse Trig Composition]
    Before: asin(x / sqrt(x^(2) + 1))
+   Subpasos:
+     1.1 Reconocer el argumento como seno de una arctangente
+         x / sqrt(x^2 + 1) = sin(arctan(x))
+     1.2 Sustituir ese seno dentro de arcsin
+         asin(x / sqrt(x^2 + 1)) -> arcsin(sin(arctan(x)))
+     1.3 Cancelar arcsin(sin(u)) en el rango principal
+         arcsin(sin(arctan(x))) -> arctan(x)
    Cambio local: asin(x / sqrt(x^(2) + 1)) -> atan(x)
    After: atan(x)
 Result: atan(x)
@@ -1507,8 +1514,8 @@ Result: 1 / ((a * n + b) * (a * n + c))
 - Target: `1/(n*(n+1))`
 - Result: `1 / (n * (n + 1))`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -1519,6 +1526,11 @@ Strategy: combine fraction
 Steps (Aggressive Mode):
 1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
    Before: 1 / n - 1 / (n + 1)
+   Subpasos:
+     1.1 Llevar las fracciones al denominador común
+         1 / n - 1 / (n + 1) -> (n + 1 - n) / (n * (n + 1))
+     1.2 Simplificar el numerador telescópico
+         (n + 1 - n) / (n * (n + 1)) -> 1 / (n * (n + 1))
    Cambio local: 1 / n - 1 / (n + 1) -> 1 / (n * (n + 1))
    After: 1 / (n * (n + 1))
 Result: 1 / (n * (n + 1))
@@ -1532,7 +1544,9 @@ Result: 1 / (n * (n + 1))
 1. `Recomponer fracción telescópica`
    - before: `1/n - 1/(n + 1)`
    - after: `1/(n · (n + 1))`
-   - substeps: none
+   - substeps:
+     1. `Llevar las fracciones al denominador común`
+     2. `Simplificar el numerador telescópico`
 
 ## combine_telescoping_fraction_difference_squares_unfactored (telescoping_fraction)
 
@@ -2310,8 +2324,8 @@ Result: log(b, c)
 - Target: `log(2, x)`
 - Result: `log(2, x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -2322,6 +2336,13 @@ Strategy: contract logs
 Steps (Aggressive Mode):
 1. Recognize a logarithm written by change of base  [Change of Base]
    Before: ln(x) / ln(2)
+   Subpasos:
+     1.1 Leer el argumento desde el numerador
+         ln(x) -> argumento x
+     1.2 Leer la base desde el denominador
+         ln(2) -> base 2
+     1.3 Reconstruir el logaritmo de base indicada
+         ln(x) / ln(2) -> log(2, x)
    Cambio local: ln(x) / ln(2) -> log(2, x)
    After: log(2, x)
 Result: log(2, x)
@@ -2334,7 +2355,9 @@ Result: log(2, x)
 1. `Change of Base`
    - before: `ln(x)/ln(2)`
    - after: `log_2(x)`
-   - substeps: none
+   - substeps:
+     1. `Leer el argumento desde el numerador`
+     2. `Leer la base desde el denominador`
 
 ## contract_log_difference (log_contract)
 
@@ -2358,8 +2381,8 @@ Steps (Aggressive Mode):
    After: ln(x / y)
 Result: ln(x / y)
 ℹ️ Requires:
-  • x / y > 0
   • y ≠ 0
+  • x / y > 0
 ```
 
 ### Web / JSON Steps
@@ -2391,8 +2414,8 @@ Steps (Aggressive Mode):
    After: ln(x^3 / y^2)
 Result: ln(x^(3) / y^(2))
 ℹ️ Requires:
-  • y ≠ 0
   • x^3 / y^2 > 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2456,8 +2479,8 @@ Steps (Aggressive Mode):
    After: log(2, x / y)
 Result: log(2, x / y)
 ℹ️ Requires:
-  • x / y > 0
   • y ≠ 0
+  • x / y > 0
 ```
 
 ### Web / JSON Steps
@@ -2489,8 +2512,8 @@ Steps (Aggressive Mode):
    After: log(2, x^3 / y^2)
 Result: log(2, x^(3) / y^(2))
 ℹ️ Requires:
-  • y ≠ 0
   • x^3 / y^2 > 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2554,10 +2577,10 @@ Steps (Aggressive Mode):
    After: log(b, x^2 * y^3 / (t * z^2))
 Result: log(b, x^(2) * y^(3) / (t * z^(2)))
 ℹ️ Requires:
+  • x^2 * y^3 / (t * z^2) > 0
   • b > 0
   • t ≠ 0
   • z ≠ 0
-  • x^2 * y^3 / (t * z^2) > 0
 ```
 
 ### Web / JSON Steps
@@ -2653,9 +2676,9 @@ Steps (Aggressive Mode):
    After: ln(y * x^2 / (t * z))
 Result: ln(y * x^(2) / (t * z))
 ℹ️ Requires:
+  • y * x^2 / (t * z) > 0
   • t ≠ 0
   • z ≠ 0
-  • y * x^2 / (t * z) > 0
 ```
 
 ### Web / JSON Steps
@@ -4384,8 +4407,8 @@ Steps (Aggressive Mode):
    After: a / y + b / x
 Result: a / y + b / x
 ℹ️ Requires:
-  • y ≠ 0
   • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4479,8 +4502,8 @@ Steps (Aggressive Mode):
    After: a / z + b / x + c / y + d / (x * y * z)
 Result: a / z + b / x + c / y + d / (x * y * z)
 ℹ️ Requires:
-  • y ≠ 0
   • x ≠ 0
+  • y ≠ 0
   • z ≠ 0
 ```
 
@@ -4513,9 +4536,9 @@ Steps (Aggressive Mode):
    After: a / (y * z) + b / (x * z) + c / (x * y)
 Result: a / (y * z) + b / (x * z) + c / (x * y)
 ℹ️ Requires:
-  • x ≠ 0
-  • z ≠ 0
   • y ≠ 0
+  • z ≠ 0
+  • x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4547,8 +4570,8 @@ Steps (Aggressive Mode):
    After: a / z + b / y + c / x + d
 Result: a / z + b / y + c / x + d
 ℹ️ Requires:
-  • y ≠ 0
   • x ≠ 0
+  • y ≠ 0
   • z ≠ 0
 ```
 
@@ -5204,9 +5227,9 @@ Steps (Aggressive Mode):
    After: log(a, c) * log(b, a)
 Result: log(a, c) * log(b, a)
 ℹ️ Requires:
-  • c > 0
   • b > 0
   • a > 0
+  • c > 0
 ```
 
 ### Web / JSON Steps
@@ -5222,8 +5245,8 @@ Result: log(a, c) * log(b, a)
 - Target: `ln(x)/ln(2)`
 - Result: `ln(x) / ln(2)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -5234,12 +5257,19 @@ Strategy: expand_log
 Steps (Aggressive Mode):
 1. Rewrite the logarithm using the change-of-base formula  [Change of Base]
    Before: log(2, x)
+   Subpasos:
+     1.1 Poner el argumento en el numerador
+         x -> ln(x)
+     1.2 Poner la base en el denominador
+         2 -> ln(2)
+     1.3 Formar el cociente de cambio de base
+         log(2, x) -> ln(x) / ln(2)
    Cambio local: log(2, x) -> ln(x) / ln(2)
    After: ln(x) / ln(2)
 Result: ln(x) / ln(2)
 ℹ️ Requires:
-  • x > 0
   • ln(2) ≠ 0
+  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -5247,7 +5277,9 @@ Result: ln(x) / ln(2)
 1. `Change of Base`
    - before: `log_2(x)`
    - after: `ln(x)/ln(2)`
-   - substeps: none
+   - substeps:
+     1. `Poner el argumento en el numerador`
+     2. `Poner la base en el denominador`
 
 ## expand_log_even_power_abs (log_expand)
 
@@ -5303,8 +5335,8 @@ Steps (Aggressive Mode):
    After: 3 * log(b, x)
 Result: 3 * log(b, x)
 ℹ️ Requires:
-  • b > 0
   • x > 0
+  • b > 0
 ```
 
 ### Web / JSON Steps
@@ -5346,11 +5378,11 @@ Steps (Aggressive Mode):
    After: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
 Result: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
 ℹ️ Requires:
+  • t > 0
   • b > 0
+  • y > 0
   • x > 0
   • z > 0
-  • t > 0
-  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -5390,10 +5422,10 @@ Steps (Aggressive Mode):
    ℹ️ Requires: y > 0
 Result: log(b, x) + log(b, y) - log(b, z)
 ℹ️ Requires:
-  • x > 0
   • y > 0
-  • z > 0
   • b > 0
+  • z > 0
+  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -5525,8 +5557,8 @@ Steps (Aggressive Mode):
    After: 2 * log(b, x) + 2 * log(b, y) + a
 Result: 2 * log(b, x) + 2 * log(b, y) + a
 ℹ️ Requires:
-  • b > 0
   • y > 0
+  • b > 0
   • x > 0
 ```
 
@@ -5592,8 +5624,8 @@ Steps (Aggressive Mode):
    After: ln(x^2) + ln(y^2) + a
 Result: ln(x^(2)) + ln(y^(2)) + a
 ℹ️ Requires:
-  • x ≠ 0
   • y ≠ 0
+  • x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5635,10 +5667,10 @@ Steps (Aggressive Mode):
    After: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
 Result: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
 ℹ️ Requires:
-  • y > 0
-  • t > 0
   • z > 0
   • x ≠ 0
+  • t > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -5714,8 +5746,8 @@ Steps (Aggressive Mode):
 Result: ln(x) + ln(y) - ln(z)
 ℹ️ Requires:
   • y > 0
-  • x > 0
   • z > 0
+  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -5753,8 +5785,8 @@ Steps (Aggressive Mode):
    After: ln(y) + ln(x) / 2
 Result: ln(y) + ln(x) / 2
 ℹ️ Requires:
-  • x > 0
   • y > 0
+  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -5792,8 +5824,8 @@ Steps (Aggressive Mode):
    ℹ️ Requires: y > 0
 Result: ln(x) - ln(y)
 ℹ️ Requires:
-  • x > 0
   • y > 0
+  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -9132,8 +9164,8 @@ Steps (Aggressive Mode):
    After: x^3 * (d / x^3 + a * x^4 + b * x^2 + c)
 Result: x^(3) * (d / x^(3) + a * x^(4) + b * x^(2) + c)
 ℹ️ Requires:
-  • x^3 ≠ 0
   • x ≠ 0
+  • x^3 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -10336,9 +10368,9 @@ Steps (Aggressive Mode):
    After: ((1 / (a * m + b + c) - 1 / (a * n + a + b + c)))/a
 Result: 1 / a * (1 / (a * m + b + c) - 1 / (a * n + a + b + c))
 ℹ️ Requires:
-  • a * m + b + c ≠ 0
   • a * n + a + b + c ≠ 0
   • a ≠ 0
+  • a * m + b + c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -10372,9 +10404,9 @@ Steps (Aggressive Mode):
    After: ((1 / (a * m + b) - 1 / (a * n + a + b)))/a
 Result: 1 / a * (1 / (a * m + b) - 1 / (a * n + a + b))
 ℹ️ Requires:
-  • a ≠ 0
   • a * n + a + b ≠ 0
   • a * m + b ≠ 0
+  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11831,8 +11863,8 @@ Steps (Aggressive Mode):
    After: a / (c / d + b)
 Result: a / (c / d + b)
 ℹ️ Requires:
-  • d ≠ 0
   • c / d + b ≠ 0
+  • d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12318,8 +12350,8 @@ Steps (Aggressive Mode):
    After: (sqrt(x) + 1) / (x - 1)
 Result: (sqrt(x) + 1) / (x - 1)
 ℹ️ Requires:
-  • x ≥ 0
   • x - 1 ≠ 0
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -12353,8 +12385,8 @@ Steps (Aggressive Mode):
    After: (sqrt(x) - 1) / (x - 1)
 Result: (sqrt(x) - 1) / (x - 1)
 ℹ️ Requires:
-  • x - 1 ≠ 0
   • x ≥ 0
+  • x - 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12429,8 +12461,8 @@ Steps (Aggressive Mode):
    ℹ️ Requires: x > 0
 Result: (sqrt(x) + a) / (x - a^(2))
 ℹ️ Requires:
-  • a^2 - x ≠ 0
   • x ≥ 0
+  • a^2 - x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12757,8 +12789,8 @@ Result: a * (b / (2 * a) + y)^(2) + c - b^(2) / (4 * a)
 - Target: `(x+3/2)^2 - 5/4`
 - Result: `(3 / 2 + x)^2 - 5 / 4`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -12769,6 +12801,11 @@ Strategy: solve prep
 Steps (Aggressive Mode):
 1. Complete the square to rewrite the quadratic  [Complete the Square]
    Before: x^(2) + 3 * x + 1
+   Subpasos:
+     1.1 Añadir y restar el cuadrado del semicoeficiente
+         x^2 + 3 * x + 1 -> 3/2^2 + x^2 + 3 * x + 1 - 3/2^2
+     1.2 Agrupar el trinomio como cuadrado perfecto
+         3/2^2 + x^2 + 3 * x + 1 - 3/2^2 -> (x + 3/2)^2 - 5/4
    Cambio local: x^(2) + 3 * x + 1 -> (3 / 2 + x)^(2) - 5 / 4
    After: (3 / 2 + x)^2 - 5 / 4
 Result: (3 / 2 + x)^(2) - 5 / 4
@@ -12779,7 +12816,9 @@ Result: (3 / 2 + x)^(2) - 5 / 4
 1. `Completar el cuadrado`
    - before: `x^2 + 3 · x + 1`
    - after: `((3/2 + x))^2 - 5/4`
-   - substeps: none
+   - substeps:
+     1. `Añadir y restar el cuadrado del semicoeficiente`
+     2. `Agrupar el trinomio como cuadrado perfecto`
 
 ## solve_prep_complete_square_fractional_symbolic_leading_coeff (solve_prep)
 
@@ -12819,8 +12858,8 @@ Result: (b / a + x)^(2) * a / 2 + c - b^(2) / (2 * a)
 - Target: `(x+3)^2 - 4`
 - Result: `(x + 3)^2 - 4`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -12831,6 +12870,11 @@ Strategy: solve prep
 Steps (Aggressive Mode):
 1. Complete the square to rewrite the quadratic  [Complete the Square]
    Before: x^(2) + 6 * x + 5
+   Subpasos:
+     1.1 Añadir y restar el cuadrado del semicoeficiente
+         x^2 + 6 * x + 5 -> 3^2 + x^2 + 6 * x + 5 - 3^2
+     1.2 Agrupar el trinomio como cuadrado perfecto
+         3^2 + x^2 + 6 * x + 5 - 3^2 -> (x + 3)^2 - 4
    Cambio local: x^(2) + 6 * x + 5 -> (x + 3)^(2) - 4
    After: (x + 3)^2 - 4
 Result: (x + 3)^(2) - 4
@@ -12841,7 +12885,9 @@ Result: (x + 3)^(2) - 4
 1. `Completar el cuadrado`
    - before: `x^2 + 6 · x + 5`
    - after: `((x + 3))^2 - 4`
-   - substeps: none
+   - substeps:
+     1. `Añadir y restar el cuadrado del semicoeficiente`
+     2. `Agrupar el trinomio como cuadrado perfecto`
 
 ## solve_prep_complete_square_negative_symbolic_leading_coeff (solve_prep)
 
@@ -12913,8 +12959,8 @@ Result: a * (b / (2 * a) + x)^(2) + c - b^(2) / (4 * a)
 - Target: `(x+b)^2 + c - b^2`
 - Result: `(b + x)^2 + c - b^2`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -12925,6 +12971,11 @@ Strategy: solve prep
 Steps (Aggressive Mode):
 1. Complete the square to rewrite the quadratic  [Complete the Square]
    Before: x^(2) + 2 * b * x + c
+   Subpasos:
+     1.1 Añadir y restar el cuadrado del semicoeficiente
+         x^2 + 2 * b * x + c -> b^2 + x^2 + 2 * b * x + c - b^2
+     1.2 Agrupar el trinomio como cuadrado perfecto
+         b^2 + x^2 + 2 * b * x + c - b^2 -> (b + x)^2 + c - b^2
    Cambio local: x^(2) + 2 * b * x + c -> (b + x)^(2) + c - b^(2)
    After: (b + x)^2 + c - b^2
 Result: (b + x)^(2) + c - b^(2)
@@ -12935,7 +12986,9 @@ Result: (b + x)^(2) + c - b^(2)
 1. `Completar el cuadrado`
    - before: `x^2 + 2 · b · x + c`
    - after: `((b + x))^2 + c - b^2`
-   - substeps: none
+   - substeps:
+     1. `Añadir y restar el cuadrado del semicoeficiente`
+     2. `Agrupar el trinomio como cuadrado perfecto`
 
 ## solve_prep_complete_square_symbolic_negative_linear_coeff (solve_prep)
 
@@ -13115,8 +13168,8 @@ Steps (Aggressive Mode):
    After: a / c + (b - a * d / c) / (c * x + d)
 Result: a / c + (b - a * d / c) / (c * x + d)
 ℹ️ Requires:
-  • c ≠ 0
   • c * x + d ≠ 0
+  • c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13148,8 +13201,8 @@ Steps (Aggressive Mode):
    After: ((1 / (2 * n + 1) - 1 / (2 * n + 3)))/2
 Result: 1 / 2 * (1 / (2 * n + 1) - 1 / (2 * n + 3))
 ℹ️ Requires:
-  • 2 * n + 3 ≠ 0
   • 2 * n + 1 ≠ 0
+  • 2 * n + 3 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13181,9 +13234,9 @@ Steps (Aggressive Mode):
    After: ((1 / (a * n + b) - 1 / (a * n + c)))/((c - b))
 Result: 1 / (c - b) * (1 / (a * n + b) - 1 / (a * n + c))
 ℹ️ Requires:
+  • a * n + b ≠ 0
   • b - c ≠ 0
   • a * n + c ≠ 0
-  • a * n + b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13199,8 +13252,8 @@ Result: 1 / (c - b) * (1 / (a * n + b) - 1 / (a * n + c))
 - Target: `1/n - 1/(n+1)`
 - Result: `1 / n - 1 / (n + 1)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -13211,6 +13264,11 @@ Strategy: expand fraction
 Steps (Aggressive Mode):
 1. Split into telescoping partial fractions  [Telescoping Fraction Split]
    Before: 1 / (n * (n + 1))
+   Subpasos:
+     1.1 Introducir el numerador telescópico
+         1 / (n * (n + 1)) -> (n + 1 - n) / (n * (n + 1))
+     1.2 Separar sobre el denominador común
+         (n + 1 - n) / (n * (n + 1)) -> 1 / n - 1 / (n + 1)
    Cambio local: 1 / (n * (n + 1)) -> 1 / n - 1 / (n + 1)
    After: 1 / n - 1 / (n + 1)
 Result: 1 / n - 1 / (n + 1)
@@ -13224,7 +13282,9 @@ Result: 1 / n - 1 / (n + 1)
 1. `Descomponer en fracciones telescópicas`
    - before: `1/(n · (n + 1))`
    - after: `1/n - 1/(n + 1)`
-   - substeps: none
+   - substeps:
+     1. `Introducir el numerador telescópico`
+     2. `Separar sobre el denominador común`
 
 ## split_telescoping_fraction_difference_squares_unfactored (telescoping_fraction)
 
@@ -13248,8 +13308,8 @@ Steps (Aggressive Mode):
    After: ((1 / (x - 1) - 1 / (x + 1)))/2
 Result: 1 / 2 * (1 / (x - 1) - 1 / (x + 1))
 ℹ️ Requires:
-  • x - 1 ≠ 0
   • x + 1 ≠ 0
+  • x - 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13314,8 +13374,8 @@ Steps (Aggressive Mode):
    After: ((1 / (n - 2) - 1 / n))/2
 Result: 1 / 2 * (1 / (n - 2) - 1 / n)
 ℹ️ Requires:
-  • n ≠ 0
   • n - 2 ≠ 0
+  • n ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13347,9 +13407,9 @@ Steps (Aggressive Mode):
    After: ((1 / (x - a) - 1 / (a + x)))/(2 * a)
 Result: 1 / (2 * a) * (1 / (x - a) - 1 / (a + x))
 ℹ️ Requires:
-  • a - x ≠ 0
-  • a + x ≠ 0
   • a ≠ 0
+  • a + x ≠ 0
+  • a - x ≠ 0
 ```
 
 ### Web / JSON Steps

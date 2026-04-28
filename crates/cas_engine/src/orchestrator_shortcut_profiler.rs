@@ -26,6 +26,8 @@ struct ShortcutStats {
     hits: usize,
     total_duration: Duration,
     samples: Vec<String>,
+    hit_samples: Vec<String>,
+    miss_samples: Vec<String>,
 }
 
 #[derive(Default)]
@@ -49,6 +51,19 @@ impl ShortcutProfiler {
             return;
         }
         stats.samples.push(sample);
+    }
+
+    fn record_outcome_sample(&mut self, name: &'static str, matched: bool, sample: String) {
+        let stats = self.stats.entry(name).or_default();
+        let samples = if matched {
+            &mut stats.hit_samples
+        } else {
+            &mut stats.miss_samples
+        };
+        if samples.len() >= 4 || samples.iter().any(|existing| existing == &sample) {
+            return;
+        }
+        samples.push(sample);
     }
 
     fn clear(&mut self) {
@@ -118,7 +133,11 @@ impl ShortcutProfiler {
         let mut sample_rows: Vec<_> = self
             .stats
             .iter()
-            .filter(|(_, stats)| !stats.samples.is_empty())
+            .filter(|(_, stats)| {
+                !stats.samples.is_empty()
+                    || !stats.hit_samples.is_empty()
+                    || !stats.miss_samples.is_empty()
+            })
             .collect();
         sample_rows.sort_by_key(|(_, stats)| Reverse(stats.total_duration));
         if !sample_rows.is_empty() {
@@ -133,6 +152,12 @@ impl ShortcutProfiler {
                 report.push_str(&format!("{}\n", name));
                 for sample in &stats.samples {
                     report.push_str(&format!("  - {}\n", truncate(sample, 120)));
+                }
+                for sample in &stats.hit_samples {
+                    report.push_str(&format!("  - hit: {}\n", truncate(sample, 120)));
+                }
+                for sample in &stats.miss_samples {
+                    report.push_str(&format!("  - miss: {}\n", truncate(sample, 120)));
                 }
             }
         }
@@ -180,6 +205,21 @@ pub fn record_orchestrator_shortcut_sample(name: &'static str, sample: String) {
     }
     ORCHESTRATOR_SHORTCUT_PROFILER.with(|profiler| {
         profiler.borrow_mut().record_sample(name, sample);
+    });
+}
+
+pub fn record_orchestrator_shortcut_outcome_sample(
+    name: &'static str,
+    matched: bool,
+    sample: String,
+) {
+    if !should_profile_orchestrator_shortcut(name) {
+        return;
+    }
+    ORCHESTRATOR_SHORTCUT_PROFILER.with(|profiler| {
+        profiler
+            .borrow_mut()
+            .record_outcome_sample(name, matched, sample);
     });
 }
 
@@ -359,5 +399,22 @@ mod tests {
         let report = profiler.report();
         assert!(report.contains("Sample expressions"));
         assert!(report.contains("sin(pi/6) + 1"));
+    }
+
+    #[test]
+    fn report_distinguishes_hit_and_miss_samples_when_recorded() {
+        let mut profiler = ShortcutProfiler::default();
+        profiler.record_attempt("root.mul.alpha", true, Duration::from_micros(10));
+        profiler.record_outcome_sample("root.mul.alpha", true, "mul(variable, number)".to_string());
+        profiler.record_attempt("root.mul.alpha", false, Duration::from_micros(20));
+        profiler.record_outcome_sample(
+            "root.mul.alpha",
+            false,
+            "add(variable, number)".to_string(),
+        );
+
+        let report = profiler.report();
+        assert!(report.contains("hit: mul(variable, number)"));
+        assert!(report.contains("miss: add(variable, number)"));
     }
 }

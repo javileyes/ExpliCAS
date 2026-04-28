@@ -32,6 +32,13 @@ struct IdentityPairShadowSeed {
     target: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EmbeddedEquivalenceShadowSeed {
+    family: String,
+    source: String,
+    target: String,
+}
+
 fn load_derive_cases() -> Vec<DeriveCase> {
     include_str!("derive_pairs.csv")
         .lines()
@@ -98,6 +105,26 @@ fn load_identity_pair_shadow_seeds() -> Vec<IdentityPairShadowSeed> {
     seeds
 }
 
+fn load_embedded_equivalence_shadow_seeds() -> Vec<EmbeddedEquivalenceShadowSeed> {
+    include_str!("../../../docs/embedded_equivalence_context_corpus.csv")
+        .lines()
+        .skip(1)
+        .filter(|line| !line.trim().is_empty())
+        .map(|line| {
+            let parts = split_csv_line(line);
+            assert!(
+                parts.len() >= 7,
+                "unexpected embedded equivalence csv columns: {line}"
+            );
+            EmbeddedEquivalenceShadowSeed {
+                family: parts[4].trim().to_string(),
+                source: parts[5].trim().to_string(),
+                target: parts[6].trim().to_string(),
+            }
+        })
+        .collect()
+}
+
 fn split_csv_line(line: &str) -> Vec<String> {
     let mut parts = Vec::new();
     let mut current = String::new();
@@ -126,6 +153,22 @@ fn assert_shadow_cases_exist_in_identity_pairs(cases: &[IdentityShadowCase]) {
                 seed.family == case.family && seed.source == case.source && seed.target == case.target
             }),
             "derive shadow case {} must come from identity_pairs.csv: family={} source={} target={}",
+            case.id,
+            case.family,
+            case.source,
+            case.target
+        );
+    }
+}
+
+fn assert_shadow_cases_exist_in_embedded_equivalence_corpus(cases: &[IdentityShadowCase]) {
+    let seeds = load_embedded_equivalence_shadow_seeds();
+    for case in cases {
+        assert!(
+            seeds.iter().any(|seed| {
+                seed.family == case.family && seed.source == case.source && seed.target == case.target
+            }),
+            "derive shadow case {} must come from embedded_equivalence_context_corpus.csv: family={} source={} target={}",
             case.id,
             case.family,
             case.source,
@@ -252,10 +295,22 @@ const IDENTITY_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
         target: "sec(x)^2",
     },
     IdentityShadowCase {
+        id: "identity_trig_pythagorean_rewrite",
+        family: "Pythagorean Identities",
+        source: "sin(x)^2 + cos(x)^2",
+        target: "1",
+    },
+    IdentityShadowCase {
         id: "identity_symbolic_cube_expand",
         family: "Binomial Expansion",
         source: "(x+1)^3",
         target: "x^3 + 3*x^2 + 3*x + 1",
+    },
+    IdentityShadowCase {
+        id: "identity_factor_difference_squares",
+        family: "Difference of Squares",
+        source: "x^2 - 1",
+        target: "(x-1)*(x+1)",
     },
     IdentityShadowCase {
         id: "identity_sqrt_arithmetic",
@@ -372,6 +427,12 @@ const IDENTITY_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
         target: "sin(x)/(1 + cos(x))",
     },
     IdentityShadowCase {
+        id: "identity_arctan_reciprocal_sum",
+        family: "arctan compositions",
+        source: "arctan(x) + arctan(1/x)",
+        target: "pi/2",
+    },
+    IdentityShadowCase {
         id: "identity_completing_square",
         family: "Completing the square patterns",
         source: "x^2 + 2*x",
@@ -408,6 +469,42 @@ const IDENTITY_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
         target: "x^(5/6)",
     },
     IdentityShadowCase {
+        id: "identity_odd_half_power_expand",
+        family: "Power of roots",
+        source: "sqrt(x^3)",
+        target: "x*sqrt(x)",
+    },
+    IdentityShadowCase {
+        id: "identity_fraction_cancel_difference_squares",
+        family: "Factor-cancel patterns",
+        source: "(x^2 - 1)/(x + 1)",
+        target: "x - 1",
+    },
+    IdentityShadowCase {
+        id: "identity_fraction_combine_adjacent_unit_denominators",
+        family: "Addition of fractions",
+        source: "1/x + 1/(x+1)",
+        target: "(2*x+1)/(x*(x+1))",
+    },
+    IdentityShadowCase {
+        id: "identity_nested_fraction_reciprocal_inverse",
+        family: "Fraction Simplification",
+        source: "1/(1/x)",
+        target: "x",
+    },
+    IdentityShadowCase {
+        id: "identity_partial_fraction_telescoping_split",
+        family: "Partial fractions / telescoping patterns",
+        source: "1/(x*(x+1))",
+        target: "1/x - 1/(x+1)",
+    },
+    IdentityShadowCase {
+        id: "identity_mixed_fraction_decomposition",
+        family: "Mixed fraction decomposition",
+        source: "(a*x+b)/(x+c)",
+        target: "a + (b-a*c)/(x+c)",
+    },
+    IdentityShadowCase {
         id: "identity_hyperbolic_exp_decomposition",
         family: "Fundamental exp decomposition",
         source: "sinh(x) + cosh(x)",
@@ -424,6 +521,33 @@ const IDENTITY_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
         family: "Fundamental exp decomposition",
         source: "sinh(x) - cosh(x)",
         target: "-exp(-x)",
+    },
+];
+
+const EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
+    IdentityShadowCase {
+        id: "embedded_collect_linear",
+        family: "collect",
+        source: "a*x + b*x + c",
+        target: "(a + b)*x + c",
+    },
+    IdentityShadowCase {
+        id: "embedded_consecutive_factorial_ratio",
+        family: "simplify",
+        source: "(n+1)!/n!",
+        target: "n+1",
+    },
+    IdentityShadowCase {
+        id: "embedded_factor_out_with_division_quadratic",
+        family: "conditional_factor",
+        source: "a*x^2 + b*x + c",
+        target: "x*(a*x + b + c/x)",
+    },
+    IdentityShadowCase {
+        id: "embedded_integrate_prep_morrie_basic",
+        family: "integrate_prep",
+        source: "cos(x)*cos(2*x)*cos(4*x)",
+        target: "sin(8*x)/(8*sin(x))",
     },
 ];
 
@@ -893,7 +1017,17 @@ fn derive_pairs_do_not_expect_generic_simplify_for_derived_cases() {
 #[test]
 fn derive_engine_identity_shadow_pressure_reports_reachability() {
     assert_shadow_cases_exist_in_identity_pairs(IDENTITY_SHADOW_PRESSURE_CASES);
-    let stats = evaluate_identity_shadow_pressure(IDENTITY_SHADOW_PRESSURE_CASES);
+    assert_shadow_cases_exist_in_embedded_equivalence_corpus(
+        EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES,
+    );
+
+    let mut shadow_cases = Vec::with_capacity(
+        IDENTITY_SHADOW_PRESSURE_CASES.len() + EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES.len(),
+    );
+    shadow_cases.extend_from_slice(IDENTITY_SHADOW_PRESSURE_CASES);
+    shadow_cases.extend_from_slice(EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES);
+
+    let stats = evaluate_identity_shadow_pressure(&shadow_cases);
     assert_eq!(
         stats.sampled,
         stats.derived + stats.unsupported + stats.not_equivalent,

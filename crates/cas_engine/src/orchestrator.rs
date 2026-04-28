@@ -208,6 +208,30 @@ fn run_profiled_orchestrator_bool_section(name: &'static str, run: impl FnOnce()
     result
 }
 
+fn run_profiled_orchestrator_bool_section_with_sample(
+    name: &'static str,
+    sample: Option<String>,
+    run: impl FnOnce() -> bool,
+) -> bool {
+    if !crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(name) {
+        return run();
+    }
+
+    let start = std::time::Instant::now();
+    let result = run();
+    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_attempt(
+        name,
+        result,
+        start.elapsed(),
+    );
+    if let Some(sample) = sample {
+        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_outcome_sample(
+            name, result, sample,
+        );
+    }
+    result
+}
+
 fn render_expr_for_orchestrator_profile(ctx: &Context, expr: ExprId) -> String {
     crate::orchestrator_shortcut_profiler::render_expr_shape_for_orchestrator_profile(ctx, expr)
 }
@@ -934,6 +958,50 @@ fn direct_small_zero_cancellation_marker_count_root(
         .count()
 }
 
+fn direct_small_zero_opposite_sign_exact_pair_count_root(
+    ctx: &Context,
+    terms: &[(ExprId, Sign)],
+) -> usize {
+    direct_small_zero_opposite_sign_exact_pair_stats_root(ctx, terms).0
+}
+
+fn direct_small_zero_opposite_sign_exact_pair_stats_root(
+    ctx: &Context,
+    terms: &[(ExprId, Sign)],
+) -> (usize, usize) {
+    let mut paired = vec![false; terms.len()];
+    let mut pair_count = 0;
+    let mut non_marker_terms_in_pairs = 0;
+    for left_index in 0..terms.len() {
+        if paired[left_index] {
+            continue;
+        }
+        let (left_expr, left_sign) = terms[left_index];
+        for right_index in (left_index + 1)..terms.len() {
+            if paired[right_index] {
+                continue;
+            }
+            let (right_expr, right_sign) = terms[right_index];
+            if left_sign != right_sign
+                && compare_expr(ctx, left_expr, right_expr) == Ordering::Equal
+            {
+                paired[left_index] = true;
+                paired[right_index] = true;
+                pair_count += 1;
+                if !direct_small_zero_term_has_cancellation_marker_root(ctx, left_expr, left_sign) {
+                    non_marker_terms_in_pairs += 1;
+                }
+                if !direct_small_zero_term_has_cancellation_marker_root(ctx, right_expr, right_sign)
+                {
+                    non_marker_terms_in_pairs += 1;
+                }
+                break;
+            }
+        }
+    }
+    (pair_count, non_marker_terms_in_pairs)
+}
+
 fn has_enough_direct_small_zero_cancellation_markers_root(
     ctx: &Context,
     terms: &[(ExprId, Sign)],
@@ -942,10 +1010,52 @@ fn has_enough_direct_small_zero_cancellation_markers_root(
     direct_small_zero_cancellation_marker_count_root(ctx, terms) >= group_count
 }
 
+fn has_enough_direct_small_zero_remaining_anchor_terms_root(
+    ctx: &Context,
+    terms: &[(ExprId, Sign)],
+    group_count: usize,
+) -> bool {
+    let marker_count = direct_small_zero_cancellation_marker_count_root(ctx, terms);
+    if marker_count < group_count {
+        return false;
+    }
+
+    let non_marker_count = terms.len().saturating_sub(marker_count);
+    let (exact_pair_count, paired_non_marker_count) =
+        direct_small_zero_opposite_sign_exact_pair_stats_root(ctx, terms);
+    let remaining_groups = group_count.saturating_sub(exact_pair_count);
+    let remaining_non_markers = non_marker_count.saturating_sub(paired_non_marker_count);
+    remaining_non_markers >= remaining_groups
+}
+
+fn should_try_direct_three_small_zero_cores_root(
+    ctx: &Context,
+    expr: ExprId,
+    terms: &[(ExprId, Sign)],
+) -> bool {
+    let exact_pair_count = direct_small_zero_opposite_sign_exact_pair_count_root(ctx, terms);
+    if (8..=9).contains(&terms.len()) && exact_pair_count >= 2 {
+        return false;
+    }
+    if !has_enough_direct_small_zero_remaining_anchor_terms_root(ctx, terms, 3) {
+        return false;
+    }
+
+    if expr_contains_direct_small_zero_multicore_marker_root(ctx, expr) {
+        return true;
+    }
+
+    exact_pair_count >= 2
+}
+
 fn matches_direct_three_small_zero_cores_terms_root(
     ctx: &mut Context,
     terms: &[(ExprId, Sign)],
 ) -> bool {
+    if (8..=9).contains(&terms.len()) {
+        return matches_direct_small_zero_core_groups_root(ctx, terms, 3);
+    }
+
     if !(6..=7).contains(&terms.len()) {
         return false;
     }
@@ -1006,6 +1116,9 @@ fn matches_direct_four_or_five_small_zero_core_groups_terms_root(
         10 | 11 => 5,
         _ => return false,
     };
+    if !has_enough_direct_small_zero_remaining_anchor_terms_root(ctx, terms, group_count) {
+        return false;
+    }
 
     matches_direct_small_zero_core_groups_root(ctx, terms, group_count)
 }
@@ -1134,12 +1247,7 @@ fn is_direct_small_zero_composition_candidate_root(ctx: &mut Context, expr: Expr
     macro_rules! profiled_direct_small_zero_bool {
         ($name:literal, $body:expr) => {{
             if profile_direct_small_zero {
-                if let Some(sample) = sample.clone() {
-                    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
-                        $name, sample,
-                    );
-                }
-                run_profiled_orchestrator_bool_section($name, || $body)
+                run_profiled_orchestrator_bool_section_with_sample($name, sample.clone(), || $body)
             } else {
                 $body
             }
@@ -1160,10 +1268,30 @@ fn is_direct_small_zero_composition_candidate_root(ctx: &mut Context, expr: Expr
             ) || {
                 let terms = AddView::from_expr(ctx, expr).terms;
                 match terms.len() {
-                    6 | 7 => profiled_direct_small_zero_bool!(
-                        "root.direct_small_zero_composition.candidate.three_core_groups",
-                        matches_direct_three_small_zero_cores_terms_root(ctx, terms.as_slice())
-                    ),
+                    6..=9
+                        if should_try_direct_three_small_zero_cores_root(
+                            ctx,
+                            expr,
+                            terms.as_slice(),
+                        ) =>
+                    {
+                        profiled_direct_small_zero_bool!(
+                            "root.direct_small_zero_composition.candidate.three_core_groups",
+                            matches_direct_three_small_zero_cores_terms_root(ctx, terms.as_slice())
+                        ) || if (8..=9).contains(&terms.len())
+                            && expr_contains_direct_small_zero_multicore_marker_root(ctx, expr)
+                        {
+                            profiled_direct_small_zero_bool!(
+                                "root.direct_small_zero_composition.candidate.four_or_five_core_groups",
+                                matches_direct_four_or_five_small_zero_core_groups_terms_root(
+                                    ctx,
+                                    terms.as_slice()
+                                )
+                            )
+                        } else {
+                            false
+                        }
+                    }
                     8..=11 if expr_contains_direct_small_zero_multicore_marker_root(ctx, expr) => {
                         profiled_direct_small_zero_bool!(
                             "root.direct_small_zero_composition.candidate.four_or_five_core_groups",
@@ -33801,6 +33929,195 @@ mod tests {
                 &simplifier.context,
                 dense_terms.as_slice(),
                 3,
+            )
+        );
+    }
+
+    #[test]
+    fn direct_small_zero_plain_three_core_gate_requires_two_exact_cancellation_pairs() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let noisy_plain_expr = parse(
+            "a*x^2 + b*x + c*x^2 + d*x + e*x^2 + f - ((a + c + e)*x^2 + (b + d)*x + f)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let noisy_plain_terms = AddView::from_expr(&simplifier.context, noisy_plain_expr).terms;
+        assert_eq!(
+            super::direct_small_zero_opposite_sign_exact_pair_count_root(
+                &simplifier.context,
+                noisy_plain_terms.as_slice(),
+            ),
+            1
+        );
+        assert!(
+            !super::should_try_direct_three_small_zero_cores_root(
+                &simplifier.context,
+                noisy_plain_expr,
+                noisy_plain_terms.as_slice(),
+            ),
+            "plain collect misses should not enter the recursive three-core partitioner"
+        );
+
+        let passthrough_expr = parse("c + m + a*b + b*a - c - m - 2*a*b", &mut simplifier.context)
+            .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let passthrough_terms = AddView::from_expr(&simplifier.context, passthrough_expr).terms;
+        assert_eq!(
+            super::direct_small_zero_opposite_sign_exact_pair_count_root(
+                &simplifier.context,
+                passthrough_terms.as_slice(),
+            ),
+            2
+        );
+        assert!(super::should_try_direct_three_small_zero_cores_root(
+            &simplifier.context,
+            passthrough_expr,
+            passthrough_terms.as_slice(),
+        ));
+    }
+
+    #[test]
+    fn direct_small_zero_three_core_gate_requires_remaining_anchor_capacity() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let impossible_three_core_expr = parse(
+            "((a*x^2 + b*x + c) + m) - ((x*(a*x + b + c/x)) + m)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let impossible_terms =
+            AddView::from_expr(&simplifier.context, impossible_three_core_expr).terms;
+        assert_eq!(impossible_terms.len(), 6);
+        assert_eq!(
+            super::direct_small_zero_opposite_sign_exact_pair_count_root(
+                &simplifier.context,
+                impossible_terms.as_slice(),
+            ),
+            1
+        );
+        assert!(
+            !super::has_enough_direct_small_zero_remaining_anchor_terms_root(
+                &simplifier.context,
+                impossible_terms.as_slice(),
+                3,
+            ),
+            "one passthrough pair and one negated structured term cannot form three zero groups"
+        );
+        assert!(!super::should_try_direct_three_small_zero_cores_root(
+            &simplifier.context,
+            impossible_three_core_expr,
+            impossible_terms.as_slice(),
+        ));
+
+        let three_core_expr = parse(
+            "(a^2-b^2 - (a-b)*(a+b)) + (sec(y) - 1/cos(y)) + (u*v + u*w - u*(v+w))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let three_core_terms = AddView::from_expr(&simplifier.context, three_core_expr).terms;
+        assert!(
+            super::has_enough_direct_small_zero_remaining_anchor_terms_root(
+                &simplifier.context,
+                three_core_terms.as_slice(),
+                3,
+            )
+        );
+        assert!(super::should_try_direct_three_small_zero_cores_root(
+            &simplifier.context,
+            three_core_expr,
+            three_core_terms.as_slice(),
+        ));
+    }
+
+    #[test]
+    fn direct_small_zero_three_core_matcher_handles_eight_term_composition_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(a^2-b^2 - (a-b)*(a+b)) + (sec(y) - 1/cos(y)) + (u*v + u*w - u*(v+w))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let terms = AddView::from_expr(&simplifier.context, expr).terms;
+        assert_eq!(terms.len(), 8);
+        assert_eq!(
+            super::direct_small_zero_opposite_sign_exact_pair_count_root(
+                &simplifier.context,
+                terms.as_slice(),
+            ),
+            0
+        );
+        assert!(super::should_try_direct_three_small_zero_cores_root(
+            &simplifier.context,
+            expr,
+            terms.as_slice(),
+        ));
+        assert!(
+            super::matches_direct_three_small_zero_cores_terms_root(
+                &mut simplifier.context,
+                terms.as_slice(),
+            ),
+            "three-core compositions can contain eight additive terms"
+        );
+
+        let options = SimplifyOptions::default();
+        let (rewritten, _steps) = super::try_standard_direct_small_zero_pair_shortcut(
+            &options,
+            &mut simplifier.context,
+            expr,
+            options.collect_steps,
+        )
+        .unwrap_or_else(|| panic!("expected direct small zero shortcut to match"));
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn direct_small_zero_four_core_gate_requires_remaining_anchor_capacity() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let impossible_expr = parse(
+            "(((a^3-b^3)/(a-b)+c) + m) - ((a^2+a*b+b^2+c) + m)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let impossible_terms = AddView::from_expr(&simplifier.context, impossible_expr).terms;
+        assert_eq!(impossible_terms.len(), 8);
+        assert_eq!(
+            super::direct_small_zero_opposite_sign_exact_pair_count_root(
+                &simplifier.context,
+                impossible_terms.as_slice(),
+            ),
+            2
+        );
+        assert!(
+            !super::has_enough_direct_small_zero_remaining_anchor_terms_root(
+                &simplifier.context,
+                impossible_terms.as_slice(),
+                4,
+            ),
+            "two exact passthrough pairs leave too few anchors for two more groups"
+        );
+        assert!(
+            !super::matches_direct_four_or_five_small_zero_core_groups_terms_root(
+                &mut simplifier.context,
+                impossible_terms.as_slice(),
+            )
+        );
+
+        let four_core_expr = parse(
+            "(sec(a)-1/cos(a)) + (csc(b)-1/sin(b)) + (tan(c)-sin(c)/cos(c)) + (1/(1 + 1/(1+u)) - (1+u)/(2+u))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let four_core_terms = AddView::from_expr(&simplifier.context, four_core_expr).terms;
+        assert_eq!(four_core_terms.len(), 8);
+        assert!(
+            super::has_enough_direct_small_zero_remaining_anchor_terms_root(
+                &simplifier.context,
+                four_core_terms.as_slice(),
+                4,
+            )
+        );
+        assert!(
+            super::matches_direct_four_or_five_small_zero_core_groups_terms_root(
+                &mut simplifier.context,
+                four_core_terms.as_slice(),
             )
         );
     }

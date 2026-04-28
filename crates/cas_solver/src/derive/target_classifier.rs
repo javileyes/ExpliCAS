@@ -1646,8 +1646,10 @@ mod tests {
 
     #[test]
     fn classifies_tabulated_nested_fraction_targets() {
-        let profile = classify("1/(1/a + 1/b)", "(a*b)/(a+b)");
-        assert_eq!(profile.form, DeriveTargetForm::NestedFractionSimplified);
+        for (source, target) in [("1/(1/a)", "a"), ("1/(1/a + 1/b)", "(a*b)/(a+b)")] {
+            let profile = classify(source, target);
+            assert_eq!(profile.form, DeriveTargetForm::NestedFractionSimplified);
+        }
     }
 
     #[test]

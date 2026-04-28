@@ -1,16 +1,16 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-04-28T07:41:03.855304+00:00
+- Generated: 2026-04-28T17:21:36.399590+00:00
 - Git branch: main
-- Git commit: `a7b1899b735d0be886f956e63d733a8a6d05d590`
+- Git commit: `72d1ec7b49fef51c7beb97df58a0c1c85e5e9db7`
 - Profile: `guardrail`
 
 ## Embedded Runtime Guardrail
 
 - Dimension: contextual simplify/equivalence under real wrappers.
 - Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 4.00s
-- Per-case runtime: 2.823ms/case
+- Elapsed: 4.14s
+- Per-case runtime: 2.922ms/case
 - Coverage axes: 7 wrappers across 23 families
 - Context axes: 4 complexity levels across 6 shell depths
 - Largest wrapper share: 20.3%
@@ -48,23 +48,23 @@
 
 ## Derive Shadow Pressure
 
-- Dimension: diagnostic engine-to-derive bridgeability over representative engine identity rows.
+- Dimension: diagnostic engine-to-derive bridgeability over representative engine equivalence rows.
 - Interpretation: exposes where known engine/metamorphic identities are not yet reachable or provable as derive targets; diagnostic, not a support gate.
-- Outcomes: sampled=30 derived=30 unsupported=0 not_equivalent=0
-- Path signal: mean_step_count=1.10 single_step_successes=27 multi_step_successes=3
-- Strategy specificity: generic_simplify_strategy_successes=0 distinct_actual_strategies=15
+- Outcomes: sampled=43 derived=43 unsupported=0 not_equivalent=0
+- Path signal: mean_step_count=1.07 single_step_successes=40 multi_step_successes=3
+- Strategy specificity: generic_simplify_strategy_successes=0 distinct_actual_strategies=28
 - Generic simplify shadow IDs: none
 
 ## Simplify Benchmark Interpretation
 
 - Dimension: broad semantic closure under metamorphic composition.
-- Proof-shape mix: quotient=3497 diff=0 composed=12978 (non-composed 21.2%, composed 78.8%).
+- Proof-shape mix: quotient=3497 diff=0 composed=13021 (non-composed 21.2%, composed 78.8%).
 - Caveat: high `proved-composed` is a strong semantic/robustness signal, but a weaker direct runtime proxy because part of the closure is shaped by the benchmark harness rather than by one raw engine path.
 - Runtime interpretation: use `embedded_equivalence_context`, `simplify_zero_mixed`, and orchestrator profiling to localize real engine cost.
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 4.00s | passed=1417 failed=0 total=1417 wrappers=7 families=23 avg_case=2.823ms |
-| `derive_contract` | `pass` | 2.87s | derived=317 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
-| `derive_shadow_pressure` | `pass` | 0.13s | sampled=30 derived=30 unsupported=0 not_equivalent=0 mean_step_count=1.10 generic_simplify_strategy_successes=0 single_step=27 |
-| `simplify_strict` | `pass` | 16.93s | nf=0 proved=16475 numeric=0 inconclusive=0 timeouts=0 |
+| `embedded_equivalence_context` | `pass` | 4.14s | passed=1417 failed=0 total=1417 wrappers=7 families=23 avg_case=2.922ms |
+| `derive_contract` | `pass` | 4.08s | derived=317 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
+| `derive_shadow_pressure` | `pass` | 0.16s | sampled=43 derived=43 unsupported=0 not_equivalent=0 mean_step_count=1.07 generic_simplify_strategy_successes=0 single_step=40 |
+| `simplify_strict` | `pass` | 17.05s | nf=0 proved=16518 numeric=0 inconclusive=0 timeouts=0 |

@@ -44,6 +44,9 @@ use cas_math::summation_support::{
 use cas_solver_core::engine_event_collector::EngineEventCollector;
 use cas_solver_core::engine_events::EngineEvent;
 use cas_solver_core::path_rewrite::reconstruct_global_expr;
+use cas_solver_core::quadratic_coeffs::{
+    extract_quadratic_coefficients, extract_simplified_nonzero_quadratic_coefficients_with_state,
+};
 use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -2162,6 +2165,7 @@ fn try_fast_direct_solve_prep_derive(
         shared_vars,
     )?;
     let steps = if collect_steps {
+        let substeps = complete_square_didactic_substeps(&mut simplifier.context, expr);
         let mut step = crate::Step::with_snapshots(
             rewrite.kind.description(),
             rewrite.kind.rule_name(),
@@ -2180,6 +2184,9 @@ fn try_fast_direct_solve_prep_derive(
                 rewrite.assume_nonzero_expr,
             ),
         );
+        if !substeps.is_empty() {
+            step.meta_mut().substeps = substeps;
+        }
         vec![step]
     } else {
         Vec::new()
@@ -3978,9 +3985,16 @@ fn run_fraction_expand_stage(
     };
 
     let steps = if collect_steps {
+        let rule_name = rewrite.kind.rule_name();
+        let substeps = telescoping_fraction_didactic_substeps(
+            &mut simplifier.context,
+            expr,
+            rewrite.rewritten,
+            rule_name,
+        );
         let mut step = crate::Step::with_snapshots(
             rewrite.kind.description(),
-            rewrite.kind.rule_name(),
+            rule_name,
             expr,
             rewrite.rewritten,
             Vec::new(),
@@ -3997,6 +4011,9 @@ fn run_fraction_expand_stage(
             step.meta_mut().after_local = Some(focus_after);
         } else if rewrite.intermediate != rewrite.rewritten {
             step.meta_mut().after_local = Some(rewrite.intermediate);
+        }
+        if !substeps.is_empty() {
+            step.meta_mut().substeps = substeps;
         }
         vec![step]
     } else {
@@ -4207,9 +4224,16 @@ fn run_fraction_combine_stage(
     };
 
     let steps = if collect_steps {
+        let rule_name = rewrite.kind.rule_name();
+        let substeps = telescoping_fraction_didactic_substeps(
+            &mut simplifier.context,
+            expr,
+            rewrite.rewritten,
+            rule_name,
+        );
         let mut step = crate::Step::with_snapshots(
             rewrite.kind.description(),
-            rewrite.kind.rule_name(),
+            rule_name,
             expr,
             rewrite.rewritten,
             Vec::new(),
@@ -4224,6 +4248,9 @@ fn run_fraction_combine_stage(
         }
         if let Some(focus_after) = rewrite.focus_after {
             step.meta_mut().after_local = Some(focus_after);
+        }
+        if !substeps.is_empty() {
+            step.meta_mut().substeps = substeps;
         }
         vec![step]
     } else {
@@ -4745,6 +4772,7 @@ fn run_integrate_prep_stage(
     };
 
     let steps = if collect_steps {
+        let substeps = complete_square_didactic_substeps(&mut simplifier.context, expr);
         let mut step = crate::Step::with_snapshots(
             rewrite.kind.description(),
             rewrite.kind.rule_name(),
@@ -4763,6 +4791,9 @@ fn run_integrate_prep_stage(
                 rewrite.assume_nonzero_expr,
             ),
         );
+        if !substeps.is_empty() {
+            step.meta_mut().substeps = substeps;
+        }
         vec![step]
     } else {
         Vec::new()
@@ -4838,6 +4869,12 @@ fn run_log_expand_stage(
             DeriveLogChangeOfBaseRewriteKind::BaseLogToQuotient
         ) {
             let steps = if collect_steps {
+                let substeps = log_change_of_base_didactic_substeps(
+                    &mut simplifier.context,
+                    expr,
+                    rewrite.rewritten,
+                    rewrite.kind,
+                );
                 let mut step = crate::Step::with_snapshots(
                     rewrite.kind.description(),
                     rewrite.kind.rule_name(),
@@ -4850,6 +4887,9 @@ fn run_log_expand_stage(
                 );
                 step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
                 step.category = cas_solver_core::step_types::StepCategory::Expand;
+                if !substeps.is_empty() {
+                    step.meta_mut().substeps = substeps;
+                }
                 vec![step]
             } else {
                 Vec::new()
@@ -5238,6 +5278,417 @@ fn inverse_trig_composition_derive_desc(kind: InverseTrigCompositionKind) -> &'s
     }
 }
 
+fn render_derive_substep_expr(ctx: &cas_ast::Context, expr: ExprId) -> String {
+    cas_formatter::clean_display_string(&cas_formatter::render_expr(ctx, expr))
+}
+
+struct MonicCompleteSquareSubstepPlan {
+    balanced_expr: ExprId,
+    grouped_expr: ExprId,
+}
+
+fn complete_square_didactic_substeps(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Vec<cas_solver_core::step_types::SubStep> {
+    let Some(plan) = monic_complete_square_substep_plan(ctx, expr) else {
+        return Vec::new();
+    };
+
+    let before_text = render_derive_substep_expr(ctx, expr);
+    let balanced_text = render_derive_substep_expr(ctx, plan.balanced_expr);
+    let grouped_text = render_derive_substep_expr(ctx, plan.grouped_expr);
+
+    vec![
+        cas_solver_core::step_types::SubStep::new(
+            "Añadir y restar el cuadrado del semicoeficiente",
+            vec![format!("{before_text} -> {balanced_text}")],
+        ),
+        cas_solver_core::step_types::SubStep::new(
+            "Agrupar el trinomio como cuadrado perfecto",
+            vec![format!("{balanced_text} -> {grouped_text}")],
+        ),
+    ]
+}
+
+fn monic_complete_square_substep_plan(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<MonicCompleteSquareSubstepPlan> {
+    let mut vars: Vec<_> = cas_ast::collect_variables(ctx, expr).into_iter().collect();
+    vars.sort();
+
+    for var_name in vars {
+        let Some((leading_coeff, linear_coeff, constant_term)) =
+            extract_simplified_nonzero_quadratic_coefficients_with_state(
+                ctx,
+                expr,
+                &var_name,
+                extract_quadratic_coefficients,
+                simplify_expr_for_derive_substep,
+                expr_is_zero_for_derive_substep,
+            )
+        else {
+            continue;
+        };
+
+        if !is_one_number(ctx, leading_coeff) || expr_is_zero_for_derive_substep(ctx, linear_coeff)
+        {
+            continue;
+        }
+
+        return Some(build_monic_complete_square_substep_plan(
+            ctx,
+            &var_name,
+            linear_coeff,
+            constant_term,
+        ));
+    }
+
+    None
+}
+
+fn build_monic_complete_square_substep_plan(
+    ctx: &mut cas_ast::Context,
+    var_name: &str,
+    linear_coeff: ExprId,
+    constant_term: ExprId,
+) -> MonicCompleteSquareSubstepPlan {
+    let two = ctx.num(2);
+    let var_expr = ctx.var(var_name);
+    let var_squared = ctx.add(Expr::Pow(var_expr, two));
+    let linear_term = ctx.add(Expr::Mul(linear_coeff, var_expr));
+    let half_linear_raw = ctx.add(Expr::Div(linear_coeff, two));
+    let half_linear = simplify_expr_for_derive_substep(ctx, half_linear_raw);
+    let half_square = ctx.add(Expr::Pow(half_linear, two));
+
+    let quadratic_with_linear = ctx.add(Expr::Add(var_squared, linear_term));
+    let with_half_square = ctx.add(Expr::Add(quadratic_with_linear, half_square));
+    let with_constant = ctx.add(Expr::Add(with_half_square, constant_term));
+    let balanced_expr = ctx.add(Expr::Sub(with_constant, half_square));
+
+    let completed_binomial = ctx.add(Expr::Add(var_expr, half_linear));
+    let completed_square = ctx.add(Expr::Pow(completed_binomial, two));
+    let tail_raw = ctx.add(Expr::Sub(constant_term, half_square));
+    let tail = simplify_expr_for_derive_substep(ctx, tail_raw);
+    let grouped_expr = ctx.add(Expr::Add(completed_square, tail));
+
+    MonicCompleteSquareSubstepPlan {
+        balanced_expr,
+        grouped_expr,
+    }
+}
+
+fn simplify_expr_for_derive_substep(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
+    let mut simplifier = crate::Simplifier::with_default_rules();
+    std::mem::swap(&mut simplifier.context, ctx);
+    let (rewritten, _steps, _stats) = simplifier.simplify_with_stats(
+        expr,
+        crate::SimplifyOptions {
+            suppress_depth_overflow_warnings: true,
+            ..crate::SimplifyOptions::default()
+        },
+    );
+    std::mem::swap(&mut simplifier.context, ctx);
+    rewritten
+}
+
+fn expr_is_zero_for_derive_substep(ctx: &mut cas_ast::Context, expr: ExprId) -> bool {
+    let simplified = simplify_expr_for_derive_substep(ctx, expr);
+    matches!(ctx.get(simplified), Expr::Number(value) if value.numer() == &0.into())
+}
+
+fn log_base_argument(ctx: &cas_ast::Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let Expr::Function(name, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() == 2 && ctx.is_builtin(*name, BuiltinFn::Log) {
+        Some((args[0], args[1]))
+    } else {
+        None
+    }
+}
+
+fn natural_log_argument(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Function(name, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() == 1 && ctx.is_builtin(*name, BuiltinFn::Ln) {
+        Some(args[0])
+    } else {
+        None
+    }
+}
+
+fn change_of_base_quotient_arguments(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId, ExprId)> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    let numerator = *numerator;
+    let denominator = *denominator;
+    let argument = natural_log_argument(ctx, numerator)?;
+    let base = natural_log_argument(ctx, denominator)?;
+    Some((argument, base, numerator, denominator))
+}
+
+fn log_change_of_base_didactic_substeps(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    rewritten: ExprId,
+    kind: DeriveLogChangeOfBaseRewriteKind,
+) -> Vec<cas_solver_core::step_types::SubStep> {
+    match kind {
+        DeriveLogChangeOfBaseRewriteKind::BaseLogToQuotient => {
+            let Some((base, argument)) = log_base_argument(ctx, expr) else {
+                return Vec::new();
+            };
+            let ln_argument = ctx.call_builtin(BuiltinFn::Ln, vec![argument]);
+            let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
+            let argument_text = render_derive_substep_expr(ctx, argument);
+            let base_text = render_derive_substep_expr(ctx, base);
+            let ln_argument_text = render_derive_substep_expr(ctx, ln_argument);
+            let ln_base_text = render_derive_substep_expr(ctx, ln_base);
+            let expr_text = render_derive_substep_expr(ctx, expr);
+            let rewritten_text = render_derive_substep_expr(ctx, rewritten);
+
+            vec![
+                cas_solver_core::step_types::SubStep::new(
+                    "Poner el argumento en el numerador",
+                    vec![format!("{argument_text} -> {ln_argument_text}")],
+                ),
+                cas_solver_core::step_types::SubStep::new(
+                    "Poner la base en el denominador",
+                    vec![format!("{base_text} -> {ln_base_text}")],
+                ),
+                cas_solver_core::step_types::SubStep::new(
+                    "Formar el cociente de cambio de base",
+                    vec![format!("{expr_text} -> {rewritten_text}")],
+                ),
+            ]
+        }
+        DeriveLogChangeOfBaseRewriteKind::QuotientToBaseLog => {
+            let Some((argument, base, numerator, denominator)) =
+                change_of_base_quotient_arguments(ctx, expr)
+            else {
+                return Vec::new();
+            };
+            let base_log = ctx.call_builtin(BuiltinFn::Log, vec![base, argument]);
+            let numerator_text = render_derive_substep_expr(ctx, numerator);
+            let denominator_text = render_derive_substep_expr(ctx, denominator);
+            let argument_text = render_derive_substep_expr(ctx, argument);
+            let base_text = render_derive_substep_expr(ctx, base);
+            let expr_text = render_derive_substep_expr(ctx, expr);
+            let base_log_text = render_derive_substep_expr(ctx, base_log);
+
+            vec![
+                cas_solver_core::step_types::SubStep::new(
+                    "Leer el argumento desde el numerador",
+                    vec![format!("{numerator_text} -> argumento {argument_text}")],
+                ),
+                cas_solver_core::step_types::SubStep::new(
+                    "Leer la base desde el denominador",
+                    vec![format!("{denominator_text} -> base {base_text}")],
+                ),
+                cas_solver_core::step_types::SubStep::new(
+                    "Reconstruir el logaritmo de base indicada",
+                    vec![format!("{expr_text} -> {base_log_text}")],
+                ),
+            ]
+        }
+    }
+}
+
+fn is_one_number(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(value) if value.numer() == value.denom())
+}
+
+fn unit_fraction_denominator(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    is_one_number(ctx, *numerator).then_some(*denominator)
+}
+
+fn split_telescoping_unit_gap_denominators(
+    ctx: &mut cas_ast::Context,
+    split_expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let terms = cas_math::expr_nary::AddView::from_expr(ctx, split_expr).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let mut base = None;
+    let mut shifted_base = None;
+    for (term, sign) in terms {
+        match sign {
+            cas_math::expr_nary::Sign::Pos => {
+                base = Some(unit_fraction_denominator(ctx, term)?);
+            }
+            cas_math::expr_nary::Sign::Neg => {
+                shifted_base = Some(unit_fraction_denominator(ctx, term)?);
+            }
+        }
+    }
+
+    let base = base?;
+    let shifted_base = shifted_base?;
+    let one = ctx.num(1);
+    let expected_shifted_base = ctx.add(Expr::Add(base, one));
+    (cas_ast::ordering::compare_expr(ctx, expected_shifted_base, shifted_base)
+        == std::cmp::Ordering::Equal
+        || strong_target_match(ctx, expected_shifted_base, shifted_base))
+    .then_some((base, shifted_base))
+}
+
+fn denominator_matches_telescoping_pair(
+    ctx: &cas_ast::Context,
+    denominator: ExprId,
+    base: ExprId,
+    shifted_base: ExprId,
+) -> bool {
+    let factors = cas_math::expr_nary::mul_leaves(ctx, denominator);
+    if factors.len() != 2 {
+        return false;
+    }
+
+    let same_order = cas_ast::ordering::compare_expr(ctx, factors[0], base)
+        == std::cmp::Ordering::Equal
+        && cas_ast::ordering::compare_expr(ctx, factors[1], shifted_base)
+            == std::cmp::Ordering::Equal;
+    let swapped_order = cas_ast::ordering::compare_expr(ctx, factors[1], base)
+        == std::cmp::Ordering::Equal
+        && cas_ast::ordering::compare_expr(ctx, factors[0], shifted_base)
+            == std::cmp::Ordering::Equal;
+    same_order || swapped_order
+}
+
+fn consecutive_telescoping_common_fraction(
+    ctx: &mut cas_ast::Context,
+    compact_expr: ExprId,
+    split_expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Div(numerator, denominator) = ctx.get(compact_expr) else {
+        return None;
+    };
+    let numerator = *numerator;
+    let denominator = *denominator;
+    if !is_one_number(ctx, numerator) {
+        return None;
+    }
+
+    let (base, shifted_base) = split_telescoping_unit_gap_denominators(ctx, split_expr)?;
+    if !denominator_matches_telescoping_pair(ctx, denominator, base, shifted_base) {
+        return None;
+    }
+
+    let numerator_difference = ctx.add(Expr::Sub(shifted_base, base));
+    Some(ctx.add(Expr::Div(numerator_difference, denominator)))
+}
+
+fn telescoping_fraction_didactic_substeps(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    rewritten: ExprId,
+    rule_name: &str,
+) -> Vec<cas_solver_core::step_types::SubStep> {
+    let Some((compact_expr, split_expr)) = (match rule_name {
+        "Telescoping Fraction Split" => Some((expr, rewritten)),
+        "Telescoping Fraction Combine" => Some((rewritten, expr)),
+        _ => None,
+    }) else {
+        return Vec::new();
+    };
+
+    let Some(common_fraction) =
+        consecutive_telescoping_common_fraction(ctx, compact_expr, split_expr)
+    else {
+        return Vec::new();
+    };
+
+    let compact_text = render_derive_substep_expr(ctx, compact_expr);
+    let split_text = render_derive_substep_expr(ctx, split_expr);
+    let common_text = render_derive_substep_expr(ctx, common_fraction);
+
+    match rule_name {
+        "Telescoping Fraction Split" => vec![
+            cas_solver_core::step_types::SubStep::new(
+                "Introducir el numerador telescópico",
+                vec![format!("{compact_text} -> {common_text}")],
+            ),
+            cas_solver_core::step_types::SubStep::new(
+                "Separar sobre el denominador común",
+                vec![format!("{common_text} -> {split_text}")],
+            ),
+        ],
+        "Telescoping Fraction Combine" => vec![
+            cas_solver_core::step_types::SubStep::new(
+                "Llevar las fracciones al denominador común",
+                vec![format!("{split_text} -> {common_text}")],
+            ),
+            cas_solver_core::step_types::SubStep::new(
+                "Simplificar el numerador telescópico",
+                vec![format!("{common_text} -> {compact_text}")],
+            ),
+        ],
+        _ => Vec::new(),
+    }
+}
+
+fn unary_inverse_trig_composition_arg(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Function(name, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() == 1
+        && (ctx.is_builtin(*name, BuiltinFn::Arcsin) || ctx.is_builtin(*name, BuiltinFn::Asin))
+    {
+        Some(args[0])
+    } else {
+        None
+    }
+}
+
+fn inverse_trig_composition_didactic_substeps(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    rewritten: ExprId,
+    kind: InverseTrigCompositionKind,
+) -> Vec<cas_solver_core::step_types::SubStep> {
+    if kind != InverseTrigCompositionKind::ArcsinSinArctan {
+        return Vec::new();
+    }
+
+    let Some(arcsin_arg) = unary_inverse_trig_composition_arg(ctx, expr) else {
+        return Vec::new();
+    };
+
+    let sin_rewritten = ctx.call_builtin(BuiltinFn::Sin, vec![rewritten]);
+    let arcsin_sin_rewritten = ctx.call_builtin(BuiltinFn::Arcsin, vec![sin_rewritten]);
+    let arcsin_arg_text = render_derive_substep_expr(ctx, arcsin_arg);
+    let sin_rewritten_text = render_derive_substep_expr(ctx, sin_rewritten);
+    let expr_text = render_derive_substep_expr(ctx, expr);
+    let arcsin_sin_text = render_derive_substep_expr(ctx, arcsin_sin_rewritten);
+    let rewritten_text = render_derive_substep_expr(ctx, rewritten);
+
+    vec![
+        cas_solver_core::step_types::SubStep::new(
+            "Reconocer el argumento como seno de una arctangente",
+            vec![format!("{arcsin_arg_text} = {sin_rewritten_text}")],
+        ),
+        cas_solver_core::step_types::SubStep::new(
+            "Sustituir ese seno dentro de arcsin",
+            vec![format!("{expr_text} -> {arcsin_sin_text}")],
+        ),
+        cas_solver_core::step_types::SubStep::new(
+            "Cancelar arcsin(sin(u)) en el rango principal",
+            vec![format!("{arcsin_sin_text} -> {rewritten_text}")],
+        ),
+    ]
+}
+
 fn run_inverse_trig_composition_rewrite_stage(
     simplifier: &mut crate::Simplifier,
     expr: ExprId,
@@ -5263,6 +5714,12 @@ fn run_inverse_trig_composition_rewrite_stage(
     };
 
     let steps = if collect_steps {
+        let substeps = inverse_trig_composition_didactic_substeps(
+            &mut simplifier.context,
+            expr,
+            plan.rewritten,
+            plan.kind,
+        );
         let mut step = crate::Step::with_snapshots(
             inverse_trig_composition_derive_desc(plan.kind),
             "Inverse Trig Composition",
@@ -5275,6 +5732,9 @@ fn run_inverse_trig_composition_rewrite_stage(
         );
         step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
         step.category = cas_solver_core::step_types::StepCategory::Simplify;
+        if !substeps.is_empty() {
+            step.meta_mut().substeps = substeps;
+        }
         vec![step]
     } else {
         Vec::new()
@@ -5526,6 +5986,12 @@ fn run_log_contract_stage(
             DeriveLogChangeOfBaseRewriteKind::QuotientToBaseLog
         ) {
             let steps = if collect_steps {
+                let substeps = log_change_of_base_didactic_substeps(
+                    &mut simplifier.context,
+                    expr,
+                    rewrite.rewritten,
+                    rewrite.kind,
+                );
                 let mut step = crate::Step::with_snapshots(
                     rewrite.kind.description(),
                     rewrite.kind.rule_name(),
@@ -5538,6 +6004,9 @@ fn run_log_contract_stage(
                 );
                 step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
                 step.category = cas_solver_core::step_types::StepCategory::Simplify;
+                if !substeps.is_empty() {
+                    step.meta_mut().substeps = substeps;
+                }
                 vec![step]
             } else {
                 Vec::new()
@@ -6351,6 +6820,17 @@ fn format_derive_eval_lines(
                 &output.steps,
                 mode,
             );
+            insert_derive_substep_lines(
+                &mut lines,
+                &output.steps,
+                &[
+                    "Inverse Trig Composition",
+                    "Change of Base",
+                    "Complete the Square",
+                    "Telescoping Fraction Split",
+                    "Telescoping Fraction Combine",
+                ],
+            );
             retarget_final_after_line(&mut lines, &target);
             lines.insert(1, format!("Target: {target}"));
             lines.insert(2, format!("Strategy: {}", strategy.label()));
@@ -6413,6 +6893,66 @@ fn format_derive_eval_lines(
             lines
         }
     }
+}
+
+fn insert_derive_substep_lines(
+    lines: &mut Vec<String>,
+    steps: &[crate::Step],
+    rendered_rule_names: &[&str],
+) {
+    let mut search_from = 0usize;
+    for (step_index, step) in steps.iter().enumerate() {
+        if !rendered_rule_names
+            .iter()
+            .any(|rule_name| step.rule_name.as_str() == *rule_name)
+        {
+            continue;
+        }
+        let substeps = step.substeps();
+        if substeps.is_empty() {
+            continue;
+        }
+
+        let step_number = step_index + 1;
+        let step_prefix = format!("{step_number}. ");
+        let Some(relative_header_index) = lines[search_from..]
+            .iter()
+            .position(|line| line.starts_with(&step_prefix))
+        else {
+            continue;
+        };
+        let header_index = search_from + relative_header_index;
+        let insert_at = if lines
+            .get(header_index + 1)
+            .is_some_and(|line| line.trim_start().starts_with("Before:"))
+        {
+            header_index + 2
+        } else {
+            header_index + 1
+        };
+        let rendered = render_derive_substep_lines(step_number, substeps);
+        let rendered_len = rendered.len();
+        lines.splice(insert_at..insert_at, rendered);
+        search_from = insert_at + rendered_len;
+    }
+}
+
+fn render_derive_substep_lines(
+    step_number: usize,
+    substeps: &[cas_solver_core::step_types::SubStep],
+) -> Vec<String> {
+    let mut lines = vec!["   Subpasos:".to_string()];
+    for (substep_index, substep) in substeps.iter().enumerate() {
+        lines.push(format!(
+            "     {step_number}.{} {}",
+            substep_index + 1,
+            substep.title
+        ));
+        for detail in &substep.lines {
+            lines.push(format!("         {detail}"));
+        }
+    }
+    lines
 }
 
 fn retarget_final_after_line(lines: &mut [String], target: &str) {
@@ -7733,6 +8273,24 @@ mod tests {
         assert_eq!(derived.2, DeriveStrategy::InverseTrigRewrite);
         assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.1[0].rule_name, "Inverse Trig Composition");
+        let substeps = derived.1[0].substeps();
+        assert_eq!(substeps.len(), 3);
+        assert_eq!(
+            substeps[0].title,
+            "Reconocer el argumento como seno de una arctangente"
+        );
+        assert!(substeps[0]
+            .lines
+            .iter()
+            .any(|line| line.contains("sin(arctan(x))")));
+        assert!(substeps[1]
+            .lines
+            .iter()
+            .any(|line| line.contains("arcsin(sin(arctan(x)))")));
+        assert!(substeps[2]
+            .lines
+            .iter()
+            .any(|line| line.contains("-> arctan(x)")));
     }
 
     #[test]
@@ -8333,6 +8891,16 @@ mod tests {
         assert_eq!(derived.2, DeriveStrategy::LogContract);
         assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.1[0].rule_name, "Change of Base");
+        let substeps = derived.1[0].substeps();
+        assert_eq!(substeps.len(), 3);
+        assert_eq!(substeps[0].title, "Leer el argumento desde el numerador");
+        assert!(substeps[0].lines.iter().any(|line| line.contains("ln(x)")));
+        assert_eq!(substeps[1].title, "Leer la base desde el denominador");
+        assert!(substeps[1].lines.iter().any(|line| line.contains("ln(2)")));
+        assert_eq!(
+            substeps[2].title,
+            "Reconstruir el logaritmo de base indicada"
+        );
     }
 
     #[test]
@@ -8507,6 +9075,13 @@ mod tests {
         assert_eq!(derived.2, DeriveStrategy::LogExpand);
         assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.1[0].rule_name, "Change of Base");
+        let substeps = derived.1[0].substeps();
+        assert_eq!(substeps.len(), 3);
+        assert_eq!(substeps[0].title, "Poner el argumento en el numerador");
+        assert!(substeps[0].lines.iter().any(|line| line.contains("ln(x)")));
+        assert_eq!(substeps[1].title, "Poner la base en el denominador");
+        assert!(substeps[1].lines.iter().any(|line| line.contains("ln(2)")));
+        assert_eq!(substeps[2].title, "Formar el cociente de cambio de base");
     }
 
     #[test]

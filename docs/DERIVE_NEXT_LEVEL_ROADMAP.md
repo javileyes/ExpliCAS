@@ -170,7 +170,8 @@ Current implementation status:
 
 - the scorecard now includes `derive_shadow_pressure` in the `guardrail` and
   `full` profiles
-- the lane samples representative rows from `identity_pairs.csv`
+- the lane samples representative rows from `identity_pairs.csv` plus selected
+  minimal root pairs from `embedded_equivalence_context_corpus.csv`
 - it reports `sampled`, `derived`, `unsupported`, `not_equivalent`,
   `single_step_successes`, and `multi_step_successes`
 - nonzero misses are diagnostic pressure for future cycles, not an immediate

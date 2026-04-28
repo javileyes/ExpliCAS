@@ -153,7 +153,7 @@ SUITES: dict[str, SuiteSpec] = {
         parser="derive_shadow",
         description=(
             "Diagnostic engine-to-derive shadow pressure over representative "
-            "identity_pairs.csv rows."
+            "engine equivalence rows."
         ),
     ),
     "simplify_strict": SuiteSpec(
@@ -1329,6 +1329,16 @@ def parse_orchestrator_profile(output: str) -> dict[str, Any] | None:
                 row["section"] = section
                 samples = samples_by_section[section]
         row["samples"] = samples or []
+        row["hit_samples"] = [
+            sample.removeprefix("hit: ")
+            for sample in row["samples"]
+            if sample.startswith("hit: ")
+        ]
+        row["miss_samples"] = [
+            sample.removeprefix("miss: ")
+            for sample in row["samples"]
+            if sample.startswith("miss: ")
+        ]
 
     if total_row is None:
         total_attempts = sum(row["attempts"] for row in sections)
@@ -1375,6 +1385,20 @@ def parse_orchestrator_profile(output: str) -> dict[str, Any] | None:
         "top_no_match_cost_sections": no_match_cost_sections[:5],
         "sample_section_count": sum(1 for row in sections if row["samples"]),
     }
+
+
+def orchestrator_profile_sample_suffix(
+    row: dict[str, Any], *, prefer_miss: bool = False
+) -> str:
+    if prefer_miss and row.get("miss_samples"):
+        return f" miss_sample=`{row['miss_samples'][0]}`"
+    if row.get("hit_samples"):
+        return f" hit_sample=`{row['hit_samples'][0]}`"
+    if row.get("miss_samples"):
+        return f" miss_sample=`{row['miss_samples'][0]}`"
+    if row.get("samples"):
+        return f" sample=`{row['samples'][0]}`"
+    return ""
 
 
 def parse_derive(output: str) -> dict[str, Any]:
@@ -2356,9 +2380,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 )
             )
             for idx, row in enumerate(orchestrator_profile["top_hot_sections"][:3], start=1):
-                sample_suffix = ""
-                if row["samples"]:
-                    sample_suffix = f" sample=`{row['samples'][0]}`"
+                sample_suffix = orchestrator_profile_sample_suffix(row)
                 lines.append(
                     (
                         f"- Hot {idx}: `{row['section']}` {row['total_ms']:.3f}ms over "
@@ -2369,9 +2391,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             no_match_sections = orchestrator_profile["top_no_match_cost_sections"][:3]
             if no_match_sections:
                 for idx, row in enumerate(no_match_sections, start=1):
-                    sample_suffix = ""
-                    if row["samples"]:
-                        sample_suffix = f" sample=`{row['samples'][0]}`"
+                    sample_suffix = orchestrator_profile_sample_suffix(row, prefer_miss=True)
                     lines.append(
                         (
                             f"- No-match hotspot {idx}: `{row['section']}` "
@@ -2484,7 +2504,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             [
                 "## Derive Shadow Pressure",
                 "",
-                "- Dimension: diagnostic engine-to-derive bridgeability over representative engine identity rows.",
+                "- Dimension: diagnostic engine-to-derive bridgeability over representative engine equivalence rows.",
                 "- Interpretation: exposes where known engine/metamorphic identities are not yet reachable or provable as derive targets; diagnostic, not a support gate.",
             ]
         )

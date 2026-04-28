@@ -368,6 +368,36 @@ root.direct_small_zero_composition.candidate.three_core_groups
         )
         self.assertEqual(row["samples"], ["sub(add, add)"])
 
+    def test_parse_orchestrator_profile_splits_outcome_labeled_samples(self):
+        output = """Orchestrator Profiling Report
+──────────────────────────────────────────────────────────────────────────────────────────────
+Section                                          Attempts     Hits   Misses     Total ms       Avg us
+──────────────────────────────────────────────────────────────────────────────────────────────
+root.direct_small_zero_composition.candidate.th…        2        1        1        2.000      1000.00
+TOTAL                                                   2        1        1        2.000      1000.00
+──────────────────────────────────────────────────────────────────────────────────────────────
+Sample expressions
+──────────────────────────────────────────────────────────────────────────────────────────────
+root.direct_small_zero_composition.candidate.three_core_groups
+  - hit: terms=6 [+sin:function -cos:function]
+  - miss: terms=6 [+log:function -div:div]
+"""
+
+        profile = MODULE.parse_orchestrator_profile(output)
+
+        assert profile is not None
+        row = profile["top_no_match_cost_sections"][0]
+        self.assertEqual(
+            row["section"],
+            "root.direct_small_zero_composition.candidate.three_core_groups",
+        )
+        self.assertEqual(row["hit_samples"], ["terms=6 [+sin:function -cos:function]"])
+        self.assertEqual(row["miss_samples"], ["terms=6 [+log:function -div:div]"])
+        self.assertEqual(
+            MODULE.orchestrator_profile_sample_suffix(row, prefer_miss=True),
+            " miss_sample=`terms=6 [+log:function -div:div]`",
+        )
+
     def test_render_markdown_includes_embedded_orchestrator_profile_summary(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
         metrics["orchestrator_profile_slice"] = {

@@ -110,6 +110,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         }
         "Log Inverse Power" => generate_log_inverse_power_substeps(ctx, step),
         "Log Contraction" => generate_log_contraction_substeps(ctx, step),
+        "Change of Base" => generate_change_of_base_substeps(ctx, step),
         "Exponential Sum/Difference Identity" => {
             generate_exponential_sum_diff_identity_substeps(ctx, step)
         }
@@ -714,27 +715,33 @@ fn contains_division_by_exact_factor(ctx: &Context, expr: ExprId, factor: ExprId
 
 fn generate_complete_square_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
-    let after = step.after_local().unwrap_or(step.after);
-    let Some((var_name, leading_coeff, linear_coeff, constant_term)) =
-        complete_square_substep_plan(ctx, before)
-    else {
+    let Some(plan) = complete_square_substep_plan(ctx, before) else {
         return Vec::new();
     };
 
-    let _ = (&var_name, leading_coeff, linear_coeff, constant_term);
-    vec![formula_substep(
-        "Usar la fórmula de completar el cuadrado",
-        &human_expr(ctx, before),
-        &human_expr(ctx, after),
-        &latex_expr(ctx, before),
-        &latex_expr(ctx, after),
-    )]
+    vec![
+        temp_ctx_substep(
+            "Añadir y restar el cuadrado del semicoeficiente",
+            &plan.work,
+            before,
+            plan.balanced_expr,
+        ),
+        temp_ctx_substep(
+            "Agrupar el trinomio como cuadrado perfecto",
+            &plan.work,
+            plan.balanced_expr,
+            plan.grouped_expr,
+        ),
+    ]
 }
 
-fn complete_square_substep_plan(
-    ctx: &Context,
-    expr: ExprId,
-) -> Option<(String, ExprId, ExprId, ExprId)> {
+struct CompleteSquareSubstepPlan {
+    work: Context,
+    balanced_expr: ExprId,
+    grouped_expr: ExprId,
+}
+
+fn complete_square_substep_plan(ctx: &Context, expr: ExprId) -> Option<CompleteSquareSubstepPlan> {
     let mut work = ctx.clone();
     let mut vars: Vec<_> = cas_ast::collect_variables(&work, expr)
         .into_iter()
@@ -755,14 +762,52 @@ fn complete_square_substep_plan(
             continue;
         };
 
-        if expr_is_zero_in_context(&mut work, linear_coeff) {
+        if !is_one(&work, leading_coeff) || expr_is_zero_in_context(&mut work, linear_coeff) {
             continue;
         }
 
-        return Some((var_name, leading_coeff, linear_coeff, constant_term));
+        let (balanced_expr, grouped_expr) = build_monic_complete_square_substep_exprs(
+            &mut work,
+            &var_name,
+            linear_coeff,
+            constant_term,
+        );
+        return Some(CompleteSquareSubstepPlan {
+            work,
+            balanced_expr,
+            grouped_expr,
+        });
     }
 
     None
+}
+
+fn build_monic_complete_square_substep_exprs(
+    ctx: &mut Context,
+    var_name: &str,
+    linear_coeff: ExprId,
+    constant_term: ExprId,
+) -> (ExprId, ExprId) {
+    let two = ctx.num(2);
+    let var_expr = ctx.var(var_name);
+    let var_squared = ctx.add(Expr::Pow(var_expr, two));
+    let linear_term = ctx.add(Expr::Mul(linear_coeff, var_expr));
+    let half_linear_raw = ctx.add(Expr::Div(linear_coeff, two));
+    let half_linear = simplify_expr_in_context(ctx, half_linear_raw);
+    let half_square = ctx.add(Expr::Pow(half_linear, two));
+
+    let quadratic_with_linear = ctx.add(Expr::Add(var_squared, linear_term));
+    let with_half_square = ctx.add(Expr::Add(quadratic_with_linear, half_square));
+    let with_constant = ctx.add(Expr::Add(with_half_square, constant_term));
+    let balanced_expr = ctx.add(Expr::Sub(with_constant, half_square));
+
+    let completed_binomial = ctx.add(Expr::Add(var_expr, half_linear));
+    let completed_square = ctx.add(Expr::Pow(completed_binomial, two));
+    let tail_raw = ctx.add(Expr::Sub(constant_term, half_square));
+    let tail = simplify_expr_in_context(ctx, tail_raw);
+    let grouped_expr = ctx.add(Expr::Add(completed_square, tail));
+
+    (balanced_expr, grouped_expr)
 }
 
 fn simplify_expr_in_context(ctx: &mut Context, expr: ExprId) -> ExprId {
@@ -2555,13 +2600,13 @@ fn generate_telescoping_fraction_combine_substeps(ctx: &Context, step: &Step) ->
     let _ = u;
 
     if gap_is_one {
-        return vec![formula_substep(
-            "Usar 1 / u - 1 / (u + 1) = 1 / (u · (u + 1))",
-            &human_expr(ctx, before),
-            &human_expr(ctx, after),
-            &latex_expr(ctx, before),
-            &latex_expr(ctx, after),
-        )];
+        return generate_consecutive_telescoping_common_denominator_substeps(
+            ctx,
+            after,
+            before,
+            TelescopingFractionSubstepDirection::Combine,
+        )
+        .unwrap_or_default();
     }
 
     let _ = gap_display;
@@ -2589,13 +2634,12 @@ fn generate_consecutive_telescoping_fraction_substeps(
     let _ = u;
 
     if gap_is_one {
-        return Some(vec![formula_substep(
-            "Usar 1 / (u · (u + 1)) = 1 / u - 1 / (u + 1)",
-            &human_expr(ctx, before),
-            &human_expr(ctx, after),
-            &latex_expr(ctx, before),
-            &latex_expr(ctx, after),
-        )]);
+        return generate_consecutive_telescoping_common_denominator_substeps(
+            ctx,
+            before,
+            after,
+            TelescopingFractionSubstepDirection::Split,
+        );
     }
 
     let _ = gap_display;
@@ -2606,6 +2650,77 @@ fn generate_consecutive_telescoping_fraction_substeps(
         &latex_expr(ctx, before),
         &latex_expr(ctx, after),
     )])
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TelescopingFractionSubstepDirection {
+    Split,
+    Combine,
+}
+
+fn generate_consecutive_telescoping_common_denominator_substeps(
+    ctx: &Context,
+    compact_expr: ExprId,
+    split_expr: ExprId,
+    direction: TelescopingFractionSubstepDirection,
+) -> Option<Vec<SubStep>> {
+    let (work, common_fraction) =
+        consecutive_telescoping_common_fraction_work(ctx, compact_expr, split_expr)?;
+
+    Some(match direction {
+        TelescopingFractionSubstepDirection::Split => vec![
+            temp_ctx_substep(
+                "Introducir el numerador telescópico",
+                &work,
+                compact_expr,
+                common_fraction,
+            ),
+            temp_ctx_substep(
+                "Separar sobre el denominador común",
+                &work,
+                common_fraction,
+                split_expr,
+            ),
+        ],
+        TelescopingFractionSubstepDirection::Combine => vec![
+            temp_ctx_substep(
+                "Llevar las fracciones al denominador común",
+                &work,
+                split_expr,
+                common_fraction,
+            ),
+            temp_ctx_substep(
+                "Simplificar el numerador telescópico",
+                &work,
+                common_fraction,
+                compact_expr,
+            ),
+        ],
+    })
+}
+
+fn consecutive_telescoping_common_fraction_work(
+    ctx: &Context,
+    compact_expr: ExprId,
+    split_expr: ExprId,
+) -> Option<(Context, ExprId)> {
+    let (num, den) = as_div(ctx, compact_expr)?;
+    if !is_one(ctx, num) {
+        return None;
+    }
+
+    let (u, u_plus_gap, gap_expr) = extract_telescoping_fraction_split_pattern(ctx, split_expr)?;
+    if gap_expr.is_some() || !unit_gap_relation_holds(ctx, u, u_plus_gap) {
+        return None;
+    }
+    if !matches_telescoping_fraction_denominator(ctx, den, u, u_plus_gap) {
+        return None;
+    }
+
+    let mut work = ctx.clone();
+    let numerator_difference = work.add(Expr::Sub(u_plus_gap, u));
+    let common_fraction = work.add(Expr::Div(numerator_difference, den));
+    Some((work, common_fraction))
 }
 
 fn generate_finite_product_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -8582,6 +8697,79 @@ fn generate_inverse_trig_composition_substeps(ctx: &Context, step: &Step) -> Vec
             arctan_x,
         ),
     ]
+}
+
+fn generate_change_of_base_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+
+    if let Some((base, argument)) = change_of_base_log_arguments(ctx, before) {
+        let mut work = ctx.clone();
+        let ln_argument = work.call_builtin(BuiltinFn::Ln, vec![argument]);
+        let ln_base = work.call_builtin(BuiltinFn::Ln, vec![base]);
+        return vec![
+            temp_ctx_substep(
+                "Poner el argumento en el numerador",
+                &work,
+                argument,
+                ln_argument,
+            ),
+            temp_ctx_substep("Poner la base en el denominador", &work, base, ln_base),
+        ];
+    }
+
+    if let Some((argument, base, numerator, denominator)) =
+        change_of_base_quotient_arguments(ctx, before)
+    {
+        return vec![
+            temp_ctx_substep(
+                "Leer el argumento desde el numerador",
+                ctx,
+                numerator,
+                argument,
+            ),
+            temp_ctx_substep("Leer la base desde el denominador", ctx, denominator, base),
+        ];
+    }
+
+    Vec::new()
+}
+
+fn change_of_base_log_arguments(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let Expr::Function(name, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() == 2 && ctx.is_builtin(*name, BuiltinFn::Log) {
+        Some((args[0], args[1]))
+    } else {
+        None
+    }
+}
+
+fn change_of_base_natural_log_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Function(name, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() == 1
+        && (ctx.is_builtin(*name, BuiltinFn::Ln) || ctx.is_builtin(*name, BuiltinFn::Log))
+    {
+        Some(args[0])
+    } else {
+        None
+    }
+}
+
+fn change_of_base_quotient_arguments(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId, ExprId)> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    let numerator = *numerator;
+    let denominator = *denominator;
+    let argument = change_of_base_natural_log_argument(ctx, numerator)?;
+    let base = change_of_base_natural_log_argument(ctx, denominator)?;
+    Some((argument, base, numerator, denominator))
 }
 
 fn inverse_trig_unary_arg(
