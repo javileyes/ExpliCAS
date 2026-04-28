@@ -38,11 +38,12 @@ pub(super) fn render_before_additive_focus(
         &StylePreferences,
     ) -> String,
 ) -> String {
-    if diff_find_path_to_expr(context, global_before_expr, focus_before).is_some() {
-        return render_before_additive_focus_with_expr_id(
+    if let Some(path) = diff_find_path_to_expr(context, global_before_expr, focus_before) {
+        return render_with_single_path(
             context,
             global_before_expr,
-            focus_before,
+            path,
+            HighlightColor::Red,
             display_hints,
             style_prefs,
         );
@@ -188,25 +189,6 @@ pub(super) fn render_before_additive_focus_with_exact_paths(
         display_hints,
         style_prefs,
     )
-}
-
-fn render_before_additive_focus_with_expr_id(
-    context: &Context,
-    global_before_expr: ExprId,
-    focus_before: ExprId,
-    display_hints: &DisplayContext,
-    style_prefs: &StylePreferences,
-) -> String {
-    let mut config = HighlightConfig::new();
-    config.add(focus_before, HighlightColor::Red);
-    LaTeXExprHighlightedWithHints {
-        context,
-        id: global_before_expr,
-        highlights: &config,
-        hints: display_hints,
-        style_prefs: Some(style_prefs),
-    }
-    .to_latex()
 }
 
 fn render_before_additive_focus_with_expr_ids(
@@ -417,18 +399,41 @@ fn find_additive_scope_path_by_signed_terms_rec(
 }
 
 fn additive_signature(context: &Context, expr: ExprId) -> Vec<String> {
-    let mut signature: Vec<String> = add_terms_signed(context, expr)
-        .into_iter()
-        .map(|(term, sign)| {
+    let mut signature = Vec::new();
+    collect_additive_signature_terms(context, expr, Sign::Pos, &mut signature);
+    signature.sort();
+    signature
+}
+
+fn collect_additive_signature_terms(
+    context: &Context,
+    expr: ExprId,
+    sign: Sign,
+    signature: &mut Vec<String>,
+) {
+    match context.get(expr) {
+        Expr::Add(left, right) => {
+            collect_additive_signature_terms(context, *left, sign, signature);
+            collect_additive_signature_terms(context, *right, sign, signature);
+        }
+        Expr::Sub(left, right) => {
+            collect_additive_signature_terms(context, *left, sign, signature);
+            collect_additive_signature_terms(context, *right, sign.negate(), signature);
+        }
+        Expr::Neg(inner) => {
+            collect_additive_signature_terms(context, *inner, sign.negate(), signature);
+        }
+        _ => {
             let sign_prefix = match sign {
                 Sign::Pos => "+",
                 Sign::Neg => "-",
             };
-            format!("{sign_prefix}:{}", render_display_key(context, term))
-        })
-        .collect();
-    signature.sort();
-    signature
+            signature.push(format!(
+                "{sign_prefix}:{}",
+                render_display_key(context, expr)
+            ));
+        }
+    }
 }
 
 fn normalize_additive_term_paths(

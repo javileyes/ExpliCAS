@@ -10,7 +10,7 @@ use cas_formatter::path::{
     diff_find_path_to_expr, diff_find_paths_by_structure, navigate_to_subexpr,
 };
 use cas_formatter::{DisplayContext, StylePreferences};
-use num_traits::Zero;
+use num_traits::{One, Zero};
 
 pub(super) fn render_local_scope_transition(
     context: &Context,
@@ -78,7 +78,9 @@ fn render_absolute_scope_transition(
         }
     }
 
-    if after_path.is_none() && !matches!(context.get(focus_after), Expr::Number(n) if n.is_zero()) {
+    if after_path.is_none()
+        && !matches!(context.get(focus_after), Expr::Number(n) if n.is_zero() || n.is_one())
+    {
         if let Some(candidate) = before_path.clone().filter(|path| !path.is_empty()) {
             let candidate_expr =
                 navigate_to_subexpr(context, snapshots.global_after_expr, &candidate);
@@ -90,6 +92,13 @@ fn render_absolute_scope_transition(
 
     let before_path = before_path?;
     let after_path = after_path?;
+    let before_path = narrow_before_path_to_changed_additive_child(
+        context,
+        before_local,
+        &before_path,
+        &after_path,
+    )
+    .unwrap_or(before_path);
 
     let before = render_with_single_path(
         context,
@@ -116,4 +125,27 @@ fn find_absolute_path(context: &Context, root: ExprId, target: ExprId) -> Option
             .into_iter()
             .next()
     })
+}
+
+fn narrow_before_path_to_changed_additive_child(
+    context: &Context,
+    before_local: ExprId,
+    before_path: &ExprPath,
+    after_path: &ExprPath,
+) -> Option<ExprPath> {
+    let Expr::Div(numerator, denominator) = context.get(before_local) else {
+        return None;
+    };
+
+    [(0_u8, *numerator), (1_u8, *denominator)]
+        .into_iter()
+        .find_map(|(child_idx, child)| {
+            if !matches!(context.get(child), Expr::Add(_, _) | Expr::Sub(_, _)) {
+                return None;
+            }
+
+            let mut child_path = before_path.clone();
+            child_path.push(child_idx);
+            after_path.starts_with(&child_path).then_some(child_path)
+        })
 }

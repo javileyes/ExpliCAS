@@ -47,9 +47,11 @@ fn preferred_local_scope(context: &Context, step: &Step) -> Option<ExprId> {
     }
 
     match context.get(focus_before) {
-        Expr::Function(_, _) | Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Div(_, _) => {
-            Some(focus_before)
-        }
+        Expr::Function(_, _)
+        | Expr::Add(_, _)
+        | Expr::Sub(_, _)
+        | Expr::Div(_, _)
+        | Expr::Pow(_, _) => Some(focus_before),
         _ => None,
     }
 }

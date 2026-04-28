@@ -24,7 +24,7 @@ pub(super) fn render_additive_focus_transition(
     if matches!(context.get(focus_after), Expr::Number(n) if n.is_zero())
         && !matches!(context.get(snapshots.global_after_expr), Expr::Number(n) if n.is_zero())
     {
-        let removed_paths = collect_removed_additive_term_paths(
+        let removed_paths = collect_unmatched_before_additive_term_paths(
             context,
             snapshots.global_before_expr,
             snapshots.global_after_expr,
@@ -58,6 +58,48 @@ pub(super) fn render_additive_focus_transition(
         focus_before,
         &focus_terms,
     );
+    if found_paths.is_empty()
+        && focus::find_additive_scope_path_by_signed_terms(
+            context,
+            snapshots.global_before_expr,
+            focus_before,
+        )
+        .is_none()
+    {
+        let unmatched_before_paths = collect_unmatched_before_additive_term_paths(
+            context,
+            snapshots.global_before_expr,
+            snapshots.global_after_expr,
+        );
+        let unmatched_before_paths = narrow_unmatched_before_paths_to_changed_children(
+            context,
+            snapshots.global_before_expr,
+            snapshots.global_after_expr,
+            &unmatched_before_paths,
+        );
+        let before_term_count =
+            collect_signed_additive_term_entries(context, snapshots.global_before_expr).len();
+        if !unmatched_before_paths.is_empty() && unmatched_before_paths.len() < before_term_count {
+            let before = render_before_additive_focus_with_exact_paths(
+                context,
+                snapshots.global_before_expr,
+                &unmatched_before_paths,
+                display_hints,
+                style_prefs,
+            );
+            if before.contains("\\color{red}") {
+                let after = render_after_additive_focus(
+                    context,
+                    snapshots.global_after_expr,
+                    focus_after,
+                    &unmatched_before_paths,
+                    display_hints,
+                    style_prefs,
+                );
+                return (before, after);
+            }
+        }
+    }
     let before = render_before_additive_focus(
         context,
         snapshots.global_before_expr,
@@ -79,7 +121,7 @@ pub(super) fn render_additive_focus_transition(
     (before, after)
 }
 
-fn collect_removed_additive_term_paths(
+fn collect_unmatched_before_additive_term_paths(
     context: &Context,
     global_before_expr: cas_ast::ExprId,
     global_after_expr: cas_ast::ExprId,
@@ -107,6 +149,105 @@ fn collect_removed_additive_term_paths(
         .enumerate()
         .filter_map(|(idx, entry)| (!matched[idx]).then_some(entry.path))
         .collect()
+}
+
+fn narrow_unmatched_before_paths_to_changed_children(
+    context: &Context,
+    global_before_expr: cas_ast::ExprId,
+    global_after_expr: cas_ast::ExprId,
+    paths: &[ExprPath],
+) -> Vec<ExprPath> {
+    paths
+        .iter()
+        .map(|path| {
+            let Some(before_expr) = navigate_to_subexpr_if_valid(context, global_before_expr, path)
+            else {
+                return path.clone();
+            };
+            let Some(after_expr) = navigate_to_subexpr_if_valid(context, global_after_expr, path)
+            else {
+                return path.clone();
+            };
+            narrow_changed_fraction_child_path(context, before_expr, after_expr, path)
+                .unwrap_or_else(|| path.clone())
+        })
+        .collect()
+}
+
+fn narrow_changed_fraction_child_path(
+    context: &Context,
+    before_expr: cas_ast::ExprId,
+    after_expr: cas_ast::ExprId,
+    path: &ExprPath,
+) -> Option<ExprPath> {
+    let (Expr::Div(before_num, before_den), Expr::Div(after_num, after_den)) =
+        (context.get(before_expr), context.get(after_expr))
+    else {
+        return None;
+    };
+
+    let numerator_same = cas_ast::ordering::compare_expr(context, *before_num, *after_num)
+        == std::cmp::Ordering::Equal;
+    let denominator_same = cas_ast::ordering::compare_expr(context, *before_den, *after_den)
+        == std::cmp::Ordering::Equal;
+
+    if !numerator_same
+        && denominator_same
+        && matches!(context.get(*before_num), Expr::Add(_, _) | Expr::Sub(_, _))
+    {
+        let mut child_path = path.clone();
+        child_path.push(0);
+        return Some(child_path);
+    }
+
+    if numerator_same
+        && !denominator_same
+        && matches!(context.get(*before_den), Expr::Add(_, _) | Expr::Sub(_, _))
+    {
+        let mut child_path = path.clone();
+        child_path.push(1);
+        return Some(child_path);
+    }
+
+    None
+}
+
+fn navigate_to_subexpr_if_valid(
+    context: &Context,
+    mut current: cas_ast::ExprId,
+    path: &ExprPath,
+) -> Option<cas_ast::ExprId> {
+    for &step in path {
+        current = match context.get(current) {
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                if step == 0 {
+                    *left
+                } else if step == 1 {
+                    *right
+                } else {
+                    return None;
+                }
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => {
+                if step == 0 {
+                    *inner
+                } else {
+                    return None;
+                }
+            }
+            Expr::Function(_, args) => *args.get(step as usize)?,
+            Expr::Matrix { data, .. } => *data.get(step as usize)?,
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {
+                return None;
+            }
+        };
+    }
+
+    Some(current)
 }
 
 #[derive(Clone)]
@@ -183,7 +324,7 @@ fn collect_signed_additive_term_entries_rec(
 
 #[cfg(test)]
 mod tests {
-    use super::collect_removed_additive_term_paths;
+    use super::collect_unmatched_before_additive_term_paths;
     use cas_formatter::path::navigate_to_subexpr;
 
     #[test]
@@ -204,7 +345,7 @@ mod tests {
         let after =
             cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, after_raw);
 
-        let paths = collect_removed_additive_term_paths(&ctx, before, after);
+        let paths = collect_unmatched_before_additive_term_paths(&ctx, before, after);
         let removed: Vec<String> = paths
             .iter()
             .map(|path| {
@@ -250,7 +391,7 @@ mod tests {
         let after =
             cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, after_raw);
 
-        let paths = collect_removed_additive_term_paths(&ctx, before, after);
+        let paths = collect_unmatched_before_additive_term_paths(&ctx, before, after);
         let removed: Vec<String> = paths
             .iter()
             .map(|path| {
@@ -293,7 +434,7 @@ mod tests {
             cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, before_raw);
         let after =
             cas_solver_core::eval_step_pipeline::normalize_expr_for_display(&mut ctx, after_raw);
-        let paths = collect_removed_additive_term_paths(&ctx, before, after);
+        let paths = collect_unmatched_before_additive_term_paths(&ctx, before, after);
 
         let latex =
             crate::timeline::simplify_highlights::global::additive_render::render_before_additive_focus_with_exact_paths(
@@ -333,7 +474,7 @@ mod tests {
             &mut temp_ctx,
             step2,
         );
-        let removed2 = collect_removed_additive_term_paths(
+        let removed2 = collect_unmatched_before_additive_term_paths(
             &temp_ctx,
             snapshots2.global_before_expr,
             snapshots2.global_after_expr,
@@ -369,7 +510,7 @@ mod tests {
             &mut temp_ctx,
             step3,
         );
-        let removed3 = collect_removed_additive_term_paths(
+        let removed3 = collect_unmatched_before_additive_term_paths(
             &temp_ctx,
             snapshots3.global_before_expr,
             snapshots3.global_after_expr,

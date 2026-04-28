@@ -1,4 +1,4 @@
-use crate::runtime::{pathsteps_to_expr_path, Step};
+use crate::runtime::Step;
 use cas_ast::{Context, ExprPath};
 use cas_formatter::path::{diff_find_path_to_expr, diff_find_paths_by_structure};
 use cas_formatter::{DisplayContext, HighlightColor, StylePreferences};
@@ -27,7 +27,13 @@ pub(super) fn render_before_additive_focus_fallback(
                 .into_iter()
                 .next()
         })
-        .unwrap_or_else(|| pathsteps_to_expr_path(step.path()));
+        .or_else(|| diff_find_path_to_expr(context, global_before_expr, step.before))
+        .or_else(|| {
+            diff_find_paths_by_structure(context, global_before_expr, step.before)
+                .into_iter()
+                .next()
+        })
+        .unwrap_or_default();
 
     render_with_single_path(
         context,

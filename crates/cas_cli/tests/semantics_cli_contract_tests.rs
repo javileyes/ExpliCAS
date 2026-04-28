@@ -2330,14 +2330,14 @@ fn eval_complex_nested_fraction_pipeline_keeps_before_after_highlights_in_wire_l
         .as_str()
         .expect("step4 before_latex");
     assert!(
-        step4_before.contains("{\\color{red}{1 + \\frac{")
-            || (step4_before.contains("{\\color{red}{\\frac{")
-                && (step4_before.contains("+ 1}} -") || step4_before.contains(" + 1}} -"))),
-        "expected step 4 before_latex to highlight the full additive scope, got: {step4_before}"
+        step4_before.contains("{\\color{red}{1}}")
+            && step4_before.contains("{\\color{red}{\\frac{1 + x}{1 + x + x}}}"),
+        "expected step 4 before_latex to highlight only changed additive terms, got: {step4_before}"
     );
     assert!(
-        !step4_before.contains("{\\color{red}{1}} + \\frac{{\\color{red}{1}}"),
-        "expected step 4 before_latex to avoid fragmented leaf highlights, got: {step4_before}"
+        step4_before.contains("\\frac{2 + 3\\cdot x}{1 + 2\\cdot x}")
+            && !step4_before.contains("{\\color{red}{\\frac{2 + 3\\cdot x}{1 + 2\\cdot x}}}"),
+        "expected step 4 before_latex to leave the unchanged residual term uncolored, got: {step4_before}"
     );
 
     let step5_before = steps[4]["before_latex"]
@@ -2350,7 +2350,8 @@ fn eval_complex_nested_fraction_pipeline_keeps_before_after_highlights_in_wire_l
     );
     assert!(
         (step5_before.contains("{\\color{red}{\\frac{") && step5_before.contains(" - \\frac{"))
-            || step5_before.contains("{\\color{red}{3\\cdot x + 2 - (3\\cdot x + 2)}}"),
+            || step5_before.contains("{\\color{red}{3\\cdot x + 2 - (3\\cdot x + 2)}}")
+            || step5_before.contains("{\\color{red}{2 + 3\\cdot x - 2 - 3\\cdot x}}"),
         "expected step 5 before_latex to highlight the whole cancellation pair, got: {step5_before}"
     );
 
@@ -2528,6 +2529,153 @@ fn eval_partitioned_zero_chunks_keep_step_highlights_localized_in_mixed_sum() {
     assert!(
         !step3_before.contains("{\\color{red}{\\sqrt"),
         "expected step 3 before_latex to keep the root-denesting chunk outside the highlight, got: {step3_before}"
+    );
+}
+
+#[test]
+fn eval_log_inverse_power_chain_highlights_power_steps_in_mixed_sum() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "(asin(x/sqrt(x^2 + 1)) - atan(x)) + (factorial(n+1)/factorial(n-1) - n^2 - n) + (x^(ln(ln(x))/ln(x)) - ln(x)) + ((x^3 + y^3)/(x^2 - x*y + y^2) - x - y)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 9);
+
+    let log_inverse_power = &steps[2];
+    assert_eq!(log_inverse_power["rule"], "Log Inverse Power");
+    let step3_before = log_inverse_power["before_latex"]
+        .as_str()
+        .expect("step3 before_latex");
+    let step3_after = log_inverse_power["after_latex"]
+        .as_str()
+        .expect("step3 after_latex");
+    assert!(
+        step3_before.contains("{\\color{red}{{x}^{\\frac{\\ln(\\ln(x))}{\\ln(x)}}}}"),
+        "step 3 should highlight the log-inverse power, got: {step3_before}"
+    );
+    assert!(
+        step3_after.contains("{\\color{green}{{e}^{\\ln(\\ln(x))}}}"),
+        "step 3 should highlight the rewritten exponential, got: {step3_after}"
+    );
+    assert!(
+        !step3_before.contains("{\\color{red}{\\frac{(1 + n)!}")
+            && !step3_after.contains("{\\color{green}{\\frac{(1 + n)!}"),
+        "step 3 should not highlight the factorial chunk: before={step3_before}; after={step3_after}"
+    );
+
+    let exp_log_inverse = &steps[3];
+    assert_eq!(
+        exp_log_inverse["rule"],
+        "Cancelar exponencial y logaritmo inversos"
+    );
+    let step4_before = exp_log_inverse["before_latex"]
+        .as_str()
+        .expect("step4 before_latex");
+    let step4_after = exp_log_inverse["after_latex"]
+        .as_str()
+        .expect("step4 after_latex");
+    assert!(
+        step4_before.contains("{\\color{red}{{e}^{\\ln(\\ln(x))}}}"),
+        "step 4 should highlight the exp-log inverse, got: {step4_before}"
+    );
+    assert!(
+        step4_after.contains("{\\color{green}{\\ln(x)}}"),
+        "step 4 should highlight ln(x), got: {step4_after}"
+    );
+    assert!(
+        !step4_before.contains("{\\color{red}{\\frac{(1 + n)!}")
+            && !step4_after.contains("{\\color{green}{\\frac{(1 + n)!}"),
+        "step 4 should not highlight the factorial chunk: before={step4_before}; after={step4_after}"
+    );
+
+    let hidden_fraction_cancellation = &steps[7];
+    assert_eq!(
+        hidden_fraction_cancellation["rule"],
+        "Cancel Exact Additive Pairs"
+    );
+    let step8_before = hidden_fraction_cancellation["before_latex"]
+        .as_str()
+        .expect("step8 before_latex");
+    assert!(
+        step8_before.contains("{\\color{red}{\\frac{{x}^{3} + {y}^{3}}")
+            && step8_before.contains("- {\\color{red}{x}} - y"),
+        "step 8 should highlight the changed fraction and x term, got: {step8_before}"
+    );
+    assert!(
+        !step8_before.contains("{{\\color{red}{{y}^{2}"),
+        "step 8 should not highlight only the denominator scope, got: {step8_before}"
+    );
+}
+
+#[test]
+fn eval_web_examples_keep_partial_additive_highlights_off_residual_terms() {
+    for (expr, step_index, unchanged_residual) in [
+        (
+            "(ln(x*sqrt(x)) + ln(sqrt(x)/x^2)) + (sqrt(y)/(sqrt(y)-1) - sqrt(y)/(sqrt(y)+1) - (2*sqrt(y))/(y-1)) + (((1/x) - (1/y))/((y-x)/(x*y)) - 1)",
+            10usize,
+            "\\frac{2\\cdot \\sqrt{y}}{y - 1}",
+        ),
+        (
+            "1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)",
+            4usize,
+            "\\frac{2 + 3\\cdot x}{1 + 2\\cdot x}",
+        ),
+    ] {
+        let (output, _code) = run_cli(&["eval", expr, "--format", "json", "--steps", "on"]);
+        let wire = parse_wire(&output);
+        let steps = wire["steps"].as_array().expect("steps array");
+        let step = &steps[step_index - 1];
+        let before_latex = step["before_latex"].as_str().expect("before_latex");
+
+        assert!(
+            before_latex.contains("\\color{red}"),
+            "step {step_index} should keep a red focus, got: {before_latex}"
+        );
+        assert!(
+            before_latex.contains(unchanged_residual),
+            "step {step_index} should keep the residual visible, got: {before_latex}"
+        );
+        assert!(
+            !before_latex.contains(&format!("{{\\color{{red}}{{{unchanged_residual}}}}}")),
+            "step {step_index} should not highlight the unchanged residual, got: {before_latex}"
+        );
+    }
+}
+
+#[test]
+fn eval_web_example_erased_multiplicative_one_does_not_highlight_neighbor_factor() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "acos(log( (sqrt(x^2 + 2)^(2/log(x^2 + 2)))^((log((cosh(x*y) + sinh(x*y))^3)/(3*x*y)) * ((x^3 + y^3)/((x+y)*(x^2 - x*y + y^2)))) ))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+    let steps = wire["steps"].as_array().expect("steps array");
+    let cancel_step = &steps[7];
+
+    assert_eq!(
+        cancel_step["rule"],
+        "Cancel Identical Numerator/Denominator"
+    );
+    let before_latex = cancel_step["before_latex"].as_str().expect("before_latex");
+    let after_latex = cancel_step["after_latex"].as_str().expect("after_latex");
+    assert!(
+        before_latex.contains("{\\color{red}{\\frac{3\\cdot x\\cdot y}{3\\cdot x\\cdot y}}}"),
+        "expected the canceling quotient highlighted before, got: {before_latex}"
+    );
+    assert!(
+        !after_latex.contains("{\\color{green}{{x}^{3} + {y}^{3}}}"),
+        "after_latex should not highlight the neighboring quotient numerator when the factor 1 disappears: {after_latex}"
     );
 }
 

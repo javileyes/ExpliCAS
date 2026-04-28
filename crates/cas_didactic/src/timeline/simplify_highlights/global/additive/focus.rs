@@ -4,7 +4,7 @@ use cas_ast::{Context, ExprId, ExprPath};
 use cas_formatter::path::{
     diff_find_path_to_expr, diff_find_paths_by_structure, navigate_to_subexpr,
 };
-use cas_math::expr_nary::{add_terms_signed, Sign};
+use cas_math::expr_nary::Sign;
 
 pub(super) fn collect_additive_focus_paths_with_scope(
     context: &Context,
@@ -32,9 +32,16 @@ pub(super) fn collect_additive_focus_paths_with_scope(
         (local_scope, full_prefix)
     } else if focus_terms.len() > 1 {
         // Some engine steps point to the first changed term instead of the full additive
-        // cancellation scope. In that case, search the whole global snapshot so repeated
-        // terms like a - a can still be highlighted as one local cancellation.
-        (global_before_expr, Vec::new())
+        // cancellation scope. Search globally only when the same signed additive scope is
+        // actually present; otherwise scattered x/y matches inside unrelated subtrees can
+        // manufacture a bogus highlight scope.
+        let Some(global_scope_path) =
+            find_additive_scope_path_by_signed_terms(context, global_before_expr, focus_before)
+        else {
+            return Vec::new();
+        };
+        let local_scope = navigate_to_subexpr(context, global_before_expr, &global_scope_path);
+        (local_scope, global_scope_path)
     } else {
         (subexpr_at_path, step_path_prefix.clone())
     };
@@ -42,7 +49,7 @@ pub(super) fn collect_additive_focus_paths_with_scope(
     collect_additive_focus_paths(context, search_scope, &scope_path_prefix, focus_terms)
 }
 
-fn find_additive_scope_path_by_signed_terms(
+pub(super) fn find_additive_scope_path_by_signed_terms(
     context: &Context,
     root: ExprId,
     target: ExprId,
@@ -138,20 +145,40 @@ fn find_additive_scope_path_by_signed_terms_rec(
 }
 
 fn additive_signature(context: &Context, expr: ExprId) -> Vec<String> {
-    let mut signature: Vec<String> = add_terms_signed(context, expr)
-        .into_iter()
-        .map(|(term, sign)| {
+    let mut signature = Vec::new();
+    collect_additive_signature_terms(context, expr, Sign::Pos, &mut signature);
+    signature.sort();
+    signature
+}
+
+fn collect_additive_signature_terms(
+    context: &Context,
+    expr: ExprId,
+    sign: Sign,
+    signature: &mut Vec<String>,
+) {
+    match context.get(expr) {
+        cas_ast::Expr::Add(left, right) => {
+            collect_additive_signature_terms(context, *left, sign, signature);
+            collect_additive_signature_terms(context, *right, sign, signature);
+        }
+        cas_ast::Expr::Sub(left, right) => {
+            collect_additive_signature_terms(context, *left, sign, signature);
+            collect_additive_signature_terms(context, *right, sign.negate(), signature);
+        }
+        cas_ast::Expr::Neg(inner) => {
+            collect_additive_signature_terms(context, *inner, sign.negate(), signature);
+        }
+        _ => {
             let sign_prefix = match sign {
                 Sign::Pos => "+",
                 Sign::Neg => "-",
             };
             let display =
                 cas_formatter::clean_display_string(&crate::didactic::latex_to_plain_text(
-                    &cas_formatter::LaTeXExpr { context, id: term }.to_latex(),
+                    &cas_formatter::LaTeXExpr { context, id: expr }.to_latex(),
                 ));
-            format!("{sign_prefix}:{display}")
-        })
-        .collect();
-    signature.sort();
-    signature
+            signature.push(format!("{sign_prefix}:{display}"));
+        }
+    }
 }
