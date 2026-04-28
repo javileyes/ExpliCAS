@@ -61,6 +61,41 @@ where
             render_expr(call.start_expr),
             render_expr(call.end_expr)
         ),
+        SumEvaluationKind::SumOfFirstIntegers => format!(
+            "Sum of first integers: Σ({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
+        SumEvaluationKind::SumOfSquares => format!(
+            "Sum of squares: Σ({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
+        SumEvaluationKind::SumOfCubes => format!(
+            "Sum of cubes: Σ({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
+        SumEvaluationKind::SumOfConstant => format!(
+            "Sum of constant term: Σ({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
+        SumEvaluationKind::GeometricPower => format!(
+            "Geometric sum: Σ({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
         SumEvaluationKind::FiniteDirect { start, end } => format!(
             "sum({}, {}, {}, {})",
             render_expr(call.term),
@@ -89,6 +124,27 @@ where
         ),
         ProductEvaluationKind::FactorizedTelescoping => format!(
             "Factorized telescoping product: Π({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
+        ProductEvaluationKind::ProductOfFirstIntegers => format!(
+            "Product of first integers: Π({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
+        ProductEvaluationKind::ProductOfPowers => format!(
+            "Product of powers: Π({}, {}) from {} to {}",
+            render_expr(call.term),
+            call.var_name,
+            render_expr(call.start_expr),
+            render_expr(call.end_expr)
+        ),
+        ProductEvaluationKind::ProductOfConstant => format!(
+            "Product of constant factor: Π({}, {}) from {} to {}",
             render_expr(call.term),
             call.var_name,
             render_expr(call.start_expr),

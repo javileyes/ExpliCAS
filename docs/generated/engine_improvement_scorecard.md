@@ -1,16 +1,16 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-04-27T21:28:20.193934+00:00
+- Generated: 2026-04-28T07:41:03.855304+00:00
 - Git branch: main
-- Git commit: `8c55c24a7e323d7f4292bc8625b8b8f20b5e5dbd`
+- Git commit: `a7b1899b735d0be886f956e63d733a8a6d05d590`
 - Profile: `guardrail`
 
 ## Embedded Runtime Guardrail
 
 - Dimension: contextual simplify/equivalence under real wrappers.
 - Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 4.11s
-- Per-case runtime: 2.901ms/case
+- Elapsed: 4.00s
+- Per-case runtime: 2.823ms/case
 - Coverage axes: 7 wrappers across 23 families
 - Context axes: 4 complexity levels across 6 shell depths
 - Largest wrapper share: 20.3%
@@ -32,18 +32,6 @@
 - Sparse wrapper family gaps: reciprocal_shifted_difference_zero missing_families=0/23 covered=23 cases=46, squared_passthrough_zero missing_families=0/23 covered=23 cases=72
 - Sparse wrapper x family buckets: reciprocal_shifted_difference_zero x collect total=2 failed=0, reciprocal_shifted_difference_zero x conditional_factor total=2 failed=0, reciprocal_shifted_difference_zero x expand total=2 failed=0, reciprocal_shifted_difference_zero x factor total=2 failed=0, reciprocal_shifted_difference_zero x finite_telescoping total=2 failed=0, reciprocal_shifted_difference_zero x fraction_combine total=2 failed=0, reciprocal_shifted_difference_zero x fraction_decompose total=2 failed=0, reciprocal_shifted_difference_zero x fraction_expand total=2 failed=0, reciprocal_shifted_difference_zero x integrate_prep total=2 failed=0, reciprocal_shifted_difference_zero x log_contract total=2 failed=0, reciprocal_shifted_difference_zero x log_exp_inverse total=2 failed=0, reciprocal_shifted_difference_zero x log_expand total=2 failed=0, reciprocal_shifted_difference_zero x log_inverse_power total=2 failed=0, reciprocal_shifted_difference_zero x nested_fraction total=2 failed=0, reciprocal_shifted_difference_zero x polynomial_product total=2 failed=0, reciprocal_shifted_difference_zero x power_merge total=2 failed=0, reciprocal_shifted_difference_zero x radical_power total=2 failed=0, reciprocal_shifted_difference_zero x rationalize total=2 failed=0, reciprocal_shifted_difference_zero x simplify total=2 failed=0, reciprocal_shifted_difference_zero x solve_prep total=2 failed=0, reciprocal_shifted_difference_zero x telescoping_fraction total=2 failed=0, reciprocal_shifted_difference_zero x trig_contract total=2 failed=0, reciprocal_shifted_difference_zero x trig_expand total=2 failed=0, squared_passthrough_zero x simplify total=5 failed=0, squared_passthrough_zero x integrate_prep total=4 failed=0, squared_passthrough_zero x collect total=3 failed=0, squared_passthrough_zero x conditional_factor total=3 failed=0, squared_passthrough_zero x expand total=3 failed=0, squared_passthrough_zero x factor total=3 failed=0, squared_passthrough_zero x finite_telescoping total=3 failed=0, squared_passthrough_zero x fraction_combine total=3 failed=0, squared_passthrough_zero x fraction_decompose total=3 failed=0, squared_passthrough_zero x fraction_expand total=3 failed=0, squared_passthrough_zero x log_contract total=3 failed=0, squared_passthrough_zero x log_exp_inverse total=3 failed=0, squared_passthrough_zero x log_expand total=3 failed=0, squared_passthrough_zero x log_inverse_power total=3 failed=0, squared_passthrough_zero x nested_fraction total=3 failed=0, squared_passthrough_zero x polynomial_product total=3 failed=0, squared_passthrough_zero x power_merge total=3 failed=0, squared_passthrough_zero x radical_power total=3 failed=0, squared_passthrough_zero x rationalize total=3 failed=0, squared_passthrough_zero x solve_prep total=3 failed=0, squared_passthrough_zero x telescoping_fraction total=3 failed=0, squared_passthrough_zero x trig_contract total=3 failed=0, squared_passthrough_zero x trig_expand total=3 failed=0
 
-## Embedded Orchestrator Profile
-
-- Purpose: identify hot shortcut groups and expensive no-match traffic under the embedded live guardrail.
-- Profiled slice: 480 cases (limit 480), 7 wrappers, 12 families, 0.64s elapsed, filter `pipeline.,root.`.
-- Coverage: 99 sections, 26716 attempts, 5080 hits, 21636 misses, 564.858ms total profiled time.
-- Hot 1: `pipeline.phase.core` 288.119ms over 1188 attempts (hits 1188, misses 0) sample=`num(0)`
-- Hot 2: `pipeline.phase.post_cleanup` 61.496ms over 1058 attempts (hits 1058, misses 0) sample=`num(0)`
-- Hot 3: `root.direct_small_zero_composition.candidate.three_core_groups` 52.826ms over 75 attempts (hits 19, misses 56) sample=`terms=7 [+var(c):plain +var(x):plain +var(x):plain +div(variable, variable):div -var(c):plain -mul(number, variable):pl…`
-- No-match hotspot 1: `root.direct_small_zero_composition.candidate.three_core_groups` 52.826ms (misses 56 of 75) sample=`terms=7 [+var(c):plain +var(x):plain +var(x):plain +div(variable, variable):div -var(c):plain -mul(number, variable):pl…`
-- No-match hotspot 2: `root.addsub.00.direct_small_zero_pair` 41.693ms (misses 854 of 864) sample=`terms=5 [+var(m):plain +var(x):plain +var(x):plain -var(m):plain -mul(number, variable):plain]`
-- No-match hotspot 3: `root.addsub.00.direct_small_zero_pair.compact_first` 37.258ms (misses 296 of 321) sample=`terms=5 [+var(m):plain +var(x):plain +var(x):plain -var(m):plain -mul(number, variable):plain]`
-
 ## Generated Discovery Ledger
 
 - Purpose: keep failed generated candidates visible without promoting them to live corpus.
@@ -54,8 +42,18 @@
 
 - Dimension: source-to-target bridgeability and path quality.
 - Interpretation: measures planner/strategy reachability; not contextual wrapper strength.
-- Outcomes: derived=280 unsupported=0 not_equivalent=1
-- Path quality: mean_step_count=1.03 long_path_rate=0.00
+- Outcomes: derived=317 unsupported=0 not_equivalent=1
+- Path quality: mean_step_count=1.05 long_path_rate=0.00
+- Strategy specificity: generic_simplify_expected=0 distinct_expected_strategies=28
+
+## Derive Shadow Pressure
+
+- Dimension: diagnostic engine-to-derive bridgeability over representative engine identity rows.
+- Interpretation: exposes where known engine/metamorphic identities are not yet reachable or provable as derive targets; diagnostic, not a support gate.
+- Outcomes: sampled=30 derived=30 unsupported=0 not_equivalent=0
+- Path signal: mean_step_count=1.10 single_step_successes=27 multi_step_successes=3
+- Strategy specificity: generic_simplify_strategy_successes=0 distinct_actual_strategies=15
+- Generic simplify shadow IDs: none
 
 ## Simplify Benchmark Interpretation
 
@@ -66,6 +64,7 @@
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 4.11s | passed=1417 failed=0 total=1417 wrappers=7 families=23 avg_case=2.901ms |
-| `derive_contract` | `pass` | 2.72s | derived=280 unsupported=0 not_equivalent=1 mean_step_count=1.03 |
-| `simplify_strict` | `pass` | 17.23s | nf=0 proved=16475 numeric=0 inconclusive=0 timeouts=0 |
+| `embedded_equivalence_context` | `pass` | 4.00s | passed=1417 failed=0 total=1417 wrappers=7 families=23 avg_case=2.823ms |
+| `derive_contract` | `pass` | 2.87s | derived=317 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
+| `derive_shadow_pressure` | `pass` | 0.13s | sampled=30 derived=30 unsupported=0 not_equivalent=0 mean_step_count=1.10 generic_simplify_strategy_successes=0 single_step=27 |
+| `simplify_strict` | `pass` | 16.93s | nf=0 proved=16475 numeric=0 inconclusive=0 timeouts=0 |

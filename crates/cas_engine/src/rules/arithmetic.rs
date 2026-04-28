@@ -16404,6 +16404,9 @@ fn try_build_direct_finite_product_equivalence_rewrite(
             let description = match plan.kind {
                 ProductEvaluationKind::Telescoping
                 | ProductEvaluationKind::FactorizedTelescoping => "Finite Telescoping Product",
+                ProductEvaluationKind::ProductOfFirstIntegers
+                | ProductEvaluationKind::ProductOfPowers
+                | ProductEvaluationKind::ProductOfConstant => "Finite Product Closed Form",
                 ProductEvaluationKind::FiniteDirect { .. } => "Finite Product",
             };
             return Some(Rewrite::with_local(ctx.num(0), description, source, target));
@@ -16428,6 +16431,11 @@ fn try_build_direct_finite_sum_equivalence_rewrite(
         {
             let description = match plan.kind {
                 SumEvaluationKind::Telescoping => "Finite Telescoping Sum",
+                SumEvaluationKind::SumOfFirstIntegers
+                | SumEvaluationKind::SumOfSquares
+                | SumEvaluationKind::SumOfCubes
+                | SumEvaluationKind::SumOfConstant
+                | SumEvaluationKind::GeometricPower => "Finite Sum Closed Form",
                 SumEvaluationKind::FiniteDirect { .. } => "Finite Sum",
             };
             return Some(Rewrite::with_local(ctx.num(0), description, source, target));
@@ -21227,6 +21235,21 @@ fn classify_finite_series_vs_other_profile_pair(
             return match plan.kind {
                 SumEvaluationKind::Telescoping => {
                     "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_telescoping"
+                }
+                SumEvaluationKind::SumOfFirstIntegers => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_first_integers"
+                }
+                SumEvaluationKind::SumOfSquares => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_squares"
+                }
+                SumEvaluationKind::SumOfCubes => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_cubes"
+                }
+                SumEvaluationKind::SumOfConstant => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_constant"
+                }
+                SumEvaluationKind::GeometricPower => {
+                    "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_geometric_power"
                 }
                 SumEvaluationKind::FiniteDirect { .. } => {
                     "rule.direct_core_equivalence.default_simplify.family.other.non_hyperbolic.finite_series_vs_other.sum_direct"

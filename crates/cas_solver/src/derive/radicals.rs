@@ -7,6 +7,7 @@ use std::cmp::Ordering;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum RadicalRewriteKind {
     SqrtPerfectSquare,
+    SquareOfSquareRoot,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,12 +21,14 @@ impl RadicalRewriteKind {
     pub(crate) fn description(self) -> &'static str {
         match self {
             Self::SqrtPerfectSquare => "Take the square root of a perfect square",
+            Self::SquareOfSquareRoot => "Square a radical under its domain condition",
         }
     }
 
     pub(crate) fn rule_name(self) -> &'static str {
         match self {
             Self::SqrtPerfectSquare => "Sqrt Perfect Square",
+            Self::SquareOfSquareRoot => "Square of Square Root",
         }
     }
 }
@@ -246,6 +249,12 @@ fn try_rewrite_direct_radical_target_aware(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> Option<RadicalRewrite> {
+    if let Some(rewrite) =
+        try_rewrite_square_of_square_root_target_aware(ctx, source_expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
     let rewrite =
         cas_math::perfect_square_support::try_rewrite_sqrt_perfect_square_expr(ctx, source_expr)?;
     if !strong_target_match(ctx, rewrite.rewritten, target_expr) {
@@ -256,6 +265,31 @@ fn try_rewrite_direct_radical_target_aware(
     Some(RadicalRewrite {
         rewritten: target_expr,
         kind: RadicalRewriteKind::SqrtPerfectSquare,
+        required_conditions: vec![crate::ImplicitCondition::NonNegative(radicand)],
+    })
+}
+
+fn try_rewrite_square_of_square_root_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<RadicalRewrite> {
+    let (base, exponent) = match ctx.get(source_expr) {
+        Expr::Pow(base, exponent) => (*base, *exponent),
+        _ => return None,
+    };
+    if small_positive_integer_value(ctx, exponent)? != 2 {
+        return None;
+    }
+
+    let radicand = extract_sqrt_argument(ctx, base)?;
+    if !strong_target_match(ctx, radicand, target_expr) {
+        return None;
+    }
+
+    Some(RadicalRewrite {
+        rewritten: target_expr,
+        kind: RadicalRewriteKind::SquareOfSquareRoot,
         required_conditions: vec![crate::ImplicitCondition::NonNegative(radicand)],
     })
 }
@@ -426,6 +460,39 @@ mod tests {
             }
         );
         assert!(text.contains("|a + b|") || text.contains("abs(a + b)"));
+    }
+
+    #[test]
+    fn rewrites_sqrt_squared_symbol_target_aware() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(x^2)", &mut ctx).expect("expr");
+        let target = parse("abs(x)", &mut ctx).expect("target");
+        let rewrite = try_rewrite_radical_target_aware(&mut ctx, expr, target).expect("rewrite");
+        let text = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert!(text.contains("|x|") || text.contains("abs(x)"));
+    }
+
+    #[test]
+    fn rewrites_square_of_square_root_target_aware() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(x)^2", &mut ctx).expect("expr");
+        let target = parse("x", &mut ctx).expect("target");
+        let rewrite = try_rewrite_radical_target_aware(&mut ctx, expr, target).expect("rewrite");
+        let text = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert_eq!(text, "x");
+        assert_eq!(rewrite.required_conditions.len(), 1);
     }
 
     #[test]

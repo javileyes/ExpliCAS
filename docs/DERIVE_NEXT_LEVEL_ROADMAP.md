@@ -166,6 +166,16 @@ This lane should initially be diagnostic, not a hard gate. Its purpose is to
 expose families where the engine knows the algebra but `derive` does not yet
 teach the transformation.
 
+Current implementation status:
+
+- the scorecard now includes `derive_shadow_pressure` in the `guardrail` and
+  `full` profiles
+- the lane samples representative rows from `identity_pairs.csv`
+- it reports `sampled`, `derived`, `unsupported`, `not_equivalent`,
+  `single_step_successes`, and `multi_step_successes`
+- nonzero misses are diagnostic pressure for future cycles, not an immediate
+  support gate
+
 ## Architectural Direction
 
 ### 1. Keep The Target Classifier

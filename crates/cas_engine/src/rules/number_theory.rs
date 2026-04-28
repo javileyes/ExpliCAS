@@ -2,7 +2,7 @@ use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_math::number_theory_support::{
     dispatch_number_theory_call, try_rewrite_consecutive_factorial_ratio_expr,
-    NumberTheoryDispatch, NumberTheorySimpleRewrite,
+    try_rewrite_pascal_choose_identity_expr, NumberTheoryDispatch, NumberTheorySimpleRewrite,
 };
 use cas_math::poly_gcd_dispatch::{compute_poly_gcd_unified_with, pre_evaluate_for_gcd_with};
 use cas_math::poly_gcd_mode::GcdGoal;
@@ -26,6 +26,14 @@ define_rule!(
 );
 
 define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
+    if let Some(rewrite) = try_rewrite_pascal_choose_identity_expr(ctx, expr) {
+        return Some(
+            Rewrite::new(rewrite.rewritten)
+                .desc("Apply Pascal's identity")
+                .local(expr, rewrite.rewritten),
+        );
+    }
+
     let (result, desc) = match dispatch_number_theory_call(ctx, expr)? {
         NumberTheoryDispatch::Simple(simple) => {
             (simple.result(), render_number_theory_desc(ctx, simple))
@@ -77,23 +85,31 @@ mod tests {
     use super::*;
     use crate::rule::Rule;
     use cas_ast::ordering::compare_expr;
-    use cas_ast::Context;
+    use cas_ast::{Context, ExprId};
     use cas_parser::parse;
+
+    fn parse_test_expr(ctx: &mut Context, source: &str) -> ExprId {
+        match parse(source, ctx) {
+            Ok(expr) => expr,
+            Err(err) => panic!("test expression should parse: {source}: {err}"),
+        }
+    }
+
+    fn apply_test_rewrite<R: Rule>(rule: R, ctx: &mut Context, expr: ExprId) -> Rewrite {
+        match rule.apply(ctx, expr, &crate::parent_context::ParentContext::root()) {
+            Some(rewrite) => rewrite,
+            None => panic!("rule should rewrite test expression"),
+        }
+    }
 
     #[test]
     fn consecutive_factorial_ratio_rule_simplifies_and_requires_factorial_domain_argument() {
         let mut ctx = Context::new();
-        let expr = parse("(n + 1)! / n!", &mut ctx).expect("parse");
-        let expected = parse("n + 1", &mut ctx).expect("expected");
-        let expected_arg = parse("n", &mut ctx).expect("arg");
+        let expr = parse_test_expr(&mut ctx, "(n + 1)! / n!");
+        let expected = parse_test_expr(&mut ctx, "n + 1");
+        let expected_arg = parse_test_expr(&mut ctx, "n");
 
-        let rewrite = ConsecutiveFactorialRatioRule
-            .apply(
-                &mut ctx,
-                expr,
-                &crate::parent_context::ParentContext::root(),
-            )
-            .expect("rewrite");
+        let rewrite = apply_test_rewrite(ConsecutiveFactorialRatioRule, &mut ctx, expr);
 
         assert_eq!(
             compare_expr(&ctx, rewrite.new_expr, expected),
@@ -111,7 +127,7 @@ mod tests {
     #[test]
     fn consecutive_factorial_ratio_rule_rejects_unrelated_ratio() {
         let mut ctx = Context::new();
-        let expr = parse("(n + 2)! / m!", &mut ctx).expect("parse");
+        let expr = parse_test_expr(&mut ctx, "(n + 2)! / m!");
         assert!(ConsecutiveFactorialRatioRule
             .apply(
                 &mut ctx,
@@ -119,5 +135,19 @@ mod tests {
                 &crate::parent_context::ParentContext::root()
             )
             .is_none());
+    }
+
+    #[test]
+    fn number_theory_rule_rewrites_numeric_pascal_identity() {
+        let mut ctx = Context::new();
+        let expr = parse_test_expr(&mut ctx, "choose(4,1) + choose(4,2)");
+        let expected = parse_test_expr(&mut ctx, "choose(5,2)");
+
+        let rewrite = apply_test_rewrite(NumberTheoryRule, &mut ctx, expr);
+
+        assert_eq!(
+            compare_expr(&ctx, rewrite.new_expr, expected),
+            std::cmp::Ordering::Equal
+        );
     }
 }

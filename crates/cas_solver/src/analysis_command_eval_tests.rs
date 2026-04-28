@@ -1561,13 +1561,18 @@ mod tests {
         assert_tabulated_rationalized_eval_cases(&[
             (
                 "derive 1/(sqrt(x)+1), (sqrt(x)-1)/(x-1)",
-                "simplify",
+                "rationalize",
                 &["sqrt", "x-1"][..],
             ),
             (
                 "derive 1/(sqrt(x)-2), (sqrt(x)+2)/(x-4)",
                 "rationalize",
                 &["sqrt", "x-4"][..],
+            ),
+            (
+                "derive 1/(1+x^(1/3)), (1-x^(1/3)+x^(2/3))/(1+x)",
+                "rationalize",
+                &["x^(1 / 3)", "x^(2 / 3)", "x + 1"][..],
             ),
         ]);
     }
@@ -1652,6 +1657,32 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("|a + b| + c")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_reaches_nested_radical_denesting_target_as_radical_rewrite() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive sqrt(6 + 2*sqrt(5)), sqrt(5)+1",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("rewrite radicals")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Sqrt Perfect Square")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Abs Of Sum Of Squares")));
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Result:") && line.contains("sqrt(5) + 1")));
     }
 
     #[test]
@@ -6023,7 +6054,14 @@ mod tests {
 
         assert!(lines
             .iter()
-            .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+            .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
+        assert_eq!(
+            lines
+                .iter()
+                .filter(|line| line.contains("Phase Shift Identity"))
+                .count(),
+            2
+        );
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sqrt(2)")

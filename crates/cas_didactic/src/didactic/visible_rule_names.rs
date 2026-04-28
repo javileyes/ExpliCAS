@@ -13,18 +13,36 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Expand Log Abs Mul/Div" => "Expandir logaritmos",
         "Factor Perfect Square in Logarithm" => "Sacar un exponente fuera del logaritmo",
         "Log Contraction" => "Contraer logaritmos",
+        "Log-Exp Inverse" => "Cancelar logaritmo natural y exponencial inversos",
+        "Exponential-Log Inverse" => "Cancelar exponencial y logaritmo inversos",
+        "Exponential Sum/Difference Identity" => "Reescribir exponenciales",
+        "Exponential Reciprocal Identity" => "Reescribir recíproco exponencial",
+        "Exponential Power Identity" => "Reescribir potencia exponencial",
         "Finite Product" => "Evaluar producto finito",
         "Finite Summation" => "Evaluar suma finita",
+        "Number Theory Operations" => "Evaluar operación de teoría de números",
+        "Pascal's Identity" => "Aplicar identidad de Pascal",
+        "Binomial Coefficient Symmetry" => "Aplicar simetría del coeficiente binomial",
         "Cos Product Telescoping" => "Aplicar telescopado de cosenos",
         "Dirichlet Kernel Identity" => "Aplicar identidad del núcleo de Dirichlet",
         "Complete the Square" => "Completar el cuadrado",
         "Product-to-Sum Identity" => "Aplicar producto a suma",
         "Product-to-Sum and Triple-Angle Identity" => "Aplicar producto a suma y ángulo triple",
+        "Hyperbolic Angle Sum/Difference Identity" => {
+            "Aplicar identidad hiperbólica de suma/diferencia de ángulos"
+        }
+        "Hyperbolic Product-to-Sum Identity" => "Aplicar identidad hiperbólica de producto a suma",
         "Hyperbolic Product-to-Sum and Triple-Angle Identity" => {
             "Aplicar producto a suma y ángulo triple hiperbólico"
         }
+        "Hyperbolic Double-Angle Identity" => "Aplicar identidad hiperbólica de ángulo doble",
+        "Hyperbolic Triple-Angle Identity" => "Aplicar identidad hiperbólica de ángulo triple",
+        "Hyperbolic Exponential Identity" => "Aplicar identidad exponencial hiperbólica",
+        "Hyperbolic Pythagorean Identity" => "Aplicar identidad pitagórica hiperbólica",
         "Sum-to-Product Identity" => "Aplicar suma a producto",
         "Sum-to-Product Identity Cancellation Bridge" => "Aplicar suma a producto",
+        "Cofunction Identity" => "Aplicar identidad de cofunción",
+        "Angle Sum/Diff Identity" => "Aplicar suma/diferencia de ángulos",
         "Phase Shift Identity" => "Aplicar identidad de desfase",
         "Double Angle Expansion" => "Expandir ángulo doble",
         "Double Angle Contraction" => "Contraer ángulo doble",
@@ -40,7 +58,8 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Reciprocal Trig Identity" => "Aplicar identidad trigonométrica recíproca",
         "Reciprocal Product Identity" => "Cancelar funciones trigonométricas recíprocas",
         "Reciprocal Pythagorean Identity" => "Aplicar identidad pitagórica recíproca",
-        "Triple Angle Identity" => "Reescribir ángulo triple",
+        "Quintuple Angle Identity" => "Reescribir ángulo quíntuple",
+        "Triple Angle Expansion" | "Triple Angle Identity" => "Reescribir ángulo triple",
         "Half-Angle Tangent Identity" => "Aplicar identidad de tangente de ángulo mitad",
         "Trig Expansion" => "Expandir una identidad trigonométrica",
         "Trig Quotient" => "Convertir un cociente trigonométrico en tangente",
@@ -70,6 +89,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Identity Property of Multiplication" => "Quitar el factor 1",
         "Evaluate Numeric Power" => "Calcular potencia numérica",
         "Cancel Reciprocal Exponents" => "Deshacer raíz y potencia",
+        "Square of Square Root" => "Deshacer raíz y potencia",
         "Canonicalize Nested Power" => "Reescribir potencia de una raíz",
         "Canonicalize Trig Function Names" => "Usar el nombre arctan",
         "Canonicalize Negation" => "Quitar paréntesis tras el signo menos",
@@ -125,8 +145,39 @@ pub(crate) fn visible_rule_name_for_step<'a>(
     {
         return Cow::Borrowed("Evaluar producto telescópico finito");
     }
+    if rule_name == "Finite Product" {
+        if description.starts_with("Product of first integers:") {
+            return Cow::Borrowed("Aplicar producto factorial");
+        }
+        if description.starts_with("Product of powers:") {
+            return Cow::Borrowed("Aplicar producto de potencias");
+        }
+        if description.starts_with("Product of constant factor:") {
+            return Cow::Borrowed("Aplicar producto de constante");
+        }
+    }
     if rule_name == "Finite Summation" && description.starts_with("Telescoping sum:") {
         return Cow::Borrowed("Evaluar suma telescópica finita");
+    }
+    if rule_name == "Finite Summation" {
+        if description.starts_with("Sum of first integers:") {
+            return Cow::Borrowed("Aplicar fórmula de suma de enteros");
+        }
+        if description.starts_with("Sum of squares:") {
+            return Cow::Borrowed("Aplicar fórmula de suma de cuadrados");
+        }
+        if description.starts_with("Sum of cubes:") {
+            return Cow::Borrowed("Aplicar fórmula de suma de cubos");
+        }
+        if description.starts_with("Sum of constant term:") {
+            return Cow::Borrowed("Aplicar suma de constante");
+        }
+        if description.starts_with("Geometric sum:") {
+            return Cow::Borrowed("Aplicar fórmula de suma geométrica");
+        }
+    }
+    if rule_name == "Number Theory Operations" && description.starts_with("choose(") {
+        return Cow::Borrowed("Calcular coeficiente binomial");
     }
 
     match rule_name {
@@ -159,7 +210,7 @@ pub(crate) fn visible_rule_name_for_step<'a>(
         "Collapse Exact Zero Additive Subexpression"
             if description == "Angle Sum/Diff Identity" =>
         {
-            Cow::Borrowed("Angle Sum/Diff Identity")
+            Cow::Borrowed("Aplicar suma/diferencia de ángulos")
         }
         "Collapse Exact Zero Additive Subexpression"
             if description == "Half-Angle Square Identity" =>
@@ -187,7 +238,7 @@ pub(crate) fn visible_rule_name_for_step<'a>(
         "Collapse Exact Zero Additive Subexpression"
             if description == "Expand hyperbolic angle sum/difference" =>
         {
-            Cow::Borrowed("Hyperbolic Angle Sum/Difference Identity")
+            Cow::Borrowed("Aplicar identidad hiperbólica de suma/diferencia de ángulos")
         }
         "Collapse Exact Zero Additive Subexpression" if description == "Complete the Square" => {
             Cow::Borrowed("Completar el cuadrado")

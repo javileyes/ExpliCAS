@@ -23,6 +23,16 @@ pub struct ConsecutiveFactorialRatioRewrite {
     pub factorial_arg_requires_nonnegative: ExprId,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PascalChooseRewrite {
+    pub rewritten: ExprId,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ChooseSymmetryRewrite {
+    pub rewritten: ExprId,
+}
+
 /// Simple number-theory rewrite produced from a named function call.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NumberTheorySimpleRewrite {
@@ -165,6 +175,74 @@ pub fn dispatch_number_theory_call(
     }
 
     None
+}
+
+pub fn try_rewrite_pascal_choose_identity_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<PascalChooseRewrite> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Add(left, right) => (*left, *right),
+        _ => return None,
+    };
+
+    let (n_left, k_left) = extract_integer_choose_call(ctx, left)?;
+    let (n_right, k_right) = extract_integer_choose_call(ctx, right)?;
+    if n_left != n_right {
+        return None;
+    }
+
+    let (lower_k, upper_k) = if k_left <= k_right {
+        (k_left, k_right)
+    } else {
+        (k_right, k_left)
+    };
+    if upper_k - &lower_k != BigInt::one() {
+        return None;
+    }
+
+    let rewritten_n = n_left + BigInt::one();
+    let rewritten_k = lower_k + BigInt::one();
+    let n_expr = ctx.add(Expr::Number(BigRational::from_integer(rewritten_n)));
+    let k_expr = ctx.add(Expr::Number(BigRational::from_integer(rewritten_k)));
+    let rewritten = ctx.call("choose", vec![n_expr, k_expr]);
+
+    Some(PascalChooseRewrite { rewritten })
+}
+
+pub fn try_rewrite_choose_symmetry_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ChooseSymmetryRewrite> {
+    let (n, k) = extract_integer_choose_call(ctx, expr)?;
+    if n.is_negative() || k.is_negative() || k > n {
+        return None;
+    }
+
+    let complement = &n - &k;
+    if k >= complement {
+        return None;
+    }
+
+    let n_expr = ctx.add(Expr::Number(BigRational::from_integer(n)));
+    let k_expr = ctx.add(Expr::Number(BigRational::from_integer(complement)));
+    let rewritten = ctx.call("choose", vec![n_expr, k_expr]);
+
+    Some(ChooseSymmetryRewrite { rewritten })
+}
+
+fn extract_integer_choose_call(ctx: &Context, expr: ExprId) -> Option<(BigInt, BigInt)> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 2 && matches!(ctx.sym_name(*fn_id), "choose" | "nCr") =>
+        {
+            Some((
+                extract_integer_bigint(ctx, args[0])?,
+                extract_integer_bigint(ctx, args[1])?,
+            ))
+        }
+        _ => None,
+    }
 }
 
 fn extract_factorial_call_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -723,6 +801,51 @@ mod tests {
 
         let x = ctx.var("x");
         assert!(try_eval_simple_number_theory_call(&mut ctx, "gcd", &[x, five]).is_none());
+    }
+
+    #[test]
+    fn rewrites_numeric_pascal_choose_identity() {
+        let mut ctx = Context::new();
+        let expr = parse("choose(4,1) + choose(4,2)", &mut ctx).expect("pascal");
+        let expected = parse("choose(5,2)", &mut ctx).expect("expected");
+
+        let rewrite =
+            try_rewrite_pascal_choose_identity_expr(&mut ctx, expr).expect("pascal rewrite");
+
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn pascal_choose_identity_rejects_nonconsecutive_terms() {
+        let mut ctx = Context::new();
+        let expr = parse("choose(4,1) + choose(4,3)", &mut ctx).expect("not pascal");
+
+        assert!(try_rewrite_pascal_choose_identity_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn rewrites_numeric_choose_symmetry_to_complement_target() {
+        let mut ctx = Context::new();
+        let expr = parse("choose(6,1)", &mut ctx).expect("choose symmetry");
+        let expected = parse("choose(6,5)", &mut ctx).expect("expected");
+
+        let rewrite = try_rewrite_choose_symmetry_expr(&mut ctx, expr).expect("symmetry rewrite");
+
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn choose_symmetry_rejects_reverse_orientation() {
+        let mut ctx = Context::new();
+        let expr = parse("choose(6,5)", &mut ctx).expect("reverse symmetry");
+
+        assert!(try_rewrite_choose_symmetry_expr(&mut ctx, expr).is_none());
     }
 
     #[test]

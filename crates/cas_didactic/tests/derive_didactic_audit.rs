@@ -36,6 +36,14 @@ struct AuditArtifact {
     flags: Vec<String>,
 }
 
+#[derive(Debug, Default)]
+struct FamilyFlagSummary {
+    cases: usize,
+    flagged_cases: usize,
+    no_substep_flags: usize,
+    web_substeps: usize,
+}
+
 static AUDIT_CASE_CACHE: LazyLock<Mutex<BTreeMap<String, AuditArtifact>>> =
     LazyLock::new(|| Mutex::new(BTreeMap::new()));
 
@@ -377,6 +385,13 @@ fn is_self_explanatory_fraction_rule(rule: &str) -> bool {
     )
 }
 
+fn is_self_explanatory_collect_rule(rule: &str) -> bool {
+    matches!(
+        rule,
+        "Agrupar términos por variable" | "Agrupar términos por factor común"
+    )
+}
+
 fn has_redundant_fraction_rule_substeps(step: &Value) -> bool {
     let Some(rule) = step.get("rule").and_then(Value::as_str) else {
         return false;
@@ -429,15 +444,23 @@ fn is_self_explanatory_identity_rule(rule: &str) -> bool {
             | "Aplicar identidad trigonométrica recíproca"
             | "Cancelar funciones trigonométricas recíprocas"
             | "Aplicar identidad pitagórica recíproca"
+            | "Aplicar identidad de cofunción"
             | "Aplicar identidad de ángulo mitad"
             | "Aplicar identidad de tangente de ángulo mitad"
             | "Convertir un cociente trigonométrico en tangente"
+            | "Aplicar identidad de arctangentes"
             | "Expandir logaritmos"
             | "Contraer logaritmos"
             | "Expandir cambio de base"
             | "Contraer cadena de logaritmos"
+            | "Cancelar logaritmo natural y exponencial inversos"
+            | "Cancelar exponencial y logaritmo inversos"
             | "Expandir ángulo doble"
             | "Contraer ángulo doble"
+            | "Aplicar identidad hiperbólica de ángulo doble"
+            | "Aplicar identidad hiperbólica de ángulo triple"
+            | "Aplicar identidad exponencial hiperbólica"
+            | "Aplicar identidad pitagórica hiperbólica"
             | "Reescribir la raíz como potencia fraccionaria"
             | "Sumar exponentes de la misma base"
     )
@@ -453,6 +476,7 @@ fn case_may_have_zero_substeps(case: &DeriveCase, json_steps: &[Value]) -> bool 
                 .and_then(Value::as_str)
                 .is_some_and(|rule| {
                     is_self_explanatory_fraction_rule(rule)
+                        || is_self_explanatory_collect_rule(rule)
                         || is_self_explanatory_identity_rule(rule)
                         || rule == "Simplificar fracción anidada"
                 })
@@ -837,6 +861,35 @@ fn build_report(cases: &[DeriveCase], artifacts: &[AuditArtifact]) -> String {
     } else {
         total_steps as f64 / derived_cases as f64
     };
+    let mut flag_counts = BTreeMap::<String, usize>::new();
+    let mut family_summaries = BTreeMap::<String, FamilyFlagSummary>::new();
+    for (case, artifact) in cases.iter().zip(artifacts.iter()) {
+        let summary = family_summaries.entry(case.family.clone()).or_default();
+        summary.cases += 1;
+        summary.web_substeps += artifact.web_substep_count;
+        if !artifact.flags.is_empty() {
+            summary.flagged_cases += 1;
+        }
+        for flag in &artifact.flags {
+            *flag_counts.entry(flag.clone()).or_insert(0) += 1;
+            if flag == "no web substeps emitted" {
+                summary.no_substep_flags += 1;
+            }
+        }
+    }
+    let flagged_cases = artifacts
+        .iter()
+        .filter(|artifact| !artifact.flags.is_empty())
+        .count();
+    let no_substep_flag_cases = artifacts
+        .iter()
+        .filter(|artifact| {
+            artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "no web substeps emitted")
+        })
+        .count();
 
     writeln!(out, "# Derive Didactic Audit").unwrap();
     writeln!(out).unwrap();
@@ -859,6 +912,58 @@ fn build_report(cases: &[DeriveCase], artifacts: &[AuditArtifact]) -> String {
     writeln!(out, "- Mean top-level step count: `{mean_steps:.2}`").unwrap();
     writeln!(out, "- Total web substeps: `{total_substeps}`").unwrap();
     writeln!(out).unwrap();
+
+    writeln!(out, "## Flag Summary").unwrap();
+    writeln!(out).unwrap();
+    writeln!(out, "- Cases with flags: `{flagged_cases}`").unwrap();
+    writeln!(
+        out,
+        "- Cases flagged as no web substeps emitted: `{no_substep_flag_cases}`"
+    )
+    .unwrap();
+    writeln!(out).unwrap();
+    if flag_counts.is_empty() {
+        writeln!(out, "No audit flags emitted.").unwrap();
+        writeln!(out).unwrap();
+    } else {
+        let mut sorted_flags = flag_counts.into_iter().collect::<Vec<_>>();
+        sorted_flags.sort_by(|(left_flag, left_count), (right_flag, right_count)| {
+            right_count
+                .cmp(left_count)
+                .then_with(|| left_flag.cmp(right_flag))
+        });
+        writeln!(out, "| flag | cases |").unwrap();
+        writeln!(out, "| --- | ---: |").unwrap();
+        for (flag, count) in sorted_flags {
+            writeln!(out, "| {flag} | {count} |").unwrap();
+        }
+        writeln!(out).unwrap();
+    }
+
+    let mut sorted_families = family_summaries.into_iter().collect::<Vec<_>>();
+    sorted_families.sort_by(|(left_family, left), (right_family, right)| {
+        right
+            .no_substep_flags
+            .cmp(&left.no_substep_flags)
+            .then_with(|| right.flagged_cases.cmp(&left.flagged_cases))
+            .then_with(|| left_family.cmp(right_family))
+    });
+    writeln!(
+        out,
+        "| family | cases | flagged | no-substeps flag | web substeps |"
+    )
+    .unwrap();
+    writeln!(out, "| --- | ---: | ---: | ---: | ---: |").unwrap();
+    for (family, summary) in sorted_families {
+        writeln!(
+            out,
+            "| `{family}` | {} | {} | {} | {} |",
+            summary.cases, summary.flagged_cases, summary.no_substep_flags, summary.web_substeps
+        )
+        .unwrap();
+    }
+    writeln!(out).unwrap();
+
     writeln!(out, "| id | family | web steps | web substeps | flags |").unwrap();
     writeln!(out, "| --- | --- | ---: | ---: | --- |").unwrap();
 
@@ -932,6 +1037,66 @@ fn build_report(cases: &[DeriveCase], artifacts: &[AuditArtifact]) -> String {
 }
 
 #[test]
+fn derive_didactic_report_summarizes_audit_flags_by_family() {
+    let cases = vec![
+        DeriveCase {
+            id: "simplify_clear".to_string(),
+            family: "simplify".to_string(),
+            source: "x".to_string(),
+            target: "x".to_string(),
+            expected_status: "derived".to_string(),
+        },
+        DeriveCase {
+            id: "simplify_opaque".to_string(),
+            family: "simplify".to_string(),
+            source: "sin(x)^2+cos(x)^2".to_string(),
+            target: "1".to_string(),
+            expected_status: "derived".to_string(),
+        },
+        DeriveCase {
+            id: "factor_noisy".to_string(),
+            family: "factor".to_string(),
+            source: "x^2-1".to_string(),
+            target: "(x-1)*(x+1)".to_string(),
+            expected_status: "derived".to_string(),
+        },
+    ];
+    let artifacts = vec![
+        AuditArtifact {
+            result: "x".to_string(),
+            step_count: 1,
+            web_substep_count: 1,
+            json_steps: Vec::new(),
+            flags: Vec::new(),
+        },
+        AuditArtifact {
+            result: "1".to_string(),
+            step_count: 1,
+            web_substep_count: 0,
+            json_steps: Vec::new(),
+            flags: vec!["no web substeps emitted".to_string()],
+        },
+        AuditArtifact {
+            result: "(x - 1) * (x + 1)".to_string(),
+            step_count: 1,
+            web_substep_count: 1,
+            json_steps: Vec::new(),
+            flags: vec!["weak editorial substep title remains in derive".to_string()],
+        },
+    ];
+
+    let report = build_report(&cases, &artifacts);
+
+    assert!(report.contains("## Flag Summary"));
+    assert!(report.contains("- Cases with flags: `2`"));
+    assert!(report.contains("- Cases flagged as no web substeps emitted: `1`"));
+    assert!(report.contains("| no web substeps emitted | 1 |"));
+    assert!(report.contains("| weak editorial substep title remains in derive | 1 |"));
+    assert!(report.contains("| `simplify` | 2 | 1 | 1 | 1 |"));
+    assert!(report.contains("| `factor` | 1 | 1 | 0 | 1 |"));
+}
+
+#[test]
 fn derive_didactic_audit_corpus_is_unique_and_nonempty() {
     let cases = load_derive_cases();
     assert!(
@@ -987,14 +1152,18 @@ const QUICK_DERIVE_AUDIT_ALGEBRAIC_FAMILIES: &[&str] = &[
 const QUICK_DERIVE_AUDIT_LOG_TRIG_FAMILIES: &[&str] = &[
     "integrate_prep",
     "log_contract",
+    "log_exp_inverse",
     "log_expand",
+    "log_inverse_power",
     "trig_contract",
     "trig_expand",
 ];
 
 const QUICK_DERIVE_AUDIT_STRUCTURAL_FAMILIES: &[&str] = &[
+    "finite_aggregate",
     "finite_telescoping",
     "nested_fraction",
+    "number_theory",
     "radical_power",
     "rationalize",
     "simplify",
@@ -1050,6 +1219,99 @@ fn derive_didactic_quick_audit_structural_cases_render_steps_without_redundant_s
     assert_sampled_derive_audit_cases_for_families_render_without_redundant_single_substeps(
         QUICK_DERIVE_AUDIT_STRUCTURAL_FAMILIES,
     );
+}
+
+#[test]
+fn derive_didactic_finite_aggregate_closed_forms_explain_symbolic_evaluation() {
+    for (case_id, rule, expected_titles) in [
+        (
+            "finite_aggregate_sum_first_integers_symbolic",
+            "Aplicar fórmula de suma de enteros",
+            &[
+                "Escribir la suma con sus extremos",
+                "Usar la fórmula cerrada para la suma de enteros",
+            ][..],
+        ),
+        (
+            "finite_aggregate_sum_of_squares_symbolic",
+            "Aplicar fórmula de suma de cuadrados",
+            &[
+                "Escribir la suma con sus extremos",
+                "Usar la fórmula cerrada para la suma de cuadrados",
+            ][..],
+        ),
+        (
+            "finite_aggregate_sum_geometric_power_base_two_symbolic",
+            "Aplicar fórmula de suma geométrica",
+            &[
+                "Escribir la suma con sus extremos",
+                "Usar la fórmula cerrada para la suma geométrica",
+            ][..],
+        ),
+        (
+            "finite_aggregate_product_first_integers_symbolic",
+            "Aplicar producto factorial",
+            &[
+                "Escribir el producto con sus extremos",
+                "Usar factorial para el producto de enteros consecutivos",
+            ][..],
+        ),
+        (
+            "finite_aggregate_product_of_squares_symbolic",
+            "Aplicar producto de potencias",
+            &[
+                "Escribir el producto con sus extremos",
+                "Convertir el producto de potencias en potencia de factoriales",
+            ][..],
+        ),
+        (
+            "finite_aggregate_product_constant_symbolic",
+            "Aplicar producto de constante",
+            &[
+                "Escribir el producto con sus extremos",
+                "Contar factores iguales en el producto",
+            ][..],
+        ),
+    ] {
+        assert_case_step_titles(case_id, rule, expected_titles);
+    }
+
+    for case_id in [
+        "finite_aggregate_product_constant_symbolic",
+        "finite_aggregate_product_constant_symbolic_lower_bound",
+        "finite_aggregate_product_first_integers_symbolic",
+        "finite_aggregate_product_first_integers_symbolic_lower_bound",
+        "finite_aggregate_product_of_cubes_symbolic_lower_bound",
+        "finite_aggregate_product_of_squares_symbolic",
+        "finite_aggregate_product_of_squares_symbolic_lower_bound",
+        "finite_aggregate_sum_constant_symbolic",
+        "finite_aggregate_sum_constant_symbolic_lower_bound",
+        "finite_aggregate_sum_first_integers_symbolic",
+        "finite_aggregate_sum_first_integers_symbolic_lower_bound",
+        "finite_aggregate_sum_geometric_power_base_two_symbolic",
+        "finite_aggregate_sum_geometric_power_base_two_symbolic_lower_bound",
+        "finite_aggregate_sum_of_cubes_symbolic",
+        "finite_aggregate_sum_of_cubes_symbolic_lower_bound",
+        "finite_aggregate_sum_of_squares_symbolic",
+        "finite_aggregate_sum_of_squares_symbolic_lower_bound",
+    ] {
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        assert!(
+            !artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "no web substeps emitted"),
+            "{case_id} should expose the finite aggregate closed-form step"
+        );
+        assert!(
+            !artifact
+                .flags
+                .iter()
+                .any(|flag| flag.contains("duplicates")),
+            "{case_id} should not duplicate the parent snapshot: {:?}",
+            artifact.flags
+        );
+    }
 }
 
 #[test]
@@ -1770,6 +2032,33 @@ fn derive_didactic_inverse_tan_identity_uses_exact_angle_language() {
         "expected a direct inverse tangent identity step, got {:?}",
         titles
     );
+    assert!(
+        artifact.flags.is_empty(),
+        "direct inverse tangent identity should not be flagged as opaque: {:?}",
+        artifact.flags
+    );
+}
+
+#[test]
+fn derive_didactic_log_exp_inverse_uses_human_direct_identity_language() {
+    let artifact = audit_case(&derive_case_by_id("log_exp_inverse_ln_exp"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Cancelar logaritmo natural y exponencial inversos")
+        })
+        .expect("expected log-exp inverse step");
+
+    assert_eq!(step_substep_titles(step), Vec::<&str>::new());
+    assert!(
+        artifact.flags.is_empty(),
+        "direct log-exp inverse should not be flagged as opaque: {:?}",
+        artifact.flags
+    );
 }
 
 #[test]
@@ -1851,10 +2140,33 @@ fn derive_didactic_general_cosine_difference_uses_sum_to_product_directly() {
 
 #[test]
 fn derive_didactic_difference_of_squares_fraction_cancel_recaps_factor_then_cancel() {
-    assert_case_step_has_no_substeps(
+    assert_case_step_titles(
         "cancel_fraction_difference_squares",
         "Factorizar una diferencia de cuadrados y cancelar",
+        &[
+            "Factorizar el numerador como diferencia de cuadrados",
+            "Ahora se cancela el factor a - b",
+        ],
     );
+    assert_case_step_titles(
+        "cancel_fraction_difference_squares_with_passthrough",
+        "Factorizar una diferencia de cuadrados y cancelar",
+        &[
+            "Factorizar el numerador como diferencia de cuadrados",
+            "Ahora se cancela el factor a - b",
+        ],
+    );
+
+    assert!(
+        audit_case(&derive_case_by_id("cancel_fraction_difference_squares"))
+            .flags
+            .is_empty()
+    );
+    assert!(audit_case(&derive_case_by_id(
+        "cancel_fraction_difference_squares_with_passthrough"
+    ))
+    .flags
+    .is_empty());
 }
 
 #[test]
@@ -2028,6 +2340,109 @@ fn derive_didactic_representative_direct_log_expansion_cases_have_no_substeps() 
         "expand_log_general_base_powered_two_denominator_factors_with_powered_denominator",
     ] {
         assert_case_step_has_no_substeps(case_id, "Expandir logaritmos");
+    }
+}
+
+#[test]
+fn derive_didactic_choose_number_theory_cases_explain_binomial_identities() {
+    for (case_id, rule, expected_titles) in [
+        (
+            "choose_numeric_binomial_coefficient",
+            "Calcular coeficiente binomial",
+            &[
+                "Usar C(5,2) = 5! / (2! · 3!)",
+                "Calcular 5! / (2! · 3!) = 10",
+            ][..],
+        ),
+        (
+            "choose_numeric_pascal_identity",
+            "Aplicar identidad de Pascal",
+            &["Usar C(4,1) + C(4,2) = C(5,2)"][..],
+        ),
+        (
+            "choose_numeric_symmetry",
+            "Aplicar simetría del coeficiente binomial",
+            &["Usar C(6,1) = C(6,6-1)", "Calcular 6-1 = 5"][..],
+        ),
+    ] {
+        assert_case_step_titles(case_id, rule, expected_titles);
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        assert!(
+            !artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "no web substeps emitted"),
+            "{case_id} should explain the number-theory transformation"
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_exponential_log_product_shows_split_then_cancel() {
+    assert_case_step_titles(
+        "collapse_exponential_log_product",
+        "Reescribir exponenciales",
+        &[
+            "Separar la suma o resta del exponente en productos de exponenciales",
+            "Cancelar e^(k·ln(u)) como potencia en cada factor",
+        ],
+    );
+}
+
+#[test]
+fn derive_didactic_scaled_exponential_log_product_shows_powers_after_cancellation() {
+    assert_case_step_titles(
+        "collapse_exponential_scaled_log_product",
+        "Reescribir exponenciales",
+        &[
+            "Separar la suma o resta del exponente en productos de exponenciales",
+            "Cancelar e^(k·ln(u)) como potencia en cada factor",
+        ],
+    );
+
+    let artifact = audit_case(&derive_case_by_id(
+        "collapse_exponential_scaled_log_product",
+    ));
+    let step = step_by_rule(&artifact, "Reescribir exponenciales");
+    let substeps = step
+        .get("substeps")
+        .and_then(Value::as_array)
+        .expect("expected exponential-log substeps");
+    assert_eq!(
+        substeps[0].get("after_latex").and_then(Value::as_str),
+        Some("e^{2\\cdot \\ln(x)}\\cdot e^{3\\cdot \\ln(y)}")
+    );
+    assert_eq!(
+        substeps[1].get("after_latex").and_then(Value::as_str),
+        Some("{x}^{2}\\cdot {y}^{3}")
+    );
+}
+
+#[test]
+fn derive_didactic_basic_exponential_laws_show_concrete_identities() {
+    for (case_id, rule, expected_title) in [
+        (
+            "contract_exponential_sum",
+            "Reescribir exponenciales",
+            "Usar e^A · e^B = e^(A+B)",
+        ),
+        (
+            "contract_exponential_difference",
+            "Reescribir exponenciales",
+            "Usar e^A / e^B = e^(A-B)",
+        ),
+        (
+            "contract_exponential_reciprocal",
+            "Reescribir recíproco exponencial",
+            "Usar 1/e^A = e^(-A)",
+        ),
+        (
+            "contract_exponential_power",
+            "Reescribir potencia exponencial",
+            "Usar (e^A)^n = e^(n·A)",
+        ),
+    ] {
+        assert_case_step_titles(case_id, rule, &[expected_title]);
     }
 }
 
@@ -2206,6 +2621,408 @@ fn derive_didactic_cos_double_angle_contraction_explains_the_additive_pattern() 
 }
 
 #[test]
+fn derive_didactic_trig_angle_sum_diff_explains_direct_identities() {
+    for (case_id, expected_title) in [
+        (
+            "expand_trig_angle_sum_sine",
+            "Usar sin(A+B) = sin(A) · cos(B) + cos(A) · sin(B)",
+        ),
+        (
+            "expand_trig_angle_sum_cosine",
+            "Usar cos(A+B) = cos(A) · cos(B) - sin(A) · sin(B)",
+        ),
+        (
+            "contract_trig_angle_diff_sine",
+            "Usar sin(A-B) = sin(A) · cos(B) - cos(A) · sin(B)",
+        ),
+        (
+            "contract_trig_angle_diff_cosine",
+            "Usar cos(A-B) = cos(A) · cos(B) + sin(A) · sin(B)",
+        ),
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Aplicar suma/diferencia de ángulos",
+            &[expected_title],
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_phase_shift_explains_contract_and_expand_templates() {
+    for (case_id, expected_title) in [
+        (
+            "contract_trig_phase_shift_sum_to_shifted_sine",
+            "Usar a·sin(u) + b·cos(u) = R·sin(u + φ)",
+        ),
+        (
+            "expand_trig_phase_shift_shifted_sine_to_sum",
+            "Expandir R·sin(u + φ)",
+        ),
+    ] {
+        assert_case_step_titles(case_id, "Aplicar identidad de desfase", &[expected_title]);
+    }
+}
+
+#[test]
+fn derive_didactic_phase_shift_shifted_sine_to_shifted_cosine_explains_complementary_angle() {
+    for case_id in [
+        "contract_trig_phase_shift_shifted_sine_to_shifted_cosine",
+        "contract_trig_phase_shift_general_shifted_sine_to_shifted_cosine",
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Aplicar identidad de desfase",
+            &["Usar sin(u + φ) = cos(u - (π/2 - φ))"],
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_phase_shift_passthrough_focuses_changed_block() {
+    for case_id in [
+        "contract_trig_phase_shift_shifted_terms_with_passthrough",
+        "contract_trig_phase_shift_general_shifted_terms_with_passthrough",
+        "contract_trig_phase_shift_sum_to_shifted_sine_with_passthrough",
+        "contract_trig_phase_shift_general_sum_to_shifted_sine_with_passthrough",
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Aplicar identidad de desfase",
+            &["Aplicar la identidad de desfase al bloque que cambia"],
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_cofunction_identity_uses_visible_rule_without_padding() {
+    let artifact = audit_case(&derive_case_by_id("expand_trig_cofunction_sine_minus"));
+    let step = step_by_rule(&artifact, "Aplicar identidad de cofunción");
+    assert!(
+        step_substep_titles(step).is_empty(),
+        "cofunction identity should stay direct without redundant substeps"
+    );
+    assert!(
+        !artifact
+            .flags
+            .iter()
+            .any(|flag| flag == "no web substeps emitted"),
+        "cofunction identity should be accepted as a self-explanatory direct step"
+    );
+}
+
+#[test]
+fn derive_didactic_hyperbolic_angle_sum_diff_explains_direct_identities() {
+    for (case_id, expected_title) in [
+        (
+            "expand_hyperbolic_sinh_sum",
+            "Usar sinh(A+B) = sinh(A) · cosh(B) + cosh(A) · sinh(B)",
+        ),
+        (
+            "contract_hyperbolic_sinh_difference",
+            "Usar sinh(A-B) = sinh(A) · cosh(B) - cosh(A) · sinh(B)",
+        ),
+        (
+            "expand_hyperbolic_cosh_sum",
+            "Usar cosh(A+B) = cosh(A) · cosh(B) + sinh(A) · sinh(B)",
+        ),
+        (
+            "contract_hyperbolic_cosh_difference",
+            "Usar cosh(A-B) = cosh(A) · cosh(B) - sinh(A) · sinh(B)",
+        ),
+        (
+            "expand_hyperbolic_tanh_sum",
+            "Usar tanh(A+B) = (tanh(A) + tanh(B)) / (1 + tanh(A)·tanh(B))",
+        ),
+        (
+            "expand_hyperbolic_tanh_difference",
+            "Usar tanh(A-B) = (tanh(A) - tanh(B)) / (1 - tanh(A)·tanh(B))",
+        ),
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Aplicar identidad hiperbólica de suma/diferencia de ángulos",
+            &[expected_title],
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_hyperbolic_recursive_six_explains_angle_addition_decomposition() {
+    for (case_id, expected_title) in [
+        (
+            "expand_recursive_hyperbolic_sinh_sum",
+            "Usar sinh(5u+u) = sinh(5u) · cosh(u) + cosh(5u) · sinh(u), con u = x",
+        ),
+        (
+            "expand_recursive_hyperbolic_cosh_sum",
+            "Usar cosh(5u+u) = cosh(5u) · cosh(u) + sinh(5u) · sinh(u), con u = x",
+        ),
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Aplicar identidad hiperbólica de suma/diferencia de ángulos",
+            &[expected_title],
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_hyperbolic_product_to_sum_explains_direct_identities() {
+    for (case_id, expected_title) in [
+        (
+            "expand_hyperbolic_sinh_sum_to_product_exact",
+            "Usar sinh(A)+sinh(B) = 2·sinh((A+B)/2)·cosh((A-B)/2)",
+        ),
+        (
+            "expand_hyperbolic_cosh_sum_to_product_exact",
+            "Usar cosh(A)+cosh(B) = 2·cosh((A+B)/2)·cosh((A-B)/2)",
+        ),
+        (
+            "expand_hyperbolic_cosh_difference_to_product_exact",
+            "Usar cosh(A)-cosh(B) = 2·sinh((A+B)/2)·sinh((A-B)/2)",
+        ),
+        (
+            "expand_hyperbolic_product_to_sum_to_sinh_cubic_polynomial",
+            "Usar 2·sinh(A)·cosh(B) = sinh(A+B) + sinh(A-B)",
+        ),
+        (
+            "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough",
+            "Usar 2·sinh(A)·sinh(B) = cosh(A+B) - cosh(A-B)",
+        ),
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Aplicar identidad hiperbólica de producto a suma",
+            &[expected_title],
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_direct_hyperbolic_identity_rules_use_visible_titles_without_padding() {
+    for (case_id, expected_rule) in [
+        (
+            "hyperbolic_contract_sinh_double_angle",
+            "Aplicar identidad hiperbólica de ángulo doble",
+        ),
+        (
+            "hyperbolic_contract_sinh_triple_angle",
+            "Aplicar identidad hiperbólica de ángulo triple",
+        ),
+        (
+            "hyperbolic_expand_sinh_to_exp_definition",
+            "Aplicar identidad exponencial hiperbólica",
+        ),
+        (
+            "hyperbolic_pythagorean_identity",
+            "Aplicar identidad pitagórica hiperbólica",
+        ),
+    ] {
+        assert_case_step_has_no_substeps(case_id, expected_rule);
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        assert!(
+            !artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "no web substeps emitted"),
+            "{case_id} should be accepted as a direct self-explanatory identity step"
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_trig_product_to_sum_explains_direct_identities() {
+    for (case_id, expected_title) in [
+        (
+            "expand_trig_product_to_sum_cos_cos",
+            "Usar 2·cos(A)·cos(B) = cos(A+B) + cos(A-B)",
+        ),
+        (
+            "expand_trig_product_to_sum_cos_sin",
+            "Usar 2·cos(A)·sin(B) = sin(A+B) - sin(A-B)",
+        ),
+        (
+            "expand_trig_product_to_sum_sin_cos",
+            "Usar 2·sin(A)·cos(B) = sin(A+B) + sin(A-B)",
+        ),
+        (
+            "expand_trig_product_to_sum_sin_sin",
+            "Usar 2·sin(A)·sin(B) = cos(A-B) - cos(A+B)",
+        ),
+        (
+            "expand_trig_product_to_sum_to_cosine_difference_polynomial_with_passthrough",
+            "Usar 2·sin(A)·sin(B) = cos(A-B) - cos(A+B)",
+        ),
+    ] {
+        assert_case_step_titles(case_id, "Aplicar producto a suma", &[expected_title]);
+    }
+}
+
+#[test]
+fn derive_didactic_trig_triple_angle_explains_direct_contract_and_composed_steps() {
+    for (case_id, expected_title) in [
+        (
+            "expand_trig_triple_angle_cosine",
+            "Usar cos(3u) = 4 · cos(u)^3 - 3 · cos(u), con u = x",
+        ),
+        (
+            "expand_trig_triple_angle_sine",
+            "Usar sin(3u) = 3 · sin(u) - 4 · sin(u)^3, con u = x",
+        ),
+        (
+            "expand_trig_triple_angle_tangent",
+            "Usar tan(3u) = (3 · tan(u) - tan(u)^3) / (1 - 3 · tan(u)^2), con u = x",
+        ),
+        (
+            "contract_trig_triple_angle_cosine",
+            "Usar cos(3u) = 4 · cos(u)^3 - 3 · cos(u), con u = x",
+        ),
+        (
+            "contract_trig_triple_angle_sine",
+            "Usar sin(3u) = 3 · sin(u) - 4 · sin(u)^3, con u = x",
+        ),
+        (
+            "contract_trig_triple_angle_tangent",
+            "Usar tan(3u) = (3 · tan(u) - tan(u)^3) / (1 - 3 · tan(u)^2), con u = x",
+        ),
+        (
+            "expand_trig_product_to_sum_to_cosine_difference_polynomial_with_passthrough",
+            "Usar cos(3u) = 4 · cos(u)^3 - 3 · cos(u), con u = x",
+        ),
+        (
+            "expand_trig_product_to_sum_to_sine_difference_mixed_polynomial_with_passthrough",
+            "Usar sin(3u) = 3 · sin(u) - 4 · sin(u)^3, con u = x",
+        ),
+    ] {
+        assert_case_step_titles(case_id, "Reescribir ángulo triple", &[expected_title]);
+    }
+}
+
+#[test]
+fn derive_didactic_trig_power_reduction_explains_base_identity() {
+    for case_id in [
+        "expand_trig_sine_fourth_power_reduction",
+        "expand_trig_sine_sixth_power_reduction",
+        "expand_trig_sine_eighth_power_reduction",
+        "expand_trig_sine_tenth_power_reduction",
+        "expand_trig_sine_twelfth_power_reduction",
+        "expand_trig_sine_fourteenth_power_reduction",
+        "expand_trig_sine_sixteenth_power_reduction",
+        "expand_trig_sine_eighteenth_power_reduction",
+        "expand_trig_sine_twentieth_power_reduction",
+        "expand_trig_sine_twenty_second_power_reduction",
+        "expand_trig_sine_twenty_fourth_power_reduction",
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Aplicar reducción de potencias",
+            &["Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x"],
+        );
+    }
+
+    for case_id in [
+        "expand_trig_cosine_fourth_power_reduction",
+        "expand_trig_cosine_sixth_power_reduction",
+        "expand_trig_cosine_eighth_power_reduction",
+        "expand_trig_cosine_tenth_power_reduction",
+        "expand_trig_cosine_twelfth_power_reduction",
+        "expand_trig_cosine_fourteenth_power_reduction",
+        "expand_trig_cosine_sixteenth_power_reduction",
+        "expand_trig_cosine_eighteenth_power_reduction",
+        "expand_trig_cosine_twentieth_power_reduction",
+        "expand_trig_cosine_twenty_second_power_reduction",
+        "expand_trig_cosine_twenty_fourth_power_reduction",
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Aplicar reducción de potencias",
+            &["Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x"],
+        );
+    }
+
+    assert_case_step_titles(
+        "expand_trig_sine_cosine_square_product_reduction",
+        "Aplicar reducción de potencias",
+        &["Usar sin²(u)·cos²(u) = (1 - cos(4u)) / 8, con u = x"],
+    );
+}
+
+#[test]
+fn derive_didactic_trig_quintuple_angle_explains_base_identity() {
+    for (case_id, expected_title) in [
+        (
+            "expand_trig_quintuple_angle_sine",
+            "Usar sin(5u) = 5 · sin(u) - 20 · sin(u)^3 + 16 · sin(u)^5, con u = x",
+        ),
+        (
+            "contract_trig_quintuple_angle_sine",
+            "Usar sin(5u) = 5 · sin(u) - 20 · sin(u)^3 + 16 · sin(u)^5, con u = x",
+        ),
+        (
+            "expand_trig_quintuple_angle_cosine",
+            "Usar cos(5u) = 16 · cos(u)^5 - 20 · cos(u)^3 + 5 · cos(u), con u = x",
+        ),
+        (
+            "contract_trig_quintuple_angle_cosine",
+            "Usar cos(5u) = 16 · cos(u)^5 - 20 · cos(u)^3 + 5 · cos(u), con u = x",
+        ),
+    ] {
+        assert_case_step_titles(case_id, "Reescribir ángulo quíntuple", &[expected_title]);
+    }
+}
+
+#[test]
+fn derive_didactic_trig_recursive_six_explains_angle_addition_decomposition() {
+    for (case_id, expected_title) in [
+        (
+            "expand_trig_recursive_six_sine",
+            "Usar sin(5u+u) = sin(5u) · cos(u) + cos(5u) · sin(u), con u = x",
+        ),
+        (
+            "contract_trig_recursive_six_sine",
+            "Usar sin(5u+u) = sin(5u) · cos(u) + cos(5u) · sin(u), con u = x",
+        ),
+        (
+            "expand_trig_recursive_six_cosine",
+            "Usar cos(5u+u) = cos(5u) · cos(u) - sin(5u) · sin(u), con u = x",
+        ),
+        (
+            "contract_trig_recursive_six_cosine",
+            "Usar cos(5u+u) = cos(5u) · cos(u) - sin(5u) · sin(u), con u = x",
+        ),
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Aplicar suma/diferencia de ángulos",
+            &[expected_title],
+        );
+    }
+}
+
+#[test]
+fn derive_didactic_hyperbolic_direct_tanh_triple_angle_stays_direct_without_redundant_substep() {
+    assert_case_step_has_no_substeps(
+        "expand_hyperbolic_tanh_triple_angle",
+        "Aplicar identidad hiperbólica de ángulo triple",
+    );
+}
+
+#[test]
+fn derive_didactic_hyperbolic_triple_angle_explains_combined_cosh_steps() {
+    for case_id in [
+        "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial",
+        "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough",
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Aplicar identidad hiperbólica de ángulo triple",
+            &["Usar cosh(3·x) = 4·cosh(x)^3 - 3·cosh(x)"],
+        );
+    }
+}
+
+#[test]
 fn derive_didactic_half_angle_tangent_uses_the_direct_identity() {
     let artifact = audit_case(&derive_case_by_id("contract_trig_half_angle_tangent"));
 
@@ -2339,30 +3156,72 @@ fn derive_didactic_radical_notable_quotient_recognizes_pattern_with_internal_cle
 
 #[test]
 fn derive_didactic_perfect_square_root_explains_square_then_absolute_value() {
-    let artifact = audit_case(&derive_case_by_id("perfect_square_root_to_abs"));
+    for (case_id, expected_titles) in [
+        (
+            "perfect_square_root_to_abs",
+            vec![
+                "Reescribir el radicando como un cuadrado perfecto",
+                "La raíz de un cuadrado da un valor absoluto",
+            ],
+        ),
+        (
+            "perfect_square_root_direct_power_to_abs",
+            vec![
+                "Identificar la base del cuadrado",
+                "La raíz de un cuadrado da un valor absoluto",
+            ],
+        ),
+        (
+            "perfect_square_root_to_abs_with_passthrough",
+            vec![
+                "Reescribir el radicando como un cuadrado perfecto",
+                "La raíz de un cuadrado da un valor absoluto",
+            ],
+        ),
+    ] {
+        let artifact = audit_case(&derive_case_by_id(case_id));
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Reconocer un cuadrado perfecto bajo la raíz")
-        })
-        .expect("expected perfect-square root derive step");
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected perfect-square root substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
-    assert_eq!(
-        titles,
-        vec![
-            "Reescribir el radicando como un cuadrado perfecto",
-            "La raíz de un cuadrado da un valor absoluto"
-        ]
+        let step = artifact
+            .json_steps
+            .iter()
+            .find(|step| {
+                step.get("rule")
+                    .and_then(Value::as_str)
+                    .is_some_and(|rule| rule == "Reconocer un cuadrado perfecto bajo la raíz")
+            })
+            .unwrap_or_else(|| panic!("expected perfect-square root derive step for {case_id}"));
+        let titles: Vec<&str> = step
+            .get("substeps")
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| panic!("expected perfect-square root substeps for {case_id}"))
+            .iter()
+            .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+            .collect();
+        assert_eq!(titles, expected_titles);
+    }
+}
+
+#[test]
+fn derive_didactic_square_of_square_root_explains_domain_condition() {
+    assert_case_step_titles(
+        "square_of_square_root_requires_nonnegative",
+        "Deshacer raíz y potencia",
+        &[
+            "Identificar el radicando de la raíz principal",
+            "El cuadrado deshace la raíz bajo la condición u ≥ 0",
+        ],
+    );
+}
+
+#[test]
+fn derive_didactic_sqrt_arithmetic_sum_shows_hidden_radical_extraction() {
+    assert_case_step_titles(
+        "simplify_sqrt_arithmetic_sum",
+        "Agrupar términos semejantes",
+        &[
+            "Extraer el cuadrado perfecto dentro de la raíz",
+            "Sumar los coeficientes que acompañan a 2^(1/2)",
+        ],
     );
 }
 
@@ -3026,6 +3885,10 @@ fn derive_didactic_representative_same_denominator_fraction_cases_have_no_subste
 
     for (case_id, rule) in cases {
         assert_case_step_has_no_substeps(case_id, rule);
+        assert!(
+            audit_case(&derive_case_by_id(case_id)).flags.is_empty(),
+            "`{case_id}` should be accepted as a direct self-explanatory collect step"
+        );
     }
 }
 
@@ -3272,15 +4135,26 @@ fn derive_didactic_representative_collect_cases_keep_focus_narrative() {
 }
 
 #[test]
-fn derive_didactic_representative_factor_with_division_cases_keep_variable_specific_narrative() {
-    let csv_cases = [
-        "factor_out_with_division",
-        "factor_out_square_with_division_quartic",
-        "factor_out_cube_with_division_septic",
+fn derive_didactic_representative_factor_with_division_cases_explain_hidden_divisions() {
+    let cases = [
+        ("factor_out_with_division", "x"),
+        ("factor_out_square_with_division_quartic", "x^2"),
+        ("factor_out_cube_with_division_septic", "x^3"),
     ];
 
-    for case_id in csv_cases {
-        assert_case_step_has_no_substeps(case_id, "Sacar factor usando división");
+    for (case_id, factor) in cases {
+        assert_case_step_titles(
+            case_id,
+            "Sacar factor usando división",
+            &[
+                &format!("Reescribir cada término con el factor común {factor}"),
+                &format!("Sacar el factor común {factor}"),
+            ],
+        );
+        assert!(
+            audit_case(&derive_case_by_id(case_id)).flags.is_empty(),
+            "`{case_id}` should not be flagged after factor-with-division substeps"
+        );
     }
 
     let y_case = DeriveCase {
@@ -3304,8 +4178,15 @@ fn derive_didactic_representative_factor_with_division_cases_keep_variable_speci
         .expect("expected direct factor-with-division or complete-square step");
     assert_eq!(
         step_substep_titles(y_step),
-        Vec::<&str>::new(),
+        [
+            "Reescribir cada término con el factor común y",
+            "Sacar el factor común y"
+        ],
         "unexpected factor-with-division narrative for inline y case"
+    );
+    assert!(
+        y_artifact.flags.is_empty(),
+        "inline y factor-with-division case should not be flagged"
     );
 }
 
@@ -3399,9 +4280,18 @@ fn derive_didactic_numeric_common_factor_fraction_cancels_then_simplifies_remain
 
 #[test]
 fn derive_didactic_monomial_common_factor_fraction_cancels_symbol_then_simplifies_coefficients() {
-    assert_case_step_has_no_substeps(
+    assert_case_step_titles(
         "cancel_fraction_monomial_common_factor",
         "Cancelar un factor común",
+        &[
+            "Descomponer x^2 para exponer el factor común x",
+            "Cancelar el factor común x",
+        ],
+    );
+    assert!(
+        audit_case(&derive_case_by_id("cancel_fraction_monomial_common_factor"))
+            .flags
+            .is_empty()
     );
 }
 

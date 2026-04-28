@@ -517,7 +517,7 @@ fn step_wire_phase_shift_substeps_are_structured_without_narrative_lines() {
         .iter()
         .find(|step| step.rule == "Aplicar identidad de desfase")
         .expect("expected phase-shift step");
-    assert_eq!(step.substeps.len(), 1);
+    assert_eq!(step.substeps.len(), 2);
     assert!(step.substeps.iter().all(|substep| substep.lines.is_empty()));
     assert!(
         step.substeps
@@ -533,18 +533,23 @@ fn step_wire_phase_shift_substeps_are_structured_without_narrative_lines() {
             ))
             .collect::<Vec<_>>()
     );
-    assert_eq!(step.substeps[0].title, "Cancelar términos iguales");
+    assert_eq!(
+        step.substeps[0].title,
+        "Usar a·sin(u) + b·cos(u) = R·sin(u + φ)"
+    );
+    let cancellation_substep = &step.substeps[1];
+    assert_eq!(cancellation_substep.title, "Cancelar términos iguales");
     assert!(
-        step.substeps[0]
+        cancellation_substep
             .before_latex
             .as_deref()
             .is_some_and(
                 |latex| latex.contains("5\\cdot \\sin") && latex.contains("- 5\\cdot \\sin")
             ),
         "phase-shift substep should show the concrete cancellation, got: {:?}",
-        step.substeps[0].before_latex
+        cancellation_substep.before_latex
     );
-    assert_eq!(step.substeps[0].after_latex.as_deref(), Some("0"));
+    assert_eq!(cancellation_substep.after_latex.as_deref(), Some("0"));
 }
 
 #[test]

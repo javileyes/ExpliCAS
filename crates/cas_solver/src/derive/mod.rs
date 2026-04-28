@@ -42,9 +42,10 @@ pub(crate) use hyperbolic::{
 };
 pub(crate) use integrate::try_rewrite_integrate_prep_target_aware;
 pub(crate) use logs::{
-    try_rewrite_log_argument_factorization_target_aware, try_rewrite_log_contraction_target_aware,
+    try_rewrite_log_argument_factorization_target_aware,
+    try_rewrite_log_change_of_base_target_aware, try_rewrite_log_contraction_target_aware,
     try_rewrite_log_contraction_to_target_aware, try_rewrite_log_expansion_target_aware,
-    try_rewrite_log_simplify_target_aware,
+    try_rewrite_log_simplify_target_aware, DeriveLogChangeOfBaseRewriteKind,
 };
 pub(crate) use match_support::{presentational_target_match, strong_target_match};
 pub(crate) use power_merge::try_rewrite_power_merge_target_aware;

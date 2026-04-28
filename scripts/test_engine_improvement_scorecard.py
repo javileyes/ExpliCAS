@@ -230,6 +230,38 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("suite timeout after 0.2s", output)
         self.assertEqual(captured_stdout.getvalue(), output)
 
+    def test_parse_derive_extracts_strategy_specificity_metrics(self):
+        metrics = MODULE.parse_derive(
+            """
+derive corpus summary: derived=291 unsupported=0 not_equivalent=1
+derive stats: reachability_rate=1.000 supported_equiv_rate=1.000 mean_step_count=1.05 long_path_rate=0.000
+derive strategy specificity: generic_simplify_expected=0 distinct_expected_strategies=27
+derive expected-strategy-counts: {"expand": 30}
+"""
+        )
+
+        self.assertEqual(metrics["derived"], 291)
+        self.assertEqual(metrics["generic_simplify_expected"], 0)
+        self.assertEqual(metrics["distinct_expected_strategies"], 27)
+
+    def test_parse_derive_shadow_extracts_strategy_specificity_metrics(self):
+        metrics = MODULE.parse_derive_shadow(
+            """
+derive shadow pressure summary: sampled=16 derived=16 unsupported=0 not_equivalent=0
+derive shadow pressure stats: reachability_rate=1.000 mean_step_count=1.19 single_step_successes=13 multi_step_successes=3
+derive shadow pressure strategy specificity: generic_simplify_strategy_successes=2 distinct_actual_strategies=9
+derive shadow pressure generic-simplify-ids: identity_a,identity_b
+derive shadow pressure actual-strategy-counts: {"simplify": 2}
+"""
+        )
+
+        self.assertEqual(metrics["sampled"], 16)
+        self.assertEqual(metrics["generic_simplify_strategy_successes"], 2)
+        self.assertEqual(
+            metrics["generic_simplify_strategy_ids"], ["identity_a", "identity_b"]
+        )
+        self.assertEqual(metrics["distinct_actual_strategies"], 9)
+
     def test_parse_corpus_extracts_complexity_and_orchestrator_profile_metrics(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
 

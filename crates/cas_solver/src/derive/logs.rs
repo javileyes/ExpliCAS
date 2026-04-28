@@ -33,6 +33,18 @@ pub(crate) struct DeriveLogSimplifyRewrite {
     pub(crate) kind: DeriveLogSimplifyRewriteKind,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeriveLogChangeOfBaseRewriteKind {
+    QuotientToBaseLog,
+    BaseLogToQuotient,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DeriveLogChangeOfBaseRewrite {
+    pub(crate) rewritten: ExprId,
+    pub(crate) kind: DeriveLogChangeOfBaseRewriteKind,
+}
+
 impl DeriveLogSimplifyRewriteKind {
     pub(crate) fn description(self) -> &'static str {
         match self {
@@ -46,6 +58,19 @@ impl DeriveLogSimplifyRewriteKind {
             Self::EvenPower => "Factor Perfect Square in Logarithm",
             Self::Power => "Evaluate Logarithms",
         }
+    }
+}
+
+impl DeriveLogChangeOfBaseRewriteKind {
+    pub(crate) fn description(self) -> &'static str {
+        match self {
+            Self::QuotientToBaseLog => "Recognize a logarithm written by change of base",
+            Self::BaseLogToQuotient => "Rewrite the logarithm using the change-of-base formula",
+        }
+    }
+
+    pub(crate) fn rule_name(self) -> &'static str {
+        "Change of Base"
     }
 }
 
@@ -69,6 +94,28 @@ pub(crate) fn try_rewrite_log_simplify_target_aware(
         return Some(DeriveLogSimplifyRewrite {
             rewritten: target_expr,
             kind: DeriveLogSimplifyRewriteKind::Power,
+        });
+    }
+
+    None
+}
+
+pub(crate) fn try_rewrite_log_change_of_base_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveLogChangeOfBaseRewrite> {
+    if change_of_base_quotient_matches_base_log(ctx, source_expr, target_expr) {
+        return Some(DeriveLogChangeOfBaseRewrite {
+            rewritten: target_expr,
+            kind: DeriveLogChangeOfBaseRewriteKind::QuotientToBaseLog,
+        });
+    }
+
+    if base_log_matches_change_of_base_quotient(ctx, source_expr, target_expr) {
+        return Some(DeriveLogChangeOfBaseRewrite {
+            rewritten: target_expr,
+            kind: DeriveLogChangeOfBaseRewriteKind::BaseLogToQuotient,
         });
     }
 
@@ -175,6 +222,17 @@ pub(crate) fn try_rewrite_log_contraction_to_target_aware(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> Option<ExprId> {
+    if let Some(rewrite) =
+        try_rewrite_log_change_of_base_target_aware(ctx, source_expr, target_expr)
+    {
+        if matches!(
+            rewrite.kind,
+            DeriveLogChangeOfBaseRewriteKind::QuotientToBaseLog
+        ) {
+            return Some(rewrite.rewritten);
+        }
+    }
+
     if let Some(rewritten) = try_rewrite_log_contraction_target_aware(ctx, source_expr) {
         if super::strong_target_match(ctx, rewritten, target_expr) {
             return Some(target_expr);
@@ -193,6 +251,17 @@ pub(crate) fn try_rewrite_log_expansion_target_aware(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> Option<ExprId> {
+    if let Some(rewrite) =
+        try_rewrite_log_change_of_base_target_aware(ctx, source_expr, target_expr)
+    {
+        if matches!(
+            rewrite.kind,
+            DeriveLogChangeOfBaseRewriteKind::BaseLogToQuotient
+        ) {
+            return Some(rewrite.rewritten);
+        }
+    }
+
     if let Some(contracted) = try_rewrite_log_contraction_target_aware(ctx, target_expr) {
         if super::strong_target_match(ctx, contracted, source_expr)
             || log_contracted_forms_match(ctx, source_expr, contracted)
@@ -476,6 +545,64 @@ fn extract_plain_log_term(
     };
 
     Some(ScaledLogTerm { family, arg, coeff })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct LogChangeOfBaseQuotient {
+    base: ExprId,
+    arg: ExprId,
+}
+
+fn change_of_base_quotient_matches_base_log(
+    ctx: &Context,
+    quotient_expr: ExprId,
+    base_log_expr: ExprId,
+) -> bool {
+    let Some(quotient) = extract_log_change_of_base_quotient(ctx, quotient_expr) else {
+        return false;
+    };
+    let Some((target_base, target_arg)) = extract_base_log_call(ctx, base_log_expr) else {
+        return false;
+    };
+
+    compare_expr(ctx, quotient.base, target_base) == Ordering::Equal
+        && compare_expr(ctx, quotient.arg, target_arg) == Ordering::Equal
+}
+
+fn base_log_matches_change_of_base_quotient(
+    ctx: &Context,
+    base_log_expr: ExprId,
+    quotient_expr: ExprId,
+) -> bool {
+    change_of_base_quotient_matches_base_log(ctx, quotient_expr, base_log_expr)
+}
+
+fn extract_log_change_of_base_quotient(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<LogChangeOfBaseQuotient> {
+    let Expr::Div(numerator_expr, denominator_expr) = ctx.get(expr) else {
+        return None;
+    };
+
+    let numerator = extract_plain_log_term(ctx, *numerator_expr, BigRational::one())?;
+    let denominator = extract_plain_log_term(ctx, *denominator_expr, BigRational::one())?;
+    if !same_log_family(ctx, numerator.family, denominator.family) {
+        return None;
+    }
+
+    Some(LogChangeOfBaseQuotient {
+        base: denominator.arg,
+        arg: numerator.arg,
+    })
+}
+
+fn extract_base_log_call(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let parsed = extract_plain_log_term(ctx, expr, BigRational::one())?;
+    match parsed.family {
+        LogFamily::LogBase(base) => Some((base, parsed.arg)),
+        LogFamily::Ln | LogFamily::Log10 => None,
+    }
 }
 
 fn same_log_family(ctx: &Context, lhs: LogFamily, rhs: LogFamily) -> bool {
@@ -814,10 +941,12 @@ fn multiply_existing_power_exponent(
 mod tests {
     use super::{
         try_rewrite_log_argument_factorization_target_aware,
+        try_rewrite_log_change_of_base_target_aware,
         try_rewrite_log_contraction_additive_target_aware,
         try_rewrite_log_contraction_target_aware, try_rewrite_log_contraction_to_target_aware,
         try_rewrite_log_expansion_additive_target_aware, try_rewrite_log_expansion_target_aware,
-        try_rewrite_log_simplify_target_aware, DeriveLogSimplifyRewriteKind,
+        try_rewrite_log_simplify_target_aware, DeriveLogChangeOfBaseRewriteKind,
+        DeriveLogSimplifyRewriteKind,
     };
     use cas_ast::Context;
     use cas_math::semantic_equality::SemanticEqualityChecker;
@@ -853,6 +982,61 @@ mod tests {
                 "expected `{expr_text}` to contract to `{expected_text}`"
             );
         }
+    }
+
+    #[test]
+    fn contracts_change_of_base_quotient_to_general_base_log() {
+        let cases = [
+            ("ln(x)/ln(2)", "log(2, x)"),
+            ("log10(x)/log10(2)", "log(2, x)"),
+            ("log(c, x)/log(c, b)", "log(b, x)"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_log_change_of_base_target_aware(&mut ctx, source, target)
+                .expect("change-of-base rewrite");
+
+            assert_eq!(
+                rewrite.kind,
+                DeriveLogChangeOfBaseRewriteKind::QuotientToBaseLog
+            );
+            assert_eq!(rewrite.rewritten, target);
+        }
+    }
+
+    #[test]
+    fn expands_general_base_log_to_change_of_base_quotient() {
+        let cases = [
+            ("log(2, x)", "ln(x)/ln(2)"),
+            ("log(2, x)", "log10(x)/log10(2)"),
+            ("log(b, x)", "log(c, x)/log(c, b)"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_log_change_of_base_target_aware(&mut ctx, source, target)
+                .expect("change-of-base rewrite");
+
+            assert_eq!(
+                rewrite.kind,
+                DeriveLogChangeOfBaseRewriteKind::BaseLogToQuotient
+            );
+            assert_eq!(rewrite.rewritten, target);
+        }
+    }
+
+    #[test]
+    fn rejects_change_of_base_quotient_with_mixed_log_families() {
+        let mut ctx = Context::new();
+        let source = parse("ln(x)/log10(2)", &mut ctx).expect("source");
+        let target = parse("log(2, x)", &mut ctx).expect("target");
+
+        assert!(try_rewrite_log_change_of_base_target_aware(&mut ctx, source, target).is_none());
     }
 
     #[test]

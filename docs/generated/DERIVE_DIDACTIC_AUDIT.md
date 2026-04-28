@@ -6,26 +6,69 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 ## Summary
 
-- Derived cases audited: `365`
-- Mean top-level step count: `1.04`
-- Total web substeps: `122`
+- Derived cases audited: `403`
+- Mean top-level step count: `1.06`
+- Total web substeps: `306`
+
+## Flag Summary
+
+- Cases with flags: `89`
+- Cases flagged as no web substeps emitted: `89`
+
+| flag | cases |
+| --- | ---: |
+| no web substeps emitted | 89 |
+
+| family | cases | flagged | no-substeps flag | web substeps |
+| --- | ---: | ---: | ---: | ---: |
+| `expand` | 33 | 14 | 14 | 28 |
+| `telescoping_fraction` | 15 | 14 | 14 | 2 |
+| `integrate_prep` | 12 | 12 | 12 | 0 |
+| `trig_expand` | 68 | 9 | 9 | 46 |
+| `solve_prep` | 8 | 8 | 8 | 0 |
+| `factor` | 15 | 6 | 6 | 9 |
+| `log_expand` | 17 | 6 | 6 | 0 |
+| `fraction_decompose` | 5 | 5 | 5 | 0 |
+| `polynomial_product` | 11 | 4 | 4 | 16 |
+| `log_contract` | 19 | 3 | 3 | 0 |
+| `fraction_expand` | 10 | 2 | 2 | 8 |
+| `nested_fraction` | 9 | 2 | 2 | 11 |
+| `rationalize` | 8 | 2 | 2 | 20 |
+| `simplify` | 62 | 1 | 1 | 57 |
+| `trig_contract` | 41 | 1 | 1 | 23 |
+| `collect` | 6 | 0 | 0 | 0 |
+| `conditional_factor` | 6 | 0 | 0 | 12 |
+| `finite_aggregate` | 17 | 0 | 0 | 34 |
+| `finite_telescoping` | 9 | 0 | 0 | 21 |
+| `fraction_combine` | 13 | 0 | 0 | 0 |
+| `log_exp_inverse` | 1 | 0 | 0 | 0 |
+| `log_inverse_power` | 1 | 0 | 0 | 2 |
+| `number_theory` | 3 | 0 | 0 | 5 |
+| `power_merge` | 8 | 0 | 0 | 0 |
+| `radical_power` | 6 | 0 | 0 | 12 |
 
 | id | family | web steps | web substeps | flags |
 | --- | --- | ---: | ---: | --- |
+| `arcsin_sin_arctan_safe_composition` | `simplify` | 1 | 3 | none |
 | `cancel_fraction_common_factor_numeric` | `simplify` | 1 | 2 | none |
-| `cancel_fraction_difference_cubes` | `simplify` | 1 | 2 | none |
-| `cancel_fraction_difference_cubes_with_passthrough` | `simplify` | 1 | 2 | none |
-| `cancel_fraction_difference_squares` | `simplify` | 1 | 0 | no web substeps emitted |
-| `cancel_fraction_difference_squares_with_passthrough` | `simplify` | 1 | 0 | no web substeps emitted |
-| `cancel_fraction_monomial_common_factor` | `simplify` | 1 | 0 | no web substeps emitted |
+| `cancel_fraction_difference_cubes` | `simplify` | 1 | 3 | none |
+| `cancel_fraction_difference_cubes_with_passthrough` | `simplify` | 1 | 3 | none |
+| `cancel_fraction_difference_squares` | `simplify` | 1 | 2 | none |
+| `cancel_fraction_difference_squares_with_passthrough` | `simplify` | 1 | 2 | none |
+| `cancel_fraction_monomial_common_factor` | `simplify` | 1 | 2 | none |
 | `cancel_fraction_perfect_square_minus_symbolic` | `simplify` | 1 | 2 | none |
-| `cancel_fraction_sum_cubes` | `simplify` | 1 | 2 | none |
-| `collect_common_symbolic_coefficients` | `collect` | 1 | 0 | no web substeps emitted |
-| `collect_composite_monomial_factor` | `collect` | 1 | 0 | no web substeps emitted |
-| `collect_linear` | `collect` | 1 | 0 | no web substeps emitted |
-| `collect_linear_alt_variable` | `collect` | 1 | 0 | no web substeps emitted |
-| `collect_multiple_power_groups` | `collect` | 1 | 0 | no web substeps emitted |
-| `collect_two_composite_factor_groups` | `collect` | 1 | 0 | no web substeps emitted |
+| `cancel_fraction_sum_cubes` | `simplify` | 1 | 3 | none |
+| `choose_numeric_binomial_coefficient` | `number_theory` | 1 | 2 | none |
+| `choose_numeric_pascal_identity` | `number_theory` | 1 | 1 | none |
+| `choose_numeric_symmetry` | `number_theory` | 1 | 2 | none |
+| `collapse_exponential_log_product` | `simplify` | 1 | 2 | none |
+| `collapse_exponential_scaled_log_product` | `simplify` | 1 | 2 | none |
+| `collect_common_symbolic_coefficients` | `collect` | 1 | 0 | none |
+| `collect_composite_monomial_factor` | `collect` | 1 | 0 | none |
+| `collect_linear` | `collect` | 1 | 0 | none |
+| `collect_linear_alt_variable` | `collect` | 1 | 0 | none |
+| `collect_multiple_power_groups` | `collect` | 1 | 0 | none |
+| `collect_two_composite_factor_groups` | `collect` | 1 | 0 | none |
 | `combine_fraction_part_with_same_denominator` | `fraction_combine` | 1 | 0 | none |
 | `combine_fraction_part_with_same_denominator_three_terms` | `fraction_combine` | 1 | 0 | none |
 | `combine_general_fraction_difference` | `fraction_combine` | 1 | 0 | none |
@@ -53,17 +96,18 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `consecutive_factorial_ratio_with_passthrough` | `simplify` | 1 | 2 | none |
 | `contract_even_abs_logs_to_scaled_abs_product` | `log_contract` | 1 | 0 | none |
 | `contract_even_abs_logs_to_scaled_abs_product_with_passthrough` | `log_contract` | 1 | 0 | none |
-| `contract_exponential_difference` | `simplify` | 1 | 0 | no web substeps emitted |
-| `contract_exponential_power` | `simplify` | 1 | 0 | no web substeps emitted |
-| `contract_exponential_reciprocal` | `simplify` | 1 | 0 | no web substeps emitted |
-| `contract_exponential_sum` | `simplify` | 1 | 0 | no web substeps emitted |
+| `contract_exponential_difference` | `simplify` | 1 | 1 | none |
+| `contract_exponential_power` | `simplify` | 1 | 1 | none |
+| `contract_exponential_reciprocal` | `simplify` | 1 | 1 | none |
+| `contract_exponential_sum` | `simplify` | 1 | 1 | none |
 | `contract_general_base_logs_to_grouped_power` | `log_contract` | 1 | 0 | none |
 | `contract_general_base_logs_to_grouped_power_with_passthrough` | `log_contract` | 1 | 0 | none |
-| `contract_hyperbolic_cosh_difference` | `simplify` | 1 | 0 | no web substeps emitted |
-| `contract_hyperbolic_cosh_sum` | `simplify` | 1 | 0 | no web substeps emitted |
-| `contract_hyperbolic_sinh_difference` | `simplify` | 1 | 0 | no web substeps emitted |
-| `contract_hyperbolic_sinh_sum` | `simplify` | 1 | 0 | no web substeps emitted |
+| `contract_hyperbolic_cosh_difference` | `simplify` | 1 | 1 | none |
+| `contract_hyperbolic_cosh_sum` | `simplify` | 1 | 1 | none |
+| `contract_hyperbolic_sinh_difference` | `simplify` | 1 | 1 | none |
+| `contract_hyperbolic_sinh_sum` | `simplify` | 1 | 1 | none |
 | `contract_log_change_of_base_chain` | `log_contract` | 1 | 0 | none |
+| `contract_log_change_of_base_direct` | `log_contract` | 1 | 0 | no web substeps emitted |
 | `contract_log_difference` | `log_contract` | 1 | 0 | none |
 | `contract_log_difference_with_scaled_powers` | `log_contract` | 1 | 0 | none |
 | `contract_log_even_power_abs` | `log_contract` | 1 | 0 | no web substeps emitted |
@@ -77,10 +121,10 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `contract_log_product_over_quotient` | `log_contract` | 1 | 0 | none |
 | `contract_log_sum` | `log_contract` | 1 | 0 | none |
 | `contract_log_sum_with_scaled_powers` | `log_contract` | 1 | 0 | none |
-| `contract_trig_angle_diff_cosine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_angle_diff_sine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_angle_sum_cosine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_angle_sum_sine` | `trig_contract` | 1 | 0 | no web substeps emitted |
+| `contract_trig_angle_diff_cosine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_angle_diff_sine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_angle_sum_cosine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_angle_sum_sine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_cos_diff_sin_diff_quotient` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_cot_quotient` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_csc_reciprocal` | `trig_contract` | 1 | 0 | none |
@@ -94,30 +138,30 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `contract_trig_half_angle_tangent_alt` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_negative_double_cos_from_square_diff` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_negative_double_sin` | `trig_contract` | 1 | 0 | none |
-| `contract_trig_phase_shift_difference_to_shifted_sine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_phase_shift_exact_sixth_sum_to_shifted_sine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_phase_shift_exact_third_scaled_sum_to_shifted_sine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_phase_shift_general_shifted_sine_to_shifted_cosine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_phase_shift_general_shifted_terms_with_passthrough` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_phase_shift_general_sum_to_shifted_sine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_phase_shift_general_sum_to_shifted_sine_with_passthrough` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_phase_shift_scaled_sum_to_shifted_sine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_phase_shift_shifted_sine_to_shifted_cosine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_phase_shift_shifted_terms_with_passthrough` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_phase_shift_sum_to_shifted_sine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_phase_shift_sum_to_shifted_sine_with_passthrough` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_quintuple_angle_cosine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_quintuple_angle_sine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_recursive_six_cosine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_recursive_six_sine` | `trig_contract` | 1 | 0 | no web substeps emitted |
+| `contract_trig_phase_shift_difference_to_shifted_sine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_phase_shift_exact_sixth_sum_to_shifted_sine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_phase_shift_exact_third_scaled_sum_to_shifted_sine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_phase_shift_general_shifted_sine_to_shifted_cosine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_phase_shift_general_shifted_terms_with_passthrough` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_phase_shift_general_sum_to_shifted_sine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_phase_shift_general_sum_to_shifted_sine_with_passthrough` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_phase_shift_scaled_sum_to_shifted_sine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_phase_shift_shifted_sine_to_shifted_cosine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_phase_shift_shifted_terms_with_passthrough` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_phase_shift_sum_to_shifted_sine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_phase_shift_sum_to_shifted_sine_with_passthrough` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_quintuple_angle_cosine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_quintuple_angle_sine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_recursive_six_cosine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_recursive_six_sine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_sec_reciprocal` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_sec_squared` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_sin_diff_special` | `trig_contract` | 1 | 0 | no web substeps emitted |
 | `contract_trig_tan_quotient` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_tan_quotient_after_arg_simplify` | `trig_contract` | 1 | 0 | none |
-| `contract_trig_triple_angle_cosine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_triple_angle_sine` | `trig_contract` | 1 | 0 | no web substeps emitted |
-| `contract_trig_triple_angle_tangent` | `trig_contract` | 1 | 0 | no web substeps emitted |
+| `contract_trig_triple_angle_cosine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_triple_angle_sine` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_triple_angle_tangent` | `trig_contract` | 1 | 1 | none |
 | `expand_binomial` | `expand` | 1 | 0 | no web substeps emitted |
 | `expand_common_factor_difference` | `expand` | 1 | 0 | no web substeps emitted |
 | `expand_common_factor_difference_three_terms` | `expand` | 2 | 0 | no web substeps emitted |
@@ -141,22 +185,24 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `expand_higher_odd_half_power` | `radical_power` | 1 | 2 | none |
 | `expand_higher_odd_half_power_after_simplify` | `radical_power` | 1 | 2 | none |
 | `expand_higher_odd_half_power_alt_var` | `radical_power` | 1 | 2 | none |
-| `expand_hyperbolic_cosh_difference` | `expand` | 1 | 0 | no web substeps emitted |
-| `expand_hyperbolic_cosh_difference_to_product_exact` | `expand` | 1 | 0 | no web substeps emitted |
-| `expand_hyperbolic_cosh_sum` | `expand` | 1 | 0 | no web substeps emitted |
-| `expand_hyperbolic_cosh_sum_to_product_exact` | `expand` | 1 | 0 | no web substeps emitted |
-| `expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial` | `expand` | 2 | 0 | no web substeps emitted |
-| `expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough` | `expand` | 2 | 0 | no web substeps emitted |
-| `expand_hyperbolic_product_to_sum_to_sinh_cubic_polynomial` | `expand` | 2 | 0 | no web substeps emitted |
-| `expand_hyperbolic_sinh_difference` | `expand` | 1 | 0 | no web substeps emitted |
-| `expand_hyperbolic_sinh_sum` | `expand` | 1 | 0 | no web substeps emitted |
-| `expand_hyperbolic_sinh_sum_to_product_exact` | `expand` | 1 | 0 | no web substeps emitted |
-| `expand_hyperbolic_tanh_sum` | `simplify` | 1 | 0 | no web substeps emitted |
-| `expand_hyperbolic_tanh_triple_angle` | `simplify` | 1 | 0 | no web substeps emitted |
+| `expand_hyperbolic_cosh_difference` | `expand` | 1 | 1 | none |
+| `expand_hyperbolic_cosh_difference_to_product_exact` | `expand` | 1 | 1 | none |
+| `expand_hyperbolic_cosh_sum` | `expand` | 1 | 1 | none |
+| `expand_hyperbolic_cosh_sum_to_product_exact` | `expand` | 1 | 1 | none |
+| `expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial` | `expand` | 2 | 2 | none |
+| `expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough` | `expand` | 2 | 2 | none |
+| `expand_hyperbolic_product_to_sum_to_sinh_cubic_polynomial` | `expand` | 1 | 1 | none |
+| `expand_hyperbolic_sinh_difference` | `expand` | 1 | 1 | none |
+| `expand_hyperbolic_sinh_sum` | `expand` | 1 | 1 | none |
+| `expand_hyperbolic_sinh_sum_to_product_exact` | `expand` | 1 | 1 | none |
+| `expand_hyperbolic_tanh_difference` | `simplify` | 1 | 1 | none |
+| `expand_hyperbolic_tanh_sum` | `simplify` | 1 | 1 | none |
+| `expand_hyperbolic_tanh_triple_angle` | `simplify` | 1 | 0 | none |
 | `expand_log_change_of_base_chain` | `log_expand` | 1 | 0 | none |
+| `expand_log_change_of_base_direct` | `log_expand` | 1 | 0 | no web substeps emitted |
 | `expand_log_even_power_abs` | `log_expand` | 1 | 0 | no web substeps emitted |
 | `expand_log_general_base_power` | `log_expand` | 1 | 0 | no web substeps emitted |
-| `expand_log_general_base_powered_two_denominator_factors_with_powered_denominator` | `log_expand` | 1 | 0 | none |
+| `expand_log_general_base_powered_two_denominator_factors_with_powered_denominator` | `log_expand` | 2 | 0 | no web substeps emitted |
 | `expand_log_general_base_product_over_quotient` | `log_expand` | 1 | 0 | none |
 | `expand_log_grouped_abs_product` | `log_expand` | 1 | 0 | none |
 | `expand_log_grouped_abs_product_with_passthrough` | `log_expand` | 1 | 0 | none |
@@ -164,16 +210,17 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `expand_log_grouped_general_base_power_with_passthrough` | `log_expand` | 1 | 0 | none |
 | `expand_log_grouped_power` | `log_expand` | 1 | 0 | none |
 | `expand_log_grouped_power_with_passthrough` | `log_expand` | 1 | 0 | none |
-| `expand_log_powered_two_denominator_factors` | `log_expand` | 1 | 0 | none |
+| `expand_log_powered_two_denominator_factors` | `log_expand` | 2 | 0 | no web substeps emitted |
 | `expand_log_product` | `log_expand` | 1 | 0 | none |
 | `expand_log_product_over_quotient` | `log_expand` | 1 | 0 | none |
+| `expand_log_product_with_root_cleanup` | `log_expand` | 2 | 0 | no web substeps emitted |
 | `expand_log_quotient` | `log_expand` | 1 | 0 | none |
 | `expand_ninth_power_plus_product` | `polynomial_product` | 1 | 0 | no web substeps emitted |
 | `expand_odd_half_power` | `radical_power` | 1 | 2 | none |
 | `expand_odd_half_power_after_simplify` | `radical_power` | 1 | 2 | none |
 | `expand_odd_half_power_after_simplify_with_passthrough` | `radical_power` | 1 | 2 | none |
-| `expand_recursive_hyperbolic_cosh_sum` | `expand` | 1 | 0 | no web substeps emitted |
-| `expand_recursive_hyperbolic_sinh_sum` | `expand` | 1 | 0 | no web substeps emitted |
+| `expand_recursive_hyperbolic_cosh_sum` | `expand` | 1 | 1 | none |
+| `expand_recursive_hyperbolic_sinh_sum` | `expand` | 1 | 1 | none |
 | `expand_sixth_power_minus_product` | `polynomial_product` | 1 | 3 | none |
 | `expand_sixth_power_plus_product` | `polynomial_product` | 1 | 3 | none |
 | `expand_sophie_germain` | `expand` | 1 | 0 | no web substeps emitted |
@@ -191,21 +238,22 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `expand_symbolic_trinomial_square` | `expand` | 1 | 0 | no web substeps emitted |
 | `expand_then_cancel_to_square` | `expand` | 3 | 0 | no web substeps emitted |
 | `expand_trig_after_simplify` | `trig_expand` | 1 | 0 | none |
-| `expand_trig_angle_diff_cosine` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_angle_diff_sine` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_angle_sum_cosine` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_angle_sum_sine` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_cosine_eighteenth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_cosine_eighth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_cosine_fourteenth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_cosine_fourth_power_reduction` | `simplify` | 1 | 0 | no web substeps emitted |
-| `expand_trig_cosine_sixteenth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_cosine_sixth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_cosine_tenth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_cosine_twelfth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_cosine_twentieth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_cosine_twenty_fourth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_cosine_twenty_second_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
+| `expand_trig_angle_diff_cosine` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_angle_diff_sine` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_angle_sum_cosine` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_angle_sum_sine` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_cofunction_sine_minus` | `trig_expand` | 1 | 0 | none |
+| `expand_trig_cosine_eighteenth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_cosine_eighth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_cosine_fourteenth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_cosine_fourth_power_reduction` | `simplify` | 1 | 1 | none |
+| `expand_trig_cosine_sixteenth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_cosine_sixth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_cosine_tenth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_cosine_twelfth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_cosine_twentieth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_cosine_twenty_fourth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_cosine_twenty_second_power_reduction` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_csc_squared` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_double_cos_as_one_minus_sin_sq` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_double_cos_as_two_cos_sq_minus_one` | `trig_expand` | 1 | 0 | none |
@@ -216,44 +264,45 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `expand_trig_half_angle_tangent_alt` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_negative_double_cos_as_square_diff` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_negative_double_sin` | `trig_expand` | 1 | 0 | none |
-| `expand_trig_phase_shift_exact_sixth_shifted_sine_to_sum` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_phase_shift_exact_third_scaled_shifted_sine_to_sum` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_phase_shift_general_shifted_sine_to_sum` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_phase_shift_general_shifted_sine_to_sum_with_passthrough` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_phase_shift_pair_sum_to_shifted_sine_pair` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_phase_shift_scaled_shifted_sine_to_sum` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_phase_shift_scaled_shifted_sine_to_sum_with_passthrough` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_phase_shift_shifted_cosine_to_sum` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_phase_shift_shifted_sine_pair_to_sum_pair` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_phase_shift_shifted_sine_to_sum` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_product_to_sum_cos_cos` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_product_to_sum_cos_sin` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_product_to_sum_sin_cos` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_product_to_sum_sin_sin` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_product_to_sum_to_cosine_difference_polynomial` | `expand` | 2 | 0 | no web substeps emitted |
-| `expand_trig_product_to_sum_to_cosine_difference_polynomial_with_passthrough` | `expand` | 2 | 0 | no web substeps emitted |
-| `expand_trig_product_to_sum_to_cosine_sum_polynomial` | `expand` | 2 | 0 | no web substeps emitted |
-| `expand_trig_product_to_sum_to_sine_difference_mixed_polynomial` | `expand` | 2 | 0 | no web substeps emitted |
-| `expand_trig_product_to_sum_to_sine_difference_mixed_polynomial_with_passthrough` | `expand` | 2 | 0 | no web substeps emitted |
-| `expand_trig_quintuple_angle_cosine` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_quintuple_angle_sine` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_recursive_six_cosine` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_recursive_six_sine` | `trig_expand` | 1 | 0 | no web substeps emitted |
+| `expand_trig_phase_shift_exact_sixth_shifted_sine_to_sum` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_phase_shift_exact_third_scaled_shifted_sine_to_sum` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_phase_shift_general_shifted_sine_to_sum` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_phase_shift_general_shifted_sine_to_sum_with_passthrough` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_phase_shift_pair_sum_to_shifted_sine_pair` | `trig_expand` | 2 | 1 | none |
+| `expand_trig_phase_shift_scaled_shifted_sine_to_sum` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_phase_shift_scaled_shifted_sine_to_sum_with_passthrough` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_phase_shift_shifted_cosine_to_sum` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_phase_shift_shifted_sine_pair_to_sum_pair` | `trig_expand` | 2 | 2 | none |
+| `expand_trig_phase_shift_shifted_sine_to_sum` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_product_to_sum_cos_cos` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_product_to_sum_cos_sin` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_product_to_sum_sin_cos` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_product_to_sum_sin_sin` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_product_to_sum_to_cosine_difference_polynomial` | `expand` | 2 | 2 | none |
+| `expand_trig_product_to_sum_to_cosine_difference_polynomial_with_passthrough` | `expand` | 2 | 2 | none |
+| `expand_trig_product_to_sum_to_cosine_sum_polynomial` | `expand` | 2 | 2 | none |
+| `expand_trig_product_to_sum_to_sine_difference_mixed_polynomial` | `expand` | 2 | 2 | none |
+| `expand_trig_product_to_sum_to_sine_difference_mixed_polynomial_with_passthrough` | `expand` | 2 | 2 | none |
+| `expand_trig_quintuple_angle_cosine` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_quintuple_angle_sine` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_recursive_six_cosine` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_recursive_six_sine` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_scaled_half_angle_sine_square_to_shifted_cosine` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_sec_squared` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_sin_cos_square_diff` | `trig_expand` | 1 | 0 | no web substeps emitted |
 | `expand_trig_sin_cos_square_sum` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_cosine_square_product_reduction` | `simplify` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_eighteenth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_eighth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_fourteenth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_fourth_power_reduction` | `simplify` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_sixteenth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_sixth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_tenth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_twelfth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_twentieth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_twenty_fourth_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_sine_twenty_second_power_reduction` | `trig_expand` | 1 | 0 | no web substeps emitted |
+| `expand_trig_sine_cosine_square_product_reduction` | `simplify` | 1 | 1 | none |
+| `expand_trig_sine_eighteenth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_sine_eighth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_sine_fourteenth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_sine_fourth_power_reduction` | `simplify` | 1 | 1 | none |
+| `expand_trig_sine_sixteenth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_sine_sixth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_sine_tenth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_sine_twelfth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_sine_twentieth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_sine_twenty_fourth_power_reduction` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_sine_twenty_second_power_reduction` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_sum_to_product_cos_diff_general` | `trig_expand` | 1 | 0 | no web substeps emitted |
 | `expand_trig_sum_to_product_cos_diff_xy` | `trig_expand` | 1 | 0 | no web substeps emitted |
 | `expand_trig_sum_to_product_cos_sum_general` | `trig_expand` | 1 | 0 | no web substeps emitted |
@@ -261,21 +310,21 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `expand_trig_sum_to_product_sin_diff_general` | `trig_expand` | 1 | 0 | no web substeps emitted |
 | `expand_trig_sum_to_product_sin_sum_general` | `trig_expand` | 1 | 0 | no web substeps emitted |
 | `expand_trig_sum_to_product_sin_sum_xy` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_triple_angle_cosine` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_triple_angle_sine` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `expand_trig_triple_angle_tangent` | `trig_expand` | 1 | 0 | no web substeps emitted |
-| `factor_alternating_cubic_vandermonde` | `factor` | 1 | 2 | none |
+| `expand_trig_triple_angle_cosine` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_triple_angle_sine` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_triple_angle_tangent` | `trig_expand` | 1 | 1 | none |
+| `factor_alternating_cubic_vandermonde` | `factor` | 1 | 0 | no web substeps emitted |
 | `factor_common_factor_sum` | `factor` | 1 | 0 | no web substeps emitted |
 | `factor_common_factor_sum_three_terms` | `factor` | 1 | 0 | no web substeps emitted |
 | `factor_difference_cubes` | `factor` | 1 | 1 | none |
 | `factor_difference_squares` | `factor` | 1 | 0 | no web substeps emitted |
 | `factor_geometric_difference_power_6` | `factor` | 1 | 0 | no web substeps emitted |
-| `factor_out_cube_with_division_septic` | `conditional_factor` | 1 | 0 | no web substeps emitted |
-| `factor_out_square_with_division_quartic` | `conditional_factor` | 1 | 0 | no web substeps emitted |
-| `factor_out_with_division` | `conditional_factor` | 1 | 0 | no web substeps emitted |
-| `factor_out_with_division_mixed_septic` | `conditional_factor` | 1 | 0 | no web substeps emitted |
-| `factor_out_with_division_quadratic` | `conditional_factor` | 1 | 0 | no web substeps emitted |
-| `factor_out_with_division_sparse_quintic` | `conditional_factor` | 1 | 0 | no web substeps emitted |
+| `factor_out_cube_with_division_septic` | `conditional_factor` | 1 | 2 | none |
+| `factor_out_square_with_division_quartic` | `conditional_factor` | 1 | 2 | none |
+| `factor_out_with_division` | `conditional_factor` | 1 | 2 | none |
+| `factor_out_with_division_mixed_septic` | `conditional_factor` | 1 | 2 | none |
+| `factor_out_with_division_quadratic` | `conditional_factor` | 1 | 2 | none |
+| `factor_out_with_division_sparse_quintic` | `conditional_factor` | 1 | 2 | none |
 | `factor_perfect_square_trinomial` | `factor` | 1 | 1 | none |
 | `factor_perfect_square_trinomial_minus` | `factor` | 1 | 1 | none |
 | `factor_perfect_square_trinomial_symbolic` | `factor` | 1 | 1 | none |
@@ -285,6 +334,23 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `factor_symbolic_binomial_cube_minus` | `factor` | 1 | 1 | none |
 | `factor_symbolic_sixth_power_difference` | `factor` | 1 | 1 | none |
 | `factor_symbolic_sixth_power_sum` | `factor` | 1 | 1 | none |
+| `finite_aggregate_product_constant_symbolic` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_product_constant_symbolic_lower_bound` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_product_first_integers_symbolic` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_product_first_integers_symbolic_lower_bound` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_product_of_cubes_symbolic_lower_bound` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_product_of_squares_symbolic` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_product_of_squares_symbolic_lower_bound` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_sum_constant_symbolic` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_sum_constant_symbolic_lower_bound` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_sum_first_integers_symbolic` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_sum_first_integers_symbolic_lower_bound` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_sum_geometric_power_base_two_symbolic` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_sum_geometric_power_base_two_symbolic_lower_bound` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_sum_of_cubes_symbolic` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_sum_of_cubes_symbolic_lower_bound` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_sum_of_squares_symbolic` | `finite_aggregate` | 1 | 2 | none |
+| `finite_aggregate_sum_of_squares_symbolic_lower_bound` | `finite_aggregate` | 1 | 2 | none |
 | `finite_telescoping_product_affine_symbolic_shift_symbolic_lower` | `finite_telescoping` | 1 | 2 | none |
 | `finite_telescoping_product_basic` | `finite_telescoping` | 1 | 3 | none |
 | `finite_telescoping_product_factorized_square_shifted_base_numeric_symbolic_lower` | `finite_telescoping` | 1 | 3 | none |
@@ -294,22 +360,25 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `finite_telescoping_sum_affine_symbolic_shift_symbolic_lower` | `finite_telescoping` | 1 | 2 | none |
 | `finite_telescoping_sum_basic` | `finite_telescoping` | 1 | 2 | none |
 | `finite_telescoping_sum_symbolic_shift_symbolic_lower` | `finite_telescoping` | 1 | 2 | none |
-| `hyperbolic_contract_cosh_triple_angle` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_contract_sinh_double_angle` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_contract_sinh_double_angle_with_passthrough` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_contract_sinh_triple_angle` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_contract_tanh_double_angle` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_expand_cosh_double_angle_cosh_sq` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_expand_cosh_double_angle_sum` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_expand_cosh_to_exp_definition` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_expand_exp_to_sum` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_expand_sinh_to_exp_definition` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_expand_tanh_to_exp_definition` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_half_angle_cosh_forward` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_pythagorean_identity` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_pythagorean_identity_with_passthrough` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_pythagorean_shifted_forward` | `simplify` | 1 | 0 | no web substeps emitted |
-| `hyperbolic_tanh_pythagorean_forward` | `simplify` | 1 | 0 | no web substeps emitted |
+| `hyperbolic_contract_cosh_triple_angle` | `simplify` | 1 | 0 | none |
+| `hyperbolic_contract_exp_decomposition` | `simplify` | 1 | 0 | none |
+| `hyperbolic_contract_negated_negative_exp_decomposition` | `simplify` | 1 | 0 | none |
+| `hyperbolic_contract_negative_exp_decomposition` | `simplify` | 1 | 0 | none |
+| `hyperbolic_contract_sinh_double_angle` | `simplify` | 1 | 0 | none |
+| `hyperbolic_contract_sinh_double_angle_with_passthrough` | `simplify` | 1 | 0 | none |
+| `hyperbolic_contract_sinh_triple_angle` | `simplify` | 1 | 0 | none |
+| `hyperbolic_contract_tanh_double_angle` | `simplify` | 1 | 0 | none |
+| `hyperbolic_expand_cosh_double_angle_cosh_sq` | `simplify` | 1 | 0 | none |
+| `hyperbolic_expand_cosh_double_angle_sum` | `simplify` | 1 | 0 | none |
+| `hyperbolic_expand_cosh_to_exp_definition` | `simplify` | 1 | 0 | none |
+| `hyperbolic_expand_exp_to_sum` | `simplify` | 1 | 0 | none |
+| `hyperbolic_expand_sinh_to_exp_definition` | `simplify` | 1 | 0 | none |
+| `hyperbolic_expand_tanh_to_exp_definition` | `simplify` | 1 | 0 | none |
+| `hyperbolic_half_angle_cosh_forward` | `simplify` | 1 | 0 | none |
+| `hyperbolic_pythagorean_identity` | `simplify` | 1 | 0 | none |
+| `hyperbolic_pythagorean_identity_with_passthrough` | `simplify` | 1 | 0 | none |
+| `hyperbolic_pythagorean_shifted_forward` | `simplify` | 1 | 0 | none |
+| `hyperbolic_tanh_pythagorean_forward` | `simplify` | 1 | 0 | none |
 | `integrate_prep_dirichlet_basic` | `integrate_prep` | 1 | 0 | no web substeps emitted |
 | `integrate_prep_dirichlet_longer` | `integrate_prep` | 1 | 0 | no web substeps emitted |
 | `integrate_prep_dirichlet_reverse_basic` | `integrate_prep` | 1 | 0 | no web substeps emitted |
@@ -322,7 +391,9 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `integrate_prep_morrie_reverse_symbolic_scale_longer` | `integrate_prep` | 1 | 0 | no web substeps emitted |
 | `integrate_prep_morrie_symbolic_argument` | `integrate_prep` | 1 | 0 | no web substeps emitted |
 | `integrate_prep_morrie_symbolic_scale` | `integrate_prep` | 1 | 0 | no web substeps emitted |
-| `inverse_tan_identity` | `simplify` | 1 | 0 | no web substeps emitted |
+| `inverse_tan_identity` | `simplify` | 1 | 0 | none |
+| `log_exp_inverse_ln_exp` | `log_exp_inverse` | 1 | 0 | none |
+| `log_inverse_power_tower` | `log_inverse_power` | 2 | 2 | none |
 | `log_sum_difference_cancels_to_zero` | `simplify` | 1 | 0 | none |
 | `merge_four_same_base_symbolic_powers` | `power_merge` | 1 | 0 | none |
 | `merge_mixed_root_and_fractional_power_five_sixths` | `power_merge` | 1 | 0 | none |
@@ -341,8 +412,9 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `nested_fraction_sum_over_reciprocal` | `nested_fraction` | 1 | 0 | no web substeps emitted |
 | `nested_fraction_sum_with_fraction_over_scalar_general` | `nested_fraction` | 1 | 0 | no web substeps emitted |
 | `nested_fraction_sum_with_fraction_over_scalar_general_reverse` | `nested_fraction` | 1 | 1 | none |
+| `perfect_square_root_direct_power_to_abs` | `simplify` | 1 | 2 | none |
 | `perfect_square_root_to_abs` | `simplify` | 1 | 2 | none |
-| `perfect_square_root_to_abs_with_passthrough` | `simplify` | 1 | 0 | no web substeps emitted |
+| `perfect_square_root_to_abs_with_passthrough` | `simplify` | 1 | 2 | none |
 | `pythagorean_factor_form_from_sin_sq` | `simplify` | 1 | 0 | none |
 | `pythagorean_factor_form_to_cos_sq` | `simplify` | 1 | 0 | none |
 | `pythagorean_identity` | `simplify` | 1 | 0 | no web substeps emitted |
@@ -350,13 +422,15 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `rationalize_linear_root` | `rationalize` | 1 | 3 | none |
 | `rationalize_linear_root_plus` | `rationalize` | 1 | 3 | none |
 | `rationalize_shifted_linear_root` | `rationalize` | 1 | 3 | none |
-| `rationalize_symbolic_linear_root` | `rationalize` | 1 | 3 | none |
-| `rationalize_symbolic_linear_root_alt_var` | `rationalize` | 1 | 3 | none |
+| `rationalize_symbolic_linear_root` | `rationalize` | 2 | 4 | none |
+| `rationalize_symbolic_linear_root_alt_var` | `rationalize` | 2 | 4 | none |
 | `rationalize_symbolic_linear_root_plus` | `rationalize` | 1 | 3 | none |
 | `rationalize_then_cancel_to_zero` | `rationalize` | 2 | 0 | no web substeps emitted |
 | `reciprocal_trig_product_to_one` | `simplify` | 1 | 0 | none |
 | `reciprocal_trig_product_to_one_with_passthrough` | `simplify` | 1 | 0 | none |
 | `sec_tan_pythagorean_to_one` | `simplify` | 1 | 0 | none |
+| `simplify_sqrt_arithmetic_difference` | `simplify` | 1 | 1 | none |
+| `simplify_sqrt_arithmetic_sum` | `simplify` | 1 | 2 | none |
 | `solve_prep_complete_square_alt_variable_symbolic_leading_coeff` | `solve_prep` | 1 | 0 | no web substeps emitted |
 | `solve_prep_complete_square_fractional_monic_numeric` | `solve_prep` | 1 | 0 | no web substeps emitted |
 | `solve_prep_complete_square_fractional_symbolic_leading_coeff` | `solve_prep` | 1 | 0 | no web substeps emitted |
@@ -377,6 +451,40 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 | `split_telescoping_fraction_gap_two` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
 | `split_telescoping_fraction_negative_gap_two` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
 | `split_telescoping_fraction_symbolic_difference_squares_unfactored` | `telescoping_fraction` | 1 | 0 | no web substeps emitted |
+| `square_of_square_root_requires_nonnegative` | `simplify` | 1 | 2 | none |
+
+## arcsin_sin_arctan_safe_composition (simplify)
+
+- Source: `asin(x/sqrt(x^2 + 1))`
+- Target: `atan(x)`
+- Result: `atan(x)`
+- Web step count: `1`
+- Web substep count: `3`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: asin(x / sqrt(x^2 + 1))
+Target: atan(x)
+Strategy: rewrite inverse trigs
+Steps (Aggressive Mode):
+1. arcsin(x/sqrt(1+x^2)) = arctan(x)  [Inverse Trig Composition]
+   Before: asin(x / sqrt(x^(2) + 1))
+   Cambio local: asin(x / sqrt(x^(2) + 1)) -> atan(x)
+   After: atan(x)
+Result: atan(x)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar composición trigonométrica inversa`
+   - before: `arcsin(x/sqrt(x^2 + 1))`
+   - after: `arctan(x)`
+   - substeps:
+     1. `Reconocer x/sqrt(1+x^2) como sin(arctan(x))`
+     2. `Sustituir dentro de arcsin`
+     3. `Usar asin(sin(u)) = u en el rango principal`
 
 ## cancel_fraction_common_factor_numeric (simplify)
 
@@ -416,7 +524,7 @@ Result: 1 / 2
 - Target: `a^2+a*b+b^2`
 - Result: `a^2 + b^2 + a * b`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `3`
 - Flags: none
 
 ### CLI
@@ -441,6 +549,7 @@ Result: a^(2) + b^(2) + a * b
    - substeps:
      1. `Factorizar el numerador como suma o diferencia de cubos`
      2. `Ahora se cancela el factor (a - b)`
+     3. `Reemplazar ese bloque en la expresión`
 
 ## cancel_fraction_difference_cubes_with_passthrough (simplify)
 
@@ -448,7 +557,7 @@ Result: a^(2) + b^(2) + a * b
 - Target: `a^2+a*b+b^2+c`
 - Result: `a^2 + b^2 + a * b + c`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `3`
 - Flags: none
 
 ### CLI
@@ -473,6 +582,7 @@ Result: a^(2) + b^(2) + a * b + c
    - substeps:
      1. `Factorizar el numerador como suma o diferencia de cubos`
      2. `Ahora se cancela el factor (a - b)`
+     3. `Reemplazar ese bloque en la expresión`
 
 ## cancel_fraction_difference_squares (simplify)
 
@@ -480,8 +590,8 @@ Result: a^(2) + b^(2) + a * b + c
 - Target: `a+b`
 - Result: `a + b`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -502,7 +612,9 @@ Result: a + b
 1. `Factorizar una diferencia de cuadrados y cancelar`
    - before: `(a^2 - b^2)/(a - b)`
    - after: `a + b`
-   - substeps: none
+   - substeps:
+     1. `Factorizar el numerador como diferencia de cuadrados`
+     2. `Ahora se cancela el factor a - b`
 
 ## cancel_fraction_difference_squares_with_passthrough (simplify)
 
@@ -510,8 +622,8 @@ Result: a + b
 - Target: `a+b+c`
 - Result: `a + b + c`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -532,7 +644,9 @@ Result: a + b + c
 1. `Factorizar una diferencia de cuadrados y cancelar`
    - before: `(a^2 - b^2)/(a - b) + c`
    - after: `a + b + c`
-   - substeps: none
+   - substeps:
+     1. `Factorizar el numerador como diferencia de cuadrados`
+     2. `Ahora se cancela el factor a - b`
 
 ## cancel_fraction_monomial_common_factor (simplify)
 
@@ -540,8 +654,8 @@ Result: a + b + c
 - Target: `(a*x)/b`
 - Result: `a * x / b`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -564,7 +678,9 @@ Result: a * x / b
 1. `Cancelar un factor común`
    - before: `(a · x^2)/(b · x)`
    - after: `(a · x)/b`
-   - substeps: none
+   - substeps:
+     1. `Descomponer x^2 para exponer el factor común x`
+     2. `Cancelar el factor común x`
 
 ## cancel_fraction_perfect_square_minus_symbolic (simplify)
 
@@ -604,7 +720,7 @@ Result: a - b
 - Target: `a^2-a*b+b^2`
 - Result: `a^2 + b^2 - a * b`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `3`
 - Flags: none
 
 ### CLI
@@ -629,6 +745,166 @@ Result: a^(2) + b^(2) - a * b
    - substeps:
      1. `Factorizar el numerador como suma o diferencia de cubos`
      2. `Ahora se cancela el factor (a + b)`
+     3. `Reemplazar ese bloque en la expresión`
+
+## choose_numeric_binomial_coefficient (number_theory)
+
+- Source: `choose(5,2)`
+- Target: `10`
+- Result: `10`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: choose(5, 2)
+Target: 10
+Strategy: number theory
+Steps (Aggressive Mode):
+1. choose(5, 2)  [Number Theory Operations]
+   Before: choose(5, 2)
+   Cambio local: choose(5, 2) -> 10
+   After: 10
+Result: 10
+```
+
+### Web / JSON Steps
+
+1. `Calcular coeficiente binomial`
+   - before: `choose(5, 2)`
+   - after: `10`
+   - substeps:
+     1. `Usar C(5,2) = 5! / (2! · 3!)`
+     2. `Calcular 5! / (2! · 3!) = 10`
+
+## choose_numeric_pascal_identity (number_theory)
+
+- Source: `choose(4,1) + choose(4,2)`
+- Target: `choose(5,2)`
+- Result: `choose(5, 2)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: choose(4, 1) + choose(4, 2)
+Target: choose(5, 2)
+Strategy: number theory
+Steps (Aggressive Mode):
+1. Apply Pascal's identity for binomial coefficients  [Pascal's Identity]
+   Before: choose(4, 1) + choose(4, 2)
+   Cambio local: choose(4, 1) + choose(4, 2) -> choose(5, 2)
+   After: choose(5, 2)
+Result: choose(5, 2)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar identidad de Pascal`
+   - before: `choose(4, 1) + choose(4, 2)`
+   - after: `choose(5, 2)`
+   - substeps:
+     1. `Usar C(4,1) + C(4,2) = C(5,2)`
+
+## choose_numeric_symmetry (number_theory)
+
+- Source: `choose(6,1)`
+- Target: `choose(6,5)`
+- Result: `choose(6, 5)`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: choose(6, 1)
+Target: choose(6, 5)
+Strategy: number theory
+Steps (Aggressive Mode):
+1. Apply binomial coefficient symmetry  [Binomial Coefficient Symmetry]
+   Before: choose(6, 1)
+   Cambio local: choose(6, 1) -> choose(6, 5)
+   After: choose(6, 5)
+Result: choose(6, 5)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar simetría del coeficiente binomial`
+   - before: `choose(6, 1)`
+   - after: `choose(6, 5)`
+   - substeps:
+     1. `Usar C(6,1) = C(6,6-1)`
+     2. `Calcular 6-1 = 5`
+
+## collapse_exponential_log_product (simplify)
+
+- Source: `exp(ln(x)+ln(y))`
+- Target: `x*y`
+- Result: `x * y`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: e^(ln(x) + ln(y))
+Target: x * y
+Strategy: rewrite exponentials
+Steps (Aggressive Mode):
+1. Expand exp(u ± v ± ...) into products/quotients of exponentials  [Exponential Sum/Difference Identity]
+   Before: e^(ln(x) + ln(y))
+   Cambio local: e^(ln(x) + ln(y)) -> x * y
+   After: x * y
+Result: x * y
+```
+
+### Web / JSON Steps
+
+1. `Reescribir exponenciales`
+   - before: `e^(ln(x) + ln(y))`
+   - after: `x · y`
+   - substeps:
+     1. `Separar la suma o resta del exponente en productos de exponenciales`
+     2. `Cancelar e^(k·ln(u)) como potencia en cada factor`
+
+## collapse_exponential_scaled_log_product (simplify)
+
+- Source: `exp(2*ln(x)+3*ln(y))`
+- Target: `x^2*y^3`
+- Result: `x^2 * y^3`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: e^(2 * ln(x) + 3 * ln(y))
+Target: x^2 * y^3
+Strategy: rewrite exponentials
+Steps (Aggressive Mode):
+1. Expand exp(u ± v ± ...) into products/quotients of exponentials  [Exponential Sum/Difference Identity]
+   Before: e^(2 * ln(x) + 3 * ln(y))
+   Cambio local: e^(2 * ln(x) + 3 * ln(y)) -> x^(2) * y^(3)
+   After: x^2 * y^3
+Result: x^(2) * y^(3)
+```
+
+### Web / JSON Steps
+
+1. `Reescribir exponenciales`
+   - before: `e^(2 · ln(x) + 3 · ln(y))`
+   - after: `x^2 · y^3`
+   - substeps:
+     1. `Separar la suma o resta del exponente en productos de exponenciales`
+     2. `Cancelar e^(k·ln(u)) como potencia en cada factor`
 
 ## collect_common_symbolic_coefficients (collect)
 
@@ -637,7 +913,7 @@ Result: a^(2) + b^(2) - a * b
 - Result: `x * (y + z) + w`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -667,7 +943,7 @@ Result: x * (y + z) + w
 - Result: `x * y * (a + b) + c`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -697,7 +973,7 @@ Result: x * y * (a + b) + c
 - Result: `x * (a + b) + c`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -727,7 +1003,7 @@ Result: x * (a + b) + c
 - Result: `y * (a + b) + c`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -757,7 +1033,7 @@ Result: y * (a + b) + c
 - Result: `x * (b + d) + x^2 * (a + c + e) + f`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -787,7 +1063,7 @@ Result: x * (b + d) + x^(2) * (a + c + e) + f
 - Result: `x * y * (a + b) + x * z * (c + d) + e`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -1687,8 +1963,8 @@ Result: 2 * ln(|x * y|) + a
 - Target: `exp(x-y)`
 - Result: `e^(x - y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -1706,10 +1982,11 @@ Result: e^(x - y)
 
 ### Web / JSON Steps
 
-1. `Exponential Sum/Difference Identity`
+1. `Reescribir exponenciales`
    - before: `e^x/e^y`
    - after: `e^(x - y)`
-   - substeps: none
+   - substeps:
+     1. `Usar e^A / e^B = e^(A-B)`
 
 ## contract_exponential_power (simplify)
 
@@ -1717,8 +1994,8 @@ Result: e^(x - y)
 - Target: `exp(3*x)`
 - Result: `e^(3 * x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -1736,10 +2013,11 @@ Result: e^(3 * x)
 
 ### Web / JSON Steps
 
-1. `Exponential Power Identity`
+1. `Reescribir potencia exponencial`
    - before: `e^x^3`
    - after: `e^(3 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar (e^A)^n = e^(n·A)`
 
 ## contract_exponential_reciprocal (simplify)
 
@@ -1747,8 +2025,8 @@ Result: e^(3 * x)
 - Target: `exp(-x)`
 - Result: `e^(-x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -1766,10 +2044,11 @@ Result: e^(-x)
 
 ### Web / JSON Steps
 
-1. `Exponential Reciprocal Identity`
+1. `Reescribir recíproco exponencial`
    - before: `1/e^x`
    - after: `e^(-x)`
-   - substeps: none
+   - substeps:
+     1. `Usar 1/e^A = e^(-A)`
 
 ## contract_exponential_sum (simplify)
 
@@ -1777,8 +2056,8 @@ Result: e^(-x)
 - Target: `exp(x+y)`
 - Result: `e^(x + y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -1796,10 +2075,11 @@ Result: e^(x + y)
 
 ### Web / JSON Steps
 
-1. `Exponential Sum/Difference Identity`
+1. `Reescribir exponenciales`
    - before: `e^x · e^y`
    - after: `e^(x + y)`
-   - substeps: none
+   - substeps:
+     1. `Usar e^A · e^B = e^(A+B)`
 
 ## contract_general_base_logs_to_grouped_power (log_contract)
 
@@ -1823,8 +2103,8 @@ Steps (Aggressive Mode):
    After: log(b, (x * y)^2)
 Result: log(b, (x * y)^(2))
 ℹ️ Requires:
-  • b > 0
   • x * y ≠ 0
+  • b > 0
 ```
 
 ### Web / JSON Steps
@@ -1873,8 +2153,8 @@ Result: log(b, (x * y)^(2)) + a
 - Target: `cosh(x-y)`
 - Result: `cosh(x - y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -1892,10 +2172,11 @@ Result: cosh(x - y)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Angle Sum/Difference Identity`
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
    - before: `cosh(x) · cosh(y) - sinh(x) · sinh(y)`
    - after: `cosh(x - y)`
-   - substeps: none
+   - substeps:
+     1. `Usar cosh(A-B) = cosh(A) · cosh(B) - sinh(A) · sinh(B)`
 
 ## contract_hyperbolic_cosh_sum (simplify)
 
@@ -1903,8 +2184,8 @@ Result: cosh(x - y)
 - Target: `cosh(x+y)`
 - Result: `cosh(x + y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -1922,10 +2203,11 @@ Result: cosh(x + y)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Angle Sum/Difference Identity`
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
    - before: `sinh(x) · sinh(y) + cosh(x) · cosh(y)`
    - after: `cosh(x + y)`
-   - substeps: none
+   - substeps:
+     1. `Usar cosh(A+B) = cosh(A) · cosh(B) + sinh(A) · sinh(B)`
 
 ## contract_hyperbolic_sinh_difference (simplify)
 
@@ -1933,8 +2215,8 @@ Result: cosh(x + y)
 - Target: `sinh(x-y)`
 - Result: `sinh(x - y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -1952,10 +2234,11 @@ Result: sinh(x - y)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Angle Sum/Difference Identity`
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
    - before: `sinh(x) · cosh(y) - sinh(y) · cosh(x)`
    - after: `sinh(x - y)`
-   - substeps: none
+   - substeps:
+     1. `Usar sinh(A-B) = sinh(A) · cosh(B) - cosh(A) · sinh(B)`
 
 ## contract_hyperbolic_sinh_sum (simplify)
 
@@ -1963,8 +2246,8 @@ Result: sinh(x - y)
 - Target: `sinh(x+y)`
 - Result: `sinh(x + y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -1982,10 +2265,11 @@ Result: sinh(x + y)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Angle Sum/Difference Identity`
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
    - before: `sinh(x) · cosh(y) + sinh(y) · cosh(x)`
    - after: `sinh(x + y)`
-   - substeps: none
+   - substeps:
+     1. `Usar sinh(A+B) = sinh(A) · cosh(B) + cosh(A) · sinh(B)`
 
 ## contract_log_change_of_base_chain (log_contract)
 
@@ -2009,8 +2293,8 @@ Steps (Aggressive Mode):
    After: log(b, c)
 Result: log(b, c)
 ℹ️ Requires:
-  • b > 0
   • c > 0
+  • b > 0
 ```
 
 ### Web / JSON Steps
@@ -2018,6 +2302,38 @@ Result: log(b, c)
 1. `Contraer logaritmos`
    - before: `log_a(c) · log_b(a)`
    - after: `log_b(c)`
+   - substeps: none
+
+## contract_log_change_of_base_direct (log_contract)
+
+- Source: `ln(x)/ln(2)`
+- Target: `log(2, x)`
+- Result: `log(2, x)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: no web substeps emitted
+
+### CLI
+
+```text
+Parsed: ln(x) / ln(2)
+Target: log(2, x)
+Strategy: contract logs
+Steps (Aggressive Mode):
+1. Recognize a logarithm written by change of base  [Change of Base]
+   Before: ln(x) / ln(2)
+   Cambio local: ln(x) / ln(2) -> log(2, x)
+   After: log(2, x)
+Result: log(2, x)
+ℹ️ Requires:
+  • x > 0
+```
+
+### Web / JSON Steps
+
+1. `Change of Base`
+   - before: `ln(x)/ln(2)`
+   - after: `log_2(x)`
    - substeps: none
 
 ## contract_log_difference (log_contract)
@@ -2042,8 +2358,8 @@ Steps (Aggressive Mode):
    After: ln(x / y)
 Result: ln(x / y)
 ℹ️ Requires:
-  • y ≠ 0
   • x / y > 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2239,9 +2555,9 @@ Steps (Aggressive Mode):
 Result: log(b, x^(2) * y^(3) / (t * z^(2)))
 ℹ️ Requires:
   • b > 0
-  • x^2 * y^3 / (t * z^2) > 0
   • t ≠ 0
   • z ≠ 0
+  • x^2 * y^3 / (t * z^2) > 0
 ```
 
 ### Web / JSON Steps
@@ -2337,9 +2653,9 @@ Steps (Aggressive Mode):
    After: ln(y * x^2 / (t * z))
 Result: ln(y * x^(2) / (t * z))
 ℹ️ Requires:
-  • y * x^2 / (t * z) > 0
   • t ≠ 0
   • z ≠ 0
+  • y * x^2 / (t * z) > 0
 ```
 
 ### Web / JSON Steps
@@ -2452,8 +2768,8 @@ Result: ln(x^(3) * y^(2))
 - Target: `cos(x-y)`
 - Result: `cos(x - y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -2471,10 +2787,11 @@ Result: cos(x - y)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `sin(x) · sin(y) + cos(x) · cos(y)`
    - after: `cos(x - y)`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(A-B) = cos(A) · cos(B) + sin(A) · sin(B)`
 
 ## contract_trig_angle_diff_sine (trig_contract)
 
@@ -2482,8 +2799,8 @@ Result: cos(x - y)
 - Target: `sin(x-y)`
 - Result: `sin(x - y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -2501,10 +2818,11 @@ Result: sin(x - y)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `sin(x) · cos(y) - sin(y) · cos(x)`
    - after: `sin(x - y)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(A-B) = sin(A) · cos(B) - cos(A) · sin(B)`
 
 ## contract_trig_angle_sum_cosine (trig_contract)
 
@@ -2512,8 +2830,8 @@ Result: sin(x - y)
 - Target: `cos(x+y)`
 - Result: `cos(x + y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -2531,10 +2849,11 @@ Result: cos(x + y)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `cos(x) · cos(y) - sin(x) · sin(y)`
    - after: `cos(x + y)`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(A+B) = cos(A) · cos(B) - sin(A) · sin(B)`
 
 ## contract_trig_angle_sum_sine (trig_contract)
 
@@ -2542,8 +2861,8 @@ Result: cos(x + y)
 - Target: `sin(x+y)`
 - Result: `sin(x + y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -2561,10 +2880,11 @@ Result: sin(x + y)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `sin(x) · cos(y) + sin(y) · cos(x)`
    - after: `sin(x + y)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(A+B) = sin(A) · cos(B) + cos(A) · sin(B)`
 
 ## contract_trig_cos_diff_sin_diff_quotient (trig_contract)
 
@@ -2962,8 +3282,8 @@ Result: -sin(2 * x)
 - Target: `sqrt(2)*sin(x-pi/4)`
 - Result: `sin(x - pi / 4) * sqrt(2)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -2984,7 +3304,8 @@ Result: sin(x - pi / 4) * sqrt(2)
 1. `Aplicar identidad de desfase`
    - before: `sin(x) - cos(x)`
    - after: `sin(x - pi/4) · sqrt(2)`
-   - substeps: none
+   - substeps:
+     1. `Usar a·sin(u) + b·cos(u) = R·sin(u + φ)`
 
 ## contract_trig_phase_shift_exact_sixth_sum_to_shifted_sine (trig_contract)
 
@@ -2992,8 +3313,8 @@ Result: sin(x - pi / 4) * sqrt(2)
 - Target: `2*sin(x+pi/6)`
 - Result: `2 * sin(pi / 6 + x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3014,7 +3335,8 @@ Result: 2 * sin(pi / 6 + x)
 1. `Aplicar identidad de desfase`
    - before: `cos(x) + sin(x) · sqrt(3)`
    - after: `2 · sin(pi/6 + x)`
-   - substeps: none
+   - substeps:
+     1. `Usar a·sin(u) + b·cos(u) = R·sin(u + φ)`
 
 ## contract_trig_phase_shift_exact_third_scaled_sum_to_shifted_sine (trig_contract)
 
@@ -3022,8 +3344,8 @@ Result: 2 * sin(pi / 6 + x)
 - Target: `4*sin(x+pi/3)`
 - Result: `4 * sin(pi / 3 + x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3044,7 +3366,8 @@ Result: 4 * sin(pi / 3 + x)
 1. `Aplicar identidad de desfase`
    - before: `2 · sin(x) + 2 · cos(x) · sqrt(3)`
    - after: `4 · sin(pi/3 + x)`
-   - substeps: none
+   - substeps:
+     1. `Usar a·sin(u) + b·cos(u) = R·sin(u + φ)`
 
 ## contract_trig_phase_shift_general_shifted_sine_to_shifted_cosine (trig_contract)
 
@@ -3052,8 +3375,8 @@ Result: 4 * sin(pi / 3 + x)
 - Target: `5*cos(x-arctan(3/4))`
 - Result: `5 * cos(x - arctan(3 / 4))`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3074,7 +3397,8 @@ Result: 5 * cos(x - arctan(3 / 4))
 1. `Aplicar identidad de desfase`
    - before: `5 · sin(arctan(4/3) + x)`
    - after: `5 · cos(x - arctan(3/4))`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(u + φ) = cos(u - (π/2 - φ))`
 
 ## contract_trig_phase_shift_general_shifted_terms_with_passthrough (trig_contract)
 
@@ -3082,8 +3406,8 @@ Result: 5 * cos(x - arctan(3 / 4))
 - Target: `5*cos(x-arctan(3/4))+a`
 - Result: `5 * cos(x - arctan(3 / 4)) + a`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3104,7 +3428,8 @@ Result: 5 * cos(x - arctan(3 / 4)) + a
 1. `Aplicar identidad de desfase`
    - before: `5 · sin(arctan(4/3) + x) + a`
    - after: `5 · cos(x - arctan(3/4)) + a`
-   - substeps: none
+   - substeps:
+     1. `Aplicar la identidad de desfase al bloque que cambia`
 
 ## contract_trig_phase_shift_general_sum_to_shifted_sine (trig_contract)
 
@@ -3112,8 +3437,8 @@ Result: 5 * cos(x - arctan(3 / 4)) + a
 - Target: `5*sin(x+arctan(4/3))`
 - Result: `5 * sin(arctan(4 / 3) + x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3134,7 +3459,8 @@ Result: 5 * sin(arctan(4 / 3) + x)
 1. `Aplicar identidad de desfase`
    - before: `3 · sin(x) + 4 · cos(x)`
    - after: `5 · sin(arctan(4/3) + x)`
-   - substeps: none
+   - substeps:
+     1. `Usar a·sin(u) + b·cos(u) = R·sin(u + φ)`
 
 ## contract_trig_phase_shift_general_sum_to_shifted_sine_with_passthrough (trig_contract)
 
@@ -3142,8 +3468,8 @@ Result: 5 * sin(arctan(4 / 3) + x)
 - Target: `5*sin(x+arctan(4/3))+a`
 - Result: `5 * sin(arctan(4 / 3) + x) + a`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3164,7 +3490,8 @@ Result: 5 * sin(arctan(4 / 3) + x) + a
 1. `Aplicar identidad de desfase`
    - before: `3 · sin(x) + 4 · cos(x) + a`
    - after: `5 · sin(arctan(4/3) + x) + a`
-   - substeps: none
+   - substeps:
+     1. `Aplicar la identidad de desfase al bloque que cambia`
 
 ## contract_trig_phase_shift_scaled_sum_to_shifted_sine (trig_contract)
 
@@ -3172,8 +3499,8 @@ Result: 5 * sin(arctan(4 / 3) + x) + a
 - Target: `2*sqrt(2)*sin(x+pi/4)`
 - Result: `2 * sin(pi / 4 + x) * sqrt(2)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3194,7 +3521,8 @@ Result: 2 * sin(pi / 4 + x) * sqrt(2)
 1. `Aplicar identidad de desfase`
    - before: `2 · sin(x) + 2 · cos(x)`
    - after: `2 · sin(pi/4 + x) · sqrt(2)`
-   - substeps: none
+   - substeps:
+     1. `Usar a·sin(u) + b·cos(u) = R·sin(u + φ)`
 
 ## contract_trig_phase_shift_shifted_sine_to_shifted_cosine (trig_contract)
 
@@ -3202,8 +3530,8 @@ Result: 2 * sin(pi / 4 + x) * sqrt(2)
 - Target: `sqrt(2)*cos(x-pi/4)`
 - Result: `cos(x - pi / 4) * sqrt(2)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3224,7 +3552,8 @@ Result: cos(x - pi / 4) * sqrt(2)
 1. `Aplicar identidad de desfase`
    - before: `sin(pi/4 + x) · sqrt(2)`
    - after: `cos(x - pi/4) · sqrt(2)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(u + φ) = cos(u - (π/2 - φ))`
 
 ## contract_trig_phase_shift_shifted_terms_with_passthrough (trig_contract)
 
@@ -3232,8 +3561,8 @@ Result: cos(x - pi / 4) * sqrt(2)
 - Target: `sqrt(2)*cos(x-pi/4)+a`
 - Result: `cos(x - pi / 4) * sqrt(2) + a`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3254,7 +3583,8 @@ Result: cos(x - pi / 4) * sqrt(2) + a
 1. `Aplicar identidad de desfase`
    - before: `sin(pi/4 + x) · sqrt(2) + a`
    - after: `cos(x - pi/4) · sqrt(2) + a`
-   - substeps: none
+   - substeps:
+     1. `Aplicar la identidad de desfase al bloque que cambia`
 
 ## contract_trig_phase_shift_sum_to_shifted_sine (trig_contract)
 
@@ -3262,8 +3592,8 @@ Result: cos(x - pi / 4) * sqrt(2) + a
 - Target: `sqrt(2)*sin(x+pi/4)`
 - Result: `sin(pi / 4 + x) * sqrt(2)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3284,7 +3614,8 @@ Result: sin(pi / 4 + x) * sqrt(2)
 1. `Aplicar identidad de desfase`
    - before: `sin(x) + cos(x)`
    - after: `sin(pi/4 + x) · sqrt(2)`
-   - substeps: none
+   - substeps:
+     1. `Usar a·sin(u) + b·cos(u) = R·sin(u + φ)`
 
 ## contract_trig_phase_shift_sum_to_shifted_sine_with_passthrough (trig_contract)
 
@@ -3292,8 +3623,8 @@ Result: sin(pi / 4 + x) * sqrt(2)
 - Target: `sqrt(2)*sin(x+pi/4)+a`
 - Result: `sin(pi / 4 + x) * sqrt(2) + a`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3314,7 +3645,8 @@ Result: sin(pi / 4 + x) * sqrt(2) + a
 1. `Aplicar identidad de desfase`
    - before: `sin(x) + cos(x) + a`
    - after: `sin(pi/4 + x) · sqrt(2) + a`
-   - substeps: none
+   - substeps:
+     1. `Aplicar la identidad de desfase al bloque que cambia`
 
 ## contract_trig_quintuple_angle_cosine (trig_contract)
 
@@ -3322,8 +3654,8 @@ Result: sin(pi / 4 + x) * sqrt(2) + a
 - Target: `cos(5*x)`
 - Result: `cos(5 * x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3341,10 +3673,11 @@ Result: cos(5 * x)
 
 ### Web / JSON Steps
 
-1. `Quintuple Angle Identity`
+1. `Reescribir ángulo quíntuple`
    - before: `5 · cos(x) + 16 · cos(x)^5 - 20 · cos(x)^3`
    - after: `cos(5 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(5u) = 16 · cos(u)^5 - 20 · cos(u)^3 + 5 · cos(u), con u = x`
 
 ## contract_trig_quintuple_angle_sine (trig_contract)
 
@@ -3352,8 +3685,8 @@ Result: cos(5 * x)
 - Target: `sin(5*x)`
 - Result: `sin(5 * x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3371,10 +3704,11 @@ Result: sin(5 * x)
 
 ### Web / JSON Steps
 
-1. `Quintuple Angle Identity`
+1. `Reescribir ángulo quíntuple`
    - before: `16 · sin(x)^5 + 5 · sin(x) - 20 · sin(x)^3`
    - after: `sin(5 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(5u) = 5 · sin(u) - 20 · sin(u)^3 + 16 · sin(u)^5, con u = x`
 
 ## contract_trig_recursive_six_cosine (trig_contract)
 
@@ -3382,8 +3716,8 @@ Result: sin(5 * x)
 - Target: `cos(6*x)`
 - Result: `cos(6 * x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3401,10 +3735,11 @@ Result: cos(6 * x)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `cos(x) · cos(5 · x) - sin(x) · sin(5 · x)`
    - after: `cos(6 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(5u+u) = cos(5u) · cos(u) - sin(5u) · sin(u), con u = x`
 
 ## contract_trig_recursive_six_sine (trig_contract)
 
@@ -3412,8 +3747,8 @@ Result: cos(6 * x)
 - Target: `sin(6*x)`
 - Result: `sin(6 * x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3431,10 +3766,11 @@ Result: sin(6 * x)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `sin(x) · cos(5 · x) + sin(5 · x) · cos(x)`
    - after: `sin(6 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(5u+u) = sin(5u) · cos(u) + cos(5u) · sin(u), con u = x`
 
 ## contract_trig_sec_reciprocal (trig_contract)
 
@@ -3592,8 +3928,8 @@ Result: tan(2 * x)
 - Target: `cos(3*x)`
 - Result: `cos(3 * x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3611,10 +3947,11 @@ Result: cos(3 * x)
 
 ### Web / JSON Steps
 
-1. `Triple Angle Expansion`
+1. `Reescribir ángulo triple`
    - before: `4 · cos(x)^3 - 3 · cos(x)`
    - after: `cos(3 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(3u) = 4 · cos(u)^3 - 3 · cos(u), con u = x`
 
 ## contract_trig_triple_angle_sine (trig_contract)
 
@@ -3622,8 +3959,8 @@ Result: cos(3 * x)
 - Target: `sin(3*x)`
 - Result: `sin(3 * x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3641,10 +3978,11 @@ Result: sin(3 * x)
 
 ### Web / JSON Steps
 
-1. `Triple Angle Expansion`
+1. `Reescribir ángulo triple`
    - before: `3 · sin(x) - 4 · sin(x)^3`
    - after: `sin(3 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(3u) = 3 · sin(u) - 4 · sin(u)^3, con u = x`
 
 ## contract_trig_triple_angle_tangent (trig_contract)
 
@@ -3652,8 +3990,8 @@ Result: sin(3 * x)
 - Target: `tan(3*x)`
 - Result: `tan(3 * x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -3671,10 +4009,11 @@ Result: tan(3 * x)
 
 ### Web / JSON Steps
 
-1. `Triple Angle Expansion`
+1. `Reescribir ángulo triple`
    - before: `(3 · tan(x) - tan(x)^3)/(1 - 3 · tan(x)^2)`
    - after: `tan(3 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar tan(3u) = (3 · tan(u) - tan(u)^3) / (1 - 3 · tan(u)^2), con u = x`
 
 ## expand_binomial (expand)
 
@@ -3835,10 +4174,10 @@ Result: a * x + b * x + c * x
 
 1. `Expandir la expresión`
    - before: `x · (a + b + c)`
-   - after: `x · (a + b) + x · c`
+   - after: `x · (a + b) + c · x`
    - substeps: none
 2. `Expandir la expresión`
-   - before: `x · (a + b) + x · c`
+   - before: `x · (a + b) + c · x`
    - after: `a · x + b · x + c · x`
    - substeps: none
 
@@ -4045,8 +4384,8 @@ Steps (Aggressive Mode):
    After: a / y + b / x
 Result: a / y + b / x
 ℹ️ Requires:
-  • x ≠ 0
   • y ≠ 0
+  • x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4175,8 +4514,8 @@ Steps (Aggressive Mode):
 Result: a / (y * z) + b / (x * z) + c / (x * y)
 ℹ️ Requires:
   • x ≠ 0
-  • y ≠ 0
   • z ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4242,8 +4581,8 @@ Steps (Aggressive Mode):
    After: a / y + b / x + c / (x * y)
 Result: a / y + b / x + c / (x * y)
 ℹ️ Requires:
-  • y ≠ 0
   • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4425,8 +4764,8 @@ Result: sqrt(y) * |y|^(3)
 - Target: `cosh(x)*cosh(y) - sinh(x)*sinh(y)`
 - Result: `cosh(x) * cosh(y) - sinh(x) * sinh(y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -4435,7 +4774,7 @@ Parsed: cosh(x - y)
 Target: cosh(x) * cosh(y) - sinh(x) * sinh(y)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Expand a hyperbolic angle sum/difference identity  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
    Before: cosh(x - y)
    Cambio local: cosh(x - y) -> cosh(x) * cosh(y) - sinh(x) * sinh(y)
    After: cosh(x) * cosh(y) - sinh(x) * sinh(y)
@@ -4444,10 +4783,11 @@ Result: cosh(x) * cosh(y) - sinh(x) * sinh(y)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Angle Sum/Difference Identity`
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
    - before: `cosh(x - y)`
    - after: `cosh(x) · cosh(y) - sinh(x) · sinh(y)`
-   - substeps: none
+   - substeps:
+     1. `Usar cosh(A-B) = cosh(A) · cosh(B) - sinh(A) · sinh(B)`
 
 ## expand_hyperbolic_cosh_difference_to_product_exact (expand)
 
@@ -4455,8 +4795,8 @@ Result: cosh(x) * cosh(y) - sinh(x) * sinh(y)
 - Target: `2*sinh((x+y)/2)*sinh((x-y)/2)`
 - Result: `2 * sinh((x + y) / 2) * sinh((x - y) / 2)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -4465,7 +4805,7 @@ Parsed: cosh(x) - cosh(y)
 Target: 2 * sinh((x + y) / 2) * sinh((x - y) / 2)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Apply a hyperbolic product-to-sum or sum-to-product identity  [Hyperbolic Product-to-Sum Identity]
+1. Contract cosh(u) - cosh(v) into 2·sinh((u + v)/2)·sinh((u - v)/2)  [Hyperbolic Product-to-Sum Identity]
    Before: cosh(x) - cosh(y)
    Cambio local: cosh(x) - cosh(y) -> 2 * sinh((x + y) / 2) * sinh((x - y) / 2)
    After: 2 * sinh((x + y) / 2) * sinh((x - y) / 2)
@@ -4474,10 +4814,11 @@ Result: 2 * sinh((x + y) / 2) * sinh((x - y) / 2)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Product-to-Sum Identity`
+1. `Aplicar identidad hiperbólica de producto a suma`
    - before: `cosh(x) - cosh(y)`
    - after: `2 · sinh((x + y)/2) · sinh((x - y)/2)`
-   - substeps: none
+   - substeps:
+     1. `Usar cosh(A)-cosh(B) = 2·sinh((A+B)/2)·sinh((A-B)/2)`
 
 ## expand_hyperbolic_cosh_sum (expand)
 
@@ -4485,8 +4826,8 @@ Result: 2 * sinh((x + y) / 2) * sinh((x - y) / 2)
 - Target: `cosh(x)*cosh(y) + sinh(x)*sinh(y)`
 - Result: `sinh(x) * sinh(y) + cosh(x) * cosh(y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -4495,7 +4836,7 @@ Parsed: cosh(x + y)
 Target: sinh(x) * sinh(y) + cosh(x) * cosh(y)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Expand a hyperbolic angle sum/difference identity  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
    Before: cosh(x + y)
    Cambio local: cosh(x + y) -> sinh(x) * sinh(y) + cosh(x) * cosh(y)
    After: sinh(x) * sinh(y) + cosh(x) * cosh(y)
@@ -4504,10 +4845,11 @@ Result: sinh(x) * sinh(y) + cosh(x) * cosh(y)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Angle Sum/Difference Identity`
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
    - before: `cosh(x + y)`
    - after: `sinh(x) · sinh(y) + cosh(x) · cosh(y)`
-   - substeps: none
+   - substeps:
+     1. `Usar cosh(A+B) = cosh(A) · cosh(B) + sinh(A) · sinh(B)`
 
 ## expand_hyperbolic_cosh_sum_to_product_exact (expand)
 
@@ -4515,8 +4857,8 @@ Result: sinh(x) * sinh(y) + cosh(x) * cosh(y)
 - Target: `2*cosh((x+y)/2)*cosh((x-y)/2)`
 - Result: `2 * cosh((x + y) / 2) * cosh((x - y) / 2)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -4525,7 +4867,7 @@ Parsed: cosh(x) + cosh(y)
 Target: 2 * cosh((x + y) / 2) * cosh((x - y) / 2)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Apply a hyperbolic product-to-sum or sum-to-product identity  [Hyperbolic Product-to-Sum Identity]
+1. Contract cosh(u) + cosh(v) into 2·cosh((u + v)/2)·cosh((u - v)/2)  [Hyperbolic Product-to-Sum Identity]
    Before: cosh(x) + cosh(y)
    Cambio local: cosh(x) + cosh(y) -> 2 * cosh((x + y) / 2) * cosh((x - y) / 2)
    After: 2 * cosh((x + y) / 2) * cosh((x - y) / 2)
@@ -4534,10 +4876,11 @@ Result: 2 * cosh((x + y) / 2) * cosh((x - y) / 2)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Product-to-Sum Identity`
+1. `Aplicar identidad hiperbólica de producto a suma`
    - before: `cosh(x) + cosh(y)`
    - after: `2 · cosh((x + y)/2) · cosh((x - y)/2)`
-   - substeps: none
+   - substeps:
+     1. `Usar cosh(A)+cosh(B) = 2·cosh((A+B)/2)·cosh((A-B)/2)`
 
 ## expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial (expand)
 
@@ -4545,8 +4888,8 @@ Result: 2 * cosh((x + y) / 2) * cosh((x - y) / 2)
 - Target: `4*cosh(x)^3-4*cosh(x)`
 - Result: `4 * cosh(x)^3 - 4 * cosh(x)`
 - Web step count: `2`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -4568,14 +4911,16 @@ Result: 4 * cosh(x)^(3) - 4 * cosh(x)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Product-to-Sum Identity`
+1. `Aplicar identidad hiperbólica de producto a suma`
    - before: `2 · sinh(x) · sinh(2 · x)`
    - after: `cosh(3 · x) - cosh(x)`
-   - substeps: none
-2. `Hyperbolic Triple-Angle Identity`
+   - substeps:
+     1. `Usar 2·sinh(A)·sinh(B) = cosh(A+B) - cosh(A-B)`
+2. `Aplicar identidad hiperbólica de ángulo triple`
    - before: `cosh(3 · x) - cosh(x)`
    - after: `4 · cosh(x)^3 - 4 · cosh(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar cosh(3·x) = 4·cosh(x)^3 - 3·cosh(x)`
 
 ## expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough (expand)
 
@@ -4583,8 +4928,8 @@ Result: 4 * cosh(x)^(3) - 4 * cosh(x)
 - Target: `4*cosh(x)^3-4*cosh(x)+a`
 - Result: `-4 * cosh(x) + 4 * cosh(x)^3 + a`
 - Web step count: `2`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -4606,23 +4951,25 @@ Result: -4 * cosh(x) + 4 * cosh(x)^(3) + a
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Product-to-Sum Identity`
+1. `Aplicar identidad hiperbólica de producto a suma`
    - before: `2 · sinh(x) · sinh(2 · x) + a`
    - after: `cosh(3 · x) - cosh(x) + a`
-   - substeps: none
-2. `Hyperbolic Triple-Angle Identity`
+   - substeps:
+     1. `Usar 2·sinh(A)·sinh(B) = cosh(A+B) - cosh(A-B)`
+2. `Aplicar identidad hiperbólica de ángulo triple`
    - before: `cosh(3 · x) - cosh(x) + a`
    - after: `4 · cosh(x)^3 - 4 · cosh(x) + a`
-   - substeps: none
+   - substeps:
+     1. `Usar cosh(3·x) = 4·cosh(x)^3 - 3·cosh(x)`
 
 ## expand_hyperbolic_product_to_sum_to_sinh_cubic_polynomial (expand)
 
 - Source: `2*sinh(2*x)*cosh(x)`
 - Target: `4*sinh(x)+4*sinh(x)^3`
 - Result: `4 * sinh(x) + 4 * sinh(x)^3`
-- Web step count: `2`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -4631,27 +4978,20 @@ Parsed: 2 * sinh(2 * x) * cosh(x)
 Target: 4 * sinh(x) + 4 * sinh(x)^3
 Strategy: expand
 Steps (Aggressive Mode):
-1. Apply a hyperbolic product-to-sum or sum-to-product identity  [Hyperbolic Product-to-Sum Identity]
+1. Expand 2·sinh(u)·cosh(v) as sinh(u + v) + sinh(u - v)  [Hyperbolic Product-to-Sum Identity]
    Before: 2 * sinh(2 * x) * cosh(x)
-   Cambio local: 2 * sinh(2 * x) * cosh(x) -> sinh(x) + sinh(3 * x)
-   After: sinh(x) + sinh(3 * x)
-2. Combine sinh(u) ± sinh(3u) using the hyperbolic triple-angle identity  [Hyperbolic Triple-Angle Identity]
-   Before: sinh(x) + sinh(3 * x)
-   Cambio local: sinh(x) + sinh(3 * x) -> 4 * sinh(x) + 4 * sinh(x)^(3)
+   Cambio local: 2 * sinh(2 * x) * cosh(x) -> 4 * sinh(x) + 4 * sinh(x)^(3)
    After: 4 * sinh(x) + 4 * sinh(x)^3
 Result: 4 * sinh(x) + 4 * sinh(x)^(3)
 ```
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Product-to-Sum Identity`
+1. `Aplicar identidad hiperbólica de producto a suma`
    - before: `2 · sinh(2 · x) · cosh(x)`
-   - after: `sinh(x) + sinh(3 · x)`
-   - substeps: none
-2. `Hyperbolic Triple-Angle Identity`
-   - before: `sinh(x) + sinh(3 · x)`
    - after: `4 · sinh(x) + 4 · sinh(x)^3`
-   - substeps: none
+   - substeps:
+     1. `Usar 2·sinh(A)·cosh(B) = sinh(A+B) + sinh(A-B)`
 
 ## expand_hyperbolic_sinh_difference (expand)
 
@@ -4659,8 +4999,8 @@ Result: 4 * sinh(x) + 4 * sinh(x)^(3)
 - Target: `sinh(x)*cosh(y) - cosh(x)*sinh(y)`
 - Result: `sinh(x) * cosh(y) - sinh(y) * cosh(x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -4669,7 +5009,7 @@ Parsed: sinh(x - y)
 Target: sinh(x) * cosh(y) - sinh(y) * cosh(x)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Expand a hyperbolic angle sum/difference identity  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
    Before: sinh(x - y)
    Cambio local: sinh(x - y) -> sinh(x) * cosh(y) - sinh(y) * cosh(x)
    After: sinh(x) * cosh(y) - sinh(y) * cosh(x)
@@ -4678,10 +5018,11 @@ Result: sinh(x) * cosh(y) - sinh(y) * cosh(x)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Angle Sum/Difference Identity`
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
    - before: `sinh(x - y)`
    - after: `sinh(x) · cosh(y) - sinh(y) · cosh(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sinh(A-B) = sinh(A) · cosh(B) - cosh(A) · sinh(B)`
 
 ## expand_hyperbolic_sinh_sum (expand)
 
@@ -4689,8 +5030,8 @@ Result: sinh(x) * cosh(y) - sinh(y) * cosh(x)
 - Target: `sinh(x)*cosh(y) + cosh(x)*sinh(y)`
 - Result: `sinh(x) * cosh(y) + sinh(y) * cosh(x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -4699,7 +5040,7 @@ Parsed: sinh(x + y)
 Target: sinh(x) * cosh(y) + sinh(y) * cosh(x)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Expand a hyperbolic angle sum/difference identity  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
    Before: sinh(x + y)
    Cambio local: sinh(x + y) -> sinh(x) * cosh(y) + sinh(y) * cosh(x)
    After: sinh(x) * cosh(y) + sinh(y) * cosh(x)
@@ -4708,10 +5049,11 @@ Result: sinh(x) * cosh(y) + sinh(y) * cosh(x)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Angle Sum/Difference Identity`
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
    - before: `sinh(x + y)`
    - after: `sinh(x) · cosh(y) + sinh(y) · cosh(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sinh(A+B) = sinh(A) · cosh(B) + cosh(A) · sinh(B)`
 
 ## expand_hyperbolic_sinh_sum_to_product_exact (expand)
 
@@ -4719,8 +5061,8 @@ Result: sinh(x) * cosh(y) + sinh(y) * cosh(x)
 - Target: `2*sinh((x+y)/2)*cosh((x-y)/2)`
 - Result: `2 * sinh((x + y) / 2) * cosh((x - y) / 2)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -4729,7 +5071,7 @@ Parsed: sinh(x) + sinh(y)
 Target: 2 * sinh((x + y) / 2) * cosh((x - y) / 2)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Apply a hyperbolic product-to-sum or sum-to-product identity  [Hyperbolic Product-to-Sum Identity]
+1. Contract sinh(u) ± sinh(v) into 2·cosh((u + v)/2)·sinh((u - v)/2) or 2·sinh((u + v)/2)·cosh((u - v)/2)  [Hyperbolic Product-to-Sum Identity]
    Before: sinh(x) + sinh(y)
    Cambio local: sinh(x) + sinh(y) -> 2 * sinh((x + y) / 2) * cosh((x - y) / 2)
    After: 2 * sinh((x + y) / 2) * cosh((x - y) / 2)
@@ -4738,10 +5080,44 @@ Result: 2 * sinh((x + y) / 2) * cosh((x - y) / 2)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Product-to-Sum Identity`
+1. `Aplicar identidad hiperbólica de producto a suma`
    - before: `sinh(x) + sinh(y)`
    - after: `2 · sinh((x + y)/2) · cosh((x - y)/2)`
-   - substeps: none
+   - substeps:
+     1. `Usar sinh(A)+sinh(B) = 2·sinh((A+B)/2)·cosh((A-B)/2)`
+
+## expand_hyperbolic_tanh_difference (simplify)
+
+- Source: `tanh(x-y)`
+- Target: `(tanh(x)-tanh(y))/(1-tanh(x)*tanh(y))`
+- Result: `(tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: tanh(x - y)
+Target: (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
+Strategy: rewrite hyperbolics
+Steps (Aggressive Mode):
+1. Expand tanh(u ± v) as (tanh(u) ± tanh(v)) / (1 ± tanh(u)·tanh(v))  [Hyperbolic Angle Sum/Difference Identity]
+   Before: tanh(x - y)
+   Cambio local: tanh(x - y) -> (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
+   After: (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
+Result: (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
+ℹ️ Requires:
+  • 1 - tanh(x) * tanh(y) ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
+   - before: `tanh(x - y)`
+   - after: `(tanh(x) - tanh(y))/(1 - tanh(x) · tanh(y))`
+   - substeps:
+     1. `Usar tanh(A-B) = (tanh(A) - tanh(B)) / (1 - tanh(A)·tanh(B))`
 
 ## expand_hyperbolic_tanh_sum (simplify)
 
@@ -4749,8 +5125,8 @@ Result: 2 * sinh((x + y) / 2) * cosh((x - y) / 2)
 - Target: `(tanh(x)+tanh(y))/(1+tanh(x)*tanh(y))`
 - Result: `(tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -4770,10 +5146,11 @@ Result: (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Angle Sum/Difference Identity`
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
    - before: `tanh(x + y)`
    - after: `(tanh(x) + tanh(y))/(tanh(x) · tanh(y) + 1)`
-   - substeps: none
+   - substeps:
+     1. `Usar tanh(A+B) = (tanh(A) + tanh(B)) / (1 + tanh(A)·tanh(B))`
 
 ## expand_hyperbolic_tanh_triple_angle (simplify)
 
@@ -4782,7 +5159,7 @@ Result: (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1)
 - Result: `(tanh(x)^3 + 3 * tanh(x)) / (3 * tanh(x)^2 + 1)`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -4800,7 +5177,7 @@ Result: (tanh(x)^(3) + 3 * tanh(x)) / (3 * tanh(x)^(2) + 1)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Triple-Angle Identity`
+1. `Aplicar identidad hiperbólica de ángulo triple`
    - before: `tanh(3 · x)`
    - after: `(tanh(x)^3 + 3 · tanh(x))/(3 · tanh(x)^2 + 1)`
    - substeps: none
@@ -4827,9 +5204,9 @@ Steps (Aggressive Mode):
    After: log(a, c) * log(b, a)
 Result: log(a, c) * log(b, a)
 ℹ️ Requires:
-  • a > 0
-  • b > 0
   • c > 0
+  • b > 0
+  • a > 0
 ```
 
 ### Web / JSON Steps
@@ -4837,6 +5214,39 @@ Result: log(a, c) * log(b, a)
 1. `Expandir cambio de base`
    - before: `log_b(c)`
    - after: `log_a(c) · log_b(a)`
+   - substeps: none
+
+## expand_log_change_of_base_direct (log_expand)
+
+- Source: `log(2, x)`
+- Target: `ln(x)/ln(2)`
+- Result: `ln(x) / ln(2)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: no web substeps emitted
+
+### CLI
+
+```text
+Parsed: log(2, x)
+Target: ln(x) / ln(2)
+Strategy: expand_log
+Steps (Aggressive Mode):
+1. Rewrite the logarithm using the change-of-base formula  [Change of Base]
+   Before: log(2, x)
+   Cambio local: log(2, x) -> ln(x) / ln(2)
+   After: ln(x) / ln(2)
+Result: ln(x) / ln(2)
+ℹ️ Requires:
+  • x > 0
+  • ln(2) ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Change of Base`
+   - before: `log_2(x)`
+   - after: `ln(x)/ln(2)`
    - substeps: none
 
 ## expand_log_even_power_abs (log_expand)
@@ -4909,9 +5319,9 @@ Result: 3 * log(b, x)
 - Source: `log(b, (x^2*y^3)/(z^2*t))`
 - Target: `2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)`
 - Result: `2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)`
-- Web step count: `1`
+- Web step count: `2`
 - Web substep count: `0`
-- Flags: none
+- Flags: no web substeps emitted
 
 ### CLI
 
@@ -4920,16 +5330,26 @@ Parsed: log(b, x^2 * y^3 / (t * z^2))
 Target: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
 Strategy: expand_log
 Steps (Aggressive Mode):
-1. Expand a logarithm into a sum of logarithms  [expand_log]
+1. Log expansion  [expand_log]
    Before: log(b, x^(2) * y^(3) / (t * z^(2)))
-   Cambio local: log(b, x^(2) * y^(3) / (t * z^(2))) -> 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
+   Cambio local: log(b, x^(2) * y^(3) / (t * z^(2))) -> log(b, x^(2)) + log(b, y^(3)) - (log(b, t) + log(b, z^(2)))
+   After: log(b, x^(2)) + log(b, y^(3)) - (log(b, t) + log(b, z^(2)))
+   ℹ️ Requires: x^2 * y^3 > 0
+   ℹ️ Requires: t * z^2 > 0
+   ℹ️ Requires: x^2 > 0
+   ℹ️ Requires: y^3 > 0
+   ℹ️ Requires: t > 0
+   ℹ️ Requires: z^2 > 0
+2. log(b, x^y) = y * log(b, x)  [Evaluate Logarithms]
+   Before: log(b, x^(2)) + log(b, y^(3)) - (log(b, t) + log(b, z^(2)))
+   Cambio local: log(b, x^(2)) + log(b, y^(3)) - (log(b, t) + log(b, z^(2))) -> 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
    After: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
 Result: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
 ℹ️ Requires:
   • b > 0
-  • t > 0
-  • z > 0
   • x > 0
+  • z > 0
+  • t > 0
   • y > 0
 ```
 
@@ -4937,6 +5357,10 @@ Result: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
 
 1. `Expandir logaritmos`
    - before: `log_b((x^2 · y^3)/(t · z^2))`
+   - after: `log_b(x^2) + log_b(y^3) - (log_b(t) + log_b(z^2))`
+   - substeps: none
+2. `Sacar un exponente fuera del logaritmo`
+   - before: `log_b(x^2) + log_b(y^3) - (log_b(t) + log_b(z^2))`
    - after: `2 · log_b(x) + 3 · log_b(y) - 2 · log_b(z) - log_b(t)`
    - substeps: none
 
@@ -4956,15 +5380,19 @@ Parsed: log(b, x * y / z)
 Target: log(b, x) + log(b, y) - log(b, z)
 Strategy: expand_log
 Steps (Aggressive Mode):
-1. Expand a logarithm into a sum of logarithms  [expand_log]
+1. Log expansion  [expand_log]
    Before: log(b, x * y / z)
    Cambio local: log(b, x * y / z) -> log(b, x) + log(b, y) - log(b, z)
    After: log(b, x) + log(b, y) - log(b, z)
+   ℹ️ Requires: x * y > 0
+   ℹ️ Requires: z > 0
+   ℹ️ Requires: x > 0
+   ℹ️ Requires: y > 0
 Result: log(b, x) + log(b, y) - log(b, z)
 ℹ️ Requires:
+  • x > 0
   • y > 0
   • z > 0
-  • x > 0
   • b > 0
 ```
 
@@ -4997,8 +5425,8 @@ Steps (Aggressive Mode):
    After: 2 * ln(|x|) + 2 * ln(|y|)
 Result: 2 * ln(|x|) + 2 * ln(|y|)
 ℹ️ Requires:
-  • y ≠ 0
   • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5063,9 +5491,9 @@ Steps (Aggressive Mode):
    After: 2 * log(b, x) + 2 * log(b, y)
 Result: 2 * log(b, x) + 2 * log(b, y)
 ℹ️ Requires:
-  • y > 0
-  • x > 0
   • b > 0
+  • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -5180,9 +5608,9 @@ Result: ln(x^(2)) + ln(y^(2)) + a
 - Source: `ln((x^2*y)/(z*t))`
 - Target: `2*ln(abs(x)) + ln(y) - ln(z) - ln(t)`
 - Result: `ln(y) + 2 * ln(|x|) - ln(z) - ln(t)`
-- Web step count: `1`
+- Web step count: `2`
 - Web substep count: `0`
-- Flags: none
+- Flags: no web substeps emitted
 
 ### CLI
 
@@ -5191,22 +5619,36 @@ Parsed: ln(y * x^2 / (t * z))
 Target: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
 Strategy: expand_log
 Steps (Aggressive Mode):
-1. Expand a logarithm into a sum of logarithms  [expand_log]
+1. Log expansion  [expand_log]
    Before: ln(y * x^(2) / (t * z))
-   Cambio local: ln(y * x^(2) / (t * z)) -> ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
+   Cambio local: ln(y * x^(2) / (t * z)) -> ln(y) + ln(x^(2)) - (ln(t) + ln(z))
+   After: ln(y) + ln(x^(2)) - (ln(t) + ln(z))
+   ℹ️ Requires: y * x^2 > 0
+   ℹ️ Requires: t * z > 0
+   ℹ️ Requires: y > 0
+   ℹ️ Requires: x^2 > 0
+   ℹ️ Requires: t > 0
+   ℹ️ Requires: z > 0
+2. log(b, x^y) = y * log(b, x)  [Evaluate Logarithms]
+   Before: ln(y) + ln(x^(2)) - (ln(t) + ln(z))
+   Cambio local: ln(y) + ln(x^(2)) - (ln(t) + ln(z)) -> ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
    After: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
 Result: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
 ℹ️ Requires:
-  • x ≠ 0
+  • y > 0
   • t > 0
   • z > 0
-  • y > 0
+  • x ≠ 0
 ```
 
 ### Web / JSON Steps
 
 1. `Expandir logaritmos`
    - before: `ln((y · x^2)/(t · z))`
+   - after: `ln(y) + ln(x^2) - (ln(t) + ln(z))`
+   - substeps: none
+2. `Sacar un exponente fuera del logaritmo`
+   - before: `ln(y) + ln(x^2) - (ln(t) + ln(z))`
    - after: `ln(y) + 2 · ln(|x|) - ln(z) - ln(t)`
    - substeps: none
 
@@ -5226,10 +5668,12 @@ Parsed: ln(x * y)
 Target: ln(x) + ln(y)
 Strategy: expand_log
 Steps (Aggressive Mode):
-1. Expand a logarithm into a sum of logarithms  [expand_log]
+1. Log expansion  [expand_log]
    Before: ln(x * y)
    Cambio local: ln(x * y) -> ln(x) + ln(y)
    After: ln(x) + ln(y)
+   ℹ️ Requires: x > 0
+   ℹ️ Requires: y > 0
 Result: ln(x) + ln(y)
 ℹ️ Requires:
   • y > 0
@@ -5259,15 +5703,19 @@ Parsed: ln(x * y / z)
 Target: ln(x) + ln(y) - ln(z)
 Strategy: expand_log
 Steps (Aggressive Mode):
-1. Expand a logarithm into a sum of logarithms  [expand_log]
+1. Log expansion  [expand_log]
    Before: ln(x * y / z)
    Cambio local: ln(x * y / z) -> ln(x) + ln(y) - ln(z)
    After: ln(x) + ln(y) - ln(z)
+   ℹ️ Requires: x * y > 0
+   ℹ️ Requires: z > 0
+   ℹ️ Requires: x > 0
+   ℹ️ Requires: y > 0
 Result: ln(x) + ln(y) - ln(z)
 ℹ️ Requires:
-  • z > 0
   • y > 0
   • x > 0
+  • z > 0
 ```
 
 ### Web / JSON Steps
@@ -5275,6 +5723,49 @@ Result: ln(x) + ln(y) - ln(z)
 1. `Expandir logaritmos`
    - before: `ln((x · y)/z)`
    - after: `ln(x) + ln(y) - ln(z)`
+   - substeps: none
+
+## expand_log_product_with_root_cleanup (log_expand)
+
+- Source: `ln(sqrt(x)*y)`
+- Target: `ln(x)/2 + ln(y)`
+- Result: `ln(y) + ln(x) / 2`
+- Web step count: `2`
+- Web substep count: `0`
+- Flags: no web substeps emitted
+
+### CLI
+
+```text
+Parsed: ln(y * sqrt(x))
+Target: ln(y) + ln(x) / 2
+Strategy: expand_log
+Steps (Aggressive Mode):
+1. Log expansion  [expand_log]
+   Before: ln(y * sqrt(x))
+   Cambio local: ln(y * sqrt(x)) -> ln(y) + ln(sqrt(x))
+   After: ln(y) + ln(sqrt(x))
+   ℹ️ Requires: y > 0
+   ℹ️ Requires: sqrt(x) > 0
+2. log(b, x^y) = y * log(b, x)  [Evaluate Logarithms]
+   Before: ln(y) + ln(sqrt(x))
+   Cambio local: ln(y) + ln(sqrt(x)) -> ln(y) + ln(x) / 2
+   After: ln(y) + ln(x) / 2
+Result: ln(y) + ln(x) / 2
+ℹ️ Requires:
+  • x > 0
+  • y > 0
+```
+
+### Web / JSON Steps
+
+1. `Expandir logaritmos`
+   - before: `ln(y · sqrt(x))`
+   - after: `ln(y) + ln(sqrt(x))`
+   - substeps: none
+2. `Sacar un exponente fuera del logaritmo`
+   - before: `ln(y) + ln(sqrt(x))`
+   - after: `ln(y) + ln(x)/2`
    - substeps: none
 
 ## expand_log_quotient (log_expand)
@@ -5293,14 +5784,16 @@ Parsed: ln(x / y)
 Target: ln(x) - ln(y)
 Strategy: expand_log
 Steps (Aggressive Mode):
-1. Expand a logarithm into a sum of logarithms  [expand_log]
+1. Log expansion  [expand_log]
    Before: ln(x / y)
    Cambio local: ln(x / y) -> ln(x) - ln(y)
    After: ln(x) - ln(y)
+   ℹ️ Requires: x > 0
+   ℹ️ Requires: y > 0
 Result: ln(x) - ln(y)
 ℹ️ Requires:
-  • y > 0
   • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -5445,8 +5938,8 @@ Result: sqrt(x) * |x| + a
 - Target: `cosh(5*x)*cosh(x)+sinh(5*x)*sinh(x)`
 - Result: `sinh(x) * sinh(5 * x) + cosh(x) * cosh(5 * x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -5455,7 +5948,7 @@ Parsed: cosh(6 * x)
 Target: sinh(x) * sinh(5 * x) + cosh(x) * cosh(5 * x)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Expand a hyperbolic angle sum/difference identity  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
    Before: cosh(6 * x)
    Cambio local: cosh(6 * x) -> sinh(x) * sinh(5 * x) + cosh(x) * cosh(5 * x)
    After: sinh(x) * sinh(5 * x) + cosh(x) * cosh(5 * x)
@@ -5464,10 +5957,11 @@ Result: sinh(x) * sinh(5 * x) + cosh(x) * cosh(5 * x)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Angle Sum/Difference Identity`
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
    - before: `cosh(6 · x)`
    - after: `sinh(x) · sinh(5 · x) + cosh(x) · cosh(5 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar cosh(5u+u) = cosh(5u) · cosh(u) + sinh(5u) · sinh(u), con u = x`
 
 ## expand_recursive_hyperbolic_sinh_sum (expand)
 
@@ -5475,8 +5969,8 @@ Result: sinh(x) * sinh(5 * x) + cosh(x) * cosh(5 * x)
 - Target: `sinh(5*x)*cosh(x)+cosh(5*x)*sinh(x)`
 - Result: `sinh(x) * cosh(5 * x) + sinh(5 * x) * cosh(x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -5485,7 +5979,7 @@ Parsed: sinh(6 * x)
 Target: sinh(x) * cosh(5 * x) + sinh(5 * x) * cosh(x)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Expand a hyperbolic angle sum/difference identity  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
    Before: sinh(6 * x)
    Cambio local: sinh(6 * x) -> sinh(x) * cosh(5 * x) + sinh(5 * x) * cosh(x)
    After: sinh(x) * cosh(5 * x) + sinh(5 * x) * cosh(x)
@@ -5494,10 +5988,11 @@ Result: sinh(x) * cosh(5 * x) + sinh(5 * x) * cosh(x)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Angle Sum/Difference Identity`
+1. `Aplicar identidad hiperbólica de suma/diferencia de ángulos`
    - before: `sinh(6 · x)`
    - after: `sinh(x) · cosh(5 · x) + sinh(5 · x) · cosh(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sinh(5u+u) = sinh(5u) · cosh(u) + cosh(5u) · sinh(u), con u = x`
 
 ## expand_sixth_power_minus_product (polynomial_product)
 
@@ -5720,14 +6215,14 @@ Result: a^(3) + 3 * a * b^(2) - 3 * b * a^(2) - b^(3)
 
 1. `Expandir binomio`
    - before: `((a - b))^3`
-   - after: `((-b))^3 + 3 · a · ((-b))^2 + 3 · a^2 · -b + a^3`
+   - after: `((-b))^3 + 3 · a · ((-b))^2 + a^3 + 3 · -b · a^2`
    - substeps: none
 2. `Negative Base Power`
-   - before: `((-b))^3 + 3 · a · ((-b))^2 + 3 · a^2 · -b + a^3`
-   - after: `3 · a · ((-b))^2 + 3 · a^2 · -b + a^3 - 1 · b^3`
+   - before: `((-b))^3 + 3 · a · ((-b))^2 + a^3 + 3 · -b · a^2`
+   - after: `3 · a · ((-b))^2 + a^3 + 3 · -b · a^2 - b^3`
    - substeps: none
 3. `Negative Base Power`
-   - before: `3 · a · ((-b))^2 + 3 · a^2 · -b + a^3 - b^3`
+   - before: `3 · a · ((-b))^2 + a^3 + 3 · -b · a^2 - b^3`
    - after: `a^3 - 3 · b · a^2 + 3 · a · b^2 - b^3`
    - substeps: none
 
@@ -5762,10 +6257,10 @@ Result: a^(2) + b^(2) - 2 * a * b
 
 1. `Expandir binomio`
    - before: `((a - b))^2`
-   - after: `((-b))^2 + 2 · a · -b + a^2`
+   - after: `((-b))^2 + a^2 - 2 · a · b`
    - substeps: none
 2. `Negative Base Power`
-   - before: `((-b))^2 + 2 · a · -b + a^2`
+   - before: `((-b))^2 + a^2 - 2 · a · b`
    - after: `a^2 - 2 · a · b + b^2`
    - substeps: none
 
@@ -6007,13 +6502,13 @@ Steps (Aggressive Mode):
    Before: (a + b)^(2) - a^(2) - 2 * a * b
    Cambio local: (a + b)^(2) -> b^(2) + 2 * a * b + a^(2)
    After: b^(2) + 2 * a * b + a^(2) - a^(2) - 2 * a * b
-2. Cancel opposite terms  [Combine Like Terms]
+2. Cancel exact additive pairs  [Cancel Exact Additive Pairs]
    Before: b^(2) + 2 * a * b + a^(2) - a^(2) - 2 * a * b
-   Cambio local: a^(2) - a^(2) -> 0
+   Cambio local: a^(2) + b^(2) + 2 * a * b - a^(2) -> b^(2) + 2 * a * b
    After: b^(2) + 2 * a * b - 2 * a * b
-3. Cancel opposite terms  [Combine Like Terms]
+3. Cancel exact additive pairs  [Cancel Exact Additive Pairs]
    Before: b^(2) + 2 * a * b - 2 * a * b
-   Cambio local: 2 * a * b - 2 * a * b -> 0
+   Cambio local: b^(2) + 2 * a * b - 2 * a * b -> b^(2)
    After: b^2
 Result: b^(2)
 ```
@@ -6022,13 +6517,13 @@ Result: b^(2)
 
 1. `Expandir binomio`
    - before: `((a + b))^2 - a^2 - 2 · a · b`
-   - after: `b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b`
+   - after: `a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b`
    - substeps: none
-2. `Agrupar términos semejantes`
-   - before: `b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b`
+2. `Cancel Exact Additive Pairs`
+   - before: `a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b`
    - after: `b^2 + 2 · a · b - 2 · a · b`
    - substeps: none
-3. `Agrupar términos semejantes`
+3. `Cancel Exact Additive Pairs`
    - before: `b^2 + 2 · a · b - 2 · a · b`
    - after: `b^2`
    - substeps: none
@@ -6069,8 +6564,8 @@ Result: 2 * sin(x) * cos(x)
 - Target: `cos(x)*cos(y)+sin(x)*sin(y)`
 - Result: `sin(x) * sin(y) + cos(x) * cos(y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6088,10 +6583,11 @@ Result: sin(x) * sin(y) + cos(x) * cos(y)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `cos(x - y)`
    - after: `sin(x) · sin(y) + cos(x) · cos(y)`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(A-B) = cos(A) · cos(B) + sin(A) · sin(B)`
 
 ## expand_trig_angle_diff_sine (trig_expand)
 
@@ -6099,8 +6595,8 @@ Result: sin(x) * sin(y) + cos(x) * cos(y)
 - Target: `sin(x)*cos(y)-cos(x)*sin(y)`
 - Result: `sin(x) * cos(y) - sin(y) * cos(x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6118,10 +6614,11 @@ Result: sin(x) * cos(y) - sin(y) * cos(x)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `sin(x - y)`
    - after: `sin(x) · cos(y) - sin(y) · cos(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(A-B) = sin(A) · cos(B) - cos(A) · sin(B)`
 
 ## expand_trig_angle_sum_cosine (trig_expand)
 
@@ -6129,8 +6626,8 @@ Result: sin(x) * cos(y) - sin(y) * cos(x)
 - Target: `cos(x)*cos(y)-sin(x)*sin(y)`
 - Result: `cos(x) * cos(y) - sin(x) * sin(y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6148,10 +6645,11 @@ Result: cos(x) * cos(y) - sin(x) * sin(y)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `cos(x + y)`
    - after: `cos(x) · cos(y) - sin(x) · sin(y)`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(A+B) = cos(A) · cos(B) - sin(A) · sin(B)`
 
 ## expand_trig_angle_sum_sine (trig_expand)
 
@@ -6159,8 +6657,8 @@ Result: cos(x) * cos(y) - sin(x) * sin(y)
 - Target: `sin(x)*cos(y)+cos(x)*sin(y)`
 - Result: `sin(x) * cos(y) + sin(y) * cos(x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6178,9 +6676,40 @@ Result: sin(x) * cos(y) + sin(y) * cos(x)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `sin(x + y)`
    - after: `sin(x) · cos(y) + sin(y) · cos(x)`
+   - substeps:
+     1. `Usar sin(A+B) = sin(A) · cos(B) + cos(A) · sin(B)`
+
+## expand_trig_cofunction_sine_minus (trig_expand)
+
+- Source: `sin(pi/2 - x)`
+- Target: `cos(x)`
+- Result: `cos(x)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sin(pi / 2 - x)
+Target: cos(x)
+Strategy: expand trig
+Steps (Aggressive Mode):
+1. Apply a sine/cosine cofunction identity  [Cofunction Identity]
+   Before: sin(pi / 2 - x)
+   Cambio local: sin(pi / 2 - x) -> cos(x)
+   After: cos(x)
+Result: cos(x)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar identidad de cofunción`
+   - before: `sin(pi/2 - x)`
+   - after: `cos(x)`
    - substeps: none
 
 ## expand_trig_cosine_eighteenth_power_reduction (trig_expand)
@@ -6189,8 +6718,8 @@ Result: sin(x) * cos(y) + sin(y) * cos(x)
 - Target: `(24310+43758*cos(2*x)+31824*cos(4*x)+18564*cos(6*x)+8568*cos(8*x)+3060*cos(10*x)+816*cos(12*x)+153*cos(14*x)+18*cos(16*x)+cos(18*x))/131072`
 - Result: `(cos(18 * x) + 18 * cos(16 * x) + 153 * cos(14 * x) + 816 * cos(12 * x) + 3060 * cos(10 * x) + 8568 * cos(8 * x) + 18564 * cos(6 * x) + 31824 * cos(4 * x) + 43758 * cos(2 * x) + 24310) / 131072`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6211,7 +6740,8 @@ Result: (cos(18 * x) + 18 * cos(16 * x) + 153 * cos(14 * x) + 816 * cos(12 * x) 
 1. `Aplicar reducción de potencias`
    - before: `cos(x)^18`
    - after: `(cos(18 · x) + 18 · cos(16 · x) + 153 · cos(14 · x) + 816 · cos(12 · x) + 3060 · cos(10 · x) + 8568 · cos(8 · x) + 18564 · cos(6 · x) + 31824 · cos(4 · x) + 43758 · cos(2 · x) + 24310)/131072`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_cosine_eighth_power_reduction (trig_expand)
 
@@ -6219,8 +6749,8 @@ Result: (cos(18 * x) + 18 * cos(16 * x) + 153 * cos(14 * x) + 816 * cos(12 * x) 
 - Target: `(35+56*cos(2*x)+28*cos(4*x)+8*cos(6*x)+cos(8*x))/128`
 - Result: `(cos(8 * x) + 8 * cos(6 * x) + 28 * cos(4 * x) + 56 * cos(2 * x) + 35) / 128`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6241,7 +6771,8 @@ Result: (cos(8 * x) + 8 * cos(6 * x) + 28 * cos(4 * x) + 56 * cos(2 * x) + 35) /
 1. `Aplicar reducción de potencias`
    - before: `cos(x)^8`
    - after: `(cos(8 · x) + 8 · cos(6 · x) + 28 · cos(4 · x) + 56 · cos(2 · x) + 35)/128`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_cosine_fourteenth_power_reduction (trig_expand)
 
@@ -6249,8 +6780,8 @@ Result: (cos(8 * x) + 8 * cos(6 * x) + 28 * cos(4 * x) + 56 * cos(2 * x) + 35) /
 - Target: `(1716+3003*cos(2*x)+2002*cos(4*x)+1001*cos(6*x)+364*cos(8*x)+91*cos(10*x)+14*cos(12*x)+cos(14*x))/8192`
 - Result: `(cos(14 * x) + 14 * cos(12 * x) + 91 * cos(10 * x) + 364 * cos(8 * x) + 1001 * cos(6 * x) + 2002 * cos(4 * x) + 3003 * cos(2 * x) + 1716) / 8192`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6271,7 +6802,8 @@ Result: (cos(14 * x) + 14 * cos(12 * x) + 91 * cos(10 * x) + 364 * cos(8 * x) + 
 1. `Aplicar reducción de potencias`
    - before: `cos(x)^14`
    - after: `(cos(14 · x) + 14 · cos(12 · x) + 91 · cos(10 · x) + 364 · cos(8 · x) + 1001 · cos(6 · x) + 2002 · cos(4 · x) + 3003 · cos(2 · x) + 1716)/8192`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_cosine_fourth_power_reduction (simplify)
 
@@ -6279,8 +6811,8 @@ Result: (cos(14 * x) + 14 * cos(12 * x) + 91 * cos(10 * x) + 364 * cos(8 * x) + 
 - Target: `(3+4*cos(2*x)+cos(4*x))/8`
 - Result: `(cos(4 * x) + 4 * cos(2 * x) + 3) / 8`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6301,7 +6833,8 @@ Result: (cos(4 * x) + 4 * cos(2 * x) + 3) / 8
 1. `Aplicar reducción de potencias`
    - before: `cos(x)^4`
    - after: `(cos(4 · x) + 4 · cos(2 · x) + 3)/8`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_cosine_sixteenth_power_reduction (trig_expand)
 
@@ -6309,8 +6842,8 @@ Result: (cos(4 * x) + 4 * cos(2 * x) + 3) / 8
 - Target: `(6435+11440*cos(2*x)+8008*cos(4*x)+4368*cos(6*x)+1820*cos(8*x)+560*cos(10*x)+120*cos(12*x)+16*cos(14*x)+cos(16*x))/32768`
 - Result: `(cos(16 * x) + 16 * cos(14 * x) + 120 * cos(12 * x) + 560 * cos(10 * x) + 1820 * cos(8 * x) + 4368 * cos(6 * x) + 8008 * cos(4 * x) + 11440 * cos(2 * x) + 6435) / 32768`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6331,7 +6864,8 @@ Result: (cos(16 * x) + 16 * cos(14 * x) + 120 * cos(12 * x) + 560 * cos(10 * x) 
 1. `Aplicar reducción de potencias`
    - before: `cos(x)^16`
    - after: `(cos(16 · x) + 16 · cos(14 · x) + 120 · cos(12 · x) + 560 · cos(10 · x) + 1820 · cos(8 · x) + 4368 · cos(6 · x) + 8008 · cos(4 · x) + 11440 · cos(2 · x) + 6435)/32768`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_cosine_sixth_power_reduction (trig_expand)
 
@@ -6339,8 +6873,8 @@ Result: (cos(16 * x) + 16 * cos(14 * x) + 120 * cos(12 * x) + 560 * cos(10 * x) 
 - Target: `(10+15*cos(2*x)+6*cos(4*x)+cos(6*x))/32`
 - Result: `(cos(6 * x) + 6 * cos(4 * x) + 15 * cos(2 * x) + 10) / 32`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6361,7 +6895,8 @@ Result: (cos(6 * x) + 6 * cos(4 * x) + 15 * cos(2 * x) + 10) / 32
 1. `Aplicar reducción de potencias`
    - before: `cos(x)^6`
    - after: `(cos(6 · x) + 6 · cos(4 · x) + 15 · cos(2 · x) + 10)/32`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_cosine_tenth_power_reduction (trig_expand)
 
@@ -6369,8 +6904,8 @@ Result: (cos(6 * x) + 6 * cos(4 * x) + 15 * cos(2 * x) + 10) / 32
 - Target: `(126+210*cos(2*x)+120*cos(4*x)+45*cos(6*x)+10*cos(8*x)+cos(10*x))/512`
 - Result: `(cos(10 * x) + 10 * cos(8 * x) + 45 * cos(6 * x) + 120 * cos(4 * x) + 210 * cos(2 * x) + 126) / 512`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6391,7 +6926,8 @@ Result: (cos(10 * x) + 10 * cos(8 * x) + 45 * cos(6 * x) + 120 * cos(4 * x) + 21
 1. `Aplicar reducción de potencias`
    - before: `cos(x)^10`
    - after: `(cos(10 · x) + 10 · cos(8 · x) + 45 · cos(6 · x) + 120 · cos(4 · x) + 210 · cos(2 · x) + 126)/512`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_cosine_twelfth_power_reduction (trig_expand)
 
@@ -6399,8 +6935,8 @@ Result: (cos(10 * x) + 10 * cos(8 * x) + 45 * cos(6 * x) + 120 * cos(4 * x) + 21
 - Target: `(462+792*cos(2*x)+495*cos(4*x)+220*cos(6*x)+66*cos(8*x)+12*cos(10*x)+cos(12*x))/2048`
 - Result: `(cos(12 * x) + 12 * cos(10 * x) + 66 * cos(8 * x) + 220 * cos(6 * x) + 495 * cos(4 * x) + 792 * cos(2 * x) + 462) / 2048`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6421,7 +6957,8 @@ Result: (cos(12 * x) + 12 * cos(10 * x) + 66 * cos(8 * x) + 220 * cos(6 * x) + 4
 1. `Aplicar reducción de potencias`
    - before: `cos(x)^12`
    - after: `(cos(12 · x) + 12 · cos(10 · x) + 66 · cos(8 · x) + 220 · cos(6 · x) + 495 · cos(4 · x) + 792 · cos(2 · x) + 462)/2048`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_cosine_twentieth_power_reduction (trig_expand)
 
@@ -6429,8 +6966,8 @@ Result: (cos(12 * x) + 12 * cos(10 * x) + 66 * cos(8 * x) + 220 * cos(6 * x) + 4
 - Target: `(92378+167960*cos(2*x)+125970*cos(4*x)+77520*cos(6*x)+38760*cos(8*x)+15504*cos(10*x)+4845*cos(12*x)+1140*cos(14*x)+190*cos(16*x)+20*cos(18*x)+cos(20*x))/524288`
 - Result: `(cos(20 * x) + 20 * cos(18 * x) + 190 * cos(16 * x) + 1140 * cos(14 * x) + 4845 * cos(12 * x) + 15504 * cos(10 * x) + 38760 * cos(8 * x) + 77520 * cos(6 * x) + 125970 * cos(4 * x) + 167960 * cos(2 * x) + 92378) / 524288`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6451,7 +6988,8 @@ Result: (cos(20 * x) + 20 * cos(18 * x) + 190 * cos(16 * x) + 1140 * cos(14 * x)
 1. `Aplicar reducción de potencias`
    - before: `cos(x)^20`
    - after: `(cos(20 · x) + 20 · cos(18 · x) + 190 · cos(16 · x) + 1140 · cos(14 · x) + 4845 · cos(12 · x) + 15504 · cos(10 · x) + 38760 · cos(8 · x) + 77520 · cos(6 · x) + 125970 · cos(4 · x) + 167960 · cos(2 · x) + 92378)/524288`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_cosine_twenty_fourth_power_reduction (trig_expand)
 
@@ -6459,8 +6997,8 @@ Result: (cos(20 * x) + 20 * cos(18 * x) + 190 * cos(16 * x) + 1140 * cos(14 * x)
 - Target: `(1352078+2496144*cos(2*x)+1961256*cos(4*x)+1307504*cos(6*x)+735471*cos(8*x)+346104*cos(10*x)+134596*cos(12*x)+42504*cos(14*x)+10626*cos(16*x)+2024*cos(18*x)+276*cos(20*x)+24*cos(22*x)+cos(24*x))/8388608`
 - Result: `(cos(24 * x) + 24 * cos(22 * x) + 276 * cos(20 * x) + 2024 * cos(18 * x) + 10626 * cos(16 * x) + 42504 * cos(14 * x) + 134596 * cos(12 * x) + 346104 * cos(10 * x) + 735471 * cos(8 * x) + 1307504 * cos(6 * x) + 1961256 * cos(4 * x) + 2496144 * cos(2 * x) + 1352078) / 8388608`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6481,7 +7019,8 @@ Result: (cos(24 * x) + 24 * cos(22 * x) + 276 * cos(20 * x) + 2024 * cos(18 * x)
 1. `Aplicar reducción de potencias`
    - before: `cos(x)^24`
    - after: `(cos(24 · x) + 24 · cos(22 · x) + 276 · cos(20 · x) + 2024 · cos(18 · x) + 10626 · cos(16 · x) + 42504 · cos(14 · x) + 134596 · cos(12 · x) + 346104 · cos(10 · x) + 735471 · cos(8 · x) + 1307504 · cos(6 · x) + 1961256 · cos(4 · x) + 2496144 · cos(2 · x) + 1352078)/8388608`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_cosine_twenty_second_power_reduction (trig_expand)
 
@@ -6489,8 +7028,8 @@ Result: (cos(24 * x) + 24 * cos(22 * x) + 276 * cos(20 * x) + 2024 * cos(18 * x)
 - Target: `(352716+646646*cos(2*x)+497420*cos(4*x)+319770*cos(6*x)+170544*cos(8*x)+74613*cos(10*x)+26334*cos(12*x)+7315*cos(14*x)+1540*cos(16*x)+231*cos(18*x)+22*cos(20*x)+cos(22*x))/2097152`
 - Result: `(cos(22 * x) + 22 * cos(20 * x) + 231 * cos(18 * x) + 1540 * cos(16 * x) + 7315 * cos(14 * x) + 26334 * cos(12 * x) + 74613 * cos(10 * x) + 170544 * cos(8 * x) + 319770 * cos(6 * x) + 497420 * cos(4 * x) + 646646 * cos(2 * x) + 352716) / 2097152`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6511,7 +7050,8 @@ Result: (cos(22 * x) + 22 * cos(20 * x) + 231 * cos(18 * x) + 1540 * cos(16 * x)
 1. `Aplicar reducción de potencias`
    - before: `cos(x)^22`
    - after: `(cos(22 · x) + 22 · cos(20 · x) + 231 · cos(18 · x) + 1540 · cos(16 · x) + 7315 · cos(14 · x) + 26334 · cos(12 · x) + 74613 · cos(10 · x) + 170544 · cos(8 · x) + 319770 · cos(6 · x) + 497420 · cos(4 · x) + 646646 · cos(2 · x) + 352716)/2097152`
-   - substeps: none
+   - substeps:
+     1. `Usar cos²(u) = (1 + cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_csc_squared (trig_expand)
 
@@ -6823,8 +7363,8 @@ Result: -2 * sin(x) * cos(x)
 - Target: `sqrt(3)*sin(x)+cos(x)`
 - Result: `cos(x) + sin(x) * sqrt(3)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6845,7 +7385,8 @@ Result: cos(x) + sin(x) * sqrt(3)
 1. `Aplicar identidad de desfase`
    - before: `2 · sin(pi/6 + x)`
    - after: `cos(x) + sin(x) · sqrt(3)`
-   - substeps: none
+   - substeps:
+     1. `Expandir R·sin(u + φ)`
 
 ## expand_trig_phase_shift_exact_third_scaled_shifted_sine_to_sum (trig_expand)
 
@@ -6853,8 +7394,8 @@ Result: cos(x) + sin(x) * sqrt(3)
 - Target: `2*sin(x)+2*sqrt(3)*cos(x)`
 - Result: `2 * sin(x) + 2 * cos(x) * sqrt(3)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6875,7 +7416,8 @@ Result: 2 * sin(x) + 2 * cos(x) * sqrt(3)
 1. `Aplicar identidad de desfase`
    - before: `4 · sin(pi/3 + x)`
    - after: `2 · sin(x) + 2 · cos(x) · sqrt(3)`
-   - substeps: none
+   - substeps:
+     1. `Expandir R·sin(u + φ)`
 
 ## expand_trig_phase_shift_general_shifted_sine_to_sum (trig_expand)
 
@@ -6883,8 +7425,8 @@ Result: 2 * sin(x) + 2 * cos(x) * sqrt(3)
 - Target: `3*sin(x)+4*cos(x)`
 - Result: `3 * sin(x) + 4 * cos(x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6905,7 +7447,8 @@ Result: 3 * sin(x) + 4 * cos(x)
 1. `Aplicar identidad de desfase`
    - before: `5 · sin(arctan(4/3) + x)`
    - after: `3 · sin(x) + 4 · cos(x)`
-   - substeps: none
+   - substeps:
+     1. `Expandir R·sin(u + φ)`
 
 ## expand_trig_phase_shift_general_shifted_sine_to_sum_with_passthrough (trig_expand)
 
@@ -6913,8 +7456,8 @@ Result: 3 * sin(x) + 4 * cos(x)
 - Target: `3*sin(x)+4*cos(x)+a`
 - Result: `3 * sin(x) + 4 * cos(x) + a`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6935,35 +7478,45 @@ Result: 3 * sin(x) + 4 * cos(x) + a
 1. `Aplicar identidad de desfase`
    - before: `5 · sin(arctan(4/3) + x) + a`
    - after: `3 · sin(x) + 4 · cos(x) + a`
-   - substeps: none
+   - substeps:
+     1. `Aplicar la identidad de desfase al bloque que cambia`
 
 ## expand_trig_phase_shift_pair_sum_to_shifted_sine_pair (trig_expand)
 
 - Source: `sin(x)+cos(x)+sin(y)+cos(y)`
 - Target: `sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)`
 - Result: `sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web step count: `2`
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
 ```text
 Parsed: sin(x) + sin(y) + cos(x) + cos(y)
 Target: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
-Strategy: simplify
+Strategy: contract trig
 Steps (Aggressive Mode):
-1. Simplify the expression  [Simplify]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
    Before: sin(x) + sin(y) + cos(x) + cos(y)
-   Cambio local: sin(x) + sin(y) + cos(x) + cos(y) -> sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
+   Cambio local: sin(x) + sin(y) + cos(x) + cos(y) -> sin(y) + cos(y) + sqrt(2) * sin(pi / 4 + x)
+   After: sin(y) + cos(y) + sqrt(2) * sin(pi / 4 + x)
+2. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+   Before: sin(y) + cos(y) + sqrt(2) * sin(pi / 4 + x)
+   Cambio local: sin(y) + cos(y) + sqrt(2) * sin(pi / 4 + x) -> sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
    After: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
 Result: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
 ```
 
 ### Web / JSON Steps
 
-1. `Simplify`
+1. `Aplicar identidad de desfase`
    - before: `sin(x) + sin(y) + cos(x) + cos(y)`
+   - after: `sin(y) + cos(y) + sin(pi/4 + x) · sqrt(2)`
+   - substeps:
+     1. `Aplicar la identidad de desfase al bloque que cambia`
+2. `Aplicar identidad de desfase`
+   - before: `sin(y) + cos(y) + sin(pi/4 + x) · sqrt(2)`
    - after: `sin(pi/4 + x) · sqrt(2) + sin(pi/4 + y) · sqrt(2)`
    - substeps: none
 
@@ -6973,8 +7526,8 @@ Result: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
 - Target: `2*sin(x)+2*cos(x)`
 - Result: `2 * sin(x) + 2 * cos(x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -6995,7 +7548,8 @@ Result: 2 * sin(x) + 2 * cos(x)
 1. `Aplicar identidad de desfase`
    - before: `2 · sin(pi/4 + x) · sqrt(2)`
    - after: `2 · sin(x) + 2 · cos(x)`
-   - substeps: none
+   - substeps:
+     1. `Expandir R·sin(u + φ)`
 
 ## expand_trig_phase_shift_scaled_shifted_sine_to_sum_with_passthrough (trig_expand)
 
@@ -7003,8 +7557,8 @@ Result: 2 * sin(x) + 2 * cos(x)
 - Target: `2*sin(x)+2*cos(x)+a`
 - Result: `2 * sin(x) + 2 * cos(x) + a`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7025,7 +7579,8 @@ Result: 2 * sin(x) + 2 * cos(x) + a
 1. `Aplicar identidad de desfase`
    - before: `2 · sin(pi/4 + x) · sqrt(2) + a`
    - after: `2 · sin(x) + 2 · cos(x) + a`
-   - substeps: none
+   - substeps:
+     1. `Aplicar la identidad de desfase al bloque que cambia`
 
 ## expand_trig_phase_shift_shifted_cosine_to_sum (trig_expand)
 
@@ -7033,8 +7588,8 @@ Result: 2 * sin(x) + 2 * cos(x) + a
 - Target: `sin(x)+cos(x)`
 - Result: `sin(x) + cos(x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7055,37 +7610,48 @@ Result: sin(x) + cos(x)
 1. `Aplicar identidad de desfase`
    - before: `cos(x - pi/4) · sqrt(2)`
    - after: `sin(x) + cos(x)`
-   - substeps: none
+   - substeps:
+     1. `Expandir R·sin(u + φ)`
 
 ## expand_trig_phase_shift_shifted_sine_pair_to_sum_pair (trig_expand)
 
 - Source: `sqrt(2)*sin(x+pi/4)+sqrt(2)*sin(y+pi/4)`
 - Target: `sin(x)+cos(x)+sin(y)+cos(y)`
 - Result: `sin(x) + sin(y) + cos(x) + cos(y)`
-- Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web step count: `2`
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
 ```text
 Parsed: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
 Target: sin(x) + sin(y) + cos(x) + cos(y)
-Strategy: simplify
+Strategy: expand trig
 Steps (Aggressive Mode):
-1. Factor out common multiplicative factor from sum  [Extract Common Multiplicative Factor]
-   Before: sin(x + pi/4) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
-   Cambio local: sin(x + pi/4) * sqrt(2) + sin(y + pi/4) * sqrt(2) -> sin(x) + sin(y) + cos(x) + cos(y)
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+   Before: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
+   Cambio local: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2) -> sin(x) + cos(x) + sin(pi / 4 + y) * sqrt(2)
+   After: sin(x) + cos(x) + sin(pi / 4 + y) * sqrt(2)
+2. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+   Before: sin(x) + cos(x) + sin(pi / 4 + y) * sqrt(2)
+   Cambio local: sin(x) + cos(x) + sin(pi / 4 + y) * sqrt(2) -> sin(x) + sin(y) + cos(x) + cos(y)
    After: sin(x) + sin(y) + cos(x) + cos(y)
 Result: sin(x) + sin(y) + cos(x) + cos(y)
 ```
 
 ### Web / JSON Steps
 
-1. `Extract Common Multiplicative Factor`
-   - before: `sin(x + pi/4) · sqrt(2) + sin(pi/4 + y) · sqrt(2)`
+1. `Aplicar identidad de desfase`
+   - before: `sin(pi/4 + x) · sqrt(2) + sin(pi/4 + y) · sqrt(2)`
+   - after: `sin(x) + cos(x) + sin(pi/4 + y) · sqrt(2)`
+   - substeps:
+     1. `Aplicar la identidad de desfase al bloque que cambia`
+2. `Aplicar identidad de desfase`
+   - before: `sin(x) + cos(x) + sin(pi/4 + y) · sqrt(2)`
    - after: `sin(x) + sin(y) + cos(x) + cos(y)`
-   - substeps: none
+   - substeps:
+     1. `Aplicar la identidad de desfase al bloque que cambia`
 
 ## expand_trig_phase_shift_shifted_sine_to_sum (trig_expand)
 
@@ -7093,8 +7659,8 @@ Result: sin(x) + sin(y) + cos(x) + cos(y)
 - Target: `sin(x)+cos(x)`
 - Result: `sin(x) + cos(x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7115,7 +7681,8 @@ Result: sin(x) + cos(x)
 1. `Aplicar identidad de desfase`
    - before: `sin(pi/4 + x) · sqrt(2)`
    - after: `sin(x) + cos(x)`
-   - substeps: none
+   - substeps:
+     1. `Expandir R·sin(u + φ)`
 
 ## expand_trig_product_to_sum_cos_cos (trig_expand)
 
@@ -7123,8 +7690,8 @@ Result: sin(x) + cos(x)
 - Target: `cos(x+y) + cos(x-y)`
 - Result: `cos(x + y) + cos(x - y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7145,7 +7712,8 @@ Result: cos(x + y) + cos(x - y)
 1. `Aplicar producto a suma`
    - before: `2 · cos(x) · cos(y)`
    - after: `cos(x + y) + cos(x - y)`
-   - substeps: none
+   - substeps:
+     1. `Usar 2·cos(A)·cos(B) = cos(A+B) + cos(A-B)`
 
 ## expand_trig_product_to_sum_cos_sin (trig_expand)
 
@@ -7153,8 +7721,8 @@ Result: cos(x + y) + cos(x - y)
 - Target: `sin(x+y) - sin(x-y)`
 - Result: `sin(x + y) - sin(x - y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7175,7 +7743,8 @@ Result: sin(x + y) - sin(x - y)
 1. `Aplicar producto a suma`
    - before: `2 · sin(y) · cos(x)`
    - after: `sin(x + y) - sin(x - y)`
-   - substeps: none
+   - substeps:
+     1. `Usar 2·cos(A)·sin(B) = sin(A+B) - sin(A-B)`
 
 ## expand_trig_product_to_sum_sin_cos (trig_expand)
 
@@ -7183,8 +7752,8 @@ Result: sin(x + y) - sin(x - y)
 - Target: `sin(x+y) + sin(x-y)`
 - Result: `sin(x + y) + sin(x - y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7205,7 +7774,8 @@ Result: sin(x + y) + sin(x - y)
 1. `Aplicar producto a suma`
    - before: `2 · sin(x) · cos(y)`
    - after: `sin(x + y) + sin(x - y)`
-   - substeps: none
+   - substeps:
+     1. `Usar 2·sin(A)·cos(B) = sin(A+B) + sin(A-B)`
 
 ## expand_trig_product_to_sum_sin_sin (trig_expand)
 
@@ -7213,8 +7783,8 @@ Result: sin(x + y) + sin(x - y)
 - Target: `cos(x-y) - cos(x+y)`
 - Result: `cos(x - y) - cos(x + y)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7235,7 +7805,8 @@ Result: cos(x - y) - cos(x + y)
 1. `Aplicar producto a suma`
    - before: `2 · sin(x) · sin(y)`
    - after: `cos(x - y) - cos(x + y)`
-   - substeps: none
+   - substeps:
+     1. `Usar 2·sin(A)·sin(B) = cos(A-B) - cos(A+B)`
 
 ## expand_trig_product_to_sum_to_cosine_difference_polynomial (expand)
 
@@ -7243,8 +7814,8 @@ Result: cos(x - y) - cos(x + y)
 - Target: `4*cos(x)-4*cos(x)^3`
 - Result: `4 * cos(x) - 4 * cos(x)^3`
 - Web step count: `2`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -7269,11 +7840,13 @@ Result: 4 * cos(x) - 4 * cos(x)^(3)
 1. `Aplicar producto a suma`
    - before: `2 · sin(x) · sin(2 · x)`
    - after: `cos(x) - cos(3 · x)`
-   - substeps: none
-2. `Triple Angle Expansion`
+   - substeps:
+     1. `Usar 2·sin(A)·sin(B) = cos(A-B) - cos(A+B)`
+2. `Reescribir ángulo triple`
    - before: `cos(x) - cos(3 · x)`
    - after: `4 · cos(x) - 4 · cos(x)^3`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(3u) = 4 · cos(u)^3 - 3 · cos(u), con u = x`
 
 ## expand_trig_product_to_sum_to_cosine_difference_polynomial_with_passthrough (expand)
 
@@ -7281,8 +7854,8 @@ Result: 4 * cos(x) - 4 * cos(x)^(3)
 - Target: `4*cos(x)-4*cos(x)^3+a`
 - Result: `4 * cos(x) - 4 * cos(x)^3 + a`
 - Web step count: `2`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -7307,11 +7880,13 @@ Result: 4 * cos(x) - 4 * cos(x)^(3) + a
 1. `Aplicar producto a suma`
    - before: `2 · sin(x) · sin(2 · x) + a`
    - after: `cos(x) - cos(3 · x) + a`
-   - substeps: none
-2. `Triple Angle Expansion`
+   - substeps:
+     1. `Usar 2·sin(A)·sin(B) = cos(A-B) - cos(A+B)`
+2. `Reescribir ángulo triple`
    - before: `cos(x) - cos(3 · x) + a`
    - after: `4 · cos(x) - 4 · cos(x)^3 + a`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(3u) = 4 · cos(u)^3 - 3 · cos(u), con u = x`
 
 ## expand_trig_product_to_sum_to_cosine_sum_polynomial (expand)
 
@@ -7319,8 +7894,8 @@ Result: 4 * cos(x) - 4 * cos(x)^(3) + a
 - Target: `4*cos(x)^3-2*cos(x)`
 - Result: `4 * cos(x)^3 - 2 * cos(x)`
 - Web step count: `2`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -7345,11 +7920,13 @@ Result: 4 * cos(x)^(3) - 2 * cos(x)
 1. `Aplicar producto a suma`
    - before: `2 · cos(x) · cos(2 · x)`
    - after: `cos(x) + cos(3 · x)`
-   - substeps: none
-2. `Triple Angle Expansion`
+   - substeps:
+     1. `Usar 2·cos(A)·cos(B) = cos(A+B) + cos(A-B)`
+2. `Reescribir ángulo triple`
    - before: `cos(x) + cos(3 · x)`
    - after: `4 · cos(x)^3 - 2 · cos(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(3u) = 4 · cos(u)^3 - 3 · cos(u), con u = x`
 
 ## expand_trig_product_to_sum_to_sine_difference_mixed_polynomial (expand)
 
@@ -7357,8 +7934,8 @@ Result: 4 * cos(x)^(3) - 2 * cos(x)
 - Target: `4*cos(x)^2*sin(x)-2*sin(x)`
 - Result: `4 * sin(x) * cos(x)^2 - 2 * sin(x)`
 - Web step count: `2`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -7383,11 +7960,13 @@ Result: 4 * sin(x) * cos(x)^(2) - 2 * sin(x)
 1. `Aplicar producto a suma`
    - before: `2 · sin(x) · cos(2 · x)`
    - after: `sin(3 · x) - sin(x)`
-   - substeps: none
-2. `Triple Angle Expansion`
+   - substeps:
+     1. `Usar 2·sin(A)·cos(B) = sin(A+B) + sin(A-B)`
+2. `Reescribir ángulo triple`
    - before: `sin(3 · x) - sin(x)`
    - after: `4 · sin(x) · cos(x)^2 - 2 · sin(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(3u) = 3 · sin(u) - 4 · sin(u)^3, con u = x`
 
 ## expand_trig_product_to_sum_to_sine_difference_mixed_polynomial_with_passthrough (expand)
 
@@ -7395,8 +7974,8 @@ Result: 4 * sin(x) * cos(x)^(2) - 2 * sin(x)
 - Target: `4*cos(x)^2*sin(x)-2*sin(x)+a`
 - Result: `-2 * sin(x) + 4 * sin(x) * cos(x)^2 + a`
 - Web step count: `2`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -7421,11 +8000,13 @@ Result: -2 * sin(x) + 4 * sin(x) * cos(x)^(2) + a
 1. `Aplicar producto a suma`
    - before: `2 · sin(x) · cos(2 · x) + a`
    - after: `sin(3 · x) + a - sin(x)`
-   - substeps: none
-2. `Triple Angle Expansion`
+   - substeps:
+     1. `Usar 2·sin(A)·cos(B) = sin(A+B) + sin(A-B)`
+2. `Reescribir ángulo triple`
    - before: `sin(3 · x) + a - sin(x)`
    - after: `4 · sin(x) · cos(x)^2 - 2 · sin(x) + a`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(3u) = 3 · sin(u) - 4 · sin(u)^3, con u = x`
 
 ## expand_trig_quintuple_angle_cosine (trig_expand)
 
@@ -7433,8 +8014,8 @@ Result: -2 * sin(x) + 4 * sin(x) * cos(x)^(2) + a
 - Target: `16*cos(x)^5-20*cos(x)^3+5*cos(x)`
 - Result: `5 * cos(x) + 16 * cos(x)^5 - 20 * cos(x)^3`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7452,10 +8033,11 @@ Result: 5 * cos(x) + 16 * cos(x)^(5) - 20 * cos(x)^(3)
 
 ### Web / JSON Steps
 
-1. `Quintuple Angle Identity`
+1. `Reescribir ángulo quíntuple`
    - before: `cos(5 · x)`
    - after: `5 · cos(x) + 16 · cos(x)^5 - 20 · cos(x)^3`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(5u) = 16 · cos(u)^5 - 20 · cos(u)^3 + 5 · cos(u), con u = x`
 
 ## expand_trig_quintuple_angle_sine (trig_expand)
 
@@ -7463,8 +8045,8 @@ Result: 5 * cos(x) + 16 * cos(x)^(5) - 20 * cos(x)^(3)
 - Target: `5*sin(x)-20*sin(x)^3+16*sin(x)^5`
 - Result: `5 * sin(x) + 16 * sin(x)^5 - 20 * sin(x)^3`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7482,10 +8064,11 @@ Result: 5 * sin(x) + 16 * sin(x)^(5) - 20 * sin(x)^(3)
 
 ### Web / JSON Steps
 
-1. `Quintuple Angle Identity`
+1. `Reescribir ángulo quíntuple`
    - before: `sin(5 · x)`
    - after: `16 · sin(x)^5 + 5 · sin(x) - 20 · sin(x)^3`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(5u) = 5 · sin(u) - 20 · sin(u)^3 + 16 · sin(u)^5, con u = x`
 
 ## expand_trig_recursive_six_cosine (trig_expand)
 
@@ -7493,8 +8076,8 @@ Result: 5 * sin(x) + 16 * sin(x)^(5) - 20 * sin(x)^(3)
 - Target: `cos(5*x)*cos(x)-sin(5*x)*sin(x)`
 - Result: `cos(x) * cos(5 * x) - sin(x) * sin(5 * x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7512,10 +8095,11 @@ Result: cos(x) * cos(5 * x) - sin(x) * sin(5 * x)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `cos(6 · x)`
    - after: `cos(x) · cos(5 · x) - sin(x) · sin(5 · x)`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(5u+u) = cos(5u) · cos(u) - sin(5u) · sin(u), con u = x`
 
 ## expand_trig_recursive_six_sine (trig_expand)
 
@@ -7523,8 +8107,8 @@ Result: cos(x) * cos(5 * x) - sin(x) * sin(5 * x)
 - Target: `sin(5*x)*cos(x)+cos(5*x)*sin(x)`
 - Result: `sin(x) * cos(5 * x) + sin(5 * x) * cos(x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7542,9 +8126,40 @@ Result: sin(x) * cos(5 * x) + sin(5 * x) * cos(x)
 
 ### Web / JSON Steps
 
-1. `Angle Sum/Diff Identity`
+1. `Aplicar suma/diferencia de ángulos`
    - before: `sin(6 · x)`
    - after: `sin(x) · cos(5 · x) + sin(5 · x) · cos(x)`
+   - substeps:
+     1. `Usar sin(5u+u) = sin(5u) · cos(u) + cos(5u) · sin(u), con u = x`
+
+## expand_trig_scaled_half_angle_sine_square_to_shifted_cosine (trig_expand)
+
+- Source: `2*sin(x/2)^2`
+- Target: `1-cos(x)`
+- Result: `1 - cos(x)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: 2 * sin(x / 2)^2
+Target: 1 - cos(x)
+Strategy: expand trig
+Steps (Aggressive Mode):
+1. Expand 2·sin(u)^2 as 1 - cos(2u)  [Double Angle Expansion]
+   Before: 2 * sin(x / 2)^(2)
+   Cambio local: 2 * sin(x / 2)^(2) -> 1 - cos(x)
+   After: 1 - cos(x)
+Result: 1 - cos(x)
+```
+
+### Web / JSON Steps
+
+1. `Expandir ángulo doble`
+   - before: `2 · (sin(x/2))^2`
+   - after: `1 - cos(x)`
    - substeps: none
 
 ## expand_trig_sec_squared (trig_expand)
@@ -7643,8 +8258,8 @@ Result: sin(2 * x) + 1
 - Target: `(1-cos(4*x))/8`
 - Result: `(1 - cos(4 * x)) / 8`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7665,7 +8280,8 @@ Result: (1 - cos(4 * x)) / 8
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^2 · cos(x)^2`
    - after: `(1 - cos(4 · x))/8`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u)·cos²(u) = (1 - cos(4u)) / 8, con u = x`
 
 ## expand_trig_sine_eighteenth_power_reduction (trig_expand)
 
@@ -7673,8 +8289,8 @@ Result: (1 - cos(4 * x)) / 8
 - Target: `(24310-43758*cos(2*x)+31824*cos(4*x)-18564*cos(6*x)+8568*cos(8*x)-3060*cos(10*x)+816*cos(12*x)-153*cos(14*x)+18*cos(16*x)-cos(18*x))/131072`
 - Result: `(18 * cos(16 * x) - 153 * cos(14 * x) + 816 * cos(12 * x) - 3060 * cos(10 * x) + 8568 * cos(8 * x) - 18564 * cos(6 * x) + 31824 * cos(4 * x) - 43758 * cos(2 * x) + 24310 - cos(18 * x)) / 131072`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7695,7 +8311,8 @@ Result: (18 * cos(16 * x) - 153 * cos(14 * x) + 816 * cos(12 * x) - 3060 * cos(1
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^18`
    - after: `(18 · cos(16 · x) + 816 · cos(12 · x) + 8568 · cos(8 · x) + 31824 · cos(4 · x) + 24310 - 43758 · cos(2 · x) - 18564 · cos(6 · x) - 3060 · cos(10 · x) - 153 · cos(14 · x) - cos(18 · x))/131072`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_sine_eighth_power_reduction (trig_expand)
 
@@ -7703,8 +8320,8 @@ Result: (18 * cos(16 * x) - 153 * cos(14 * x) + 816 * cos(12 * x) - 3060 * cos(1
 - Target: `(35-56*cos(2*x)+28*cos(4*x)-8*cos(6*x)+cos(8*x))/128`
 - Result: `(cos(8 * x) - 8 * cos(6 * x) + 28 * cos(4 * x) - 56 * cos(2 * x) + 35) / 128`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7725,7 +8342,8 @@ Result: (cos(8 * x) - 8 * cos(6 * x) + 28 * cos(4 * x) - 56 * cos(2 * x) + 35) /
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^8`
    - after: `(cos(8 · x) + 28 · cos(4 · x) + 35 - 56 · cos(2 · x) - 8 · cos(6 · x))/128`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_sine_fourteenth_power_reduction (trig_expand)
 
@@ -7733,8 +8351,8 @@ Result: (cos(8 * x) - 8 * cos(6 * x) + 28 * cos(4 * x) - 56 * cos(2 * x) + 35) /
 - Target: `(1716-3003*cos(2*x)+2002*cos(4*x)-1001*cos(6*x)+364*cos(8*x)-91*cos(10*x)+14*cos(12*x)-cos(14*x))/8192`
 - Result: `(14 * cos(12 * x) - 91 * cos(10 * x) + 364 * cos(8 * x) - 1001 * cos(6 * x) + 2002 * cos(4 * x) - 3003 * cos(2 * x) + 1716 - cos(14 * x)) / 8192`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7755,7 +8373,8 @@ Result: (14 * cos(12 * x) - 91 * cos(10 * x) + 364 * cos(8 * x) - 1001 * cos(6 *
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^14`
    - after: `(14 · cos(12 · x) + 364 · cos(8 · x) + 2002 · cos(4 · x) + 1716 - 3003 · cos(2 · x) - 1001 · cos(6 · x) - 91 · cos(10 · x) - cos(14 · x))/8192`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_sine_fourth_power_reduction (simplify)
 
@@ -7763,8 +8382,8 @@ Result: (14 * cos(12 * x) - 91 * cos(10 * x) + 364 * cos(8 * x) - 1001 * cos(6 *
 - Target: `(3-4*cos(2*x)+cos(4*x))/8`
 - Result: `(cos(4 * x) - 4 * cos(2 * x) + 3) / 8`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7785,7 +8404,8 @@ Result: (cos(4 * x) - 4 * cos(2 * x) + 3) / 8
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^4`
    - after: `(cos(4 · x) + 3 - 4 · cos(2 · x))/8`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_sine_sixteenth_power_reduction (trig_expand)
 
@@ -7793,8 +8413,8 @@ Result: (cos(4 * x) - 4 * cos(2 * x) + 3) / 8
 - Target: `(6435-11440*cos(2*x)+8008*cos(4*x)-4368*cos(6*x)+1820*cos(8*x)-560*cos(10*x)+120*cos(12*x)-16*cos(14*x)+cos(16*x))/32768`
 - Result: `(cos(16 * x) - 16 * cos(14 * x) + 120 * cos(12 * x) - 560 * cos(10 * x) + 1820 * cos(8 * x) - 4368 * cos(6 * x) + 8008 * cos(4 * x) - 11440 * cos(2 * x) + 6435) / 32768`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7815,7 +8435,8 @@ Result: (cos(16 * x) - 16 * cos(14 * x) + 120 * cos(12 * x) - 560 * cos(10 * x) 
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^16`
    - after: `(cos(16 · x) + 120 · cos(12 · x) + 1820 · cos(8 · x) + 8008 · cos(4 · x) + 6435 - 11440 · cos(2 · x) - 4368 · cos(6 · x) - 560 · cos(10 · x) - 16 · cos(14 · x))/32768`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_sine_sixth_power_reduction (trig_expand)
 
@@ -7823,8 +8444,8 @@ Result: (cos(16 * x) - 16 * cos(14 * x) + 120 * cos(12 * x) - 560 * cos(10 * x) 
 - Target: `(10-15*cos(2*x)+6*cos(4*x)-cos(6*x))/32`
 - Result: `(6 * cos(4 * x) - 15 * cos(2 * x) + 10 - cos(6 * x)) / 32`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7845,7 +8466,8 @@ Result: (6 * cos(4 * x) - 15 * cos(2 * x) + 10 - cos(6 * x)) / 32
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^6`
    - after: `(6 · cos(4 · x) + 10 - 15 · cos(2 · x) - cos(6 · x))/32`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_sine_tenth_power_reduction (trig_expand)
 
@@ -7853,8 +8475,8 @@ Result: (6 * cos(4 * x) - 15 * cos(2 * x) + 10 - cos(6 * x)) / 32
 - Target: `(126-210*cos(2*x)+120*cos(4*x)-45*cos(6*x)+10*cos(8*x)-cos(10*x))/512`
 - Result: `(10 * cos(8 * x) - 45 * cos(6 * x) + 120 * cos(4 * x) - 210 * cos(2 * x) + 126 - cos(10 * x)) / 512`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7875,7 +8497,8 @@ Result: (10 * cos(8 * x) - 45 * cos(6 * x) + 120 * cos(4 * x) - 210 * cos(2 * x)
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^10`
    - after: `(10 · cos(8 · x) + 120 · cos(4 · x) + 126 - 210 · cos(2 · x) - 45 · cos(6 · x) - cos(10 · x))/512`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_sine_twelfth_power_reduction (trig_expand)
 
@@ -7883,8 +8506,8 @@ Result: (10 * cos(8 * x) - 45 * cos(6 * x) + 120 * cos(4 * x) - 210 * cos(2 * x)
 - Target: `(462-792*cos(2*x)+495*cos(4*x)-220*cos(6*x)+66*cos(8*x)-12*cos(10*x)+cos(12*x))/2048`
 - Result: `(cos(12 * x) - 12 * cos(10 * x) + 66 * cos(8 * x) - 220 * cos(6 * x) + 495 * cos(4 * x) - 792 * cos(2 * x) + 462) / 2048`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7905,7 +8528,8 @@ Result: (cos(12 * x) - 12 * cos(10 * x) + 66 * cos(8 * x) - 220 * cos(6 * x) + 4
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^12`
    - after: `(cos(12 · x) + 66 · cos(8 · x) + 495 · cos(4 · x) + 462 - 792 · cos(2 · x) - 220 · cos(6 · x) - 12 · cos(10 · x))/2048`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_sine_twentieth_power_reduction (trig_expand)
 
@@ -7913,8 +8537,8 @@ Result: (cos(12 * x) - 12 * cos(10 * x) + 66 * cos(8 * x) - 220 * cos(6 * x) + 4
 - Target: `(92378-167960*cos(2*x)+125970*cos(4*x)-77520*cos(6*x)+38760*cos(8*x)-15504*cos(10*x)+4845*cos(12*x)-1140*cos(14*x)+190*cos(16*x)-20*cos(18*x)+cos(20*x))/524288`
 - Result: `(cos(20 * x) - 20 * cos(18 * x) + 190 * cos(16 * x) - 1140 * cos(14 * x) + 4845 * cos(12 * x) - 15504 * cos(10 * x) + 38760 * cos(8 * x) - 77520 * cos(6 * x) + 125970 * cos(4 * x) - 167960 * cos(2 * x) + 92378) / 524288`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7935,7 +8559,8 @@ Result: (cos(20 * x) - 20 * cos(18 * x) + 190 * cos(16 * x) - 1140 * cos(14 * x)
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^20`
    - after: `(cos(20 · x) + 190 · cos(16 · x) + 4845 · cos(12 · x) + 38760 · cos(8 · x) + 125970 · cos(4 · x) + 92378 - 167960 · cos(2 · x) - 77520 · cos(6 · x) - 15504 · cos(10 · x) - 1140 · cos(14 · x) - 20 · cos(18 · x))/524288`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_sine_twenty_fourth_power_reduction (trig_expand)
 
@@ -7943,8 +8568,8 @@ Result: (cos(20 * x) - 20 * cos(18 * x) + 190 * cos(16 * x) - 1140 * cos(14 * x)
 - Target: `(1352078-2496144*cos(2*x)+1961256*cos(4*x)-1307504*cos(6*x)+735471*cos(8*x)-346104*cos(10*x)+134596*cos(12*x)-42504*cos(14*x)+10626*cos(16*x)-2024*cos(18*x)+276*cos(20*x)-24*cos(22*x)+cos(24*x))/8388608`
 - Result: `(cos(24 * x) - 24 * cos(22 * x) + 276 * cos(20 * x) - 2024 * cos(18 * x) + 10626 * cos(16 * x) - 42504 * cos(14 * x) + 134596 * cos(12 * x) - 346104 * cos(10 * x) + 735471 * cos(8 * x) - 1307504 * cos(6 * x) + 1961256 * cos(4 * x) - 2496144 * cos(2 * x) + 1352078) / 8388608`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7965,7 +8590,8 @@ Result: (cos(24 * x) - 24 * cos(22 * x) + 276 * cos(20 * x) - 2024 * cos(18 * x)
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^24`
    - after: `(cos(24 · x) + 276 · cos(20 · x) + 10626 · cos(16 · x) + 134596 · cos(12 · x) + 735471 · cos(8 · x) + 1961256 · cos(4 · x) + 1352078 - 2496144 · cos(2 · x) - 1307504 · cos(6 · x) - 346104 · cos(10 · x) - 42504 · cos(14 · x) - 2024 · cos(18 · x) - 24 · cos(22 · x))/8388608`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_sine_twenty_second_power_reduction (trig_expand)
 
@@ -7973,8 +8599,8 @@ Result: (cos(24 * x) - 24 * cos(22 * x) + 276 * cos(20 * x) - 2024 * cos(18 * x)
 - Target: `(352716-646646*cos(2*x)+497420*cos(4*x)-319770*cos(6*x)+170544*cos(8*x)-74613*cos(10*x)+26334*cos(12*x)-7315*cos(14*x)+1540*cos(16*x)-231*cos(18*x)+22*cos(20*x)-cos(22*x))/2097152`
 - Result: `(22 * cos(20 * x) - 231 * cos(18 * x) + 1540 * cos(16 * x) - 7315 * cos(14 * x) + 26334 * cos(12 * x) - 74613 * cos(10 * x) + 170544 * cos(8 * x) - 319770 * cos(6 * x) + 497420 * cos(4 * x) - 646646 * cos(2 * x) + 352716 - cos(22 * x)) / 2097152`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -7995,7 +8621,8 @@ Result: (22 * cos(20 * x) - 231 * cos(18 * x) + 1540 * cos(16 * x) - 7315 * cos(
 1. `Aplicar reducción de potencias`
    - before: `sin(x)^22`
    - after: `(22 · cos(20 · x) + 1540 · cos(16 · x) + 26334 · cos(12 · x) + 170544 · cos(8 · x) + 497420 · cos(4 · x) + 352716 - 646646 · cos(2 · x) - 319770 · cos(6 · x) - 74613 · cos(10 · x) - 7315 · cos(14 · x) - 231 · cos(18 · x) - cos(22 · x))/2097152`
-   - substeps: none
+   - substeps:
+     1. `Usar sin²(u) = (1 - cos(2u)) / 2 repetidamente, con u = x`
 
 ## expand_trig_sum_to_product_cos_diff_general (trig_expand)
 
@@ -8213,8 +8840,8 @@ Result: 2 * sin((x + y) / 2) * cos((x - y) / 2)
 - Target: `4*cos(x)^3-3*cos(x)`
 - Result: `4 * cos(x)^3 - 3 * cos(x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -8232,10 +8859,11 @@ Result: 4 * cos(x)^(3) - 3 * cos(x)
 
 ### Web / JSON Steps
 
-1. `Triple Angle Expansion`
+1. `Reescribir ángulo triple`
    - before: `cos(3 · x)`
    - after: `4 · cos(x)^3 - 3 · cos(x)`
-   - substeps: none
+   - substeps:
+     1. `Usar cos(3u) = 4 · cos(u)^3 - 3 · cos(u), con u = x`
 
 ## expand_trig_triple_angle_sine (trig_expand)
 
@@ -8243,8 +8871,8 @@ Result: 4 * cos(x)^(3) - 3 * cos(x)
 - Target: `3*sin(x)-4*sin(x)^3`
 - Result: `3 * sin(x) - 4 * sin(x)^3`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -8262,10 +8890,11 @@ Result: 3 * sin(x) - 4 * sin(x)^(3)
 
 ### Web / JSON Steps
 
-1. `Triple Angle Expansion`
+1. `Reescribir ángulo triple`
    - before: `sin(3 · x)`
    - after: `3 · sin(x) - 4 · sin(x)^3`
-   - substeps: none
+   - substeps:
+     1. `Usar sin(3u) = 3 · sin(u) - 4 · sin(u)^3, con u = x`
 
 ## expand_trig_triple_angle_tangent (trig_expand)
 
@@ -8273,8 +8902,8 @@ Result: 3 * sin(x) - 4 * sin(x)^(3)
 - Target: `(3*tan(x)-tan(x)^3)/(1-3*tan(x)^2)`
 - Result: `(3 * tan(x) - tan(x)^3) / (1 - 3 * tan(x)^2)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `1`
+- Flags: none
 
 ### CLI
 
@@ -8294,10 +8923,11 @@ Result: (3 * tan(x) - tan(x)^(3)) / (1 - 3 * tan(x)^(2))
 
 ### Web / JSON Steps
 
-1. `Triple Angle Expansion`
+1. `Reescribir ángulo triple`
    - before: `tan(3 · x)`
    - after: `(3 · tan(x) - tan(x)^3)/(1 - 3 · tan(x)^2)`
-   - substeps: none
+   - substeps:
+     1. `Usar tan(3u) = (3 · tan(u) - tan(u)^3) / (1 - 3 · tan(u)^2), con u = x`
 
 ## factor_alternating_cubic_vandermonde (factor)
 
@@ -8305,8 +8935,8 @@ Result: (3 * tan(x) - tan(x)^(3)) / (1 - 3 * tan(x)^(2))
 - Target: `(a-b)*(a-c)*(b-c)*(a+b+c)`
 - Result: `(a + b + c) * (a - b) * (a - c) * (b - c)`
 - Web step count: `1`
-- Web substep count: `2`
-- Flags: none
+- Web substep count: `0`
+- Flags: no web substeps emitted
 
 ### CLI
 
@@ -8327,9 +8957,7 @@ Result: (a + b + c) * (a - b) * (a - c) * (b - c)
 1. `Factorizar`
    - before: `a^3 · (b - c) + b^3 · (c - a) + c^3 · (a - b)`
    - after: `(a + b + c) · (a - b) · (a - c) · (b - c)`
-   - substeps:
-     1. `Si dos variables coinciden, la expresión vale 0`
-     2. `El factor restante es lineal y simétrico`
+   - substeps: none
 
 ## factor_common_factor_sum (factor)
 
@@ -8488,8 +9116,8 @@ Result: (x^(5) + x^(4) + x^(3) + x^(2) + x + 1) * (x - 1)
 - Target: `x^3*(a*x^4 + b*x^2 + c + d/x^3)`
 - Result: `x^3 * (d / x^3 + a * x^4 + b * x^2 + c)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -8513,7 +9141,9 @@ Result: x^(3) * (d / x^(3) + a * x^(4) + b * x^(2) + c)
 1. `Sacar factor usando división`
    - before: `a · x^7 + b · x^5 + c · x^3 + d`
    - after: `x^3 · (d/x^3 + a · x^4 + b · x^2 + c)`
-   - substeps: none
+   - substeps:
+     1. `Reescribir cada término con el factor común x^3`
+     2. `Sacar el factor común x^3`
 
 ## factor_out_square_with_division_quartic (conditional_factor)
 
@@ -8521,8 +9151,8 @@ Result: x^(3) * (d / x^(3) + a * x^(4) + b * x^(2) + c)
 - Target: `x^2*(a*x^2 + b*x + c + d/x^2)`
 - Result: `x^2 * (d / x^2 + a * x^2 + b * x + c)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -8545,7 +9175,9 @@ Result: x^(2) * (d / x^(2) + a * x^(2) + b * x + c)
 1. `Sacar factor usando división`
    - before: `a · x^4 + b · x^3 + c · x^2 + d`
    - after: `x^2 · (d/x^2 + a · x^2 + b · x + c)`
-   - substeps: none
+   - substeps:
+     1. `Reescribir cada término con el factor común x^2`
+     2. `Sacar el factor común x^2`
 
 ## factor_out_with_division (conditional_factor)
 
@@ -8553,8 +9185,8 @@ Result: x^(2) * (d / x^(2) + a * x^(2) + b * x + c)
 - Target: `x*(a + b + c/x)`
 - Result: `x * (c / x + a + b)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -8577,7 +9209,9 @@ Result: x * (c / x + a + b)
 1. `Sacar factor usando división`
    - before: `a · x + b · x + c`
    - after: `x · (c/x + a + b)`
-   - substeps: none
+   - substeps:
+     1. `Reescribir cada término con el factor común x`
+     2. `Sacar el factor común x`
 
 ## factor_out_with_division_mixed_septic (conditional_factor)
 
@@ -8585,8 +9219,8 @@ Result: x * (c / x + a + b)
 - Target: `x*(a*x^6 + b*x^4 + c*x + d/x)`
 - Result: `x * (d / x + a * x^6 + b * x^4 + c * x)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -8609,7 +9243,9 @@ Result: x * (d / x + a * x^(6) + b * x^(4) + c * x)
 1. `Sacar factor usando división`
    - before: `a · x^7 + b · x^5 + c · x^2 + d`
    - after: `x · (d/x + a · x^6 + b · x^4 + c · x)`
-   - substeps: none
+   - substeps:
+     1. `Reescribir cada término con el factor común x`
+     2. `Sacar el factor común x`
 
 ## factor_out_with_division_quadratic (conditional_factor)
 
@@ -8617,8 +9253,8 @@ Result: x * (d / x + a * x^(6) + b * x^(4) + c * x)
 - Target: `x*(a*x + b + c/x)`
 - Result: `x * (c / x + a * x + b)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -8641,7 +9277,9 @@ Result: x * (c / x + a * x + b)
 1. `Sacar factor usando división`
    - before: `a · x^2 + b · x + c`
    - after: `x · (c/x + a · x + b)`
-   - substeps: none
+   - substeps:
+     1. `Reescribir cada término con el factor común x`
+     2. `Sacar el factor común x`
 
 ## factor_out_with_division_sparse_quintic (conditional_factor)
 
@@ -8649,8 +9287,8 @@ Result: x * (c / x + a * x + b)
 - Target: `x*(a*x^4 + b*x^2 + c + d/x)`
 - Result: `x * (d / x + a * x^4 + b * x^2 + c)`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -8673,7 +9311,9 @@ Result: x * (d / x + a * x^(4) + b * x^(2) + c)
 1. `Sacar factor usando división`
    - before: `a · x^5 + b · x^3 + c · x + d`
    - after: `x · (d/x + a · x^4 + b · x^2 + c)`
-   - substeps: none
+   - substeps:
+     1. `Reescribir cada término con el factor común x`
+     2. `Sacar el factor común x`
 
 ## factor_perfect_square_trinomial (factor)
 
@@ -8953,6 +9593,556 @@ Result: (a^(2) + x^(2)) * (a^(4) + x^(4) - a^(2) * x^(2))
    - substeps:
      1. `Aplicar a^6 + b^6 = (a^2 + b^2)(a^4 - a^2b^2 + b^4)`
 
+## finite_aggregate_product_constant_symbolic (finite_aggregate)
+
+- Source: `product(c, k, 1, n)`
+- Target: `c^n`
+- Result: `c^n`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: product(c, k, 1, n)
+Target: c^n
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Product of constant factor: Π(c, k) from 1 to n  [Finite Product]
+   Before: product(c, k, 1, n)
+   Cambio local: product(c, k, 1, n) -> c^(n)
+   After: c^n
+Result: c^(n)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar producto de constante`
+   - before: `prod_k=1^n c`
+   - after: `c^n`
+   - substeps:
+     1. `Escribir el producto con sus extremos`
+     2. `Contar factores iguales en el producto`
+
+## finite_aggregate_product_constant_symbolic_lower_bound (finite_aggregate)
+
+- Source: `product(c, k, m, n)`
+- Target: `c^(n-m+1)`
+- Result: `c^(-m + n + 1)`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: product(c, k, m, n)
+Target: c^(-m + n + 1)
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Product of constant factor: Π(c, k) from m to n  [Finite Product]
+   Before: product(c, k, m, n)
+   Cambio local: product(c, k, m, n) -> c^(-m + n + 1)
+   After: c^(-m + n + 1)
+Result: c^(-m + n + 1)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar producto de constante`
+   - before: `prod_k=m^n c`
+   - after: `c^(n - m + 1)`
+   - substeps:
+     1. `Escribir el producto con sus extremos`
+     2. `Contar factores iguales en el producto`
+
+## finite_aggregate_product_first_integers_symbolic (finite_aggregate)
+
+- Source: `product(k, k, 1, n)`
+- Target: `n!`
+- Result: `n!`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: product(k, k, 1, n)
+Target: n!
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Product of first integers: Π(k, k) from 1 to n  [Finite Product]
+   Before: product(k, k, 1, n)
+   Cambio local: product(k, k, 1, n) -> n!
+   After: n!
+Result: n!
+```
+
+### Web / JSON Steps
+
+1. `Aplicar producto factorial`
+   - before: `prod_k=1^n k`
+   - after: `n!`
+   - substeps:
+     1. `Escribir el producto con sus extremos`
+     2. `Usar factorial para el producto de enteros consecutivos`
+
+## finite_aggregate_product_first_integers_symbolic_lower_bound (finite_aggregate)
+
+- Source: `product(k, k, m, n)`
+- Target: `n!/(m-1)!`
+- Result: `n! / (m - 1)!`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: product(k, k, m, n)
+Target: n! / (m - 1)!
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Product of first integers: Π(k, k) from m to n  [Finite Product]
+   Before: product(k, k, m, n)
+   Cambio local: product(k, k, m, n) -> n! / (m - 1)!
+   After: n! / (m - 1)!
+Result: n! / (m - 1)!
+ℹ️ Requires:
+  • (m - 1)! ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Aplicar producto factorial`
+   - before: `prod_k=m^n k`
+   - after: `n!/(m - 1)!`
+   - substeps:
+     1. `Escribir el producto con sus extremos`
+     2. `Usar factorial para el producto de enteros consecutivos`
+
+## finite_aggregate_product_of_cubes_symbolic_lower_bound (finite_aggregate)
+
+- Source: `product(k^3, k, m, n)`
+- Target: `(n!/(m-1)!)^3`
+- Result: `(n! / (m - 1)!)^3`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: product(k^3, k, m, n)
+Target: (n! / (m - 1)!)^3
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Product of powers: Π(k^3, k) from m to n  [Finite Product]
+   Before: product(k^(3), k, m, n)
+   Cambio local: product(k^(3), k, m, n) -> (n! / (m - 1)!)^(3)
+   After: (n! / (m - 1)!)^3
+Result: (n! / (m - 1)!)^(3)
+ℹ️ Requires:
+  • (m - 1)! ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Aplicar producto de potencias`
+   - before: `prod_k=m^n k^3`
+   - after: `((n!/(m - 1)!))^3`
+   - substeps:
+     1. `Escribir el producto con sus extremos`
+     2. `Convertir el producto de potencias en potencia de factoriales`
+
+## finite_aggregate_product_of_squares_symbolic (finite_aggregate)
+
+- Source: `product(k^2, k, 1, n)`
+- Target: `(n!)^2`
+- Result: `n!^2`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: product(k^2, k, 1, n)
+Target: n!^2
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Product of powers: Π(k^2, k) from 1 to n  [Finite Product]
+   Before: product(k^(2), k, 1, n)
+   Cambio local: product(k^(2), k, 1, n) -> n!^(2)
+   After: n!^2
+Result: n!^(2)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar producto de potencias`
+   - before: `prod_k=1^n k^2`
+   - after: `n!^2`
+   - substeps:
+     1. `Escribir el producto con sus extremos`
+     2. `Convertir el producto de potencias en potencia de factoriales`
+
+## finite_aggregate_product_of_squares_symbolic_lower_bound (finite_aggregate)
+
+- Source: `product(k^2, k, m, n)`
+- Target: `(n!/(m-1)!)^2`
+- Result: `(n! / (m - 1)!)^2`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: product(k^2, k, m, n)
+Target: (n! / (m - 1)!)^2
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Product of powers: Π(k^2, k) from m to n  [Finite Product]
+   Before: product(k^(2), k, m, n)
+   Cambio local: product(k^(2), k, m, n) -> (n! / (m - 1)!)^(2)
+   After: (n! / (m - 1)!)^2
+Result: (n! / (m - 1)!)^(2)
+ℹ️ Requires:
+  • (m - 1)! ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Aplicar producto de potencias`
+   - before: `prod_k=m^n k^2`
+   - after: `((n!/(m - 1)!))^2`
+   - substeps:
+     1. `Escribir el producto con sus extremos`
+     2. `Convertir el producto de potencias en potencia de factoriales`
+
+## finite_aggregate_sum_constant_symbolic (finite_aggregate)
+
+- Source: `sum(c, k, 1, n)`
+- Target: `c*n`
+- Result: `c * n`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sum(c, k, 1, n)
+Target: c * n
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Sum of constant term: Σ(c, k) from 1 to n  [Finite Summation]
+   Before: sum(c, k, 1, n)
+   Cambio local: sum(c, k, 1, n) -> c * n
+   After: c * n
+Result: c * n
+```
+
+### Web / JSON Steps
+
+1. `Aplicar suma de constante`
+   - before: `sum_k=1^n c`
+   - after: `c · n`
+   - substeps:
+     1. `Escribir la suma con sus extremos`
+     2. `Contar términos iguales en la suma`
+
+## finite_aggregate_sum_constant_symbolic_lower_bound (finite_aggregate)
+
+- Source: `sum(c, k, m, n)`
+- Target: `c*(n-m+1)`
+- Result: `c * (-m + n + 1)`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sum(c, k, m, n)
+Target: c * (-m + n + 1)
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Sum of constant term: Σ(c, k) from m to n  [Finite Summation]
+   Before: sum(c, k, m, n)
+   Cambio local: sum(c, k, m, n) -> c * (-m + n + 1)
+   After: c * (-m + n + 1)
+Result: c * (-m + n + 1)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar suma de constante`
+   - before: `sum_k=m^n c`
+   - after: `c · (n - m + 1)`
+   - substeps:
+     1. `Escribir la suma con sus extremos`
+     2. `Contar términos iguales en la suma`
+
+## finite_aggregate_sum_first_integers_symbolic (finite_aggregate)
+
+- Source: `sum(k, k, 1, n)`
+- Target: `n*(n+1)/2`
+- Result: `n * (n + 1) / 2`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sum(k, k, 1, n)
+Target: n * (n + 1) / 2
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Sum of first integers: Σ(k, k) from 1 to n  [Finite Summation]
+   Before: sum(k, k, 1, n)
+   Cambio local: sum(k, k, 1, n) -> n * (n + 1) / 2
+   After: n * (n + 1) / 2
+Result: n * (n + 1) / 2
+```
+
+### Web / JSON Steps
+
+1. `Aplicar fórmula de suma de enteros`
+   - before: `sum_k=1^n k`
+   - after: `(n · (n + 1))/2`
+   - substeps:
+     1. `Escribir la suma con sus extremos`
+     2. `Usar la fórmula cerrada para la suma de enteros`
+
+## finite_aggregate_sum_first_integers_symbolic_lower_bound (finite_aggregate)
+
+- Source: `sum(k, k, m, n)`
+- Target: `(n*(n+1)-m*(m-1))/2`
+- Result: `(n * (n + 1) - m * (m - 1)) / 2`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sum(k, k, m, n)
+Target: (n * (n + 1) - m * (m - 1)) / 2
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Sum of first integers: Σ(k, k) from m to n  [Finite Summation]
+   Before: sum(k, k, m, n)
+   Cambio local: sum(k, k, m, n) -> (n * (n + 1) - m * (m - 1)) / 2
+   After: (n * (n + 1) - m * (m - 1)) / 2
+Result: (n * (n + 1) - m * (m - 1)) / 2
+```
+
+### Web / JSON Steps
+
+1. `Aplicar fórmula de suma de enteros`
+   - before: `sum_k=m^n k`
+   - after: `(n · (n + 1) - m · (m - 1))/2`
+   - substeps:
+     1. `Escribir la suma con sus extremos`
+     2. `Usar la fórmula cerrada para la suma de enteros`
+
+## finite_aggregate_sum_geometric_power_base_two_symbolic (finite_aggregate)
+
+- Source: `sum(2^k, k, 0, n)`
+- Target: `2^(n+1)-1`
+- Result: `2^(n + 1) - 1`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sum(2^k, k, 0, n)
+Target: 2^(n + 1) - 1
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Geometric sum: Σ(2^k, k) from 0 to n  [Finite Summation]
+   Before: sum(2^(k), k, 0, n)
+   Cambio local: sum(2^(k), k, 0, n) -> 2^(n + 1) - 1
+   After: 2^(n + 1) - 1
+Result: 2^(n + 1) - 1
+```
+
+### Web / JSON Steps
+
+1. `Aplicar fórmula de suma geométrica`
+   - before: `sum_k=0^n 2^k`
+   - after: `2^(n + 1) - 1`
+   - substeps:
+     1. `Escribir la suma con sus extremos`
+     2. `Usar la fórmula cerrada para la suma geométrica`
+
+## finite_aggregate_sum_geometric_power_base_two_symbolic_lower_bound (finite_aggregate)
+
+- Source: `sum(2^k, k, m, n)`
+- Target: `2^(n+1)-2^m`
+- Result: `2^(n + 1) - 2^m`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sum(2^k, k, m, n)
+Target: 2^(n + 1) - 2^m
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Geometric sum: Σ(2^k, k) from m to n  [Finite Summation]
+   Before: sum(2^(k), k, m, n)
+   Cambio local: sum(2^(k), k, m, n) -> 2^(n + 1) - 2^(m)
+   After: 2^(n + 1) - 2^m
+Result: 2^(n + 1) - 2^(m)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar fórmula de suma geométrica`
+   - before: `sum_k=m^n 2^k`
+   - after: `2^(n + 1) - 2^m`
+   - substeps:
+     1. `Escribir la suma con sus extremos`
+     2. `Usar la fórmula cerrada para la suma geométrica`
+
+## finite_aggregate_sum_of_cubes_symbolic (finite_aggregate)
+
+- Source: `sum(k^3, k, 1, n)`
+- Target: `(n*(n+1)/2)^2`
+- Result: `(n * (n + 1) / 2)^2`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sum(k^3, k, 1, n)
+Target: (n * (n + 1) / 2)^2
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Sum of cubes: Σ(k^3, k) from 1 to n  [Finite Summation]
+   Before: sum(k^(3), k, 1, n)
+   Cambio local: sum(k^(3), k, 1, n) -> (n * (n + 1) / 2)^(2)
+   After: (n * (n + 1) / 2)^2
+Result: (n * (n + 1) / 2)^(2)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar fórmula de suma de cubos`
+   - before: `sum_k=1^n k^3`
+   - after: `(((n · (n + 1))/2))^2`
+   - substeps:
+     1. `Escribir la suma con sus extremos`
+     2. `Usar la fórmula cerrada para la suma de cubos`
+
+## finite_aggregate_sum_of_cubes_symbolic_lower_bound (finite_aggregate)
+
+- Source: `sum(k^3, k, m, n)`
+- Target: `(n*(n+1)/2)^2-(m*(m-1)/2)^2`
+- Result: `(n * (n + 1) / 2)^2 - (m * (m - 1) / 2)^2`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sum(k^3, k, m, n)
+Target: (n * (n + 1) / 2)^2 - (m * (m - 1) / 2)^2
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Sum of cubes: Σ(k^3, k) from m to n  [Finite Summation]
+   Before: sum(k^(3), k, m, n)
+   Cambio local: sum(k^(3), k, m, n) -> (n * (n + 1) / 2)^(2) - (m * (m - 1) / 2)^(2)
+   After: (n * (n + 1) / 2)^2 - (m * (m - 1) / 2)^2
+Result: (n * (n + 1) / 2)^(2) - (m * (m - 1) / 2)^(2)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar fórmula de suma de cubos`
+   - before: `sum_k=m^n k^3`
+   - after: `(((n · (n + 1))/2))^2 - (((m · (m - 1))/2))^2`
+   - substeps:
+     1. `Escribir la suma con sus extremos`
+     2. `Usar la fórmula cerrada para la suma de cubos`
+
+## finite_aggregate_sum_of_squares_symbolic (finite_aggregate)
+
+- Source: `sum(k^2, k, 1, n)`
+- Target: `n*(n+1)*(2*n+1)/6`
+- Result: `n * (n + 1) * (2 * n + 1) / 6`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sum(k^2, k, 1, n)
+Target: n * (n + 1) * (2 * n + 1) / 6
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Sum of squares: Σ(k^2, k) from 1 to n  [Finite Summation]
+   Before: sum(k^(2), k, 1, n)
+   Cambio local: sum(k^(2), k, 1, n) -> n * (n + 1) * (2 * n + 1) / 6
+   After: n * (n + 1) * (2 * n + 1) / 6
+Result: n * (n + 1) * (2 * n + 1) / 6
+```
+
+### Web / JSON Steps
+
+1. `Aplicar fórmula de suma de cuadrados`
+   - before: `sum_k=1^n k^2`
+   - after: `(n · (n + 1) · (2 · n + 1))/6`
+   - substeps:
+     1. `Escribir la suma con sus extremos`
+     2. `Usar la fórmula cerrada para la suma de cuadrados`
+
+## finite_aggregate_sum_of_squares_symbolic_lower_bound (finite_aggregate)
+
+- Source: `sum(k^2, k, m, n)`
+- Target: `(n*(n+1)*(2*n+1)-m*(m-1)*(2*m-1))/6`
+- Result: `(n * (n + 1) * (2 * n + 1) - m * (m - 1) * (2 * m - 1)) / 6`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sum(k^2, k, m, n)
+Target: (n * (n + 1) * (2 * n + 1) - m * (m - 1) * (2 * m - 1)) / 6
+Strategy: finite sums/products
+Steps (Aggressive Mode):
+1. Sum of squares: Σ(k^2, k) from m to n  [Finite Summation]
+   Before: sum(k^(2), k, m, n)
+   Cambio local: sum(k^(2), k, m, n) -> (n * (n + 1) * (2 * n + 1) - m * (m - 1) * (2 * m - 1)) / 6
+   After: (n * (n + 1) * (2 * n + 1) - m * (m - 1) * (2 * m - 1)) / 6
+Result: (n * (n + 1) * (2 * n + 1) - m * (m - 1) * (2 * m - 1)) / 6
+```
+
+### Web / JSON Steps
+
+1. `Aplicar fórmula de suma de cuadrados`
+   - before: `sum_k=m^n k^2`
+   - after: `(n · (n + 1) · (2 · n + 1) - m · (m - 1) · (2 · m - 1))/6`
+   - substeps:
+     1. `Escribir la suma con sus extremos`
+     2. `Usar la fórmula cerrada para la suma de cuadrados`
+
 ## finite_telescoping_product_affine_symbolic_shift_symbolic_lower (finite_telescoping)
 
 - Source: `product((a*k+b+a)/(a*k+b), k, m, n)`
@@ -9146,8 +10336,8 @@ Steps (Aggressive Mode):
    After: ((1 / (a * m + b + c) - 1 / (a * n + a + b + c)))/a
 Result: 1 / a * (1 / (a * m + b + c) - 1 / (a * n + a + b + c))
 ℹ️ Requires:
-  • a * n + a + b + c ≠ 0
   • a * m + b + c ≠ 0
+  • a * n + a + b + c ≠ 0
   • a ≠ 0
 ```
 
@@ -9182,9 +10372,9 @@ Steps (Aggressive Mode):
    After: ((1 / (a * m + b) - 1 / (a * n + a + b)))/a
 Result: 1 / a * (1 / (a * m + b) - 1 / (a * n + a + b))
 ℹ️ Requires:
+  • a ≠ 0
   • a * n + a + b ≠ 0
   • a * m + b ≠ 0
-  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -9252,8 +10442,8 @@ Steps (Aggressive Mode):
    After: 1 / (a + m) - 1 / (a + n + 1)
 Result: 1 / (a + m) - 1 / (a + n + 1)
 ℹ️ Requires:
-  • a + m ≠ 0
   • a + n + 1 ≠ 0
+  • a + m ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -9272,7 +10462,7 @@ Result: 1 / (a + m) - 1 / (a + n + 1)
 - Result: `cosh(3 * x)`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9290,9 +10480,99 @@ Result: cosh(3 * x)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Triple-Angle Identity`
+1. `Aplicar identidad hiperbólica de ángulo triple`
    - before: `4 · cosh(x)^3 - 3 · cosh(x)`
    - after: `cosh(3 · x)`
+   - substeps: none
+
+## hyperbolic_contract_exp_decomposition (simplify)
+
+- Source: `sinh(x)+cosh(x)`
+- Target: `exp(x)`
+- Result: `e^x`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sinh(x) + cosh(x)
+Target: e^x
+Strategy: rewrite hyperbolics
+Steps (Aggressive Mode):
+1. Recognize sinh(u) + cosh(u) as exp(u)  [Hyperbolic Exponential Identity]
+   Before: sinh(x) + cosh(x)
+   Cambio local: sinh(x) + cosh(x) -> e^(x)
+   After: e^x
+Result: e^(x)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar identidad exponencial hiperbólica`
+   - before: `sinh(x) + cosh(x)`
+   - after: `e^x`
+   - substeps: none
+
+## hyperbolic_contract_negated_negative_exp_decomposition (simplify)
+
+- Source: `sinh(x)-cosh(x)`
+- Target: `-exp(-x)`
+- Result: `-(e^(-x))`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sinh(x) - cosh(x)
+Target: -(e^(-x))
+Strategy: rewrite hyperbolics
+Steps (Aggressive Mode):
+1. Recognize sinh(u) - cosh(u) as -exp(-u)  [Hyperbolic Exponential Identity]
+   Before: sinh(x) - cosh(x)
+   Cambio local: sinh(x) - cosh(x) -> -e^(-x)
+   After: -(e^(-x))
+Result: -e^(-x)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar identidad exponencial hiperbólica`
+   - before: `sinh(x) - cosh(x)`
+   - after: `-e^(-x)`
+   - substeps: none
+
+## hyperbolic_contract_negative_exp_decomposition (simplify)
+
+- Source: `cosh(x)-sinh(x)`
+- Target: `exp(-x)`
+- Result: `e^(-x)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: cosh(x) - sinh(x)
+Target: e^(-x)
+Strategy: rewrite hyperbolics
+Steps (Aggressive Mode):
+1. Recognize cosh(u) - sinh(u) as exp(-u)  [Hyperbolic Exponential Identity]
+   Before: cosh(x) - sinh(x)
+   Cambio local: cosh(x) - sinh(x) -> e^(-x)
+   After: e^(-x)
+Result: e^(-x)
+```
+
+### Web / JSON Steps
+
+1. `Aplicar identidad exponencial hiperbólica`
+   - before: `cosh(x) - sinh(x)`
+   - after: `e^(-x)`
    - substeps: none
 
 ## hyperbolic_contract_sinh_double_angle (simplify)
@@ -9302,7 +10582,7 @@ Result: cosh(3 * x)
 - Result: `sinh(2 * x)`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9320,7 +10600,7 @@ Result: sinh(2 * x)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Double-Angle Identity`
+1. `Aplicar identidad hiperbólica de ángulo doble`
    - before: `2 · sinh(x) · cosh(x)`
    - after: `sinh(2 · x)`
    - substeps: none
@@ -9332,7 +10612,7 @@ Result: sinh(2 * x)
 - Result: `sinh(2 * x) + a`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9350,7 +10630,7 @@ Result: sinh(2 * x) + a
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Double-Angle Identity`
+1. `Aplicar identidad hiperbólica de ángulo doble`
    - before: `2 · sinh(x) · cosh(x) + a`
    - after: `sinh(2 · x) + a`
    - substeps: none
@@ -9362,7 +10642,7 @@ Result: sinh(2 * x) + a
 - Result: `sinh(3 * x)`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9380,7 +10660,7 @@ Result: sinh(3 * x)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Triple-Angle Identity`
+1. `Aplicar identidad hiperbólica de ángulo triple`
    - before: `3 · sinh(x) + 4 · sinh(x)^3`
    - after: `sinh(3 · x)`
    - substeps: none
@@ -9392,7 +10672,7 @@ Result: sinh(3 * x)
 - Result: `tanh(2 * x)`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9410,7 +10690,7 @@ Result: tanh(2 * x)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Double-Angle Identity`
+1. `Aplicar identidad hiperbólica de ángulo doble`
    - before: `(2 · tanh(x))/(tanh(x)^2 + 1)`
    - after: `tanh(2 · x)`
    - substeps: none
@@ -9422,7 +10702,7 @@ Result: tanh(2 * x)
 - Result: `2 * cosh(x)^2 - 1`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9440,7 +10720,7 @@ Result: 2 * cosh(x)^(2) - 1
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Double-Angle Identity`
+1. `Aplicar identidad hiperbólica de ángulo doble`
    - before: `cosh(2 · x)`
    - after: `2 · cosh(x)^2 - 1`
    - substeps: none
@@ -9452,7 +10732,7 @@ Result: 2 * cosh(x)^(2) - 1
 - Result: `sinh(x)^2 + cosh(x)^2`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9470,7 +10750,7 @@ Result: sinh(x)^(2) + cosh(x)^(2)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Double-Angle Identity`
+1. `Aplicar identidad hiperbólica de ángulo doble`
    - before: `cosh(2 · x)`
    - after: `sinh(x)^2 + cosh(x)^2`
    - substeps: none
@@ -9482,7 +10762,7 @@ Result: sinh(x)^(2) + cosh(x)^(2)
 - Result: `(e^x + e^(-x)) / 2`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9500,7 +10780,7 @@ Result: (e^(x) + e^(-x)) / 2
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Exponential Identity`
+1. `Aplicar identidad exponencial hiperbólica`
    - before: `cosh(x)`
    - after: `(e^x + e^(-x))/2`
    - substeps: none
@@ -9512,7 +10792,7 @@ Result: (e^(x) + e^(-x)) / 2
 - Result: `sinh(x) + cosh(x)`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9530,7 +10810,7 @@ Result: sinh(x) + cosh(x)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Exponential Identity`
+1. `Aplicar identidad exponencial hiperbólica`
    - before: `e^x`
    - after: `sinh(x) + cosh(x)`
    - substeps: none
@@ -9542,7 +10822,7 @@ Result: sinh(x) + cosh(x)
 - Result: `(e^x - e^(-x)) / 2`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9560,7 +10840,7 @@ Result: (e^(x) - e^(-x)) / 2
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Exponential Identity`
+1. `Aplicar identidad exponencial hiperbólica`
    - before: `sinh(x)`
    - after: `(e^x - e^(-x))/2`
    - substeps: none
@@ -9572,7 +10852,7 @@ Result: (e^(x) - e^(-x)) / 2
 - Result: `(e^x - e^(-x)) / (e^x + e^(-x))`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9590,7 +10870,7 @@ Result: (e^(x) - e^(-x)) / (e^(x) + e^(-x))
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Exponential Identity`
+1. `Aplicar identidad exponencial hiperbólica`
    - before: `tanh(x)`
    - after: `(e^x - e^(-x))/(e^x + e^(-x))`
    - substeps: none
@@ -9602,7 +10882,7 @@ Result: (e^(x) - e^(-x)) / (e^(x) + e^(-x))
 - Result: `(cosh(x) + 1) / 2`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9620,7 +10900,7 @@ Result: (cosh(x) + 1) / 2
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Pythagorean Identity`
+1. `Aplicar identidad pitagórica hiperbólica`
    - before: `(cosh(x/2))^2`
    - after: `(cosh(x) + 1)/2`
    - substeps: none
@@ -9632,7 +10912,7 @@ Result: (cosh(x) + 1) / 2
 - Result: `1`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9650,7 +10930,7 @@ Result: 1
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Pythagorean Identity`
+1. `Aplicar identidad pitagórica hiperbólica`
    - before: `cosh(x)^2 - sinh(x)^2`
    - after: `1`
    - substeps: none
@@ -9662,7 +10942,7 @@ Result: 1
 - Result: `a + 1`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9680,7 +10960,7 @@ Result: a + 1
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Pythagorean Identity`
+1. `Aplicar identidad pitagórica hiperbólica`
    - before: `cosh(x)^2 - sinh(x)^2 + a`
    - after: `a + 1`
    - substeps: none
@@ -9692,7 +10972,7 @@ Result: a + 1
 - Result: `sinh(x)^2`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9710,7 +10990,7 @@ Result: sinh(x)^(2)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Pythagorean Identity`
+1. `Aplicar identidad pitagórica hiperbólica`
    - before: `cosh(x)^2 - 1`
    - after: `sinh(x)^2`
    - substeps: none
@@ -9722,7 +11002,7 @@ Result: sinh(x)^(2)
 - Result: `1 / cosh(x)^2`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -9742,7 +11022,7 @@ Result: 1 / cosh(x)^(2)
 
 ### Web / JSON Steps
 
-1. `Hyperbolic Pythagorean Identity`
+1. `Aplicar identidad pitagórica hiperbólica`
    - before: `1 - tanh(x)^2`
    - after: `1/cosh(x)^2`
    - substeps: none
@@ -10130,7 +11410,7 @@ Result: sin(4 * a * x) / (4 * sin(a * x))
 - Result: `pi / 2`
 - Web step count: `1`
 - Web substep count: `0`
-- Flags: no web substeps emitted
+- Flags: none
 
 ### CLI
 
@@ -10151,6 +11431,76 @@ Result: pi / 2
 1. `Aplicar identidad de arctangentes`
    - before: `arctan(a) + arctan(1/a)`
    - after: `pi/2`
+   - substeps: none
+
+## log_exp_inverse_ln_exp (log_exp_inverse)
+
+- Source: `ln(exp(x))`
+- Target: `x`
+- Result: `x`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: ln(e^x)
+Target: x
+Strategy: rewrite exponentials
+Steps (Aggressive Mode):
+1. Cancel ln(exp(u)) to u  [Log-Exp Inverse]
+   Before: ln(e^(x))
+   Cambio local: ln(e^(x)) -> x
+   After: x
+Result: x
+```
+
+### Web / JSON Steps
+
+1. `Cancelar logaritmo natural y exponencial inversos`
+   - before: `ln(e^x)`
+   - after: `x`
+   - substeps: none
+
+## log_inverse_power_tower (log_inverse_power)
+
+- Source: `x^(ln(y)/ln(x))`
+- Target: `y`
+- Result: `y`
+- Web step count: `2`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: x^(ln(y) / ln(x))
+Target: y
+Strategy: log inverse power
+Steps (Aggressive Mode):
+1. x^(c/log(b, x)) = b^c  [Log Inverse Power]
+   Before: x^(ln(y) / ln(x))
+   Cambio local: x^(ln(y) / ln(x)) -> e^(ln(y))
+   After: e^(ln(y))
+2. b^log(b, x) = x  [Exponential-Log Inverse]
+   Before: e^(ln(y))
+   Cambio local: e^(ln(y)) -> y
+   After: y
+Result: y
+```
+
+### Web / JSON Steps
+
+1. `Log Inverse Power`
+   - before: `x^(ln(y)/ln(x))`
+   - after: `e^ln(y)`
+   - substeps:
+     1. `Usar que e^(ln(u)) = u`
+     2. `El exponente exterior cancela el ln del exponente interior`
+2. `Cancelar exponencial y logaritmo inversos`
+   - before: `e^ln(y)`
+   - after: `y`
    - substeps: none
 
 ## log_sum_difference_cancels_to_zero (simplify)
@@ -10481,8 +11831,8 @@ Steps (Aggressive Mode):
    After: a / (c / d + b)
 Result: a / (c / d + b)
 ℹ️ Requires:
-  • c / d + b ≠ 0
   • d ≠ 0
+  • c / d + b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -10717,8 +12067,8 @@ Steps (Aggressive Mode):
    After: (b / c + a) / d
 Result: (b / c + a) / d
 ℹ️ Requires:
-  • c ≠ 0
   • d ≠ 0
+  • c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -10728,6 +12078,38 @@ Result: (b / c + a) / d
    - after: `(b/c + a)/d`
    - substeps:
      1. `Reescribir el numerador sacando factor común c`
+
+## perfect_square_root_direct_power_to_abs (simplify)
+
+- Source: `sqrt(x^2)`
+- Target: `abs(x)`
+- Result: `|x|`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sqrt(x^2)
+Target: |x|
+Strategy: rewrite radicals
+Steps (Aggressive Mode):
+1. Take the square root of a perfect square  [Sqrt Perfect Square]
+   Before: sqrt(x^(2))
+   Cambio local: sqrt(x^(2)) -> |x|
+   After: |x|
+Result: |x|
+```
+
+### Web / JSON Steps
+
+1. `Reconocer un cuadrado perfecto bajo la raíz`
+   - before: `sqrt(x^2)`
+   - after: `|x|`
+   - substeps:
+     1. `Identificar la base del cuadrado`
+     2. `La raíz de un cuadrado da un valor absoluto`
 
 ## perfect_square_root_to_abs (simplify)
 
@@ -10767,8 +12149,8 @@ Result: |a + b|
 - Target: `abs(a+b)+c`
 - Result: `|a + b| + c`
 - Web step count: `1`
-- Web substep count: `0`
-- Flags: no web substeps emitted
+- Web substep count: `2`
+- Flags: none
 
 ### CLI
 
@@ -10789,7 +12171,9 @@ Result: |a + b| + c
 1. `Reconocer un cuadrado perfecto bajo la raíz`
    - before: `sqrt(a^2 + b^2 + 2 · a · b) + c`
    - after: `|a + b| + c`
-   - substeps: none
+   - substeps:
+     1. `Reescribir el radicando como un cuadrado perfecto`
+     2. `La raíz de un cuadrado da un valor absoluto`
 
 ## pythagorean_factor_form_from_sin_sq (simplify)
 
@@ -10929,21 +12313,20 @@ Parsed: 1 / (sqrt(x) - 1)
 Target: (sqrt(x) + 1) / (x - 1)
 Strategy: rationalize
 Steps (Aggressive Mode):
-1. Rationalize the denominator  [Rationalize]
+1. Rationalize: multiply by conjugate  [Rationalize Linear Sqrt Denominator]
    Before: 1 / (sqrt(x) - 1)
-   Cambio local: 1 / (sqrt(x) - 1) -> (sqrt(x) + 1) / (x - 1)
    After: (sqrt(x) + 1) / (x - 1)
 Result: (sqrt(x) + 1) / (x - 1)
 ℹ️ Requires:
-  • x - 1 ≠ 0
   • x ≥ 0
+  • x - 1 ≠ 0
 ```
 
 ### Web / JSON Steps
 
 1. `Racionalizar el denominador`
    - before: `1/(sqrt(x) - 1)`
-   - after: `(sqrt(x) + 1)/(x - 1)`
+   - after: `(sqrt(x) + 1)/(x - 1^2)`
    - substeps:
      1. `Cambiar el signo para formar el conjugado`
      2. `Multiplicar numerador y denominador por ese conjugado`
@@ -10963,15 +12346,15 @@ Result: (sqrt(x) + 1) / (x - 1)
 ```text
 Parsed: 1 / (sqrt(x) + 1)
 Target: (sqrt(x) - 1) / (x - 1)
-Strategy: simplify
+Strategy: rationalize
 Steps (Aggressive Mode):
 1. Rationalize: multiply by conjugate  [Rationalize Linear Sqrt Denominator]
    Before: 1 / (sqrt(x) + 1)
    After: (sqrt(x) - 1) / (x - 1)
 Result: (sqrt(x) - 1) / (x - 1)
 ℹ️ Requires:
-  • x ≥ 0
   • x - 1 ≠ 0
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -11000,21 +12383,20 @@ Parsed: 1 / (sqrt(x) - 2)
 Target: (sqrt(x) + 2) / (x - 4)
 Strategy: rationalize
 Steps (Aggressive Mode):
-1. Rationalize the denominator  [Rationalize]
+1. Rationalize: multiply by conjugate  [Rationalize Linear Sqrt Denominator]
    Before: 1 / (sqrt(x) - 2)
-   Cambio local: 1 / (sqrt(x) - 2) -> (sqrt(x) + 2) / (x - 4)
    After: (sqrt(x) + 2) / (x - 4)
 Result: (sqrt(x) + 2) / (x - 4)
 ℹ️ Requires:
-  • x - 4 ≠ 0
   • x ≥ 0
+  • x - 4 ≠ 0
 ```
 
 ### Web / JSON Steps
 
 1. `Racionalizar el denominador`
    - before: `1/(sqrt(x) - 2)`
-   - after: `(sqrt(x) + 2)/(x - 4)`
+   - after: `(sqrt(x) + 2)/(x - 2^2)`
    - substeps:
      1. `Cambiar el signo para formar el conjugado`
      2. `Multiplicar numerador y denominador por ese conjugado`
@@ -11025,8 +12407,8 @@ Result: (sqrt(x) + 2) / (x - 4)
 - Source: `1/(sqrt(x)-a)`
 - Target: `(sqrt(x)+a)/(x-a^2)`
 - Result: `(sqrt(x) + a) / (x - a^2)`
-- Web step count: `1`
-- Web substep count: `3`
+- Web step count: `2`
+- Web substep count: `4`
 - Flags: none
 
 ### CLI
@@ -11036,10 +12418,15 @@ Parsed: 1 / (sqrt(x) - a)
 Target: (sqrt(x) + a) / (x - a^2)
 Strategy: rationalize
 Steps (Aggressive Mode):
-1. Rationalize the denominator  [Rationalize]
+1. Rationalize denominator (diff squares)  [Rationalize Denominator]
    Before: 1 / (sqrt(x) - a)
-   Cambio local: 1 / (sqrt(x) - a) -> (sqrt(x) + a) / (x - a^(2))
+   Cambio local: 1 / (sqrt(x) - a) -> (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
+   After: (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
+2.   [Cancel Reciprocal Exponents]
+   Before: (sqrt(x) + a) / (sqrt(x)^(2) + a^(2))
+   Cambio local: sqrt(x)^(2) -> x
    After: (sqrt(x) + a) / (x - a^2)
+   ℹ️ Requires: x > 0
 Result: (sqrt(x) + a) / (x - a^(2))
 ℹ️ Requires:
   • a^2 - x ≠ 0
@@ -11050,19 +12437,24 @@ Result: (sqrt(x) + a) / (x - a^(2))
 
 1. `Racionalizar el denominador`
    - before: `1/(sqrt(x) - a)`
-   - after: `(sqrt(x) + a)/(x - a^2)`
+   - after: `(sqrt(x) + a)/(sqrt(x)^2 - ((-a))^2)`
    - substeps:
      1. `Cambiar el signo para formar el conjugado`
      2. `Multiplicar numerador y denominador por ese conjugado`
      3. `En el denominador aparece una diferencia de cuadrados`
+2. `Deshacer raíz y potencia`
+   - before: `(sqrt(x) + a)/(sqrt(x)^2 - ((-a))^2)`
+   - after: `(sqrt(x) + a)/(x - a^2)`
+   - substeps:
+     1. `Reemplazar ese bloque en la expresión`
 
 ## rationalize_symbolic_linear_root_alt_var (rationalize)
 
 - Source: `1/(sqrt(y)-a)`
 - Target: `(sqrt(y)+a)/(y-a^2)`
 - Result: `(sqrt(y) + a) / (y - a^2)`
-- Web step count: `1`
-- Web substep count: `3`
+- Web step count: `2`
+- Web substep count: `4`
 - Flags: none
 
 ### CLI
@@ -11072,10 +12464,15 @@ Parsed: 1 / (sqrt(y) - a)
 Target: (sqrt(y) + a) / (y - a^2)
 Strategy: rationalize
 Steps (Aggressive Mode):
-1. Rationalize the denominator  [Rationalize]
+1. Rationalize denominator (diff squares)  [Rationalize Denominator]
    Before: 1 / (sqrt(y) - a)
-   Cambio local: 1 / (sqrt(y) - a) -> (sqrt(y) + a) / (y - a^(2))
+   Cambio local: 1 / (sqrt(y) - a) -> (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
+   After: (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
+2.   [Cancel Reciprocal Exponents]
+   Before: (sqrt(y) + a) / (sqrt(y)^(2) + a^(2))
+   Cambio local: sqrt(y)^(2) -> y
    After: (sqrt(y) + a) / (y - a^2)
+   ℹ️ Requires: y > 0
 Result: (sqrt(y) + a) / (y - a^(2))
 ℹ️ Requires:
   • a^2 - y ≠ 0
@@ -11086,11 +12483,16 @@ Result: (sqrt(y) + a) / (y - a^(2))
 
 1. `Racionalizar el denominador`
    - before: `1/(sqrt(y) - a)`
-   - after: `(sqrt(y) + a)/(y - a^2)`
+   - after: `(sqrt(y) + a)/(sqrt(y)^2 - ((-a))^2)`
    - substeps:
      1. `Cambiar el signo para formar el conjugado`
      2. `Multiplicar numerador y denominador por ese conjugado`
      3. `En el denominador aparece una diferencia de cuadrados`
+2. `Deshacer raíz y potencia`
+   - before: `(sqrt(y) + a)/(sqrt(y)^2 - ((-a))^2)`
+   - after: `(sqrt(y) + a)/(y - a^2)`
+   - substeps:
+     1. `Reemplazar ese bloque en la expresión`
 
 ## rationalize_symbolic_linear_root_plus (rationalize)
 
@@ -11106,7 +12508,7 @@ Result: (sqrt(y) + a) / (y - a^(2))
 ```text
 Parsed: 1 / (sqrt(x) + a)
 Target: (sqrt(x) - a) / (x - a^2)
-Strategy: simplify
+Strategy: rationalize
 Steps (Aggressive Mode):
 1. Rationalize: multiply by conjugate  [Rationalize Linear Sqrt Denominator]
    Before: 1 / (sqrt(x) + a)
@@ -11253,6 +12655,69 @@ Result: 1
    - before: `sec(x)^2 - tan(x)^2`
    - after: `1`
    - substeps: none
+
+## simplify_sqrt_arithmetic_difference (simplify)
+
+- Source: `sqrt(18)-sqrt(2)`
+- Target: `2*sqrt(2)`
+- Result: `2 * sqrt(2)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sqrt(18) - sqrt(2)
+Target: 2 * sqrt(2)
+Strategy: combine like terms
+Steps (Aggressive Mode):
+1. Combine like terms  [Combine Like Terms]
+   Before: 3 * sqrt(2) - sqrt(2)
+   Cambio local: 3 * sqrt(2) - sqrt(2) -> 2 * sqrt(2)
+   After: 2 * sqrt(2)
+Result: 2 * sqrt(2)
+```
+
+### Web / JSON Steps
+
+1. `Agrupar términos semejantes`
+   - before: `3 · sqrt(2) - sqrt(2)`
+   - after: `2 · sqrt(2)`
+   - substeps:
+     1. `Sumar los coeficientes que acompañan a 2^(1/2)`
+
+## simplify_sqrt_arithmetic_sum (simplify)
+
+- Source: `sqrt(8)+sqrt(2)`
+- Target: `3*sqrt(2)`
+- Result: `3 * sqrt(2)`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sqrt(2) + sqrt(8)
+Target: 3 * sqrt(2)
+Strategy: combine like terms
+Steps (Aggressive Mode):
+1. Combine like terms  [Combine Like Terms]
+   Before: sqrt(8) + 2 * sqrt(2)
+   Cambio local: sqrt(2) + 2 * sqrt(2) -> 3 * sqrt(2)
+   After: 3 * sqrt(2)
+Result: 3 * sqrt(2)
+```
+
+### Web / JSON Steps
+
+1. `Agrupar términos semejantes`
+   - before: `sqrt(8) + 2 · sqrt(2)`
+   - after: `3 · sqrt(2)`
+   - substeps:
+     1. `Extraer el cuadrado perfecto dentro de la raíz`
+     2. `Sumar los coeficientes que acompañan a 2^(1/2)`
 
 ## solve_prep_complete_square_alt_variable_symbolic_leading_coeff (solve_prep)
 
@@ -11618,8 +13083,8 @@ Steps (Aggressive Mode):
    After: -a / c + (a * d / c + b) / (d - c * x)
 Result: -a / c + (a * d / c + b) / (d - c * x)
 ℹ️ Requires:
-  • c * x - d ≠ 0
   • c ≠ 0
+  • c * x - d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11683,8 +13148,8 @@ Steps (Aggressive Mode):
    After: ((1 / (2 * n + 1) - 1 / (2 * n + 3)))/2
 Result: 1 / 2 * (1 / (2 * n + 1) - 1 / (2 * n + 3))
 ℹ️ Requires:
-  • 2 * n + 1 ≠ 0
   • 2 * n + 3 ≠ 0
+  • 2 * n + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11716,9 +13181,9 @@ Steps (Aggressive Mode):
    After: ((1 / (a * n + b) - 1 / (a * n + c)))/((c - b))
 Result: 1 / (c - b) * (1 / (a * n + b) - 1 / (a * n + c))
 ℹ️ Requires:
-  • a * n + b ≠ 0
   • b - c ≠ 0
   • a * n + c ≠ 0
+  • a * n + b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11750,8 +13215,8 @@ Steps (Aggressive Mode):
    After: 1 / n - 1 / (n + 1)
 Result: 1 / n - 1 / (n + 1)
 ℹ️ Requires:
-  • n ≠ 0
   • n + 1 ≠ 0
+  • n ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11783,8 +13248,8 @@ Steps (Aggressive Mode):
    After: ((1 / (x - 1) - 1 / (x + 1)))/2
 Result: 1 / 2 * (1 / (x - 1) - 1 / (x + 1))
 ℹ️ Requires:
-  • x + 1 ≠ 0
   • x - 1 ≠ 0
+  • x + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11893,3 +13358,35 @@ Result: 1 / (2 * a) * (1 / (x - a) - 1 / (a + x))
    - before: `1/(x^2 - a^2)`
    - after: `1/(2 · a) · (1/(x - a) - 1/(a + x))`
    - substeps: none
+
+## square_of_square_root_requires_nonnegative (simplify)
+
+- Source: `sqrt(x)^2`
+- Target: `x`
+- Result: `x`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sqrt(x)^2
+Target: x
+Strategy: rewrite radicals
+Steps (Aggressive Mode):
+1. Square a radical under its domain condition  [Square of Square Root]
+   Before: sqrt(x)^(2)
+   Cambio local: sqrt(x)^(2) -> x
+   After: x
+Result: x
+```
+
+### Web / JSON Steps
+
+1. `Deshacer raíz y potencia`
+   - before: `sqrt(x)^2`
+   - after: `x`
+   - substeps:
+     1. `Identificar el radicando de la raíz principal`
+     2. `El cuadrado deshace la raíz bajo la condición u ≥ 0`

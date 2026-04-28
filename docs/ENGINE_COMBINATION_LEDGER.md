@@ -95,6 +95,73 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-04-28: Derive Hyperbolic Negative Exponential Probe Hang
+
+- area:
+  - derive planner / hyperbolic exponential decomposition
+- status:
+  - `superseded`
+- attempted case:
+  - `derive cosh(x) - sinh(x), exp(-x)`
+- local lane:
+  - CLI probe: `printf '%s\n' 'derive cosh(x) - sinh(x), exp(-x)' | cargo run -q -p cas_cli`
+- local result:
+  - the sibling positive decomposition `derive sinh(x) + cosh(x), exp(x)`
+    derived quickly through a named `Hyperbolic Sum to Exponential` step
+  - the negative-exponent sibling did not finish during the interactive probe
+    window and was killed instead of being promoted
+- global result:
+  - rejected before guardrails; no runtime or corpus change was retained for
+    this sibling candidate
+- decision:
+  - promote only the stable positive decomposition representative
+  - keep the negative-exponent orientation as a planner robustness discovery
+- best current explanation:
+  - the target `exp(-x)` appears to route into a much heavier planner or
+    equivalence path than the positive target, despite being a closely related
+    hyperbolic/exponential identity
+- plausible follow-up:
+  - add a cheap target-aware hyperbolic sum/difference-to-exponential route for
+    the negative decomposition, or gate planner preference for this orientation
+    before it enters an expensive fallback path
+- superseded by:
+  - retained 2026-04-28 robustness fix adding a direct target-aware
+    `cosh(u)-sinh(u) -> exp(-u)` derive route and promoting
+    `hyperbolic_contract_negative_exp_decomposition`
+
+### 2026-04-28: Derive Sqrt Arithmetic Multi-Extraction Snapshot Discovery
+
+- area:
+  - derive didactic quality / step snapshot preservation
+  - `Combine Like Terms` over numeric radical arithmetic
+- status:
+  - `observe-only`
+- attempted case:
+  - `derive sqrt(8)+sqrt(18), 5*sqrt(2)`
+- local lane:
+  - `cargo test -q -p cas_didactic --test derive_didactic_audit derive_didactic_sqrt_arithmetic_multi_extract_sum_shows_each_hidden_radical_extraction -- --nocapture`
+- local result:
+  - `derive` reached the target, but the attempted didactic assertion failed:
+    only one hidden radical extraction was available to the substep generator
+    where the candidate expected two
+  - CLI showed the step snapshot as `sqrt(8) + 3*sqrt(2)` before combining,
+    even though the original source had both `sqrt(8)` and `sqrt(18)`
+- global result:
+  - rejected before global guardrails; no runtime change was retained for this
+    candidate
+- decision:
+  - do not promote the multi-extraction derive row yet
+  - promote the smaller subtraction-orientation row instead
+- best current explanation:
+  - one radical normalization can happen before the visible derive snapshot for
+    the `Combine Like Terms` step, so the didactic layer cannot reliably
+    reconstruct every raw radical from `step.global_before`
+- plausible follow-up:
+  - preserve the original source/focused pre-normalization expression in step
+    metadata, or emit real root-canonicalization prep steps before combining
+    like radicals
+  - avoid fabricating missing radical-extraction substeps from display text
+
 ### 2026-04-27: `log_exp_inverse` Log10 Factor Coverage Runtime Rejection
 
 - area:

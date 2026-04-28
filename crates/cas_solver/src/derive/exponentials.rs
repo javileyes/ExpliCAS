@@ -12,12 +12,15 @@ pub(crate) enum DeriveExponentialRewriteKind {
     ContractReciprocal,
     ExpandPower,
     ContractPower,
+    LogExpInverse,
+    ExpLogInverse,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct DeriveExponentialRewrite {
     pub(crate) rewritten: ExprId,
     pub(crate) kind: DeriveExponentialRewriteKind,
+    pub(crate) assumed_positive: Option<ExprId>,
 }
 
 impl DeriveExponentialRewriteKind {
@@ -33,6 +36,8 @@ impl DeriveExponentialRewriteKind {
             Self::ContractReciprocal => "Recognize 1 / exp(u) as exp(-u)",
             Self::ExpandPower => "Expand exp(n·u) as exp(u)^n",
             Self::ContractPower => "Recognize exp(u)^n as exp(n·u)",
+            Self::LogExpInverse => "Cancel ln(exp(u)) to u",
+            Self::ExpLogInverse => "Cancel exp(ln(u)) to u",
         }
     }
 
@@ -41,6 +46,8 @@ impl DeriveExponentialRewriteKind {
             Self::ExpandSumDiff | Self::ContractSumDiff => "Exponential Sum/Difference Identity",
             Self::ExpandReciprocal | Self::ContractReciprocal => "Exponential Reciprocal Identity",
             Self::ExpandPower | Self::ContractPower => "Exponential Power Identity",
+            Self::LogExpInverse => "Log-Exp Inverse",
+            Self::ExpLogInverse => "Exponential-Log Inverse",
         }
     }
 }
@@ -50,6 +57,10 @@ pub(crate) fn try_rewrite_exponential_sum_diff_target_aware(
     expr: ExprId,
     target_expr: ExprId,
 ) -> Option<DeriveExponentialRewrite> {
+    if let Some(rewrite) = try_rewrite_exponential_log_inverse_core(ctx, expr, target_expr) {
+        return Some(rewrite);
+    }
+
     if let Some(rewrite) =
         try_rewrite_exponential_sum_diff_signed_term_target_aware(ctx, expr, target_expr)
     {
@@ -74,6 +85,7 @@ fn try_rewrite_exponential_sum_diff_signed_term_target_aware(
                 DeriveExponentialRewrite {
                     rewritten: target_expr,
                     kind: rewrite.kind,
+                    assumed_positive: rewrite.assumed_positive,
                 }
             })
         }
@@ -114,6 +126,7 @@ fn try_rewrite_exponential_sum_diff_additive_passthrough_target_aware(
                 return Some(DeriveExponentialRewrite {
                     rewritten: target_expr,
                     kind: rewrite.kind,
+                    assumed_positive: rewrite.assumed_positive,
                 });
             }
         }
@@ -132,6 +145,7 @@ fn try_rewrite_exponential_sum_diff_core(
             return Some(DeriveExponentialRewrite {
                 rewritten: target_expr,
                 kind: DeriveExponentialRewriteKind::ExpandSumDiff,
+                assumed_positive: None,
             });
         }
     }
@@ -141,6 +155,7 @@ fn try_rewrite_exponential_sum_diff_core(
             return Some(DeriveExponentialRewrite {
                 rewritten: target_expr,
                 kind: DeriveExponentialRewriteKind::ContractSumDiff,
+                assumed_positive: None,
             });
         }
     }
@@ -150,6 +165,7 @@ fn try_rewrite_exponential_sum_diff_core(
             return Some(DeriveExponentialRewrite {
                 rewritten: target_expr,
                 kind: DeriveExponentialRewriteKind::ExpandReciprocal,
+                assumed_positive: None,
             });
         }
     }
@@ -159,6 +175,7 @@ fn try_rewrite_exponential_sum_diff_core(
             return Some(DeriveExponentialRewrite {
                 rewritten: target_expr,
                 kind: DeriveExponentialRewriteKind::ContractReciprocal,
+                assumed_positive: None,
             });
         }
     }
@@ -168,6 +185,7 @@ fn try_rewrite_exponential_sum_diff_core(
             return Some(DeriveExponentialRewrite {
                 rewritten: target_expr,
                 kind: DeriveExponentialRewriteKind::ExpandPower,
+                assumed_positive: None,
             });
         }
     }
@@ -177,11 +195,60 @@ fn try_rewrite_exponential_sum_diff_core(
             return Some(DeriveExponentialRewrite {
                 rewritten: target_expr,
                 kind: DeriveExponentialRewriteKind::ContractPower,
+                assumed_positive: None,
             });
         }
     }
 
     None
+}
+
+fn try_rewrite_exponential_log_inverse_core(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveExponentialRewrite> {
+    if let Some(arg) = extract_ln_exp_argument(ctx, expr) {
+        if super::strong_target_match(ctx, arg, target_expr) {
+            return Some(DeriveExponentialRewrite {
+                rewritten: target_expr,
+                kind: DeriveExponentialRewriteKind::LogExpInverse,
+                assumed_positive: None,
+            });
+        }
+    }
+
+    if let Some(arg) = extract_exp_ln_argument(ctx, expr) {
+        if super::strong_target_match(ctx, arg, target_expr) {
+            return Some(DeriveExponentialRewrite {
+                rewritten: target_expr,
+                kind: DeriveExponentialRewriteKind::ExpLogInverse,
+                assumed_positive: Some(arg),
+            });
+        }
+    }
+
+    None
+}
+
+fn extract_ln_exp_argument(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let ln_arg = extract_natural_log_argument(ctx, expr)?;
+    cas_math::expr_extract::extract_exp_argument(ctx, ln_arg)
+}
+
+fn extract_exp_ln_argument(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let exp_arg = cas_math::expr_extract::extract_exp_argument(ctx, expr)?;
+    extract_natural_log_argument(ctx, exp_arg)
+}
+
+fn extract_natural_log_argument(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if !matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Ln)) || args.len() != 1 {
+        return None;
+    }
+    Some(args[0])
 }
 
 fn expand_exponential_sum_diff_expr(ctx: &mut cas_ast::Context, expr: ExprId) -> Option<ExprId> {
@@ -618,6 +685,32 @@ mod tests {
 
         assert_eq!(rewrite.kind, DeriveExponentialRewriteKind::ExpandPower);
         assert_eq!(rewrite.rewritten, target);
+    }
+
+    #[test]
+    fn rewrites_log_exp_inverse_target_aware() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("ln(exp(x))", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("x", &mut ctx).expect("parse target");
+        let rewrite = try_rewrite_exponential_sum_diff_target_aware(&mut ctx, source, target)
+            .expect("expected log-exp inverse rewrite");
+
+        assert_eq!(rewrite.kind, DeriveExponentialRewriteKind::LogExpInverse);
+        assert_eq!(rewrite.rewritten, target);
+        assert_eq!(rewrite.assumed_positive, None);
+    }
+
+    #[test]
+    fn rewrites_exp_log_inverse_with_positive_assumption_target_aware() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("exp(ln(x))", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("x", &mut ctx).expect("parse target");
+        let rewrite = try_rewrite_exponential_sum_diff_target_aware(&mut ctx, source, target)
+            .expect("expected exp-log inverse rewrite");
+
+        assert_eq!(rewrite.kind, DeriveExponentialRewriteKind::ExpLogInverse);
+        assert_eq!(rewrite.rewritten, target);
+        assert!(rewrite.assumed_positive.is_some());
     }
 
     #[test]

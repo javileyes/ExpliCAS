@@ -381,7 +381,8 @@ pub struct SqrtPerfectSquareRewrite {
     pub rewritten: ExprId,
 }
 
-/// Rewrite sqrt of perfect-square trinomials:
+/// Rewrite sqrt of perfect-square forms:
+/// - `sqrt(A^(2k)) -> abs(A^k)`
 /// - `sqrt(A^2 ± 2AB + B^2) -> abs(A ± B)`
 ///
 /// Assumes canonicalized sqrt representation as `Pow(arg, 1/2)`.
@@ -404,6 +405,13 @@ pub fn try_rewrite_sqrt_perfect_square_expr(
         }
         _ => return None,
     };
+
+    if let Some(root) = extract_square_root_of_term(ctx, arg) {
+        if !matches!(ctx.get(root), Expr::Number(_)) {
+            let rewritten = ctx.call_builtin(cas_ast::BuiltinFn::Abs, vec![root]);
+            return Some(SqrtPerfectSquareRewrite { rewritten });
+        }
+    }
 
     let (a, b, is_sub) = try_match_perfect_square_trinomial(ctx, arg)
         .or_else(|| try_match_collapsed_sqrt_square_trinomial(ctx, arg))?;
@@ -628,6 +636,15 @@ mod tests {
         let mut ctx = Context::new();
         let expr = cas_parser::parse("sqrt(x^2 + 2*x*y + y^2)", &mut ctx).expect("parse");
         let expected = cas_parser::parse("abs(x + y)", &mut ctx).expect("expected");
+        let rw = try_rewrite_sqrt_perfect_square_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
+    }
+
+    #[test]
+    fn rewrite_sqrt_perfect_square_expr_direct_even_power() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("sqrt(x^2)", &mut ctx).expect("parse");
+        let expected = cas_parser::parse("abs(x)", &mut ctx).expect("expected");
         let rw = try_rewrite_sqrt_perfect_square_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(compare_expr(&ctx, rw.rewritten, expected), Ordering::Equal);
     }

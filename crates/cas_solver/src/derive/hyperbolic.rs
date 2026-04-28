@@ -1815,6 +1815,37 @@ pub(crate) fn try_rewrite_hyperbolic_exponential_bridge_target_aware(
     target_expr: ExprId,
 ) -> Option<DeriveHyperbolicRewrite> {
     let target_has_exp = contains_exponential_like(ctx, target_expr);
+
+    if let Some(rewrite) =
+        cas_math::hyperbolic_identity_support::try_rewrite_sinh_cosh_to_exp(ctx, expr)
+    {
+        let kind = match rewrite.kind {
+            cas_math::hyperbolic_identity_support::SinhCoshToExpRewriteKind::Sum => {
+                DeriveHyperbolicRewriteKind::SinhCoshToExp
+            }
+            cas_math::hyperbolic_identity_support::SinhCoshToExpRewriteKind::CoshMinusSinh => {
+                DeriveHyperbolicRewriteKind::CoshMinusSinhToExpNeg
+            }
+            cas_math::hyperbolic_identity_support::SinhCoshToExpRewriteKind::SinhMinusCosh => {
+                DeriveHyperbolicRewriteKind::SinhMinusCoshToNegExpNeg
+            }
+        };
+
+        if strong_target_match(ctx, rewrite.rewritten, target_expr) {
+            return Some(DeriveHyperbolicRewrite {
+                rewritten: rewrite.rewritten,
+                kind,
+            });
+        }
+
+        if target_has_exp && matches_target_modulo_simplify(ctx, rewrite.rewritten, target_expr) {
+            return Some(DeriveHyperbolicRewrite {
+                rewritten: target_expr,
+                kind,
+            });
+        }
+    }
+
     generate_hyperbolic_bridge_rewrites(ctx, expr)
         .into_iter()
         .find_map(|rewrite| {

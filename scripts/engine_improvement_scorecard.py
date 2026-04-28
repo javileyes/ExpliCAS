@@ -131,6 +131,31 @@ SUITES: dict[str, SuiteSpec] = {
         parser="derive",
         description="Derive reachability/equivalence corpus and step quality stats.",
     ),
+    "derive_shadow_pressure": SuiteSpec(
+        name="derive_shadow_pressure",
+        category="derive",
+        profile_tags=("guardrail", "full"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_solver",
+            "--test",
+            "derive_contract_tests",
+            "derive_engine_identity_shadow_pressure_reports_reachability",
+            "--",
+            "--exact",
+            "--nocapture",
+        ],
+        env={},
+        parser="derive_shadow",
+        description=(
+            "Diagnostic engine-to-derive shadow pressure over representative "
+            "identity_pairs.csv rows."
+        ),
+    ),
     "simplify_strict": SuiteSpec(
         name="simplify_strict",
         category="simplify",
@@ -1364,6 +1389,11 @@ def parse_derive(output: str) -> dict[str, Any]:
     if not summary or not stats:
         raise ValueError("missing derive summary block")
 
+    specificity = re.search(
+        r"derive strategy specificity: generic_simplify_expected=(\d+) distinct_expected_strategies=(\d+)",
+        output,
+    )
+
     return {
         "derived": int(summary.group(1)),
         "unsupported": int(summary.group(2)),
@@ -1372,6 +1402,67 @@ def parse_derive(output: str) -> dict[str, Any]:
         "supported_equiv_rate": float(stats.group(2)),
         "mean_step_count": float(stats.group(3)),
         "long_path_rate": float(stats.group(4)),
+        "generic_simplify_expected": int(specificity.group(1))
+        if specificity
+        else 0,
+        "distinct_expected_strategies": int(specificity.group(2))
+        if specificity
+        else None,
+    }
+
+
+def parse_derive_shadow(output: str) -> dict[str, Any]:
+    summary = re.search(
+        r"derive shadow pressure summary: sampled=(\d+) derived=(\d+) unsupported=(\d+) not_equivalent=(\d+)",
+        output,
+    )
+    stats = re.search(
+        r"derive shadow pressure stats: reachability_rate=([0-9.]+) mean_step_count=([0-9.]+) single_step_successes=(\d+) multi_step_successes=(\d+)",
+        output,
+    )
+    if not summary or not stats:
+        raise ValueError("missing derive shadow pressure summary block")
+
+    specificity = re.search(
+        r"derive shadow pressure strategy specificity: generic_simplify_strategy_successes=(\d+) distinct_actual_strategies=(\d+)",
+        output,
+    )
+    generic_ids = re.search(
+        r"derive shadow pressure generic-simplify-ids: ([^\n]*)",
+        output,
+    )
+
+    sampled = int(summary.group(1))
+    derived = int(summary.group(2))
+    unsupported = int(summary.group(3))
+    not_equivalent = int(summary.group(4))
+    classified = derived + unsupported + not_equivalent
+    generic_simplify_ids = []
+    if generic_ids:
+        raw_ids = generic_ids.group(1).strip()
+        if raw_ids and raw_ids != "none":
+            generic_simplify_ids = [
+                item.strip() for item in raw_ids.split(",") if item.strip()
+            ]
+
+    return {
+        "sampled": sampled,
+        "derived": derived,
+        "unsupported": unsupported,
+        "not_equivalent": not_equivalent,
+        "classified": classified,
+        "classification_rate": classified / sampled if sampled else 0.0,
+        "reachability_rate": float(stats.group(1)),
+        "mean_step_count": float(stats.group(2)),
+        "single_step_successes": int(stats.group(3)),
+        "multi_step_successes": int(stats.group(4)),
+        "generic_simplify_strategy_successes": int(specificity.group(1))
+        if specificity
+        else 0,
+        "generic_simplify_strategy_ids": generic_simplify_ids,
+        "distinct_actual_strategies": int(specificity.group(2))
+        if specificity
+        else None,
     }
 
 
@@ -1500,6 +1591,7 @@ def parse_cargo_test_basic(output: str) -> dict[str, Any]:
 PARSERS = {
     "corpus": parse_corpus,
     "derive": parse_derive,
+    "derive_shadow": parse_derive_shadow,
     "unified_benchmark": parse_unified_benchmark,
     "cargo_test_basic": parse_cargo_test_basic,
 }
@@ -1512,6 +1604,8 @@ def suite_status(name: str, metrics: dict[str, Any], returncode: int) -> str:
         return "pass" if metrics["failed"] == 0 else "fail"
     if name == "derive_contract":
         return "warn" if metrics["unsupported"] > 0 else "pass"
+    if name == "derive_shadow_pressure":
+        return "pass"
     if name in {"simplify_strict", "simplify_nf_first"}:
         if metrics["failed"] > 0:
             return "fail"
@@ -2373,6 +2467,65 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- Path quality: mean_step_count={derive_metrics['mean_step_count']:.2f} "
                         f"long_path_rate={derive_metrics['long_path_rate']:.2f}"
                     ),
+                    (
+                        f"- Strategy specificity: generic_simplify_expected="
+                        f"{derive_metrics.get('generic_simplify_expected', 0)} "
+                        f"distinct_expected_strategies="
+                        f"{derive_metrics.get('distinct_expected_strategies', 'n/a')}"
+                    ),
+                    "",
+                ]
+            )
+
+    derive_shadow_suite = scorecard["suites"].get("derive_shadow_pressure")
+    if derive_shadow_suite:
+        derive_shadow_metrics = derive_shadow_suite["metrics"]
+        lines.extend(
+            [
+                "## Derive Shadow Pressure",
+                "",
+                "- Dimension: diagnostic engine-to-derive bridgeability over representative engine identity rows.",
+                "- Interpretation: exposes where known engine/metamorphic identities are not yet reachable or provable as derive targets; diagnostic, not a support gate.",
+            ]
+        )
+        if "parse_error" in derive_shadow_metrics:
+            lines.extend(
+                [
+                    f"- Parser status: `parse_error={derive_shadow_metrics['parse_error']}`",
+                    "",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    (
+                        f"- Outcomes: sampled={derive_shadow_metrics['sampled']} "
+                        f"derived={derive_shadow_metrics['derived']} "
+                        f"unsupported={derive_shadow_metrics['unsupported']} "
+                        f"not_equivalent={derive_shadow_metrics['not_equivalent']}"
+                    ),
+                    (
+                        f"- Path signal: mean_step_count={derive_shadow_metrics['mean_step_count']:.2f} "
+                        f"single_step_successes={derive_shadow_metrics['single_step_successes']} "
+                        f"multi_step_successes={derive_shadow_metrics['multi_step_successes']}"
+                    ),
+                    (
+                        f"- Strategy specificity: generic_simplify_strategy_successes="
+                        f"{derive_shadow_metrics.get('generic_simplify_strategy_successes', 0)} "
+                        f"distinct_actual_strategies="
+                        f"{derive_shadow_metrics.get('distinct_actual_strategies', 'n/a')}"
+                    ),
+                    (
+                        "- Generic simplify shadow IDs: "
+                        + (
+                            ", ".join(
+                                derive_shadow_metrics.get(
+                                    "generic_simplify_strategy_ids", []
+                                )
+                            )
+                            or "none"
+                        )
+                    ),
                     "",
                 ]
             )
@@ -2547,10 +2700,29 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 )
             summary = " ".join(pieces)
         elif "derived" in metrics:
-            summary = (
-                f"derived={metrics['derived']} unsupported={metrics['unsupported']} "
-                f"not_equivalent={metrics['not_equivalent']} mean_step_count={metrics['mean_step_count']:.2f}"
+            pieces = []
+            if "sampled" in metrics:
+                pieces.append(f"sampled={metrics['sampled']}")
+            pieces.extend(
+                [
+                    f"derived={metrics['derived']}",
+                    f"unsupported={metrics['unsupported']}",
+                    f"not_equivalent={metrics['not_equivalent']}",
+                    f"mean_step_count={metrics['mean_step_count']:.2f}",
+                ]
             )
+            if "generic_simplify_expected" in metrics:
+                pieces.append(
+                    f"generic_simplify_expected={metrics['generic_simplify_expected']}"
+                )
+            if "generic_simplify_strategy_successes" in metrics:
+                pieces.append(
+                    "generic_simplify_strategy_successes="
+                    f"{metrics['generic_simplify_strategy_successes']}"
+                )
+            if "single_step_successes" in metrics:
+                pieces.append(f"single_step={metrics['single_step_successes']}")
+            summary = " ".join(pieces)
         elif "cargo_status" in metrics:
             pieces = [
                 f"passed={metrics['passed']}",

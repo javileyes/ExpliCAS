@@ -32,11 +32,41 @@ fn parse_wire(s: &str) -> Value {
         .unwrap_or_else(|e| panic!("Failed to parse wire JSON: {} (error: {})", trimmed, e))
 }
 
+fn expected_visible_rule_name(rule_name: &str) -> &str {
+    match rule_name {
+        "Angle Sum/Diff Identity" => "Aplicar suma/diferencia de ángulos",
+        "Exponential Power Identity" => "Reescribir potencia exponencial",
+        "Exponential Reciprocal Identity" => "Reescribir recíproco exponencial",
+        "Exponential Sum/Difference Identity" => "Reescribir exponenciales",
+        "Hyperbolic Angle Sum/Difference Identity" => {
+            "Aplicar identidad hiperbólica de suma/diferencia de ángulos"
+        }
+        "Hyperbolic Double-Angle Identity" => "Aplicar identidad hiperbólica de ángulo doble",
+        "Hyperbolic Exponential Identity" => "Aplicar identidad exponencial hiperbólica",
+        "Hyperbolic Product-to-Sum Identity" => "Aplicar identidad hiperbólica de producto a suma",
+        "Hyperbolic Pythagorean Identity" => "Aplicar identidad pitagórica hiperbólica",
+        "Hyperbolic Triple-Angle Identity" => "Aplicar identidad hiperbólica de ángulo triple",
+        "Quintuple Angle Identity" => "Reescribir ángulo quíntuple",
+        "Triple Angle Expansion" | "Triple Angle Identity" => "Reescribir ángulo triple",
+        _ => rule_name,
+    }
+}
+
+fn assert_rule_eq(rule: &Value, expected: &str) {
+    let actual = rule.as_str().expect("rule string");
+    let expected_visible = expected_visible_rule_name(expected);
+    assert_eq!(actual, expected_visible);
+}
+
 fn assert_rule_matches_any(rule: &Value, expected: &[&str]) {
     let actual = rule.as_str().expect("rule string");
+    let expected_visible: Vec<_> = expected
+        .iter()
+        .map(|rule_name| expected_visible_rule_name(rule_name))
+        .collect();
     assert!(
-        expected.contains(&actual),
-        "unexpected rule {actual:?}, expected one of {expected:?}"
+        expected_visible.contains(&actual),
+        "unexpected rule {actual:?}, expected one of {expected_visible:?}"
     );
 }
 
@@ -572,7 +602,7 @@ fn derive_double_angle_after_arg_simplify_uses_direct_expand_trig_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
 }
 
 #[test]
@@ -592,7 +622,7 @@ fn derive_mixed_root_and_symbolic_power_uses_single_combine_powers_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Sumar exponentes de la misma base");
+    assert_rule_eq(&steps[0]["rule"], "Sumar exponentes de la misma base");
 }
 
 #[test]
@@ -703,12 +733,13 @@ fn derive_repeated_phase_shift_sum_uses_two_direct_expand_phase_shift_steps() {
     ]);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["strategy"], "simplify");
-    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["strategy"], "contract trig");
+    assert_eq!(wire["steps_count"], 2);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Simplify");
+    assert_eq!(steps.len(), 2);
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad de desfase");
+    assert_rule_eq(&steps[1]["rule"], "Aplicar identidad de desfase");
 }
 
 #[test]
@@ -723,12 +754,13 @@ fn derive_repeated_phase_shift_sum_expansion_uses_two_direct_expand_phase_shift_
     ]);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["strategy"], "simplify");
-    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["strategy"], "expand trig");
+    assert_eq!(wire["steps_count"], 2);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Extract Common Multiplicative Factor");
+    assert_eq!(steps.len(), 2);
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad de desfase");
+    assert_rule_eq(&steps[1]["rule"], "Aplicar identidad de desfase");
 }
 
 #[test]
@@ -771,7 +803,7 @@ fn derive_hyperbolic_sum_to_product_prunes_canonicalize_multiplication_tail() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
 }
 
 #[test]
@@ -791,7 +823,7 @@ fn derive_sophie_germain_expansion_uses_single_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir la expresión");
+    assert_rule_eq(&steps[0]["rule"], "Expandir la expresión");
 }
 
 #[test]
@@ -808,7 +840,7 @@ fn derive_hyperbolic_half_angle_backward_avoids_generic_canonicalize_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Half-Angle Squares");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Half-Angle Squares");
 }
 
 #[test]
@@ -826,7 +858,7 @@ fn derive_negative_hyperbolic_cosh_half_angle_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Half-Angle Squares");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Half-Angle Squares");
 }
 
 #[test]
@@ -844,7 +876,7 @@ fn derive_negative_hyperbolic_sinh_half_angle_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Half-Angle Squares");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Half-Angle Squares");
 }
 
 #[test]
@@ -862,7 +894,7 @@ fn derive_negative_hyperbolic_cosh_half_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Half-Angle Squares");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Half-Angle Squares");
 }
 
 #[test]
@@ -880,7 +912,7 @@ fn derive_negative_hyperbolic_sinh_half_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Half-Angle Squares");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Half-Angle Squares");
 }
 
 #[test]
@@ -900,7 +932,7 @@ fn derive_hyperbolic_cosh_double_angle_variant_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -917,7 +949,7 @@ fn derive_hyperbolic_expansion_from_exp_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -934,7 +966,7 @@ fn derive_hyperbolic_expansion_from_negative_exp_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -951,7 +983,7 @@ fn derive_hyperbolic_expansion_from_negated_negative_exp_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -968,7 +1000,7 @@ fn derive_hyperbolic_tanh_pythagorean_backward_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Pythagorean Identity");
 }
 
 #[test]
@@ -986,7 +1018,7 @@ fn derive_negative_hyperbolic_tanh_pythagorean_forward_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Pythagorean Identity");
 }
 
 #[test]
@@ -1004,7 +1036,7 @@ fn derive_negative_hyperbolic_tanh_pythagorean_backward_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Pythagorean Identity");
 }
 
 #[test]
@@ -1021,7 +1053,7 @@ fn derive_hyperbolic_sinh_definition_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -1039,7 +1071,7 @@ fn derive_negative_hyperbolic_cosh_definition_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -1057,7 +1089,7 @@ fn derive_negative_hyperbolic_cosh_definition_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -1074,7 +1106,7 @@ fn derive_hyperbolic_tanh_definition_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -1092,7 +1124,7 @@ fn derive_negative_hyperbolic_tanh_quotient_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Quotient Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Quotient Identity");
 }
 
 #[test]
@@ -1110,7 +1142,7 @@ fn derive_negative_hyperbolic_tanh_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Quotient Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Quotient Identity");
 }
 
 #[test]
@@ -1128,7 +1160,7 @@ fn derive_negative_hyperbolic_sinh_double_angle_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1146,7 +1178,7 @@ fn derive_negative_hyperbolic_sinh_double_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1172,7 +1204,7 @@ fn derive_product_to_sum_expansion_does_not_emit_depth_overflow_warning_to_stder
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar producto a suma");
     assert!(
         !stderr.contains("depth_overflow"),
         "expected direct product-to-sum expansion to stay quiet on stderr, got: {stderr}"
@@ -1195,7 +1227,7 @@ fn derive_cosine_product_to_sum_expansion_uses_single_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar producto a suma");
 }
 
 #[test]
@@ -1214,7 +1246,7 @@ fn derive_sine_difference_product_to_sum_expansion_uses_single_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar producto a suma");
 }
 
 #[test]
@@ -1233,7 +1265,7 @@ fn derive_general_sine_sum_to_product_expansion_uses_single_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar suma a producto");
 }
 
 #[test]
@@ -1252,7 +1284,7 @@ fn derive_general_cosine_sum_to_product_expansion_uses_single_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar suma a producto");
 }
 
 #[test]
@@ -1271,7 +1303,7 @@ fn derive_general_cosine_difference_sum_to_product_expansion_uses_single_named_s
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar suma a producto");
 }
 
 fn assert_single_named_derive_step(expr: &str, expected_strategy: &str, expected_rule: &str) {
@@ -1282,7 +1314,7 @@ fn assert_single_named_derive_step(expr: &str, expected_strategy: &str, expected
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], expected_rule);
+    assert_rule_eq(&steps[0]["rule"], expected_rule);
 }
 
 #[test]
@@ -1315,7 +1347,7 @@ fn derive_sine_cosine_square_product_reduction_uses_single_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar reducción de potencias");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar reducción de potencias");
 }
 
 #[test]
@@ -1378,8 +1410,8 @@ fn derive_trig_expand_steps_count_matches_visible_steps_for_trig_polynomial_targ
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(wire["steps_count"].as_u64(), Some(steps.len() as u64));
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
-    assert_eq!(steps[1]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar producto a suma");
+    assert_rule_eq(&steps[1]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -1398,7 +1430,7 @@ fn derive_hyperbolic_cosh_double_angle_expansion_to_sinh_mixed_polynomial_uses_s
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1417,7 +1449,7 @@ fn derive_hyperbolic_cosh_double_angle_expansion_to_cosh_mixed_polynomial_uses_s
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1437,7 +1469,7 @@ fn derive_hyperbolic_cosh_double_angle_contraction_from_sinh_mixed_polynomial_us
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1457,7 +1489,7 @@ fn derive_hyperbolic_cosh_double_angle_contraction_from_cosh_mixed_polynomial_us
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1476,7 +1508,7 @@ fn derive_hyperbolic_product_to_sum_expansion_uses_single_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
 }
 
 #[test]
@@ -1495,7 +1527,7 @@ fn derive_hyperbolic_sum_to_product_contraction_uses_single_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
 }
 
 #[test]
@@ -1513,7 +1545,7 @@ fn derive_binomial_expansion_with_cancellation_uses_expand_strategy() {
     assert_eq!(wire["strategy"], "expand");
     let steps = wire["steps"].as_array().expect("steps array");
     assert!(!steps.is_empty());
-    assert_eq!(steps[0]["rule"], "Expandir binomio");
+    assert_rule_eq(&steps[0]["rule"], "Expandir binomio");
 }
 
 #[test]
@@ -1578,8 +1610,8 @@ fn derive_hyperbolic_product_to_sum_polynomial_uses_two_expand_steps() {
     assert_eq!(wire["steps_count"], 2);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
-    assert_eq!(steps[1]["rule"], "Hyperbolic Triple-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Product-to-Sum Identity");
+    assert_rule_eq(&steps[1]["rule"], "Hyperbolic Triple-Angle Identity");
 }
 
 #[test]
@@ -1605,7 +1637,7 @@ fn derive_mixed_trig_double_angle_product_uses_named_step_without_depth_warning(
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
     assert!(
         !stderr.contains("depth_overflow"),
         "expected target-aware double-angle path to stay quiet on stderr, got: {stderr}"
@@ -1628,7 +1660,7 @@ fn derive_mixed_hyperbolic_double_angle_product_uses_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1647,8 +1679,8 @@ fn derive_trig_product_to_sum_mixed_cos_square_polynomial_uses_expand_trig() {
     assert_eq!(wire["steps_count"], 2);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
-    assert_eq!(steps[1]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar producto a suma");
+    assert_rule_eq(&steps[1]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -1667,8 +1699,8 @@ fn derive_trig_product_to_sum_cosine_difference_polynomial_with_passthrough_uses
     assert_eq!(wire["steps_count"], 2);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
-    assert_eq!(steps[1]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar producto a suma");
+    assert_rule_eq(&steps[1]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -1687,8 +1719,8 @@ fn derive_trig_product_to_sum_mixed_cos_square_polynomial_with_passthrough_uses_
     assert_eq!(wire["steps_count"], 2);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
-    assert_eq!(steps[1]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar producto a suma");
+    assert_rule_eq(&steps[1]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -1707,7 +1739,7 @@ fn derive_mixed_trig_double_angle_expansion_to_sin_square_polynomial_uses_single
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
 }
 
 #[test]
@@ -1726,7 +1758,7 @@ fn derive_mixed_trig_double_angle_expansion_to_cos_square_polynomial_uses_single
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
 }
 
 #[test]
@@ -1744,7 +1776,7 @@ fn derive_negative_hyperbolic_tanh_double_angle_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1762,7 +1794,7 @@ fn derive_negative_hyperbolic_tanh_double_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1780,7 +1812,7 @@ fn derive_negative_hyperbolic_sinh_triple_angle_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
 }
 
 #[test]
@@ -1798,7 +1830,7 @@ fn derive_negative_hyperbolic_sinh_triple_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
 }
 
 #[test]
@@ -1816,7 +1848,7 @@ fn derive_negative_hyperbolic_cosh_triple_angle_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
 }
 
 #[test]
@@ -1834,7 +1866,7 @@ fn derive_negative_hyperbolic_cosh_triple_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
 }
 
 #[test]
@@ -1851,7 +1883,7 @@ fn derive_hyperbolic_shifted_pythagorean_forward_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Pythagorean Identity");
 }
 
 #[test]
@@ -1868,7 +1900,7 @@ fn derive_hyperbolic_shifted_pythagorean_add_backward_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Pythagorean Identity");
 }
 
 #[test]
@@ -1885,7 +1917,7 @@ fn derive_hyperbolic_shifted_double_angle_minus_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1903,7 +1935,7 @@ fn derive_hyperbolic_negative_shifted_double_angle_minus_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1921,7 +1953,7 @@ fn derive_hyperbolic_negative_shifted_double_angle_minus_backward_uses_named_ste
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1939,7 +1971,7 @@ fn derive_hyperbolic_negative_shifted_double_angle_plus_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1957,7 +1989,7 @@ fn derive_hyperbolic_negative_shifted_double_angle_plus_backward_uses_named_step
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1975,7 +2007,7 @@ fn derive_hyperbolic_negative_double_angle_cosh_sq_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -1993,7 +2025,7 @@ fn derive_hyperbolic_negative_double_angle_cosh_sq_backward_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -2010,7 +2042,7 @@ fn derive_hyperbolic_shifted_double_angle_plus_backward_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -2027,7 +2059,7 @@ fn derive_hyperbolic_double_angle_two_cosh_sq_minus_one_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -2044,7 +2076,7 @@ fn derive_hyperbolic_double_angle_two_sinh_sq_plus_one_uses_named_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -2061,7 +2093,7 @@ fn derive_negative_sine_squared_uses_single_pythagorean_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad pitagórica");
 }
 
 #[test]
@@ -2078,7 +2110,7 @@ fn derive_negative_cos_squared_uses_single_pythagorean_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad pitagórica");
 }
 
 #[test]
@@ -2095,7 +2127,7 @@ fn eval_fraction_sum_to_sec_squared_keeps_faithful_pythagorean_intermediate() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[1]["rule"], "Aplicar identidad pitagórica");
+    assert_rule_eq(&steps[1]["rule"], "Aplicar identidad pitagórica");
     assert_eq!(steps[1]["before"], "2/(1 - sin(x)^2)");
     assert!(
         steps[1]["before_latex"]
@@ -2121,7 +2153,7 @@ fn derive_fraction_sum_to_sec_squared_keeps_faithful_pythagorean_intermediate() 
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[1]["rule"], "Aplicar identidad pitagórica");
+    assert_rule_eq(&steps[1]["rule"], "Aplicar identidad pitagórica");
     assert_eq!(steps[1]["before"], "2/(1 - sin(x)^2)");
     assert!(
         steps[1]["before_latex"]
@@ -2169,7 +2201,7 @@ fn derive_negative_tan_expansion_uses_single_trig_expansion_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir una identidad trigonométrica");
+    assert_rule_eq(&steps[0]["rule"], "Expandir una identidad trigonométrica");
 }
 
 #[test]
@@ -2205,7 +2237,7 @@ fn derive_combine_like_terms_uses_named_strategy() {
     assert_eq!(wire["strategy"], "combine like terms");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Agrupar términos semejantes");
+    assert_rule_eq(&steps[0]["rule"], "Agrupar términos semejantes");
 }
 
 #[test]
@@ -2223,7 +2255,7 @@ fn derive_nested_fraction_one_over_sum_uses_named_strategy() {
     assert_eq!(wire["strategy"], "nested fraction");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Cancelar factores en una fracción");
+    assert_rule_eq(&steps[0]["rule"], "Cancelar factores en una fracción");
 }
 
 #[test]
@@ -2578,7 +2610,7 @@ fn derive_nested_fraction_structural_uses_named_strategy() {
     assert_eq!(wire["strategy"], "nested fraction");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Cancelar factores en una fracción");
+    assert_rule_eq(&steps[0]["rule"], "Cancelar factores en una fracción");
 }
 
 #[test]
@@ -2596,7 +2628,7 @@ fn derive_nested_fraction_reciprocal_sum_difference_shows_common_denominator_sub
     assert_eq!(wire["strategy"], "nested fraction");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Cancelar factores en una fracción");
+    assert_rule_eq(&steps[0]["rule"], "Cancelar factores en una fracción");
 
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
@@ -2625,7 +2657,7 @@ fn eval_complex_nested_fraction_pipeline_shows_denominator_common_denominator_th
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 5);
-    assert_eq!(steps[2]["rule"], "Simplificar fracción anidada");
+    assert_rule_eq(&steps[2]["rule"], "Simplificar fracción anidada");
     let substeps = steps[2]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
     assert_eq!(
@@ -2650,7 +2682,7 @@ fn derive_consecutive_factorial_ratio_uses_named_factorial_rewrite_and_keeps_gua
     assert_eq!(wire["strategy"], "rewrite factorials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Cancelar factoriales consecutivos");
+    assert_rule_eq(&steps[0]["rule"], "Cancelar factoriales consecutivos");
 
     let required = wire["required_display"]
         .as_array()
@@ -2677,7 +2709,7 @@ fn derive_consecutive_factorial_ratio_with_passthrough_uses_named_factorial_rewr
     assert_eq!(wire["strategy"], "rewrite factorials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Cancelar factoriales consecutivos");
+    assert_rule_eq(&steps[0]["rule"], "Cancelar factoriales consecutivos");
 
     let required = wire["required_display"]
         .as_array()
@@ -2703,7 +2735,7 @@ fn derive_gap_two_factorial_ratio_uses_named_factorial_rewrite_with_didactic_sub
     assert_eq!(wire["strategy"], "rewrite factorials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Cancelar factoriales consecutivos");
+    assert_rule_eq(&steps[0]["rule"], "Cancelar factoriales consecutivos");
 
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
@@ -2737,7 +2769,7 @@ fn derive_inverse_tan_reciprocal_identity_uses_named_inverse_trig_rewrite_and_ke
     assert_eq!(wire["strategy"], "rewrite inverse trigs");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad de arctangentes");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad de arctangentes");
 
     let required = wire["required_display"]
         .as_array()
@@ -2745,6 +2777,31 @@ fn derive_inverse_tan_reciprocal_identity_uses_named_inverse_trig_rewrite_and_ke
     assert!(
         required.iter().any(|item| item == "a ≠ 0"),
         "expected inverse-tan nonzero guard in required_display: {required:?}"
+    );
+}
+
+#[test]
+fn derive_expand_difference_square_delta_json_steps_does_not_panic() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "derive (a+b)^2 - (a-b)^2, 4*a*b",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["strategy"], "expand");
+    assert_eq!(wire["result_latex"], "4\\cdot a\\cdot b");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert!(
+        !steps.is_empty(),
+        "derive JSON should retain visible steps for expanded delta target"
     );
 }
 
@@ -2824,7 +2881,7 @@ fn derive_difference_of_cubes_fraction_uses_named_fraction_cancel_and_keeps_guar
     assert_eq!(wire["strategy"], "cancel fraction");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Factorizar cubos y cancelar");
+    assert_rule_eq(&steps[0]["rule"], "Factorizar cubos y cancelar");
 
     let required = wire["required_display"]
         .as_array()
@@ -2851,7 +2908,7 @@ fn derive_difference_of_cubes_fraction_with_passthrough_uses_named_fraction_canc
     assert_eq!(wire["strategy"], "cancel fraction");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Factorizar cubos y cancelar");
+    assert_rule_eq(&steps[0]["rule"], "Factorizar cubos y cancelar");
 
     let required = wire["required_display"]
         .as_array()
@@ -2877,7 +2934,7 @@ fn derive_common_factor_fraction_uses_named_fraction_cancel_and_keeps_guards() {
     assert_eq!(wire["strategy"], "cancel fraction");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Cancelar un factor común");
+    assert_rule_eq(&steps[0]["rule"], "Cancelar un factor común");
 
     let required = wire["required_display"]
         .as_array()
@@ -2958,7 +3015,7 @@ fn derive_odd_half_power_with_passthrough_uses_named_expand_odd_half_power_step(
     assert_eq!(wire["strategy"], "expand odd half power");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
+    assert_rule_eq(&steps[0]["rule"], "Extraer potencia par de la raíz");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
     assert_eq!(
@@ -2990,7 +3047,7 @@ fn derive_sqrt_odd_power_extracts_even_power_from_root_with_didactic_substeps() 
     assert_eq!(wire["strategy"], "expand odd half power");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
+    assert_rule_eq(&steps[0]["rule"], "Extraer potencia par de la raíz");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
     assert_eq!(
@@ -3026,7 +3083,7 @@ fn derive_higher_odd_half_power_with_passthrough_uses_named_expand_odd_half_powe
     assert_eq!(wire["strategy"], "expand odd half power");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
+    assert_rule_eq(&steps[0]["rule"], "Extraer potencia par de la raíz");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
     assert_eq!(
@@ -3056,7 +3113,7 @@ fn derive_raw_odd_half_power_uses_concrete_root_split_substeps() {
     assert_eq!(wire["strategy"], "expand odd half power");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
+    assert_rule_eq(&steps[0]["rule"], "Extraer potencia par de la raíz");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
     assert_eq!(
@@ -3090,10 +3147,10 @@ fn eval_odd_half_power_difference_to_zero_uses_extract_then_self_cancel_steps() 
     let steps = wire["steps"].as_array().expect("steps array");
     assert!(matches!(steps.len(), 1 | 2));
     if steps.len() == 1 {
-        assert_eq!(steps[0]["rule"], "Restar dos expresiones iguales");
+        assert_rule_eq(&steps[0]["rule"], "Restar dos expresiones iguales");
     } else {
-        assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
-        assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+        assert_rule_eq(&steps[0]["rule"], "Extraer potencia par de la raíz");
+        assert_rule_eq(&steps[1]["rule"], "Restar dos expresiones iguales");
         let substeps = steps[0]["substeps"].as_array().expect("substeps array");
         assert_eq!(substeps.len(), 2);
     }
@@ -3117,10 +3174,10 @@ fn eval_higher_odd_half_power_difference_to_zero_uses_extract_then_self_cancel_s
     let steps = wire["steps"].as_array().expect("steps array");
     assert!(matches!(steps.len(), 1 | 2));
     if steps.len() == 1 {
-        assert_eq!(steps[0]["rule"], "Restar dos expresiones iguales");
+        assert_rule_eq(&steps[0]["rule"], "Restar dos expresiones iguales");
     } else {
-        assert_eq!(steps[0]["rule"], "Extraer potencia par de la raíz");
-        assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+        assert_rule_eq(&steps[0]["rule"], "Extraer potencia par de la raíz");
+        assert_rule_eq(&steps[1]["rule"], "Restar dos expresiones iguales");
         let substeps = steps[0]["substeps"].as_array().expect("substeps array");
         assert_eq!(substeps.len(), 2);
     }
@@ -3142,7 +3199,7 @@ fn eval_symbolic_sine_sum_to_product_difference_to_zero_uses_two_didactic_steps(
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar suma a producto");
     assert!(steps[0].get("substeps").is_none());
 }
 
@@ -3186,7 +3243,7 @@ fn eval_symbolic_cosine_difference_sum_to_product_difference_to_zero_uses_two_st
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar suma a producto");
     assert!(steps[0].get("substeps").is_none());
 }
 
@@ -3271,7 +3328,7 @@ fn eval_special_sine_difference_to_product_passthrough_difference_collapses_to_z
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar suma a producto");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar suma a producto");
 }
 
 #[test]
@@ -3355,7 +3412,7 @@ fn eval_recursive_six_sine_difference_collapses_to_zero() {
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+    assert_rule_eq(&steps[0]["rule"], "Angle Sum/Diff Identity");
 }
 
 #[test]
@@ -3502,7 +3559,7 @@ fn eval_sine_cosine_square_product_difference_collapses_to_zero_with_power_reduc
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar reducción de potencias");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar reducción de potencias");
 }
 
 #[test]
@@ -3541,7 +3598,7 @@ fn eval_sine_sixth_power_difference_collapses_to_zero_with_power_reduction() {
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar reducción de potencias");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar reducción de potencias");
 }
 
 #[test]
@@ -3584,7 +3641,7 @@ fn eval_trig_product_to_sum_difference_stays_direct_and_collapses_to_zero() {
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar producto a suma");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar producto a suma");
 }
 
 #[test]
@@ -3627,7 +3684,7 @@ fn eval_recursive_six_cosine_passthrough_difference_collapses_to_zero() {
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+    assert_rule_eq(&steps[0]["rule"], "Angle Sum/Diff Identity");
 }
 
 #[test]
@@ -4133,7 +4190,7 @@ fn eval_half_angle_square_difference_to_zero_collapses_in_one_half_angle_step() 
     assert_eq!(wire["result"], "0");
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps[0]["rule"], "Aplicar identidad de ángulo mitad");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad de ángulo mitad");
     assert!(steps[0].get("substeps").is_none());
 }
 
@@ -4316,7 +4373,7 @@ fn eval_fraction_difference_to_zero_shows_common_denominator_substeps() {
     assert_eq!(wire["result"], "0");
     assert_eq!(wire["steps_count"], 3);
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps[0]["rule"], "Sumar fracciones");
+    assert_rule_eq(&steps[0]["rule"], "Sumar fracciones");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
     assert_eq!(substeps[0]["title"], "Llevar a denominador común");
@@ -5166,7 +5223,7 @@ fn eval_reverse_dirichlet_raw_difference_collapses_to_zero() {
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Trig Summation Identity");
+    assert_rule_eq(&steps[0]["rule"], "Trig Summation Identity");
     assert_eq!(wire["required_display"][0], "sin(x / 2) ≠ 0");
 }
 
@@ -5920,7 +5977,7 @@ fn derive_hyperbolic_double_angle_with_passthrough_uses_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Double-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Double-Angle Identity");
 }
 
 #[test]
@@ -5939,7 +5996,7 @@ fn derive_hyperbolic_pythagorean_with_passthrough_uses_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Pythagorean Identity");
 }
 
 #[test]
@@ -5957,7 +6014,7 @@ fn derive_pythagorean_identity_uses_named_trig_rewrite() {
     assert_eq!(wire["strategy"], "rewrite trigs");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar la identidad pitagórica");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar la identidad pitagórica");
 }
 
 #[test]
@@ -6017,7 +6074,7 @@ fn derive_shifted_sec_squared_uses_single_reciprocal_pythagorean_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
 }
 
 #[test]
@@ -6034,7 +6091,7 @@ fn derive_shifted_cot_squared_uses_single_reciprocal_pythagorean_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
 }
 
 #[test]
@@ -6051,7 +6108,7 @@ fn derive_one_minus_sec_squared_uses_single_reciprocal_pythagorean_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
 }
 
 #[test]
@@ -6068,7 +6125,7 @@ fn derive_negative_cot_squared_uses_single_reciprocal_pythagorean_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad pitagórica recíproca");
 }
 
 #[test]
@@ -6085,7 +6142,7 @@ fn derive_shifted_double_angle_plus_uses_single_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
 }
 
 #[test]
@@ -6102,7 +6159,7 @@ fn derive_shifted_double_angle_minus_backward_uses_single_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
 }
 
 #[test]
@@ -6119,7 +6176,7 @@ fn derive_shifted_double_angle_negative_forward_uses_single_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
 }
 
 #[test]
@@ -6136,7 +6193,7 @@ fn derive_shifted_double_angle_negative_backward_uses_single_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
 }
 
 #[test]
@@ -6154,7 +6211,7 @@ fn derive_negative_cosine_double_angle_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
 }
 
 #[test]
@@ -6172,7 +6229,7 @@ fn derive_negative_cosine_double_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
 }
 
 #[test]
@@ -6190,7 +6247,7 @@ fn derive_negative_sine_double_angle_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
 }
 
 #[test]
@@ -6208,7 +6265,7 @@ fn derive_negative_sine_double_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir ángulo doble");
+    assert_rule_eq(&steps[0]["rule"], "Expandir ángulo doble");
 }
 
 #[test]
@@ -6226,7 +6283,7 @@ fn derive_negative_half_angle_square_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad de ángulo mitad");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad de ángulo mitad");
 }
 
 #[test]
@@ -6244,7 +6301,7 @@ fn derive_negative_half_angle_square_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Aplicar identidad de ángulo mitad");
+    assert_rule_eq(&steps[0]["rule"], "Aplicar identidad de ángulo mitad");
 }
 
 #[test]
@@ -6304,7 +6361,7 @@ fn derive_negative_trig_sine_triple_angle_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -6322,7 +6379,7 @@ fn derive_negative_trig_sine_triple_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -6340,7 +6397,7 @@ fn derive_negative_trig_cosine_triple_angle_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -6358,7 +6415,7 @@ fn derive_negative_trig_cosine_triple_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -6376,7 +6433,7 @@ fn derive_trig_tangent_triple_angle_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -6394,7 +6451,7 @@ fn derive_trig_tangent_triple_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -6412,7 +6469,7 @@ fn derive_negative_trig_tangent_triple_angle_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -6430,7 +6487,7 @@ fn derive_negative_trig_tangent_triple_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Triple Angle Expansion");
+    assert_rule_eq(&steps[0]["rule"], "Triple Angle Expansion");
 }
 
 #[test]
@@ -6448,7 +6505,7 @@ fn derive_trig_quintuple_sine_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Quintuple Angle Identity");
 }
 
 #[test]
@@ -6466,7 +6523,7 @@ fn derive_negative_trig_quintuple_sine_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Quintuple Angle Identity");
 }
 
 #[test]
@@ -6484,7 +6541,7 @@ fn derive_trig_quintuple_cosine_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Quintuple Angle Identity");
 }
 
 #[test]
@@ -6502,7 +6559,7 @@ fn derive_negative_trig_quintuple_cosine_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Quintuple Angle Identity");
 }
 
 #[test]
@@ -6520,7 +6577,7 @@ fn derive_trig_quintuple_sine_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Quintuple Angle Identity");
 }
 
 #[test]
@@ -6538,7 +6595,7 @@ fn derive_negative_trig_quintuple_sine_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Quintuple Angle Identity");
 }
 
 #[test]
@@ -6556,7 +6613,7 @@ fn derive_trig_quintuple_cosine_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Quintuple Angle Identity");
 }
 
 #[test]
@@ -6574,7 +6631,7 @@ fn derive_negative_trig_quintuple_cosine_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Quintuple Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Quintuple Angle Identity");
 }
 
 #[test]
@@ -6592,7 +6649,7 @@ fn derive_trig_angle_sum_sine_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+    assert_rule_eq(&steps[0]["rule"], "Angle Sum/Diff Identity");
 }
 
 #[test]
@@ -6610,7 +6667,7 @@ fn derive_trig_angle_sum_sine_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+    assert_rule_eq(&steps[0]["rule"], "Angle Sum/Diff Identity");
 }
 
 #[test]
@@ -6628,7 +6685,7 @@ fn derive_trig_recursive_six_x_sine_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+    assert_rule_eq(&steps[0]["rule"], "Angle Sum/Diff Identity");
 }
 
 #[test]
@@ -6646,7 +6703,7 @@ fn derive_trig_recursive_six_x_sine_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+    assert_rule_eq(&steps[0]["rule"], "Angle Sum/Diff Identity");
 }
 
 #[test]
@@ -6664,7 +6721,7 @@ fn derive_trig_angle_diff_sine_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+    assert_rule_eq(&steps[0]["rule"], "Angle Sum/Diff Identity");
 }
 
 #[test]
@@ -6682,7 +6739,7 @@ fn derive_negative_trig_angle_diff_sine_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+    assert_rule_eq(&steps[0]["rule"], "Angle Sum/Diff Identity");
 }
 
 #[test]
@@ -6700,7 +6757,7 @@ fn derive_trig_angle_diff_cosine_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+    assert_rule_eq(&steps[0]["rule"], "Angle Sum/Diff Identity");
 }
 
 #[test]
@@ -6718,7 +6775,7 @@ fn derive_trig_recursive_six_x_cosine_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+    assert_rule_eq(&steps[0]["rule"], "Angle Sum/Diff Identity");
 }
 
 #[test]
@@ -6736,7 +6793,7 @@ fn derive_negative_trig_recursive_six_x_cosine_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Angle Sum/Diff Identity");
+    assert_rule_eq(&steps[0]["rule"], "Angle Sum/Diff Identity");
 }
 
 #[test]
@@ -6754,7 +6811,10 @@ fn derive_hyperbolic_angle_sum_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    assert_rule_eq(
+        &steps[0]["rule"],
+        "Hyperbolic Angle Sum/Difference Identity",
+    );
 }
 
 #[test]
@@ -6772,7 +6832,10 @@ fn derive_hyperbolic_angle_diff_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    assert_rule_eq(
+        &steps[0]["rule"],
+        "Hyperbolic Angle Sum/Difference Identity",
+    );
 }
 
 #[test]
@@ -6790,7 +6853,10 @@ fn derive_negative_hyperbolic_angle_diff_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    assert_rule_eq(
+        &steps[0]["rule"],
+        "Hyperbolic Angle Sum/Difference Identity",
+    );
 }
 
 #[test]
@@ -6808,7 +6874,10 @@ fn derive_recursive_hyperbolic_sinh_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    assert_rule_eq(
+        &steps[0]["rule"],
+        "Hyperbolic Angle Sum/Difference Identity",
+    );
 }
 
 #[test]
@@ -6826,7 +6895,10 @@ fn derive_hyperbolic_sinh_angle_sum_expansion_uses_expand_step() {
     assert_eq!(wire["strategy"], "expand");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    assert_rule_eq(
+        &steps[0]["rule"],
+        "Hyperbolic Angle Sum/Difference Identity",
+    );
 }
 
 #[test]
@@ -6844,7 +6916,10 @@ fn derive_recursive_hyperbolic_cosh_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "expand");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    assert_rule_eq(
+        &steps[0]["rule"],
+        "Hyperbolic Angle Sum/Difference Identity",
+    );
 }
 
 #[test]
@@ -6862,7 +6937,10 @@ fn derive_hyperbolic_tanh_angle_sum_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    assert_rule_eq(
+        &steps[0]["rule"],
+        "Hyperbolic Angle Sum/Difference Identity",
+    );
 }
 
 #[test]
@@ -6880,7 +6958,10 @@ fn derive_hyperbolic_tanh_angle_sum_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Angle Sum/Difference Identity");
+    assert_rule_eq(
+        &steps[0]["rule"],
+        "Hyperbolic Angle Sum/Difference Identity",
+    );
 }
 
 #[test]
@@ -6898,7 +6979,7 @@ fn derive_hyperbolic_tanh_triple_angle_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
 }
 
 #[test]
@@ -6916,7 +6997,7 @@ fn derive_hyperbolic_tanh_triple_angle_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Triple-Angle Identity");
 }
 
 #[test]
@@ -6934,7 +7015,7 @@ fn derive_exponential_sum_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Sum/Difference Identity");
 }
 
 #[test]
@@ -6952,7 +7033,7 @@ fn derive_exponential_sum_expansion_with_passthrough_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Sum/Difference Identity");
 }
 
 #[test]
@@ -6970,7 +7051,7 @@ fn derive_exponential_difference_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Sum/Difference Identity");
 }
 
 #[test]
@@ -6988,7 +7069,7 @@ fn derive_exponential_product_contraction_with_passthrough_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Sum/Difference Identity");
 }
 
 #[test]
@@ -7006,7 +7087,7 @@ fn derive_exponential_product_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Sum/Difference Identity");
 }
 
 #[test]
@@ -7024,7 +7105,7 @@ fn derive_exponential_product_quotient_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Sum/Difference Identity");
 }
 
 #[test]
@@ -7042,7 +7123,7 @@ fn derive_exponential_quotient_with_power_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Sum/Difference Identity");
 }
 
 #[test]
@@ -7060,7 +7141,7 @@ fn derive_exponential_power_quotient_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Sum/Difference Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Sum/Difference Identity");
 }
 
 #[test]
@@ -7078,7 +7159,7 @@ fn derive_exponential_reciprocal_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Reciprocal Identity");
 }
 
 #[test]
@@ -7096,7 +7177,7 @@ fn derive_exponential_reciprocal_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Reciprocal Identity");
 }
 
 #[test]
@@ -7114,7 +7195,7 @@ fn derive_negative_exponential_reciprocal_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Reciprocal Identity");
 }
 
 #[test]
@@ -7132,7 +7213,7 @@ fn derive_exponential_power_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Power Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Power Identity");
 }
 
 #[test]
@@ -7150,7 +7231,7 @@ fn derive_exponential_reciprocal_power_contraction_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Reciprocal Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Reciprocal Identity");
 }
 
 #[test]
@@ -7168,7 +7249,7 @@ fn derive_exponential_scaled_argument_to_scaled_cosh_uses_direct_identity() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7186,7 +7267,7 @@ fn derive_exponential_to_scaled_cosh_uses_direct_identity() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7205,7 +7286,7 @@ fn derive_scaled_cosh_to_exponential_sum_uses_direct_identity() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7223,7 +7304,7 @@ fn derive_scaled_sinh_to_exponential_difference_uses_direct_identity() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7241,7 +7322,7 @@ fn derive_scaled_exponential_ratio_to_tanh_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7277,7 +7358,7 @@ fn derive_tanh_reciprocal_exponential_definition_uses_single_named_step() {
     assert_eq!(wire["required_display"], json!([]));
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7297,7 +7378,7 @@ fn derive_negative_tanh_reciprocal_exponential_definition_uses_single_named_step
     assert_eq!(wire["required_display"], json!([]));
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7317,7 +7398,7 @@ fn derive_scaled_cosh_reciprocal_exponential_definition_uses_single_named_step()
     assert_eq!(wire["required_display"], json!([]));
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7337,7 +7418,7 @@ fn derive_scaled_sinh_reciprocal_exponential_definition_uses_single_named_step()
     assert_eq!(wire["required_display"], json!([]));
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7357,7 +7438,7 @@ fn derive_half_cosh_reciprocal_exponential_recognition_uses_single_named_step() 
     assert_eq!(wire["required_display"], json!([]));
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7377,7 +7458,7 @@ fn derive_half_sinh_reciprocal_exponential_recognition_uses_single_named_step() 
     assert_eq!(wire["required_display"], json!([]));
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7397,7 +7478,7 @@ fn derive_negative_scaled_cosh_reciprocal_exponential_definition_uses_single_nam
     assert_eq!(wire["required_display"], json!([]));
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7417,7 +7498,7 @@ fn derive_negative_scaled_sinh_reciprocal_exponential_definition_uses_single_nam
     assert_eq!(wire["required_display"], json!([]));
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7437,7 +7518,7 @@ fn derive_negative_half_cosh_reciprocal_exponential_definition_uses_single_named
     assert_eq!(wire["required_display"], json!([]));
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7457,7 +7538,7 @@ fn derive_negative_half_sinh_reciprocal_exponential_definition_uses_single_named
     assert_eq!(wire["required_display"], json!([]));
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Hyperbolic Exponential Identity");
+    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Exponential Identity");
 }
 
 #[test]
@@ -7476,7 +7557,7 @@ fn derive_log_higher_even_power_expansion_uses_single_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Sacar un exponente fuera del logaritmo");
+    assert_rule_eq(&steps[0]["rule"], "Sacar un exponente fuera del logaritmo");
 }
 
 #[test]
@@ -7495,7 +7576,7 @@ fn derive_log_general_base_power_expansion_uses_single_named_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Sacar un exponente fuera del logaritmo");
+    assert_rule_eq(&steps[0]["rule"], "Sacar un exponente fuera del logaritmo");
 }
 
 #[test]
@@ -7514,7 +7595,7 @@ fn derive_log_expansion_to_zero_keeps_single_step_but_closes_on_final_result() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Expandir logaritmos");
     assert_eq!(steps[0]["after"], "0");
 }
 
@@ -7889,7 +7970,7 @@ fn derive_grouped_even_log_product_expansion_uses_direct_expand_log() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Expandir logaritmos");
 }
 
 #[test]
@@ -7908,7 +7989,7 @@ fn derive_grouped_abs_log_product_expansion_uses_direct_expand_log() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Expandir logaritmos");
 }
 
 #[test]
@@ -7927,7 +8008,7 @@ fn derive_grouped_general_base_log_product_expansion_uses_direct_expand_log() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Expandir logaritmos");
 }
 
 #[test]
@@ -7946,7 +8027,7 @@ fn derive_grouped_even_log_product_expansion_with_passthrough_uses_direct_expand
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Expandir logaritmos");
 }
 
 #[test]
@@ -7965,7 +8046,7 @@ fn derive_grouped_abs_log_product_expansion_with_passthrough_uses_direct_expand_
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Expandir logaritmos");
 }
 
 #[test]
@@ -7984,7 +8065,7 @@ fn derive_grouped_general_base_log_product_expansion_with_passthrough_uses_direc
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Expandir logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Expandir logaritmos");
 }
 
 #[test]
@@ -8069,8 +8150,8 @@ fn derive_factored_log_difference_squares_with_passthrough_uses_two_named_steps(
     assert_eq!(wire["steps_count"], 2);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Factorizar");
-    assert_eq!(steps[1]["rule"], "Expandir logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Factorizar");
+    assert_rule_eq(&steps[1]["rule"], "Expandir logaritmos");
 }
 
 #[test]
@@ -8089,8 +8170,8 @@ fn derive_factored_log_difference_squares_uses_two_named_steps() {
     assert_eq!(wire["steps_count"], 2);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Factorizar");
-    assert_eq!(steps[1]["rule"], "Expandir logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Factorizar");
+    assert_rule_eq(&steps[1]["rule"], "Expandir logaritmos");
     assert_eq!(steps[0]["before"], "ln(x^2 - y^2)");
     assert_eq!(steps[0]["after"], "ln((x + y) · (x - y))");
     let before_latex = steps[0]["before_latex"].as_str().expect("before_latex");
@@ -8127,8 +8208,8 @@ fn derive_factored_log_quotient_difference_squares_uses_two_named_steps() {
     assert_eq!(wire["steps_count"], 2);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Factorizar");
-    assert_eq!(steps[1]["rule"], "Expandir logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Factorizar");
+    assert_rule_eq(&steps[1]["rule"], "Expandir logaritmos");
 }
 
 #[test]
@@ -8146,7 +8227,7 @@ fn derive_difference_of_cubes_fraction_keeps_requested_target_text_in_final_step
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
     assert_eq!(wire["strategy"], "cancel fraction");
-    assert_eq!(steps[0]["rule"], "Factorizar cubos y cancelar");
+    assert_rule_eq(&steps[0]["rule"], "Factorizar cubos y cancelar");
     assert_eq!(steps[0]["after"], "x^2 + x + 1");
 }
 
@@ -8204,7 +8285,7 @@ fn derive_grouped_even_log_product_uses_direct_log_contraction() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Contraer logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Contraer logaritmos");
 }
 
 #[test]
@@ -8223,7 +8304,7 @@ fn derive_grouped_even_log_product_with_passthrough_uses_direct_log_contraction(
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Contraer logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Contraer logaritmos");
 }
 
 #[test]
@@ -8242,7 +8323,7 @@ fn derive_scaled_abs_log_product_uses_direct_log_contraction() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Contraer logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Contraer logaritmos");
 }
 
 #[test]
@@ -8261,7 +8342,7 @@ fn derive_scaled_abs_log_product_with_passthrough_uses_direct_log_contraction() 
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Contraer logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Contraer logaritmos");
 }
 
 #[test]
@@ -8280,7 +8361,7 @@ fn derive_grouped_general_base_log_product_uses_direct_log_contraction() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Contraer logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Contraer logaritmos");
 }
 
 #[test]
@@ -8299,7 +8380,7 @@ fn derive_grouped_general_base_log_product_with_passthrough_uses_direct_log_cont
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Contraer logaritmos");
+    assert_rule_eq(&steps[0]["rule"], "Contraer logaritmos");
 }
 
 #[test]
@@ -8317,8 +8398,8 @@ fn derive_rationalize_then_cancel_to_zero_uses_rationalize_strategy() {
     assert_eq!(wire["strategy"], "rationalize");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 2);
-    assert_eq!(steps[0]["rule"], "Racionalizar el denominador");
-    assert_eq!(steps[1]["rule"], "Restar dos expresiones iguales");
+    assert_rule_eq(&steps[0]["rule"], "Racionalizar el denominador");
+    assert_rule_eq(&steps[1]["rule"], "Restar dos expresiones iguales");
 }
 
 #[test]
@@ -8338,7 +8419,7 @@ fn derive_radical_notable_quotient_uses_single_rationalize_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Reconocer un cociente notable");
+    assert_rule_eq(&steps[0]["rule"], "Reconocer un cociente notable");
 }
 
 #[test]
@@ -8541,7 +8622,7 @@ fn derive_exponential_power_expansion_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite exponentials");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Exponential Power Identity");
+    assert_rule_eq(&steps[0]["rule"], "Exponential Power Identity");
 }
 
 #[test]
@@ -8592,7 +8673,7 @@ fn derive_consecutive_telescoping_fraction_split_omits_trivial_substitution_subs
     assert_eq!(wire["strategy"], "expand fraction");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Descomponer en fracciones telescópicas");
+    assert_rule_eq(&steps[0]["rule"], "Descomponer en fracciones telescópicas");
     assert!(
         steps[0].get("substeps").is_none(),
         "literal telescoping split should not emit the tautological 'Aquí u = u' substep"
@@ -8614,7 +8695,7 @@ fn derive_consecutive_telescoping_fraction_combine_omits_trivial_substitution_su
     assert_eq!(wire["strategy"], "combine fraction");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Recomponer fracción telescópica");
+    assert_rule_eq(&steps[0]["rule"], "Recomponer fracción telescópica");
     assert!(
         steps[0].get("substeps").is_none(),
         "literal telescoping combine should not emit the tautological 'Aquí u = u' substep"
@@ -8747,7 +8828,7 @@ fn derive_finite_telescoping_sum_uses_concrete_partial_fraction_substeps() {
     assert_eq!(wire["strategy"], "finite sums/products");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Evaluar suma telescópica finita");
+    assert_rule_eq(&steps[0]["rule"], "Evaluar suma telescópica finita");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
     assert_eq!(
@@ -8784,7 +8865,7 @@ fn derive_affine_finite_telescoping_sum_uses_concrete_partial_fraction_substeps(
     assert_eq!(wire["strategy"], "finite sums/products");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Evaluar suma telescópica finita");
+    assert_rule_eq(&steps[0]["rule"], "Evaluar suma telescópica finita");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
     assert_eq!(
@@ -8824,7 +8905,7 @@ fn derive_finite_telescoping_product_uses_concrete_endpoint_substeps() {
     assert_eq!(wire["strategy"], "finite sums/products");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Evaluar producto telescópico finito");
+    assert_rule_eq(&steps[0]["rule"], "Evaluar producto telescópico finito");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 3);
     assert_eq!(
@@ -8906,7 +8987,7 @@ fn derive_fraction_difference_to_single_fraction_shows_common_denominator_subste
     assert_eq!(wire["strategy"], "combine fraction");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(steps[0]["rule"], "Restar fracciones");
+    assert_rule_eq(&steps[0]["rule"], "Restar fracciones");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
     assert_eq!(substeps[0]["title"], "Llevar a denominador común");
@@ -8931,12 +9012,12 @@ fn derive_tan_plus_cot_keeps_single_common_denominator_substep() {
     assert_eq!(wire["strategy"], "simplify");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 4);
-    assert_eq!(steps[2]["rule"], "Sumar fracciones");
+    assert_rule_eq(&steps[2]["rule"], "Sumar fracciones");
     let fraction_substeps = steps[2]["substeps"].as_array().expect("substeps array");
     assert_eq!(fraction_substeps.len(), 1);
     assert_eq!(fraction_substeps[0]["title"], "Llevar a denominador común");
 
-    assert_eq!(steps[3]["rule"], "Aplicar la identidad pitagórica");
+    assert_rule_eq(&steps[3]["rule"], "Aplicar la identidad pitagórica");
     let pythagorean_substeps = steps[3]["substeps"].as_array().expect("substeps array");
     assert_eq!(pythagorean_substeps.len(), 2);
     assert_eq!(pythagorean_substeps[0]["title"], "Usar 1 / cos(u) = sec(u)");

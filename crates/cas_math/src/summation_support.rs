@@ -18,6 +18,11 @@ pub struct FiniteAggregateCall {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SumEvaluationKind {
     Telescoping,
+    SumOfFirstIntegers,
+    SumOfSquares,
+    SumOfCubes,
+    SumOfConstant,
+    GeometricPower,
     FiniteDirect { start: i64, end: i64 },
 }
 
@@ -32,6 +37,9 @@ pub struct SumEvaluationPlan {
 pub enum ProductEvaluationKind {
     Telescoping,
     FactorizedTelescoping,
+    ProductOfFirstIntegers,
+    ProductOfPowers,
+    ProductOfConstant,
     FiniteDirect { start: i64, end: i64 },
 }
 
@@ -138,7 +146,12 @@ pub fn build_finite_product_substitution(
 ///
 /// Preference order:
 /// 1. Telescoping rational pattern.
-/// 2. Direct finite substitution when bounds are small integers.
+/// 2. Closed form for `sum(k, k, m, n)`.
+/// 3. Direct finite substitution when bounds are small integers.
+/// 4. Closed form for `sum(k^2, k, m, n)`.
+/// 5. Closed form for `sum(k^3, k, 1, n)`.
+/// 6. Closed form for `sum(c, k, 1, n)` when `c` is independent of `k`.
+/// 7. Closed form for `sum(a^k, k, m, n)` when `a` is an integer > 1.
 pub fn try_plan_finite_sum_evaluation(
     ctx: &mut Context,
     expr: ExprId,
@@ -160,6 +173,20 @@ pub fn try_plan_finite_sum_evaluation(
         });
     }
 
+    if let Some(candidate) = try_build_sum_of_first_integers(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::SumOfFirstIntegers,
+        });
+    }
+
     if let Some((start, end)) =
         try_extract_bounded_integer_range(ctx, call.start_expr, call.end_expr, max_span)
     {
@@ -171,7 +198,262 @@ pub fn try_plan_finite_sum_evaluation(
         });
     }
 
+    if let Some(candidate) = try_build_sum_of_squares(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::SumOfSquares,
+        });
+    }
+
+    if let Some(candidate) = try_build_sum_of_cubes(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::SumOfCubes,
+        });
+    }
+
+    if let Some(candidate) = try_build_sum_of_constant(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::SumOfConstant,
+        });
+    }
+
+    if let Some(candidate) = try_build_geometric_power_sum(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(SumEvaluationPlan {
+            call,
+            candidate,
+            kind: SumEvaluationKind::GeometricPower,
+        });
+    }
+
     None
+}
+
+pub fn try_build_sum_of_first_integers(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if !is_named_var(ctx, summand, var)
+        || contains_named_var(ctx, start, var)
+        || contains_named_var(ctx, end, var)
+    {
+        return None;
+    }
+
+    if expr_is_zero(ctx, start) || expr_is_one(ctx, start) {
+        return Some(build_triangular_number(ctx, end));
+    }
+
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let end_plus_one = ctx.add(Expr::Add(end, one));
+    let upper_numerator = mul2_raw(ctx, end, end_plus_one);
+    let start_minus_one = ctx.add(Expr::Sub(start, one));
+    let lower_numerator = mul2_raw(ctx, start, start_minus_one);
+    let numerator = ctx.add(Expr::Sub(upper_numerator, lower_numerator));
+    Some(ctx.add(Expr::Div(numerator, two)))
+}
+
+fn build_triangular_number(ctx: &mut Context, end: ExprId) -> ExprId {
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let end_plus_one = ctx.add(Expr::Add(end, one));
+    let numerator = mul2_raw(ctx, end, end_plus_one);
+    ctx.add(Expr::Div(numerator, two))
+}
+
+pub fn try_build_sum_of_squares(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if !expr_is_square_of_named_var(ctx, summand, var)
+        || contains_named_var(ctx, start, var)
+        || contains_named_var(ctx, end, var)
+    {
+        return None;
+    }
+
+    if expr_is_zero(ctx, start) || expr_is_one(ctx, start) {
+        return Some(build_square_pyramid_number(ctx, end));
+    }
+
+    let one = ctx.num(1);
+    let six = ctx.num(6);
+    let end_plus_one = ctx.add(Expr::Add(end, one));
+    let two_end_plus_one = build_double_plus_one(ctx, end);
+    let upper_first_product = mul2_raw(ctx, end, end_plus_one);
+    let upper_numerator = mul2_raw(ctx, upper_first_product, two_end_plus_one);
+    let start_minus_one = ctx.add(Expr::Sub(start, one));
+    let two_start_minus_one = build_double_minus_one(ctx, start);
+    let lower_first_product = mul2_raw(ctx, start, start_minus_one);
+    let lower_numerator = mul2_raw(ctx, lower_first_product, two_start_minus_one);
+    let numerator = ctx.add(Expr::Sub(upper_numerator, lower_numerator));
+    Some(ctx.add(Expr::Div(numerator, six)))
+}
+
+fn build_square_pyramid_number(ctx: &mut Context, end: ExprId) -> ExprId {
+    let one = ctx.num(1);
+    let six = ctx.num(6);
+    let end_plus_one = ctx.add(Expr::Add(end, one));
+    let two_end_plus_one = build_double_plus_one(ctx, end);
+    let first_product = mul2_raw(ctx, end, end_plus_one);
+    let numerator = mul2_raw(ctx, first_product, two_end_plus_one);
+    ctx.add(Expr::Div(numerator, six))
+}
+
+fn build_double_plus_one(ctx: &mut Context, value: ExprId) -> ExprId {
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let doubled = mul2_raw(ctx, two, value);
+    ctx.add(Expr::Add(doubled, one))
+}
+
+fn build_double_minus_one(ctx: &mut Context, value: ExprId) -> ExprId {
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let doubled = mul2_raw(ctx, two, value);
+    ctx.add(Expr::Sub(doubled, one))
+}
+
+pub fn try_build_sum_of_cubes(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if !expr_is_cube_of_named_var(ctx, summand, var)
+        || contains_named_var(ctx, start, var)
+        || contains_named_var(ctx, end, var)
+    {
+        return None;
+    }
+
+    let one = ctx.num(1);
+    let end_plus_one = ctx.add(Expr::Add(end, one));
+    let upper = build_triangular_square(ctx, end, end_plus_one);
+    if expr_is_zero(ctx, start) || expr_is_one(ctx, start) {
+        return Some(upper);
+    }
+
+    let start_minus_one = ctx.add(Expr::Sub(start, one));
+    let lower = build_triangular_square(ctx, start, start_minus_one);
+    Some(ctx.add(Expr::Sub(upper, lower)))
+}
+
+fn build_triangular_square(ctx: &mut Context, first: ExprId, second: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    let square = ctx.num(2);
+    let numerator = mul2_raw(ctx, first, second);
+    let triangular_number = ctx.add(Expr::Div(numerator, two));
+    ctx.add(Expr::Pow(triangular_number, square))
+}
+
+pub fn try_build_sum_of_constant(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if contains_named_var(ctx, summand, var)
+        || contains_named_var(ctx, start, var)
+        || contains_named_var(ctx, end, var)
+    {
+        return None;
+    }
+
+    let term_count = build_inclusive_range_count(ctx, start, end);
+    Some(mul2_raw(ctx, summand, term_count))
+}
+
+fn build_inclusive_range_count(ctx: &mut Context, start: ExprId, end: ExprId) -> ExprId {
+    if expr_is_one(ctx, start) {
+        return end;
+    }
+
+    let one = ctx.num(1);
+    if expr_is_zero(ctx, start) {
+        return ctx.add(Expr::Add(end, one));
+    }
+
+    let end_minus_start = ctx.add(Expr::Sub(end, start));
+    ctx.add(Expr::Add(end_minus_start, one))
+}
+
+pub fn try_build_geometric_power_sum(
+    ctx: &mut Context,
+    summand: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if contains_named_var(ctx, start, var) || contains_named_var(ctx, end, var) {
+        return None;
+    }
+
+    let Expr::Pow(base, exp) = ctx.get(summand) else {
+        return None;
+    };
+    let base = *base;
+    let exp = *exp;
+    if !is_named_var(ctx, exp, var) {
+        return None;
+    }
+    let base_value = crate::expr_extract::extract_i64_integer(ctx, base)?;
+    if base_value <= 1 {
+        return None;
+    }
+
+    let one = ctx.num(1);
+    let end_plus_one = ctx.add(Expr::Add(end, one));
+    let upper_power = ctx.add(Expr::Pow(base, end_plus_one));
+    let lower_power = if expr_is_zero(ctx, start) {
+        one
+    } else {
+        ctx.add(Expr::Pow(base, start))
+    };
+    let numerator = ctx.add(Expr::Sub(upper_power, lower_power));
+    let denominator_value = base_value - 1;
+    if denominator_value == 1 {
+        return Some(numerator);
+    }
+    let denominator = ctx.num(denominator_value);
+    Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
 /// Build the best available finite-product evaluation plan for `product(...)`.
@@ -180,6 +462,9 @@ pub fn try_plan_finite_sum_evaluation(
 /// 1. Shift-1 telescoping ratio pattern.
 /// 2. Factorizable `1 - 1/k^2` telescoping pattern.
 /// 3. Direct finite substitution when bounds are small integers.
+/// 4. Closed form for `product(k, k, m, n)`.
+/// 5. Closed form for `product(k^p, k, m, n)` when `p` is an integer > 1.
+/// 6. Closed form for `product(c, k, m, n)` when `c`, `m`, and `n` are independent of `k`.
 pub fn try_plan_finite_product_evaluation(
     ctx: &mut Context,
     expr: ExprId,
@@ -227,7 +512,121 @@ pub fn try_plan_finite_product_evaluation(
         });
     }
 
+    if let Some(candidate) = try_build_product_of_first_integers(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(ProductEvaluationPlan {
+            call,
+            candidate,
+            kind: ProductEvaluationKind::ProductOfFirstIntegers,
+        });
+    }
+
+    if let Some(candidate) = try_build_product_of_powers(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(ProductEvaluationPlan {
+            call,
+            candidate,
+            kind: ProductEvaluationKind::ProductOfPowers,
+        });
+    }
+
+    if let Some(candidate) = try_build_product_of_constant(
+        ctx,
+        call.term,
+        &call.var_name,
+        call.start_expr,
+        call.end_expr,
+    ) {
+        return Some(ProductEvaluationPlan {
+            call,
+            candidate,
+            kind: ProductEvaluationKind::ProductOfConstant,
+        });
+    }
+
     None
+}
+
+pub fn try_build_product_of_first_integers(
+    ctx: &mut Context,
+    factor: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if !is_named_var(ctx, factor, var)
+        || expr_is_non_positive_integer(ctx, start)
+        || contains_named_var(ctx, start, var)
+        || contains_named_var(ctx, end, var)
+    {
+        return None;
+    }
+
+    let upper = ctx.call("fact", vec![end]);
+    if expr_is_one(ctx, start) {
+        return Some(upper);
+    }
+
+    let one = ctx.num(1);
+    let start_minus_one = ctx.add(Expr::Sub(start, one));
+    let lower = ctx.call("fact", vec![start_minus_one]);
+    Some(ctx.add(Expr::Div(upper, lower)))
+}
+
+pub fn try_build_product_of_powers(
+    ctx: &mut Context,
+    factor: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    let exponent = expr_named_var_positive_integer_power(ctx, factor, var)?;
+    if expr_is_non_positive_integer(ctx, start)
+        || contains_named_var(ctx, start, var)
+        || contains_named_var(ctx, end, var)
+    {
+        return None;
+    }
+
+    let factorial = ctx.call("fact", vec![end]);
+    let exponent = ctx.num(exponent);
+    if expr_is_one(ctx, start) {
+        return Some(ctx.add(Expr::Pow(factorial, exponent)));
+    }
+
+    let one = ctx.num(1);
+    let start_minus_one = ctx.add(Expr::Sub(start, one));
+    let lower = ctx.call("fact", vec![start_minus_one]);
+    let quotient = ctx.add(Expr::Div(factorial, lower));
+    Some(ctx.add(Expr::Pow(quotient, exponent)))
+}
+
+pub fn try_build_product_of_constant(
+    ctx: &mut Context,
+    factor: ExprId,
+    var: &str,
+    start: ExprId,
+    end: ExprId,
+) -> Option<ExprId> {
+    if contains_named_var(ctx, factor, var)
+        || contains_named_var(ctx, start, var)
+        || contains_named_var(ctx, end, var)
+    {
+        return None;
+    }
+
+    let term_count = build_inclusive_range_count(ctx, start, end);
+    Some(ctx.add(Expr::Pow(factor, term_count)))
 }
 
 /// Extract the integer offset from a linear form `var + k`, `k + var`, `var - k`, or `var`.
@@ -547,6 +946,31 @@ fn is_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
     matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var)
 }
 
+fn expr_is_square_of_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return false;
+    };
+    is_named_var(ctx, *base, var) && crate::expr_extract::extract_i64_integer(ctx, *exp) == Some(2)
+}
+
+fn expr_is_cube_of_named_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return false;
+    };
+    is_named_var(ctx, *base, var) && crate::expr_extract::extract_i64_integer(ctx, *exp) == Some(3)
+}
+
+fn expr_named_var_positive_integer_power(ctx: &Context, expr: ExprId, var: &str) -> Option<i64> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    if !is_named_var(ctx, *base, var) {
+        return None;
+    }
+    let exponent = crate::expr_extract::extract_i64_integer(ctx, *exp)?;
+    (exponent > 1).then_some(exponent)
+}
+
 fn extract_square_of_unit_shifted_base(ctx: &Context, expr: ExprId, var: &str) -> Option<ExprId> {
     let Expr::Pow(base, exp) = ctx.get(expr) else {
         return None;
@@ -589,6 +1013,14 @@ fn expr_is_square_of_base(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
 
 fn expr_is_one(ctx: &Context, expr: ExprId) -> bool {
     matches!(ctx.get(expr), Expr::Number(n) if n.is_one())
+}
+
+fn expr_is_zero(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if *n == BigRational::from_integer(0.into()))
+}
+
+fn expr_is_non_positive_integer(ctx: &Context, expr: ExprId) -> bool {
+    crate::expr_extract::extract_i64_integer(ctx, expr).is_some_and(|value| value <= 0)
 }
 
 fn expr_is_negative_one(ctx: &Context, expr: ExprId) -> bool {
@@ -957,11 +1389,15 @@ mod tests {
         build_finite_product_substitution, build_finite_sum_substitution,
         detect_one_minus_reciprocal_power, detect_reciprocal_power, extract_linear_offset,
         try_build_factorizable_product_for_one_minus_reciprocal_square,
-        try_build_telescoping_product_shift1, try_build_telescoping_rational_sum,
-        try_extract_bounded_integer_range, try_extract_finite_aggregate_call,
-        try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation, ProductEvaluationKind,
-        SumEvaluationKind,
+        try_build_geometric_power_sum, try_build_product_of_constant,
+        try_build_product_of_first_integers, try_build_product_of_powers,
+        try_build_sum_of_constant, try_build_sum_of_cubes, try_build_sum_of_first_integers,
+        try_build_sum_of_squares, try_build_telescoping_product_shift1,
+        try_build_telescoping_rational_sum, try_extract_bounded_integer_range,
+        try_extract_finite_aggregate_call, try_plan_finite_product_evaluation,
+        try_plan_finite_sum_evaluation, ProductEvaluationKind, SumEvaluationKind,
     };
+    use cas_ast::ordering::compare_expr;
     use cas_ast::{substitute_expr_by_id, Context, Expr};
     use num_rational::BigRational;
 
@@ -989,6 +1425,18 @@ mod tests {
                 } else {
                     Some(eval_small_rat(ctx, *l)? / den)
                 }
+            }
+            Expr::Pow(base, exponent) => {
+                let exponent = crate::expr_extract::extract_i64_integer(ctx, *exponent)?;
+                if exponent < 0 {
+                    return None;
+                }
+                let base = eval_small_rat(ctx, *base)?;
+                let mut result = BigRational::from_integer(1.into());
+                for _ in 0..exponent {
+                    result *= base.clone();
+                }
+                Some(result)
             }
             Expr::Neg(inner) => Some(-eval_small_rat(ctx, *inner)?),
             _ => None,
@@ -1349,6 +1797,295 @@ mod tests {
     }
 
     #[test]
+    fn sum_evaluation_plan_detects_symbolic_sum_of_first_integers() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(k, k, 1, n)", &mut ctx).expect("sum");
+        let expected = cas_parser::parse("n*(n+1)/2", &mut ctx).expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::SumOfFirstIntegers));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn sum_evaluation_plan_detects_symbolic_sum_of_first_integers_symbolic_lower_bound() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(k, k, m, n)", &mut ctx).expect("sum");
+        let expected = cas_parser::parse("(n*(n+1)-m*(m-1))/2", &mut ctx).expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::SumOfFirstIntegers));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+        let m = ctx.var("m");
+        let n = ctx.var("n");
+        let two = ctx.num(2);
+        let four = ctx.num(4);
+        let result = substitute_expr_by_id(&mut ctx, plan.candidate, m, two);
+        let result = substitute_expr_by_id(&mut ctx, result, n, four);
+        assert_eq!(
+            eval_small_rat(&ctx, result),
+            Some(BigRational::from_integer(9.into()))
+        );
+    }
+
+    #[test]
+    fn sum_of_first_integers_rejects_bound_variable_lower_bound() {
+        let mut ctx = Context::new();
+
+        let term = cas_parser::parse("k", &mut ctx).expect("term");
+        let start = cas_parser::parse("k", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_sum_of_first_integers(&mut ctx, term, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn sum_evaluation_plan_detects_symbolic_sum_of_squares() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(k^2, k, 1, n)", &mut ctx).expect("sum");
+        let expected = cas_parser::parse("n*(n+1)*(2*n+1)/6", &mut ctx).expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::SumOfSquares));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn sum_evaluation_plan_detects_symbolic_sum_of_squares_symbolic_lower_bound() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(k^2, k, m, n)", &mut ctx).expect("sum");
+        let expected = cas_parser::parse("(n*(n+1)*(2*n+1)-m*(m-1)*(2*m-1))/6", &mut ctx)
+            .expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::SumOfSquares));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+        let m = ctx.var("m");
+        let n = ctx.var("n");
+        let two = ctx.num(2);
+        let four = ctx.num(4);
+        let result = substitute_expr_by_id(&mut ctx, plan.candidate, m, two);
+        let result = substitute_expr_by_id(&mut ctx, result, n, four);
+        assert_eq!(
+            eval_small_rat(&ctx, result),
+            Some(BigRational::from_integer(29.into()))
+        );
+    }
+
+    #[test]
+    fn sum_of_squares_rejects_bound_variable_lower_bound() {
+        let mut ctx = Context::new();
+
+        let term = cas_parser::parse("k^2", &mut ctx).expect("term");
+        let start = cas_parser::parse("k", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_sum_of_squares(&mut ctx, term, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn sum_evaluation_plan_detects_symbolic_sum_of_cubes() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(k^3, k, 1, n)", &mut ctx).expect("sum");
+        let expected = cas_parser::parse("(n*(n+1)/2)^2", &mut ctx).expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::SumOfCubes));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn sum_evaluation_plan_detects_symbolic_sum_of_cubes_symbolic_lower_bound() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(k^3, k, m, n)", &mut ctx).expect("sum");
+        let expected =
+            cas_parser::parse("(n*(n+1)/2)^2 - (m*(m-1)/2)^2", &mut ctx).expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::SumOfCubes));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+        let m = ctx.var("m");
+        let n = ctx.var("n");
+        let two = ctx.num(2);
+        let four = ctx.num(4);
+        let result = substitute_expr_by_id(&mut ctx, plan.candidate, m, two);
+        let result = substitute_expr_by_id(&mut ctx, result, n, four);
+        assert_eq!(
+            eval_small_rat(&ctx, result),
+            Some(BigRational::from_integer(99.into()))
+        );
+    }
+
+    #[test]
+    fn sum_of_cubes_rejects_bound_variable_lower_bound() {
+        let mut ctx = Context::new();
+
+        let term = cas_parser::parse("k^3", &mut ctx).expect("term");
+        let start = cas_parser::parse("k", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_sum_of_cubes(&mut ctx, term, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn sum_evaluation_plan_detects_symbolic_sum_of_constant() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(c, k, 1, n)", &mut ctx).expect("sum");
+        let expected = cas_parser::parse("c*n", &mut ctx).expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::SumOfConstant));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn sum_of_constant_rejects_bound_variable_summand() {
+        let mut ctx = Context::new();
+
+        let term = cas_parser::parse("k + c", &mut ctx).expect("term");
+        let start = cas_parser::parse("1", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_sum_of_constant(&mut ctx, term, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn sum_evaluation_plan_detects_symbolic_sum_of_constant_symbolic_lower_bound() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(c, k, m, n)", &mut ctx).expect("sum");
+        let expected = cas_parser::parse("c*(n-m+1)", &mut ctx).expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::SumOfConstant));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn sum_of_constant_rejects_bound_variable_lower_bound() {
+        let mut ctx = Context::new();
+
+        let term = cas_parser::parse("c", &mut ctx).expect("term");
+        let start = cas_parser::parse("k", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_sum_of_constant(&mut ctx, term, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn sum_evaluation_plan_detects_symbolic_geometric_power_base_two() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(2^k, k, 0, n)", &mut ctx).expect("sum");
+        let expected = cas_parser::parse("2^(n+1)-1", &mut ctx).expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::GeometricPower));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn sum_evaluation_plan_detects_symbolic_geometric_power_base_two_symbolic_lower_bound() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(2^k, k, m, n)", &mut ctx).expect("sum");
+        let expected = cas_parser::parse("2^(n+1)-2^m", &mut ctx).expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::GeometricPower));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn sum_evaluation_plan_detects_symbolic_geometric_power_base_three() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(3^k, k, 0, n)", &mut ctx).expect("sum");
+        let expected = cas_parser::parse("(3^(n+1)-1)/2", &mut ctx).expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::GeometricPower));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn sum_evaluation_plan_detects_symbolic_geometric_power_base_three_symbolic_lower_bound() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("sum(3^k, k, m, n)", &mut ctx).expect("sum");
+        let expected = cas_parser::parse("(3^(n+1)-3^m)/2", &mut ctx).expect("closed form");
+        let plan = try_plan_finite_sum_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, SumEvaluationKind::GeometricPower));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn geometric_power_sum_rejects_symbolic_base() {
+        let mut ctx = Context::new();
+
+        let term = cas_parser::parse("r^k", &mut ctx).expect("term");
+        let start = cas_parser::parse("0", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_geometric_power_sum(&mut ctx, term, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn geometric_power_sum_rejects_bound_variable_lower_bound() {
+        let mut ctx = Context::new();
+
+        let term = cas_parser::parse("2^k", &mut ctx).expect("term");
+        let start = cas_parser::parse("k", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_geometric_power_sum(&mut ctx, term, "k", start, end).is_none());
+    }
+
+    #[test]
     fn product_evaluation_plan_detects_telescoping_variants() {
         let mut ctx = Context::new();
 
@@ -1382,5 +2119,244 @@ mod tests {
             plan4.kind,
             ProductEvaluationKind::FactorizedTelescoping
         ));
+    }
+
+    #[test]
+    fn product_evaluation_plan_detects_symbolic_product_of_first_integers() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("product(k, k, 1, n)", &mut ctx).expect("product");
+        let expected = cas_parser::parse("n!", &mut ctx).expect("factorial");
+        let plan =
+            try_plan_finite_product_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(
+            plan.kind,
+            ProductEvaluationKind::ProductOfFirstIntegers
+        ));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn product_of_first_integers_rejects_non_unit_lower_bound() {
+        let mut ctx = Context::new();
+
+        let factor = cas_parser::parse("k", &mut ctx).expect("factor");
+        let start = cas_parser::parse("k", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_product_of_first_integers(&mut ctx, factor, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn product_evaluation_plan_detects_symbolic_product_of_first_integers_symbolic_lower_bound() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("product(k, k, m, n)", &mut ctx).expect("product");
+        let expected = cas_parser::parse("n!/(m-1)!", &mut ctx).expect("factorial quotient");
+        let plan =
+            try_plan_finite_product_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(
+            plan.kind,
+            ProductEvaluationKind::ProductOfFirstIntegers
+        ));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn product_of_first_integers_rejects_zero_lower_bound() {
+        let mut ctx = Context::new();
+
+        let factor = cas_parser::parse("k", &mut ctx).expect("factor");
+        let start = cas_parser::parse("0", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_product_of_first_integers(&mut ctx, factor, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn product_of_first_integers_rejects_negative_integer_lower_bound() {
+        let mut ctx = Context::new();
+
+        let factor = cas_parser::parse("k", &mut ctx).expect("factor");
+        let start = cas_parser::parse("-1", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_product_of_first_integers(&mut ctx, factor, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn product_evaluation_plan_detects_symbolic_product_of_squares() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("product(k^2, k, 1, n)", &mut ctx).expect("product");
+        let expected = cas_parser::parse("(n!)^2", &mut ctx).expect("factorial square");
+        let plan =
+            try_plan_finite_product_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, ProductEvaluationKind::ProductOfPowers));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn product_evaluation_plan_detects_symbolic_product_of_squares_symbolic_lower_bound() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("product(k^2, k, m, n)", &mut ctx).expect("product");
+        let expected = cas_parser::parse("(n!/(m-1)!)^2", &mut ctx).expect("factorial quotient");
+        let plan =
+            try_plan_finite_product_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, ProductEvaluationKind::ProductOfPowers));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn product_evaluation_plan_detects_symbolic_product_of_cubes_symbolic_lower_bound() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("product(k^3, k, m, n)", &mut ctx).expect("product");
+        let expected = cas_parser::parse("(n!/(m-1)!)^3", &mut ctx).expect("factorial quotient");
+        let plan =
+            try_plan_finite_product_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, ProductEvaluationKind::ProductOfPowers));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn product_evaluation_plan_detects_symbolic_product_of_fourth_powers_symbolic_lower_bound() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("product(k^4, k, m, n)", &mut ctx).expect("product");
+        let expected = cas_parser::parse("(n!/(m-1)!)^4", &mut ctx).expect("factorial quotient");
+        let plan =
+            try_plan_finite_product_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(plan.kind, ProductEvaluationKind::ProductOfPowers));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn product_of_powers_rejects_bound_variable_lower_bound() {
+        let mut ctx = Context::new();
+
+        let factor = cas_parser::parse("k^2", &mut ctx).expect("factor");
+        let start = cas_parser::parse("k", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_product_of_powers(&mut ctx, factor, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn product_of_powers_rejects_zero_lower_bound() {
+        let mut ctx = Context::new();
+
+        let factor = cas_parser::parse("k^2", &mut ctx).expect("factor");
+        let start = cas_parser::parse("0", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_product_of_powers(&mut ctx, factor, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn product_of_powers_rejects_negative_integer_lower_bound() {
+        let mut ctx = Context::new();
+
+        let factor = cas_parser::parse("k^2", &mut ctx).expect("factor");
+        let start = cas_parser::parse("-1", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_product_of_powers(&mut ctx, factor, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn product_of_powers_rejects_non_positive_exponent() {
+        let mut ctx = Context::new();
+
+        let factor = cas_parser::parse("k^0", &mut ctx).expect("factor");
+        let start = cas_parser::parse("m", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_product_of_powers(&mut ctx, factor, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn product_evaluation_plan_detects_symbolic_product_of_constant() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("product(c, k, 1, n)", &mut ctx).expect("product");
+        let expected = cas_parser::parse("c^n", &mut ctx).expect("power");
+        let plan =
+            try_plan_finite_product_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(
+            plan.kind,
+            ProductEvaluationKind::ProductOfConstant
+        ));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn product_of_constant_rejects_bound_variable_factor() {
+        let mut ctx = Context::new();
+
+        let factor = cas_parser::parse("k + c", &mut ctx).expect("factor");
+        let start = cas_parser::parse("1", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_product_of_constant(&mut ctx, factor, "k", start, end).is_none());
+    }
+
+    #[test]
+    fn product_evaluation_plan_detects_symbolic_product_of_constant_symbolic_lower_bound() {
+        let mut ctx = Context::new();
+
+        let expr = cas_parser::parse("product(c, k, m, n)", &mut ctx).expect("product");
+        let expected = cas_parser::parse("c^(n-m+1)", &mut ctx).expect("power");
+        let plan =
+            try_plan_finite_product_evaluation(&mut ctx, expr, 1000).expect("closed form plan");
+
+        assert!(matches!(
+            plan.kind,
+            ProductEvaluationKind::ProductOfConstant
+        ));
+        assert_eq!(
+            compare_expr(&ctx, plan.candidate, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn product_of_constant_rejects_bound_variable_lower_bound() {
+        let mut ctx = Context::new();
+
+        let factor = cas_parser::parse("c", &mut ctx).expect("factor");
+        let start = cas_parser::parse("k", &mut ctx).expect("start");
+        let end = cas_parser::parse("n", &mut ctx).expect("end");
+
+        assert!(try_build_product_of_constant(&mut ctx, factor, "k", start, end).is_none());
     }
 }

@@ -447,6 +447,7 @@ These are the runnable profiles exposed by the current scorecard runner:
 - `guardrail`
   - embedded equivalence context corpus
   - derive contract corpus
+  - derive shadow pressure over representative engine identity rows
   - unified simplification benchmark in `strict`
 - `pressure`
   - simplify-zero mixed corpus
@@ -552,6 +553,11 @@ The embedded corpora matter because they are harder to game than a single benchm
   verifies composed simplify-to-zero behavior across heterogeneous identities
 - [derive_pairs.csv](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/derive_pairs.csv)
   measures whether `derive` can actually bridge source to target and how long the path is
+- `derive_shadow_pressure` samples representative rows from
+  [identity_pairs.csv](/Users/javiergimenezmoya/developer/math/crates/cas_solver/tests/identity_pairs.csv)
+  as a diagnostic engine-to-derive bridge lane. It is not a support gate; it
+  reports which known engine identities are derived, unsupported, or not yet
+  provable as explicit `derive` targets.
 
 These are not interchangeable metrics.
 

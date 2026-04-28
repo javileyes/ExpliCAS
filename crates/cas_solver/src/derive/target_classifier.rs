@@ -1657,6 +1657,18 @@ mod tests {
     }
 
     #[test]
+    fn classifies_direct_sqrt_squared_symbol_as_radical_rewritten_target() {
+        let profile = classify("sqrt(x^2)", "abs(x)");
+        assert_eq!(profile.form, DeriveTargetForm::RadicalRewritten);
+    }
+
+    #[test]
+    fn classifies_square_of_square_root_as_radical_rewritten_target() {
+        let profile = classify("sqrt(x)^2", "x");
+        assert_eq!(profile.form, DeriveTargetForm::RadicalRewritten);
+    }
+
+    #[test]
     fn classifies_tabulated_radical_rewritten_targets_with_passthrough() {
         let profile = classify("sqrt(a^2 + 2*a*b + b^2)+c", "abs(a+b)+c");
         assert_eq!(profile.form, DeriveTargetForm::RadicalRewritten);

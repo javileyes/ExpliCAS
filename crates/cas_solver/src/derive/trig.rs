@@ -101,6 +101,7 @@ pub(crate) enum DeriveTrigRewriteKind {
     SumToProductCosSum,
     SumToProductCosDiff,
     PhaseShiftIdentity,
+    CofunctionIdentity,
     LinearAngleArgumentSimplify,
 }
 
@@ -929,6 +930,7 @@ impl DeriveTrigRewriteKind {
             Self::PhaseShiftIdentity => {
                 "Rewrite exact sine/cosine linear combinations using a phase shift"
             }
+            Self::CofunctionIdentity => "Apply a sine/cosine cofunction identity",
             Self::LinearAngleArgumentSimplify => {
                 "Simplify linear angle arguments inside trig functions"
             }
@@ -1026,6 +1028,7 @@ impl DeriveTrigRewriteKind {
             | Self::SumToProductCosSum
             | Self::SumToProductCosDiff => "Sum-to-Product Identity",
             Self::PhaseShiftIdentity => "Phase Shift Identity",
+            Self::CofunctionIdentity => "Cofunction Identity",
             Self::LinearAngleArgumentSimplify => "Linear Angle Simplification",
         }
     }
@@ -1036,6 +1039,10 @@ pub(crate) fn try_rewrite_trig_expansion(
     expr: ExprId,
     target_expr: ExprId,
 ) -> Option<DeriveTrigRewrite> {
+    if let Some(rewrite) = try_rewrite_cofunction_phase_shift_target_aware(ctx, expr, target_expr) {
+        return Some(rewrite);
+    }
+
     if let Some(rewrite) = try_rewrite_phase_shift_expansion_target_aware(ctx, expr, target_expr) {
         return Some(rewrite);
     }
@@ -3618,6 +3625,34 @@ fn try_rewrite_phase_shift_expansion_target_aware(
     None
 }
 
+fn try_rewrite_cofunction_phase_shift_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let rewrite =
+        cas_math::trig_phase_shift_support::try_rewrite_trig_phase_shift_function_expr(ctx, expr)?;
+    if !matches!(
+        rewrite.shift,
+        cas_math::trig_phase_shift_support::TrigPhaseShiftKind::PiOver2
+            | cas_math::trig_phase_shift_support::TrigPhaseShiftKind::NegPiOver2
+            | cas_math::trig_phase_shift_support::TrigPhaseShiftKind::ThreePiOver2
+            | cas_math::trig_phase_shift_support::TrigPhaseShiftKind::NegThreePiOver2
+    ) {
+        return None;
+    }
+
+    let rewritten = run_phase_shift_match_simplify(ctx, rewrite.rewritten);
+    if !strong_target_match(ctx, rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveTrigRewrite {
+        rewritten: target_expr,
+        kind: DeriveTrigRewriteKind::CofunctionIdentity,
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PhaseShiftKind {
     Quarter,
@@ -5513,7 +5548,8 @@ pub(crate) fn try_rewrite_shifted_double_angle_target_aware(
     }
 
     if let Some((BuiltinFn::Sin, arg)) = scaled_sin_or_cos_square(ctx, expr, 2) {
-        let double_arg = smart_mul(ctx, two, arg);
+        let double_arg_raw = smart_mul(ctx, two, arg);
+        let double_arg = run_phase_shift_match_simplify(ctx, double_arg_raw);
         let cos_double = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
         let candidate = ctx.add(Expr::Sub(one, cos_double));
         if strong_target_match(ctx, candidate, target_expr) {
@@ -5525,7 +5561,8 @@ pub(crate) fn try_rewrite_shifted_double_angle_target_aware(
     }
 
     if let Some((BuiltinFn::Cos, arg)) = scaled_sin_or_cos_square(ctx, expr, 2) {
-        let double_arg = smart_mul(ctx, two, arg);
+        let double_arg_raw = smart_mul(ctx, two, arg);
+        let double_arg = run_phase_shift_match_simplify(ctx, double_arg_raw);
         let cos_double = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
         let candidate = ctx.add(Expr::Add(one, cos_double));
         if strong_target_match(ctx, candidate, target_expr) {
@@ -5537,7 +5574,8 @@ pub(crate) fn try_rewrite_shifted_double_angle_target_aware(
     }
 
     if let Some((BuiltinFn::Sin, arg)) = scaled_sin_or_cos_square(ctx, expr, -2) {
-        let double_arg = smart_mul(ctx, two, arg);
+        let double_arg_raw = smart_mul(ctx, two, arg);
+        let double_arg = run_phase_shift_match_simplify(ctx, double_arg_raw);
         let cos_double = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
         let candidate = ctx.add(Expr::Sub(cos_double, one));
         if strong_target_match(ctx, candidate, target_expr) {
@@ -8368,6 +8406,27 @@ mod tests {
     }
 
     #[test]
+    fn rewrites_cofunction_phase_shift_targets_before_generic_simplify() {
+        for (source_text, target_text) in [
+            ("sin(pi/2 - x)", "cos(x)"),
+            ("cos(pi/2 - x)", "sin(x)"),
+            ("sin(pi/2 + x)", "cos(x)"),
+            ("cos(pi/2 + x)", "-sin(x)"),
+        ] {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_trig_expansion(&mut ctx, source, target).expect("rewrite");
+
+            assert_eq!(rewrite.kind, DeriveTrigRewriteKind::CofunctionIdentity);
+            assert!(
+                strong_target_match(&mut ctx, rewrite.rewritten, target),
+                "expected cofunction target match for `{source_text}` -> `{target_text}`"
+            );
+        }
+    }
+
+    #[test]
     fn rewrites_scaled_phase_shift_sum_to_shifted_sine_target_aware() {
         let mut ctx = Context::new();
         let source = parse("2*sin(x)+2*cos(x)", &mut ctx).expect("source");
@@ -8606,17 +8665,35 @@ mod tests {
 
     #[test]
     fn rewrites_shifted_double_angle_from_two_sin_sq_target_aware() {
-        let mut ctx = Context::new();
-        let source = parse("2*sin(x)^2", &mut ctx).expect("source");
-        let target = parse("1 - cos(2*x)", &mut ctx).expect("target");
-        let rewrite = try_rewrite_shifted_double_angle_target_aware(&mut ctx, source, target)
-            .expect("rewrite");
+        for (source_text, target_text, expected_kind) in [
+            (
+                "2*sin(x)^2",
+                "1 - cos(2*x)",
+                DeriveTrigRewriteKind::DoubleAngleCosTwoSinSqToOneMinusCos,
+            ),
+            (
+                "2*sin(x/2)^2",
+                "1 - cos(x)",
+                DeriveTrigRewriteKind::DoubleAngleCosTwoSinSqToOneMinusCos,
+            ),
+            (
+                "2*cos(x/2)^2",
+                "1 + cos(x)",
+                DeriveTrigRewriteKind::DoubleAngleCosTwoCosSqToOnePlusCos,
+            ),
+        ] {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_shifted_double_angle_target_aware(&mut ctx, source, target)
+                .expect("rewrite");
 
-        assert_eq!(
-            rewrite.kind,
-            DeriveTrigRewriteKind::DoubleAngleCosTwoSinSqToOneMinusCos
-        );
-        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+            assert_eq!(rewrite.kind, expected_kind);
+            assert!(
+                strong_target_match(&mut ctx, rewrite.rewritten, target),
+                "expected strong target match for `{source_text}` -> `{target_text}`"
+            );
+        }
     }
 
     #[test]

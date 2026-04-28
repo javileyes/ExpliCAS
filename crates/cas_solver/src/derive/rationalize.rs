@@ -68,7 +68,7 @@ pub(crate) fn looks_rationalizable_source(ctx: &cas_ast::Context, expr: ExprId) 
 
 fn contains_root_like(ctx: &cas_ast::Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
-        Expr::Pow(_, exp) => matches!(ctx.get(*exp), Expr::Number(n) if !n.is_integer()),
+        Expr::Pow(_, exp) => is_fractional_power_exponent(ctx, *exp),
         Expr::Function(name, args)
             if (ctx.is_builtin(*name, BuiltinFn::Sqrt)
                 || ctx.is_builtin(*name, BuiltinFn::Root))
@@ -87,6 +87,10 @@ fn contains_root_like(ctx: &cas_ast::Context, expr: ExprId) -> bool {
         Expr::Matrix { data, .. } => data.iter().any(|arg| contains_root_like(ctx, *arg)),
         Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
     }
+}
+
+fn is_fractional_power_exponent(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    as_rational_const(ctx, expr, 8).is_some_and(|value| !value.is_integer())
 }
 
 fn try_rewrite_radical_notable_quotient_target_aware(
@@ -330,6 +334,7 @@ mod tests {
             "1/(sqrt(y)-a)",
             "(x^(3/2)-1)/(sqrt(x)-1)",
             "1/(sqrt(x)-1) - (sqrt(x)+1)/(x-1)",
+            "1/(1+x^(1/3))",
         ];
 
         for text in cases {
