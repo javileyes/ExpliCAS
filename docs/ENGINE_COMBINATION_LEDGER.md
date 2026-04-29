@@ -8164,3 +8164,58 @@ The burden of proof stays the same:
 - decision:
   - retained as coverage: closes the last reciprocal depth4 family gap with two
     minimal corpus rows and no runtime/derive-code changes
+
+## 2026-04-29 - Auto-improvement cycle: shell-depth scorecard visibility
+
+- investment_class: observability
+- success_condition:
+  - the generated scorecard must show all global shell-depth buckets when the
+    bucket list is small, including `depth 4` next to `depth 5`
+- primary_dimension:
+  - embedded scorecard structural-depth visibility
+- secondary_dimension:
+  - retain clear feedback for future shell-depth promotions without relying only
+    on sparse-wrapper subreports
+- hypothesis:
+  - the previous `first four + max` summary policy hid `depth 4` in a six-depth
+    corpus; returning all rows for small bucket lists preserves the important
+    signal without making the Markdown noisy
+- relevant_lanes:
+  - `python3 -m unittest scripts/test_engine_improvement_scorecard.py`
+  - `make engine-scorecard`
+- promotion_target:
+  - none; harness/reporting change only
+- derive_bridge_check:
+  - not applicable: no mathematical family, runtime rule, or derive route was
+    changed
+- engine_feedback_check:
+  - no engine capability gap found; this was a scorecard reporting blind spot
+- retain_if:
+  - scorecard unit tests pass; generated Markdown includes `depth 4`; guardrail
+    profile remains green
+- reject_if:
+  - Markdown becomes too noisy, scorecard parsing regresses, or any guardrail
+    suite fails
+- cohesion_scope:
+  - `scripts/engine_improvement_scorecard.py` and its unit test
+- behavior_change_expected:
+  - output-only observability change; no engine semantic or runtime behavior
+    change
+- local_result:
+  - changed `shell_depth_summary_rows` to return all shell-depth buckets when
+    there are at most eight rows
+  - added a regression test for a six-bucket `0..5` shape so `depth 4` is not
+    hidden
+- guardrails:
+  - scorecard unit tests: `25/25` passed
+  - `make engine-scorecard`: embedded `1445/1445`, families `25`, elapsed
+    `4.01s`, avg `2.775ms/case`, shell-depth mix now reports
+    `depth 0`, `depth 1`, `depth 2`, `depth 3`, `depth 4`, and `depth 5`,
+    derive contract `derived=383 unsupported=0 not_equivalent=1`, shadow
+    `50/50`, derive audit `465 cases / 0 flags`, simplify audit
+    `14 cases / 0 flags`, strict `16518/16518 proved-symbolic`, `0`
+    failures/timeouts
+- decision:
+  - retained as observability: the scorecard now exposes the structural-depth
+    bucket that recent coverage work optimized, with all guardrails green and no
+    runtime code touched

@@ -1,11 +1,12 @@
 # Engine Improvement Automation
 
 ## Goal
-Build one repeatable loop that improves three things together without guessing:
+Build one repeatable loop that improves four things together without guessing:
 
 - simplification coverage
 - equivalence proving power
 - `derive` reachability and didactic quality
+- bounded calculus capability that reuses and hardens the pre-calculus core
 
 The core idea is simple: every engine improvement campaign should be driven by an
 explicit scorecard, not by isolated anecdotes.
@@ -17,6 +18,7 @@ A real engine improvement may come from:
 - a new simplification rule
 - a better root/orchestrator shortcut
 - a better derive target classifier or planner route
+- a bounded calculus vertical slice in differentiation, limits, or integration
 - a robustness fix that prevents stack overflow / timeout on expressions the
   engine already handled semantically
 
@@ -31,6 +33,8 @@ The rest of the campaign policies should derive from it:
 
 - orchestrator observability is the strategy for `observability` iterations
 - corpus growth is the strategy for `coverage` and part of `robustness`
+- calculus growth is governed by
+  [CALCULUS_ENGINE_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/CALCULUS_ENGINE_STRATEGY.md)
 - the combination ledger is the strategy for `combination` iterations
 - cohesion refactoring is the strategy for structural work on large engine
   files when the goal is safer future iteration rather than immediate
@@ -47,6 +51,9 @@ Each iteration should choose one primary investment class before touching code:
   - reduce timeout, loop, overflow, or brittle routing risk
 - `observability`
   - improve signal when the next profitable move is still ambiguous
+- `calculus`
+  - add or harden a bounded public calculus vertical slice while reusing the
+    pre-calculus core
 - `combination`
   - revisit a documented `local win / global fail` only when a complementary
     hypothesis is now available
@@ -65,15 +72,20 @@ cross-system value:
 ```text
 cross_system_roi ~= engine_value
                   + derive_bridge_value
+                  + calculus_value
+                  + precalculus_reuse_value
+                  + domain_safety_value
                   + corpus_reuse_value
                   + didactic_value
                   - runtime_risk
+                  - unsoundness_risk
                   - complexity_cost
 ```
 
 This does not replace the main ROI formula. It prevents the loop from treating
-`derive` as a separate afterthought when the same engine capability could also
-become a teachable `source -> target` bridge.
+`derive` as a separate afterthought or calculus as a bolt-on feature when the
+same engine capability could also become a teachable `source -> target` bridge
+or a public `diff`, `limit`, or `integrate` slice.
 
 Interpretation:
 
@@ -89,12 +101,24 @@ Interpretation:
   - code complexity, risk, and validation cost
 - `derive_bridge_value`
   - whether the change exposes a reusable target-form transition for `derive`
+- `calculus_value`
+  - whether the change improves public `diff`, `limit`, or `integrate`
+    behavior in a bounded, testable way
+- `precalculus_reuse_value`
+  - whether the calculus work reuses or hardens simplification, equivalence,
+    domain, or didactic infrastructure instead of bypassing it
+- `domain_safety_value`
+  - whether assumptions around domain, branch, infinity, or integration
+    constants are preserved explicitly
 - `corpus_reuse_value`
   - whether one minimal case can serve both engine coverage and derive
     reachability/didactic checks
 - `didactic_value`
   - whether the change turns a magical or opaque transformation into an
     intentional step path
+- `unsoundness_risk`
+  - whether the candidate could introduce hidden domain, branch, infinity, or
+    integration-constant assumptions
 
 This matters because the campaign repeatedly encounters ideas with:
 
@@ -121,6 +145,10 @@ At minimum, each candidate should be evaluated across these lenses:
 - `engine feedback ROI`
   - whether a `derive` miss reveals a missing reusable engine transition rather
     than only a planner or wording issue
+- `calculus ROI`
+  - whether a calculus slice turns existing pre-calculus strength into public
+    capability and exposes reusable pressure back onto simplification,
+    equivalence, domains, or didactic traces
 - `promotion ROI`
   - whether the result is stable enough to become a lasting guardrail or corpus
     promotion
@@ -128,6 +156,52 @@ At minimum, each candidate should be evaluated across these lenses:
 These lenses do not replace the main ROI formula.
 They make it harder for the selector to overfit to a narrow hotspot that sits
 inside an already overrepresented slice of the scorecard.
+
+### Pre-Calculus And Calculus Strategy
+
+The pre-calculus engine is now strong enough to serve as the foundation for
+calculus work. It is not complete in a universal-CAS sense, and the loop should
+not pretend otherwise.
+
+The strategy is to start calculus now, but only as disciplined vertical slices:
+
+- differentiation first, because it is high-value and stresses simplification in
+  controlled ways
+- limits second, under the existing conservative policy
+- integration third, starting with table-driven and easily verified families
+- series/asymptotics later, after limits and differentiation have stronger
+  domain and trace support
+
+This does not reduce the importance of pre-calculus. It gives pre-calculus a
+new source of useful pressure:
+
+- derivative outputs expose missing simplification, factoring, cancellation, and
+  step-quality gaps
+- limit cases expose safe pre-simplification and domain assumptions
+- integration cases expose inverse-differentiation, substitution, and constant
+  policy gaps
+
+The selector should prefer calculus candidates when all of these are true:
+
+- the user-visible calculus improvement is concrete and bounded
+- the implementation reuses the existing symbolic engine rather than bypassing
+  it with an isolated shortcut
+- the domain/branch/constant assumptions are explicit
+- the case can be validated with a narrow unit or contract test plus the needed
+  pre-calculus guardrails
+
+The selector should defer calculus candidates when they require:
+
+- general integration search
+- hidden domain assumptions
+- broad simplifier changes with unclear embedded runtime cost
+- answer-only behavior that would be a magical step in the UI
+- speculative branch behavior not covered by policy
+
+If a calculus probe reveals that the real blocker is a reusable algebraic,
+normalization, or domain gap, the next retained work should usually be
+classified as `coverage`, `robustness`, or `observability`, not as a calculus
+workaround.
 
 ### Engine/Derive Cross-Pollination
 
@@ -196,6 +270,9 @@ Prefer:
 - `observability`
   - when recent iterations produce `local win / global fail` or the hotspot is
     still ambiguous
+- `calculus`
+  - when a bounded `diff`, `limit`, or `integrate` vertical slice has clear
+    public value, explicit domain policy, and a reusable pre-calculus dependency
 - `combination`
   - only when the ledger already contains a compatible pair:
     - expensive win + cheap gate
@@ -211,6 +288,8 @@ Also allow dimensional coverage to steer the class choice:
   composition axis can be promoted cheaply
 - prefer `coverage` or `derive`-oriented work when a stable engine family lacks
   any representative derive bridge and the case is not branch/domain-hard
+- prefer `calculus` when existing simplification/equivalence strength can be
+  converted into a small public calculus capability without broad search
 - prefer `observability` when the current scorecard shows an under-covered
   dimension but the profitable next promotion is still unclear
 - prefer `runtime` only if the hotspot is not merely the byproduct of severe
@@ -235,7 +314,7 @@ Each automatic iteration should do this in order:
 
 1. read the latest scorecard and profiler evidence
 2. classify candidate work into `runtime`, `coverage`, `robustness`,
-   `observability`, or `combination`
+   `observability`, `calculus`, or `combination`
 3. estimate expected ROI for the top candidates
 4. annotate each serious candidate with:
    - primary dimension affected
@@ -243,6 +322,7 @@ Each automatic iteration should do this in order:
    - whether it is a hotspot move, a dimensional coverage move, or both
    - whether it has a realistic promotion path into corpus or guardrail
    - whether it creates or consumes a derive bridge
+   - whether it creates a calculus capability or exposes a pre-calculus blocker
 5. choose one primary class for the iteration
 6. write down the success condition before editing code
 7. validate against the relevant benchmark roles
@@ -271,6 +351,9 @@ relevant_lanes:
 promotion_target:
 derive_bridge_check:
 engine_feedback_check:
+calculus_scope:
+precalculus_dependency:
+domain_safety_check:
 retain_if:
 reject_if:
 retain_or_reject_reason:
@@ -279,7 +362,8 @@ retain_or_reject_reason:
 Minimum expectations:
 
 - `investment_class`
-  - one of `runtime`, `coverage`, `robustness`, `observability`, `combination`
+  - one of `runtime`, `coverage`, `robustness`, `observability`, `calculus`,
+    `combination`
 - `success_condition`
   - concrete and measurable, not narrative
 - `relevant_lanes`
@@ -292,6 +376,15 @@ Minimum expectations:
 - `engine_feedback_check`
   - for derive work: whether the miss is planner-only, didactic-only, or points
     to a reusable engine capability gap
+- `calculus_scope`
+  - for calculus work: `diff`, `limit`, `integrate`, or the specific calculus
+    command/surface being changed
+- `precalculus_dependency`
+  - for calculus work: which simplification, equivalence, domain, or didactic
+    capability the change reuses or hardens
+- `domain_safety_check`
+  - for calculus work: how domain, branch, infinity, or integration-constant
+    assumptions are represented or explicitly avoided
 - `retain_or_reject_reason`
   - the shortest defensible explanation after validation
 
@@ -479,6 +572,17 @@ At minimum, it should make room for:
 - how many collapsed into an already-known failure cluster
 - how many were promoted to `unit`, `live`, `frozen`, or `stress`
 - whether the retained fix changed `embedded` elapsed time materially
+
+The scorecard should also grow calculus visibility over time. Initially this can
+be diagnostic rather than gating:
+
+- representative `diff`, `limit`, and `integrate` contract counts
+- unsupported/residual counts by calculus family
+- calculus cases whose final result is correct but depends on a weak
+  pre-calculus simplification route
+- didactic or highlight defects in calculus traces
+- which calculus probes were reclassified as pre-calculus coverage,
+  robustness, or observability work
 
 ## Target Benchmark Role Model
 

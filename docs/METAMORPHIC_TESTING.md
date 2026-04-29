@@ -14,18 +14,22 @@ El sistema de **Metamorphic Equivalence Testing** es la herramienta principal pa
 Hoy debe entenderse como parte de un sistema más amplio de mejora continua del
 engine, no como una suite aislada.
 
-La mejora del engine se dirige desde cuatro señales a la vez:
+La mejora del engine se dirige desde cinco señales a la vez:
 
 - completitud matemática
 - potencia de normalización
 - robustez frente a expresiones complejas
 - presupuesto de tiempo en tráfico que antes era barato
+- capacidad de cálculo cuando `diff`, `limit` o `integrate` reutilizan el core
+  pre-cálculo en vez de saltárselo
 
 Eso implica que mejorar el engine no es solo “añadir reglas”. También cuenta:
 
 - mejorar el orquestador root/direct
 - mejorar rutas de equivalencia o shortcuts seguros
 - mejorar el planner o clasificador de `derive`
+- mejorar una vertical acotada de cálculo que presione simplificación,
+  equivalencia, dominios o pasos didácticos
 - evitar que un caso correcto semánticamente reviente por stack o tiempo
 
 La scorecard automatizada que agrupa estas señales vive en:
@@ -646,6 +650,49 @@ cargo test --release -p cas_solver --test metamorphic_simplification_tests \
 cargo test --release -p cas_solver --test metamorphic_simplification_tests \
   metatest_unified_benchmark_nf_first -- --ignored --exact --nocapture
 ```
+
+### Presión Metamórfica De Cálculo
+
+La estrategia metamórfica también debe alimentar cálculo, pero con más cuidado
+que las identidades algebraicas puras.
+
+Las mejores propiedades para cálculo son simbólicas y acotadas:
+
+- linealidad de la derivada:
+  `diff(f + g, x) ~ diff(f, x) + diff(g, x)`
+- regla del producto en familias pequeñas:
+  `diff(f*g, x) ~ diff(f, x)*g + f*diff(g, x)`
+- regla de la cadena en composiciones soportadas:
+  `diff(f(g(x)), x) ~ f'(g(x))*g'(x)`
+- verificación de antiderivadas soportadas:
+  `diff(integrate(f, x), x) ~ f` sólo para integrales table-driven o
+  sustituciones explícitamente soportadas
+- álgebra de límites bajo condiciones seguras:
+  `limit(f + g) ~ limit(f) + limit(g)` sólo cuando ambos límites y sus dominios
+  están dentro de política
+
+Estas propiedades deben tratarse como presión de engine, no como permiso para
+abrir búsqueda simbólica amplia.
+
+Reglas operativas:
+
+- empieza con familias pequeñas y dominios explícitos
+- usa el chequeo numérico sólo como diagnóstico, no como soporte de verdad para
+  promocionar cálculo
+- si la derivada o integral es correcta pero el resultado queda en una forma
+  pobre, clasifica el gap como simplificación/pre-cálculo
+- si el límite requiere cancelar, racionalizar o asumir no-cero, sigue la
+  política conservadora de límites antes de añadir reglas
+- si una transformación de cálculo se ve como un salto mágico, añade presión
+  didáctica o de highlights sólo cuando el subpaso sea generalizable
+
+Un buen caso metamórfico de cálculo debe dejar claro:
+
+- qué capacidad de cálculo se prueba
+- qué capacidad pre-cálculo se reutiliza
+- qué condición de dominio/rama se exige o evita
+- si la expectativa es `NF-convergent`, `proved-symbolic`, residual explícito o
+  sólo diagnóstico
 
 ### Scorecard Unificada
 

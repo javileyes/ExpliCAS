@@ -6,6 +6,11 @@ This document is a derived strategy under
 It should drive an iteration when the ROI selector chooses `coverage`, or when
 corpus work is the right vehicle for a `robustness` iteration.
 
+For calculus-specific coverage, read this together with
+[CALCULUS_ENGINE_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/CALCULUS_ENGINE_STRATEGY.md).
+Calculus corpora should grow as bounded vertical slices that also pressure the
+pre-calculus core.
+
 This document proposes the next high-ROI test corpora to improve the
 simplification engine itself, not only the didactic layer.
 
@@ -702,6 +707,81 @@ normalization across family boundaries.
 The mixed `0/1` corpus repeatedly exposes exactly this kind of problem whenever
 residual failures remain after a broader cleanup pass.
 
+## Corpus 8: Calculus Vertical Slices As Pre-Calculus Pressure
+
+### Purpose
+
+Build calculus capability without separating it from the simplification,
+equivalence, domain, and didactic machinery that makes the engine reliable.
+
+Calculus corpus work should test two things at once:
+
+- the calculus command returns the right result or residual
+- the pre-calculus core can simplify, explain, and validate the intermediate
+  and final expressions
+
+### Generation Pattern
+
+Start with small vertical slices, not broad random calculus syntax.
+
+Differentiation examples:
+
+- polynomial and rational derivatives
+- product, quotient, and chain rule cases
+- `exp`, `ln`, trig, and inverse-trig derivatives where policy is clear
+- derivative results that require simplification but should not become magical
+
+Limit examples:
+
+- polynomial and rational limits at infinity
+- simple finite point limits only under explicit policy
+- safe pre-simplification noise such as `+0`, `*1`, and structural zero terms
+- residual cases where unsupported behavior must stay explicit
+
+Integration examples:
+
+- powers, sums, and constant multiples
+- table-supported `exp`, `sin`, `cos`, and `1/x` cases
+- simple linear substitution only when the substitution trace is explicit
+- antiderivatives that can be checked by differentiating within supported
+  families
+
+### Why It Matters
+
+Calculus turns pre-calculus strength into public mathematical capability.
+
+It also exposes gaps that ordinary simplification corpora can miss:
+
+- derivative outputs with awkward but equivalent forms
+- cancellation and factoring needed after product or quotient rules
+- domain assumptions around `ln`, `sqrt`, inverse trig, and division
+- integration constants and unsupported residual behavior
+- step traces that are correct but too magical for educational use
+
+### Promotion Policy
+
+Promote calculus cases conservatively:
+
+- use unit tests for a narrow calculus rule or family
+- use CLI/API contract tests when public command behavior changes
+- use didactic/highlight tests when the visible trace is the retained value
+- use pressure or generated discovery for large composed calculus expressions
+- promote to live guardrails only when the family is stable, representative,
+  and cheap enough to keep
+
+Do not promote a large calculus expression just because it found a bug.
+Promote the smallest representative that preserves the lesson.
+
+### Why This Has High ROI
+
+This track lets the project start building calculus now while continuing to
+strengthen the pre-calculus heart of the engine.
+
+The best retained cases improve both:
+
+- user-visible calculus behavior
+- simplification/equivalence/domain/didactic quality below it
+
 ## Suggested Priority Order
 
 Recommended order for maximum engine ROI:
@@ -709,10 +789,11 @@ Recommended order for maximum engine ROI:
 1. Embedded equivalence in context
 2. Orientation, sign, and canonicalization robustness
 3. Mixed-family interaction
-4. Domain frontier and semantic safety
-5. Loop and oscillation detection
-6. Budget and performance stability
-7. Didactic fidelity review
+4. Calculus vertical slices when they reuse and harden pre-calculus
+5. Domain frontier and semantic safety
+6. Loop and oscillation detection
+7. Budget and performance stability
+8. Didactic fidelity review
 
 ## Current Promotion Priority
 
@@ -810,6 +891,8 @@ A corpus is worth keeping only if it improves at least one of:
 - didactic path quality
 - performance predictability
 - derive bridgeability when the same identity has a meaningful target form
+- calculus bridgeability when a pre-calculus family can become a bounded
+  `diff`, `limit`, or `integrate` capability without unsafe assumptions
 
 For `embedded_equivalence_context_corpus.csv`, add one more filter:
 

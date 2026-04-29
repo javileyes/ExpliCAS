@@ -419,6 +419,13 @@ wrote docs/generated/DERIVE_DIDACTIC_AUDIT.md
         )
         self.assertEqual(profile["top_hot_sections"][0]["samples"], ["0"])
 
+    def test_shell_depth_summary_keeps_small_intermediate_buckets(self):
+        rows = {depth: {"total": depth + 1, "failed": 0} for depth in range(6)}
+
+        summary = MODULE.shell_depth_summary_rows(rows)
+
+        self.assertEqual([depth for depth, _row in summary], [0, 1, 2, 3, 4, 5])
+
     def test_parse_orchestrator_profile_recovers_truncated_section_samples(self):
         output = """Orchestrator Profiling Report
 ──────────────────────────────────────────────────────────────────────────────────────────────

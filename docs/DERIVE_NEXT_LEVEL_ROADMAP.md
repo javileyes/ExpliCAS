@@ -149,6 +149,37 @@ The best derive improvements should therefore either consume a real engine
 capability or create pressure for one. They should not merely inflate the derive
 corpus with easy one-step variants.
 
+### Coupling With Calculus
+
+`derive` is the educational derivation command. It is not the derivative
+calculus command.
+
+Even so, calculus work should inherit the same didactic standards:
+
+- a derivative, limit, or integral result should not hide a meaningful
+  transformation behind a generic one-step simplification
+- product rule, quotient rule, chain rule, supported table integration, and
+  conservative limit pre-simplification should be visible when they are the
+  mathematical reason the result changes
+- simplification after a calculus rule should reuse engine steps where possible
+  instead of inventing calculus-only presentation shortcuts
+- broken highlights or magical substeps in calculus output should be treated as
+  real didactic defects, not cosmetic noise
+
+The bridge also works the other way:
+
+- calculus output often exposes algebraic target forms that `derive` should
+  eventually explain
+- unsupported `derive` cases can expose simplification gaps that block clean
+  derivative or integral results
+- a calculus family should add a derive shadow case only when it reveals a
+  reusable algebraic transformation a user would plausibly ask `derive` to
+  explain
+
+Do not turn calculus into a second derive planner, and do not turn derive into a
+calculus engine. Share route quality, target-awareness, and didactic pressure;
+keep command semantics separate.
+
 ### Equivalent-But-Not-Derived Pressure
 
 The current `derive_contract` can look green while still under-testing real

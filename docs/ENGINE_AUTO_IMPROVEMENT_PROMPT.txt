@@ -3,6 +3,7 @@ Quiero que ejecutes exactamente una iteración de automejora del engine matemát
 Antes de tocar código, lee y sigue estas fuentes de verdad actuales del repo:
 - docs/ENGINE_IMPROVEMENT_AUTOMATION.md
 - docs/ENGINE_TEST_CORPUS_ROADMAP.md
+- docs/CALCULUS_ENGINE_STRATEGY.md
 - docs/METAMORPHIC_TESTING.md
 - docs/DERIVE_NEXT_LEVEL_ROADMAP.md
 - docs/DERIVE_ROADMAP.md sólo como contexto histórico/base
@@ -30,6 +31,9 @@ Objetivo:
 - Evalúa el ROI cruzado engine↔derive: una mejora de engine/cobertura puede
   ser mejor si deja una transición didáctica reutilizable, y una mejora de
   derive puede ser mejor si revela una capacidad reusable del engine.
+- Evalúa también si el mejor ROI retenible está en una vertical acotada de
+  cálculo (`diff`, `limit`, `integrate`) que reutilice o endurezca el corazón
+  pre-cálculo en vez de saltárselo.
 
 Optimiza en este orden:
 1. mantener failed = 0
@@ -42,12 +46,15 @@ Optimiza en este orden:
    - cross-family composition
    - sign/orientation robustness
    - semantic/domain regime cuando aplique
-5. aumentar cobertura útil, NF-convergent o bridgeability de derive sólo si es
+5. avanzar verticales acotadas de cálculo sólo si dejan capacidad pública real,
+   reutilizan o endurecen simplificación/equivalencia/dominios, y no degradan
+   1-4
+6. aumentar cobertura útil, NF-convergent o bridgeability de derive sólo si es
    reutilizable y no degrada 1-4
-6. mejorar reachability y calidad didáctica de derive sin abrir búsqueda ciega,
+7. mejorar reachability y calidad didáctica de derive sin abrir búsqueda ciega,
    especialmente cuando una familia ya funciona en simplify/equivalence pero
    no tiene una ruta `source -> target` explicable
-7. reducir deuda estructural sólo si mejora observabilidad, robustez o runtime medible
+8. reducir deuda estructural sólo si mejora observabilidad, robustez o runtime medible
 
 Modelo de trabajo:
 - Usa perfiles ejecutables actuales:
@@ -66,6 +73,7 @@ Proceso obligatorio:
    - coverage
    - robustness
    - observability
+   - calculus
    - combination
 4. Si el trabajo es refactor/cohesión, no inventes una clase nueva: clasifícalo por el valor retenible que aporta.
 5. Antes de editar, escribe este capture mínimo:
@@ -88,37 +96,50 @@ Proceso obligatorio:
 7. Si eliges refactor/cohesión, añade:
    - cohesion_scope:
    - behavior_change_expected:
-8. Elige una única hipótesis y aplica el cambio mínimo retenible.
-9. Valida con la cadencia adecuada:
+8. Si eliges calculus, añade:
+   - calculus_scope:
+   - precalculus_dependency:
+   - domain_safety_check:
+   - didactic_trace_check:
+9. Elige una única hipótesis y aplica el cambio mínimo retenible.
+10. Valida con la cadencia adecuada:
    - inner loop: tests tocados + make engine-fast
+   - calculus: tests unitarios/contract de `diff`, `limit` o `integrate` según
+     corresponda, más auditoría didáctica si cambian steps/highlights
    - guardrail: make engine-scorecard
    - pressure: make engine-scorecard-pressure si tocas normalización, orquestación, arithmetic, tráfico profundo, refactor estructural o casos muy compuestos
    - make ci sólo como cierre si realmente corresponde
-10. Para cualquier mejora de engine/cobertura que toque una familia matemática:
+11. Para cualquier mejora de cálculo:
+   - decide qué capacidad pre-cálculo reutiliza o fuerza
+   - no introduzcas suposiciones implícitas de dominio/rama/constante
+   - si el fallo real está en simplificación/equivalencia, registra o ejecuta
+     el siguiente candidato como engine/cobertura, no como workaround aislado
+     de cálculo
+12. Para cualquier mejora de engine/cobertura que toque una familia matemática:
    - decide si existe un caso sombra mínimo para derive
    - promuévelo sólo si añade target-family, ruta multi-step, calidad didáctica
      o corrige un salto mágico
    - si no lo promueves, anota en el capture por qué se difiere o rechaza
-11. Para cualquier mejora de derive:
+13. Para cualquier mejora de derive:
    - clasifica si el fallo era target classifier, estrategia/planner,
      didactic-quality, dominio/branch, o falta de capacidad reusable del engine
    - si falta capacidad reusable del engine, deja el siguiente candidato claro
      como engine/cobertura, no como hack derive-only
-12. Si la mejora gana localmente pero pierde en embedded o guardrails globales:
+14. Si la mejora gana localmente pero pierde en embedded o guardrails globales:
    - no la fuerces
    - revierte la parte no retenible
    - conserva el aprendizaje en docs/ENGINE_COMBINATION_LEDGER.md
-13. Si un candidato generado falla antes de promoción:
+15. Si un candidato generado falla antes de promoción:
    - acota la firma con uno o dos probes baratos cuando sea razonable
    - si el fallo apunta a una debilidad reutilizable, registra el aprendizaje en
      docs/ENGINE_COMBINATION_LEDGER.md como discovery/observe-only
    - si sólo es un caso mal formado, duplicado o ruido, descártalo sin ledger
-14. Si generas casos nuevos, promuévelos de forma conservadora:
+16. Si generas casos nuevos, promuévelos de forma conservadora:
    - primero presión/descubrimiento
    - luego unit o live si el caso ya es estable y representativo
    - frozen sólo para mínimos estables y duraderos
    - variantes grandes o calientes van a stress, no a live
-15. Si tocas derive, prioriza:
+17. Si tocas derive, prioriza:
    - planner acotado
    - target-awareness
    - path quality
@@ -137,6 +158,11 @@ Guardrails:
 - No dejes que `derive_contract` verde bloquee toda inversión en derive si la
   mejora engine/cobertura revela familias sin bridge o transformaciones
   equivalentes que se explican mágicamente.
+- No dejes que el nivel profesional del pre-cálculo bloquee toda inversión en
+  cálculo: empieza por verticales acotadas, pero rechaza shortcuts de cálculo
+  que oculten una debilidad reusable del core.
+- No aceptes resultados de cálculo que dependan de condiciones de dominio,
+  rama o constante de integración no representadas.
 - Para refactors estructurales: extrae antes de abstraer, conserva orden de rutas y valida como trabajo de engine.
 
 Criterio de decisión:
@@ -147,11 +173,17 @@ Criterio de decisión:
   - retention probability
   - derive_bridge_value
   - engine_feedback_value
+  - calculus_value
+  - precalculus_reuse_value
+  - domain_safety_value
   - bajo coste de implementación
 - En empates, prioriza el candidato que expanda una dimensión débil, cierre una ruta frágil o deje el guardrail/corpus más mantenible.
 - También en empates, prioriza el candidato que conecte una capacidad del engine
   con una ruta derive explicable o que use un fallo de derive para identificar
   una capacidad reusable del engine.
+- También en empates, prioriza una vertical de cálculo si convierte capacidades
+  pre-cálculo ya maduras en comportamiento público verificable sin abrir
+  búsqueda amplia ni suposiciones implícitas.
 
 Entregable:
 - Resume primero el candidato elegido y por qué fue el mayor ROI retenible.
@@ -163,4 +195,5 @@ Entregable:
   - si la iteración fue retenida o rechazada
   - qué aprendizaje quedó documentado si hubo rechazo parcial
   - qué decisión tomaste sobre el puente engine↔derive
+  - qué decisión tomaste sobre cálculo↔pre-cálculo si aplicaba
   - cuál sería la siguiente iteración recomendada

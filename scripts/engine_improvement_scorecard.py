@@ -2256,6 +2256,8 @@ def shell_depth_summary_rows(
     shell_depth_rows: dict[int, dict[str, Any]],
 ) -> list[tuple[int, dict[str, Any]]]:
     ordered_rows = sorted(shell_depth_rows.items())
+    if len(ordered_rows) <= 8:
+        return ordered_rows
     summary_rows = ordered_rows[:4]
     if ordered_rows and ordered_rows[-1][0] not in {depth for depth, _ in summary_rows}:
         summary_rows.append(ordered_rows[-1])

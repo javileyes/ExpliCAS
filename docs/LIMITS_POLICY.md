@@ -128,6 +128,25 @@ lim_{x→+∞} = 0
 
 ## 5. Evolution Path
 
+### 5.1 Relationship To Calculus Strategy
+
+Limits are one vertical slice of the broader calculus engine strategy:
+
+- [CALCULUS_ENGINE_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/CALCULUS_ENGINE_STRATEGY.md)
+
+That broader strategy does not weaken this policy. It makes this policy the
+model for calculus work:
+
+- conservative first
+- explicit domain and infinity assumptions
+- single auditable entry points for risky pre-processing
+- tests before promotion
+- unsupported residuals instead of speculative answers
+
+When an auto-improvement cycle chooses `calculus` and touches limits, it should
+follow this file first, then use the calculus strategy to decide how the limit
+work feeds simplification, equivalence, domains, and didactic traces.
+
 Future enhancements should follow the same pattern:
 
 1. **Define contract** (allowlist + denylist)
@@ -155,4 +174,3 @@ Before merging changes to `limits/presimplify.rs`:
 - [ ] **Denylist untouched**: Was the lint denylist modified to "make it pass"?
   - If yes → **REJECT** (unless documented escalation)
 - [ ] **LIMITS_POLICY.md updated**: Is this doc updated if allowlist/denylist changes?
-
