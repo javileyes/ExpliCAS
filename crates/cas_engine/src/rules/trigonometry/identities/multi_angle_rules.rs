@@ -16,6 +16,8 @@ fn format_trig_multi_angle_desc(kind: TrigMultiAngleRewriteKind) -> &'static str
         TrigMultiAngleRewriteKind::TripleSin => "sin(3x) → 3sin(x) - 4sin³(x)",
         TrigMultiAngleRewriteKind::TripleCos => "cos(3x) → 4cos³(x) - 3cos(x)",
         TrigMultiAngleRewriteKind::TripleTan => "tan(3x) → (3tan(x) - tan³(x))/(1 - 3tan²(x))",
+        TrigMultiAngleRewriteKind::QuadrupleSin => "sin(4x) → 4sin(x)cos³(x) - 4sin³(x)cos(x)",
+        TrigMultiAngleRewriteKind::QuadrupleCos => "cos(4x) → 8cos⁴(x) - 8cos²(x) + 1",
         TrigMultiAngleRewriteKind::QuintupleSin => "sin(5x) → 16sin⁵(x) - 20sin³(x) + 5sin(x)",
         TrigMultiAngleRewriteKind::QuintupleCos => "cos(5x) → 16cos⁵(x) - 20cos³(x) + 5cos(x)",
         TrigMultiAngleRewriteKind::TripleContractionSin => "3sin(θ)−4sin³(θ) → sin(3θ)",

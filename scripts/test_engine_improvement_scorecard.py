@@ -230,6 +230,41 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertIn("suite timeout after 0.2s", output)
         self.assertEqual(captured_stdout.getvalue(), output)
 
+    def test_cargo_test_basic_closure_rates_are_parsed_and_rendered(self):
+        metrics = MODULE.parse_cargo_test_basic(
+            """
+running 1 test
+✅ Double combinations [add]: 435 passed, 0 failed, 0 skipped (timeout), 0 inconclusive
+   📐 NF-convergent: 0 | 🔢 Proved-symbolic: 435 (quotient: 0, diff: 0, composed: 435) | 🌡️ Numeric-only: 0 | ◐ Inconclusive: 0
+.
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 138 filtered out; finished in 0.51s
+"""
+        )
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "fast",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "simplify_add_small": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.5,
+                    "metrics": metrics,
+                    "delta": {},
+                },
+            },
+        }
+
+        self.assertEqual(metrics["total_combos"], 435)
+        self.assertEqual(metrics["effective_combos"], 435)
+        self.assertEqual(metrics["symbolic_closure"], 435)
+        self.assertEqual(metrics["symbolic_closure_rate_percent"], 100.0)
+        self.assertEqual(metrics["nf_rate_percent"], 0.0)
+        self.assertEqual(metrics["proved_symbolic_rate_percent"], 100.0)
+        self.assertIn(
+            "closure=100.0% nf=0 (0.0%) proved=435 (100.0%)",
+            MODULE.render_markdown(scorecard),
+        )
+
     def test_parse_derive_extracts_strategy_specificity_metrics(self):
         metrics = MODULE.parse_derive(
             """
@@ -835,6 +870,29 @@ root.direct_small_zero_composition.candidate.three_core_groups
 
     def test_render_markdown_includes_mixed_pressure_and_proof_shape_caveat(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
+        strict_metrics = {
+            "total_combos": 100,
+            "nf_convergent": 0,
+            "proved_symbolic": 100,
+            "numeric_only": 0,
+            "inconclusive": 0,
+            "failed": 0,
+            "timeouts": 0,
+            "cycles": 0,
+            "skipped": 0,
+            "suite_rows": {},
+            "proved_breakdown": {
+                "quotient": 8,
+                "difference": 2,
+                "composed": 90,
+            },
+            "proof_shape_mix": {
+                "non_composed_symbolic": 10,
+                "non_composed_share_percent": 10.0,
+                "composed_share_percent": 90.0,
+            },
+        }
+        MODULE.add_unified_benchmark_rate_metrics(strict_metrics)
         scorecard = {
             "generated_at": "2026-04-20T00:00:00+00:00",
             "profile": "pressure",
@@ -849,28 +907,7 @@ root.direct_small_zero_composition.candidate.three_core_groups
                 "simplify_strict": {
                     "status": "pass",
                     "elapsed_seconds": 40.0,
-                    "metrics": {
-                        "total_combos": 100,
-                        "nf_convergent": 0,
-                        "proved_symbolic": 100,
-                        "numeric_only": 0,
-                        "inconclusive": 0,
-                        "failed": 0,
-                        "timeouts": 0,
-                        "cycles": 0,
-                        "skipped": 0,
-                        "suite_rows": {},
-                        "proved_breakdown": {
-                            "quotient": 8,
-                            "difference": 2,
-                            "composed": 90,
-                        },
-                        "proof_shape_mix": {
-                            "non_composed_symbolic": 10,
-                            "non_composed_share_percent": 10.0,
-                            "composed_share_percent": 90.0,
-                        },
-                    },
+                    "metrics": strict_metrics,
                     "delta": {},
                 },
             },
@@ -878,6 +915,15 @@ root.direct_small_zero_composition.candidate.three_core_groups
 
         markdown = MODULE.render_markdown(scorecard)
 
+        self.assertIn("## Simplify Closure Signal", markdown)
+        self.assertIn(
+            "symbolic=100/100 (100.0%), NF=0 (0.0%), proved-only=100 (100.0%)",
+            markdown,
+        )
+        self.assertIn(
+            "closure=100.0% nf=0 (0.0%) proved=100 (100.0%)",
+            markdown,
+        )
         self.assertIn("## Simplify Benchmark Interpretation", markdown)
         self.assertIn("composed 90.0%", markdown)
         self.assertIn("## Mixed Zero Pressure", markdown)

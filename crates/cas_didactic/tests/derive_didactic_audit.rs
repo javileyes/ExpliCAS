@@ -449,6 +449,9 @@ fn is_self_explanatory_identity_rule(rule: &str) -> bool {
             | "Reconocer cosecante desde un recíproco"
             | "Reconocer cotangente desde un cociente"
             | "Cancelar funciones trigonométricas recíprocas"
+            | "Reconocer tangente por cotangente como 1"
+            | "Reconocer seno por cosecante como 1"
+            | "Reconocer coseno por secante como 1"
             | "Aplicar identidad pitagórica recíproca"
             | "Aplicar la identidad pitagórica"
             | "Aplicar identidad de cofunción"
@@ -1534,6 +1537,11 @@ fn derive_didactic_geometric_difference_factorization_explains_series_identity()
         "Factorizar",
         &["Aquí la diferencia de potencias usa base x y exponente 6"],
     );
+    assert_case_step_titles(
+        "factor_full_cyclotomic_sixth_power_difference",
+        "Factorizar",
+        &["Aquí la diferencia de sexto grado se factoriza completamente con base x"],
+    );
 }
 
 #[test]
@@ -2120,20 +2128,37 @@ fn derive_didactic_tangent_quotient_expansion_uses_direct_identity_language() {
 
 #[test]
 fn derive_didactic_reciprocal_trig_product_to_one_uses_direct_identity_language() {
-    let artifact = audit_case(&derive_case_by_id("reciprocal_trig_product_to_one"));
+    for (case_id, expected_rule) in [
+        (
+            "reciprocal_trig_product_to_one",
+            "Reconocer tangente por cotangente como 1",
+        ),
+        (
+            "reciprocal_trig_sin_csc_product_to_one",
+            "Reconocer seno por cosecante como 1",
+        ),
+        (
+            "reciprocal_trig_cos_sec_product_to_one",
+            "Reconocer coseno por secante como 1",
+        ),
+    ] {
+        let artifact = audit_case(&derive_case_by_id(case_id));
+        let step = artifact
+            .json_steps
+            .iter()
+            .find(|step| {
+                step.get("rule")
+                    .and_then(Value::as_str)
+                    .is_some_and(|rule| rule == expected_rule)
+            })
+            .unwrap_or_else(|| panic!("expected reciprocal product step for {case_id}"));
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Cancelar funciones trigonométricas recíprocas")
-        })
-        .expect("expected reciprocal product step");
-
-    let titles = step_substep_titles(step);
-    assert!(titles.is_empty());
+        let titles = step_substep_titles(step);
+        assert!(
+            titles.is_empty(),
+            "{case_id} should not need padded substeps"
+        );
+    }
 }
 
 #[test]
@@ -2243,6 +2268,33 @@ fn derive_didactic_inverse_tan_identity_uses_exact_angle_language() {
 }
 
 #[test]
+fn derive_didactic_inverse_trig_sum_uses_complement_language() {
+    let artifact = audit_case(&derive_case_by_id(
+        "inverse_trig_arcsin_arccos_complement_sum",
+    ));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Aplicar identidad complementaria arcsin/arccos")
+        })
+        .expect("expected inverse trig complement sum step");
+
+    assert_eq!(
+        step_substep_titles(step),
+        vec!["Aquí arcsin(x) y arccos(x) suman pi/2"]
+    );
+    assert!(
+        artifact.flags.is_empty(),
+        "inverse trig complement sum should not be flagged: {:?}",
+        artifact.flags
+    );
+}
+
+#[test]
 fn derive_didactic_log_exp_inverse_uses_human_direct_identity_language() {
     let artifact = audit_case(&derive_case_by_id("log_exp_inverse_ln_exp"));
 
@@ -2260,6 +2312,61 @@ fn derive_didactic_log_exp_inverse_uses_human_direct_identity_language() {
     assert!(
         artifact.flags.is_empty(),
         "direct log-exp inverse should not be flagged as opaque: {:?}",
+        artifact.flags
+    );
+}
+
+#[test]
+fn derive_didactic_log_exp_power_inverse_has_visible_normalization_substep() {
+    let artifact = audit_case(&derive_case_by_id("log_exp_inverse_ln_exp_power"));
+
+    let power_step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Multiplicar exponentes")
+        })
+        .expect("expected power normalization step");
+
+    assert_eq!(
+        step_substep_titles(power_step),
+        vec!["Usar (e^A)^n = e^(n·A)"]
+    );
+    assert!(artifact.json_steps.iter().any(|step| {
+        step.get("rule")
+            .and_then(Value::as_str)
+            .is_some_and(|rule| rule == "Cancelar logaritmo natural y exponencial inversos")
+    }));
+    assert!(
+        artifact.flags.is_empty(),
+        "log-exp power inverse should not be flagged as opaque: {:?}",
+        artifact.flags
+    );
+}
+
+#[test]
+fn derive_didactic_log_exp_product_inverse_shows_post_expansion_cancellation() {
+    let artifact = audit_case(&derive_case_by_id("log_exp_inverse_ln_exp_product"));
+
+    let step = artifact
+        .json_steps
+        .iter()
+        .find(|step| {
+            step.get("rule")
+                .and_then(Value::as_str)
+                .is_some_and(|rule| rule == "Expandir logaritmos")
+        })
+        .expect("expected expand-log step");
+
+    assert_eq!(
+        step_substep_titles(step),
+        vec!["Cancelar cada logaritmo natural con su exponencial"]
+    );
+    assert!(
+        artifact.flags.is_empty(),
+        "log-exp product inverse should not be flagged as opaque: {:?}",
         artifact.flags
     );
 }
@@ -2521,6 +2628,43 @@ fn derive_didactic_trig_square_identity_uses_direct_step_without_audit_flag() {
         assert_case_step_has_no_substeps(case_id, "Aplicar identidad del cuadrado trigonométrico");
         assert_case_has_no_no_web_substeps_flag(case_id);
     }
+}
+
+#[test]
+fn derive_didactic_quadruple_angle_cosine_has_formula_substep() {
+    assert_case_step_titles(
+        "expand_trig_quadruple_angle_cosine",
+        "Reescribir ángulo cuádruple",
+        &["Usar cos(4u) = 8 · cos(u)^4 - 8 · cos(u)^2 + 1, con u = x"],
+    );
+    assert_case_has_no_no_web_substeps_flag("expand_trig_quadruple_angle_cosine");
+}
+
+#[test]
+fn derive_didactic_quadruple_angle_sine_has_formula_substep() {
+    for case_id in [
+        "expand_trig_quadruple_angle_sine_expanded_product",
+        "contract_trig_quadruple_angle_sine_expanded_product",
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Reescribir ángulo cuádruple",
+            &["Usar sin(4u) = 4 · sin(u) · cos(u)^3 - 4 · sin(u)^3 · cos(u), con u = x"],
+        );
+        assert_case_has_no_no_web_substeps_flag(case_id);
+    }
+}
+
+#[test]
+fn derive_didactic_square_double_angle_contraction_has_formula_substep() {
+    assert_case_step_titles(
+        "contract_trig_square_double_angle_sine_cosine_product",
+        "Contraer cuadrado de ángulo doble",
+        &["Usar sin²(u)·cos²(u) = sin²(2u) / 4, con u = x"],
+    );
+    assert_case_has_no_no_web_substeps_flag(
+        "contract_trig_square_double_angle_sine_cosine_product",
+    );
 }
 
 #[test]

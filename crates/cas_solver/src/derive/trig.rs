@@ -20,6 +20,8 @@ pub(crate) enum DeriveTrigRewriteKind {
     RecognizeRecipSinAsCsc,
     RecognizeCosOverSinAsCot,
     ReciprocalProductToOne,
+    SinCscReciprocalProductToOne,
+    CosSecReciprocalProductToOne,
     RecognizeCosDiffOverSinDiffAsTan,
     PythagoreanChainToOne,
     SecTanPythagoreanToOne,
@@ -68,6 +70,7 @@ pub(crate) enum DeriveTrigRewriteKind {
     PowerReductionSinHigherEven,
     PowerReductionCosHigherEven,
     PowerReductionSinCosSquares,
+    SquareDoubleAngleSinCosSquares,
     HalfAngleSinSquaredContract,
     HalfAngleCosSquaredContract,
     HalfAngleNegSinSquaredExpand,
@@ -95,6 +98,8 @@ pub(crate) enum DeriveTrigRewriteKind {
     DoubleAngleCosTwoSinSqToOneMinusCos,
     DoubleAngleCosTwoCosSqToOnePlusCos,
     DoubleAngleCosNegTwoSinSqToCosMinusOne,
+    QuadrupleAngleSin,
+    QuadrupleAngleCos,
     ExpandSecSquared,
     ExpandCscSquared,
     RecognizeSecSquared,
@@ -363,6 +368,17 @@ fn generate_trig_multi_angle_term_rewrites(
     }
 
     if let Some(rewrite) =
+        cas_math::trig_multi_angle_support::try_rewrite_quadruple_sin_angle_expr(ctx, expr)
+    {
+        if let Some(kind) = map_trig_multi_angle_bridge_kind(rewrite.kind) {
+            rewrites.push(DeriveTrigRewrite {
+                rewritten: rewrite.rewritten,
+                kind,
+            });
+        }
+    }
+
+    if let Some(rewrite) =
         cas_math::trig_multi_angle_support::try_rewrite_quintuple_angle_expr(ctx, expr)
     {
         if let Some(kind) = map_trig_multi_angle_bridge_kind(rewrite.kind) {
@@ -403,6 +419,9 @@ fn map_trig_multi_angle_bridge_kind(
         }
         cas_math::trig_multi_angle_support::TrigMultiAngleRewriteKind::TripleTan => {
             Some(DeriveTrigRewriteKind::TripleAngleTan)
+        }
+        cas_math::trig_multi_angle_support::TrigMultiAngleRewriteKind::QuadrupleSin => {
+            Some(DeriveTrigRewriteKind::QuadrupleAngleSin)
         }
         cas_math::trig_multi_angle_support::TrigMultiAngleRewriteKind::QuintupleSin => {
             Some(DeriveTrigRewriteKind::QuintupleAngleSin)
@@ -836,6 +855,8 @@ impl DeriveTrigRewriteKind {
                 "Recognize a cosine/sine difference quotient as tan((A+B)/2)"
             }
             Self::ReciprocalProductToOne => "Recognize tan(u) · cot(u) = 1",
+            Self::SinCscReciprocalProductToOne => "Recognize sin(u) · csc(u) = 1",
+            Self::CosSecReciprocalProductToOne => "Recognize cos(u) · sec(u) = 1",
             Self::PythagoreanChainToOne => "Recognize sin²(u) + cos²(u) = 1",
             Self::SecTanPythagoreanToOne => "Recognize sec²(u) - tan²(u) = 1",
             Self::CscCotPythagoreanToOne => "Recognize csc²(u) - cot²(u) = 1",
@@ -903,6 +924,7 @@ impl DeriveTrigRewriteKind {
             Self::PowerReductionSinCosSquares => {
                 "Reduce sin²(u)·cos²(u) using power-reduction identities"
             }
+            Self::SquareDoubleAngleSinCosSquares => "Recognize sin²(u)·cos²(u) as sin²(2u)/4",
             Self::HalfAngleSinSquaredContract => "Recognize (1 - cos(2u))/2 as sin²(u)",
             Self::HalfAngleCosSquaredContract => "Recognize (1 + cos(2u))/2 as cos²(u)",
             Self::HalfAngleNegSinSquaredExpand => "Expand -sin²(u) using the half-angle identity",
@@ -934,6 +956,8 @@ impl DeriveTrigRewriteKind {
             Self::DoubleAngleCosTwoSinSqToOneMinusCos => "Expand 2·sin(u)^2 as 1 - cos(2u)",
             Self::DoubleAngleCosTwoCosSqToOnePlusCos => "Expand 2·cos(u)^2 as 1 + cos(2u)",
             Self::DoubleAngleCosNegTwoSinSqToCosMinusOne => "Expand -2·sin(u)^2 as cos(2u) - 1",
+            Self::QuadrupleAngleSin => "Expand or contract sine quadruple-angle form",
+            Self::QuadrupleAngleCos => "Expand or contract cosine quadruple-angle form",
             Self::ExpandSecSquared => "Expand sec²(u) as 1 + tan(u)^2",
             Self::ExpandCscSquared => "Expand csc²(u) as 1 + cot(u)^2",
             Self::RecognizeSecSquared => "Recognize 1 + tan²(u) as sec²(u)",
@@ -971,7 +995,9 @@ impl DeriveTrigRewriteKind {
             | Self::RecognizeRecipSinAsCsc
             | Self::RecognizeCosOverSinAsCot => "Reciprocal Trig Identity",
             Self::PythagoreanChainToOne => "Pythagorean Chain Identity",
-            Self::ReciprocalProductToOne => "Reciprocal Product Identity",
+            Self::ReciprocalProductToOne
+            | Self::SinCscReciprocalProductToOne
+            | Self::CosSecReciprocalProductToOne => "Reciprocal Product Identity",
             Self::SecTanPythagoreanToOne
             | Self::CscCotPythagoreanToOne
             | Self::RecognizeSecSquaredMinusOneAsTanSquared
@@ -1023,6 +1049,7 @@ impl DeriveTrigRewriteKind {
             | Self::PowerReductionSinHigherEven
             | Self::PowerReductionCosHigherEven
             | Self::PowerReductionSinCosSquares => "Power Reduction Identity",
+            Self::SquareDoubleAngleSinCosSquares => "Square Double Angle Contraction",
             Self::DoubleAngleSin
             | Self::DoubleAngleNegSinExpand
             | Self::DoubleAngleNegSinContract => "Double Angle Expansion",
@@ -1037,6 +1064,7 @@ impl DeriveTrigRewriteKind {
             | Self::DoubleAngleCosTwoSinSqToOneMinusCos
             | Self::DoubleAngleCosTwoCosSqToOnePlusCos
             | Self::DoubleAngleCosNegTwoSinSqToCosMinusOne => "Double Angle Expansion",
+            Self::QuadrupleAngleSin | Self::QuadrupleAngleCos => "Quadruple Angle Expansion",
             Self::DoubleAngleTanExpand | Self::DoubleAngleTanContract => {
                 "Tangent Double-Angle Identity"
             }
@@ -1220,6 +1248,18 @@ pub(crate) fn try_rewrite_trig_expansion(
     }
 
     if let Some(rewrite) = try_rewrite_triple_angle_expansion_target_aware(ctx, expr, target_expr) {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_quadruple_sin_angle_expansion_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_quadruple_cos_angle_expansion_target_aware(ctx, expr, target_expr)
+    {
         return Some(rewrite);
     }
 
@@ -1716,6 +1756,40 @@ fn try_rewrite_negated_triple_angle_expansion_target_aware(
     };
 
     Some(DeriveTrigRewrite { rewritten, kind })
+}
+
+fn try_rewrite_quadruple_sin_angle_expansion_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let rewrite =
+        cas_math::trig_multi_angle_support::try_rewrite_quadruple_sin_angle_expr(ctx, expr)?;
+    if !presentational_target_match(ctx, rewrite.rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveTrigRewrite {
+        rewritten: rewrite.rewritten,
+        kind: DeriveTrigRewriteKind::QuadrupleAngleSin,
+    })
+}
+
+fn try_rewrite_quadruple_cos_angle_expansion_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let rewrite =
+        cas_math::trig_multi_angle_support::try_rewrite_quadruple_cos_angle_expr(ctx, expr)?;
+    if !strong_target_match(ctx, rewrite.rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveTrigRewrite {
+        rewritten: rewrite.rewritten,
+        kind: DeriveTrigRewriteKind::QuadrupleAngleCos,
+    })
 }
 
 fn try_rewrite_quintuple_angle_expansion_target_aware(
@@ -3761,7 +3835,26 @@ pub(crate) fn try_rewrite_trig_contraction_target_aware(
         }
     }
 
+    if let Some(rewrite) =
+        cas_math::trig_contraction_support::try_rewrite_square_double_angle_contraction_expr(
+            ctx, expr,
+        )
+    {
+        if strong_target_match(ctx, rewrite.rewritten, target_expr) {
+            return Some(DeriveTrigRewrite {
+                rewritten: rewrite.rewritten,
+                kind: DeriveTrigRewriteKind::SquareDoubleAngleSinCosSquares,
+            });
+        }
+    }
+
     if let Some(rewrite) = try_rewrite_triple_angle_contraction_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_quadruple_sin_angle_contraction_target_aware(ctx, expr, target_expr)
     {
         return Some(rewrite);
     }
@@ -5043,6 +5136,27 @@ fn try_rewrite_negated_triple_angle_contraction_target_aware(
     })
 }
 
+pub(crate) fn try_rewrite_quadruple_sin_angle_contraction_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let arg = extract_quadruple_sin_expanded_product_arg(ctx, expr)
+        .or_else(|| extract_quadruple_sin_factored_product_arg(ctx, expr))?;
+    let four = ctx.num(4);
+    let quadruple_arg = smart_mul(ctx, four, arg);
+    let candidate = ctx.call_builtin(BuiltinFn::Sin, vec![quadruple_arg]);
+
+    if !strong_target_match(ctx, candidate, target_expr) {
+        return None;
+    }
+
+    Some(DeriveTrigRewrite {
+        rewritten: target_expr,
+        kind: DeriveTrigRewriteKind::QuadrupleAngleSin,
+    })
+}
+
 fn try_rewrite_quintuple_angle_contraction_target_aware(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
@@ -5551,6 +5665,200 @@ fn try_rewrite_quintuple_angle_contraction_expr(
     None
 }
 
+#[derive(Debug, Clone)]
+struct QuadrupleSinProductTerm {
+    coeff: BigRational,
+    arg: ExprId,
+    sin_power: i64,
+    cos_power: i64,
+}
+
+fn extract_quadruple_sin_expanded_product_arg(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let terms = add_terms_signed(ctx, expr);
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let first = decompose_sin_cos_power_product_term(ctx, terms[0].0, terms[0].1)?;
+    let second = decompose_sin_cos_power_product_term(ctx, terms[1].0, terms[1].1)?;
+    let four = BigRational::from_integer(4.into());
+    let neg_four = -four.clone();
+
+    for (leading, trailing) in [(&first, &second), (&second, &first)] {
+        if leading.coeff == four
+            && leading.sin_power == 1
+            && leading.cos_power == 3
+            && trailing.coeff == neg_four
+            && trailing.sin_power == 3
+            && trailing.cos_power == 1
+            && compare_expr(ctx, leading.arg, trailing.arg) == Ordering::Equal
+        {
+            return Some(leading.arg);
+        }
+    }
+
+    None
+}
+
+fn extract_quadruple_sin_factored_product_arg(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() < 4 {
+        return None;
+    }
+
+    let mut coeff = BigRational::from_integer(1.into());
+    let mut sin_arg = None;
+    let mut cos_arg = None;
+    let mut diff_arg = None;
+
+    for factor in factors {
+        if let Expr::Number(n) = ctx.get(factor) {
+            coeff *= n.clone();
+            continue;
+        }
+
+        if let Some((builtin, arg, power)) = trig_power_factor(ctx, factor) {
+            if power != 1 {
+                return None;
+            }
+            match builtin {
+                BuiltinFn::Sin if sin_arg.is_none() => sin_arg = Some(arg),
+                BuiltinFn::Cos if cos_arg.is_none() => cos_arg = Some(arg),
+                _ => return None,
+            }
+            continue;
+        }
+
+        if diff_arg.is_none() {
+            diff_arg = Some(extract_cos_squared_minus_sin_squared_arg(ctx, factor)?);
+            continue;
+        }
+
+        return None;
+    }
+
+    let four = BigRational::from_integer(4.into());
+    if coeff != four {
+        return None;
+    }
+
+    let sin_arg = sin_arg?;
+    let cos_arg = cos_arg?;
+    let diff_arg = diff_arg?;
+    if compare_expr(ctx, sin_arg, cos_arg) == Ordering::Equal
+        && compare_expr(ctx, sin_arg, diff_arg) == Ordering::Equal
+    {
+        Some(sin_arg)
+    } else {
+        None
+    }
+}
+
+fn decompose_sin_cos_power_product_term(
+    ctx: &mut cas_ast::Context,
+    term: ExprId,
+    sign: Sign,
+) -> Option<QuadrupleSinProductTerm> {
+    let outer_sign = BigRational::from_integer(sign.to_i32().into());
+    let (inner, neg_sign) = if let Expr::Neg(i) = ctx.get(term) {
+        (*i, BigRational::from_integer((-1).into()))
+    } else {
+        (term, BigRational::from_integer(1.into()))
+    };
+
+    let mut coeff = outer_sign * neg_sign;
+    let mut arg = None;
+    let mut sin_power = 0;
+    let mut cos_power = 0;
+
+    for factor in flatten_mul_chain(ctx, inner) {
+        if let Expr::Number(n) = ctx.get(factor) {
+            coeff *= n.clone();
+            continue;
+        }
+
+        let (builtin, factor_arg, power) = trig_power_factor(ctx, factor)?;
+        if power <= 0 {
+            return None;
+        }
+        if let Some(existing_arg) = arg {
+            if compare_expr(ctx, existing_arg, factor_arg) != Ordering::Equal {
+                return None;
+            }
+        } else {
+            arg = Some(factor_arg);
+        }
+
+        match builtin {
+            BuiltinFn::Sin => sin_power += power,
+            BuiltinFn::Cos => cos_power += power,
+            _ => return None,
+        }
+    }
+
+    Some(QuadrupleSinProductTerm {
+        coeff,
+        arg: arg?,
+        sin_power,
+        cos_power,
+    })
+}
+
+fn trig_power_factor(ctx: &cas_ast::Context, expr: ExprId) -> Option<(BuiltinFn, ExprId, i64)> {
+    let (base, power) = match ctx.get(expr) {
+        Expr::Pow(base, exponent) => {
+            let Expr::Number(n) = ctx.get(*exponent) else {
+                return None;
+            };
+            if !n.is_integer() {
+                return None;
+            }
+            let power = n.to_integer().try_into().ok()?;
+            (*base, power)
+        }
+        _ => (expr, 1),
+    };
+
+    let Expr::Function(fn_id, args) = ctx.get(base) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    match ctx.builtin_of(*fn_id) {
+        Some(builtin @ (BuiltinFn::Sin | BuiltinFn::Cos)) => Some((builtin, args[0], power)),
+        _ => None,
+    }
+}
+
+fn extract_cos_squared_minus_sin_squared_arg(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Sub(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    let (left_builtin, left_arg, left_power) = trig_power_factor(ctx, *left)?;
+    let (right_builtin, right_arg, right_power) = trig_power_factor(ctx, *right)?;
+
+    if left_builtin == BuiltinFn::Cos
+        && left_power == 2
+        && right_builtin == BuiltinFn::Sin
+        && right_power == 2
+        && compare_expr(ctx, left_arg, right_arg) == Ordering::Equal
+    {
+        Some(left_arg)
+    } else {
+        None
+    }
+}
+
 fn try_rewrite_triple_angle_contraction_expr_with_trivial_angles(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
@@ -5807,9 +6115,10 @@ fn try_rewrite_trig_identity_term_to_one_target_aware(
             ctx, expr,
         )
     {
+        let kind = reciprocal_product_to_one_kind(ctx, expr);
         return Some(DeriveTrigRewrite {
             rewritten: rewrite.rewritten,
-            kind: DeriveTrigRewriteKind::ReciprocalProductToOne,
+            kind,
         });
     }
 
@@ -5845,6 +6154,51 @@ fn try_rewrite_trig_identity_term_to_one_target_aware(
     }
 
     None
+}
+
+fn reciprocal_product_to_one_kind(ctx: &cas_ast::Context, expr: ExprId) -> DeriveTrigRewriteKind {
+    let Expr::Mul(left, right) = ctx.get(expr) else {
+        return DeriveTrigRewriteKind::ReciprocalProductToOne;
+    };
+    let Some((left_fn, left_arg)) = trig_function_call(ctx, *left) else {
+        return DeriveTrigRewriteKind::ReciprocalProductToOne;
+    };
+    let Some((right_fn, right_arg)) = trig_function_call(ctx, *right) else {
+        return DeriveTrigRewriteKind::ReciprocalProductToOne;
+    };
+    if left_arg != right_arg {
+        return DeriveTrigRewriteKind::ReciprocalProductToOne;
+    }
+
+    match (left_fn, right_fn) {
+        (BuiltinFn::Sin, BuiltinFn::Csc) | (BuiltinFn::Csc, BuiltinFn::Sin) => {
+            DeriveTrigRewriteKind::SinCscReciprocalProductToOne
+        }
+        (BuiltinFn::Cos, BuiltinFn::Sec) | (BuiltinFn::Sec, BuiltinFn::Cos) => {
+            DeriveTrigRewriteKind::CosSecReciprocalProductToOne
+        }
+        _ => DeriveTrigRewriteKind::ReciprocalProductToOne,
+    }
+}
+
+fn trig_function_call(ctx: &cas_ast::Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    let [arg] = args.as_slice() else {
+        return None;
+    };
+    let builtin = ctx.builtin_of(*fn_id)?;
+    matches!(
+        builtin,
+        BuiltinFn::Sin
+            | BuiltinFn::Cos
+            | BuiltinFn::Tan
+            | BuiltinFn::Cot
+            | BuiltinFn::Sec
+            | BuiltinFn::Csc
+    )
+    .then_some((builtin, *arg))
 }
 
 pub(crate) fn try_rewrite_trig_identity_to_one_target_aware(
@@ -8048,6 +8402,52 @@ mod tests {
     }
 
     #[test]
+    fn expands_quadruple_angle_cosine_chebyshev_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("cos(4*x)", &mut ctx).expect("source");
+        let target = parse("8*cos(x)^4-8*cos(x)^2+1", &mut ctx).expect("target");
+        let rewrite = try_rewrite_trig_expansion(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(rewrite.kind, DeriveTrigRewriteKind::QuadrupleAngleCos);
+        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn expands_quadruple_angle_sine_expanded_product_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("sin(4*x)", &mut ctx).expect("source");
+        let target = parse("4*sin(x)*cos(x)^3-4*sin(x)^3*cos(x)", &mut ctx).expect("target");
+        let rewrite = try_rewrite_trig_expansion(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(rewrite.kind, DeriveTrigRewriteKind::QuadrupleAngleSin);
+        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn contracts_quadruple_angle_sine_expanded_product_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("4*sin(x)*cos(x)^3-4*sin(x)^3*cos(x)", &mut ctx).expect("source");
+        let target = parse("sin(4*x)", &mut ctx).expect("target");
+        let rewrite =
+            try_rewrite_trig_contraction_target_aware(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(rewrite.kind, DeriveTrigRewriteKind::QuadrupleAngleSin);
+        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn contracts_quadruple_angle_sine_factored_product_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("4*sin(x)*cos(x)*(cos(x)^2-sin(x)^2)", &mut ctx).expect("source");
+        let target = parse("sin(4*x)", &mut ctx).expect("target");
+        let rewrite =
+            try_rewrite_trig_contraction_target_aware(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(rewrite.kind, DeriveTrigRewriteKind::QuadrupleAngleSin);
+        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+    }
+
+    #[test]
     fn expands_quintuple_angle_sine_target_aware() {
         let mut ctx = Context::new();
         let source = parse("sin(5*x)", &mut ctx).expect("source");
@@ -8279,14 +8679,29 @@ mod tests {
 
     #[test]
     fn rewrites_reciprocal_trig_product_to_one_target_aware() {
-        let mut ctx = Context::new();
-        let source = parse("tan(x)*cot(x)", &mut ctx).expect("source");
-        let target = parse("1", &mut ctx).expect("target");
-        let rewrite =
-            try_rewrite_trig_identity_to_one_target_aware(&mut ctx, source, target).expect("rw");
+        for (source, expected_kind) in [
+            (
+                "tan(x)*cot(x)",
+                DeriveTrigRewriteKind::ReciprocalProductToOne,
+            ),
+            (
+                "sin(x)*csc(x)",
+                DeriveTrigRewriteKind::SinCscReciprocalProductToOne,
+            ),
+            (
+                "cos(x)*sec(x)",
+                DeriveTrigRewriteKind::CosSecReciprocalProductToOne,
+            ),
+        ] {
+            let mut ctx = Context::new();
+            let source = parse(source, &mut ctx).expect("source");
+            let target = parse("1", &mut ctx).expect("target");
+            let rewrite = try_rewrite_trig_identity_to_one_target_aware(&mut ctx, source, target)
+                .expect("rw");
 
-        assert_eq!(rewrite.kind, DeriveTrigRewriteKind::ReciprocalProductToOne);
-        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+            assert_eq!(rewrite.kind, expected_kind);
+            assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+        }
     }
 
     #[test]
@@ -9566,6 +9981,21 @@ mod tests {
         assert_eq!(
             rewrite.kind,
             DeriveTrigRewriteKind::PowerReductionSinCosSquares
+        );
+        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn contracts_sine_cosine_square_product_to_square_double_angle_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("sin(x)^2*cos(x)^2", &mut ctx).expect("source");
+        let target = parse("sin(2*x)^2/4", &mut ctx).expect("target");
+        let rewrite =
+            try_rewrite_trig_contraction_target_aware(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(
+            rewrite.kind,
+            DeriveTrigRewriteKind::SquareDoubleAngleSinCosSquares
         );
         assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
     }

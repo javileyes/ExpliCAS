@@ -6,7 +6,7 @@ use crate::derive::{
     phase_shift_target_match, presentational_target_match, run_combine_like_terms_rewrite,
     should_try_hyperbolic_planner_before_simplify, should_try_trig_planner_before_simplify,
     strong_target_match, try_build_combined_fraction_from_fold_add,
-    try_rewrite_collect_monomial_target_aware,
+    try_plan_log_exp_power_inverse_target_aware, try_rewrite_collect_monomial_target_aware,
     try_rewrite_consecutive_factorial_ratio_target_aware,
     try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
     try_rewrite_exponential_sum_diff_target_aware, try_rewrite_fraction_combination_target_aware,
@@ -18,7 +18,8 @@ use crate::derive::{
     try_rewrite_log_contraction_to_target_aware, try_rewrite_log_expansion_target_aware,
     try_rewrite_log_simplify_target_aware, try_rewrite_nested_fraction_target_aware,
     try_rewrite_odd_half_power_to_target_aware, try_rewrite_power_merge_target_aware,
-    try_rewrite_pythagorean_factor_form_target_aware, try_rewrite_radical_target_aware,
+    try_rewrite_pythagorean_factor_form_target_aware,
+    try_rewrite_quadruple_sin_angle_contraction_target_aware, try_rewrite_radical_target_aware,
     try_rewrite_rationalized_target_aware, try_rewrite_shifted_double_angle_target_aware,
     try_rewrite_shifted_reciprocal_pythagorean_target_aware, try_rewrite_solve_prep_target_aware,
     try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion,
@@ -31,7 +32,7 @@ use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_engine::NormalFormGoal;
 use cas_math::inverse_trig_composition_support::{
     try_plan_inverse_atan_reciprocal_add_expr, try_plan_inverse_trig_composition_expr,
-    InverseTrigCompositionKind,
+    try_plan_inverse_trig_sum_add_expr, InverseTrigCompositionKind, PairWithNegationPlan,
 };
 use cas_math::number_theory_support::{
     dispatch_number_theory_call, try_rewrite_choose_symmetry_expr,
@@ -40,6 +41,10 @@ use cas_math::number_theory_support::{
 use cas_math::summation_support::{
     try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation, FiniteAggregateCall,
     ProductEvaluationKind, SumEvaluationKind,
+};
+use cas_math::{
+    expr_nary::{AddView, Sign},
+    trig_roots_flatten::flatten_mul_chain,
 };
 use cas_solver_core::engine_event_collector::EngineEventCollector;
 use cas_solver_core::engine_events::EngineEvent;
@@ -629,6 +634,14 @@ fn try_supported_derive_strategies_inner(
         target_expr,
         collect_steps,
         simplify_options,
+    ) {
+        return Some(direct);
+    }
+    if let Some(direct) = try_fast_direct_log_exp_power_inverse_derive(
+        simplifier,
+        resolved_expr,
+        target_expr,
+        collect_steps,
     ) {
         return Some(direct);
     }
@@ -2468,6 +2481,69 @@ fn try_fast_direct_exponential_rewrite_derive(
     Some((target_expr, steps, DeriveStrategy::ExponentialRewrite))
 }
 
+fn try_fast_direct_log_exp_power_inverse_derive(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    let plan =
+        try_plan_log_exp_power_inverse_target_aware(&mut simplifier.context, expr, target_expr)?;
+
+    let stages = if collect_steps {
+        let mut power_step = crate::Step::with_snapshots(
+            "Multiply exponents",
+            "Power of a Power",
+            plan.power_expr,
+            plan.contracted_exp,
+            vec![cas_solver_core::step_types::PathStep::Arg(0)],
+            Some(&simplifier.context),
+            expr,
+            plan.normalized,
+        );
+        power_step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        power_step.category = cas_solver_core::step_types::StepCategory::Simplify;
+
+        let mut inverse_step = crate::Step::with_snapshots(
+            "Cancel ln(exp(u)) to u",
+            "Log-Exp Inverse",
+            plan.normalized,
+            plan.result,
+            Vec::new(),
+            Some(&simplifier.context),
+            plan.normalized,
+            plan.result,
+        );
+        inverse_step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+        inverse_step.category = cas_solver_core::step_types::StepCategory::Simplify;
+
+        vec![
+            DeriveStageOutput {
+                expr: plan.normalized,
+                steps: vec![power_step],
+            },
+            DeriveStageOutput {
+                expr: plan.result,
+                steps: vec![inverse_step],
+            },
+        ]
+    } else {
+        vec![
+            DeriveStageOutput {
+                expr: plan.normalized,
+                steps: Vec::new(),
+            },
+            DeriveStageOutput {
+                expr: plan.result,
+                steps: Vec::new(),
+            },
+        ]
+    };
+
+    let steps = finalize_steps(expr, target_expr, stages, &mut simplifier.context);
+    Some((target_expr, steps, DeriveStrategy::ExponentialRewrite))
+}
+
 fn contains_log_call_in_power_exponent(ctx: &cas_ast::Context, expr: ExprId) -> bool {
     let mut stack = vec![expr];
     while let Some(current) = stack.pop() {
@@ -2782,6 +2858,40 @@ fn try_fast_direct_trig_derive(
         return Some((final_expr, steps, DeriveStrategy::TrigExpand));
     }
 
+    if let Some(rewrite) = try_rewrite_quadruple_sin_angle_contraction_target_aware(
+        &mut simplifier.context,
+        expr,
+        target_expr,
+    ) {
+        let final_expr =
+            if cas_ast::ordering::compare_expr(&simplifier.context, rewrite.rewritten, target_expr)
+                == std::cmp::Ordering::Equal
+            {
+                target_expr
+            } else {
+                rewrite.rewritten
+            };
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                final_expr,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                final_expr,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return Some((final_expr, steps, DeriveStrategy::TrigContract));
+    }
+
     if let Some(rewrite) = try_rewrite_trig_expansion(&mut simplifier.context, expr, target_expr) {
         let steps = if collect_steps {
             vec![build_trig_expand_step(
@@ -2926,7 +3036,12 @@ fn try_fast_direct_factor_derive(
         return None;
     }
 
-    let rewritten = cas_math::factor::factor_binomial_cube_identity(&mut simplifier.context, expr)?;
+    let rewritten = try_rewrite_sixth_power_minus_one_factorization_target_aware(
+        &mut simplifier.context,
+        expr,
+        target_expr,
+    )
+    .or_else(|| cas_math::factor::factor_binomial_cube_identity(&mut simplifier.context, expr))?;
     if !strong_target_match(&mut simplifier.context, rewritten, target_expr) {
         return None;
     }
@@ -2958,6 +3073,151 @@ fn try_fast_direct_factor_derive(
     };
 
     Some((final_expr, steps, DeriveStrategy::Factor))
+}
+
+fn try_rewrite_sixth_power_minus_one_factorization_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExprId> {
+    let base = extract_sixth_power_minus_one_base(ctx, expr)?;
+    target_matches_full_sixth_power_minus_one_factorization(ctx, target_expr, base)
+        .then_some(target_expr)
+}
+
+fn extract_sixth_power_minus_one_base(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Sub(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    if !is_integer_literal(ctx, *right, 1) {
+        return None;
+    }
+
+    let Expr::Pow(base, exponent) = ctx.get(*left) else {
+        return None;
+    };
+    is_integer_literal(ctx, *exponent, 6).then_some(*base)
+}
+
+fn target_matches_full_sixth_power_minus_one_factorization(
+    ctx: &mut cas_ast::Context,
+    target_expr: ExprId,
+    base: ExprId,
+) -> bool {
+    let factors = flatten_mul_chain(ctx, target_expr);
+    if factors.len() != 4 {
+        return false;
+    }
+
+    let mut saw_plus_one = false;
+    let mut saw_minus_one = false;
+    let mut saw_positive_quadratic = false;
+    let mut saw_negative_quadratic = false;
+
+    for factor in factors {
+        if !saw_plus_one && matches_linear_unit_factor(ctx, factor, base, Sign::Pos) {
+            saw_plus_one = true;
+            continue;
+        }
+        if !saw_minus_one && matches_linear_unit_factor(ctx, factor, base, Sign::Neg) {
+            saw_minus_one = true;
+            continue;
+        }
+        if !saw_positive_quadratic
+            && matches_geometric_quadratic_factor(ctx, factor, base, Sign::Pos)
+        {
+            saw_positive_quadratic = true;
+            continue;
+        }
+        if !saw_negative_quadratic
+            && matches_geometric_quadratic_factor(ctx, factor, base, Sign::Neg)
+        {
+            saw_negative_quadratic = true;
+            continue;
+        }
+
+        return false;
+    }
+
+    saw_plus_one && saw_minus_one && saw_positive_quadratic && saw_negative_quadratic
+}
+
+fn matches_linear_unit_factor(
+    ctx: &mut cas_ast::Context,
+    factor: ExprId,
+    base: ExprId,
+    constant_sign: Sign,
+) -> bool {
+    let terms = AddView::from_expr(ctx, factor).terms;
+    if terms.len() != 2 {
+        return false;
+    }
+
+    let mut saw_base = false;
+    let mut saw_unit = false;
+    for (term, sign) in terms {
+        if sign == Sign::Pos
+            && !saw_base
+            && cas_ast::ordering::compare_expr(ctx, term, base) == std::cmp::Ordering::Equal
+        {
+            saw_base = true;
+            continue;
+        }
+        if sign == constant_sign && !saw_unit && is_integer_literal(ctx, term, 1) {
+            saw_unit = true;
+            continue;
+        }
+    }
+
+    saw_base && saw_unit
+}
+
+fn matches_geometric_quadratic_factor(
+    ctx: &mut cas_ast::Context,
+    factor: ExprId,
+    base: ExprId,
+    linear_sign: Sign,
+) -> bool {
+    let terms = AddView::from_expr(ctx, factor).terms;
+    if terms.len() != 3 {
+        return false;
+    }
+
+    let two = ctx.num(2);
+    let base_squared = ctx.add(Expr::Pow(base, two));
+    let mut saw_base_squared = false;
+    let mut saw_linear = false;
+    let mut saw_unit = false;
+
+    for (term, sign) in terms {
+        if sign == Sign::Pos
+            && !saw_base_squared
+            && cas_ast::ordering::compare_expr(ctx, term, base_squared) == std::cmp::Ordering::Equal
+        {
+            saw_base_squared = true;
+            continue;
+        }
+        if sign == linear_sign
+            && !saw_linear
+            && cas_ast::ordering::compare_expr(ctx, term, base) == std::cmp::Ordering::Equal
+        {
+            saw_linear = true;
+            continue;
+        }
+        if sign == Sign::Pos && !saw_unit && is_integer_literal(ctx, term, 1) {
+            saw_unit = true;
+            continue;
+        }
+    }
+
+    saw_base_squared && saw_linear && saw_unit
+}
+
+fn is_integer_literal(ctx: &cas_ast::Context, expr: ExprId, value: i64) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Number(number) if number.is_integer() && number.to_integer() == value.into()
+    )
 }
 
 fn try_fast_repeated_phase_shift_pair_derive(
@@ -5277,15 +5537,48 @@ fn run_inverse_trig_rewrite_stage(
         return output;
     }
 
-    let Some(plan) =
-        try_plan_inverse_atan_reciprocal_add_expr(&mut simplifier.context, expr, false)
-    else {
-        return DeriveStageOutput {
+    if let Some(plan) = try_plan_inverse_trig_sum_add_expr(&mut simplifier.context, expr) {
+        if let Some(output) = inverse_trig_pair_plan_stage(
+            simplifier,
             expr,
-            steps: Vec::new(),
-        };
-    };
+            target_expr,
+            collect_steps,
+            plan,
+            "Inverse Trig Sum Identity",
+        ) {
+            return output;
+        }
+    }
 
+    if let Some(plan) =
+        try_plan_inverse_atan_reciprocal_add_expr(&mut simplifier.context, expr, false)
+    {
+        if let Some(output) = inverse_trig_pair_plan_stage(
+            simplifier,
+            expr,
+            target_expr,
+            collect_steps,
+            plan,
+            "Inverse Tan Relations",
+        ) {
+            return output;
+        }
+    }
+
+    DeriveStageOutput {
+        expr,
+        steps: Vec::new(),
+    }
+}
+
+fn inverse_trig_pair_plan_stage(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+    plan: PairWithNegationPlan,
+    rule_name: &'static str,
+) -> Option<DeriveStageOutput> {
     let rewritten = if strong_target_match(&mut simplifier.context, plan.final_result, target_expr)
     {
         plan.final_result
@@ -5298,10 +5591,7 @@ fn run_inverse_trig_rewrite_stage(
             },
         );
         if !strong_target_match(&mut simplifier.context, simplified, target_expr) {
-            return DeriveStageOutput {
-                expr,
-                steps: Vec::new(),
-            };
+            return None;
         }
         simplified
     };
@@ -5309,7 +5599,7 @@ fn run_inverse_trig_rewrite_stage(
     let steps = if collect_steps {
         let mut step = crate::Step::with_snapshots(
             &plan.desc,
-            "Inverse Tan Relations",
+            rule_name,
             expr,
             rewritten,
             Vec::new(),
@@ -5324,10 +5614,10 @@ fn run_inverse_trig_rewrite_stage(
         Vec::new()
     };
 
-    DeriveStageOutput {
+    Some(DeriveStageOutput {
         expr: rewritten,
         steps,
-    }
+    })
 }
 
 fn inverse_trig_composition_derive_desc(kind: InverseTrigCompositionKind) -> &'static str {
@@ -7209,8 +7499,9 @@ fn append_derive_requires_lines(
     if conditions.is_empty() {
         return;
     }
-    let rendered =
+    let mut rendered =
         cas_solver_core::domain_normalization::render_conditions_normalized(ctx, &conditions);
+    rendered.sort();
     if rendered.is_empty() {
         return;
     }
@@ -8487,6 +8778,30 @@ mod tests {
     }
 
     #[test]
+    fn direct_derive_rewrites_arcsin_arccos_sum_without_generic_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("arcsin(x)+arccos(x)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("pi/2", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::InverseTrigRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Inverse Trig Sum Identity");
+    }
+
+    #[test]
     fn direct_derive_rewrites_arctan_right_triangle_projections_without_simplify() {
         for (source_text, target_text) in [
             ("sin(arctan(x))", "x/sqrt(1+x^2)"),
@@ -8691,6 +9006,31 @@ mod tests {
         assert_eq!(derived.2, DeriveStrategy::ExponentialRewrite);
         assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.1[0].rule_name, "Exponential-Log Inverse");
+    }
+
+    #[test]
+    fn direct_derive_labels_log_exp_power_inverse_as_two_exponential_steps() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("ln(exp(x)^2)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("2*x", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::ExponentialRewrite);
+        assert_eq!(derived.1.len(), 2);
+        assert_eq!(derived.1[0].rule_name, "Power of a Power");
+        assert_eq!(derived.1[1].rule_name, "Log-Exp Inverse");
     }
 
     #[test]
@@ -8927,26 +9267,32 @@ mod tests {
 
     #[test]
     fn direct_derive_rewrites_reciprocal_trig_product_with_passthrough_without_simplify() {
-        let mut simplifier = crate::Simplifier::with_default_rules();
-        let source =
-            cas_parser::parse("tan(x)*cot(x)+a", &mut simplifier.context).expect("parse source");
-        let target = cas_parser::parse("1+a", &mut simplifier.context).expect("parse target");
+        for (source, target, description) in [
+            ("tan(x)*cot(x)+a", "1+a", "Recognize tan(u) · cot(u) = 1"),
+            ("sin(x)*csc(x)", "1", "Recognize sin(u) · csc(u) = 1"),
+            ("cos(x)*sec(x)", "1", "Recognize cos(u) · sec(u) = 1"),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source = cas_parser::parse(source, &mut simplifier.context).expect("parse source");
+            let target = cas_parser::parse(target, &mut simplifier.context).expect("parse target");
 
-        let derived = try_supported_derive_strategies_inner(
-            &mut simplifier,
-            source,
-            target,
-            true,
-            &crate::SimplifyOptions::default(),
-            true,
-            true,
-        )
-        .expect("derive should succeed");
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .expect("derive should succeed");
 
-        assert_eq!(derived.0, target);
-        assert_eq!(derived.2, DeriveStrategy::TrigRewrite);
-        assert_eq!(derived.1.len(), 1);
-        assert_eq!(derived.1[0].rule_name, "Reciprocal Product Identity");
+            assert_eq!(derived.0, target);
+            assert_eq!(derived.2, DeriveStrategy::TrigRewrite);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Reciprocal Product Identity");
+            assert_eq!(derived.1[0].description, description);
+        }
     }
 
     #[test]

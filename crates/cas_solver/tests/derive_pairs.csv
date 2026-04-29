@@ -48,6 +48,7 @@ inverse_hyperbolic_atanh_square_ratio_log,simplify,atanh((x^2 - 1)/(x^2 + 1)),ln
 hyperbolic_composition_sinh_asinh,simplify,sinh(asinh(x)),x,derived,rewrite hyperbolics
 hyperbolic_special_value_sinh_zero,simplify,sinh(0),0,derived,rewrite hyperbolics
 inverse_tan_identity,simplify,arctan(a)+arctan(1/a),pi/2,derived,rewrite inverse trigs
+inverse_trig_arcsin_arccos_complement_sum,simplify,arcsin(x)+arccos(x),pi/2,derived,rewrite inverse trigs
 inverse_trig_composition_sin_arcsin,simplify,sin(arcsin(x)),x,derived,rewrite inverse trigs
 arcsin_sin_arctan_safe_composition,simplify,asin(x/sqrt(x^2 + 1)),atan(x),derived,rewrite inverse trigs
 sin_arctan_right_triangle_projection,simplify,sin(arctan(x)),x/sqrt(1+x^2),derived,rewrite inverse trigs
@@ -109,6 +110,8 @@ expand_log_grouped_general_base_power_with_passthrough,log_expand,"log(b,(x*y)^2
 log_inverse_power_tower,log_inverse_power,x^(ln(y)/ln(x)),y,derived,log inverse power
 log_inverse_power_unary_natural_alias,log_inverse_power,x^(log(log(x))/log(x)),log(x),derived,log inverse power
 log_exp_inverse_ln_exp,log_exp_inverse,ln(exp(x)),x,derived,rewrite exponentials
+log_exp_inverse_ln_exp_power,log_exp_inverse,ln(exp(x)^2),2*x,derived,rewrite exponentials
+log_exp_inverse_ln_exp_product,log_exp_inverse,ln(exp(x)*exp(y)),x+y,derived,expand_log
 log_exp_inverse_natural_log_power_alias,log_exp_inverse,exp(y*log(x)),x^y,derived,rewrite exponentials
 log_exp_inverse_log10_power_alias,log_exp_inverse,10^(y*log10(x)),x^y,derived,rewrite exponentials
 contract_log_sum,log_contract,ln(x) + ln(y),ln(x*y),derived,contract logs
@@ -153,6 +156,7 @@ contract_trig_phase_shift_general_sum_to_shifted_sine_with_passthrough,trig_cont
 expand_trig_phase_shift_general_shifted_sine_to_sum_with_passthrough,trig_expand,5*sin(x+arctan(4/3))+a,3*sin(x)+4*cos(x)+a,derived,expand trig
 contract_trig_double_sin,trig_contract,2*sin(x)*cos(x),sin(2*x),derived,contract trig
 contract_trig_half_scaled_double_sin,trig_contract,sin(x)*cos(x),sin(2*x)/2,derived,contract trig
+contract_trig_square_double_angle_sine_cosine_product,trig_contract,sin(x)^2*cos(x)^2,sin(2*x)^2/4,derived,contract trig
 contract_trig_double_tangent,trig_contract,2*tan(x)/(1-tan(x)^2),tan(2*x),derived,contract trig
 expand_trig_after_simplify,trig_expand,sin(x + x),2*sin(x)*cos(x),derived,expand trig
 contract_trig_tan_quotient,trig_contract,(sin(2*x))/(cos(2*x)),tan(2*x),derived,contract trig
@@ -226,6 +230,9 @@ contract_trig_triple_angle_cosine,trig_contract,4*cos(x)^3-3*cos(x),cos(3*x),der
 expand_trig_triple_angle_cosine,trig_expand,cos(3*x),4*cos(x)^3-3*cos(x),derived,expand trig
 contract_trig_triple_angle_tangent,trig_contract,(3*tan(x)-tan(x)^3)/(1-3*tan(x)^2),tan(3*x),derived,contract trig
 expand_trig_triple_angle_tangent,trig_expand,tan(3*x),(3*tan(x)-tan(x)^3)/(1-3*tan(x)^2),derived,expand trig
+expand_trig_quadruple_angle_sine_expanded_product,trig_expand,sin(4*x),4*sin(x)*cos(x)^3-4*sin(x)^3*cos(x),derived,expand trig
+contract_trig_quadruple_angle_sine_expanded_product,trig_contract,4*sin(x)*cos(x)^3-4*sin(x)^3*cos(x),sin(4*x),derived,contract trig
+expand_trig_quadruple_angle_cosine,trig_expand,cos(4*x),8*cos(x)^4-8*cos(x)^2+1,derived,expand trig
 expand_trig_quintuple_angle_sine,trig_expand,sin(5*x),5*sin(x)-20*sin(x)^3+16*sin(x)^5,derived,expand trig
 expand_trig_quintuple_angle_cosine,trig_expand,cos(5*x),16*cos(x)^5-20*cos(x)^3+5*cos(x),derived,expand trig
 contract_trig_quintuple_angle_sine,trig_contract,5*sin(x)-20*sin(x)^3+16*sin(x)^5,sin(5*x),derived,contract trig
@@ -286,6 +293,7 @@ expand_symbolic_cube_difference_product,polynomial_product,(x-a)*(x^2+a*x+a^2),x
 expand_symbolic_sixth_power_plus_product,polynomial_product,(x^2+a^2)*(x^4-a^2*x^2+a^4),x^6+a^6,derived,expand
 expand_symbolic_sixth_power_minus_product,polynomial_product,(x^2-a^2)*(x^4+a^2*x^2+a^4),x^6-a^6,derived,expand
 factor_geometric_difference_power_6,factor,x^6 - 1,(x-1)*(x^5 + x^4 + x^3 + x^2 + x + 1),derived,factor
+factor_full_cyclotomic_sixth_power_difference,factor,x^6 - 1,(x^2+x+1)*(x^2-x+1)*(x+1)*(x-1),derived,factor
 merge_same_base_fractional_powers,power_merge,x^(1/2)*x^(2/3),x^(7/6),derived,combine powers
 merge_same_base_symbolic_powers,power_merge,x^a*x^b,x^(a+b),derived,combine powers
 merge_same_base_symbolic_quotient_powers,power_merge,x^a/x^b,x^(a-b),derived,combine powers
@@ -302,6 +310,8 @@ choose_numeric_pascal_identity,number_theory,"choose(4,1) + choose(4,2)","choose
 choose_numeric_symmetry,number_theory,"choose(6,1)","choose(6,5)",derived,number theory
 contract_trig_cos_diff_sin_diff_quotient,trig_contract,(cos(x)-cos(3*x))/(sin(3*x)-sin(x)),tan(2*x),derived,contract trig
 reciprocal_trig_product_to_one,simplify,tan(x)*cot(x),1,derived,rewrite trigs
+reciprocal_trig_sin_csc_product_to_one,simplify,sin(x)*csc(x),1,derived,rewrite trigs
+reciprocal_trig_cos_sec_product_to_one,simplify,cos(x)*sec(x),1,derived,rewrite trigs
 reciprocal_trig_product_to_one_with_passthrough,simplify,tan(x)*cot(x)+a,1+a,derived,rewrite trigs
 sec_tan_pythagorean_to_one,simplify,sec(x)^2 - tan(x)^2,1,derived,rewrite trigs
 csc_cot_pythagorean_to_one,simplify,csc(x)^2 - cot(x)^2,1,derived,rewrite trigs

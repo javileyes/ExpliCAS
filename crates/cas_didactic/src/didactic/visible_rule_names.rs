@@ -18,6 +18,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Exponential Sum/Difference Identity" => "Reescribir exponenciales",
         "Exponential Reciprocal Identity" => "Reescribir recíproco exponencial",
         "Exponential Power Identity" => "Reescribir potencia exponencial",
+        "Power of a Power" => "Multiplicar exponentes",
         "Finite Product" => "Evaluar producto finito",
         "Finite Summation" => "Evaluar suma finita",
         "Number Theory Operations" => "Evaluar operación de teoría de números",
@@ -53,6 +54,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Phase Shift Identity" => "Aplicar identidad de desfase",
         "Double Angle Expansion" => "Expandir ángulo doble",
         "Double Angle Contraction" => "Contraer ángulo doble",
+        "Square Double Angle Contraction" => "Contraer cuadrado de ángulo doble",
         "Tangent Double-Angle Identity" => "Aplicar identidad de tangente de ángulo doble",
         "Tangent Angle Sum/Diff Identity" => {
             "Aplicar identidad de tangente de suma/diferencia de ángulos"
@@ -61,6 +63,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Cos 2x Additive Contraction" => "Contraer ángulo doble",
         "Trig Square Identity" => "Aplicar identidad del cuadrado trigonométrico",
         "Power Reduction Identity" => "Aplicar reducción de potencias",
+        "Quadruple Angle Expansion" => "Reescribir ángulo cuádruple",
         "Expand Secant Squared" => "Expandir secante cuadrada",
         "Expand Cosecant Squared" => "Expandir cosecante cuadrada",
         "Recognize Secant Squared" => "Reconocer secante cuadrada",
@@ -118,6 +121,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Pre-order Sum/Difference of Cubes Cancel" => "Cancelar factor tras factorizar cubos",
         "Cancel Sum/Difference of Cubes Fraction" => "Factorizar cubos y cancelar",
         "Inverse Tan Relations" => "Aplicar identidad de arctangentes",
+        "Inverse Trig Sum Identity" => "Aplicar identidad complementaria arcsin/arccos",
         "Inverse Trig Composition" => "Aplicar composición trigonométrica inversa",
         "Sqrt Perfect Square" | "Simplify Square Root" | "Simplify perfect square root" => {
             "Reconocer un cuadrado perfecto bajo la raíz"
@@ -295,6 +299,15 @@ pub(crate) fn visible_rule_name_for_step<'a>(
         "Reciprocal Trig Identity" if description == "Recognize cos(u) / sin(u) as cot(u)" => {
             Cow::Borrowed("Reconocer cotangente desde un cociente")
         }
+        "Reciprocal Product Identity" if description == "Recognize tan(u) · cot(u) = 1" => {
+            Cow::Borrowed("Reconocer tangente por cotangente como 1")
+        }
+        "Reciprocal Product Identity" if description == "Recognize sin(u) · csc(u) = 1" => {
+            Cow::Borrowed("Reconocer seno por cosecante como 1")
+        }
+        "Reciprocal Product Identity" if description == "Recognize cos(u) · sec(u) = 1" => {
+            Cow::Borrowed("Reconocer coseno por secante como 1")
+        }
         "Rationalize Linear Sqrt Denominator" if description.contains("opaque substitution") => {
             Cow::Borrowed("Reconocer un cociente notable")
         }
@@ -454,6 +467,9 @@ pub(crate) fn visible_step_description<'a>(description: &'a str) -> Cow<'a, str>
         "Cancel common factor" => Cow::Borrowed("Cancelar factor común"),
         "atan -> arctan" => Cow::Borrowed("Usar el nombre arctan"),
         "arctan(x) + arctan(1/x) = π/2" => Cow::Borrowed("Aplicar identidad de arctangentes"),
+        "arcsin(x) + arccos(x) = π/2" => {
+            Cow::Borrowed("Aplicar identidad complementaria arcsin/arccos")
+        }
         "Canonicalization" => Cow::Borrowed("Reordenar la expresión"),
         description if description.starts_with("-(") && description.contains(") = -") => {
             Cow::Borrowed("Quitar paréntesis tras el signo menos")

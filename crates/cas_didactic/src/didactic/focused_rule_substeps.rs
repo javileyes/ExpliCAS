@@ -121,7 +121,9 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Exponential Reciprocal Identity" => {
             generate_exponential_reciprocal_identity_substeps(ctx, step)
         }
-        "Exponential Power Identity" => generate_exponential_power_identity_substeps(ctx, step),
+        "Exponential Power Identity" | "Power of a Power" => {
+            generate_exponential_power_identity_substeps(ctx, step)
+        }
         "Exponential-Log Power Inverse" => {
             generate_exponential_log_power_inverse_substeps(ctx, step)
         }
@@ -134,6 +136,9 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Dirichlet Kernel Identity" => generate_dirichlet_kernel_substeps(ctx, step),
         "Complete the Square" => generate_complete_square_substeps(ctx, step),
         "Product-to-Sum Identity" => generate_product_to_sum_substeps(step),
+        "Square Double Angle Contraction" => {
+            generate_square_double_angle_contraction_substeps(ctx, step)
+        }
         "Hyperbolic Product-to-Sum Identity" => {
             generate_hyperbolic_product_to_sum_substeps(ctx, step)
         }
@@ -168,6 +173,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Reciprocal Pythagorean Identity" => generate_reciprocal_pythagorean_substeps(ctx, step),
         "Cos 2x Additive Contraction" => generate_cos_2x_additive_contraction_substeps(ctx, step),
         "Power Reduction Identity" => generate_power_reduction_identity_substeps(ctx, step),
+        "Quadruple Angle Expansion" => generate_quadruple_angle_identity_substeps(ctx, step),
         "Quintuple Angle Identity" => generate_quintuple_angle_identity_substeps(ctx, step),
         "Triple Angle Identity" | "Triple Angle Expansion" => {
             generate_triple_angle_identity_substeps(ctx, step)
@@ -222,7 +228,9 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Cancel Sum/Difference of Cubes Fraction" => {
             generate_sum_difference_cubes_cancel_substeps(ctx, step)
         }
-        "Inverse Tan Relations" => generate_inverse_tan_relation_substeps(ctx, step),
+        "Inverse Tan Relations" | "Inverse Trig Sum Identity" => {
+            generate_inverse_trig_sum_relation_substeps(ctx, step)
+        }
         "Inverse Trig Composition" => generate_inverse_trig_composition_substeps(ctx, step),
         "Subtraction Self-Cancel" => generate_subtraction_self_cancel_substeps(ctx, step),
         "Cancel Reciprocal Exponents" => generate_cancel_reciprocal_exponents_substeps(ctx, step),
@@ -1451,6 +1459,19 @@ fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         )];
     }
 
+    if let Some(base) = full_sixth_power_minus_one_factor_plan(ctx, before, after) {
+        let base_display = human_expr(ctx, base);
+
+        return vec![concrete_expr_substep(
+            ctx,
+            format!(
+                "Aquí la diferencia de sexto grado se factoriza completamente con base {base_display}"
+            ),
+            before,
+            after,
+        )];
+    }
+
     if let Some((factor, kind)) = common_factor_factorization_plan(ctx, before, after) {
         let factor_display = human_expr(ctx, factor);
         let _ = kind;
@@ -1903,6 +1924,11 @@ fn find_binomial_expansion_focus_substep_sides(
 fn generate_expand_log_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
+
+    if let Some(substep) = expanded_log_exp_cancellation_substep(ctx, after, step.after) {
+        return vec![substep];
+    }
+
     let (title, before_display, after_display, before_latex, after_latex) =
         if let Some(snippet) = log_formula_snippet(ctx, before, true) {
             snippet
@@ -1927,6 +1953,43 @@ fn generate_expand_log_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         &before_latex,
         &after_latex,
     )]
+}
+
+fn expanded_log_exp_cancellation_substep(
+    ctx: &Context,
+    expanded_logs: ExprId,
+    final_expr: ExprId,
+) -> Option<SubStep> {
+    if expanded_logs == final_expr {
+        return None;
+    }
+
+    let terms = AddView::from_expr(ctx, expanded_logs).terms;
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut temp_ctx = ctx.clone();
+    let mut cancelled_terms = Vec::with_capacity(terms.len());
+    for (term, sign) in terms {
+        let log_arg = change_of_base_natural_log_argument(ctx, term)?;
+        let exp_arg = extract_exp_argument(ctx, log_arg)?;
+        cancelled_terms.push((exp_arg, sign));
+    }
+
+    let cancelled = build_add_from_signed_terms(&mut temp_ctx, &cancelled_terms);
+    if compare_expr(&temp_ctx, cancelled, final_expr) != Ordering::Equal
+        && !same_presentational_expr(&temp_ctx, cancelled, &temp_ctx, final_expr)
+    {
+        return None;
+    }
+
+    Some(concrete_expr_substep(
+        ctx,
+        "Cancelar cada logaritmo natural con su exponencial",
+        expanded_logs,
+        final_expr,
+    ))
 }
 
 fn generate_log_cancellation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -6323,6 +6386,22 @@ fn power_reduction_formula_template(
     }
 }
 
+fn generate_square_double_angle_contraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let Some(arg) = trig_square_product_same_arg(ctx, before) else {
+        return Vec::new();
+    };
+
+    let arg_plain = human_formula_title_plain(&display_expr(ctx, arg));
+    vec![formula_substep(
+        format!("Usar sin²(u)·cos²(u) = sin²(2u) / 4, con u = {arg_plain}"),
+        "sin(u)^2 · cos(u)^2",
+        "sin(2u)^2 / 4",
+        "\\sin(u)^2\\cdot\\cos(u)^2",
+        "\\frac{\\sin(2u)^2}{4}",
+    )]
+}
+
 #[derive(Clone, Copy)]
 enum TrigTripleAngleKind {
     Sin,
@@ -6436,6 +6515,124 @@ fn trig_triple_angle_formula_template(
             "\\tan(3u)",
             "\\frac{3\\cdot\\tan(u)-\\tan(u)^3}{1-3\\cdot\\tan(u)^2}",
         ),
+    }
+}
+
+fn generate_quadruple_angle_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+
+    if let Some((kind, base_factors)) = nested_trig_quadruple_angle_call(ctx, before) {
+        return vec![build_trig_quadruple_angle_formula_substep(
+            ctx,
+            kind,
+            &base_factors,
+            false,
+        )];
+    }
+
+    if let Some((kind, base_factors)) = nested_trig_quadruple_angle_call(ctx, after) {
+        return vec![build_trig_quadruple_angle_formula_substep(
+            ctx,
+            kind,
+            &base_factors,
+            true,
+        )];
+    }
+
+    Vec::new()
+}
+
+#[derive(Clone, Copy)]
+enum TrigQuadrupleAngleKind {
+    Sin,
+    Cos,
+}
+
+fn nested_trig_quadruple_angle_call(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(TrigQuadrupleAngleKind, Vec<ExprId>)> {
+    trig_quadruple_angle_call_at_expr(ctx, expr).or_else(|| match ctx.get(expr) {
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => nested_trig_quadruple_angle_call(ctx, *left)
+            .or_else(|| nested_trig_quadruple_angle_call(ctx, *right)),
+        Expr::Neg(inner) => nested_trig_quadruple_angle_call(ctx, *inner),
+        _ => None,
+    })
+}
+
+fn trig_quadruple_angle_call_at_expr(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(TrigQuadrupleAngleKind, Vec<ExprId>)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    let kind = match ctx.builtin_of(*fn_id)? {
+        BuiltinFn::Sin => TrigQuadrupleAngleKind::Sin,
+        BuiltinFn::Cos => TrigQuadrupleAngleKind::Cos,
+        _ => return None,
+    };
+
+    let (multiple, base_factors) = extract_i64_multiplier_and_base_factors(ctx, args[0]);
+    (multiple == 4).then(|| (kind, base_factors.into_vec()))
+}
+
+fn build_trig_quadruple_angle_formula_substep(
+    ctx: &Context,
+    kind: TrigQuadrupleAngleKind,
+    base_factors: &[ExprId],
+    reverse: bool,
+) -> SubStep {
+    let mut work = ctx.clone();
+    let base = build_balanced_mul(&mut work, base_factors);
+    let (base_plain, _) = render_temp_expr(&work, base);
+    let base_plain = human_formula_title_plain(&base_plain);
+    let (compact_plain, expanded_plain, compact_latex, expanded_latex) = match kind {
+        TrigQuadrupleAngleKind::Sin => (
+            "sin(4u)",
+            "4 · sin(u) · cos(u)^3 - 4 · sin(u)^3 · cos(u)",
+            "\\sin(4u)",
+            "4\\cdot\\sin(u)\\cdot\\cos(u)^3-4\\cdot\\sin(u)^3\\cdot\\cos(u)",
+        ),
+        TrigQuadrupleAngleKind::Cos => (
+            "cos(4u)",
+            "8 · cos(u)^4 - 8 · cos(u)^2 + 1",
+            "\\cos(4u)",
+            "8\\cdot\\cos(u)^4-8\\cdot\\cos(u)^2+1",
+        ),
+    };
+    let title = format!(
+        "Usar {} = {}, con u = {}",
+        human_formula_title_plain(compact_plain),
+        human_formula_title_plain(expanded_plain),
+        base_plain
+    );
+
+    if reverse {
+        formula_substep(
+            title,
+            expanded_plain,
+            compact_plain,
+            expanded_latex,
+            compact_latex,
+        )
+    } else {
+        formula_substep(
+            title,
+            compact_plain,
+            expanded_plain,
+            compact_latex,
+            expanded_latex,
+        )
     }
 }
 
@@ -8159,6 +8356,106 @@ fn geometric_difference_factor_plan(
     Some((*base, power))
 }
 
+fn full_sixth_power_minus_one_factor_plan(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<ExprId> {
+    let Expr::Sub(lhs, rhs) = ctx.get(before) else {
+        return None;
+    };
+    if !is_integer_literal(ctx, *rhs, 1) {
+        return None;
+    }
+    let Expr::Pow(base, exponent) = ctx.get(*lhs) else {
+        return None;
+    };
+    if !is_integer_literal(ctx, *exponent, 6) {
+        return None;
+    }
+
+    let factors = expr_nary::mul_leaves(ctx, after);
+    if factors.len() != 4 {
+        return None;
+    }
+
+    let mut saw_plus_one = false;
+    let mut saw_minus_one = false;
+    let mut saw_positive_quadratic = false;
+    let mut saw_negative_quadratic = false;
+    for factor in factors {
+        if !saw_plus_one && linear_unit_factor_matches(ctx, factor, *base, Sign::Pos) {
+            saw_plus_one = true;
+            continue;
+        }
+        if !saw_minus_one && linear_unit_factor_matches(ctx, factor, *base, Sign::Neg) {
+            saw_minus_one = true;
+            continue;
+        }
+        if !saw_positive_quadratic
+            && geometric_quadratic_factor_matches(ctx, factor, *base, Sign::Pos)
+        {
+            saw_positive_quadratic = true;
+            continue;
+        }
+        if !saw_negative_quadratic
+            && geometric_quadratic_factor_matches(ctx, factor, *base, Sign::Neg)
+        {
+            saw_negative_quadratic = true;
+            continue;
+        }
+        return None;
+    }
+
+    (saw_plus_one && saw_minus_one && saw_positive_quadratic && saw_negative_quadratic)
+        .then_some(*base)
+}
+
+fn linear_unit_factor_matches(
+    ctx: &Context,
+    expr: ExprId,
+    base: ExprId,
+    constant_sign: Sign,
+) -> bool {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return false;
+    }
+
+    let has_base = terms.iter().any(|(term, sign)| {
+        *sign == Sign::Pos && compare_expr(ctx, *term, base) == Ordering::Equal
+    });
+    let has_unit = terms
+        .iter()
+        .any(|(term, sign)| *sign == constant_sign && is_integer_literal(ctx, *term, 1));
+
+    has_base && has_unit
+}
+
+fn geometric_quadratic_factor_matches(
+    ctx: &Context,
+    expr: ExprId,
+    base: ExprId,
+    linear_sign: Sign,
+) -> bool {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 3 {
+        return false;
+    }
+
+    let has_square = terms
+        .iter()
+        .any(|(term, sign)| *sign == Sign::Pos && matches_square_of(ctx, *term, base));
+    let has_linear = terms.iter().any(|(term, sign)| {
+        *sign == linear_sign && compare_expr(ctx, *term, base) == Ordering::Equal
+    });
+    let has_unit = terms
+        .iter()
+        .any(|(term, sign)| *sign == Sign::Pos && is_integer_literal(ctx, *term, 1));
+
+    has_square && has_linear && has_unit
+}
+
 fn sophie_germain_expansion_plan(
     ctx: &Context,
     before: ExprId,
@@ -9787,7 +10084,7 @@ fn generate_difference_of_squares_cancel_substeps(ctx: &Context, step: &Step) ->
     ]
 }
 
-fn generate_inverse_tan_relation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+fn generate_inverse_trig_sum_relation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let mut out = Vec::new();
     let pair_before = step.before_local().unwrap_or(step.before);
     let pair_after = step.after_local().unwrap_or(step.after);
@@ -9805,9 +10102,14 @@ fn generate_inverse_tan_relation_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     }
 
     if pair_before != pair_after {
+        let pair_value_title = if step.rule_name == "Inverse Trig Sum Identity" {
+            "Aquí arcsin(x) y arccos(x) suman pi/2"
+        } else {
+            "Esa pareja vale pi/2"
+        };
         out.push(
             SubStep::new(
-                "Esa pareja vale pi/2",
+                pair_value_title,
                 display_expr(ctx, pair_before),
                 display_expr(ctx, pair_after),
             )

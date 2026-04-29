@@ -95,6 +95,28 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-04-29: `sin(4x)` Expanded Quadruple-Angle Derive Probe
+
+- area:
+  - derive planner / trig multiple-angle expansion
+- status:
+  - `retained`
+- local lane:
+  - `printf 'derive sin(4*x), 4*sin(x)*cos(x)^3 - 4*sin(x)^3*cos(x)\n' | target/debug/cas_cli --no-pretty repl`
+  - paired control:
+    `printf 'derive sin(4*x), 4*sin(x)*cos(x)*(cos(x)^2 - sin(x)^2)\n' | target/debug/cas_cli --no-pretty repl`
+- local result:
+  - the expanded polynomial/product target did not reach a result within the
+    cheap 5s probe window
+  - the factored target succeeds quickly through `Strategy: factor`
+- retained follow-up:
+  - added a bounded `expand trig` route for
+    `sin(4*x) -> 4*sin(x)*cos(x)^3 - 4*sin(x)^3*cos(x)`
+  - promoted the case into `derive_pairs.csv` as
+    `expand_trig_quadruple_angle_sine_expanded_product`
+  - kept the route target-aware/presentational so it does not replace the
+    existing factored-target path through `Strategy: factor`
+
 ### 2026-04-29: `log_exp_inverse` Power Alias Derive Shadow Superseded
 
 - area:
@@ -7644,3 +7666,501 @@ The burden of proof stays the same:
     quotient provider already had engine/derive bridgeability, and now the
     public web trace explains the concrete source shape without a generic label
     or decorative placeholder substep
+
+## 2026-04-29 - Auto-improvement cycle: derive log-exp power inverse bridge
+
+- investment_class: coverage
+- success_condition:
+  - `derive ln(exp(x)^2), 2*x` routes through `rewrite exponentials`, emits a
+    visible power-normalization step followed by `Log-Exp Inverse`, stays out of
+    generic `simplify`, and focused tests plus the engine guardrails pass
+- primary_dimension:
+  - derive bridge coverage for log-exp inverse identities that require one
+    exponential power normalization before cancellation
+- secondary_dimension:
+  - didactic path quality for the newly exposed two-step route
+- hypothesis:
+  - the engine already simplifies `ln(exp(x)^2)` by multiplying exponents and
+    then canceling `ln(exp(u))`, but `derive` lacked a bounded target-aware plan
+    for that composed route and therefore fell back to generic simplify
+- relevant_lanes:
+  - CLI derive probe, exponential derive unit, direct derive strategy regression,
+    derive contract representative slice, generic-simplify guard, focused derive
+    didactic audit, `make engine-fast`, `make engine-scorecard`
+- promotion_target:
+  - new minimal row `log_exp_inverse_ln_exp_power`
+- derive_bridge_check:
+  - retained as a planner/coverage bridge, not a semantic engine change; the
+    route reuses existing exponential power and log-exp inverse capabilities as
+    two explicit steps
+- engine_feedback_check:
+  - no runtime change was required; this confirms a known simplification path
+    can be exposed as a stable target-aware derive path with better trace
+    quality
+- retain_if:
+  - direct derive reports `DeriveStrategy::ExponentialRewrite`, the CLI shows
+    `Power of a Power` then `Log-Exp Inverse`, the derive audit stays at zero
+    flags, and all guardrails pass
+- reject_if:
+  - the route collapses into one magical step, falls back to `simplify`, emits
+    opaque didactic output, or regresses embedded/derive/simplify guardrails
+- structural_axis:
+  - target-aware bridge from `ln((exp(u))^n)` to `n*u`
+- why_this_is_not_a_duplicate:
+  - existing `ln(exp(x)) -> x` covers only direct inverse cancellation; this
+    representative covers the missing normalization-before-cancellation shape
+- discovery_or_promotion:
+  - promoted as a new curated derive row and direct planner path
+- if_promoted_why_minimal_representative:
+  - exponent `2` over one symbol is the smallest case that requires both the
+    power-normalization and log-exp cancellation steps
+- local_result:
+  - added `try_plan_log_exp_power_inverse_target_aware` and a direct derive
+    bridge that emits two retained stages
+  - added the row `log_exp_inverse_ln_exp_power` to the derive contract and
+    simplify/log representative slice
+  - reused the focused exponential-power didactic substep generator for
+    `Power of a Power`, with visible label `Multiplicar exponentes`
+  - CLI probe:
+    `derive ln(exp(x)^2), 2*x` reports `Strategy: rewrite exponentials` with
+    steps `Power of a Power` and `Log-Exp Inverse`
+- guardrails:
+  - `cargo fmt`
+  - `cargo test -q -p cas_solver log_exp_power -- --nocapture`
+  - `cargo test -q -p cas_didactic derive_didactic_log_exp_power_inverse_has_visible_normalization_substep -- --exact --nocapture`
+  - `cargo test -q -p cas_solver --test derive_contract_tests derive_pairs_follow_expected_outcomes_simplify_log_representatives -- --exact --nocapture`
+  - `cargo test -q -p cas_solver --test derive_contract_tests derive_pairs_do_not_expect_generic_simplify_for_derived_cases -- --exact --nocapture`
+  - `make engine-fast`: `simplify_add_small 435/435`,
+    `contextual_strict_fast 64/64`
+  - `make engine-scorecard`: embedded `1417/1417`, derive contract
+    `derived=382 unsupported=0 not_equivalent=1`, `generic_simplify_expected=0`,
+    derive shadow pressure `50/50`, derive audit `464 cases / 0 flags`,
+    `total_web_substeps=477`, simplify audit `14 cases / 0 flags`, simplify
+    strict `16518/16518 proved-symbolic`, `0 failed`, `0 timeouts`
+  - `git diff --check`
+- decision:
+  - retained as a focused derive bridge improvement: it increases target-aware
+    derive completeness for an existing engine identity family while improving
+    the visible step-by-step trace instead of hiding the work in generic
+    simplify
+
+## 2026-04-29 - Auto-improvement cycle: derive log-exp product didactic bridge
+
+- investment_class: coverage
+- success_condition:
+  - `derive ln(exp(x)*exp(y)), x+y` remains on a specific `expand_log`
+    strategy, gains a concrete web/CLI substep for the hidden post-expansion
+    `ln(exp(u))` cancellations, enters the curated derive corpus, and focused
+    tests plus engine guardrails pass
+- primary_dimension:
+  - didactic quality and coverage for the composed route
+    `log expansion -> log-exp inverse`
+- secondary_dimension:
+  - engine/derive bridge quality for a simplification the engine already knew
+    but previously rendered as a single opaque derive move
+- hypothesis:
+  - the engine expands `ln(e^x*e^y)` to `ln(e^x)+ln(e^y)` and then simplifies
+    to `x+y`, but the public derive trace exposed only the parent expand-log
+    step; adding a focused substep for the second transition makes the route
+    teachable without changing runtime behavior
+- relevant_lanes:
+  - CLI JSON probe, focused derive didactic audit, log-expanded command eval
+    test, derive contract representative slice, generic-simplify guard,
+    `make engine-fast`, `make engine-scorecard`
+- promotion_target:
+  - new minimal row `log_exp_inverse_ln_exp_product`
+- derive_bridge_check:
+  - retained as path-quality coverage rather than reachability work; the route
+    already derived, but now the hidden engine transition is visible and
+    guarded
+- engine_feedback_check:
+  - no reusable runtime change was needed; this confirms the existing engine
+    path can support a didactic bridge with a small substep recognizer
+- retain_if:
+  - strategy remains `expand_log`, web JSON contains one concrete cancellation
+    substep after the parent expansion, audit flags stay at `0`, and guardrails
+    pass
+- reject_if:
+  - the substep is pruned as duplicate/noisy, the case falls to generic
+    simplify, or global embedded/derive/simplify guardrails regress
+- structural_axis:
+  - product-log expansion followed by log-exp cancellation
+- why_this_is_not_a_duplicate:
+  - direct `ln(exp(x)) -> x` and power `ln(exp(x)^2) -> 2*x` do not cover the
+    product expansion shape; two exponential factors are the smallest case that
+    requires the composed route
+- discovery_or_promotion:
+  - promoted from a reproducible didactic gap discovered by probing an
+    engine-known equivalent pair
+- if_promoted_why_minimal_representative:
+  - `ln(exp(x)*exp(y)) -> x+y` is the minimal product requiring both log
+    expansion and cancellation, without wrapper/noise complexity
+- local_result:
+  - added a focused `expand_log` didactic substep when the local expansion
+    produces a sum/difference of `ln(exp(...))` terms and the final derive
+    result cancels them
+  - added `log_exp_inverse_ln_exp_product` to `derive_pairs.csv` and the
+    simplify/log representative derive contract slice
+  - added focused didactic and command-eval regressions
+  - JSON probe now shows parent rule `Expandir logaritmos` and substep
+    `Cancelar cada logaritmo natural con su exponencial` with
+    `ln(e^x)+ln(e^y) -> x+y`
+- guardrails:
+  - `cargo fmt`
+  - `cargo test -q -p cas_didactic --test derive_didactic_audit derive_didactic_log_exp_product_inverse_shows_post_expansion_cancellation -- --exact --nocapture`
+  - `cargo test -q -p cas_solver analysis_command_eval_tests::tests::evaluate_derive_command_lines_reaches_tabulated_log_expanded_targets -- --exact --nocapture`
+  - `cargo test -q -p cas_solver --test derive_contract_tests derive_pairs_follow_expected_outcomes_simplify_log_representatives -- --exact --nocapture`
+  - `cargo test -q -p cas_solver --test derive_contract_tests derive_pairs_do_not_expect_generic_simplify_for_derived_cases -- --exact --nocapture`
+  - `make engine-fast`: rerun passed after one transient harness flake;
+    `simplify_add_small 435/435`, `contextual_strict_fast 64/64`
+  - `make engine-scorecard`: embedded `1417/1417`, derive contract
+    `derived=383 unsupported=0 not_equivalent=1`, `generic_simplify_expected=0`,
+    derive shadow pressure `50/50`, derive audit `465 cases / 0 flags`,
+    `total_web_substeps=478`, simplify audit `14 cases / 0 flags`, simplify
+    strict `16518/16518 proved-symbolic`, `0 failed`, `0 timeouts`
+  - `git diff --check`
+- decision:
+  - retained as a low-risk didactic bridge improvement: it promotes a minimal
+    composed log-exp route and makes an existing engine simplification visible
+    without adding runtime search or broad matcher cost
+
+## 2026-04-29 - Auto-improvement cycle: finite aggregate embedded coverage
+
+- investment_class: coverage
+- success_condition:
+  - promote a minimal `finite_aggregate` slice into
+    `embedded_equivalence_context_corpus.csv`, keep the new family balanced at
+    the combined-additive target count, and preserve all fast/guardrail lanes
+- primary_dimension:
+  - embedded contextual equivalence family breadth
+- secondary_dimension:
+  - reuse of an already-audited engine/derive bridge for finite sums/products
+- hypothesis:
+  - finite aggregate closed forms already work and are teachable in `derive`,
+    but embedded coverage counted only `finite_telescoping`; adding a small
+    live slice should increase family breadth without runtime code or search
+    risk
+- relevant_lanes:
+  - candidate smoke for each proposed row, `--family finite_aggregate`
+    embedded slice, CLI derive probe, `make engine-fast`, `make
+    engine-scorecard`
+- promotion_target:
+  - `live` embedded equivalence corpus
+- derive_bridge_check:
+  - no new derive row was needed: `finite_aggregate_sum_first_integers_symbolic`
+    and sibling finite aggregate rows already exist in `derive_pairs.csv` and
+    the didactic audit remains clean
+- engine_feedback_check:
+  - no reusable runtime gap was found; this cycle promotes contextual pressure
+    for an existing engine capability rather than adding a new rule
+- retain_if:
+  - `finite_aggregate` passes in isolation, embedded global remains
+    `failed=0`, derive guardrails stay green, and combined-additive family
+    balance does not regress
+- reject_if:
+  - any new wrapper fails, the new family remains under the combined-additive
+    target, or embedded elapsed regresses materially
+- structural_axis:
+  - new embedded family plus wrappers
+    `additive_passthrough_zero/scaled_difference_zero/common_denominator_zero/shifted_quotient_one/reciprocal_shifted_difference_zero`
+    and six `combined_additive_zero` representatives
+- why_this_is_not_a_duplicate:
+  - previous embedded coverage had finite telescoping sums/products, not
+    direct finite aggregate closed forms such as `sum(k,k,1,n)` and
+    `product(k,k,1,n)`
+- discovery_or_promotion:
+  - promoted; the initial six-wrapper probe exposed that the scorecard's
+    combined-additive balance would otherwise leave `finite_aggregate` under
+    target, so five additional minimal combined-additive rows were added
+- if_promoted_why_minimal_representative:
+  - `sum(k,k,1,n) -> n*(n+1)/2` is the smallest finite aggregate bridge; the
+    sibling combined rows use already-curated closed forms to satisfy the
+    existing family-balance metric without introducing a new runtime family
+- local_result:
+  - added 11 embedded corpus rows for `finite_aggregate`
+  - isolated embedded slice: `11/11` passed, `0` failed, `13.12ms`
+  - CLI derive probe for `derive(sum(k,k,1,n), n*(n+1)/2)` kept
+    `Strategy: finite sums/products` with concrete web substeps
+- guardrails:
+  - `make engine-fast`: harness unit tests passed, `simplify_add_small
+    435/435`, `contextual_strict_fast 64/64`
+  - `make engine-scorecard`: embedded `1428/1428`, families `24`, elapsed
+    `3.88s`, avg `2.717ms/case`, combined-additive
+    `collapse_families=24/24`, `families_under_target=0/24`, derive contract
+    `derived=383 unsupported=0 not_equivalent=1`, derive shadow `50/50`,
+    derive audit `465 cases / 0 flags`, simplify audit `14 cases / 0 flags`,
+    simplify strict `16518/16518 proved-symbolic`, `0` failures/timeouts
+  - `git diff --check`
+- decision:
+  - retained as coverage: it expands embedded family breadth from `23` to `24`
+    with no semantic failures, keeps the family-balance guardrail green, and
+    ties the engine corpus to an already strong derive bridge instead of
+    adding duplicate derive cases
+
+## 2026-04-29 - Auto-improvement cycle: number theory embedded coverage
+
+- investment_class: coverage
+- success_condition:
+  - promote `number_theory` into embedded equivalence corpus with wrapper
+    spread plus balanced combined-additive rows; keep fast/guardrail lanes
+    green
+- primary_dimension:
+  - embedded contextual equivalence family breadth
+- secondary_dimension:
+  - engine/derive bridge reuse for binomial-coefficient identities
+- hypothesis:
+  - `choose` identities are stable and already didactic in `derive`, but
+    embedded coverage did not count them as a contextual family; adding a
+    minimal live slice increases family breadth without runtime code
+- relevant_lanes:
+  - candidate smokes, embedded `--family number_theory`, CLI derive probes,
+    `make engine-fast`, `make engine-scorecard`
+- promotion_target:
+  - `live` embedded equivalence corpus
+- derive_bridge_check:
+  - no derive row was added because `choose_numeric_binomial_coefficient`,
+    `choose_numeric_pascal_identity`, and `choose_numeric_symmetry` already
+    exist and audit clean
+- engine_feedback_check:
+  - no reusable runtime gap was found; smokes confirm existing number-theory
+    rewrites survive wrappers
+- retain_if:
+  - `number_theory` passes in isolation, embedded global remains `failed=0`,
+    combined-additive count reaches `6`, and guardrails stay green
+- reject_if:
+  - any wrapper fails/times out, the new family leaves `families_under_target`
+    nonzero, or embedded runtime regresses materially
+- structural_axis:
+  - new embedded family; wrapper spread; orientation via reversed
+    Pascal/symmetry; depth4 via nested-fraction companion
+- why_this_is_not_a_duplicate:
+  - existing embedded coverage had finite aggregates/telescoping but no
+    binomial-coefficient number theory family
+- discovery_or_promotion:
+  - promoted; all candidate smokes passed before edit
+- if_promoted_why_minimal_representative:
+  - Pascal is the smallest non-pure numeric `choose` bridge; symmetry and
+    numeric coefficient complete the three existing derive-audited number
+    theory subcases
+- local_result:
+  - added 11 embedded rows for `number_theory`
+  - isolated slice: `11/11` passed, `8.95ms`
+  - CLI derive probes kept `Strategy: number theory` with Pascal/symmetry
+    substeps
+- guardrails:
+  - `make engine-fast`: harness unit tests passed, `simplify_add_small
+    435/435`, `contextual_strict_fast 64/64`
+  - `make engine-scorecard`: embedded `1439/1439`, families `25`, elapsed
+    `3.64s`, avg `2.530ms/case`, combined `collapse_families=25/25`,
+    `families_under_target=0/25`, derive contract
+    `derived=383 unsupported=0 not_equivalent=1`, shadow `50/50`, derive
+    audit `465 cases / 0 flags`, simplify audit `14 cases / 0 flags`, strict
+    `16518/16518 proved-symbolic`, `0` failures/timeouts
+  - `git diff --check`
+- decision:
+  - retained as coverage: expands embedded breadth from `24` to `25` families
+    and reuses existing derive bridges without adding runtime search or
+    duplicate derive rows
+
+## 2026-04-29 - Auto-improvement cycle: squared passthrough new-family closure
+
+- investment_class: coverage
+- success_condition:
+  - close the `squared_passthrough_zero` family-breadth gap introduced by the
+    recent `finite_aggregate` and `number_theory` embedded promotions while
+    preserving `failed=0`
+- primary_dimension:
+  - sparse wrapper family breadth in embedded contextual equivalence
+- secondary_dimension:
+  - reuse existing `derive` bridges for finite sums/products and binomial
+    coefficients without adding duplicate derive rows
+- hypothesis:
+  - both newly promoted families already pass simpler wrappers and combined
+    additives; a single minimal squared wrapper per missing family should close
+    the structural wrapper gap with negligible runtime cost
+- relevant_lanes:
+  - one-row candidate smokes, isolated embedded family slices,
+    `make engine-fast`, `make engine-scorecard`
+- promotion_target:
+  - `live` embedded equivalence corpus
+- derive_bridge_check:
+  - no derive row was added: `finite_aggregate_sum_first_integers_symbolic` and
+    `choose_numeric_pascal_identity` already have audited target-aware routes,
+    and this cycle only adds contextual squared-wrapper pressure
+- engine_feedback_check:
+  - no runtime gap found; both smokes passed, so this is retained as coverage
+    rather than a rule change
+- retain_if:
+  - both candidate rows pass, affected families pass in isolation, global
+    embedded remains `failed=0`, and `squared_passthrough_zero` no longer has
+    missing families
+- reject_if:
+  - either candidate fails/times out, the global scorecard regresses, or the
+    wrapper remains listed as a sparse family gap
+- structural_axis:
+  - sparse wrapper breadth closure for `squared_passthrough_zero`
+- why_this_is_not_a_duplicate:
+  - `finite_aggregate` and `number_theory` were covered by other wrappers, but
+    had no squared-passthrough representative
+- discovery_or_promotion:
+  - promoted; both candidates passed one-row smoke before edit
+- if_promoted_why_minimal_representative:
+  - exactly one row per missing family closes the scorecard gap without adding
+    near-duplicate variants
+- local_result:
+  - added `finite_aggregate_sum_first_integers_symbolic_squared`
+  - added `choose_numeric_pascal_identity_squared`
+  - candidate smokes: finite aggregate `1/1` passed in `14.80ms` runner,
+    number theory `1/1` passed in `4.25ms` runner
+  - affected slices: `finite_aggregate 12/12`, `number_theory 12/12`
+- guardrails:
+  - `make engine-fast`: harness unit tests passed, `simplify_add_small
+    435/435`, `contextual_strict_fast 64/64`
+  - `make engine-scorecard`: embedded `1441/1441`, families `25`, elapsed
+    `3.66s`, avg `2.540ms/case`, `squared_passthrough_zero` total `74`
+    passed and no longer listed in sparse wrapper gaps, derive contract
+    `derived=383 unsupported=0 not_equivalent=1`, shadow `50/50`, derive
+    audit `465 cases / 0 flags`, simplify audit `14 cases / 0 flags`, strict
+    `16518/16518 proved-symbolic`, `0` failures/timeouts
+- decision:
+  - retained as coverage: closes a concrete wrapper-family breadth gap with two
+    minimal corpus rows and no runtime or derive-code changes
+
+## 2026-04-29 - Auto-improvement cycle: combined additive structural closure
+
+- investment_class: coverage
+- success_condition:
+  - close the remaining combined-additive structural gaps:
+    `depth4_missing=finite_aggregate`,
+    `orientation_missing=finite_aggregate`, and
+    `multi_core_missing=finite_aggregate,number_theory`
+- primary_dimension:
+  - `combined_additive_zero` structural coverage across depth, orientation, and
+    cross-family composition
+- secondary_dimension:
+  - contextual pressure for existing engine/derive bridges in finite
+    sums/products and binomial-coefficient identities
+- hypothesis:
+  - the newly promoted `finite_aggregate` and `number_theory` families already
+    pass their isolated wrappers; one `three_core` row per missing family can
+    close the scorecard axes without new runtime search
+- relevant_lanes:
+  - one-row candidate smokes, affected embedded family slices,
+    `make engine-fast`, `make engine-scorecard`, `make
+    engine-scorecard-pressure`
+- promotion_target:
+  - `live` embedded equivalence corpus
+- derive_bridge_check:
+  - no derive rows were added: both source families already have audited
+    target-aware routes, and this cycle exercises contextual composition rather
+    than new source-to-target reachability
+- engine_feedback_check:
+  - no reusable runtime gap was found; both `three_core` candidates passed
+    smoke before edit
+- retain_if:
+  - affected slices pass, embedded global remains `failed=0`, combined-additive
+    `depth4_families`, `orientation_families`, and `multi_core_families` all
+    reach `25/25`
+- reject_if:
+  - either candidate fails/times out, global guardrail regresses, or any of the
+    targeted structural axes remains under-covered
+- structural_axis:
+  - `three_core` combined additive composition, finite-aggregate reversed
+    orientation, and depth4 nested-fraction companion
+- why_this_is_not_a_duplicate:
+  - prior rows covered the two families under wrappers and simple combined
+    additives, but did not cover the remaining composition axes
+- discovery_or_promotion:
+  - promoted; both candidates passed one-row smoke
+- if_promoted_why_minimal_representative:
+  - exactly two rows close all remaining combined-additive structural gaps:
+    one finite aggregate row covers depth4 + orientation + multi-core, and one
+    number theory row covers its missing multi-core axis
+- local_result:
+  - added
+    `finite_aggregate_sum_reversed_nested_fraction_depth4_factor_three_core_combined_zero`
+  - added
+    `choose_numeric_pascal_identity_nested_fraction_factor_three_core_combined_zero`
+  - candidate smokes: finite aggregate `1/1` passed in `30.51ms` runner;
+    number theory `1/1` passed in `52.99ms` runner
+  - affected slices: `finite_aggregate 13/13`, `number_theory 13/13`
+- guardrails:
+  - `make engine-fast`: harness unit tests passed, `simplify_add_small
+    435/435`, `contextual_strict_fast 64/64`
+  - `make engine-scorecard`: embedded `1443/1443`, families `25`, elapsed
+    `3.74s`, avg `2.592ms/case`, combined `depth4_families=25/25`,
+    `orientation_families=25/25`, `multi_core_families=25/25`, derive contract
+    `derived=383 unsupported=0 not_equivalent=1`, shadow `50/50`, derive
+    audit `465 cases / 0 flags`, simplify audit `14 cases / 0 flags`, strict
+    `16518/16518 proved-symbolic`, `0` failures/timeouts
+  - `make engine-scorecard-pressure`: `simplify_zero_mixed 450/450`,
+    `failed=0`, elapsed `205.90ms`
+- decision:
+  - retained as coverage: all combined-additive structural family axes now
+    report `25/25` with no runtime code changes and no derive duplication
+
+## 2026-04-29 - Auto-improvement cycle: reciprocal depth4 new-family closure
+
+- investment_class: coverage
+- success_condition:
+  - close `reciprocal_shifted_difference_zero` depth4 family breadth from
+    `23/25` to `25/25` without failures
+- primary_dimension:
+  - sparse wrapper shell-depth coverage
+- secondary_dimension:
+  - contextual pressure for existing finite aggregate and number theory
+    engine/derive bridges
+- hypothesis:
+  - recently promoted `finite_aggregate` and `number_theory` have reciprocal
+    rows at depth 3 but not depth 4; adding double-noise reciprocal rows should
+    close the depth gap without runtime code
+- relevant_lanes:
+  - candidate smokes, affected embedded family slices, `make engine-fast`,
+    `make engine-scorecard`
+- promotion_target:
+  - `live` embedded equivalence corpus
+- derive_bridge_check:
+  - no derive rows added: `finite_aggregate_sum_first_integers_symbolic` and
+    `choose_numeric_pascal_identity` already have audited routes; this cycle
+    only deepens contextual wrappers
+- engine_feedback_check:
+  - no runtime gap found; simple-noise candidates passed but remained depth3,
+    while double-noise candidates passed at depth4
+- retain_if:
+  - affected slices pass; embedded global failed=0; reciprocal depth4 family
+    breadth reaches `25/25`
+- reject_if:
+  - candidate fails/times out, depth4 stays under-covered, or embedded runtime
+    regresses materially
+- structural_axis:
+  - `reciprocal_shifted_difference_zero` shell_depth 4 via double fractional
+    noise
+- why_this_is_not_a_duplicate:
+  - prior rows covered these families at reciprocal depth 3, not reciprocal
+    depth 4
+- discovery_or_promotion:
+  - promoted; non-moving simple-noise probes discarded without ledger, depth4
+    probes passed
+- if_promoted_why_minimal_representative:
+  - one depth4 reciprocal row per missing family closes the exact scorecard
+    gap
+- local_result:
+  - added `finite_aggregate_sum_first_integers_symbolic_double_noise_fraction`
+  - added `choose_numeric_pascal_identity_double_noise_fraction`
+  - depth3 probes passed but were not promoted because they did not move the
+    target metric
+  - depth4 candidate smokes: finite aggregate `1/1` passed in `4.77ms`
+    runner; number theory `1/1` passed in `16.56ms` runner
+  - affected slices: `finite_aggregate 14/14`, `number_theory 14/14`
+- guardrails:
+  - `make engine-fast`: harness unit tests passed, `simplify_add_small
+    435/435`, `contextual_strict_fast 64/64`
+  - `make engine-scorecard`: embedded `1445/1445`, families `25`, elapsed
+    `3.92s`, avg `2.713ms/case`, reciprocal
+    `depth4_families=25/25`, derive contract
+    `derived=383 unsupported=0 not_equivalent=1`, shadow `50/50`, derive
+    audit `465 cases / 0 flags`, simplify audit `14 cases / 0 flags`, strict
+    `16518/16518 proved-symbolic`, `0` failures/timeouts
+- decision:
+  - retained as coverage: closes the last reciprocal depth4 family gap with two
+    minimal corpus rows and no runtime/derive-code changes

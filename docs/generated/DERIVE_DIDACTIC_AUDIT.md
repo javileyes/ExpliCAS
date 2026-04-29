@@ -6,9 +6,9 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 ## Summary
 
-- Derived cases audited: `455`
-- Mean top-level step count: `1.05`
-- Total web substeps: `470`
+- Derived cases audited: `465`
+- Mean top-level step count: `1.06`
+- Total web substeps: `478`
 
 ## Flag Summary
 
@@ -22,7 +22,7 @@ No audit flags emitted.
 | `collect` | 6 | 0 | 0 | 0 |
 | `conditional_factor` | 6 | 0 | 0 | 12 |
 | `expand` | 34 | 0 | 0 | 44 |
-| `factor` | 15 | 0 | 0 | 19 |
+| `factor` | 16 | 0 | 0 | 20 |
 | `finite_aggregate` | 17 | 0 | 0 | 34 |
 | `finite_telescoping` | 9 | 0 | 0 | 21 |
 | `fraction_combine` | 13 | 0 | 0 | 0 |
@@ -30,7 +30,7 @@ No audit flags emitted.
 | `fraction_expand` | 10 | 0 | 0 | 8 |
 | `integrate_prep` | 12 | 0 | 0 | 12 |
 | `log_contract` | 19 | 0 | 0 | 2 |
-| `log_exp_inverse` | 3 | 0 | 0 | 4 |
+| `log_exp_inverse` | 5 | 0 | 0 | 6 |
 | `log_expand` | 17 | 0 | 0 | 2 |
 | `log_inverse_power` | 2 | 0 | 0 | 4 |
 | `nested_fraction` | 10 | 0 | 0 | 17 |
@@ -39,11 +39,11 @@ No audit flags emitted.
 | `power_merge` | 9 | 0 | 0 | 2 |
 | `radical_power` | 6 | 0 | 0 | 12 |
 | `rationalize` | 9 | 0 | 0 | 25 |
-| `simplify` | 86 | 0 | 0 | 82 |
+| `simplify` | 89 | 0 | 0 | 83 |
 | `solve_prep` | 8 | 0 | 0 | 21 |
 | `telescoping_fraction` | 15 | 0 | 0 | 30 |
-| `trig_contract` | 45 | 0 | 0 | 23 |
-| `trig_expand` | 85 | 0 | 0 | 57 |
+| `trig_contract` | 47 | 0 | 0 | 25 |
+| `trig_expand` | 87 | 0 | 0 | 59 |
 
 | id | family | web steps | web substeps | flags |
 | --- | --- | ---: | ---: | --- |
@@ -152,6 +152,7 @@ No audit flags emitted.
 | `contract_trig_phase_shift_shifted_terms_with_passthrough` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_phase_shift_sum_to_shifted_sine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_phase_shift_sum_to_shifted_sine_with_passthrough` | `trig_contract` | 1 | 1 | none |
+| `contract_trig_quadruple_angle_sine_expanded_product` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_quintuple_angle_cosine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_quintuple_angle_sine` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_recursive_six_cosine` | `trig_contract` | 1 | 1 | none |
@@ -159,6 +160,7 @@ No audit flags emitted.
 | `contract_trig_sec_reciprocal` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_sec_squared` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_sin_diff_special` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_square_double_angle_sine_cosine_product` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_tan_quotient` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_tan_quotient_after_arg_simplify` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_tangent_angle_difference` | `trig_contract` | 1 | 0 | none |
@@ -306,6 +308,8 @@ No audit flags emitted.
 | `expand_trig_product_to_sum_to_cosine_sum_polynomial` | `expand` | 2 | 2 | none |
 | `expand_trig_product_to_sum_to_sine_difference_mixed_polynomial` | `expand` | 2 | 2 | none |
 | `expand_trig_product_to_sum_to_sine_difference_mixed_polynomial_with_passthrough` | `expand` | 2 | 2 | none |
+| `expand_trig_quadruple_angle_cosine` | `trig_expand` | 1 | 1 | none |
+| `expand_trig_quadruple_angle_sine_expanded_product` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_quintuple_angle_cosine` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_quintuple_angle_sine` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_recursive_six_cosine` | `trig_expand` | 1 | 1 | none |
@@ -346,6 +350,7 @@ No audit flags emitted.
 | `factor_common_factor_sum_three_terms` | `factor` | 1 | 1 | none |
 | `factor_difference_cubes` | `factor` | 1 | 1 | none |
 | `factor_difference_squares` | `factor` | 1 | 1 | none |
+| `factor_full_cyclotomic_sixth_power_difference` | `factor` | 1 | 1 | none |
 | `factor_geometric_difference_power_6` | `factor` | 1 | 1 | none |
 | `factor_out_cube_with_division_septic` | `conditional_factor` | 1 | 2 | none |
 | `factor_out_square_with_division_quartic` | `conditional_factor` | 1 | 2 | none |
@@ -427,9 +432,12 @@ No audit flags emitted.
 | `integrate_prep_morrie_symbolic_scale` | `integrate_prep` | 1 | 1 | none |
 | `inverse_hyperbolic_atanh_square_ratio_log` | `simplify` | 1 | 1 | none |
 | `inverse_tan_identity` | `simplify` | 1 | 0 | none |
+| `inverse_trig_arcsin_arccos_complement_sum` | `simplify` | 1 | 1 | none |
 | `inverse_trig_composition_sin_arcsin` | `simplify` | 1 | 2 | none |
 | `inverse_trig_special_value_arctan_sqrt_three` | `simplify` | 1 | 0 | none |
 | `log_exp_inverse_ln_exp` | `log_exp_inverse` | 1 | 0 | none |
+| `log_exp_inverse_ln_exp_power` | `log_exp_inverse` | 2 | 1 | none |
+| `log_exp_inverse_ln_exp_product` | `log_exp_inverse` | 1 | 1 | none |
 | `log_exp_inverse_log10_power_alias` | `log_exp_inverse` | 1 | 2 | none |
 | `log_exp_inverse_natural_log_power_alias` | `log_exp_inverse` | 1 | 2 | none |
 | `log_inverse_power_tower` | `log_inverse_power` | 2 | 2 | none |
@@ -470,8 +478,10 @@ No audit flags emitted.
 | `rationalize_symbolic_linear_root_alt_var` | `rationalize` | 2 | 4 | none |
 | `rationalize_symbolic_linear_root_plus` | `rationalize` | 1 | 3 | none |
 | `rationalize_then_cancel_to_zero` | `rationalize` | 2 | 3 | none |
+| `reciprocal_trig_cos_sec_product_to_one` | `simplify` | 1 | 0 | none |
 | `reciprocal_trig_product_to_one` | `simplify` | 1 | 0 | none |
 | `reciprocal_trig_product_to_one_with_passthrough` | `simplify` | 1 | 0 | none |
+| `reciprocal_trig_sin_csc_product_to_one` | `simplify` | 1 | 0 | none |
 | `reciprocal_trig_special_value_sec_pi_fourth` | `simplify` | 1 | 0 | none |
 | `sec_tan_pythagorean_to_one` | `simplify` | 1 | 0 | none |
 | `simplify_sqrt_arithmetic_difference` | `simplify` | 1 | 1 | none |
@@ -1589,8 +1599,8 @@ Steps (Aggressive Mode):
    After: 1 / (n * (n + 1))
 Result: 1 / (n * (n + 1))
 ℹ️ Requires:
-  • n ≠ 0
   • n + 1 ≠ 0
+  • n ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1624,8 +1634,8 @@ Steps (Aggressive Mode):
    After: 1 / (x^2 - 1)
 Result: 1 / (x^(2) - 1)
 ℹ️ Requires:
-  • x - 1 ≠ 0
   • x + 1 ≠ 0
+  • x - 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1659,8 +1669,8 @@ Steps (Aggressive Mode):
    After: 1 / (n * (n + 2))
 Result: 1 / (n * (n + 2))
 ℹ️ Requires:
-  • n ≠ 0
   • n + 2 ≠ 0
+  • n ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1694,8 +1704,8 @@ Steps (Aggressive Mode):
    After: 1 / (n * (n - 2))
 Result: 1 / (n * (n - 2))
 ℹ️ Requires:
-  • n ≠ 0
   • n - 2 ≠ 0
+  • n ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1763,8 +1773,8 @@ Steps (Aggressive Mode):
    After: 1 / (x^2 - a^2)
 Result: 1 / (x^(2) - a^(2))
 ℹ️ Requires:
-  • a - x ≠ 0
   • a + x ≠ 0
+  • a - x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2431,8 +2441,8 @@ Steps (Aggressive Mode):
    After: log(b, c)
 Result: log(b, c)
 ℹ️ Requires:
-  • c > 0
   • b > 0
+  • c > 0
 ```
 
 ### Web / JSON Steps
@@ -2505,8 +2515,8 @@ Steps (Aggressive Mode):
    After: ln(x / y)
 Result: ln(x / y)
 ℹ️ Requires:
-  • y ≠ 0
   • x / y > 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2538,8 +2548,8 @@ Steps (Aggressive Mode):
    After: ln(x^3 / y^2)
 Result: ln(x^(3) / y^(2))
 ℹ️ Requires:
-  • y ≠ 0
   • x^3 / y^2 > 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2636,8 +2646,8 @@ Steps (Aggressive Mode):
    After: log(2, x^3 / y^2)
 Result: log(2, x^(3) / y^(2))
 ℹ️ Requires:
-  • y ≠ 0
   • x^3 / y^2 > 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2702,8 +2712,8 @@ Steps (Aggressive Mode):
 Result: log(b, x^(2) * y^(3) / (t * z^(2)))
 ℹ️ Requires:
   • b > 0
-  • x^2 * y^3 / (t * z^2) > 0
   • t ≠ 0
+  • x^2 * y^3 / (t * z^2) > 0
   • z ≠ 0
 ```
 
@@ -2800,8 +2810,8 @@ Steps (Aggressive Mode):
    After: ln(y * x^2 / (t * z))
 Result: ln(y * x^(2) / (t * z))
 ℹ️ Requires:
-  • y * x^2 / (t * z) > 0
   • t ≠ 0
+  • y * x^2 / (t * z) > 0
   • z ≠ 0
 ```
 
@@ -2834,8 +2844,8 @@ Steps (Aggressive Mode):
    After: ln(x * y / z)
 Result: ln(x * y / z)
 ℹ️ Requires:
-  • z ≠ 0
   • x * y / z > 0
+  • z ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -3855,6 +3865,37 @@ Result: sin(pi / 4 + x) * sqrt(2) + a
    - substeps:
      1. `Aplicar la identidad de desfase al bloque que cambia`
 
+## contract_trig_quadruple_angle_sine_expanded_product (trig_contract)
+
+- Source: `4*sin(x)*cos(x)^3-4*sin(x)^3*cos(x)`
+- Target: `sin(4*x)`
+- Result: `sin(4 * x)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: 4 * sin(x) * cos(x)^3 - 4 * cos(x) * sin(x)^3
+Target: sin(4 * x)
+Strategy: contract trig
+Steps (Aggressive Mode):
+1. Expand or contract sine quadruple-angle form  [Quadruple Angle Expansion]
+   Before: 4 * sin(x) * cos(x)^(3) - 4 * cos(x) * sin(x)^(3)
+   Cambio local: 4 * sin(x) * cos(x)^(3) - 4 * cos(x) * sin(x)^(3) -> sin(4 * x)
+   After: sin(4 * x)
+Result: sin(4 * x)
+```
+
+### Web / JSON Steps
+
+1. `Reescribir ángulo cuádruple`
+   - before: `4 · sin(x) · cos(x)^3 - 4 · cos(x) · sin(x)^3`
+   - after: `sin(4 · x)`
+   - substeps:
+     1. `Usar sin(4u) = 4 · sin(u) · cos(u)^3 - 4 · sin(u)^3 · cos(u), con u = x`
+
 ## contract_trig_quintuple_angle_cosine (trig_contract)
 
 - Source: `16*cos(x)^5-20*cos(x)^3+5*cos(x)`
@@ -4068,6 +4109,37 @@ Result: 2 * sin(x) * cos(2 * x)
    - before: `sin(3 · x) - sin(x)`
    - after: `2 · sin(x) · cos(2 · x)`
    - substeps: none
+
+## contract_trig_square_double_angle_sine_cosine_product (trig_contract)
+
+- Source: `sin(x)^2*cos(x)^2`
+- Target: `sin(2*x)^2/4`
+- Result: `sin(2 * x)^2 / 4`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sin(x)^2 * cos(x)^2
+Target: sin(2 * x)^2 / 4
+Strategy: contract trig
+Steps (Aggressive Mode):
+1. Recognize sin²(u)·cos²(u) as sin²(2u)/4  [Square Double Angle Contraction]
+   Before: sin(x)^(2) * cos(x)^(2)
+   Cambio local: sin(x)^(2) * cos(x)^(2) -> sin(2 * x)^(2) / 4
+   After: sin(2 * x)^2 / 4
+Result: sin(2 * x)^(2) / 4
+```
+
+### Web / JSON Steps
+
+1. `Contraer cuadrado de ángulo doble`
+   - before: `sin(x)^2 · cos(x)^2`
+   - after: `(sin(2 · x))^2/4`
+   - substeps:
+     1. `Usar sin²(u)·cos²(u) = sin²(2u) / 4, con u = x`
 
 ## contract_trig_tan_quotient (trig_contract)
 
@@ -4953,8 +5025,8 @@ Steps (Aggressive Mode):
    After: a / z + b / x + c / y + d / (x * y * z)
 Result: a / z + b / x + c / y + d / (x * y * z)
 ℹ️ Requires:
-  • y ≠ 0
   • x ≠ 0
+  • y ≠ 0
   • z ≠ 0
 ```
 
@@ -4988,8 +5060,8 @@ Steps (Aggressive Mode):
 Result: a / (y * z) + b / (x * z) + c / (x * y)
 ℹ️ Requires:
   • x ≠ 0
-  • z ≠ 0
   • y ≠ 0
+  • z ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5021,8 +5093,8 @@ Steps (Aggressive Mode):
    After: a / z + b / y + c / x + d
 Result: a / z + b / y + c / x + d
 ℹ️ Requires:
-  • y ≠ 0
   • x ≠ 0
+  • y ≠ 0
   • z ≠ 0
 ```
 
@@ -5121,8 +5193,8 @@ Steps (Aggressive Mode):
    After: a / x + b / y
 Result: a / x + b / y
 ℹ️ Requires:
-  • y ≠ 0
   • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5708,8 +5780,8 @@ Steps (Aggressive Mode):
    After: log(a, c) * log(b, a)
 Result: log(a, c) * log(b, a)
 ℹ️ Requires:
-  • b > 0
   • a > 0
+  • b > 0
   • c > 0
 ```
 
@@ -5749,8 +5821,8 @@ Steps (Aggressive Mode):
    After: ln(x) / ln(2)
 Result: ln(x) / ln(2)
 ℹ️ Requires:
-  • x > 0
   • ln(2) ≠ 0
+  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -5859,11 +5931,11 @@ Steps (Aggressive Mode):
    After: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
 Result: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
 ℹ️ Requires:
-  • x > 0
-  • z > 0
-  • t > 0
-  • y > 0
   • b > 0
+  • t > 0
+  • x > 0
+  • y > 0
+  • z > 0
 ```
 
 ### Web / JSON Steps
@@ -5903,10 +5975,10 @@ Steps (Aggressive Mode):
    ℹ️ Requires: y > 0
 Result: log(b, x) + log(b, y) - log(b, z)
 ℹ️ Requires:
-  • y > 0
-  • z > 0
   • b > 0
   • x > 0
+  • y > 0
+  • z > 0
 ```
 
 ### Web / JSON Steps
@@ -5971,8 +6043,8 @@ Steps (Aggressive Mode):
    After: 2 * ln(|x|) + 2 * ln(|y|) + a
 Result: 2 * ln(|x|) + 2 * ln(|y|) + a
 ℹ️ Requires:
-  • y ≠ 0
   • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -6005,8 +6077,8 @@ Steps (Aggressive Mode):
 Result: 2 * log(b, x) + 2 * log(b, y)
 ℹ️ Requires:
   • b > 0
-  • y > 0
   • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -6039,8 +6111,8 @@ Steps (Aggressive Mode):
 Result: 2 * log(b, x) + 2 * log(b, y) + a
 ℹ️ Requires:
   • b > 0
-  • y > 0
   • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -6072,8 +6144,8 @@ Steps (Aggressive Mode):
    After: ln(x^2) + ln(y^2)
 Result: ln(x^(2)) + ln(y^(2))
 ℹ️ Requires:
-  • y ≠ 0
   • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -6148,10 +6220,10 @@ Steps (Aggressive Mode):
    After: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
 Result: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
 ℹ️ Requires:
-  • z > 0
-  • y > 0
-  • x ≠ 0
   • t > 0
+  • x ≠ 0
+  • y > 0
+  • z > 0
 ```
 
 ### Web / JSON Steps
@@ -6189,8 +6261,8 @@ Steps (Aggressive Mode):
    ℹ️ Requires: y > 0
 Result: ln(x) + ln(y)
 ℹ️ Requires:
-  • y > 0
   • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -6226,9 +6298,9 @@ Steps (Aggressive Mode):
    ℹ️ Requires: y > 0
 Result: ln(x) + ln(y) - ln(z)
 ℹ️ Requires:
-  • z > 0
-  • y > 0
   • x > 0
+  • y > 0
+  • z > 0
 ```
 
 ### Web / JSON Steps
@@ -6266,8 +6338,8 @@ Steps (Aggressive Mode):
    After: ln(y) + ln(x) / 2
 Result: ln(y) + ln(x) / 2
 ℹ️ Requires:
-  • y > 0
   • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -6305,8 +6377,8 @@ Steps (Aggressive Mode):
    ℹ️ Requires: y > 0
 Result: ln(x) - ln(y)
 ℹ️ Requires:
-  • y > 0
   • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -8913,6 +8985,68 @@ Result: -2 * sin(x) + 4 * sin(x) * cos(x)^(2) + a
    - substeps:
      1. `Usar sin(3u) = 3 · sin(u) - 4 · sin(u)^3, con u = x`
 
+## expand_trig_quadruple_angle_cosine (trig_expand)
+
+- Source: `cos(4*x)`
+- Target: `8*cos(x)^4-8*cos(x)^2+1`
+- Result: `-8 * cos(x)^2 + 8 * cos(x)^4 + 1`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: cos(4 * x)
+Target: -8 * cos(x)^2 + 8 * cos(x)^4 + 1
+Strategy: expand trig
+Steps (Aggressive Mode):
+1. Expand or contract cosine quadruple-angle form  [Quadruple Angle Expansion]
+   Before: cos(4 * x)
+   Cambio local: cos(4 * x) -> -8 * cos(x)^(2) + 8 * cos(x)^(4) + 1
+   After: -8 * cos(x)^2 + 8 * cos(x)^4 + 1
+Result: -8 * cos(x)^(2) + 8 * cos(x)^(4) + 1
+```
+
+### Web / JSON Steps
+
+1. `Reescribir ángulo cuádruple`
+   - before: `cos(4 · x)`
+   - after: `8 · cos(x)^4 - 8 · cos(x)^2 + 1`
+   - substeps:
+     1. `Usar cos(4u) = 8 · cos(u)^4 - 8 · cos(u)^2 + 1, con u = x`
+
+## expand_trig_quadruple_angle_sine_expanded_product (trig_expand)
+
+- Source: `sin(4*x)`
+- Target: `4*sin(x)*cos(x)^3-4*sin(x)^3*cos(x)`
+- Result: `4 * sin(x) * cos(x)^3 - 4 * cos(x) * sin(x)^3`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sin(4 * x)
+Target: 4 * sin(x) * cos(x)^3 - 4 * cos(x) * sin(x)^3
+Strategy: expand trig
+Steps (Aggressive Mode):
+1. Expand or contract sine quadruple-angle form  [Quadruple Angle Expansion]
+   Before: sin(4 * x)
+   Cambio local: sin(4 * x) -> 4 * sin(x) * cos(x)^(3) - 4 * cos(x) * sin(x)^(3)
+   After: 4 * sin(x) * cos(x)^3 - 4 * cos(x) * sin(x)^3
+Result: 4 * sin(x) * cos(x)^(3) - 4 * cos(x) * sin(x)^(3)
+```
+
+### Web / JSON Steps
+
+1. `Reescribir ángulo cuádruple`
+   - before: `sin(4 · x)`
+   - after: `4 · sin(x) · cos(x)^3 - 4 · cos(x) · sin(x)^3`
+   - substeps:
+     1. `Usar sin(4u) = 4 · sin(u) · cos(u)^3 - 4 · sin(u)^3 · cos(u), con u = x`
+
 ## expand_trig_quintuple_angle_cosine (trig_expand)
 
 - Source: `cos(5*x)`
@@ -10150,6 +10284,37 @@ Result: (a + b) * (a - b)
    - substeps:
      1. `Aquí la diferencia de cuadrados usa bases a y b`
 
+## factor_full_cyclotomic_sixth_power_difference (factor)
+
+- Source: `x^6 - 1`
+- Target: `(x^2+x+1)*(x^2-x+1)*(x+1)*(x-1)`
+- Result: `(x + 1) * (x^2 - x + 1) * (x^2 + x + 1) * (x - 1)`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: x^6 - 1
+Target: (x + 1) * (x^2 - x + 1) * (x^2 + x + 1) * (x - 1)
+Strategy: factor
+Steps (Aggressive Mode):
+1. Factorization  [Factorization]
+   Before: x^(6) - 1
+   Cambio local: x^(6) - 1 -> (x + 1) * (x^(2) - x + 1) * (x^(2) + x + 1) * (x - 1)
+   After: (x + 1) * (x^2 - x + 1) * (x^2 + x + 1) * (x - 1)
+Result: (x + 1) * (x^(2) - x + 1) * (x^(2) + x + 1) * (x - 1)
+```
+
+### Web / JSON Steps
+
+1. `Factorizar`
+   - before: `x^6 - 1`
+   - after: `(x + 1) · (x^2 - x + 1) · (x^2 + x + 1) · (x - 1)`
+   - substeps:
+     1. `Aquí la diferencia de sexto grado se factoriza completamente con base x`
+
 ## factor_geometric_difference_power_6 (factor)
 
 - Source: `x^6 - 1`
@@ -10203,8 +10368,8 @@ Steps (Aggressive Mode):
    After: x^3 * (d / x^3 + a * x^4 + b * x^2 + c)
 Result: x^(3) * (d / x^(3) + a * x^(4) + b * x^(2) + c)
 ℹ️ Requires:
-  • x^3 ≠ 0
   • x ≠ 0
+  • x^3 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11409,9 +11574,9 @@ Steps (Aggressive Mode):
    After: ((1 / (a * m + b + c) - 1 / (a * n + a + b + c)))/a
 Result: 1 / a * (1 / (a * m + b + c) - 1 / (a * n + a + b + c))
 ℹ️ Requires:
+  • a * m + b + c ≠ 0
   • a * n + a + b + c ≠ 0
   • a ≠ 0
-  • a * m + b + c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11446,8 +11611,8 @@ Steps (Aggressive Mode):
 Result: 1 / a * (1 / (a * m + b) - 1 / (a * n + a + b))
 ℹ️ Requires:
   • a * m + b ≠ 0
-  • a ≠ 0
   • a * n + a + b ≠ 0
+  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11515,8 +11680,8 @@ Steps (Aggressive Mode):
    After: 1 / (a + m) - 1 / (a + n + 1)
 Result: 1 / (a + m) - 1 / (a + n + 1)
 ℹ️ Requires:
-  • a + n + 1 ≠ 0
   • a + m ≠ 0
+  • a + n + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12736,6 +12901,37 @@ Result: pi / 2
    - after: `pi/2`
    - substeps: none
 
+## inverse_trig_arcsin_arccos_complement_sum (simplify)
+
+- Source: `arcsin(x)+arccos(x)`
+- Target: `pi/2`
+- Result: `pi / 2`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: arcsin(x) + arccos(x)
+Target: pi / 2
+Strategy: rewrite inverse trigs
+Steps (Aggressive Mode):
+1. arcsin(x) + arccos(x) = π/2  [Inverse Trig Sum Identity]
+   Before: arcsin(x) + arccos(x)
+   Cambio local: arcsin(x) + arccos(x) -> pi / 2
+   After: pi / 2
+Result: pi / 2
+```
+
+### Web / JSON Steps
+
+1. `Aplicar identidad complementaria arcsin/arccos`
+   - before: `arcsin(x) + arccos(x)`
+   - after: `pi/2`
+   - substeps:
+     1. `Aquí arcsin(x) y arccos(x) suman pi/2`
+
 ## inverse_trig_composition_sin_arcsin (simplify)
 
 - Source: `sin(arcsin(x))`
@@ -12827,6 +13023,78 @@ Result: x
    - before: `ln(e^x)`
    - after: `x`
    - substeps: none
+
+## log_exp_inverse_ln_exp_power (log_exp_inverse)
+
+- Source: `ln(exp(x)^2)`
+- Target: `2*x`
+- Result: `2 * x`
+- Web step count: `2`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: ln(e^x^2)
+Target: 2 * x
+Strategy: rewrite exponentials
+Steps (Aggressive Mode):
+1. Multiply exponents  [Power of a Power]
+   Before: ln(e^(x)^(2))
+   Cambio local: e^(x)^(2) -> exp(2 * x)
+   After: ln(exp(2 * x))
+2. Cancel ln(exp(u)) to u  [Log-Exp Inverse]
+   Before: ln(exp(2 * x))
+   Cambio local: ln(exp(2 * x)) -> 2 * x
+   After: 2 * x
+Result: 2 * x
+```
+
+### Web / JSON Steps
+
+1. `Multiplicar exponentes`
+   - before: `ln(e^x^2)`
+   - after: `ln(e^(2 · x))`
+   - substeps:
+     1. `Usar (e^A)^n = e^(n·A)`
+2. `Cancelar logaritmo natural y exponencial inversos`
+   - before: `ln(e^(2 · x))`
+   - after: `2 · x`
+   - substeps: none
+
+## log_exp_inverse_ln_exp_product (log_exp_inverse)
+
+- Source: `ln(exp(x)*exp(y))`
+- Target: `x+y`
+- Result: `x + y`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: ln(e^x * e^y)
+Target: x + y
+Strategy: expand_log
+Steps (Aggressive Mode):
+1. Log expansion  [expand_log]
+   Before: ln(e^(x) * e^(y))
+   Cambio local: ln(e^(x) * e^(y)) -> x + y
+   After: x + y
+   ℹ️ Requires: e^x > 0
+   ℹ️ Requires: e^y > 0
+Result: x + y
+```
+
+### Web / JSON Steps
+
+1. `Expandir logaritmos`
+   - before: `ln(e^x · e^y)`
+   - after: `x + y`
+   - substeps:
+     1. `Cancelar cada logaritmo natural con su exponencial`
 
 ## log_exp_inverse_log10_power_alias (log_exp_inverse)
 
@@ -13336,8 +13604,8 @@ Steps (Aggressive Mode):
    After: a / (c / d + b)
 Result: a / (c / d + b)
 ℹ️ Requires:
-  • d ≠ 0
   • c / d + b ≠ 0
+  • d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13968,8 +14236,8 @@ Steps (Aggressive Mode):
    After: (sqrt(x) - 1) / (x - 1)
 Result: (sqrt(x) - 1) / (x - 1)
 ℹ️ Requires:
-  • x ≥ 0
   • x - 1 ≠ 0
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -14003,8 +14271,8 @@ Steps (Aggressive Mode):
    After: (sqrt(x) + 2) / (x - 4)
 Result: (sqrt(x) + 2) / (x - 4)
 ℹ️ Requires:
-  • x ≥ 0
   • x - 4 ≠ 0
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -14044,8 +14312,8 @@ Steps (Aggressive Mode):
    ℹ️ Requires: x > 0
 Result: (sqrt(x) + a) / (x - a^(2))
 ℹ️ Requires:
-  • x ≥ 0
   • a^2 - x ≠ 0
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -14090,8 +14358,8 @@ Steps (Aggressive Mode):
    ℹ️ Requires: y > 0
 Result: (sqrt(y) + a) / (y - a^(2))
 ℹ️ Requires:
-  • y ≥ 0
   • a^2 - y ≠ 0
+  • y ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -14130,8 +14398,8 @@ Steps (Aggressive Mode):
    After: (sqrt(x) - a) / (x - a^2)
 Result: (sqrt(x) - a) / (x - a^(2))
 ℹ️ Requires:
-  • x ≥ 0
   • a^2 - x ≠ 0
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -14184,6 +14452,36 @@ Result: 0
    - after: `0`
    - substeps: none
 
+## reciprocal_trig_cos_sec_product_to_one (simplify)
+
+- Source: `cos(x)*sec(x)`
+- Target: `1`
+- Result: `1`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: cos(x) * sec(x)
+Target: 1
+Strategy: rewrite trigs
+Steps (Aggressive Mode):
+1. Recognize cos(u) · sec(u) = 1  [Reciprocal Product Identity]
+   Before: cos(x) * sec(x)
+   Cambio local: cos(x) * sec(x) -> 1
+   After: 1
+Result: 1
+```
+
+### Web / JSON Steps
+
+1. `Reconocer coseno por secante como 1`
+   - before: `cos(x) · sec(x)`
+   - after: `1`
+   - substeps: none
+
 ## reciprocal_trig_product_to_one (simplify)
 
 - Source: `tan(x)*cot(x)`
@@ -14209,7 +14507,7 @@ Result: 1
 
 ### Web / JSON Steps
 
-1. `Cancelar funciones trigonométricas recíprocas`
+1. `Reconocer tangente por cotangente como 1`
    - before: `tan(x) · cot(x)`
    - after: `1`
    - substeps: none
@@ -14239,9 +14537,39 @@ Result: a + 1
 
 ### Web / JSON Steps
 
-1. `Cancelar funciones trigonométricas recíprocas`
+1. `Reconocer tangente por cotangente como 1`
    - before: `tan(x) · cot(x) + a`
    - after: `a + 1`
+   - substeps: none
+
+## reciprocal_trig_sin_csc_product_to_one (simplify)
+
+- Source: `sin(x)*csc(x)`
+- Target: `1`
+- Result: `1`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sin(x) * csc(x)
+Target: 1
+Strategy: rewrite trigs
+Steps (Aggressive Mode):
+1. Recognize sin(u) · csc(u) = 1  [Reciprocal Product Identity]
+   Before: sin(x) * csc(x)
+   Cambio local: sin(x) * csc(x) -> 1
+   After: 1
+Result: 1
+```
+
+### Web / JSON Steps
+
+1. `Reconocer seno por cosecante como 1`
+   - before: `sin(x) · csc(x)`
+   - after: `1`
    - substeps: none
 
 ## reciprocal_trig_special_value_sec_pi_fourth (simplify)
@@ -14943,9 +15271,9 @@ Steps (Aggressive Mode):
    After: ((1 / (a * n + b) - 1 / (a * n + c)))/((c - b))
 Result: 1 / (c - b) * (1 / (a * n + b) - 1 / (a * n + c))
 ℹ️ Requires:
-  • b - c ≠ 0
   • a * n + b ≠ 0
   • a * n + c ≠ 0
+  • b - c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15019,8 +15347,8 @@ Steps (Aggressive Mode):
    After: ((1 / (x - 1) - 1 / (x + 1)))/2
 Result: 1 / 2 * (1 / (x - 1) - 1 / (x + 1))
 ℹ️ Requires:
-  • x - 1 ≠ 0
   • x + 1 ≠ 0
+  • x - 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15054,8 +15382,8 @@ Steps (Aggressive Mode):
    After: ((1 / n - 1 / (n + 2)))/2
 Result: 1 / 2 * (1 / n - 1 / (n + 2))
 ℹ️ Requires:
-  • n ≠ 0
   • n + 2 ≠ 0
+  • n ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15124,8 +15452,8 @@ Steps (Aggressive Mode):
    After: ((1 / (x - a) - 1 / (a + x)))/(2 * a)
 Result: 1 / (2 * a) * (1 / (x - a) - 1 / (a + x))
 ℹ️ Requires:
-  • a - x ≠ 0
   • a + x ≠ 0
+  • a - x ≠ 0
   • a ≠ 0
 ```
 

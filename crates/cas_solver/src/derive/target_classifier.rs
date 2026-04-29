@@ -6,6 +6,7 @@ use cas_math::expr_extract::extract_i64_multiplier_and_base_factors;
 use cas_math::expr_nary::build_balanced_mul;
 use cas_math::inverse_trig_composition_support::{
     try_plan_inverse_atan_reciprocal_add_expr, try_plan_inverse_trig_composition_expr,
+    try_plan_inverse_trig_sum_add_expr,
 };
 use cas_math::summation_support::{
     try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation,
@@ -18,8 +19,8 @@ use super::{
     looks_like_telescoping_fraction_target, looks_rationalizable_source,
     matches_exact_hyperbolic_sum_to_product_target, phase_shift_target_match,
     should_try_trig_planner_before_simplify, strong_target_match,
-    try_build_combined_fraction_from_fold_add, try_rewrite_collect_monomial_target_aware,
-    try_rewrite_combine_like_terms_target_aware,
+    try_build_combined_fraction_from_fold_add, try_plan_log_exp_power_inverse_target_aware,
+    try_rewrite_collect_monomial_target_aware, try_rewrite_combine_like_terms_target_aware,
     try_rewrite_consecutive_factorial_ratio_target_aware,
     try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
     try_rewrite_exponential_sum_diff_target_aware, try_rewrite_fraction_combination_target_aware,
@@ -695,6 +696,7 @@ fn detect_exponential_rewritten_target(
     target_expr: ExprId,
 ) -> bool {
     try_rewrite_exponential_sum_diff_target_aware(ctx, source_expr, target_expr).is_some()
+        || try_plan_log_exp_power_inverse_target_aware(ctx, source_expr, target_expr).is_some()
 }
 
 fn detect_fraction_cancelled_target(
@@ -900,6 +902,16 @@ fn detect_inverse_trig_rewritten_target(
         }
         let simplified = run_default_simplify(ctx, plan.rewritten);
         if simplified != plan.rewritten && strong_target_match(ctx, simplified, target_expr) {
+            return true;
+        }
+    }
+
+    if let Some(plan) = try_plan_inverse_trig_sum_add_expr(ctx, source_expr) {
+        if strong_target_match(ctx, plan.final_result, target_expr) {
+            return true;
+        }
+        let simplified = run_default_simplify(ctx, plan.final_result);
+        if simplified != plan.final_result && strong_target_match(ctx, simplified, target_expr) {
             return true;
         }
     }
@@ -1743,6 +1755,7 @@ mod tests {
             ("cos(arccos(x))", "x"),
             ("tan(arctan(x))", "x"),
             ("asin(x/sqrt(x^2 + 1))", "arctan(x)"),
+            ("arcsin(x) + arccos(x)", "pi/2"),
             ("sin(arctan(x))", "x/sqrt(1+x^2)"),
             ("cos(arctan(x))", "1/sqrt(1+x^2)"),
             ("cos(arcsin(x))", "sqrt(1-x^2)"),
@@ -1811,6 +1824,8 @@ mod tests {
             ("tan(x/2)", "sin(x)/(1+cos(x))"),
             ("tan(x/2)", "(1-cos(x))/sin(x)"),
             ("sin(2*a*x)", "2*sin(a*x)*cos(a*x)"),
+            ("sin(4*x)", "4*sin(x)*cos(x)^3 - 4*sin(x)^3*cos(x)"),
+            ("cos(4*x)", "8*cos(x)^4 - 8*cos(x)^2 + 1"),
             ("sin(x)^4", "(3-4*cos(2*x)+cos(4*x))/8"),
             ("cos(x)^4", "(3+4*cos(2*x)+cos(4*x))/8"),
             ("sin(x)^2*cos(x)^2", "(1-cos(4*x))/8"),
@@ -1863,6 +1878,8 @@ mod tests {
             ("1/cos(x)", "sec(x)"),
             ("1 + tan(x)^2", "sec(x)^2"),
             ("2*sin(a*x)*cos(a*x)", "sin(2*a*x)"),
+            ("sin(x)^2*cos(x)^2", "sin(2*x)^2/4"),
+            ("4*sin(x)*cos(x)^3 - 4*sin(x)^3*cos(x)", "sin(4*x)"),
             ("(1-cos(2*a*x))/sin(2*a*x)", "tan(a*x)"),
             ("sin(x)+cos(x)", "sqrt(2)*sin(x+pi/4)"),
         ];

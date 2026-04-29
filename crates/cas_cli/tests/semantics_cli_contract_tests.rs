@@ -6190,10 +6190,7 @@ fn derive_reciprocal_trig_product_with_passthrough_uses_named_trig_rewrite() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(
-        steps[0]["rule"],
-        "Cancelar funciones trigonométricas recíprocas"
-    );
+    assert_eq!(steps[0]["rule"], "Reconocer tangente por cotangente como 1");
 }
 
 #[test]

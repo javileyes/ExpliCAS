@@ -1628,6 +1628,31 @@ def parse_derive_didactic(output: str) -> dict[str, Any]:
     }
 
 
+def add_unified_benchmark_rate_metrics(metrics: dict[str, Any]) -> None:
+    total = metrics.get("total_combos", metrics.get("combos", 0))
+    skipped = metrics.get("skipped", 0)
+    timeouts = metrics.get("timeouts", 0)
+    effective = max(0, total - skipped - timeouts)
+    nf_convergent = metrics.get("nf_convergent", 0)
+    proved_symbolic = metrics.get("proved_symbolic", 0)
+    numeric_only = metrics.get("numeric_only", 0)
+    inconclusive = metrics.get("inconclusive", 0)
+    symbolic_closure = nf_convergent + proved_symbolic
+
+    def rate(count: int) -> float:
+        return round(count * 100.0 / effective, 1) if effective else 0.0
+
+    metrics["effective_combos"] = effective
+    metrics["symbolic_closure"] = symbolic_closure
+    metrics["symbolic_closure_rate_percent"] = rate(symbolic_closure)
+    metrics["nf_rate_percent"] = rate(nf_convergent)
+    metrics["proved_symbolic_rate_percent"] = rate(proved_symbolic)
+    metrics["numeric_only_rate_percent"] = rate(numeric_only)
+    metrics["inconclusive_rate_percent"] = rate(inconclusive)
+    metrics["normalization_gap"] = proved_symbolic
+    metrics["normalization_gap_rate_percent"] = rate(proved_symbolic)
+
+
 def parse_unified_benchmark(output: str) -> dict[str, Any]:
     lines = output.splitlines()
     total_line = next((line for line in lines if "║ TOTAL │" in line), None)
@@ -1679,6 +1704,7 @@ def parse_unified_benchmark(output: str) -> dict[str, Any]:
             "cycles": leading_int(cols[8]),
             "skipped": leading_int(cols[9]),
         }
+        add_unified_benchmark_rate_metrics(suites[suite_key])
 
     proved_breakdown = re.search(
         r"🔢 Proved-symbolic breakdown: quotient (\d+) \| diff (\d+) \| composed (\d+)",
@@ -1704,6 +1730,7 @@ def parse_unified_benchmark(output: str) -> dict[str, Any]:
             }
 
     metrics["suite_rows"] = suites
+    add_unified_benchmark_rate_metrics(metrics)
     return metrics
 
 
@@ -1746,6 +1773,16 @@ def parse_cargo_test_basic(output: str) -> dict[str, Any]:
         metrics["timeouts"] = int(timeout_line.group(1))
     else:
         metrics["timeouts"] = 0
+
+    if "nf_convergent" in metrics:
+        metrics["total_combos"] = (
+            metrics["nf_convergent"]
+            + metrics["proved_symbolic"]
+            + metrics["numeric_only"]
+            + metrics["inconclusive"]
+            + metrics["timeouts"]
+        )
+        add_unified_benchmark_rate_metrics(metrics)
 
     return metrics
 
@@ -2816,6 +2853,37 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
         strict_metrics = strict_suite["metrics"]
         proof_shape_mix = strict_metrics.get("proof_shape_mix")
         proved_breakdown = strict_metrics.get("proved_breakdown")
+        if "symbolic_closure_rate_percent" in strict_metrics:
+            lines.extend(
+                [
+                    "## Simplify Closure Signal",
+                    "",
+                    "- Dimension: normal-form convergence vs symbolic residual proof in the unified simplification benchmark.",
+                    (
+                        "- Closure: "
+                        f"symbolic={strict_metrics['symbolic_closure']}/{strict_metrics['effective_combos']} "
+                        f"({strict_metrics['symbolic_closure_rate_percent']:.1f}%), "
+                        f"NF={strict_metrics['nf_convergent']} "
+                        f"({strict_metrics['nf_rate_percent']:.1f}%), "
+                        f"proved-only={strict_metrics['proved_symbolic']} "
+                        f"({strict_metrics['proved_symbolic_rate_percent']:.1f}%)."
+                    ),
+                    (
+                        "- Residual outcomes: "
+                        f"numeric_only={strict_metrics['numeric_only']} "
+                        f"({strict_metrics['numeric_only_rate_percent']:.1f}%), "
+                        f"inconclusive={strict_metrics['inconclusive']} "
+                        f"({strict_metrics['inconclusive_rate_percent']:.1f}%), "
+                        f"timeouts={strict_metrics['timeouts']}."
+                    ),
+                    (
+                        "- NF gap: "
+                        f"{strict_metrics['normalization_gap']} cases are proved symbolically "
+                        "but do not converge to the same normal form."
+                    ),
+                    "",
+                ]
+            )
         if isinstance(proof_shape_mix, dict) and isinstance(proved_breakdown, dict):
             lines.extend(
                 [
@@ -3021,13 +3089,24 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 f"failed={metrics['failed']}",
             ]
             if "nf_convergent" in metrics:
-                pieces.extend(
-                    [
-                        f"nf={metrics['nf_convergent']}",
-                        f"proved={metrics['proved_symbolic']}",
-                        f"timeouts={metrics.get('timeouts', 0)}",
-                    ]
-                )
+                if "symbolic_closure_rate_percent" in metrics:
+                    pieces.extend(
+                        [
+                            f"closure={metrics['symbolic_closure_rate_percent']:.1f}%",
+                            f"nf={metrics['nf_convergent']} ({metrics['nf_rate_percent']:.1f}%)",
+                            f"proved={metrics['proved_symbolic']} "
+                            f"({metrics['proved_symbolic_rate_percent']:.1f}%)",
+                            f"timeouts={metrics.get('timeouts', 0)}",
+                        ]
+                    )
+                else:
+                    pieces.extend(
+                        [
+                            f"nf={metrics['nf_convergent']}",
+                            f"proved={metrics['proved_symbolic']}",
+                            f"timeouts={metrics.get('timeouts', 0)}",
+                        ]
+                    )
             summary = " ".join(pieces)
         elif "flagged_cases" in metrics:
             if "no_wire_substeps" in metrics:
@@ -3043,11 +3122,21 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     f"no_web_steps={metrics['no_web_steps']}"
                 )
         else:
-            summary = (
-                f"nf={metrics['nf_convergent']} proved={metrics['proved_symbolic']} "
-                f"numeric={metrics['numeric_only']} inconclusive={metrics['inconclusive']} "
-                f"timeouts={metrics['timeouts']}"
-            )
+            if "symbolic_closure_rate_percent" in metrics:
+                summary = (
+                    f"closure={metrics['symbolic_closure_rate_percent']:.1f}% "
+                    f"nf={metrics['nf_convergent']} ({metrics['nf_rate_percent']:.1f}%) "
+                    f"proved={metrics['proved_symbolic']} "
+                    f"({metrics['proved_symbolic_rate_percent']:.1f}%) "
+                    f"numeric={metrics['numeric_only']} inconclusive={metrics['inconclusive']} "
+                    f"timeouts={metrics['timeouts']}"
+                )
+            else:
+                summary = (
+                    f"nf={metrics['nf_convergent']} proved={metrics['proved_symbolic']} "
+                    f"numeric={metrics['numeric_only']} inconclusive={metrics['inconclusive']} "
+                    f"timeouts={metrics['timeouts']}"
+                )
         elapsed_summary = format_elapsed_with_delta(suite["elapsed_seconds"], delta)
         lines.append(
             f"| `{name}` | `{status}` | {elapsed_summary} | {summary} |"

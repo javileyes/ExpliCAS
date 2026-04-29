@@ -22,7 +22,9 @@ pub(crate) use collect::{
     try_rewrite_combine_like_terms_target_aware,
 };
 pub(crate) use expand::{try_rewrite_expanded_target_aware, ExpandRewriteKind};
-pub(crate) use exponentials::try_rewrite_exponential_sum_diff_target_aware;
+pub(crate) use exponentials::{
+    try_plan_log_exp_power_inverse_target_aware, try_rewrite_exponential_sum_diff_target_aware,
+};
 pub(crate) use factor_division::{
     detect_factor_out_with_division_target, extract_factored_division_target,
 };
@@ -66,6 +68,7 @@ pub(crate) use trig::{
     contains_phase_shift_term, generate_trig_additive_term_bridge_rewrites,
     generate_trig_bridge_rewrites, phase_shift_target_match,
     should_try_trig_planner_before_simplify, try_rewrite_pythagorean_factor_form_target_aware,
+    try_rewrite_quadruple_sin_angle_contraction_target_aware,
     try_rewrite_shifted_double_angle_target_aware,
     try_rewrite_shifted_reciprocal_pythagorean_target_aware,
     try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion,

@@ -30,7 +30,7 @@ pub(super) fn should_absorb_preparatory_step_at(
         }
         return matches!(
             next_step.rule_name.as_str(),
-            "Inverse Tan Relations" | "Inverse Trig Composition"
+            "Inverse Tan Relations" | "Inverse Trig Sum Identity" | "Inverse Trig Composition"
         );
     }
 

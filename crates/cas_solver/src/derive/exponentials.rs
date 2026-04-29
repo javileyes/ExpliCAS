@@ -24,6 +24,15 @@ pub(crate) struct DeriveExponentialRewrite {
     pub(crate) assumed_positive: Option<ExprId>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct DeriveLogExpPowerInversePlan {
+    pub(crate) power_expr: ExprId,
+    pub(crate) contracted_exp: ExprId,
+    pub(crate) normalized: ExprId,
+    pub(crate) normalized_result: ExprId,
+    pub(crate) result: ExprId,
+}
+
 impl DeriveExponentialRewriteKind {
     pub(crate) fn description(self) -> &'static str {
         match self {
@@ -71,6 +80,35 @@ pub(crate) fn try_rewrite_exponential_sum_diff_target_aware(
     }
 
     try_rewrite_exponential_sum_diff_additive_passthrough_target_aware(ctx, expr, target_expr)
+}
+
+pub(crate) fn try_plan_log_exp_power_inverse_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveLogExpPowerInversePlan> {
+    let power_expr = extract_natural_log_argument(ctx, expr)?;
+    let (base, exponent) = as_pow(ctx, power_expr)?;
+    if !matches!(ctx.get(exponent), Expr::Number(_)) {
+        return None;
+    }
+
+    let exp_arg = cas_math::expr_extract::extract_exp_argument(ctx, base)?;
+    let normalized_result = ctx.add(Expr::Mul(exp_arg, exponent));
+    if !matches_target_modulo_simplify(ctx, normalized_result, target_expr) {
+        return None;
+    }
+
+    let contracted_exp = ctx.call_builtin(BuiltinFn::Exp, vec![normalized_result]);
+    let normalized = ctx.call_builtin(BuiltinFn::Ln, vec![contracted_exp]);
+
+    Some(DeriveLogExpPowerInversePlan {
+        power_expr,
+        contracted_exp,
+        normalized,
+        normalized_result,
+        result: target_expr,
+    })
 }
 
 fn try_rewrite_exponential_sum_diff_signed_term_target_aware(
@@ -617,7 +655,11 @@ fn simplified_difference_matches_zero(
 
 #[cfg(test)]
 mod tests {
-    use super::{try_rewrite_exponential_sum_diff_target_aware, DeriveExponentialRewriteKind};
+    use super::{
+        extract_ln_exp_argument, extract_natural_log_argument,
+        try_plan_log_exp_power_inverse_target_aware, try_rewrite_exponential_sum_diff_target_aware,
+        DeriveExponentialRewriteKind,
+    };
 
     #[test]
     fn rewrites_exponential_sum_target_aware() {
@@ -717,6 +759,25 @@ mod tests {
         assert_eq!(rewrite.kind, DeriveExponentialRewriteKind::LogExpInverse);
         assert_eq!(rewrite.rewritten, target);
         assert_eq!(rewrite.assumed_positive, None);
+    }
+
+    #[test]
+    fn plans_log_exp_power_inverse_with_visible_normalization_target_aware() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("ln(exp(x)^2)", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("2*x", &mut ctx).expect("parse target");
+        let plan = try_plan_log_exp_power_inverse_target_aware(&mut ctx, source, target)
+            .expect("expected log-exp power inverse plan");
+
+        assert_eq!(
+            plan.power_expr,
+            extract_natural_log_argument(&ctx, source).unwrap()
+        );
+        assert_eq!(
+            extract_ln_exp_argument(&mut ctx, plan.normalized),
+            Some(plan.normalized_result)
+        );
+        assert_eq!(plan.result, target);
     }
 
     #[test]

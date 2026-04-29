@@ -31,6 +31,7 @@ fn generic_substep_description(step: &Step) -> Option<&'static str> {
         }
         "Auto Expand Power Sum" => Some("Aplicar la fórmula (A + B)^2 = A^2 + 2AB + B^2"),
         "Inverse Tan Relations" => Some("Estas dos arctangentes suman pi/2"),
+        "Inverse Trig Sum Identity" => Some("arcsin(x) y arccos(x) son ángulos complementarios"),
         _ => None,
     }
 }

@@ -126,6 +126,19 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_derive_command_lines_reaches_inverse_trig_complement_sum_target_directly() {
+        let lines = derive_lines("derive arcsin(x)+arccos(x), pi/2");
+
+        assert_derive_strategy(&lines, "rewrite inverse trigs");
+        assert!(lines
+            .iter()
+            .any(|line| { line.starts_with("1.") && line.contains("arcsin(x) + arccos(x) =") }));
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Result:") && line.contains("pi / 2")));
+    }
+
+    #[test]
     fn evaluate_derive_command_lines_reaches_factored_target() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(
@@ -358,6 +371,36 @@ mod tests {
                 line.starts_with("Result:") && line.contains("x^(5)") && line.contains("(x - 1)")
             }),
             "expected geometric difference factorization in derive output, got: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_reaches_full_cyclotomic_sixth_power_factored_target() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive x^6 - 1, (x^2+x+1)*(x^2-x+1)*(x+1)*(x-1)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.starts_with("Strategy:") && line.contains("factor")),
+            "expected factor strategy, got: {lines:?}"
+        );
+        assert!(
+            lines.iter().any(|line| {
+                line.starts_with("Result:")
+                    && line.contains("x^(2) + x + 1")
+                    && line.contains("x^(2) - x + 1")
+                    && line.contains("x + 1")
+                    && line.contains("x - 1")
+            }),
+            "expected full cyclotomic sixth-power factorization in derive output, got: {lines:?}"
         );
     }
 
@@ -884,6 +927,11 @@ mod tests {
                 "derive log(b,c), log(b,a)*log(a,c)",
                 "expand_log",
                 &["log(a, c)", "log(b, a)"][..],
+            ),
+            (
+                "derive ln(exp(x)*exp(y)), x+y",
+                "expand_log",
+                &["x", "y"][..],
             ),
         ];
 
@@ -6243,6 +6291,79 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_derive_command_lines_reaches_quadruple_angle_cosine_chebyshev_target() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive cos(4*x), 8*cos(x)^4 - 8*cos(x)^2 + 1",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Quadruple Angle Expansion")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:")
+                && line.contains("8 * cos(x)^(4)")
+                && line.contains("8 * cos(x)^(2)")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_reaches_quadruple_angle_sine_expanded_product_target() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive sin(4*x), 4*sin(x)*cos(x)^3 - 4*sin(x)^3*cos(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Quadruple Angle Expansion")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:")
+                && line.contains("4 * sin(x) * cos(x)^(3)")
+                && line.contains("4 * cos(x) * sin(x)^(3)")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_contracts_quadruple_angle_sine_expanded_product_target() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive 4*sin(x)*cos(x)^3 - 4*sin(x)^3*cos(x), sin(4*x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Quadruple Angle Expansion")));
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Result:") && line.contains("sin(4 * x)")));
+    }
+
+    #[test]
     fn evaluate_derive_command_lines_reaches_sine_cosine_square_product_reduction_target() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(
@@ -6262,6 +6383,29 @@ mod tests {
             .any(|line| line.contains("Power Reduction Identity")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && line.contains("cos(4") && line.contains("/ 8")
+        }));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_contracts_sine_cosine_square_product_to_square_double_angle() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive sin(x)^2*cos(x)^2, sin(2*x)^2/4",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Square Double Angle Contraction")));
+        assert!(lines.iter().any(|line| {
+            line.starts_with("Result:") && line.contains("sin(2 * x)^(2)") && line.contains("/ 4")
         }));
     }
 
@@ -7179,6 +7323,28 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.contains("Exponential Sum/Difference Identity")));
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_uses_two_step_log_exp_power_inverse() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive ln(exp(x)^2), 2*x",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("rewrite exponentials")));
+        assert!(lines.iter().any(|line| line.contains("Power of a Power")));
+        assert!(lines.iter().any(|line| line.contains("Log-Exp Inverse")));
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Result:") && line.contains("2 * x")));
     }
 
     #[test]

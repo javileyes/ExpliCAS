@@ -11,7 +11,8 @@ use crate::trig_dyadic_policy_support::{
 };
 use crate::trig_linear_support::extract_coef_and_base;
 use crate::trig_roots_flatten::{
-    extract_double_angle_arg_relaxed, extract_quintuple_angle_arg, extract_triple_angle_arg_relaxed,
+    extract_double_angle_arg_relaxed, extract_int_multiple_relaxed, extract_quintuple_angle_arg,
+    extract_triple_angle_arg_relaxed,
 };
 use crate::trig_sum_product_support::extract_trig_arg;
 use cas_ast::ordering::compare_expr;
@@ -33,6 +34,8 @@ pub enum TrigMultiAngleRewriteKind {
     TripleTan,
     DoubleSin,
     DoubleCos,
+    QuadrupleSin,
+    QuadrupleCos,
     QuintupleSin,
     QuintupleCos,
     TripleContractionSin,
@@ -194,6 +197,83 @@ pub fn try_rewrite_double_angle_function_expr(
         }
         _ => None,
     }
+}
+
+/// Rewrite `sin(4x)` directly as an expanded product:
+/// `sin(4x) -> 4*sin(x)*cos(x)^3 - 4*sin(x)^3*cos(x)`.
+pub fn try_rewrite_quadruple_sin_angle_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigMultiAngleRewrite> {
+    let (fn_id, arg) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+        _ => return None,
+    };
+
+    if !matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Sin)) || is_constant_expr(ctx, arg) {
+        return None;
+    }
+
+    let (_, inner_var) = extract_int_multiple_relaxed(ctx, arg, 4)?;
+    if !is_trivial_angle(ctx, inner_var) {
+        return None;
+    }
+
+    let three = ctx.num(3);
+    let four = ctx.num(4);
+    let sin_x = ctx.call_builtin(BuiltinFn::Sin, vec![inner_var]);
+    let cos_x = ctx.call_builtin(BuiltinFn::Cos, vec![inner_var]);
+    let sin_cubed = ctx.add(Expr::Pow(sin_x, three));
+    let cos_cubed = ctx.add(Expr::Pow(cos_x, three));
+
+    let sin_cos_cubed = smart_mul(ctx, sin_x, cos_cubed);
+    let leading = smart_mul(ctx, four, sin_cos_cubed);
+    let sin_cubed_cos = smart_mul(ctx, sin_cubed, cos_x);
+    let trailing = smart_mul(ctx, four, sin_cubed_cos);
+    let rewritten = ctx.add(Expr::Sub(leading, trailing));
+
+    Some(TrigMultiAngleRewrite {
+        rewritten,
+        kind: TrigMultiAngleRewriteKind::QuadrupleSin,
+    })
+}
+
+/// Rewrite `cos(4x)` directly as the fourth Chebyshev polynomial:
+/// `cos(4x) -> 8*cos(x)^4 - 8*cos(x)^2 + 1`.
+pub fn try_rewrite_quadruple_cos_angle_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<TrigMultiAngleRewrite> {
+    let (fn_id, arg) = match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => (*fn_id, args[0]),
+        _ => return None,
+    };
+
+    if !matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Cos)) || is_constant_expr(ctx, arg) {
+        return None;
+    }
+
+    let (_, inner_var) = extract_int_multiple_relaxed(ctx, arg, 4)?;
+    if !is_trivial_angle(ctx, inner_var) {
+        return None;
+    }
+
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let four = ctx.num(4);
+    let eight = ctx.num(8);
+    let cos_x = ctx.call_builtin(BuiltinFn::Cos, vec![inner_var]);
+    let cos_squared = ctx.add(Expr::Pow(cos_x, two));
+    let cos_fourth = ctx.add(Expr::Pow(cos_x, four));
+    let eight_cos_fourth = smart_mul(ctx, eight, cos_fourth);
+    let eight_cos_squared = smart_mul(ctx, eight, cos_squared);
+    let leading = ctx.add(Expr::Sub(eight_cos_fourth, eight_cos_squared));
+    let rewritten = ctx.add(Expr::Add(leading, one));
+
+    Some(TrigMultiAngleRewrite {
+        rewritten,
+        kind: TrigMultiAngleRewriteKind::QuadrupleCos,
+    })
 }
 
 /// Unified policy gate for double-angle expansion (`sin(2x)`, `cos(2x)`).
@@ -1330,6 +1410,47 @@ mod tests {
             BuiltinFn::Cos,
             &expected,
         );
+    }
+
+    #[test]
+    fn quadruple_cos_angle_rewrite_matches_chebyshev_shortcut() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(4*x)", &mut ctx).expect("expr");
+        let expected = parse("8*cos(x)^4 - 8*cos(x)^2 + 1", &mut ctx).expect("expected");
+        let rewrite = try_rewrite_quadruple_cos_angle_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(rewrite.kind, TrigMultiAngleRewriteKind::QuadrupleCos);
+        assert_eq!(
+            compare_expr(&ctx, rewrite.rewritten, expected),
+            Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn quadruple_sin_angle_rewrite_matches_expanded_product() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(4*x)", &mut ctx).expect("expr");
+        let rewrite = try_rewrite_quadruple_sin_angle_expr(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(rewrite.kind, TrigMultiAngleRewriteKind::QuadrupleSin);
+        assert_eq!(
+            cas_formatter::render_expr(&ctx, rewrite.rewritten),
+            "4 * sin(x) * cos(x)^3 - 4 * sin(x)^3 * cos(x)"
+        );
+    }
+
+    #[test]
+    fn quadruple_sin_angle_rewrite_blocks_constant_argument() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(8)", &mut ctx).expect("expr");
+        assert!(try_rewrite_quadruple_sin_angle_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn quadruple_cos_angle_rewrite_blocks_constant_argument() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(8)", &mut ctx).expect("expr");
+        assert!(try_rewrite_quadruple_cos_angle_expr(&mut ctx, expr).is_none());
     }
 
     #[test]

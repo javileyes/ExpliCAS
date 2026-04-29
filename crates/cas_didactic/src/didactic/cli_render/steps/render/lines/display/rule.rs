@@ -132,6 +132,7 @@ fn should_suppress_local_change_line(step: &Step) -> bool {
             | "Pythagorean Identity"
             | "Pythagorean Chain Identity"
             | "Inverse Tan Relations"
+            | "Inverse Trig Sum Identity"
             | "Inverse Trig Composition"
             | "Auto Expand Power Sum"
             | "Polynomial Product Normalize"
