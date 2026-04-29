@@ -10,6 +10,7 @@ use cas_math::expr_extract::{extract_abs_argument_view, extract_sqrt_argument_vi
 use cas_math::expr_nary::build_balanced_mul;
 use cas_math::expr_normalization::{
     extract_even_positive_power_base, normalize_condition_expr as normalize_condition_expr_math,
+    normalize_condition_expr_preserve_sign,
 };
 use cas_math::factor::factor;
 use cas_math::numeric_eval::as_rational_const;
@@ -35,8 +36,8 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
     }
 
     let normalized_expr = match cond {
-        ImplicitCondition::NonNegative(e) => normalize_condition_expr(ctx, *e),
-        ImplicitCondition::Positive(e) => normalize_condition_expr(ctx, *e),
+        ImplicitCondition::NonNegative(e) => normalize_condition_expr_preserve_sign(ctx, *e),
+        ImplicitCondition::Positive(e) => normalize_condition_expr_preserve_sign(ctx, *e),
         ImplicitCondition::NonZero(e) => {
             let stripped = strip_nonzero_scalar_factors_for_display(ctx, *e);
             normalize_condition_expr(ctx, stripped)

@@ -18,6 +18,11 @@ fn format_inverse_trig_composition_desc(
         (InverseTrigCompositionKind::CosArccos, true) => {
             "cos(arccos(x)) = x (assuming x ∈ [-1, 1])"
         }
+        (InverseTrigCompositionKind::CosArcsin, _) => "cos(arcsin(x)) = sqrt(1-x^2)",
+        (InverseTrigCompositionKind::SinArccos, _) => "sin(arccos(x)) = sqrt(1-x^2)",
+        (InverseTrigCompositionKind::TanArcsin, _) => "tan(arcsin(x)) = x/sqrt(1-x^2)",
+        (InverseTrigCompositionKind::SinArctan, _) => "sin(arctan(x)) = x/sqrt(1+x^2)",
+        (InverseTrigCompositionKind::CosArctan, _) => "cos(arctan(x)) = 1/sqrt(1+x^2)",
         (InverseTrigCompositionKind::TanArctan, _) => "tan(arctan(x)) = x",
         (InverseTrigCompositionKind::ArctanTanArctan, _) => {
             "arctan(tan(arctan(u))) = arctan(u) (principal branch)"

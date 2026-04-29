@@ -61,6 +61,30 @@ fn test_condition_sign_normalization() {
     );
 }
 
+#[test]
+fn test_nonnegative_condition_preserves_polynomial_sign() {
+    let mut ctx = Context::new();
+    let expr = cas_parser::parse("1 - x^2", &mut ctx).expect("parse");
+    let cond = ImplicitCondition::NonNegative(expr);
+
+    let normalized = normalize_condition(&mut ctx, &cond);
+    let display = normalized.display(&ctx);
+
+    assert_eq!(display, "1 - x^2 ≥ 0");
+}
+
+#[test]
+fn test_positive_condition_preserves_polynomial_sign() {
+    let mut ctx = Context::new();
+    let expr = cas_parser::parse("1 - x^2", &mut ctx).expect("parse");
+    let cond = ImplicitCondition::Positive(expr);
+
+    let normalized = normalize_condition(&mut ctx, &cond);
+    let display = normalized.display(&ctx);
+
+    assert_eq!(display, "1 - x^2 > 0");
+}
+
 /// Test that x - 2 and 2 - x are deduplicated as equivalent
 #[test]
 fn test_equivalent_conditions_dedupe() {

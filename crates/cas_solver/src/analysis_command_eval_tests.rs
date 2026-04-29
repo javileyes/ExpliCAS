@@ -882,7 +882,7 @@ mod tests {
             ),
             (
                 "derive log(b,c), log(b,a)*log(a,c)",
-                "simplify",
+                "expand_log",
                 &["log(a, c)", "log(b, a)"][..],
             ),
         ];
@@ -1513,6 +1513,25 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_derive_command_lines_expands_simplified_half_angle_tangent_alt_with_domain() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines = evaluate_derive_command_lines_with_resolver(
+            &mut simplifier,
+            "derive tan(x/2), (1-cos(x))/sin(x)",
+            crate::FullSimplifyDisplayMode::Normal,
+            crate::SimplifyOptions::default(),
+            |_ctx, expr| Ok(expr),
+        )
+        .expect("derive should evaluate");
+
+        assert!(lines
+            .iter()
+            .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
+        assert!(lines.iter().any(|line| line.trim_start().starts_with("1.")));
+        assert!(lines.iter().any(|line| line.contains("sin(x) ≠ 0")));
+    }
+
+    #[test]
     fn evaluate_derive_command_lines_reaches_half_angle_sin_square_target_directly() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let lines = evaluate_derive_command_lines_with_resolver(
@@ -1973,7 +1992,7 @@ mod tests {
 
             assert!(lines
                 .iter()
-                .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+                .any(|line| line.starts_with("Strategy:") && line.contains("nested fraction")));
 
             let result_line = lines
                 .iter()
@@ -2061,7 +2080,7 @@ mod tests {
 
             assert!(lines
                 .iter()
-                .any(|line| line.starts_with("Strategy:") && line.contains("simplify")));
+                .any(|line| line.starts_with("Strategy:") && line.contains("nested fraction")));
 
             let result_line = lines
                 .iter()

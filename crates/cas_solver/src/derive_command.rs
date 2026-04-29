@@ -22,9 +22,9 @@ use crate::derive::{
     try_rewrite_rationalized_target_aware, try_rewrite_shifted_double_angle_target_aware,
     try_rewrite_shifted_reciprocal_pythagorean_target_aware, try_rewrite_solve_prep_target_aware,
     try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion,
-    try_rewrite_trig_identity_to_one_target_aware, DeriveHyperbolicRewriteKind,
-    DeriveLogChangeOfBaseRewriteKind, DeriveStrategy, DeriveTargetForm, ExpandRewriteKind,
-    RationalizeRewriteKind,
+    try_rewrite_trig_identity_to_one_target_aware, try_rewrite_trig_special_value_target_aware,
+    DeriveHyperbolicRewriteKind, DeriveLogChangeOfBaseRewriteKind, DeriveStrategy,
+    DeriveTargetForm, ExpandRewriteKind, RationalizeRewriteKind,
 };
 
 use cas_ast::{BuiltinFn, Expr, ExprId};
@@ -599,6 +599,11 @@ fn try_supported_derive_strategies_inner(
 ) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
     if let Some(direct) =
         try_fast_direct_integrate_prep_derive(simplifier, resolved_expr, target_expr, collect_steps)
+    {
+        return Some(direct);
+    }
+    if let Some(direct) =
+        try_fast_direct_inverse_trig_derive(simplifier, resolved_expr, target_expr, collect_steps)
     {
         return Some(direct);
     }
@@ -2151,6 +2156,25 @@ fn try_fast_direct_integrate_prep_derive(
     Some((rewrite.rewritten, steps, DeriveStrategy::IntegratePrep))
 }
 
+fn try_fast_direct_inverse_trig_derive(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    let stage = run_inverse_trig_rewrite_stage(simplifier, expr, target_expr, collect_steps);
+    if !stage_makes_progress(&mut simplifier.context, expr, &stage)
+        || !derive_target_match(simplifier, stage.expr, target_expr)
+    {
+        return None;
+    }
+
+    let mut stage = stage;
+    retarget_stage_output(&mut stage, target_expr);
+    let steps = finalize_steps(expr, target_expr, vec![stage], &mut simplifier.context);
+    Some((target_expr, steps, DeriveStrategy::InverseTrigRewrite))
+}
+
 fn try_fast_direct_solve_prep_derive(
     simplifier: &mut crate::Simplifier,
     expr: ExprId,
@@ -2703,6 +2727,30 @@ fn try_fast_direct_trig_derive(
     }
 
     if let Some(rewrite) =
+        try_rewrite_trig_special_value_target_aware(&mut simplifier.context, expr, target_expr)
+    {
+        let steps = if collect_steps {
+            let mut step = crate::Step::with_snapshots(
+                rewrite.kind.description(),
+                rewrite.kind.rule_name(),
+                expr,
+                target_expr,
+                Vec::new(),
+                Some(&simplifier.context),
+                expr,
+                target_expr,
+            );
+            step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
+            step.category = cas_solver_core::step_types::StepCategory::Simplify;
+            vec![step]
+        } else {
+            Vec::new()
+        };
+
+        return Some((target_expr, steps, DeriveStrategy::TrigRewrite));
+    }
+
+    if let Some(rewrite) =
         try_rewrite_shifted_double_angle_target_aware(&mut simplifier.context, expr, target_expr)
     {
         let final_expr =
@@ -2976,6 +3024,12 @@ fn contains_circular_trig_call(ctx: &cas_ast::Context, expr: ExprId) -> bool {
                             | BuiltinFn::Sec
                             | BuiltinFn::Csc
                             | BuiltinFn::Cot
+                            | BuiltinFn::Asin
+                            | BuiltinFn::Acos
+                            | BuiltinFn::Atan
+                            | BuiltinFn::Arcsin
+                            | BuiltinFn::Arccos
+                            | BuiltinFn::Arctan
                     )
                 ) {
                     return true;
@@ -3283,7 +3337,14 @@ fn contains_hyperbolic_fn_expr(ctx: &cas_ast::Context, expr: ExprId) -> bool {
             Expr::Function(fn_id, args) => {
                 if matches!(
                     ctx.builtin_of(*fn_id),
-                    Some(BuiltinFn::Sinh | BuiltinFn::Cosh | BuiltinFn::Tanh)
+                    Some(
+                        BuiltinFn::Sinh
+                            | BuiltinFn::Cosh
+                            | BuiltinFn::Tanh
+                            | BuiltinFn::Asinh
+                            | BuiltinFn::Acosh
+                            | BuiltinFn::Atanh
+                    )
                 ) {
                     return true;
                 }
@@ -4867,6 +4928,7 @@ fn run_log_expand_stage(
         if matches!(
             rewrite.kind,
             DeriveLogChangeOfBaseRewriteKind::BaseLogToQuotient
+                | DeriveLogChangeOfBaseRewriteKind::BaseLogToChain
         ) {
             let steps = if collect_steps {
                 let substeps = log_change_of_base_didactic_substeps(
@@ -5272,6 +5334,11 @@ fn inverse_trig_composition_derive_desc(kind: InverseTrigCompositionKind) -> &'s
     match kind {
         InverseTrigCompositionKind::SinArcsin => "sin(arcsin(x)) = x",
         InverseTrigCompositionKind::CosArccos => "cos(arccos(x)) = x",
+        InverseTrigCompositionKind::CosArcsin => "cos(arcsin(x)) = sqrt(1-x^2)",
+        InverseTrigCompositionKind::SinArccos => "sin(arccos(x)) = sqrt(1-x^2)",
+        InverseTrigCompositionKind::TanArcsin => "tan(arcsin(x)) = x/sqrt(1-x^2)",
+        InverseTrigCompositionKind::SinArctan => "sin(arctan(x)) = x/sqrt(1+x^2)",
+        InverseTrigCompositionKind::CosArctan => "cos(arctan(x)) = 1/sqrt(1+x^2)",
         InverseTrigCompositionKind::TanArctan => "tan(arctan(x)) = x",
         InverseTrigCompositionKind::ArctanTanArctan => "arctan(tan(arctan(u))) = arctan(u)",
         InverseTrigCompositionKind::ArcsinSinArctan => "arcsin(x/sqrt(1+x^2)) = arctan(x)",
@@ -5498,6 +5565,7 @@ fn log_change_of_base_didactic_substeps(
                 ),
             ]
         }
+        DeriveLogChangeOfBaseRewriteKind::BaseLogToChain => Vec::new(),
     }
 }
 
@@ -5695,7 +5763,10 @@ fn run_inverse_trig_composition_rewrite_stage(
     target_expr: ExprId,
     collect_steps: bool,
 ) -> Option<DeriveStageOutput> {
-    let plan = try_plan_inverse_trig_composition_expr(&mut simplifier.context, expr, false, true)?;
+    let plan = try_plan_inverse_trig_composition_expr(&mut simplifier.context, expr, false, true)
+        .or_else(|| {
+        try_plan_inverse_trig_composition_expr(&mut simplifier.context, expr, false, false)
+    })?;
 
     let rewritten = if strong_target_match(&mut simplifier.context, plan.rewritten, target_expr) {
         plan.rewritten
@@ -7378,6 +7449,41 @@ mod tests {
     }
 
     #[test]
+    fn direct_derive_expands_fractional_binomial_square_without_generic_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("(x + 1/2)^2", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("x^2 + x + 1/4", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::Expand);
+        assert!(
+            derived
+                .1
+                .iter()
+                .any(|step| step.rule_name == "Binomial Expansion"),
+            "expected a binomial expansion step, got {:?}",
+            derived
+                .1
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn direct_derive_expands_cosine_fourth_power_without_planner() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source = cas_parser::parse("cos(x)^4", &mut simplifier.context).expect("parse source");
@@ -8228,6 +8334,62 @@ mod tests {
     }
 
     #[test]
+    fn direct_derive_contracts_hyperbolic_quotient_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("sinh(x)/cosh(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("tanh(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Quotient Identity");
+        assert_eq!(
+            derived.1[0].description,
+            "Recognize sinh(u) / cosh(u) as tanh(u)"
+        );
+    }
+
+    #[test]
+    fn direct_derive_rewrites_hyperbolic_half_angle_squares_with_specific_rule() {
+        for (source, target) in [
+            ("cosh(x/2)^2", "(cosh(x)+1)/2"),
+            ("sinh(x/2)^2", "(cosh(x)-1)/2"),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source = cas_parser::parse(source, &mut simplifier.context).expect("parse source");
+            let target = cas_parser::parse(target, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .expect("derive should succeed");
+
+            assert_eq!(derived.0, target);
+            assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Hyperbolic Half-Angle Squares");
+        }
+    }
+
+    #[test]
     fn direct_derive_rewrites_consecutive_factorial_ratio_with_passthrough_without_simplify() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source =
@@ -8291,6 +8453,122 @@ mod tests {
             .lines
             .iter()
             .any(|line| line.contains("-> arctan(x)")));
+    }
+
+    #[test]
+    fn direct_derive_rewrites_direct_inverse_trig_compositions_without_generic_simplify() {
+        for (source_text, target_text) in [
+            ("sin(arcsin(x))", "x"),
+            ("cos(arccos(x))", "x"),
+            ("tan(arctan(x))", "x"),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source =
+                cas_parser::parse(source_text, &mut simplifier.context).expect("parse source");
+            let target =
+                cas_parser::parse(target_text, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .unwrap_or_else(|| panic!("derive should succeed for {source_text}"));
+
+            assert_eq!(derived.0, target);
+            assert_eq!(derived.2, DeriveStrategy::InverseTrigRewrite);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Inverse Trig Composition");
+        }
+    }
+
+    #[test]
+    fn direct_derive_rewrites_arctan_right_triangle_projections_without_simplify() {
+        for (source_text, target_text) in [
+            ("sin(arctan(x))", "x/sqrt(1+x^2)"),
+            ("cos(arctan(x))", "1/sqrt(1+x^2)"),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source =
+                cas_parser::parse(source_text, &mut simplifier.context).expect("parse source");
+            let target =
+                cas_parser::parse(target_text, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .expect("derive should succeed");
+
+            assert_eq!(derived.0, target);
+            assert_eq!(derived.2, DeriveStrategy::InverseTrigRewrite);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Inverse Trig Composition");
+        }
+    }
+
+    #[test]
+    fn direct_derive_rewrites_arcsin_arccos_complement_projections_without_simplify() {
+        for (source_text, target_text) in [
+            ("cos(arcsin(x))", "sqrt(1-x^2)"),
+            ("sin(arccos(x))", "sqrt(1-x^2)"),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source =
+                cas_parser::parse(source_text, &mut simplifier.context).expect("parse source");
+            let target =
+                cas_parser::parse(target_text, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .expect("derive should succeed");
+
+            assert_eq!(derived.0, target);
+            assert_eq!(derived.2, DeriveStrategy::InverseTrigRewrite);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Inverse Trig Composition");
+        }
+    }
+
+    #[test]
+    fn direct_derive_rewrites_tan_arcsin_projection_without_trig_expand() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("tan(arcsin(x))", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("x/sqrt(1-x^2)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::InverseTrigRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Inverse Trig Composition");
     }
 
     #[test]
@@ -8413,6 +8691,133 @@ mod tests {
         assert_eq!(derived.2, DeriveStrategy::ExponentialRewrite);
         assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.1[0].rule_name, "Exponential-Log Inverse");
+    }
+
+    #[test]
+    fn direct_derive_labels_atanh_square_ratio_log_without_generic_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("atanh((x^2 - 1)/(x^2 + 1))", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("ln(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Inverse Hyperbolic Log Identity");
+    }
+
+    #[test]
+    fn direct_derive_labels_hyperbolic_composition_without_generic_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("sinh(asinh(x))", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("x", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Hyperbolic Composition");
+    }
+
+    #[test]
+    fn direct_derive_labels_hyperbolic_special_values_without_generic_simplify() {
+        let cases = [
+            ("sinh(0)", "0"),
+            ("cosh(0)", "1"),
+            ("tanh(0)", "0"),
+            ("asinh(0)", "0"),
+            ("atanh(0)", "0"),
+            ("acosh(1)", "0"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source =
+                cas_parser::parse(source_text, &mut simplifier.context).expect("parse source");
+            let target =
+                cas_parser::parse(target_text, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .unwrap_or_else(|| panic!("derive should succeed for {source_text}"));
+
+            assert_eq!(derived.0, target);
+            assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Evaluate Hyperbolic Functions");
+        }
+    }
+
+    #[test]
+    fn direct_derive_labels_trig_special_values_without_generic_simplify() {
+        let cases = [
+            ("sin(0)", "0"),
+            ("cos(0)", "1"),
+            ("tan(0)", "0"),
+            ("asin(0)", "0"),
+            ("acos(1)", "0"),
+            ("atan(0)", "0"),
+            ("arctan(sqrt(3))", "pi/3"),
+            ("cos(2*pi/3)", "-1/2"),
+            ("cos(3*pi/4)", "-sqrt(2)/2"),
+            ("cos(5*pi/6)", "-sqrt(3)/2"),
+            ("sec(pi/4)", "sqrt(2)"),
+            ("csc(pi/6)", "2"),
+            ("cot(pi/4)", "1"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source =
+                cas_parser::parse(source_text, &mut simplifier.context).expect("parse source");
+            let target =
+                cas_parser::parse(target_text, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .unwrap_or_else(|| panic!("derive should succeed for {source_text}"));
+
+            assert_eq!(derived.0, target);
+            assert_eq!(derived.2, DeriveStrategy::TrigRewrite);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Evaluate Trigonometric Functions");
+        }
     }
 
     #[test]
@@ -8545,6 +8950,255 @@ mod tests {
     }
 
     #[test]
+    fn direct_derive_contracts_reciprocal_trig_root_forms_without_simplify() {
+        for (source, target, description) in [
+            ("1/cos(x)", "sec(x)", "Recognize 1 / cos(u) as sec(u)"),
+            ("1/sin(x)", "csc(x)", "Recognize 1 / sin(u) as csc(u)"),
+            (
+                "cos(x)/sin(x)",
+                "cot(x)",
+                "Recognize cos(u) / sin(u) as cot(u)",
+            ),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source = cas_parser::parse(source, &mut simplifier.context).expect("parse source");
+            let target = cas_parser::parse(target, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .expect("derive should succeed");
+
+            assert_eq!(derived.0, target);
+            assert_eq!(derived.2, DeriveStrategy::TrigContract);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Reciprocal Trig Identity");
+            assert_eq!(derived.1[0].description, description);
+        }
+    }
+
+    #[test]
+    fn direct_derive_rewrites_csc_cot_pythagorean_to_one_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("csc(x)^2 - cot(x)^2", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("1", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigRewrite);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Reciprocal Pythagorean Identity");
+    }
+
+    #[test]
+    fn direct_derive_expands_tangent_to_sine_over_cosine_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("tan(x)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("sin(x)/cos(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Trig Expansion");
+    }
+
+    #[test]
+    fn direct_derive_expands_secant_to_reciprocal_cosine_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("sec(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("1/cos(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Reciprocal Trig Identity");
+        assert_eq!(derived.1[0].description, "Expand sec(u) as 1 / cos(u)");
+    }
+
+    #[test]
+    fn direct_derive_expands_cosecant_to_reciprocal_sine_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("csc(x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("1/sin(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Reciprocal Trig Identity");
+        assert_eq!(derived.1[0].description, "Expand csc(u) as 1 / sin(u)");
+    }
+
+    #[test]
+    fn direct_derive_expands_cotangent_to_cosine_over_sine_without_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("cot(x)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("cos(x)/sin(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Reciprocal Trig Identity");
+        assert_eq!(derived.1[0].description, "Expand cot(u) as cos(u) / sin(u)");
+    }
+
+    #[test]
+    fn direct_derive_rewrites_negative_tangent_parity_with_specific_rule() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("tan(-x)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("-tan(x)", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Trig Parity (Odd/Even)");
+        assert_eq!(
+            derived.1[0].description,
+            "Apply a trigonometric odd/even parity identity"
+        );
+    }
+
+    #[test]
+    fn direct_derive_rewrites_negative_hyperbolic_parity_with_specific_rule() {
+        for (source_text, target_text) in [
+            ("sinh(-x)", "-sinh(x)"),
+            ("cosh(-x)", "cosh(x)"),
+            ("tanh(-x)", "-tanh(x)"),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source =
+                cas_parser::parse(source_text, &mut simplifier.context).expect("parse source");
+            let target =
+                cas_parser::parse(target_text, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .expect("derive should succeed");
+
+            assert_eq!(derived.0, target, "{source_text} -> {target_text}");
+            assert_eq!(derived.2, DeriveStrategy::HyperbolicRewrite);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Hyperbolic Parity (Odd/Even)");
+            assert_eq!(
+                derived.1[0].description,
+                "Apply a hyperbolic odd/even parity identity"
+            );
+        }
+    }
+
+    #[test]
+    fn direct_derive_rewrites_cofunction_sine_cosine_pair_with_specific_rule() {
+        for (source_text, target_text) in [("sin(pi/2 - x)", "cos(x)"), ("cos(pi/2 - x)", "sin(x)")]
+        {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source =
+                cas_parser::parse(source_text, &mut simplifier.context).expect("parse source");
+            let target =
+                cas_parser::parse(target_text, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .expect("derive should succeed");
+
+            assert_eq!(derived.0, target, "{source_text} -> {target_text}");
+            assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Cofunction Identity");
+            assert_eq!(
+                derived.1[0].description,
+                "Apply a sine/cosine cofunction identity"
+            );
+        }
+    }
+
+    #[test]
     fn trig_contract_stage_matches_general_phase_shift_shifted_terms_with_passthrough() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source = cas_parser::parse("5*sin(x+arctan(4/3))+a", &mut simplifier.context)
@@ -8561,6 +9215,31 @@ mod tests {
         ));
         assert_eq!(stage.steps.len(), 1);
         assert_eq!(stage.steps[0].rule_name, "Phase Shift Identity");
+    }
+
+    #[test]
+    fn direct_derive_contracts_half_scaled_sine_double_angle_without_generic_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source =
+            cas_parser::parse("sin(x)*cos(x)", &mut simplifier.context).expect("parse source");
+        let target =
+            cas_parser::parse("sin(2*x)/2", &mut simplifier.context).expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::TrigContract);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Double Angle Expansion");
     }
 
     #[test]
@@ -9085,6 +9764,31 @@ mod tests {
     }
 
     #[test]
+    fn direct_derive_expands_change_of_base_chain_without_planner() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("log(b, c)", &mut simplifier.context).expect("parse source");
+        let target = cas_parser::parse("log(b, a)*log(a, c)", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::LogExpand);
+        assert_eq!(derived.1.len(), 1);
+        assert_eq!(derived.1[0].rule_name, "Change of Base");
+        assert!(derived.1[0].substeps().is_empty());
+    }
+
+    #[test]
     fn direct_derive_expands_log_product_then_simplifies_log_root() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let source =
@@ -9505,6 +10209,94 @@ mod tests {
         assert_eq!(derived.0, target);
         assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.1[0].rule_name, "Double Angle Expansion");
+    }
+
+    #[test]
+    fn direct_derive_expands_inverse_trig_double_angle_projections() {
+        for (source, target) in [
+            ("sin(2*arcsin(x))", "2*x*sqrt(1-x^2)"),
+            ("cos(2*arcsin(x))", "1-2*x^2"),
+            ("sin(2*arccos(x))", "2*x*sqrt(1-x^2)"),
+            ("cos(2*arccos(x))", "2*x^2-1"),
+            ("sin(2*arctan(x))", "2*x/(1+x^2)"),
+            ("cos(2*arctan(x))", "(1-x^2)/(1+x^2)"),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source = cas_parser::parse(source, &mut simplifier.context).expect("parse source");
+            let target = cas_parser::parse(target, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .expect("derive should succeed");
+
+            assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+            assert_eq!(derived.0, target);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Double Angle Expansion");
+        }
+    }
+
+    #[test]
+    fn direct_derive_expands_simplified_argument_half_angle_tangent_variants() {
+        for (source, target) in [
+            ("tan(x/2)", "sin(x)/(1+cos(x))"),
+            ("tan(x/2)", "(1-cos(x))/sin(x)"),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source = cas_parser::parse(source, &mut simplifier.context).expect("parse source");
+            let target = cas_parser::parse(target, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .expect("derive should succeed");
+
+            assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+            assert_eq!(derived.0, target);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Half-Angle Tangent Identity");
+        }
+    }
+
+    #[test]
+    fn direct_derive_expands_tangent_half_angle_substitution_without_generic_simplify() {
+        for (source, target) in [
+            ("sin(x)", "2*tan(x/2)/(1+tan(x/2)^2)"),
+            ("cos(x)", "(1-tan(x/2)^2)/(1+tan(x/2)^2)"),
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let source = cas_parser::parse(source, &mut simplifier.context).expect("parse source");
+            let target = cas_parser::parse(target, &mut simplifier.context).expect("parse target");
+
+            let derived = try_supported_derive_strategies_inner(
+                &mut simplifier,
+                source,
+                target,
+                true,
+                &crate::SimplifyOptions::default(),
+                true,
+                true,
+            )
+            .expect("derive should succeed");
+
+            assert_eq!(derived.2, DeriveStrategy::TrigExpand);
+            assert_eq!(derived.0, target);
+            assert_eq!(derived.1.len(), 1);
+            assert_eq!(derived.1[0].rule_name, "Half-Angle Tangent Identity");
+        }
     }
 
     #[test]

@@ -12,7 +12,7 @@ use cas_math::expr_extract::{
     extract_exp_argument, extract_log_base_argument_view, log10_base_sentinel,
 };
 use cas_math::expr_nary::build_balanced_mul;
-use cas_math::expr_nary::{self, AddView, Sign};
+use cas_math::expr_nary::{self, AddView, MulView, Sign};
 use cas_math::poly_compare::poly_eq;
 use cas_math::polynomial::Polynomial;
 use cas_math::summation_support::{
@@ -95,6 +95,9 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
             generate_same_base_power_merge_substeps(ctx, step)
         }
         "Expand Odd Half Power" => generate_odd_half_power_substeps(ctx, step),
+        "Difference of Squares" | "Difference of Squares (Product to Difference)" => {
+            generate_conjugate_product_rule_substeps(ctx, step)
+        }
         "Expand" => generate_expand_substeps(ctx, step),
         "Collect Terms" => generate_collect_terms_substeps(ctx, step),
         "Factor Out With Division" => generate_factor_out_with_division_substeps(ctx, step),
@@ -102,6 +105,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Binomial Expansion" | "Auto Expand Power Sum" => {
             generate_binomial_expansion_substeps(ctx, step)
         }
+        "Cancel Exact Additive Pairs" => generate_exact_additive_pair_cancel_substeps(ctx, step),
         "expand_log" => generate_expand_log_substeps(ctx, step),
         "Simplify" | "Canonicalize" => generate_simplify_substeps(ctx, step),
         "Evaluate Logarithms" => generate_evaluate_logarithms_substeps(ctx, step),
@@ -118,6 +122,9 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
             generate_exponential_reciprocal_identity_substeps(ctx, step)
         }
         "Exponential Power Identity" => generate_exponential_power_identity_substeps(ctx, step),
+        "Exponential-Log Power Inverse" => {
+            generate_exponential_log_power_inverse_substeps(ctx, step)
+        }
         "Finite Product" => generate_finite_product_substeps(ctx, step),
         "Finite Summation" => generate_finite_summation_substeps(ctx, step),
         "Number Theory Operations" => generate_number_theory_operation_substeps(ctx, step),
@@ -140,6 +147,12 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Hyperbolic Angle Sum/Difference Identity" => {
             generate_hyperbolic_angle_sum_diff_substeps(ctx, step)
         }
+        "Hyperbolic Half-Angle Squares" => {
+            generate_hyperbolic_half_angle_square_substeps(ctx, step)
+        }
+        "Hyperbolic Quotient Identity" => generate_hyperbolic_quotient_substeps(ctx, step),
+        "Hyperbolic Composition" => generate_hyperbolic_composition_substeps(ctx, step),
+        "Inverse Hyperbolic Log Identity" => generate_inverse_hyperbolic_log_substeps(ctx, step),
         "Double Angle Expansion" => generate_double_angle_expansion_substeps(ctx, step),
         "Double Angle Contraction" => generate_double_angle_contraction_substeps(ctx, step),
         "Half-Angle Square Identity" | "Angle Consistency (Half-Angle)" => {
@@ -159,24 +172,34 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         "Triple Angle Identity" | "Triple Angle Expansion" => {
             generate_triple_angle_identity_substeps(ctx, step)
         }
+        "Sophie Germain Identity" => generate_sophie_germain_expansion_substeps(ctx, step),
         "Hyperbolic Triple-Angle Identity" => {
             generate_hyperbolic_triple_angle_identity_substeps(ctx, step)
         }
+        "Hyperbolic Parity (Odd/Even)" => generate_trig_parity_substeps(ctx, step),
         "Half-Angle Tangent Identity" => generate_half_angle_tangent_substeps(ctx, step),
         "Reciprocal Trig Identity" => generate_reciprocal_trig_identity_substeps(ctx, step),
+        "Trig Parity (Odd/Even)" => generate_trig_parity_substeps(ctx, step),
         "Trig Expansion" => generate_trig_expansion_substeps(ctx, step),
         "Trig Quotient" => generate_trig_quotient_substeps(ctx, step),
         "Cos-Diff / Sin-Diff Quotient" => generate_cos_diff_sin_diff_quotient_substeps(ctx, step),
-        "Distributive Property"
-        | "Distributive Property (Simple)"
-        | "Pull Constant From Fraction" => {
-            generate_reverse_nested_fraction_rule_substeps(ctx, step)
+        "Distributive Property" | "Distributive Property (Simple)" => {
+            let substeps = generate_distributive_rule_substeps(ctx, step);
+            if substeps.is_empty() {
+                generate_reverse_nested_fraction_rule_substeps(ctx, step)
+            } else {
+                substeps
+            }
         }
+        "Pull Constant From Fraction" => generate_reverse_nested_fraction_rule_substeps(ctx, step),
         "Pythagorean Factor Form" => generate_pythagorean_factor_form_substeps(ctx, step),
         "Pythagorean High-Power Factor" => {
             generate_pythagorean_high_power_factor_substeps(ctx, step)
         }
         "Pythagorean Chain Identity" => generate_pythagorean_chain_identity_substeps(ctx, step),
+        name if name.starts_with("Pythagorean Identity") => {
+            generate_pythagorean_identity_substeps(ctx, step)
+        }
         "Consecutive Factorial Ratio" => generate_consecutive_factorial_ratio_substeps(ctx, step),
         "Simplify Nested Fraction" => generate_simplify_nested_fraction_substeps(ctx, step),
         "Pre-order Perfect Square Minus Cancel" => {
@@ -719,26 +742,21 @@ fn generate_complete_square_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
         return Vec::new();
     };
 
-    vec![
-        temp_ctx_substep(
-            "Añadir y restar el cuadrado del semicoeficiente",
-            &plan.work,
-            before,
-            plan.balanced_expr,
-        ),
-        temp_ctx_substep(
-            "Agrupar el trinomio como cuadrado perfecto",
-            &plan.work,
-            plan.balanced_expr,
-            plan.grouped_expr,
-        ),
-    ]
+    plan.substeps
+        .iter()
+        .map(|substep| temp_ctx_substep(substep.title, &plan.work, substep.before, substep.after))
+        .collect()
 }
 
 struct CompleteSquareSubstepPlan {
     work: Context,
-    balanced_expr: ExprId,
-    grouped_expr: ExprId,
+    substeps: Vec<CompleteSquareSubstepExpr>,
+}
+
+struct CompleteSquareSubstepExpr {
+    title: &'static str,
+    before: ExprId,
+    after: ExprId,
 }
 
 fn complete_square_substep_plan(ctx: &Context, expr: ExprId) -> Option<CompleteSquareSubstepPlan> {
@@ -762,21 +780,58 @@ fn complete_square_substep_plan(ctx: &Context, expr: ExprId) -> Option<CompleteS
             continue;
         };
 
-        if !is_one(&work, leading_coeff) || expr_is_zero_in_context(&mut work, linear_coeff) {
+        if expr_is_zero_in_context(&mut work, linear_coeff) {
             continue;
         }
 
-        let (balanced_expr, grouped_expr) = build_monic_complete_square_substep_exprs(
-            &mut work,
-            &var_name,
-            linear_coeff,
-            constant_term,
-        );
-        return Some(CompleteSquareSubstepPlan {
-            work,
-            balanced_expr,
-            grouped_expr,
-        });
+        let substeps = if is_one(&work, leading_coeff) {
+            let (balanced_expr, grouped_expr) = build_monic_complete_square_substep_exprs(
+                &mut work,
+                &var_name,
+                linear_coeff,
+                constant_term,
+            );
+            vec![
+                CompleteSquareSubstepExpr {
+                    title: "Añadir y restar el cuadrado del semicoeficiente",
+                    before: expr,
+                    after: balanced_expr,
+                },
+                CompleteSquareSubstepExpr {
+                    title: "Agrupar el trinomio como cuadrado perfecto",
+                    before: balanced_expr,
+                    after: grouped_expr,
+                },
+            ]
+        } else {
+            let (factored_expr, balanced_expr, grouped_expr) =
+                build_non_monic_complete_square_substep_exprs(
+                    &mut work,
+                    &var_name,
+                    leading_coeff,
+                    linear_coeff,
+                    constant_term,
+                );
+            vec![
+                CompleteSquareSubstepExpr {
+                    title: "Extraer el coeficiente líder de los términos cuadráticos",
+                    before: expr,
+                    after: factored_expr,
+                },
+                CompleteSquareSubstepExpr {
+                    title: "Añadir y restar el cuadrado del semicoeficiente dentro del paréntesis",
+                    before: factored_expr,
+                    after: balanced_expr,
+                },
+                CompleteSquareSubstepExpr {
+                    title: "Agrupar el trinomio como cuadrado perfecto",
+                    before: balanced_expr,
+                    after: grouped_expr,
+                },
+            ]
+        };
+
+        return Some(CompleteSquareSubstepPlan { work, substeps });
     }
 
     None
@@ -808,6 +863,44 @@ fn build_monic_complete_square_substep_exprs(
     let grouped_expr = ctx.add(Expr::Add(completed_square, tail));
 
     (balanced_expr, grouped_expr)
+}
+
+fn build_non_monic_complete_square_substep_exprs(
+    ctx: &mut Context,
+    var_name: &str,
+    leading_coeff: ExprId,
+    linear_coeff: ExprId,
+    constant_term: ExprId,
+) -> (ExprId, ExprId, ExprId) {
+    let two = ctx.num(2);
+    let var_expr = ctx.var(var_name);
+    let var_squared = ctx.add(Expr::Pow(var_expr, two));
+
+    let linear_over_leading_raw = ctx.add(Expr::Div(linear_coeff, leading_coeff));
+    let linear_over_leading = simplify_expr_in_context(ctx, linear_over_leading_raw);
+    let normalized_linear_term = ctx.add(Expr::Mul(linear_over_leading, var_expr));
+    let normalized_quadratic = ctx.add(Expr::Add(var_squared, normalized_linear_term));
+    let factored_quadratic = ctx.add(Expr::Mul(leading_coeff, normalized_quadratic));
+    let factored_expr = ctx.add(Expr::Add(factored_quadratic, constant_term));
+
+    let doubled_leading = ctx.add(Expr::Mul(two, leading_coeff));
+    let half_linear_raw = ctx.add(Expr::Div(linear_coeff, doubled_leading));
+    let half_linear = simplify_expr_in_context(ctx, half_linear_raw);
+    let half_square = ctx.add(Expr::Pow(half_linear, two));
+
+    let balanced_inner = ctx.add(Expr::Add(normalized_quadratic, half_square));
+    let balanced_quadratic = ctx.add(Expr::Mul(leading_coeff, balanced_inner));
+    let scaled_half_square = ctx.add(Expr::Mul(leading_coeff, half_square));
+    let tail_raw = ctx.add(Expr::Sub(constant_term, scaled_half_square));
+    let tail = simplify_expr_in_context(ctx, tail_raw);
+    let balanced_expr = ctx.add(Expr::Add(balanced_quadratic, tail));
+
+    let completed_binomial = ctx.add(Expr::Add(var_expr, half_linear));
+    let completed_square = ctx.add(Expr::Pow(completed_binomial, two));
+    let grouped_quadratic = ctx.add(Expr::Mul(leading_coeff, completed_square));
+    let grouped_expr = ctx.add(Expr::Add(grouped_quadratic, tail));
+
+    (factored_expr, balanced_expr, grouped_expr)
 }
 
 fn simplify_expr_in_context(ctx: &mut Context, expr: ExprId) -> ExprId {
@@ -1020,12 +1113,86 @@ fn generate_mixed_fraction_split_substeps(ctx: &Context, step: &Step) -> Vec<Sub
         return Vec::new();
     }
 
-    vec![concrete_expr_substep(
-        ctx,
-        "Separar la parte entera y la fracción restante",
-        before,
-        after,
-    )]
+    generate_mixed_fraction_split_intermediate_substeps(ctx, before, after).unwrap_or_default()
+}
+
+fn generate_mixed_fraction_split_intermediate_substeps(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<Vec<SubStep>> {
+    let Expr::Div(_, denominator) = ctx.get(before) else {
+        return None;
+    };
+    let (whole, whole_sign, remainder, remainder_sign, remainder_denominator) =
+        mixed_fraction_split_parts(ctx, after, *denominator)?;
+    if !same_expr(ctx, *denominator, remainder_denominator) {
+        return None;
+    }
+
+    let mut work = ctx.clone();
+    let whole_term = signed_expr(&mut work, whole, whole_sign);
+    let product = work.add_raw(Expr::Mul(whole_term, *denominator));
+    let intermediate_numerator = if remainder_sign == Sign::Pos {
+        work.add_raw(Expr::Add(product, remainder))
+    } else {
+        work.add_raw(Expr::Sub(product, remainder))
+    };
+    let intermediate = work.add_raw(Expr::Div(intermediate_numerator, *denominator));
+    Some(vec![
+        mixed_ctx_substep(
+            "Reescribir el numerador como parte entera por denominador más resto",
+            ctx,
+            before,
+            &work,
+            intermediate,
+        ),
+        temp_ctx_substep(
+            "Separar la suma del numerador sobre el denominador",
+            &work,
+            intermediate,
+            after,
+        ),
+    ])
+}
+
+fn mixed_fraction_split_parts(
+    ctx: &Context,
+    after: ExprId,
+    source_denominator: ExprId,
+) -> Option<(ExprId, Sign, ExprId, Sign, ExprId)> {
+    let terms = AddView::from_expr(ctx, after).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let mut whole = None;
+    let mut remainder = None;
+    for (term, sign) in terms {
+        if let Some((numerator, denominator)) = as_div(ctx, term) {
+            if same_expr(ctx, denominator, source_denominator) {
+                if remainder.replace((numerator, sign, denominator)).is_some() {
+                    return None;
+                }
+                continue;
+            }
+        }
+
+        if whole.replace((term, sign)).is_some() {
+            return None;
+        }
+    }
+
+    let (whole, whole_sign) = whole?;
+    let (remainder, remainder_sign, denominator) = remainder?;
+    Some((whole, whole_sign, remainder, remainder_sign, denominator))
+}
+
+fn signed_expr(ctx: &mut Context, term: ExprId, sign: Sign) -> ExprId {
+    match sign {
+        Sign::Pos => term,
+        Sign::Neg => ctx.add_raw(Expr::Neg(term)),
+    }
 }
 
 fn generate_mixed_fraction_combine_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -1061,6 +1228,10 @@ fn generate_canonicalize_roots_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
 fn generate_same_base_power_merge_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
+    let quotient_substeps = generate_same_base_power_quotient_substeps(ctx, before, after);
+    if !quotient_substeps.is_empty() {
+        return quotient_substeps;
+    }
     if before == after {
         return Vec::new();
     }
@@ -1071,6 +1242,52 @@ fn generate_same_base_power_merge_substeps(ctx: &Context, step: &Step) -> Vec<Su
         before,
         after,
     )]
+}
+
+fn generate_same_base_power_quotient_substeps(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Vec<SubStep> {
+    let Some((numerator, denominator)) = as_div(ctx, before) else {
+        return Vec::new();
+    };
+    let Some((numerator_base, numerator_exponent)) = as_pow(ctx, numerator) else {
+        return Vec::new();
+    };
+    let Some((denominator_base, denominator_exponent)) = as_pow(ctx, denominator) else {
+        return Vec::new();
+    };
+    if compare_expr(ctx, numerator_base, denominator_base) != Ordering::Equal {
+        return Vec::new();
+    }
+
+    let mut work = ctx.clone();
+    let negative_denominator_exponent = work.add(Expr::Neg(denominator_exponent));
+    let denominator_as_negative_power =
+        work.add(Expr::Pow(numerator_base, negative_denominator_exponent));
+    let numerator_power = work.add(Expr::Pow(numerator_base, numerator_exponent));
+    let intermediate = work.add(Expr::Mul(numerator_power, denominator_as_negative_power));
+    let merged_exponent = work.add(Expr::Sub(numerator_exponent, denominator_exponent));
+    let expected_after = work.add(Expr::Pow(numerator_base, merged_exponent));
+    if compare_expr(&work, expected_after, after) != Ordering::Equal {
+        return Vec::new();
+    }
+
+    vec![
+        temp_ctx_substep(
+            "Reescribir la división como potencia negativa",
+            &work,
+            before,
+            intermediate,
+        ),
+        temp_ctx_substep(
+            "Sumar los exponentes de la misma base",
+            &work,
+            intermediate,
+            after,
+        ),
+    ]
 }
 
 fn generate_odd_half_power_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -1091,6 +1308,11 @@ fn generate_odd_half_power_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> 
 fn generate_expand_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
+    let conjugate_product = generate_conjugate_product_expansion_substeps(ctx, before, after);
+    if !conjugate_product.is_empty() {
+        return conjugate_product;
+    }
+
     if polynomial_product_didactic_plan(ctx, before).is_some() {
         return generate_polynomial_product_normalize_substeps(ctx, step);
     }
@@ -1123,21 +1345,91 @@ fn generate_expand_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         )];
     }
 
-    if let Some((a, b)) = sophie_germain_expansion_plan(ctx, before, after) {
-        let a_display = human_expr(ctx, a);
-        let b_display = human_expr(ctx, b);
-
-        let _ = (a_display, b_display);
-        return vec![formula_substep(
-            "Usar (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2) = a^4 + 4b^4",
-            &human_expr(ctx, before),
-            &human_expr(ctx, after),
-            &latex_expr(ctx, before),
-            &latex_expr(ctx, after),
-        )];
+    let sophie_germain = generate_sophie_germain_expansion_substeps(ctx, step);
+    if !sophie_germain.is_empty() {
+        return sophie_germain;
     }
 
     Vec::new()
+}
+
+fn generate_conjugate_product_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    generate_conjugate_product_expansion_substeps(ctx, before, after)
+}
+
+fn generate_conjugate_product_expansion_substeps(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Vec<SubStep> {
+    let Some((left_base, right_base)) =
+        conjugate_product_difference_of_squares_plan(ctx, before, after)
+    else {
+        return Vec::new();
+    };
+
+    let left_display = human_expr(ctx, left_base);
+    let right_display = human_expr(ctx, right_base);
+    let left_latex = latex_expr(ctx, left_base);
+    let right_latex = latex_expr(ctx, right_base);
+    let intermediate_display = format!("({left_display})^2 - ({right_display})^2");
+    let intermediate_latex = format!(
+        "{} - {}",
+        render_power2_latex(&left_latex),
+        render_power2_latex(&right_latex)
+    );
+
+    vec![
+        formula_substep(
+            "Aplicar el producto de conjugados",
+            &display_expr(ctx, before),
+            &intermediate_display,
+            &latex_expr(ctx, before),
+            &intermediate_latex,
+        ),
+        formula_substep(
+            "Simplificar las potencias",
+            &intermediate_display,
+            &display_expr(ctx, after),
+            &intermediate_latex,
+            &latex_expr(ctx, after),
+        ),
+    ]
+}
+
+fn conjugate_product_difference_of_squares_plan(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let factors = expr_nary::mul_leaves(ctx, before);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    let (left_base, right_base) =
+        cas_math::expr_relations::conjugate_add_sub_pair(ctx, factors[0], factors[1])?;
+    let mut work = ctx.clone();
+    let expected_raw = build_difference_of_squares_expansion(&mut work, left_base, right_base);
+    let expected = simplify_expr_in_context(&mut work, expected_raw);
+    if poly_eq(&work, expected, after) {
+        Some((left_base, right_base))
+    } else {
+        None
+    }
+}
+
+fn build_difference_of_squares_expansion(
+    ctx: &mut Context,
+    left_base: ExprId,
+    right_base: ExprId,
+) -> ExprId {
+    let two = ctx.num(2);
+    let left_sq = ctx.add_raw(Expr::Pow(left_base, two));
+    let right_sq = ctx.add_raw(Expr::Pow(right_base, two));
+    ctx.add_raw(Expr::Sub(left_sq, right_sq))
 }
 
 fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -1150,43 +1442,35 @@ fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
 
     if let Some((base, power)) = geometric_difference_factor_plan(ctx, before, after) {
         let base_display = human_expr(ctx, base);
-        let base_latex = latex_expr(ctx, base);
 
-        let _ = (base_display, base_latex, power);
-        return vec![formula_substep(
-            "Usar a^n - 1 = (a - 1) · (a^(n-1) + a^(n-2) + ... + a + 1)",
-            &human_expr(ctx, before),
-            &human_expr(ctx, after),
-            &latex_expr(ctx, before),
-            &latex_expr(ctx, after),
+        return vec![concrete_expr_substep(
+            ctx,
+            format!("Aquí la diferencia de potencias usa base {base_display} y exponente {power}"),
+            before,
+            after,
         )];
     }
 
     if let Some((factor, kind)) = common_factor_factorization_plan(ctx, before, after) {
         let factor_display = human_expr(ctx, factor);
-        let _ = (factor_display, kind);
-        return vec![formula_substep(
-            "Usar el factor común",
-            &human_expr(ctx, before),
-            &human_expr(ctx, after),
-            &latex_expr(ctx, before),
-            &latex_expr(ctx, after),
+        let _ = kind;
+        return vec![concrete_expr_substep(
+            ctx,
+            format!("Aquí el factor común es {factor_display}"),
+            before,
+            after,
         )];
     }
 
     if let Some((left, right)) = difference_of_squares_bases(ctx, before) {
         let left_display = human_expr(ctx, left);
         let right_display = human_expr(ctx, right);
-        let left_latex = latex_expr(ctx, left);
-        let right_latex = latex_expr(ctx, right);
 
-        let _ = (left_display, right_display, left_latex, right_latex);
-        return vec![formula_substep(
-            "Usar a^2 - b^2 = (a - b) · (a + b)",
-            &human_expr(ctx, before),
-            &human_expr(ctx, after),
-            &latex_expr(ctx, before),
-            &latex_expr(ctx, after),
+        return vec![concrete_expr_substep(
+            ctx,
+            format!("Aquí la diferencia de cuadrados usa bases {left_display} y {right_display}"),
+            before,
+            after,
         )];
     }
 
@@ -1270,27 +1554,75 @@ fn generate_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         )];
     }
 
-    if let Some((a, b)) = sophie_germain_terms(ctx, before) {
-        let a_display = human_expr(ctx, a);
-        let b_display = human_expr(ctx, b);
-        let a_latex = latex_expr(ctx, a);
-        let b_latex = latex_expr(ctx, b);
-
-        let _ = (a_display, b_display, a_latex, b_latex);
-        return vec![formula_substep(
-            "Usar a^4 + 4b^4 = (a^2 - 2ab + 2b^2) · (a^2 + 2ab + 2b^2)",
-            &human_expr(ctx, before),
-            &human_expr(ctx, after),
-            &latex_expr(ctx, before),
-            &latex_expr(ctx, after),
-        )];
+    let sophie_germain = generate_sophie_germain_factorization_substeps(ctx, step);
+    if !sophie_germain.is_empty() {
+        return sophie_germain;
     }
 
-    if alternating_cubic_vandermonde_plan(ctx, before, after).is_some() {
-        return Vec::new();
+    if let Some(vars) = alternating_cubic_vandermonde_plan(ctx, before, after) {
+        return generate_alternating_cubic_vandermonde_substeps(ctx, before, vars);
     }
 
     Vec::new()
+}
+
+fn generate_alternating_cubic_vandermonde_substeps(
+    ctx: &Context,
+    before: ExprId,
+    vars: (String, String, String),
+) -> Vec<SubStep> {
+    let (a, b, c) = vars;
+    vec![
+        vandermonde_pair_zero_substep(&a, &b, &c, &a, &b),
+        vandermonde_pair_zero_substep(&a, &b, &c, &a, &c),
+        vandermonde_pair_zero_substep(&a, &b, &c, &b, &c),
+        vandermonde_remaining_factor_substep(ctx, before, &a, &b, &c),
+    ]
+}
+
+fn vandermonde_pair_zero_substep(a: &str, b: &str, c: &str, left: &str, right: &str) -> SubStep {
+    let before = match (left, right) {
+        (left, right) if left == a && right == b => {
+            format!("{a}^3 · ({a} - {c}) + {a}^3 · ({c} - {a}) + {c}^3 · ({a} - {a})")
+        }
+        (left, right) if left == a && right == c => {
+            format!("{a}^3 · ({b} - {a}) + {b}^3 · ({a} - {a}) + {a}^3 · ({a} - {b})")
+        }
+        (left, right) if left == b && right == c => {
+            format!("{a}^3 · ({b} - {b}) + {b}^3 · ({b} - {a}) + {b}^3 · ({a} - {b})")
+        }
+        _ => return SubStep::new("Comprobar anulación de factores", "", ""),
+    };
+    let before_latex = before.replace('·', "\\cdot");
+    let title = format!("Si {left} = {right}, aparece el factor {left} - {right}");
+
+    SubStep::new(title, before, "0")
+        .with_before_latex(before_latex)
+        .with_after_latex("0")
+}
+
+fn vandermonde_remaining_factor_substep(
+    ctx: &Context,
+    before: ExprId,
+    a: &str,
+    b: &str,
+    c: &str,
+) -> SubStep {
+    let source_display = human_expr(ctx, before);
+    let source_latex = latex_expr(ctx, before);
+    let denominator_display = format!("({a} - {b}) · ({a} - {c}) · ({b} - {c})");
+    let denominator_latex = format!("({a} - {b})({a} - {c})({b} - {c})");
+    let quotient_display = format!("({source_display})/({denominator_display})");
+    let quotient_latex = format!("\\frac{{{source_latex}}}{{{denominator_latex}}}");
+    let remaining = format!("{a} + {b} + {c}");
+
+    SubStep::new(
+        format!("El cociente restante es {remaining}"),
+        quotient_display,
+        remaining.clone(),
+    )
+    .with_before_latex(quotient_latex)
+    .with_after_latex(remaining)
 }
 
 fn alternating_cubic_vandermonde_plan(
@@ -1484,10 +1816,10 @@ fn generate_binomial_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
 
     let _ = (left, right);
     let identity_title = match (kind, power) {
-        (BinomialSquareKind::Sum, 2) => "Usar (a + b)^2 = a^2 + 2ab + b^2",
-        (BinomialSquareKind::Difference, 2) => "Usar (a - b)^2 = a^2 - 2ab + b^2",
-        (BinomialSquareKind::Sum, 3) => "Usar (a + b)^3 = a^3 + 3a^2b + 3ab^2 + b^3",
-        (BinomialSquareKind::Difference, 3) => "Usar (a - b)^3 = a^3 - 3a^2b + 3ab^2 - b^3",
+        (BinomialSquareKind::Sum, 2) => "Cuadrado de la suma desarrollado",
+        (BinomialSquareKind::Difference, 2) => "Cuadrado de la diferencia desarrollado",
+        (BinomialSquareKind::Sum, 3) => "Cubo de la suma desarrollado",
+        (BinomialSquareKind::Difference, 3) => "Cubo de la diferencia desarrollado",
         _ => return Vec::new(),
     };
 
@@ -1497,6 +1829,49 @@ fn generate_binomial_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubSt
         local_focus_before,
         local_focus_after,
     )]
+}
+
+fn generate_exact_additive_pair_cancel_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let Some((left, right)) = exact_opposite_additive_pair(ctx, before)
+        .or_else(|| exact_opposite_additive_pair(ctx, step.before))
+    else {
+        return Vec::new();
+    };
+
+    let mut work = ctx.clone();
+    let pair = work.add(Expr::Sub(left, right));
+    let zero = work.num(0);
+    vec![SubStep::new(
+        "Cancelar términos opuestos exactos",
+        human_expr(&work, pair),
+        human_expr(&work, zero),
+    )
+    .with_before_latex(latex_expr(&work, pair))
+    .with_after_latex(latex_expr(&work, zero))]
+}
+
+fn exact_opposite_additive_pair(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() < 3 {
+        return None;
+    }
+
+    for (left, left_sign) in terms.iter().copied() {
+        for (right, right_sign) in terms.iter().copied() {
+            if left_sign == right_sign || !same_expr(ctx, left, right) {
+                continue;
+            }
+
+            return if left_sign == Sign::Pos {
+                Some((left, right))
+            } else {
+                Some((right, left))
+            };
+        }
+    }
+
+    None
 }
 
 fn find_binomial_expansion_focus_substep_sides(
@@ -1720,72 +2095,197 @@ fn expression_contains_log(ctx: &Context, expr: ExprId) -> bool {
 }
 
 fn generate_exponential_sum_diff_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    let Some(after_arg) = extract_exp_argument(ctx, after) else {
-        return Vec::new();
-    };
-    let (title, before_formula, after_formula, before_latex, after_latex) = match ctx.get(after_arg)
-    {
-        Expr::Add(_, _) => (
-            "Usar e^A · e^B = e^(A+B)",
-            "e^A · e^B",
-            "e^(A+B)",
-            "{e}^{A}\\cdot {e}^{B}",
-            "{e}^{A+B}",
-        ),
-        Expr::Sub(_, _) => (
-            "Usar e^A / e^B = e^(A-B)",
-            "e^A / e^B",
-            "e^(A-B)",
-            "\\frac{{e}^{A}}{{e}^{B}}",
-            "{e}^{A-B}",
-        ),
-        _ => return Vec::new(),
-    };
 
-    vec![formula_substep(
-        title,
-        before_formula,
-        after_formula,
-        before_latex,
-        after_latex,
-    )]
+    if let Some(substep) = exponential_sum_diff_identity_substep(ctx, after, false) {
+        return vec![substep];
+    }
+
+    if let Some(substep) = exponential_sum_diff_identity_substep(ctx, before, true) {
+        return vec![substep];
+    }
+
+    Vec::new()
+}
+
+fn exponential_sum_diff_identity_substep(
+    ctx: &Context,
+    exp_expr: ExprId,
+    reverse: bool,
+) -> Option<SubStep> {
+    let exp_arg = extract_exp_argument(ctx, exp_expr)?;
+    let (contract_title, expand_title, product_formula, exp_formula, product_latex, exp_latex) =
+        match ctx.get(exp_arg) {
+            Expr::Add(_, _) => (
+                "Usar e^A · e^B = e^(A+B)",
+                "Usar e^(A+B) = e^A · e^B",
+                "e^A · e^B",
+                "e^(A+B)",
+                "{e}^{A}\\cdot {e}^{B}",
+                "{e}^{A+B}",
+            ),
+            Expr::Sub(_, _) => (
+                "Usar e^A / e^B = e^(A-B)",
+                "Usar e^(A-B) = e^A / e^B",
+                "e^A / e^B",
+                "e^(A-B)",
+                "\\frac{{e}^{A}}{{e}^{B}}",
+                "{e}^{A-B}",
+            ),
+            _ => return None,
+        };
+
+    if reverse {
+        Some(formula_substep(
+            expand_title,
+            exp_formula,
+            product_formula,
+            exp_latex,
+            product_latex,
+        ))
+    } else {
+        Some(formula_substep(
+            contract_title,
+            product_formula,
+            exp_formula,
+            product_latex,
+            exp_latex,
+        ))
+    }
 }
 
 fn generate_exponential_reciprocal_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    let Some(after_arg) = extract_exp_argument(ctx, after) else {
-        return Vec::new();
-    };
-    if !matches!(ctx.get(after_arg), Expr::Neg(_)) {
-        return Vec::new();
+
+    if let Some(substep) = exponential_reciprocal_identity_substep(ctx, after, false) {
+        return vec![substep];
     }
 
-    vec![formula_substep(
-        "Usar 1/e^A = e^(-A)",
-        "1/e^A",
-        "e^(-A)",
-        "\\frac{1}{{e}^{A}}",
-        "{e}^{-A}",
-    )]
+    if let Some(substep) = exponential_reciprocal_identity_substep(ctx, before, true) {
+        return vec![substep];
+    }
+
+    Vec::new()
+}
+
+fn exponential_reciprocal_identity_substep(
+    ctx: &Context,
+    exp_expr: ExprId,
+    reverse: bool,
+) -> Option<SubStep> {
+    let exp_arg = extract_exp_argument(ctx, exp_expr)?;
+    if !matches!(ctx.get(exp_arg), Expr::Neg(_)) {
+        return None;
+    }
+
+    if reverse {
+        Some(formula_substep(
+            "Usar e^(-A) = 1/e^A",
+            "e^(-A)",
+            "1/e^A",
+            "{e}^{-A}",
+            "\\frac{1}{{e}^{A}}",
+        ))
+    } else {
+        Some(formula_substep(
+            "Usar 1/e^A = e^(-A)",
+            "1/e^A",
+            "e^(-A)",
+            "\\frac{1}{{e}^{A}}",
+            "{e}^{-A}",
+        ))
+    }
 }
 
 fn generate_exponential_power_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    let Some(after_arg) = extract_exp_argument(ctx, after) else {
+
+    if let Some(substep) = exponential_power_identity_substep(ctx, after, false) {
+        return vec![substep];
+    }
+
+    if let Some(substep) = exponential_power_identity_substep(ctx, before, true) {
+        return vec![substep];
+    }
+
+    Vec::new()
+}
+
+fn exponential_power_identity_substep(
+    ctx: &Context,
+    exp_expr: ExprId,
+    reverse: bool,
+) -> Option<SubStep> {
+    let exp_arg = extract_exp_argument(ctx, exp_expr)?;
+    if !matches!(ctx.get(exp_arg), Expr::Mul(_, _)) {
+        return None;
+    }
+
+    if reverse {
+        Some(formula_substep(
+            "Usar e^(n·A) = (e^A)^n",
+            "e^(n·A)",
+            "(e^A)^n",
+            "{e}^{n\\cdot A}",
+            "({e}^{A})^{n}",
+        ))
+    } else {
+        Some(formula_substep(
+            "Usar (e^A)^n = e^(n·A)",
+            "(e^A)^n",
+            "e^(n·A)",
+            "({e}^{A})^{n}",
+            "{e}^{n\\cdot A}",
+        ))
+    }
+}
+
+fn generate_exponential_log_power_inverse_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some(plan) = exponential_log_power_inverse_plan(ctx, before) else {
         return Vec::new();
     };
-    if !matches!(ctx.get(after_arg), Expr::Mul(_, _)) {
+
+    let mut temp_ctx = ctx.clone();
+    let core_before = temp_ctx.add(Expr::Pow(plan.source_base, plan.log_expr));
+    let outer_exponent = build_balanced_mul(&mut temp_ctx, &plan.outer_factors);
+    let intermediate = temp_ctx.add(Expr::Pow(core_before, outer_exponent));
+    let expected_after = temp_ctx.add(Expr::Pow(plan.log_arg, outer_exponent));
+    if compare_expr(&temp_ctx, expected_after, after) != Ordering::Equal {
         return Vec::new();
     }
 
-    vec![formula_substep(
-        "Usar (e^A)^n = e^(n·A)",
-        "(e^A)^n",
-        "e^(n·A)",
-        "({e}^{A})^{n}",
-        "{e}^{n\\cdot A}",
-    )]
+    let (core_before_plain, core_before_latex) = render_temp_expr(&temp_ctx, core_before);
+    let (log_arg_plain, log_arg_latex) = render_temp_expr(&temp_ctx, plan.log_arg);
+    let (intermediate_plain, intermediate_latex) = render_temp_expr(&temp_ctx, intermediate);
+    let (after_plain, after_latex) = render_temp_expr(&temp_ctx, after);
+
+    let identity_title = match plan.base_kind {
+        LogInversePowerBaseKind::Natural => "Usar que e^(ln(u)) = u",
+        LogInversePowerBaseKind::Decimal => "Usar que 10^(log10(u)) = u",
+        LogInversePowerBaseKind::Explicit => "Usar que a^(log(a, u)) = u",
+    };
+
+    vec![
+        formula_substep(
+            identity_title,
+            &core_before_plain,
+            &log_arg_plain,
+            &core_before_latex,
+            &log_arg_latex,
+        ),
+        formula_substep(
+            "Aplicar el factor exterior como exponente",
+            &intermediate_plain,
+            &after_plain,
+            &intermediate_latex,
+            &after_latex,
+        ),
+    ]
 }
 
 fn generate_log_inverse_power_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -1864,6 +2364,83 @@ struct LogInversePowerPlan {
     log_expr: ExprId,
     explicit_target_base: Option<ExprId>,
     base_kind: LogInversePowerBaseKind,
+}
+
+struct ExponentialLogPowerInversePlan {
+    source_base: ExprId,
+    log_expr: ExprId,
+    log_arg: ExprId,
+    outer_factors: Vec<ExprId>,
+    base_kind: LogInversePowerBaseKind,
+}
+
+fn exponential_log_power_inverse_plan(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<ExponentialLogPowerInversePlan> {
+    let (source_base, exponent) = as_pow(ctx, expr)?;
+    let factors: Vec<ExprId> = MulView::from_expr(ctx, exponent)
+        .factors
+        .into_iter()
+        .collect();
+    let mut matched_index = None;
+    let mut matched_log_expr = None;
+    let mut matched_log_arg = None;
+    let mut matched_base_kind = None;
+
+    for (index, factor) in factors.iter().enumerate() {
+        let Some((log_base_opt, log_arg)) = extract_log_base_argument_view(ctx, *factor) else {
+            continue;
+        };
+        let Some(base_kind) = exponential_log_inverse_base_kind(ctx, source_base, log_base_opt)
+        else {
+            continue;
+        };
+        if matched_index.is_some() {
+            return None;
+        }
+        matched_index = Some(index);
+        matched_log_expr = Some(*factor);
+        matched_log_arg = Some(log_arg);
+        matched_base_kind = Some(base_kind);
+    }
+
+    let matched_index = matched_index?;
+    let outer_factors: Vec<ExprId> = factors
+        .iter()
+        .enumerate()
+        .filter_map(|(index, factor)| (index != matched_index).then_some(*factor))
+        .collect();
+    if outer_factors.is_empty() {
+        return None;
+    }
+
+    Some(ExponentialLogPowerInversePlan {
+        source_base,
+        log_expr: matched_log_expr?,
+        log_arg: matched_log_arg?,
+        outer_factors,
+        base_kind: matched_base_kind?,
+    })
+}
+
+fn exponential_log_inverse_base_kind(
+    ctx: &Context,
+    source_base: ExprId,
+    log_base_opt: Option<ExprId>,
+) -> Option<LogInversePowerBaseKind> {
+    match log_base_opt {
+        None if matches!(ctx.get(source_base), Expr::Constant(Constant::E)) => {
+            Some(LogInversePowerBaseKind::Natural)
+        }
+        Some(base) if base == log10_base_sentinel() && is_integer_literal(ctx, source_base, 10) => {
+            Some(LogInversePowerBaseKind::Decimal)
+        }
+        Some(base) if compare_expr(ctx, base, source_base) == Ordering::Equal => {
+            Some(LogInversePowerBaseKind::Explicit)
+        }
+        _ => None,
+    }
 }
 
 fn log_inverse_power_plan(ctx: &Context, expr: ExprId) -> Option<LogInversePowerPlan> {
@@ -2543,6 +3120,100 @@ fn generate_reverse_nested_fraction_rule_substeps(ctx: &Context, step: &Step) ->
         .unwrap_or_default()
 }
 
+fn generate_distributive_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some((factor, terms)) = distributive_product_terms(ctx, before) else {
+        return Vec::new();
+    };
+    let Some((products_display, products_latex)) = distributive_product_list(ctx, factor, &terms)
+    else {
+        return Vec::new();
+    };
+
+    vec![
+        formula_substep(
+            "Identificar los productos que genera la distributiva",
+            &human_expr(ctx, before),
+            &products_display,
+            &latex_expr(ctx, before),
+            &products_latex,
+        ),
+        formula_substep(
+            "Escribir los productos con los signos originales",
+            &products_display,
+            &human_expr(ctx, after),
+            &products_latex,
+            &latex_expr(ctx, after),
+        ),
+    ]
+}
+
+fn distributive_product_terms(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<(ExprId, Sign)>)> {
+    let Expr::Mul(left, right) = ctx.get(expr) else {
+        return None;
+    };
+
+    let left_terms = AddView::from_expr(ctx, *left).terms;
+    if left_terms.len() >= 2 {
+        return Some((*right, left_terms.to_vec()));
+    }
+
+    let right_terms = AddView::from_expr(ctx, *right).terms;
+    if right_terms.len() >= 2 {
+        return Some((*left, right_terms.to_vec()));
+    }
+
+    None
+}
+
+fn distributive_product_list(
+    ctx: &Context,
+    factor: ExprId,
+    terms: &[(ExprId, Sign)],
+) -> Option<(String, String)> {
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let products: Vec<_> = terms
+        .iter()
+        .map(|(term, sign)| signed_distributive_product(ctx, factor, *term, *sign))
+        .collect();
+    let displays = products
+        .iter()
+        .map(|(display, _latex)| display.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let latex = products
+        .iter()
+        .map(|(_display, latex)| latex.as_str())
+        .collect::<Vec<_>>()
+        .join(", ");
+    Some((displays, latex))
+}
+
+fn signed_distributive_product(
+    ctx: &Context,
+    factor: ExprId,
+    term: ExprId,
+    sign: Sign,
+) -> (String, String) {
+    let mut work = ctx.clone();
+    let product = work.add_raw(Expr::Mul(factor, term));
+    let signed_product = match sign {
+        Sign::Pos => product,
+        Sign::Neg => work.add_raw(Expr::Neg(product)),
+    };
+    (
+        human_expr(&work, signed_product),
+        latex_expr(&work, signed_product),
+    )
+}
+
 fn reverse_nested_fraction_pattern(ctx: &Context, after: ExprId) -> Option<NestedFractionPattern> {
     let pattern = super::nested_fraction_analysis::classify_nested_fraction(ctx, after)?;
     match pattern {
@@ -2593,7 +3264,7 @@ fn split_add_with_single_fraction(ctx: &Context, expr: ExprId) -> Option<(ExprId
 fn generate_telescoping_fraction_combine_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
-    let Some((u, gap_display, gap_is_one)) = telescoping_fraction_base_and_gap(ctx, after, before)
+    let Some((u, _gap_display, gap_is_one)) = telescoping_fraction_base_and_gap(ctx, after, before)
     else {
         return Vec::new();
     };
@@ -2609,14 +3280,13 @@ fn generate_telescoping_fraction_combine_substeps(ctx: &Context, step: &Step) ->
         .unwrap_or_default();
     }
 
-    let _ = gap_display;
-    vec![formula_substep(
-        "Usar 1 / k · (1 / u - 1 / (u + k)) = 1 / (u · (u + k))",
-        &human_expr(ctx, before),
-        &human_expr(ctx, after),
-        &latex_expr(ctx, before),
-        &latex_expr(ctx, after),
-    )]
+    generate_general_telescoping_common_denominator_substeps(
+        ctx,
+        after,
+        before,
+        TelescopingFractionSubstepDirection::Combine,
+    )
+    .unwrap_or_default()
 }
 
 fn generate_telescoping_fraction_split_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -2630,7 +3300,7 @@ fn generate_consecutive_telescoping_fraction_substeps(
     before: ExprId,
     after: ExprId,
 ) -> Option<Vec<SubStep>> {
-    let (u, gap_display, gap_is_one) = telescoping_fraction_base_and_gap(ctx, before, after)?;
+    let (u, _gap_display, gap_is_one) = telescoping_fraction_base_and_gap(ctx, before, after)?;
     let _ = u;
 
     if gap_is_one {
@@ -2642,14 +3312,12 @@ fn generate_consecutive_telescoping_fraction_substeps(
         );
     }
 
-    let _ = gap_display;
-    Some(vec![formula_substep(
-        "Usar 1 / (u · (u + k)) = 1 / k · (1 / u - 1 / (u + k))",
-        &human_expr(ctx, before),
-        &human_expr(ctx, after),
-        &latex_expr(ctx, before),
-        &latex_expr(ctx, after),
-    )])
+    generate_general_telescoping_common_denominator_substeps(
+        ctx,
+        before,
+        after,
+        TelescopingFractionSubstepDirection::Split,
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2720,6 +3388,73 @@ fn consecutive_telescoping_common_fraction_work(
     let mut work = ctx.clone();
     let numerator_difference = work.add(Expr::Sub(u_plus_gap, u));
     let common_fraction = work.add(Expr::Div(numerator_difference, den));
+    Some((work, common_fraction))
+}
+
+fn generate_general_telescoping_common_denominator_substeps(
+    ctx: &Context,
+    compact_expr: ExprId,
+    split_expr: ExprId,
+    direction: TelescopingFractionSubstepDirection,
+) -> Option<Vec<SubStep>> {
+    let (work, common_fraction) =
+        general_telescoping_common_fraction_work(ctx, compact_expr, split_expr)?;
+
+    Some(match direction {
+        TelescopingFractionSubstepDirection::Split => vec![
+            temp_ctx_substep(
+                "Introducir el numerador telescópico",
+                &work,
+                compact_expr,
+                common_fraction,
+            ),
+            temp_ctx_substep(
+                "Separar sobre el denominador común",
+                &work,
+                common_fraction,
+                split_expr,
+            ),
+        ],
+        TelescopingFractionSubstepDirection::Combine => vec![
+            temp_ctx_substep(
+                "Llevar las fracciones al denominador común",
+                &work,
+                split_expr,
+                common_fraction,
+            ),
+            temp_ctx_substep(
+                "Simplificar el numerador telescópico",
+                &work,
+                common_fraction,
+                compact_expr,
+            ),
+        ],
+    })
+}
+
+fn general_telescoping_common_fraction_work(
+    ctx: &Context,
+    compact_expr: ExprId,
+    split_expr: ExprId,
+) -> Option<(Context, ExprId)> {
+    let (num, den) = as_div(ctx, compact_expr)?;
+    if !is_one(ctx, num) {
+        return None;
+    }
+
+    let (u, u_plus_gap, gap_expr) = extract_telescoping_fraction_split_pattern(ctx, split_expr)?;
+    let gap_expr = gap_expr?;
+    if !additive_gap_relation_holds(ctx, u, gap_expr, u_plus_gap) {
+        return None;
+    }
+    if !matches_telescoping_fraction_denominator(ctx, den, u, u_plus_gap) {
+        return None;
+    }
+
+    let mut work = ctx.clone();
+    let numerator_difference = work.add(Expr::Sub(u_plus_gap, u));
+    let scaled_denominator = work.add(Expr::Mul(gap_expr, den));
+    let common_fraction = work.add(Expr::Div(numerator_difference, scaled_denominator));
     Some((work, common_fraction))
 }
 
@@ -3663,38 +4398,39 @@ fn generate_cos_product_telescoping_substeps(ctx: &Context, step: &Step) -> Vec<
         .collect::<Vec<_>>()
         .join("\\cdot ");
     let quotient_latex = format!("\\frac{{\\sin({power}u)}}{{{power}\\cdot \\sin(u)}}");
-    let (base_u_plain, base_u_latex) = render_factor_basis(ctx, &base_factors);
-    let (u_plain, u_latex) = if base_multiplier == 1 {
-        (base_u_plain, base_u_latex)
+    let (base_u_plain, _) = render_factor_basis(ctx, &base_factors);
+    let u_plain = if base_multiplier == 1 {
+        base_u_plain
+    } else {
+        format!("{base_multiplier} · {base_u_plain}")
+    };
+    let title = if expands_morrie {
+        identity_title_with_optional_u("Expandir la ley de Morrie", &u_plain)
+    } else {
+        identity_title_with_optional_u("Usar el telescopado de cosenos", &u_plain)
+    };
+    let (before_plain, after_plain, before_latex, after_latex) = if expands_morrie {
+        (
+            quotient_plain.as_str(),
+            product_plain.as_str(),
+            quotient_latex.as_str(),
+            product_latex.as_str(),
+        )
     } else {
         (
-            format!("{base_multiplier} · {base_u_plain}"),
-            format!("{base_multiplier}\\cdot {base_u_latex}"),
+            product_plain.as_str(),
+            quotient_plain.as_str(),
+            product_latex.as_str(),
+            quotient_latex.as_str(),
         )
     };
-    let tautological_u = u_plain == "u" && u_latex == "u";
-    let title = if expands_morrie {
-        ("Expandir la ley de Morrie",)
-    } else {
-        ("Usar el telescopado de cosenos",)
-    }
-    .0;
 
-    let _ = (
-        product_plain,
-        quotient_plain,
-        product_latex,
-        quotient_latex,
-        u_plain,
-        u_latex,
-        tautological_u,
-    );
     vec![formula_substep(
         title,
-        &human_expr(ctx, before),
-        &human_expr(ctx, after),
-        &latex_expr(ctx, before),
-        &latex_expr(ctx, after),
+        before_plain,
+        after_plain,
+        before_latex,
+        after_latex,
     )]
 }
 
@@ -3716,32 +4452,62 @@ fn generate_dirichlet_kernel_substeps(ctx: &Context, step: &Step) -> Vec<SubStep
         return Vec::new();
     };
 
-    let (base_u_plain, base_u_latex) = render_factor_basis(ctx, &base_factors);
-    let (u_plain, u_latex) = if base_multiplier == 1 {
-        (base_u_plain, base_u_latex)
+    let (base_u_plain, _) = render_factor_basis(ctx, &base_factors);
+    let u_plain = if base_multiplier == 1 {
+        base_u_plain
     } else {
-        (
-            format!("{base_multiplier} · {base_u_plain}"),
-            format!("{base_multiplier}\\cdot {base_u_latex}"),
-        )
+        format!("{base_multiplier} · {base_u_plain}")
     };
-    let tautological_u = u_plain == "u" && u_latex == "u";
     let n_plain = n.to_string();
     let title = if expands_kernel {
-        ("Expandir el núcleo de Dirichlet",)
+        dirichlet_kernel_identity_title("Expandir el núcleo de Dirichlet", n, &u_plain)
     } else {
-        ("Usar el núcleo de Dirichlet",)
-    }
-    .0;
+        dirichlet_kernel_identity_title("Usar el núcleo de Dirichlet", n, &u_plain)
+    };
+    let sum_plain = format!("1 + 2 · Σ_(k=1)^{n_plain} cos(k · u)");
+    let quotient_plain = format!("sin(({n_plain} + 1/2)u) / sin(u/2)");
+    let sum_latex = format!("1 + 2\\cdot \\sum_{{k=1}}^{{{n_plain}}}\\cos(k\\cdot u)");
+    let quotient_latex =
+        format!("\\frac{{\\sin(({n_plain}+\\frac{{1}}{{2}})u)}}{{\\sin(\\frac{{u}}{{2}})}}");
+    let (before_plain, after_plain, before_latex, after_latex) = if expands_kernel {
+        (
+            quotient_plain.as_str(),
+            sum_plain.as_str(),
+            quotient_latex.as_str(),
+            sum_latex.as_str(),
+        )
+    } else {
+        (
+            sum_plain.as_str(),
+            quotient_plain.as_str(),
+            sum_latex.as_str(),
+            quotient_latex.as_str(),
+        )
+    };
 
-    let _ = (n_plain, u_plain, u_latex, tautological_u);
     vec![formula_substep(
         title,
-        &human_expr(ctx, before),
-        &human_expr(ctx, after),
-        &latex_expr(ctx, before),
-        &latex_expr(ctx, after),
+        before_plain,
+        after_plain,
+        before_latex,
+        after_latex,
     )]
+}
+
+fn identity_title_with_optional_u(base_title: &str, u_plain: &str) -> String {
+    if u_plain == "u" {
+        base_title.to_string()
+    } else {
+        format!("{base_title} con u = {u_plain}")
+    }
+}
+
+fn dirichlet_kernel_identity_title(base_title: &str, n: usize, u_plain: &str) -> String {
+    if u_plain == "u" {
+        format!("{base_title} con n = {n}")
+    } else {
+        format!("{base_title} con n = {n} y u = {u_plain}")
+    }
 }
 
 fn dirichlet_kernel_base_and_n(
@@ -4452,6 +5218,12 @@ fn generate_log_contraction_substeps(ctx: &Context, step: &Step) -> Vec<SubStep>
 fn generate_double_angle_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before_expr = step.before_local().unwrap_or(step.before);
     let after_expr = step.after_local().unwrap_or(step.after);
+    if let Some(substeps) =
+        generate_inverse_trig_double_angle_expansion_substeps(ctx, before_expr, after_expr)
+    {
+        return substeps;
+    }
+
     let before_display = human_expr(ctx, before_expr);
     let after_display = human_expr(ctx, after_expr);
 
@@ -4471,6 +5243,101 @@ fn generate_double_angle_expansion_substeps(ctx: &Context, step: &Step) -> Vec<S
     };
 
     vec![concrete_expr_substep(ctx, title, before_expr, after_expr)]
+}
+
+fn generate_inverse_trig_double_angle_expansion_substeps(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<Vec<SubStep>> {
+    let (outer, inverse, inverse_call) = inverse_trig_double_angle_parts(ctx, before)?;
+
+    let mut work = ctx.clone();
+    let two = work.num(2);
+    let one = work.num(1);
+    let sin_u = work.call_builtin(BuiltinFn::Sin, vec![inverse_call]);
+    let cos_u = work.call_builtin(BuiltinFn::Cos, vec![inverse_call]);
+
+    let expanded = match outer {
+        BuiltinFn::Sin => build_balanced_mul(&mut work, &[two, sin_u, cos_u]),
+        BuiltinFn::Cos => match inverse {
+            BuiltinFn::Arcsin => {
+                let sin_u_squared = work.add(Expr::Pow(sin_u, two));
+                let double_sin_u_squared = build_balanced_mul(&mut work, &[two, sin_u_squared]);
+                work.add(Expr::Sub(one, double_sin_u_squared))
+            }
+            BuiltinFn::Arccos => {
+                let cos_u_squared = work.add(Expr::Pow(cos_u, two));
+                let double_cos_u_squared = build_balanced_mul(&mut work, &[two, cos_u_squared]);
+                work.add(Expr::Sub(double_cos_u_squared, one))
+            }
+            BuiltinFn::Arctan => {
+                let cos_u_squared = work.add(Expr::Pow(cos_u, two));
+                let sin_u_squared = work.add(Expr::Pow(sin_u, two));
+                work.add(Expr::Sub(cos_u_squared, sin_u_squared))
+            }
+            _ => return None,
+        },
+        _ => return None,
+    };
+
+    Some(vec![
+        temp_ctx_substep(
+            "Expandir con la identidad de ángulo doble",
+            &work,
+            before,
+            expanded,
+        ),
+        temp_ctx_substep(
+            "Sustituir las razones trigonométricas inversas",
+            &work,
+            expanded,
+            after,
+        ),
+    ])
+}
+
+fn inverse_trig_double_angle_parts(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, BuiltinFn, ExprId)> {
+    let Expr::Function(outer_fn, outer_args) = ctx.get(expr) else {
+        return None;
+    };
+    if outer_args.len() != 1 {
+        return None;
+    }
+
+    let outer = ctx.builtin_of(*outer_fn)?;
+    if !matches!(outer, BuiltinFn::Sin | BuiltinFn::Cos) {
+        return None;
+    }
+
+    let (multiple, base_factors) = extract_i64_multiplier_and_base_factors(ctx, outer_args[0]);
+    if multiple != 2 {
+        return None;
+    }
+    let base_factors = base_factors.into_vec();
+    if base_factors.len() != 1 {
+        return None;
+    }
+    let inverse_call = base_factors[0];
+
+    let Expr::Function(inverse_fn, inverse_args) = ctx.get(inverse_call) else {
+        return None;
+    };
+    if inverse_args.len() != 1 {
+        return None;
+    }
+
+    let inverse = match ctx.builtin_of(*inverse_fn)? {
+        BuiltinFn::Arcsin | BuiltinFn::Asin => BuiltinFn::Arcsin,
+        BuiltinFn::Arccos | BuiltinFn::Acos => BuiltinFn::Arccos,
+        BuiltinFn::Arctan | BuiltinFn::Atan => BuiltinFn::Arctan,
+        _ => return None,
+    };
+
+    Some((outer, inverse, inverse_call))
 }
 
 fn generate_sum_to_product_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -5256,6 +6123,28 @@ fn generate_half_angle_square_identity_substeps(ctx: &Context, step: &Step) -> V
             "Usar (1 + cos(2u)) / 2 = cos²(u)",
             step.before_local().unwrap_or(step.before),
             step.after_local().unwrap_or(step.after),
+        )];
+    }
+
+    Vec::new()
+}
+
+fn generate_hyperbolic_half_angle_square_substeps(_ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let description = step.description.as_str();
+
+    if description.contains("cosh(u/2)^2") && description.contains("(cosh(u) + 1) / 2") {
+        return vec![SubStep::new(
+            "Usar cosh²(u/2) = (cosh(u) + 1) / 2",
+            "cosh²(u/2)",
+            "(cosh(u) + 1) / 2",
+        )];
+    }
+
+    if description.contains("sinh(u/2)^2") && description.contains("(cosh(u) - 1) / 2") {
+        return vec![SubStep::new(
+            "Usar sinh²(u/2) = (cosh(u) - 1) / 2",
+            "sinh²(u/2)",
+            "(cosh(u) - 1) / 2",
         )];
     }
 
@@ -6228,6 +7117,114 @@ fn generate_pythagorean_chain_identity_substeps(ctx: &Context, step: &Step) -> V
     Vec::new()
 }
 
+fn generate_pythagorean_identity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    if !is_one(ctx, after) {
+        return Vec::new();
+    }
+
+    let Some((arg, rewrite_cos_square)) = pythagorean_square_pair(ctx, before) else {
+        return Vec::new();
+    };
+
+    let mut work = ctx.clone();
+    let one = work.num(1);
+    let two = work.num(2);
+    let sin_arg = work.call_builtin(BuiltinFn::Sin, vec![arg]);
+    let cos_arg = work.call_builtin(BuiltinFn::Cos, vec![arg]);
+    let sin_sq = work.add(Expr::Pow(sin_arg, two));
+    let cos_sq = work.add(Expr::Pow(cos_arg, two));
+    let arg_display = human_expr(ctx, arg);
+
+    if rewrite_cos_square {
+        let one_minus_sin_sq = work.add(Expr::Sub(one, sin_sq));
+        let expanded = work.add(Expr::Add(sin_sq, one_minus_sin_sq));
+        return vec![
+            mixed_ctx_substep(
+                format!("Reescribir cos({arg_display})^2 como 1 - sin({arg_display})^2"),
+                ctx,
+                before,
+                &work,
+                expanded,
+            ),
+            temp_ctx_substep(
+                format!("Cancelar sin({arg_display})^2 - sin({arg_display})^2"),
+                &work,
+                expanded,
+                one,
+            ),
+        ];
+    }
+
+    let one_minus_cos_sq = work.add(Expr::Sub(one, cos_sq));
+    let expanded = work.add(Expr::Add(one_minus_cos_sq, cos_sq));
+    vec![
+        mixed_ctx_substep(
+            format!("Reescribir sin({arg_display})^2 como 1 - cos({arg_display})^2"),
+            ctx,
+            before,
+            &work,
+            expanded,
+        ),
+        temp_ctx_substep(
+            format!("Cancelar cos({arg_display})^2 - cos({arg_display})^2"),
+            &work,
+            expanded,
+            one,
+        ),
+    ]
+}
+
+fn pythagorean_square_pair(ctx: &Context, expr: ExprId) -> Option<(ExprId, bool)> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let (first, first_sign) = terms[0];
+    let (second, second_sign) = terms[1];
+    if first_sign != Sign::Pos || second_sign != Sign::Pos {
+        return None;
+    }
+
+    let (first_fn, first_arg) = trig_square_term(ctx, first)?;
+    let (second_fn, second_arg) = trig_square_term(ctx, second)?;
+    if !same_expr(ctx, first_arg, second_arg) {
+        return None;
+    }
+
+    if matches!(first_fn, BuiltinFn::Sin) && matches!(second_fn, BuiltinFn::Cos) {
+        return Some((first_arg, true));
+    }
+    if matches!(first_fn, BuiltinFn::Cos) && matches!(second_fn, BuiltinFn::Sin) {
+        return Some((first_arg, false));
+    }
+
+    None
+}
+
+fn trig_square_term(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    let (base, exponent) = as_pow(ctx, expr)?;
+    if !is_small_positive_integer(ctx, exponent, 2) {
+        return None;
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(base) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    let builtin = ctx.builtin_of(*fn_id)?;
+    if matches!(builtin, BuiltinFn::Sin | BuiltinFn::Cos) {
+        Some((builtin, args[0]))
+    } else {
+        None
+    }
+}
+
 fn reciprocal_rewrite_substep_for_factor(
     ctx: &mut Context,
     factor: ExprId,
@@ -6252,6 +7249,35 @@ fn reciprocal_rewrite_substep_for_factor(
     }
 
     None
+}
+
+fn generate_trig_parity_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let mut work = ctx.clone();
+    let is_odd = cas_math::trig_core_identity_support::try_rewrite_trig_odd_even_parity_expr(
+        &mut work, before,
+    )
+    .map(|rewrite| rewrite.kind == cas_math::trig_core_identity_support::TrigOddEvenParityKind::Odd)
+    .unwrap_or_else(|| matches!(ctx.get(after), Expr::Neg(_)));
+
+    if is_odd {
+        vec![formula_substep(
+            "Usar que una función impar cumple f(-u) = -f(u)",
+            "f(-u)",
+            "-f(u)",
+            "f(-u)",
+            "-f(u)",
+        )]
+    } else {
+        vec![formula_substep(
+            "Usar que una función par cumple f(-u) = f(u)",
+            "f(-u)",
+            "f(u)",
+            "f(-u)",
+            "f(u)",
+        )]
+    }
 }
 
 fn generate_trig_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -6355,6 +7381,39 @@ fn generate_trig_quotient_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
         )];
     }
     Vec::new()
+}
+
+fn generate_hyperbolic_quotient_substeps(_ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.description == "Recognize sinh(u) / cosh(u) as tanh(u)" {
+        return Vec::new();
+    }
+
+    let (title, before_display, after_display, before_latex, after_latex) =
+        if step.description.contains("Expand tanh") {
+            (
+                "Usar tanh(u) = sinh(u) / cosh(u)",
+                "tanh(u)",
+                "sinh(u) / cosh(u)",
+                "\\tanh(u)",
+                "\\frac{\\sinh(u)}{\\cosh(u)}",
+            )
+        } else {
+            (
+                "Usar sinh(u) / cosh(u) = tanh(u)",
+                "sinh(u) / cosh(u)",
+                "tanh(u)",
+                "\\frac{\\sinh(u)}{\\cosh(u)}",
+                "\\tanh(u)",
+            )
+        };
+
+    vec![formula_substep(
+        title,
+        before_display,
+        after_display,
+        before_latex,
+        after_latex,
+    )]
 }
 
 fn generate_cos_diff_sin_diff_quotient_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
@@ -7248,13 +8307,41 @@ fn matches_square_of(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
     if is_one(ctx, base) {
         return is_one(ctx, expr);
     }
-    matches!(
+    if matches!(
         ctx.get(expr),
         Expr::Pow(pow_base, exp)
             if is_small_positive_integer(ctx, *exp, 2)
                 && cas_ast::ordering::compare_expr(ctx, *pow_base, base)
                     == std::cmp::Ordering::Equal
-    )
+    ) {
+        return true;
+    }
+
+    matches_flattened_power_multiple(ctx, expr, base, 2)
+}
+
+fn matches_flattened_power_multiple(
+    ctx: &Context,
+    expr: ExprId,
+    base: ExprId,
+    multiplier: i64,
+) -> bool {
+    let Expr::Pow(expr_base, expr_exponent) = ctx.get(expr) else {
+        return false;
+    };
+    let Expr::Pow(base_inner, base_exponent) = ctx.get(base) else {
+        return false;
+    };
+    if compare_expr(ctx, *expr_base, *base_inner) != Ordering::Equal {
+        return false;
+    }
+    let Some(expr_exponent) = positive_integer_literal_value(ctx, *expr_exponent) else {
+        return false;
+    };
+    let Some(base_exponent) = positive_integer_literal_value(ctx, *base_exponent) else {
+        return false;
+    };
+    expr_exponent == base_exponent * multiplier
 }
 
 fn matches_fourth_power_of(ctx: &Context, expr: ExprId, base: ExprId) -> bool {
@@ -8275,6 +9362,10 @@ fn generate_simplify_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec
 
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
+    if let Some(substeps) = generate_reverse_nested_fraction_substeps(ctx, before, after) {
+        return substeps;
+    }
+
     let Expr::Div(_, _) = ctx.get(before) else {
         return Vec::new();
     };
@@ -8327,6 +9418,36 @@ fn generate_simplify_nested_fraction_substeps(ctx: &Context, step: &Step) -> Vec
         }
     }
 
+    {
+        let mut work = ctx.clone();
+        if let Some((numerator_before, numerator_after, full_intermediate, divides_by_fraction)) =
+            build_additive_numerator_nested_fraction_intermediates(&mut work, before)
+        {
+            let final_title = if divides_by_fraction {
+                "Dividir entre una fracción es multiplicar por su inversa"
+            } else {
+                "Incorporar el denominador externo"
+            };
+
+            return vec![
+                SubStep::new(
+                    "Llevar el numerador a denominador común",
+                    display_expr(&work, numerator_before),
+                    display_expr(&work, numerator_after),
+                )
+                .with_before_latex(latex_expr(&work, numerator_before))
+                .with_after_latex(latex_expr(&work, numerator_after)),
+                SubStep::new(
+                    final_title,
+                    display_expr(&work, full_intermediate),
+                    display_expr(ctx, after),
+                )
+                .with_before_latex(latex_expr(&work, full_intermediate))
+                .with_after_latex(latex_expr(ctx, after)),
+            ];
+        }
+    }
+
     vec![SubStep::new(
         "Cancelar los factores comunes del numerador y del denominador",
         display_expr(ctx, before),
@@ -8364,6 +9485,48 @@ fn build_reciprocal_pair_with_common_denominator(
         }
         _ => None,
     }
+}
+
+fn split_single_fraction_addend(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    if let Some((fraction_num, fraction_den)) = as_div(ctx, left) {
+        return Some((fraction_num, fraction_den, right));
+    }
+
+    let (fraction_num, fraction_den) = as_div(ctx, right)?;
+    Some((fraction_num, fraction_den, left))
+}
+
+fn build_additive_single_fraction_common_denominator(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Add(left, right) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let (fraction_num, fraction_den, other) = split_single_fraction_addend(ctx, left, right)?;
+    let scaled_other = ctx.add(Expr::Mul(other, fraction_den));
+    let numerator = ctx.add(Expr::Add(scaled_other, fraction_num));
+    Some(ctx.add(Expr::Div(numerator, fraction_den)))
+}
+
+fn build_additive_numerator_nested_fraction_intermediates(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId, bool)> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    let numerator_after = build_reciprocal_pair_with_common_denominator(ctx, numerator)
+        .or_else(|| build_additive_single_fraction_common_denominator(ctx, numerator))?;
+    let full_intermediate = ctx.add(Expr::Div(numerator_after, denominator));
+    Some((
+        numerator,
+        numerator_after,
+        full_intermediate,
+        unit_fraction_denominator(ctx, denominator).is_some(),
+    ))
 }
 
 fn build_sum_difference_reciprocal_complex_fraction_intermediate(
@@ -8656,7 +9819,127 @@ fn generate_inverse_tan_relation_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     out
 }
 
+fn generate_inverse_hyperbolic_log_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some(u) = change_of_base_natural_log_argument(ctx, after) else {
+        return Vec::new();
+    };
+
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if args.len() != 1 || !ctx.is_builtin(*fn_id, BuiltinFn::Atanh) {
+        return Vec::new();
+    }
+
+    let ratio = args[0];
+    if !matches!(ctx.get(ratio), Expr::Div(_, _)) {
+        return Vec::new();
+    }
+
+    vec![SubStep::new(
+        "Identificar el argumento como (u^2 - 1)/(u^2 + 1)",
+        display_expr(ctx, ratio),
+        format!("u = {}", display_expr(ctx, u)),
+    )
+    .with_before_latex(latex_expr(ctx, ratio))
+    .with_after_latex(format!("u = {}", latex_expr(ctx, u)))]
+}
+
+fn generate_hyperbolic_composition_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some((outer_fn, inner_fn, argument)) = hyperbolic_composition_parts(ctx, before) else {
+        return Vec::new();
+    };
+    if compare_expr(ctx, argument, after) != Ordering::Equal {
+        return Vec::new();
+    }
+
+    let mut work = ctx.clone();
+    let u = work.var("u");
+    let inner = work.call_builtin(inner_fn, vec![u]);
+    let composition = work.call_builtin(outer_fn, vec![inner]);
+    let outer_name = hyperbolic_fn_name(outer_fn);
+    let inner_name = hyperbolic_fn_name(inner_fn);
+
+    vec![
+        temp_ctx_substep(
+            format!("Usar que {outer_name} y {inner_name} son funciones inversas"),
+            &work,
+            composition,
+            u,
+        ),
+        SubStep::new(
+            format!("Aquí u = {}", human_expr(ctx, argument)),
+            human_expr(ctx, before),
+            human_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(latex_expr(ctx, after)),
+    ]
+}
+
+fn hyperbolic_composition_parts(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, BuiltinFn, ExprId)> {
+    let Expr::Function(outer_fn, outer_args) = ctx.get(expr) else {
+        return None;
+    };
+    if outer_args.len() != 1 {
+        return None;
+    }
+    let Expr::Function(inner_fn, inner_args) = ctx.get(outer_args[0]) else {
+        return None;
+    };
+    if inner_args.len() != 1 {
+        return None;
+    }
+
+    let outer = ctx.builtin_of(*outer_fn)?;
+    let inner = ctx.builtin_of(*inner_fn)?;
+    matches!(
+        (outer, inner),
+        (BuiltinFn::Sinh, BuiltinFn::Asinh)
+            | (BuiltinFn::Cosh, BuiltinFn::Acosh)
+            | (BuiltinFn::Tanh, BuiltinFn::Atanh)
+            | (BuiltinFn::Asinh, BuiltinFn::Sinh)
+            | (BuiltinFn::Acosh, BuiltinFn::Cosh)
+            | (BuiltinFn::Atanh, BuiltinFn::Tanh)
+    )
+    .then_some((outer, inner, inner_args[0]))
+}
+
+fn hyperbolic_fn_name(function: BuiltinFn) -> &'static str {
+    match function {
+        BuiltinFn::Sinh => "sinh",
+        BuiltinFn::Cosh => "cosh",
+        BuiltinFn::Tanh => "tanh",
+        BuiltinFn::Asinh => "asinh",
+        BuiltinFn::Acosh => "acosh",
+        BuiltinFn::Atanh => "atanh",
+        _ => "función",
+    }
+}
+
 fn generate_inverse_trig_composition_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if let Some(substeps) = generate_direct_inverse_trig_composition_substeps(ctx, step) {
+        return substeps;
+    }
+
+    if step.description.contains("sin(arctan") || step.description.contains("cos(arctan") {
+        return generate_arctan_right_triangle_composition_substeps(ctx, step);
+    }
+
+    if step.description.contains("cos(arcsin")
+        || step.description.contains("sin(arccos")
+        || step.description.contains("tan(arcsin")
+    {
+        return generate_arcsin_arccos_complement_composition_substeps(ctx, step);
+    }
+
     if !step.description.contains("arcsin") || !step.description.contains("arctan") {
         return Vec::new();
     }
@@ -8699,7 +9982,271 @@ fn generate_inverse_trig_composition_substeps(ctx: &Context, step: &Step) -> Vec
     ]
 }
 
+fn generate_direct_inverse_trig_composition_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Option<Vec<SubStep>> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let (outer_fn, inner_fn, argument) = direct_inverse_trig_composition_parts(ctx, before)?;
+    if compare_expr(ctx, argument, after) != Ordering::Equal {
+        return None;
+    }
+
+    let mut work = ctx.clone();
+    let u = work.var("u");
+    let inner = work.call_builtin(inner_fn, vec![u]);
+    let composition = work.call_builtin(outer_fn, vec![inner]);
+    let outer_name = inverse_trig_fn_name(outer_fn);
+    let inner_name = inverse_trig_fn_name(inner_fn);
+
+    Some(vec![
+        temp_ctx_substep(
+            format!("Usar que {outer_name} y {inner_name} son funciones inversas"),
+            &work,
+            composition,
+            u,
+        ),
+        SubStep::new(
+            format!("Aquí u = {}", human_expr(ctx, argument)),
+            human_expr(ctx, before),
+            human_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(latex_expr(ctx, after)),
+    ])
+}
+
+fn direct_inverse_trig_composition_parts(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, BuiltinFn, ExprId)> {
+    let Expr::Function(outer_fn, outer_args) = ctx.get(expr) else {
+        return None;
+    };
+    if outer_args.len() != 1 {
+        return None;
+    }
+    let Expr::Function(inner_fn, inner_args) = ctx.get(outer_args[0]) else {
+        return None;
+    };
+    if inner_args.len() != 1 {
+        return None;
+    }
+
+    let outer = ctx.builtin_of(*outer_fn)?;
+    let inner = ctx.builtin_of(*inner_fn)?;
+    matches!(
+        (outer, inner),
+        (BuiltinFn::Sin, BuiltinFn::Arcsin)
+            | (BuiltinFn::Sin, BuiltinFn::Asin)
+            | (BuiltinFn::Cos, BuiltinFn::Arccos)
+            | (BuiltinFn::Cos, BuiltinFn::Acos)
+            | (BuiltinFn::Tan, BuiltinFn::Arctan)
+            | (BuiltinFn::Tan, BuiltinFn::Atan)
+    )
+    .then_some((outer, inner, inner_args[0]))
+}
+
+fn inverse_trig_fn_name(function: BuiltinFn) -> &'static str {
+    match function {
+        BuiltinFn::Sin => "sin",
+        BuiltinFn::Cos => "cos",
+        BuiltinFn::Tan => "tan",
+        BuiltinFn::Arcsin | BuiltinFn::Asin => "arcsin",
+        BuiltinFn::Arccos | BuiltinFn::Acos => "arccos",
+        BuiltinFn::Arctan | BuiltinFn::Atan => "arctan",
+        _ => "función",
+    }
+}
+
+fn generate_arcsin_arccos_complement_composition_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(outer_fn, outer_args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if outer_args.len() != 1 {
+        return Vec::new();
+    }
+
+    let (x, inverse_name, known_side, projection_title, projection_label) =
+        if ctx.is_builtin(*outer_fn, BuiltinFn::Cos) {
+            let Some(x) =
+                inverse_trig_unary_arg(ctx, outer_args[0], &[BuiltinFn::Arcsin, BuiltinFn::Asin])
+            else {
+                return Vec::new();
+            };
+            (
+                x,
+                "arcsin(x)",
+                "opuesto",
+                "Leer el coseno desde ese triángulo",
+                "coseno",
+            )
+        } else if ctx.is_builtin(*outer_fn, BuiltinFn::Sin) {
+            let Some(x) =
+                inverse_trig_unary_arg(ctx, outer_args[0], &[BuiltinFn::Arccos, BuiltinFn::Acos])
+            else {
+                return Vec::new();
+            };
+            (
+                x,
+                "arccos(x)",
+                "adyacente",
+                "Leer el seno desde ese triángulo",
+                "seno",
+            )
+        } else if ctx.is_builtin(*outer_fn, BuiltinFn::Tan) {
+            let Some(x) =
+                inverse_trig_unary_arg(ctx, outer_args[0], &[BuiltinFn::Arcsin, BuiltinFn::Asin])
+            else {
+                return Vec::new();
+            };
+            (
+                x,
+                "arcsin(x)",
+                "opuesto",
+                "Leer la tangente desde ese triángulo",
+                "tangente",
+            )
+        } else {
+            return Vec::new();
+        };
+
+    let unknown_side = if known_side == "opuesto" {
+        "adyacente"
+    } else {
+        "opuesto"
+    };
+    let mut work = ctx.clone();
+    let two = work.num(2);
+    let x_squared = work.add(Expr::Pow(x, two));
+    let one = work.num(1);
+    let radicand = work.add(Expr::Sub(one, x_squared));
+    let missing_side = work.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+
+    let side_text = format!(
+        "{} = {}, hipotenusa = {}, {} = {}",
+        known_side,
+        human_expr(&work, x),
+        human_expr(&work, one),
+        unknown_side,
+        human_expr(&work, missing_side)
+    );
+    let side_latex = format!(
+        "\\text{{{}}}={},\\ \\text{{hipotenusa}}={},\\ \\text{{{}}}={}",
+        known_side,
+        latex_expr(&work, x),
+        latex_expr(&work, one),
+        unknown_side,
+        latex_expr(&work, missing_side)
+    );
+    let projection_substep = SubStep::new(
+        projection_title,
+        side_text,
+        format!("{} = {}", projection_label, human_expr(&work, after)),
+    )
+    .with_before_latex(side_latex)
+    .with_after_latex(latex_expr(&work, after));
+
+    vec![
+        temp_ctx_substep(
+            format!("Calcular el cateto restante del triángulo asociado a {inverse_name}"),
+            &work,
+            radicand,
+            missing_side,
+        ),
+        projection_substep,
+    ]
+}
+
+fn generate_arctan_right_triangle_composition_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(outer_fn, outer_args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if outer_args.len() != 1 {
+        return Vec::new();
+    }
+    let is_sine_projection = if ctx.is_builtin(*outer_fn, BuiltinFn::Sin) {
+        true
+    } else if ctx.is_builtin(*outer_fn, BuiltinFn::Cos) {
+        false
+    } else {
+        return Vec::new();
+    };
+    let projection_title = if is_sine_projection {
+        "Leer el seno desde ese triángulo"
+    } else {
+        "Leer el coseno desde ese triángulo"
+    };
+    let projection_label = if is_sine_projection { "seno" } else { "coseno" };
+    let Some(x) = inverse_trig_unary_arg(ctx, outer_args[0], &[BuiltinFn::Arctan, BuiltinFn::Atan])
+    else {
+        return Vec::new();
+    };
+
+    let mut work = ctx.clone();
+    let two = work.num(2);
+    let x_squared = work.add(Expr::Pow(x, two));
+    let one = work.num(1);
+    let radicand = work.add(Expr::Add(x_squared, one));
+    let hypotenuse = work.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let side_text = if is_sine_projection {
+        format!(
+            "opuesto = {}, hipotenusa = {}",
+            human_expr(&work, x),
+            human_expr(&work, hypotenuse)
+        )
+    } else {
+        format!(
+            "adyacente = {}, hipotenusa = {}",
+            human_expr(&work, one),
+            human_expr(&work, hypotenuse)
+        )
+    };
+    let side_latex = if is_sine_projection {
+        format!(
+            "\\text{{opuesto}}={},\\ \\text{{hipotenusa}}={}",
+            latex_expr(&work, x),
+            latex_expr(&work, hypotenuse)
+        )
+    } else {
+        format!(
+            "\\text{{adyacente}}={},\\ \\text{{hipotenusa}}={}",
+            latex_expr(&work, one),
+            latex_expr(&work, hypotenuse)
+        )
+    };
+    let projection_substep = SubStep::new(
+        projection_title,
+        side_text,
+        format!("{} = {}", projection_label, human_expr(&work, after)),
+    )
+    .with_before_latex(side_latex)
+    .with_after_latex(latex_expr(&work, after));
+
+    vec![
+        temp_ctx_substep(
+            "Calcular la hipotenusa del triángulo asociado a arctan(x)",
+            &work,
+            radicand,
+            hypotenuse,
+        ),
+        projection_substep,
+    ]
+}
+
 fn generate_change_of_base_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.description == "Expand the logarithm using a change-of-base chain" {
+        return Vec::new();
+    }
+
     let before = step.before_local().unwrap_or(step.before);
 
     if let Some((base, argument)) = change_of_base_log_arguments(ctx, before) {
@@ -9355,6 +10902,66 @@ fn generate_sum_difference_sixth_powers_expansion_substeps(
     ]
 }
 
+fn generate_sophie_germain_expansion_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some((a, b)) = sophie_germain_expansion_plan(ctx, before, after) else {
+        return Vec::new();
+    };
+
+    let factorized_display = sophie_germain_factorized_identity_display(ctx, a, b);
+    let factorized_latex = sophie_germain_factorized_identity_latex(ctx, a, b);
+    let identity_display = sophie_germain_identity_display(ctx, a, b);
+    let identity_latex = sophie_germain_identity_latex(ctx, a, b);
+
+    vec![
+        SubStep::new(
+            "Reconocer el patrón de Sophie Germain",
+            display_expr(ctx, before),
+            factorized_display.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(factorized_latex.clone()),
+        SubStep::new(
+            "Aplicar la identidad de Sophie Germain",
+            factorized_display,
+            identity_display,
+        )
+        .with_before_latex(factorized_latex)
+        .with_after_latex(identity_latex),
+    ]
+}
+
+fn generate_sophie_germain_factorization_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some((a, b)) = sophie_germain_expansion_plan(ctx, after, before) else {
+        return Vec::new();
+    };
+
+    let difference_display = sophie_germain_difference_of_squares_display(ctx, a, b);
+    let difference_latex = sophie_germain_difference_of_squares_latex(ctx, a, b);
+    let factorized_display = sophie_germain_factorized_identity_display(ctx, a, b);
+    let factorized_latex = sophie_germain_factorized_identity_latex(ctx, a, b);
+
+    vec![
+        SubStep::new(
+            "Convertir la suma en diferencia de cuadrados",
+            display_expr(ctx, before),
+            difference_display.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, before))
+        .with_after_latex(difference_latex.clone()),
+        SubStep::new(
+            "Factorizar la diferencia de cuadrados",
+            difference_display,
+            factorized_display,
+        )
+        .with_before_latex(difference_latex)
+        .with_after_latex(factorized_latex),
+    ]
+}
+
 fn generate_sum_difference_cubes_cancel_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     let before = step.before_local().unwrap_or(step.before);
     let after = step.after_local().unwrap_or(step.after);
@@ -9755,6 +11362,12 @@ fn same_presentational_expr(
     display_expr(left_ctx, left_expr) == display_expr(right_ctx, right_expr)
 }
 
+fn same_expr(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    left == right
+        || compare_expr(ctx, left, right) == Ordering::Equal
+        || same_presentational_expr(ctx, left, ctx, right)
+}
+
 #[derive(Clone, Copy)]
 enum CubeIdentityKind {
     Sum,
@@ -9786,7 +11399,16 @@ fn cube_identity_terms(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId, C
         Expr::Sub(left, right) => Some((*left, *right, CubeIdentityKind::Difference)),
         Expr::Add(left, right) => match ctx.get(*right) {
             Expr::Neg(inner) => Some((*left, *inner, CubeIdentityKind::Difference)),
-            _ => Some((*left, *right, CubeIdentityKind::Sum)),
+            _ if is_negative_one(ctx, *right) => {
+                Some((*left, *right, CubeIdentityKind::Difference))
+            }
+            _ => match ctx.get(*left) {
+                Expr::Neg(inner) => Some((*right, *inner, CubeIdentityKind::Difference)),
+                _ if is_negative_one(ctx, *left) => {
+                    Some((*right, *left, CubeIdentityKind::Difference))
+                }
+                _ => Some((*left, *right, CubeIdentityKind::Sum)),
+            },
         },
         _ => None,
     }
@@ -9795,8 +11417,8 @@ fn cube_identity_terms(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId, C
 fn cube_identity_plan(ctx: &Context, before: ExprId, after: ExprId) -> Option<CubeIdentityPlan> {
     let (left_term, right_term, kind) = cube_identity_terms(ctx, before)?;
 
-    let left_base = cube_base_from_term(ctx, left_term)?;
-    let right_base = cube_base_from_term(ctx, right_term)?;
+    let left_base = cube_base_from_term_with_witness(ctx, left_term, after)?;
+    let right_base = cube_base_from_term_with_witness(ctx, right_term, after)?;
 
     let Expr::Mul(first_factor, second_factor) = ctx.get(after) else {
         return None;
@@ -9840,8 +11462,8 @@ fn cube_factorized_identity_plan(
     after: ExprId,
 ) -> Option<CubeIdentityPlan> {
     let (left_term, right_term, kind) = cube_identity_terms(ctx, after)?;
-    let left_base = cube_base_from_term(ctx, left_term)?;
-    let right_base = cube_base_from_term(ctx, right_term)?;
+    let left_base = cube_base_from_term_with_witness(ctx, left_term, before)?;
+    let right_base = cube_base_from_term_with_witness(ctx, right_term, before)?;
     let Expr::Mul(first_factor, second_factor) = ctx.get(before) else {
         return None;
     };
@@ -9943,6 +11565,78 @@ fn cube_base_from_term(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     }
 }
 
+fn cube_base_from_term_with_witness(
+    ctx: &Context,
+    expr: ExprId,
+    witness: ExprId,
+) -> Option<ExprId> {
+    cube_base_from_term(ctx, expr).or_else(|| {
+        if is_negative_one(ctx, expr) {
+            find_one_literal(ctx, witness)
+        } else if let Some((base, cube_root_exponent)) = cube_root_power_term(ctx, expr) {
+            find_power_literal(ctx, witness, base, cube_root_exponent)
+        } else {
+            None
+        }
+    })
+}
+
+fn cube_root_power_term(ctx: &Context, expr: ExprId) -> Option<(ExprId, i64)> {
+    let Expr::Pow(base, exponent) = ctx.get(expr) else {
+        return None;
+    };
+    let exponent = positive_integer_literal_value(ctx, *exponent)?.to_i64()?;
+    if exponent <= 3 || exponent % 3 != 0 {
+        return None;
+    }
+    let cube_root_exponent = exponent / 3;
+    if cube_root_exponent <= 2 {
+        return None;
+    }
+    Some((*base, cube_root_exponent))
+}
+
+fn find_power_literal(ctx: &Context, expr: ExprId, base: ExprId, exponent: i64) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(candidate_base, candidate_exponent)
+            if compare_expr(ctx, *candidate_base, base) == Ordering::Equal
+                && is_integer_literal(ctx, *candidate_exponent, exponent) =>
+        {
+            Some(expr)
+        }
+        Expr::Neg(inner) => find_power_literal(ctx, *inner, base, exponent),
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => find_power_literal(ctx, *left, base, exponent)
+            .or_else(|| find_power_literal(ctx, *right, base, exponent)),
+        Expr::Function(_, args) => args
+            .iter()
+            .find_map(|arg| find_power_literal(ctx, *arg, base, exponent)),
+        _ => None,
+    }
+}
+
+fn find_one_literal(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if is_one(ctx, expr) {
+        return Some(expr);
+    }
+
+    match ctx.get(expr) {
+        Expr::Neg(inner) => find_one_literal(ctx, *inner),
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            find_one_literal(ctx, *left).or_else(|| find_one_literal(ctx, *right))
+        }
+        Expr::Function(_, args) => args.iter().find_map(|arg| find_one_literal(ctx, *arg)),
+        _ => None,
+    }
+}
+
 fn sixth_power_base_from_term(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Pow(base, exponent) if is_integer_literal(ctx, *exponent, 6) => Some(*base),
@@ -9968,12 +11662,17 @@ fn linear_factor_matches(
         CubeIdentityKind::Difference => match ctx.get(expr) {
             Expr::Sub(left, right) => *left == left_base && *right == right_base,
             Expr::Add(left, right) => {
-                *left == left_base
-                    && matches!(ctx.get(*right), Expr::Neg(inner) if *inner == right_base)
+                (*left == left_base && is_negated_version_of(ctx, *right, right_base))
+                    || (*right == left_base && is_negated_version_of(ctx, *left, right_base))
             }
             _ => false,
         },
     }
+}
+
+fn is_negated_version_of(ctx: &Context, expr: ExprId, positive: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Neg(inner) if *inner == positive)
+        || (is_one(ctx, positive) && is_negative_one(ctx, expr))
 }
 
 fn quadratic_factor_matches(
@@ -10130,8 +11829,8 @@ fn cube_quadratic_factor_display(
     right_base: ExprId,
     kind: CubeIdentityKind,
 ) -> String {
-    let left_sq = format!("{}^2", display_expr(ctx, left_base));
-    let right_sq = format!("{}^2", display_expr(ctx, right_base));
+    let left_sq = squared_display(ctx, left_base);
+    let right_sq = squared_display(ctx, right_base);
     let mixed = format!(
         "{}·{}",
         display_expr(ctx, left_base),
@@ -10323,6 +12022,130 @@ fn sixth_power_factorized_identity_latex(
         "{}\\cdot {}",
         sixth_power_binomial_factor_latex(ctx, left_base, right_base, kind),
         sixth_power_quartic_factor_latex(ctx, left_base, right_base, kind)
+    )
+}
+
+fn sophie_germain_identity_display(ctx: &Context, left_base: ExprId, right_base: ExprId) -> String {
+    format!(
+        "{} + 4 · {}",
+        fourth_power_display(ctx, left_base),
+        fourth_power_display(ctx, right_base)
+    )
+}
+
+fn sophie_germain_identity_latex(ctx: &Context, left_base: ExprId, right_base: ExprId) -> String {
+    format!(
+        "{} + 4\\cdot {}",
+        fourth_power_latex(ctx, left_base),
+        fourth_power_latex(ctx, right_base)
+    )
+}
+
+fn sophie_germain_difference_of_squares_display(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+) -> String {
+    format!(
+        "({} + 2 · {})^2 - (2 · {} · {})^2",
+        squared_display(ctx, left_base),
+        squared_display(ctx, right_base),
+        display_expr(ctx, left_base),
+        display_expr(ctx, right_base)
+    )
+}
+
+fn sophie_germain_difference_of_squares_latex(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+) -> String {
+    format!(
+        "\\left({} + 2\\cdot {}\\right)^{{2}} - \\left(2\\cdot {}\\cdot {}\\right)^{{2}}",
+        squared_latex(ctx, left_base),
+        squared_latex(ctx, right_base),
+        latex_expr(ctx, left_base),
+        latex_expr(ctx, right_base)
+    )
+}
+
+fn sophie_germain_minus_factor_display(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+) -> String {
+    format!(
+        "({} - 2 · {} · {} + 2 · {})",
+        squared_display(ctx, left_base),
+        display_expr(ctx, left_base),
+        display_expr(ctx, right_base),
+        squared_display(ctx, right_base)
+    )
+}
+
+fn sophie_germain_minus_factor_latex(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+) -> String {
+    format!(
+        "\\left({} - 2\\cdot {}\\cdot {} + 2\\cdot {}\\right)",
+        squared_latex(ctx, left_base),
+        latex_expr(ctx, left_base),
+        latex_expr(ctx, right_base),
+        squared_latex(ctx, right_base)
+    )
+}
+
+fn sophie_germain_plus_factor_display(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+) -> String {
+    format!(
+        "({} + 2 · {} · {} + 2 · {})",
+        squared_display(ctx, left_base),
+        display_expr(ctx, left_base),
+        display_expr(ctx, right_base),
+        squared_display(ctx, right_base)
+    )
+}
+
+fn sophie_germain_plus_factor_latex(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+) -> String {
+    format!(
+        "\\left({} + 2\\cdot {}\\cdot {} + 2\\cdot {}\\right)",
+        squared_latex(ctx, left_base),
+        latex_expr(ctx, left_base),
+        latex_expr(ctx, right_base),
+        squared_latex(ctx, right_base)
+    )
+}
+
+fn sophie_germain_factorized_identity_display(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+) -> String {
+    format!(
+        "{} · {}",
+        sophie_germain_minus_factor_display(ctx, left_base, right_base),
+        sophie_germain_plus_factor_display(ctx, left_base, right_base)
+    )
+}
+
+fn sophie_germain_factorized_identity_latex(
+    ctx: &Context,
+    left_base: ExprId,
+    right_base: ExprId,
+) -> String {
+    format!(
+        "{}\\cdot {}",
+        sophie_germain_minus_factor_latex(ctx, left_base, right_base),
+        sophie_germain_plus_factor_latex(ctx, left_base, right_base)
     )
 }
 

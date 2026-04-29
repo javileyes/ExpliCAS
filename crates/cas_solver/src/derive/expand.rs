@@ -320,6 +320,15 @@ mod tests {
     }
 
     #[test]
+    fn expands_fractional_binomial_target_aware() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("(x + 1/2)^2", &mut ctx).expect("source");
+        let target = cas_parser::parse("x^2 + x + 1/4", &mut ctx).expect("target");
+        let rewrite = try_rewrite_expanded_target_aware(&mut ctx, source, target).expect("rewrite");
+        assert_eq!(rewrite.kind, ExpandRewriteKind::BinomialPower);
+    }
+
+    #[test]
     fn rejects_non_matching_expansion_target() {
         let mut ctx = cas_ast::Context::new();
         let source = cas_parser::parse("(a + b)^2", &mut ctx).expect("source");

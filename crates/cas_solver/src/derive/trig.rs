@@ -10,6 +10,7 @@ use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeriveTrigRewriteKind {
+    TrigSpecialValue,
     TanToSinCos,
     RecognizeSinOverCosAsTan,
     ExpandSecToRecipCos,
@@ -32,10 +33,14 @@ pub(crate) enum DeriveTrigRewriteKind {
     RecognizeOneMinusCscSquaredAsNegCotSquared,
     ExpandNegCotSquaredToOneMinusCscSquared,
     AngleSumDiff,
+    TangentAngleSumDiffExpand,
+    TangentAngleSumDiffContract,
     RecursiveAngleSumDiff,
     HalfAngleTangent,
     HalfAngleTangentExpandOneMinusCosOverSin,
     HalfAngleTangentExpandSinOverOnePlusCos,
+    TangentHalfAngleSubstitutionSin,
+    TangentHalfAngleSubstitutionCos,
     HalfAngleSinSquaredExpand,
     HalfAngleCosSquaredExpand,
     SinCosSquareSum,
@@ -71,6 +76,8 @@ pub(crate) enum DeriveTrigRewriteKind {
     HalfAngleNegCosSquaredContract,
     DoubleAngleSin,
     DoubleAngleCos,
+    DoubleAngleTanExpand,
+    DoubleAngleTanContract,
     TripleAngleSin,
     TripleAngleCos,
     TripleAngleTan,
@@ -101,6 +108,7 @@ pub(crate) enum DeriveTrigRewriteKind {
     SumToProductCosSum,
     SumToProductCosDiff,
     PhaseShiftIdentity,
+    TrigOddEvenParity,
     CofunctionIdentity,
     LinearAngleArgumentSimplify,
 }
@@ -815,6 +823,7 @@ fn sign_to_coeff(sign: Sign) -> i64 {
 impl DeriveTrigRewriteKind {
     pub(crate) fn description(self) -> &'static str {
         match self {
+            Self::TrigSpecialValue => "Evaluate a trigonometric function at a special input",
             Self::TanToSinCos => "Expand tangent to sine over cosine",
             Self::RecognizeSinOverCosAsTan => "Recognize sin(u) / cos(u) as tan(u)",
             Self::ExpandSecToRecipCos => "Expand sec(u) as 1 / cos(u)",
@@ -839,6 +848,8 @@ impl DeriveTrigRewriteKind {
             Self::RecognizeOneMinusCscSquaredAsNegCotSquared => "Recognize 1 - csc²(u) as -cot²(u)",
             Self::ExpandNegCotSquaredToOneMinusCscSquared => "Expand -cot²(u) as 1 - csc²(u)",
             Self::AngleSumDiff => "Expand or contract an angle sum/difference trig identity",
+            Self::TangentAngleSumDiffExpand => "Expand tangent angle sum/difference form",
+            Self::TangentAngleSumDiffContract => "Recognize tangent angle sum/difference form",
             Self::RecursiveAngleSumDiff => {
                 "Expand a trig multiple angle recursively via angle addition"
             }
@@ -848,6 +859,12 @@ impl DeriveTrigRewriteKind {
             }
             Self::HalfAngleTangentExpandSinOverOnePlusCos => {
                 "Expand tan(u) as sin(2u)/(1 + cos(2u))"
+            }
+            Self::TangentHalfAngleSubstitutionSin => {
+                "Rewrite sin(u) using the tangent half-angle substitution"
+            }
+            Self::TangentHalfAngleSubstitutionCos => {
+                "Rewrite cos(u) using the tangent half-angle substitution"
             }
             Self::HalfAngleSinSquaredExpand => "Expand sin²(u) as (1 - cos(2u))/2",
             Self::HalfAngleCosSquaredExpand => "Expand cos²(u) as (1 + cos(2u))/2",
@@ -898,6 +915,8 @@ impl DeriveTrigRewriteKind {
             }
             Self::DoubleAngleSin => "Expand double-angle sine",
             Self::DoubleAngleCos => "Expand double-angle cosine",
+            Self::DoubleAngleTanExpand => "Expand tangent double-angle form",
+            Self::DoubleAngleTanContract => "Recognize tangent double-angle form",
             Self::TripleAngleSin => "Expand or contract sine triple-angle form",
             Self::TripleAngleCos => "Expand or contract cosine triple-angle form",
             Self::TripleAngleTan => "Expand or contract tangent triple-angle form",
@@ -930,6 +949,7 @@ impl DeriveTrigRewriteKind {
             Self::PhaseShiftIdentity => {
                 "Rewrite exact sine/cosine linear combinations using a phase shift"
             }
+            Self::TrigOddEvenParity => "Apply a trigonometric odd/even parity identity",
             Self::CofunctionIdentity => "Apply a sine/cosine cofunction identity",
             Self::LinearAngleArgumentSimplify => {
                 "Simplify linear angle arguments inside trig functions"
@@ -939,6 +959,7 @@ impl DeriveTrigRewriteKind {
 
     pub(crate) fn rule_name(self) -> &'static str {
         match self {
+            Self::TrigSpecialValue => "Evaluate Trigonometric Functions",
             Self::TanToSinCos => "Trig Expansion",
             Self::RecognizeSinOverCosAsTan | Self::RecognizeCosDiffOverSinDiffAsTan => {
                 "Trig Quotient"
@@ -962,9 +983,14 @@ impl DeriveTrigRewriteKind {
             | Self::ExpandNegCotSquaredToOneMinusCscSquared
             | Self::ExpandCotSquaredToCscSquaredMinusOne => "Reciprocal Pythagorean Identity",
             Self::AngleSumDiff | Self::RecursiveAngleSumDiff => "Angle Sum/Diff Identity",
+            Self::TangentAngleSumDiffExpand | Self::TangentAngleSumDiffContract => {
+                "Tangent Angle Sum/Diff Identity"
+            }
             Self::HalfAngleTangent
             | Self::HalfAngleTangentExpandOneMinusCosOverSin
-            | Self::HalfAngleTangentExpandSinOverOnePlusCos => "Half-Angle Tangent Identity",
+            | Self::HalfAngleTangentExpandSinOverOnePlusCos
+            | Self::TangentHalfAngleSubstitutionSin
+            | Self::TangentHalfAngleSubstitutionCos => "Half-Angle Tangent Identity",
             Self::HalfAngleSinSquaredExpand
             | Self::HalfAngleCosSquaredExpand
             | Self::HalfAngleSinSquaredContract
@@ -1011,6 +1037,9 @@ impl DeriveTrigRewriteKind {
             | Self::DoubleAngleCosTwoSinSqToOneMinusCos
             | Self::DoubleAngleCosTwoCosSqToOnePlusCos
             | Self::DoubleAngleCosNegTwoSinSqToCosMinusOne => "Double Angle Expansion",
+            Self::DoubleAngleTanExpand | Self::DoubleAngleTanContract => {
+                "Tangent Double-Angle Identity"
+            }
             Self::TripleAngleSin | Self::TripleAngleCos | Self::TripleAngleTan => {
                 "Triple Angle Expansion"
             }
@@ -1028,6 +1057,7 @@ impl DeriveTrigRewriteKind {
             | Self::SumToProductCosSum
             | Self::SumToProductCosDiff => "Sum-to-Product Identity",
             Self::PhaseShiftIdentity => "Phase Shift Identity",
+            Self::TrigOddEvenParity => "Trig Parity (Odd/Even)",
             Self::CofunctionIdentity => "Cofunction Identity",
             Self::LinearAngleArgumentSimplify => "Linear Angle Simplification",
         }
@@ -1039,6 +1069,10 @@ pub(crate) fn try_rewrite_trig_expansion(
     expr: ExprId,
     target_expr: ExprId,
 ) -> Option<DeriveTrigRewrite> {
+    if let Some(rewrite) = try_rewrite_trig_odd_even_parity_target_aware(ctx, expr, target_expr) {
+        return Some(rewrite);
+    }
+
     if let Some(rewrite) = try_rewrite_cofunction_phase_shift_target_aware(ctx, expr, target_expr) {
         return Some(rewrite);
     }
@@ -1065,13 +1099,7 @@ pub(crate) fn try_rewrite_trig_expansion(
     }
 
     if let Some(rewrite) =
-        try_rewrite_negated_reciprocal_trig_expansion_target_aware(ctx, expr, target_expr)
-    {
-        return Some(rewrite);
-    }
-
-    if let Some(rewrite) =
-        try_rewrite_reciprocal_trig_expansion_target_aware(ctx, expr, target_expr)
+        try_rewrite_tangent_angle_sum_diff_expansion_target_aware(ctx, expr, target_expr)
     {
         return Some(rewrite);
     }
@@ -1084,6 +1112,30 @@ pub(crate) fn try_rewrite_trig_expansion(
 
     if let Some(rewrite) =
         try_rewrite_half_angle_tangent_expansion_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_tangent_half_angle_substitution_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_tangent_double_angle_expansion_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_negated_reciprocal_trig_expansion_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_reciprocal_trig_expansion_target_aware(ctx, expr, target_expr)
     {
         return Some(rewrite);
     }
@@ -1212,6 +1264,79 @@ pub(crate) fn try_rewrite_trig_expansion(
         rewritten: rewrite.rewritten,
         kind,
     })
+}
+
+pub(crate) fn try_rewrite_trig_special_value_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    if let Some(rewrite) =
+        cas_math::trig_eval_table_support::try_rewrite_trig_eval_table_expr(ctx, expr)
+    {
+        if !matches!(
+            rewrite.kind,
+            cas_math::trig_eval_table_support::TrigEvalRewriteKind::Table(_)
+        ) {
+            return None;
+        }
+        if !strong_target_match(ctx, rewrite.rewritten, target_expr) {
+            return None;
+        }
+
+        return Some(DeriveTrigRewrite {
+            rewritten: rewrite.rewritten,
+            kind: DeriveTrigRewriteKind::TrigSpecialValue,
+        });
+    }
+
+    let rewrite =
+        cas_math::trig_core_identity_support::try_rewrite_legacy_evaluate_trig_expr(ctx, expr)?;
+    if matches!(
+        rewrite.kind,
+        cas_math::trig_core_identity_support::LegacyTrigEvalRewriteKind::SinNegative
+            | cas_math::trig_core_identity_support::LegacyTrigEvalRewriteKind::CosNegative
+            | cas_math::trig_core_identity_support::LegacyTrigEvalRewriteKind::TanNegative
+    ) {
+        return None;
+    }
+    if !strong_target_match(ctx, rewrite.rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveTrigRewrite {
+        rewritten: rewrite.rewritten,
+        kind: DeriveTrigRewriteKind::TrigSpecialValue,
+    })
+}
+
+fn try_rewrite_trig_odd_even_parity_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let rewritten = normalize_trig_negative_parity_tree(ctx, expr);
+    if rewritten == expr || !trig_presentational_target_match(ctx, rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveTrigRewrite {
+        rewritten,
+        kind: DeriveTrigRewriteKind::TrigOddEvenParity,
+    })
+}
+
+fn try_rewrite_circular_trig_odd_even_parity_expr(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<cas_math::trig_core_identity_support::TrigOddEvenParityRewrite> {
+    let rewrite =
+        cas_math::trig_core_identity_support::try_rewrite_trig_odd_even_parity_expr(ctx, expr)?;
+    matches!(
+        rewrite.fn_name.as_str(),
+        "sin" | "cos" | "tan" | "sec" | "csc" | "cot"
+    )
+    .then_some(rewrite)
 }
 
 fn try_rewrite_normalized_double_angle_expansion_target_aware(
@@ -1723,6 +1848,69 @@ fn rewrite_angle_sum_diff_expr(ctx: &mut cas_ast::Context, expr: ExprId) -> Opti
     }
 }
 
+fn try_rewrite_tangent_angle_sum_diff_expansion_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let (lhs, rhs, is_sum) = tangent_angle_sum_diff_args(ctx, expr)?;
+    let rewritten = build_tangent_angle_sum_diff_fraction(ctx, lhs, rhs, is_sum);
+
+    if !strong_target_match(ctx, rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveTrigRewrite {
+        rewritten,
+        kind: DeriveTrigRewriteKind::TangentAngleSumDiffExpand,
+    })
+}
+
+fn tangent_angle_sum_diff_args(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, bool)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if !ctx.is_builtin(*fn_id, BuiltinFn::Tan) || args.len() != 1 {
+        return None;
+    }
+
+    match ctx.get(args[0]) {
+        Expr::Add(lhs, rhs) => Some((*lhs, *rhs, true)),
+        Expr::Sub(lhs, rhs) => Some((*lhs, *rhs, false)),
+        _ => None,
+    }
+}
+
+fn build_tangent_angle_sum_diff_fraction(
+    ctx: &mut cas_ast::Context,
+    lhs: ExprId,
+    rhs: ExprId,
+    is_sum: bool,
+) -> ExprId {
+    let tan_lhs = ctx.call_builtin(BuiltinFn::Tan, vec![lhs]);
+    let tan_rhs = ctx.call_builtin(BuiltinFn::Tan, vec![rhs]);
+    let numerator = if is_sum {
+        ctx.add(Expr::Add(tan_lhs, tan_rhs))
+    } else {
+        ctx.add(Expr::Sub(tan_lhs, tan_rhs))
+    };
+
+    let tan_lhs = ctx.call_builtin(BuiltinFn::Tan, vec![lhs]);
+    let tan_rhs = ctx.call_builtin(BuiltinFn::Tan, vec![rhs]);
+    let product = smart_mul(ctx, tan_lhs, tan_rhs);
+    let one = ctx.num(1);
+    let denominator = if is_sum {
+        ctx.add(Expr::Sub(one, product))
+    } else {
+        ctx.add(Expr::Add(one, product))
+    };
+
+    ctx.add(Expr::Div(numerator, denominator))
+}
+
 fn try_rewrite_recursive_angle_expansion_target_aware(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
@@ -1908,7 +2096,8 @@ fn try_rewrite_half_angle_square_expansion_target_aware(
 
     let one = ctx.num(1);
     let two = ctx.num(2);
-    let double_arg = smart_mul(ctx, two, arg);
+    let raw_double_arg = smart_mul(ctx, two, arg);
+    let double_arg = cas_math::canonical_forms::normalize_core(ctx, raw_double_arg);
     let cos_double_arg = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
     let numerator = match trig_fn {
         BuiltinFn::Sin => ctx.add(Expr::Sub(one, cos_double_arg)),
@@ -2191,9 +2380,8 @@ fn try_rewrite_half_angle_tangent_expansion_target_aware(
     }
 
     let arg = args[0];
-    let two = ctx.num(2);
     let one = ctx.num(1);
-    let double_arg = smart_mul(ctx, two, arg);
+    let double_arg = doubled_half_angle_tangent_argument(ctx, arg);
     let sin_double = ctx.call_builtin(BuiltinFn::Sin, vec![double_arg]);
     let cos_double = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
 
@@ -2232,9 +2420,8 @@ fn try_rewrite_negated_half_angle_tangent_expansion_target_aware(
     }
 
     let arg = args[0];
-    let two = ctx.num(2);
     let one = ctx.num(1);
-    let double_arg = smart_mul(ctx, two, arg);
+    let double_arg = doubled_half_angle_tangent_argument(ctx, arg);
     let sin_double = ctx.call_builtin(BuiltinFn::Sin, vec![double_arg]);
     let cos_double = ctx.call_builtin(BuiltinFn::Cos, vec![double_arg]);
 
@@ -2259,6 +2446,133 @@ fn try_rewrite_negated_half_angle_tangent_expansion_target_aware(
     }
 
     None
+}
+
+fn doubled_half_angle_tangent_argument(ctx: &mut cas_ast::Context, arg: ExprId) -> ExprId {
+    if let Expr::Div(numerator, denominator) = ctx.get(arg).clone() {
+        if is_small_integer(ctx, denominator, 2) {
+            return numerator;
+        }
+    }
+
+    let two = ctx.num(2);
+    let raw_double_arg = smart_mul(ctx, two, arg);
+    rewrite_linear_angle_expr(ctx, raw_double_arg)
+}
+
+fn try_rewrite_tangent_half_angle_substitution_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let (trig_fn, arg) = {
+        let Expr::Function(fn_id, args) = ctx.get(expr) else {
+            return None;
+        };
+        if args.len() != 1 {
+            return None;
+        }
+        if ctx.is_builtin(*fn_id, BuiltinFn::Sin) {
+            (BuiltinFn::Sin, args[0])
+        } else if ctx.is_builtin(*fn_id, BuiltinFn::Cos) {
+            (BuiltinFn::Cos, args[0])
+        } else {
+            return None;
+        }
+    };
+
+    let half_arg = tangent_half_angle_substitution_argument(ctx, arg);
+    let rewritten = match trig_fn {
+        BuiltinFn::Sin => build_tangent_half_angle_sine_substitution(ctx, half_arg),
+        BuiltinFn::Cos => build_tangent_half_angle_cosine_substitution(ctx, half_arg),
+        _ => return None,
+    };
+
+    if !strong_target_match(ctx, rewritten, target_expr) {
+        return None;
+    }
+
+    let kind = match trig_fn {
+        BuiltinFn::Sin => DeriveTrigRewriteKind::TangentHalfAngleSubstitutionSin,
+        BuiltinFn::Cos => DeriveTrigRewriteKind::TangentHalfAngleSubstitutionCos,
+        _ => return None,
+    };
+
+    Some(DeriveTrigRewrite { rewritten, kind })
+}
+
+fn tangent_half_angle_substitution_argument(ctx: &mut cas_ast::Context, arg: ExprId) -> ExprId {
+    let normalized_arg = rewrite_linear_angle_expr(ctx, arg);
+    if let Some(inner) = extract_double_angle_inner(ctx, normalized_arg) {
+        return inner;
+    }
+
+    let two = ctx.num(2);
+    ctx.add(Expr::Div(normalized_arg, two))
+}
+
+fn build_tangent_half_angle_sine_substitution(
+    ctx: &mut cas_ast::Context,
+    half_arg: ExprId,
+) -> ExprId {
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let tan_half = ctx.call_builtin(BuiltinFn::Tan, vec![half_arg]);
+    let numerator = smart_mul(ctx, two, tan_half);
+    let tan_sq = pow2(ctx, tan_half);
+    let denominator = ctx.add(Expr::Add(one, tan_sq));
+    ctx.add(Expr::Div(numerator, denominator))
+}
+
+fn build_tangent_half_angle_cosine_substitution(
+    ctx: &mut cas_ast::Context,
+    half_arg: ExprId,
+) -> ExprId {
+    let one = ctx.num(1);
+    let tan_half = ctx.call_builtin(BuiltinFn::Tan, vec![half_arg]);
+    let tan_sq = pow2(ctx, tan_half);
+    let numerator = ctx.add(Expr::Sub(one, tan_sq));
+    let denominator = ctx.add(Expr::Add(one, tan_sq));
+    ctx.add(Expr::Div(numerator, denominator))
+}
+
+fn try_rewrite_tangent_double_angle_expansion_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let arg = {
+        let Expr::Function(fn_id, args) = ctx.get(expr) else {
+            return None;
+        };
+        if !ctx.is_builtin(*fn_id, BuiltinFn::Tan) || args.len() != 1 {
+            return None;
+        }
+        args[0]
+    };
+
+    let normalized_arg = rewrite_linear_angle_expr(ctx, arg);
+    let half_arg = extract_double_angle_inner(ctx, normalized_arg)?;
+    let rewritten = build_tangent_double_angle_fraction(ctx, half_arg);
+
+    if !strong_target_match(ctx, rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveTrigRewrite {
+        rewritten,
+        kind: DeriveTrigRewriteKind::DoubleAngleTanExpand,
+    })
+}
+
+fn build_tangent_double_angle_fraction(ctx: &mut cas_ast::Context, arg: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    let one = ctx.num(1);
+    let tan_arg = ctx.call_builtin(BuiltinFn::Tan, vec![arg]);
+    let numerator = smart_mul(ctx, two, tan_arg);
+    let tan_sq = pow2(ctx, tan_arg);
+    let denominator = ctx.add(Expr::Sub(one, tan_sq));
+    ctx.add(Expr::Div(numerator, denominator))
 }
 
 fn build_forward_pythagorean_factor_candidate(
@@ -3340,6 +3654,12 @@ pub(crate) fn try_rewrite_trig_contraction_target_aware(
     }
 
     if let Some(rewrite) =
+        try_rewrite_tangent_angle_sum_diff_contraction_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
         try_rewrite_negated_reciprocal_trig_contraction_target_aware(ctx, expr, target_expr)
     {
         return Some(rewrite);
@@ -3347,6 +3667,12 @@ pub(crate) fn try_rewrite_trig_contraction_target_aware(
 
     if let Some(rewrite) =
         try_rewrite_reciprocal_trig_contraction_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_tangent_double_angle_contraction_target_aware(ctx, expr, target_expr)
     {
         return Some(rewrite);
     }
@@ -3393,6 +3719,12 @@ pub(crate) fn try_rewrite_trig_contraction_target_aware(
 
     if let Some(rewrite) =
         try_rewrite_mixed_sine_double_angle_product_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_half_scaled_sine_double_angle_contraction_target_aware(ctx, expr, target_expr)
     {
         return Some(rewrite);
     }
@@ -4649,6 +4981,36 @@ fn try_rewrite_mixed_sine_double_angle_product_target_aware(
     })
 }
 
+fn try_rewrite_half_scaled_sine_double_angle_contraction_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let TrigTwoFactorPattern::SinCos(left_arg, right_arg) =
+        extract_trig_two_factor_product(ctx, expr)?
+    else {
+        return None;
+    };
+    if compare_expr(ctx, left_arg, right_arg) != Ordering::Equal {
+        return None;
+    }
+
+    let two = ctx.num(2);
+    let double_arg = smart_mul(ctx, two, left_arg);
+    let sin_double = ctx.call_builtin(BuiltinFn::Sin, vec![double_arg]);
+    let denominator = ctx.num(2);
+    let candidate = ctx.add(Expr::Div(sin_double, denominator));
+
+    if !strong_target_match(ctx, candidate, target_expr) {
+        return None;
+    }
+
+    Some(DeriveTrigRewrite {
+        rewritten: target_expr,
+        kind: DeriveTrigRewriteKind::DoubleAngleSin,
+    })
+}
+
 fn try_rewrite_triple_angle_contraction_target_aware(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
@@ -4933,6 +5295,99 @@ fn rewrite_angle_sum_diff_contraction_expr(
     }
 
     None
+}
+
+fn try_rewrite_tangent_angle_sum_diff_contraction_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    let (numerator, denominator) = (*numerator, *denominator);
+    let (lhs, rhs, is_sum) = tangent_sum_diff_numerator_args(ctx, numerator)?;
+
+    let denominator_matches = if is_sum {
+        matches_one_minus_tangent_product(ctx, denominator, lhs, rhs)
+    } else {
+        matches_one_plus_tangent_product(ctx, denominator, lhs, rhs)
+    };
+    if !denominator_matches {
+        return None;
+    }
+
+    let argument = if is_sum {
+        ctx.add(Expr::Add(lhs, rhs))
+    } else {
+        ctx.add(Expr::Sub(lhs, rhs))
+    };
+    let rewritten = ctx.call_builtin(BuiltinFn::Tan, vec![argument]);
+
+    if !strong_target_match(ctx, rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveTrigRewrite {
+        rewritten,
+        kind: DeriveTrigRewriteKind::TangentAngleSumDiffContract,
+    })
+}
+
+fn tangent_sum_diff_numerator_args(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId, bool)> {
+    match ctx.get(expr) {
+        Expr::Add(lhs, rhs) => Some((tan_call_arg(ctx, *lhs)?, tan_call_arg(ctx, *rhs)?, true)),
+        Expr::Sub(lhs, rhs) => Some((tan_call_arg(ctx, *lhs)?, tan_call_arg(ctx, *rhs)?, false)),
+        _ => None,
+    }
+}
+
+fn matches_one_minus_tangent_product(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> bool {
+    let Expr::Sub(one, product) = ctx.get(expr) else {
+        return false;
+    };
+    is_small_integer(ctx, *one, 1) && matches_tangent_product(ctx, *product, lhs, rhs)
+}
+
+fn matches_one_plus_tangent_product(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> bool {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return false;
+    };
+
+    if is_small_integer(ctx, *left, 1) {
+        return matches_tangent_product(ctx, *right, lhs, rhs);
+    }
+    if is_small_integer(ctx, *right, 1) {
+        return matches_tangent_product(ctx, *left, lhs, rhs);
+    }
+    false
+}
+
+fn matches_tangent_product(ctx: &cas_ast::Context, expr: ExprId, lhs: ExprId, rhs: ExprId) -> bool {
+    let Expr::Mul(left, right) = ctx.get(expr) else {
+        return false;
+    };
+    let Some(left_arg) = tan_call_arg(ctx, *left) else {
+        return false;
+    };
+    let Some(right_arg) = tan_call_arg(ctx, *right) else {
+        return false;
+    };
+
+    same_unordered_pair(ctx, left_arg, right_arg, lhs, rhs)
 }
 
 fn try_rewrite_quintuple_angle_contraction_expr(
@@ -6290,6 +6745,26 @@ fn try_rewrite_reciprocal_trig_contraction_target_aware(
     })
 }
 
+fn try_rewrite_tangent_double_angle_contraction_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let rewrite =
+        cas_math::trig_contraction_support::try_rewrite_tan_double_angle_contraction_expr(
+            ctx, expr,
+        )?;
+
+    if !strong_target_match(ctx, rewrite.rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveTrigRewrite {
+        rewritten: rewrite.rewritten,
+        kind: DeriveTrigRewriteKind::DoubleAngleTanContract,
+    })
+}
+
 fn try_rewrite_cos_diff_over_sin_diff_quotient_target_aware(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
@@ -6920,9 +7395,7 @@ fn normalize_sum_to_product_candidate(
 }
 
 fn normalize_trig_negative_parity_tree(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
-    if let Some(rewrite) =
-        cas_math::trig_core_identity_support::try_rewrite_trig_odd_even_parity_expr(ctx, expr)
-    {
+    if let Some(rewrite) = try_rewrite_circular_trig_odd_even_parity_expr(ctx, expr) {
         return normalize_trig_negative_parity_tree(ctx, rewrite.rewritten);
     }
 
@@ -7022,11 +7495,71 @@ mod tests {
         try_rewrite_shifted_reciprocal_pythagorean_target_aware,
         try_rewrite_sum_to_product_target_aware, try_rewrite_trig_contraction_target_aware,
         try_rewrite_trig_expansion, try_rewrite_trig_identity_to_one_target_aware,
-        DeriveTrigRewriteKind,
+        try_rewrite_trig_special_value_target_aware, DeriveTrigRewriteKind,
     };
     use crate::derive::{presentational_target_match, strong_target_match};
     use cas_ast::Context;
     use cas_parser::parse;
+
+    #[test]
+    fn target_aware_trig_rewrite_recognizes_special_values() {
+        let cases = [
+            ("sin(0)", "0"),
+            ("cos(0)", "1"),
+            ("tan(0)", "0"),
+            ("asin(0)", "0"),
+            ("acos(1)", "0"),
+            ("atan(0)", "0"),
+            ("arctan(sqrt(3))", "pi/3"),
+            ("cos(2*pi/3)", "-1/2"),
+            ("cos(3*pi/4)", "-sqrt(2)/2"),
+            ("cos(5*pi/6)", "-sqrt(3)/2"),
+            ("sec(pi/4)", "sqrt(2)"),
+            ("csc(pi/6)", "2"),
+            ("cot(pi/4)", "1"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_trig_special_value_target_aware(&mut ctx, source, target)
+                .unwrap_or_else(|| panic!("special-value rewrite for `{source_text}`"));
+
+            assert_eq!(rewrite.kind, DeriveTrigRewriteKind::TrigSpecialValue);
+            assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+        }
+    }
+
+    #[test]
+    fn target_aware_trig_special_value_rejects_parity_rewrites() {
+        let mut ctx = Context::new();
+        let source = parse("tan(-x)", &mut ctx).expect("source");
+        let target = parse("-tan(x)", &mut ctx).expect("target");
+
+        assert!(try_rewrite_trig_special_value_target_aware(&mut ctx, source, target).is_none());
+    }
+
+    #[test]
+    fn rewrites_negative_trig_parity_variants_target_aware() {
+        for (source_text, target_text) in [
+            ("tan(-x)", "-tan(x)"),
+            ("sec(-x)", "sec(x)"),
+            ("csc(-x)+a", "-csc(x)+a"),
+        ] {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_trig_expansion(&mut ctx, source, target)
+                .unwrap_or_else(|| panic!("rewrite for `{source_text}` -> `{target_text}`"));
+
+            assert_eq!(rewrite.kind, DeriveTrigRewriteKind::TrigOddEvenParity);
+            assert!(
+                strong_target_match(&mut ctx, rewrite.rewritten, target),
+                "expected strong target match for `{source_text}` -> `{target_text}`"
+            );
+        }
+    }
 
     #[test]
     fn rewrites_half_angle_tangent_variants_target_aware() {
@@ -7068,6 +7601,11 @@ mod tests {
                 "sin(2*x)/(1+cos(2*x))",
                 DeriveTrigRewriteKind::HalfAngleTangentExpandSinOverOnePlusCos,
             ),
+            (
+                "tan(x/2)",
+                "sin(x)/(1+cos(x))",
+                DeriveTrigRewriteKind::HalfAngleTangentExpandSinOverOnePlusCos,
+            ),
         ];
 
         for (source_text, target_text, expected_kind) in expansion_cases {
@@ -7082,6 +7620,59 @@ mod tests {
                 "expected strong target match for `{source_text}` -> `{target_text}`"
             );
         }
+    }
+
+    #[test]
+    fn rewrites_tangent_half_angle_substitution_variants_target_aware() {
+        for (source_text, target_text, expected_kind) in [
+            (
+                "sin(x)",
+                "2*tan(x/2)/(1+tan(x/2)^2)",
+                DeriveTrigRewriteKind::TangentHalfAngleSubstitutionSin,
+            ),
+            (
+                "cos(x)",
+                "(1-tan(x/2)^2)/(1+tan(x/2)^2)",
+                DeriveTrigRewriteKind::TangentHalfAngleSubstitutionCos,
+            ),
+            (
+                "sin(2*x)",
+                "2*tan(x)/(1+tan(x)^2)",
+                DeriveTrigRewriteKind::TangentHalfAngleSubstitutionSin,
+            ),
+        ] {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_trig_expansion(&mut ctx, source, target)
+                .unwrap_or_else(|| panic!("rewrite for `{source_text}` -> `{target_text}`"));
+
+            assert_eq!(rewrite.kind, expected_kind);
+            assert!(
+                strong_target_match(&mut ctx, rewrite.rewritten, target),
+                "expected strong target match for `{source_text}` -> `{target_text}`"
+            );
+        }
+    }
+
+    #[test]
+    fn rewrites_tangent_double_angle_variants_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("tan(2*x)", &mut ctx).expect("source");
+        let target = parse("2*tan(x)/(1-tan(x)^2)", &mut ctx).expect("target");
+        let rewrite = try_rewrite_trig_expansion(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(rewrite.kind, DeriveTrigRewriteKind::DoubleAngleTanExpand);
+        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+
+        let mut ctx = Context::new();
+        let source = parse("2*tan(x)/(1-tan(x)^2)", &mut ctx).expect("source");
+        let target = parse("tan(2*x)", &mut ctx).expect("target");
+        let rewrite =
+            try_rewrite_trig_contraction_target_aware(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(rewrite.kind, DeriveTrigRewriteKind::DoubleAngleTanContract);
+        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
     }
 
     #[test]
@@ -7260,6 +7851,42 @@ mod tests {
 
         assert_eq!(rewrite.kind, DeriveTrigRewriteKind::AngleSumDiff);
         assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn rewrites_tangent_angle_sum_diff_variants_target_aware() {
+        for (source_text, target_text) in [
+            ("tan(x+y)", "(tan(x)+tan(y))/(1-tan(x)*tan(y))"),
+            ("tan(x-y)", "(tan(x)-tan(y))/(1+tan(x)*tan(y))"),
+        ] {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_trig_expansion(&mut ctx, source, target).expect("rewrite");
+
+            assert_eq!(
+                rewrite.kind,
+                DeriveTrigRewriteKind::TangentAngleSumDiffExpand
+            );
+            assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+        }
+
+        for (source_text, target_text) in [
+            ("(tan(x)+tan(y))/(1-tan(x)*tan(y))", "tan(x+y)"),
+            ("(tan(x)-tan(y))/(1+tan(x)*tan(y))", "tan(x-y)"),
+        ] {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_trig_contraction_target_aware(&mut ctx, source, target)
+                .expect("rewrite");
+
+            assert_eq!(
+                rewrite.kind,
+                DeriveTrigRewriteKind::TangentAngleSumDiffContract
+            );
+            assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+        }
     }
 
     #[test]
@@ -8832,6 +9459,18 @@ mod tests {
         let mut ctx = Context::new();
         let source = parse("4*sin(x)^2*cos(x)", &mut ctx).expect("source");
         let target = parse("2*sin(2*x)*sin(x)", &mut ctx).expect("target");
+        let rewrite =
+            try_rewrite_trig_contraction_target_aware(&mut ctx, source, target).expect("rewrite");
+
+        assert_eq!(rewrite.kind, DeriveTrigRewriteKind::DoubleAngleSin);
+        assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn contracts_half_scaled_sine_double_angle_product_target_aware() {
+        let mut ctx = Context::new();
+        let source = parse("sin(x)*cos(x)", &mut ctx).expect("source");
+        let target = parse("sin(2*x)/2", &mut ctx).expect("target");
         let rewrite =
             try_rewrite_trig_contraction_target_aware(&mut ctx, source, target).expect("rewrite");
 

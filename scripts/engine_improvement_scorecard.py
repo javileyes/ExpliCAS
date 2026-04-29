@@ -156,6 +156,52 @@ SUITES: dict[str, SuiteSpec] = {
             "engine equivalence rows."
         ),
     ),
+    "derive_didactic_audit": SuiteSpec(
+        name="derive_didactic_audit",
+        category="didactic",
+        profile_tags=("guardrail", "full"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_didactic",
+            "--test",
+            "derive_didactic_audit",
+            "derive_didactic_audit_generates_markdown_report",
+            "--",
+            "--ignored",
+            "--exact",
+            "--nocapture",
+        ],
+        env={},
+        parser="derive_didactic",
+        description="Diagnostic derive didactic trace audit over curated derive pairs.",
+    ),
+    "simplify_didactic_audit": SuiteSpec(
+        name="simplify_didactic_audit",
+        category="didactic",
+        profile_tags=("guardrail", "full"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_didactic",
+            "--test",
+            "didactic_step_quality_audit",
+            "didactic_step_quality_audit_generates_markdown_report",
+            "--",
+            "--ignored",
+            "--exact",
+            "--nocapture",
+        ],
+        env={},
+        parser="simplify_didactic",
+        description="Compact simplify didactic trace audit over representative web-step cases.",
+    ),
     "simplify_strict": SuiteSpec(
         name="simplify_strict",
         category="simplify",
@@ -1435,6 +1481,23 @@ def parse_derive(output: str) -> dict[str, Any]:
     }
 
 
+def parse_debug_count_map(output: str, label: str) -> dict[str, int]:
+    match = re.search(rf"{re.escape(label)}: ({{[^\n]*}})", output)
+    if not match:
+        return {}
+    try:
+        raw = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    return {
+        key: value
+        for key, value in raw.items()
+        if isinstance(key, str) and isinstance(value, int)
+    }
+
+
 def parse_derive_shadow(output: str) -> dict[str, Any]:
     summary = re.search(
         r"derive shadow pressure summary: sampled=(\d+) derived=(\d+) unsupported=(\d+) not_equivalent=(\d+)",
@@ -1454,6 +1517,18 @@ def parse_derive_shadow(output: str) -> dict[str, Any]:
     generic_ids = re.search(
         r"derive shadow pressure generic-simplify-ids: ([^\n]*)",
         output,
+    )
+    actual_strategy_counts = parse_debug_count_map(
+        output, "derive shadow pressure actual-strategy-counts"
+    )
+    derived_by_family = parse_debug_count_map(
+        output, "derive shadow pressure derived-by-family"
+    )
+    unsupported_by_family = parse_debug_count_map(
+        output, "derive shadow pressure unsupported-equivalent-by-family"
+    )
+    not_equivalent_by_family = parse_debug_count_map(
+        output, "derive shadow pressure not-equivalent-by-family"
     )
 
     sampled = int(summary.group(1))
@@ -1487,6 +1562,69 @@ def parse_derive_shadow(output: str) -> dict[str, Any]:
         "distinct_actual_strategies": int(specificity.group(2))
         if specificity
         else None,
+        "actual_strategy_counts": actual_strategy_counts,
+        "derived_by_family": derived_by_family,
+        "unsupported_by_family": unsupported_by_family,
+        "not_equivalent_by_family": not_equivalent_by_family,
+    }
+
+
+def parse_simplify_didactic(output: str) -> dict[str, Any]:
+    summary = re.search(
+        r"simplify didactic audit summary: cases=(\d+) flagged=(\d+) "
+        r"no_wire_substeps=(\d+) single_step_no_substeps=(\d+) "
+        r"missing_math_sides=(\d+) total_wire_substeps=(\d+) "
+        r"mean_step_count=([0-9.]+)",
+        output,
+    )
+    if not summary:
+        raise ValueError("missing simplify didactic audit summary block")
+
+    cases = int(summary.group(1))
+    flagged_cases = int(summary.group(2))
+    no_wire_substeps = int(summary.group(3))
+    single_step_no_substeps = int(summary.group(4))
+    missing_math_sides = int(summary.group(5))
+    total_wire_substeps = int(summary.group(6))
+    mean_step_count = float(summary.group(7))
+
+    return {
+        "cases": cases,
+        "flagged_cases": flagged_cases,
+        "flagged_rate": flagged_cases / cases if cases else 0.0,
+        "no_wire_substeps": no_wire_substeps,
+        "single_step_no_substeps": single_step_no_substeps,
+        "missing_math_sides": missing_math_sides,
+        "total_wire_substeps": total_wire_substeps,
+        "mean_step_count": mean_step_count,
+    }
+
+
+def parse_derive_didactic(output: str) -> dict[str, Any]:
+    summary = re.search(
+        r"derive didactic audit summary: cases=(\d+) flagged=(\d+) "
+        r"no_web_substeps=(\d+) no_web_steps=(\d+) "
+        r"total_web_substeps=(\d+) mean_step_count=([0-9.]+)",
+        output,
+    )
+    if not summary:
+        raise ValueError("missing derive didactic audit summary block")
+
+    cases = int(summary.group(1))
+    flagged_cases = int(summary.group(2))
+    no_web_substeps = int(summary.group(3))
+    no_web_steps = int(summary.group(4))
+    total_web_substeps = int(summary.group(5))
+    mean_step_count = float(summary.group(6))
+
+    return {
+        "cases": cases,
+        "flagged_cases": flagged_cases,
+        "flagged_rate": flagged_cases / cases if cases else 0.0,
+        "no_web_substeps": no_web_substeps,
+        "no_web_steps": no_web_steps,
+        "total_web_substeps": total_web_substeps,
+        "mean_step_count": mean_step_count,
     }
 
 
@@ -1616,6 +1754,8 @@ PARSERS = {
     "corpus": parse_corpus,
     "derive": parse_derive,
     "derive_shadow": parse_derive_shadow,
+    "derive_didactic": parse_derive_didactic,
+    "simplify_didactic": parse_simplify_didactic,
     "unified_benchmark": parse_unified_benchmark,
     "cargo_test_basic": parse_cargo_test_basic,
 }
@@ -1630,6 +1770,10 @@ def suite_status(name: str, metrics: dict[str, Any], returncode: int) -> str:
         return "warn" if metrics["unsupported"] > 0 else "pass"
     if name == "derive_shadow_pressure":
         return "pass"
+    if name == "derive_didactic_audit":
+        return "warn" if metrics["flagged_cases"] > 0 else "pass"
+    if name == "simplify_didactic_audit":
+        return "warn" if metrics["flagged_cases"] > 0 else "pass"
     if name in {"simplify_strict", "simplify_nf_first"}:
         if metrics["failed"] > 0:
             return "fail"
@@ -1724,6 +1868,13 @@ def format_runtime_duration(seconds: float) -> str:
     if seconds < 1.0:
         return f"{seconds * 1000.0:.2f}ms"
     return f"{seconds:.2f}s"
+
+
+def compact_pressure_expression(expr: Any, max_chars: int = 140) -> str:
+    text = " ".join(str(expr).split())
+    if len(text) <= max_chars:
+        return text
+    return text[: max_chars - 3].rstrip() + "..."
 
 
 def effective_elapsed_seconds(metrics: dict[str, Any], process_elapsed_seconds: float) -> float:
@@ -1927,6 +2078,22 @@ def format_family_counts(counts: dict[Any, Any]) -> str:
         f"{family}:{count}"
         for family, count in sorted(items)
     )
+
+
+def format_top_counts(counts: dict[Any, Any], max_items: int = 12) -> str:
+    items = [
+        (family, count)
+        for family, count in counts.items()
+        if isinstance(family, str) and isinstance(count, int)
+    ]
+    if not items:
+        return "none"
+    ordered = sorted(items, key=lambda item: (-item[1], item[0]))
+    visible = ordered[:max_items]
+    summary = ", ".join(f"{family}:{count}" for family, count in visible)
+    if len(ordered) > max_items:
+        summary += f", +{len(ordered) - max_items} more"
+    return summary
 
 
 def format_blocked_low_family_discoveries(counts: dict[Any, Any]) -> str:
@@ -2546,6 +2713,100 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                             or "none"
                         )
                     ),
+                    (
+                        "- Actual strategy counts: "
+                        + format_top_counts(
+                            derive_shadow_metrics.get("actual_strategy_counts", {})
+                        )
+                    ),
+                    (
+                        "- Derived family counts: "
+                        + format_top_counts(
+                            derive_shadow_metrics.get("derived_by_family", {})
+                        )
+                    ),
+                    (
+                        "- Problem family counts: "
+                        f"unsupported={format_top_counts(derive_shadow_metrics.get('unsupported_by_family', {}))} "
+                        f"not_equivalent={format_top_counts(derive_shadow_metrics.get('not_equivalent_by_family', {}))}"
+                    ),
+                    "",
+                ]
+            )
+
+    derive_didactic_suite = scorecard["suites"].get("derive_didactic_audit")
+    if derive_didactic_suite:
+        derive_didactic_metrics = derive_didactic_suite["metrics"]
+        lines.extend(
+            [
+                "## Derive Didactic Trace Audit",
+                "",
+                "- Dimension: educational quality of derive target-driven traces and web substeps.",
+                "- Interpretation: diagnostic trace-quality lane; not a semantic correctness or runtime metric.",
+            ]
+        )
+        if "parse_error" in derive_didactic_metrics:
+            lines.extend(
+                [
+                    f"- Parser status: `parse_error={derive_didactic_metrics['parse_error']}`",
+                    "",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    (
+                        f"- Outcomes: cases={derive_didactic_metrics['cases']} "
+                        f"flagged={derive_didactic_metrics['flagged_cases']} "
+                        f"flagged_rate={derive_didactic_metrics['flagged_rate']:.1%}"
+                    ),
+                    (
+                        f"- Substeps: total_web_substeps={derive_didactic_metrics['total_web_substeps']} "
+                        f"mean_step_count={derive_didactic_metrics['mean_step_count']:.2f}"
+                    ),
+                    (
+                        f"- Flags: no_web_substeps={derive_didactic_metrics['no_web_substeps']} "
+                        f"no_web_steps={derive_didactic_metrics['no_web_steps']}"
+                    ),
+                    "",
+                ]
+            )
+
+    simplify_didactic_suite = scorecard["suites"].get("simplify_didactic_audit")
+    if simplify_didactic_suite:
+        simplify_didactic_metrics = simplify_didactic_suite["metrics"]
+        lines.extend(
+            [
+                "## Simplify Didactic Trace Audit",
+                "",
+                "- Dimension: educational quality of simplify step traces and web substeps.",
+                "- Interpretation: diagnostic trace-quality lane; not a semantic correctness or runtime metric.",
+            ]
+        )
+        if "parse_error" in simplify_didactic_metrics:
+            lines.extend(
+                [
+                    f"- Parser status: `parse_error={simplify_didactic_metrics['parse_error']}`",
+                    "",
+                ]
+            )
+        else:
+            lines.extend(
+                [
+                    (
+                        f"- Outcomes: cases={simplify_didactic_metrics['cases']} "
+                        f"flagged={simplify_didactic_metrics['flagged_cases']} "
+                        f"flagged_rate={simplify_didactic_metrics['flagged_rate']:.1%}"
+                    ),
+                    (
+                        f"- Substeps: total_wire_substeps={simplify_didactic_metrics['total_wire_substeps']} "
+                        f"mean_step_count={simplify_didactic_metrics['mean_step_count']:.2f}"
+                    ),
+                    (
+                        f"- Flags: no_wire_substeps={simplify_didactic_metrics['no_wire_substeps']} "
+                        f"single_step_no_substeps={simplify_didactic_metrics['single_step_no_substeps']} "
+                        f"missing_math_sides={simplify_didactic_metrics['missing_math_sides']}"
+                    ),
                     "",
                 ]
             )
@@ -2675,6 +2936,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
         steady_engine_heavy_rows = mixed_metrics.get("steady_engine_heavy_rows")
         if isinstance(steady_engine_heavy_rows, list) and steady_engine_heavy_rows:
             steady_fragments = []
+            expression_fragments = []
             for row in steady_engine_heavy_rows[:5]:
                 label = f"#{row['case_number']} {row['composition']}"
                 if row.get("window_label"):
@@ -2686,9 +2948,19 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     f"median_wall={format_runtime_duration(row['median_elapsed_seconds'])}"
                 )
                 steady_fragments.append(fragment)
+                expression = row.get("expression")
+                if isinstance(expression, str) and len(expression_fragments) < 3:
+                    expression_fragments.append(
+                        f"{label} expr={compact_pressure_expression(expression)}"
+                    )
             lines.append(
                 "- Steady-state engine reruns: " + ", ".join(steady_fragments)
             )
+            if expression_fragments:
+                lines.append(
+                    "- Steady-state dominant expressions: "
+                    + ", ".join(expression_fragments)
+                )
         lines.append("")
 
     lines.extend(
@@ -2757,6 +3029,19 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     ]
                 )
             summary = " ".join(pieces)
+        elif "flagged_cases" in metrics:
+            if "no_wire_substeps" in metrics:
+                summary = (
+                    f"cases={metrics['cases']} flagged={metrics['flagged_cases']} "
+                    f"no_wire_substeps={metrics['no_wire_substeps']} "
+                    f"missing_math_sides={metrics['missing_math_sides']}"
+                )
+            else:
+                summary = (
+                    f"cases={metrics['cases']} flagged={metrics['flagged_cases']} "
+                    f"no_web_substeps={metrics['no_web_substeps']} "
+                    f"no_web_steps={metrics['no_web_steps']}"
+                )
         else:
             summary = (
                 f"nf={metrics['nf_convergent']} proved={metrics['proved_symbolic']} "

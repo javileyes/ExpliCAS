@@ -43,9 +43,12 @@ fn expected_visible_rule_name(rule_name: &str) -> &str {
         }
         "Hyperbolic Double-Angle Identity" => "Aplicar identidad hiperbólica de ángulo doble",
         "Hyperbolic Exponential Identity" => "Aplicar identidad exponencial hiperbólica",
+        "Hyperbolic Half-Angle Squares" => "Aplicar identidad hiperbólica de ángulo mitad",
         "Hyperbolic Product-to-Sum Identity" => "Aplicar identidad hiperbólica de producto a suma",
         "Hyperbolic Pythagorean Identity" => "Aplicar identidad pitagórica hiperbólica",
+        "Hyperbolic Quotient Identity" => "Aplicar identidad hiperbólica de cociente",
         "Hyperbolic Triple-Angle Identity" => "Aplicar identidad hiperbólica de ángulo triple",
+        "Cancel Exact Additive Pairs" => "Cancelar términos opuestos",
         "Quintuple Angle Identity" => "Reescribir ángulo quíntuple",
         "Triple Angle Expansion" | "Triple Angle Identity" => "Reescribir ángulo triple",
         _ => rule_name,
@@ -1124,7 +1127,10 @@ fn derive_negative_hyperbolic_tanh_quotient_uses_named_step() {
     assert_eq!(wire["strategy"], "rewrite hyperbolics");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_rule_eq(&steps[0]["rule"], "Hyperbolic Quotient Identity");
+    assert_rule_eq(
+        &steps[0]["rule"],
+        "Reconocer tangente hiperbólica desde un cociente",
+    );
 }
 
 #[test]
@@ -2201,7 +2207,10 @@ fn derive_negative_tan_expansion_uses_single_trig_expansion_step() {
     assert_eq!(wire["strategy"], "expand trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_rule_eq(&steps[0]["rule"], "Expandir una identidad trigonométrica");
+    assert_rule_eq(
+        &steps[0]["rule"],
+        "Expandir tangente como seno entre coseno",
+    );
 }
 
 #[test]
@@ -2596,9 +2605,9 @@ fn eval_log_inverse_power_chain_highlights_power_steps_in_mixed_sum() {
     );
 
     let hidden_fraction_cancellation = &steps[7];
-    assert_eq!(
-        hidden_fraction_cancellation["rule"],
-        "Cancel Exact Additive Pairs"
+    assert_rule_eq(
+        &hidden_fraction_cancellation["rule"],
+        "Cancel Exact Additive Pairs",
     );
     let step8_before = hidden_fraction_cancellation["before_latex"]
         .as_str()
@@ -6202,10 +6211,7 @@ fn derive_negative_sec_reciprocal_uses_single_reciprocal_trig_step() {
     assert_eq!(wire["strategy"], "contract trig");
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(
-        steps[0]["rule"],
-        "Aplicar identidad trigonométrica recíproca"
-    );
+    assert_eq!(steps[0]["rule"], "Reconocer secante desde un recíproco");
 }
 
 #[test]

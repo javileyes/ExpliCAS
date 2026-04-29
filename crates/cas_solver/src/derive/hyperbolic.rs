@@ -72,6 +72,9 @@ pub(crate) enum DeriveHyperbolicRewriteKind {
     ContractTanhAngleSumDiff,
     ExpandTanhTripleAngle,
     ContractTanhTripleAngle,
+    HyperbolicSpecialValue,
+    HyperbolicComposition,
+    AtanhSquareRatioToLn,
     ContractSinhDoubleAngle,
     ContractTanhDoubleAngle,
     ContractSinhTripleAngle,
@@ -86,6 +89,7 @@ pub(crate) enum DeriveHyperbolicRewriteKind {
     ExpandCombinedCoshTripleAngle,
     ContractCombinedSinhTripleAngle,
     ContractCombinedCoshTripleAngle,
+    HyperbolicOddEvenParity,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -723,7 +727,14 @@ fn contains_hyperbolic_fn(ctx: &cas_ast::Context, expr: ExprId) -> bool {
             Expr::Function(fn_id, args) => {
                 if matches!(
                     ctx.builtin_of(*fn_id),
-                    Some(BuiltinFn::Sinh | BuiltinFn::Cosh | BuiltinFn::Tanh)
+                    Some(
+                        BuiltinFn::Sinh
+                            | BuiltinFn::Cosh
+                            | BuiltinFn::Tanh
+                            | BuiltinFn::Asinh
+                            | BuiltinFn::Acosh
+                            | BuiltinFn::Atanh
+                    )
                 ) {
                     return true;
                 }
@@ -893,6 +904,13 @@ impl DeriveHyperbolicRewriteKind {
             Self::ContractTanhTripleAngle => {
                 "Recognize (3·tanh(u) + tanh(u)^3) / (1 + 3·tanh(u)^2) as tanh(3u)"
             }
+            Self::HyperbolicSpecialValue => {
+                "Evaluate a hyperbolic function at a special input"
+            }
+            Self::HyperbolicComposition => "Cancel a hyperbolic function with its inverse",
+            Self::AtanhSquareRatioToLn => {
+                "Recognize atanh((u^2 - 1)/(u^2 + 1)) as ln(u)"
+            }
             Self::ContractSinhDoubleAngle => "Recognize 2·sinh(u)·cosh(u) as sinh(2u)",
             Self::ContractTanhDoubleAngle => "Recognize 2·tanh(u)/(1 + tanh(u)^2) as tanh(2u)",
             Self::ContractSinhTripleAngle => "Recognize 3·sinh(u) + 4·sinh(u)^3 as sinh(3u)",
@@ -927,6 +945,7 @@ impl DeriveHyperbolicRewriteKind {
             Self::ContractCombinedCoshTripleAngle => {
                 "Split a cosh triple-angle polynomial into cosh(u) ± cosh(3u)"
             }
+            Self::HyperbolicOddEvenParity => "Apply a hyperbolic odd/even parity identity",
         }
     }
 
@@ -1000,12 +1019,16 @@ impl DeriveHyperbolicRewriteKind {
             | Self::ExpandCombinedCoshTripleAngle
             | Self::ContractCombinedSinhTripleAngle
             | Self::ContractCombinedCoshTripleAngle => "Hyperbolic Triple-Angle Identity",
+            Self::HyperbolicSpecialValue => "Evaluate Hyperbolic Functions",
+            Self::HyperbolicComposition => "Hyperbolic Composition",
+            Self::AtanhSquareRatioToLn => "Inverse Hyperbolic Log Identity",
             Self::ProductToSumSinhCosh
             | Self::ProductToSumCoshCosh
             | Self::ProductToSumSinhSinh
             | Self::SumToProductSinhCosh
             | Self::SumToProductCoshCosh
             | Self::SumToProductSinhSinh => "Hyperbolic Product-to-Sum Identity",
+            Self::HyperbolicOddEvenParity => "Hyperbolic Parity (Odd/Even)",
         }
     }
 }
@@ -1232,13 +1255,139 @@ pub(crate) fn try_rewrite_hyperbolic_simplify_target_aware(
     try_rewrite_hyperbolic_simplify_additive_passthrough_target_aware(ctx, expr, target_expr)
 }
 
+fn try_rewrite_hyperbolic_odd_even_parity_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveHyperbolicRewrite> {
+    let rewritten = normalize_hyperbolic_negative_parity_tree(ctx, expr);
+    if rewritten == expr || !strong_target_match(ctx, rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveHyperbolicRewrite {
+        rewritten,
+        kind: DeriveHyperbolicRewriteKind::HyperbolicOddEvenParity,
+    })
+}
+
+fn normalize_hyperbolic_negative_parity_tree(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
+    if let Some(rewrite) = try_rewrite_hyperbolic_odd_even_parity_expr(ctx, expr) {
+        return normalize_hyperbolic_negative_parity_tree(ctx, rewrite.rewritten);
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
+        Expr::Add(left, right) => {
+            rebuild_hyperbolic_parity_binary(ctx, expr, Expr::Add, left, right)
+        }
+        Expr::Sub(left, right) => {
+            rebuild_hyperbolic_parity_binary(ctx, expr, Expr::Sub, left, right)
+        }
+        Expr::Mul(left, right) => {
+            rebuild_hyperbolic_parity_binary(ctx, expr, Expr::Mul, left, right)
+        }
+        Expr::Div(left, right) => {
+            rebuild_hyperbolic_parity_binary(ctx, expr, Expr::Div, left, right)
+        }
+        Expr::Pow(base, exp) => rebuild_hyperbolic_parity_binary(ctx, expr, Expr::Pow, base, exp),
+        Expr::Neg(inner) => {
+            let rewritten = normalize_hyperbolic_negative_parity_tree(ctx, inner);
+            if rewritten == inner {
+                expr
+            } else {
+                ctx.add(Expr::Neg(rewritten))
+            }
+        }
+        Expr::Function(name, args) => {
+            let rewritten_args = args
+                .iter()
+                .map(|arg| normalize_hyperbolic_negative_parity_tree(ctx, *arg))
+                .collect::<Vec<_>>();
+            if rewritten_args == args {
+                expr
+            } else {
+                ctx.add(Expr::Function(name, rewritten_args))
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let rewritten_data = data
+                .iter()
+                .map(|item| normalize_hyperbolic_negative_parity_tree(ctx, *item))
+                .collect::<Vec<_>>();
+            if rewritten_data == data {
+                expr
+            } else {
+                ctx.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: rewritten_data,
+                })
+            }
+        }
+        Expr::Hold(inner) => {
+            let rewritten = normalize_hyperbolic_negative_parity_tree(ctx, inner);
+            if rewritten == inner {
+                expr
+            } else {
+                ctx.add(Expr::Hold(rewritten))
+            }
+        }
+    }
+}
+
+fn try_rewrite_hyperbolic_odd_even_parity_expr(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<cas_math::trig_core_identity_support::TrigOddEvenParityRewrite> {
+    let rewrite =
+        cas_math::trig_core_identity_support::try_rewrite_trig_odd_even_parity_expr(ctx, expr)?;
+    matches!(rewrite.fn_name.as_str(), "sinh" | "cosh" | "tanh").then_some(rewrite)
+}
+
+fn rebuild_hyperbolic_parity_binary(
+    ctx: &mut cas_ast::Context,
+    original: ExprId,
+    ctor: fn(ExprId, ExprId) -> Expr,
+    left: ExprId,
+    right: ExprId,
+) -> ExprId {
+    let rewritten_left = normalize_hyperbolic_negative_parity_tree(ctx, left);
+    let rewritten_right = normalize_hyperbolic_negative_parity_tree(ctx, right);
+    if rewritten_left == left && rewritten_right == right {
+        original
+    } else {
+        ctx.add(ctor(rewritten_left, rewritten_right))
+    }
+}
+
 fn try_rewrite_hyperbolic_simplify_direct_target_aware(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
     target_expr: ExprId,
 ) -> Option<DeriveHyperbolicRewrite> {
     if let Some(rewrite) =
+        try_rewrite_hyperbolic_odd_even_parity_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
         try_rewrite_hyperbolic_exponential_bridge_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) = try_rewrite_hyperbolic_special_value_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) = try_rewrite_hyperbolic_composition_target_aware(ctx, expr, target_expr) {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) = try_rewrite_atanh_square_ratio_to_ln_target_aware(ctx, expr, target_expr)
     {
         return Some(rewrite);
     }
@@ -1309,6 +1458,12 @@ fn try_rewrite_hyperbolic_simplify_direct_target_aware(
     }
 
     if let Some(rewrite) = try_rewrite_inverse_cosh_square_target_aware(ctx, expr, target_expr) {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_hyperbolic_half_angle_square_target_aware(ctx, expr, target_expr)
+    {
         return Some(rewrite);
     }
 
@@ -1540,53 +1695,6 @@ fn try_rewrite_hyperbolic_simplify_direct_target_aware(
     }
 
     if let Some(rewrite) =
-        cas_math::trig_half_angle_support::try_rewrite_hyperbolic_half_angle_squares_expr(ctx, expr)
-    {
-        if matches_target_modulo_simplify(ctx, rewrite.rewritten, target_expr) {
-            return Some(DeriveHyperbolicRewrite {
-                rewritten: rewrite.rewritten,
-                kind: match rewrite.kind {
-                    cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::HyperbolicCosh => {
-                        DeriveHyperbolicRewriteKind::ExpandHyperbolicCoshHalfAngleSquare
-                    }
-                    cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::HyperbolicSinh => {
-                        DeriveHyperbolicRewriteKind::ExpandHyperbolicSinhHalfAngleSquare
-                    }
-                    _ => unreachable!("hyperbolic half-angle rewrite should stay hyperbolic"),
-                },
-            });
-        }
-    }
-
-    if let Some(rewrite) =
-        try_rewrite_negated_hyperbolic_half_angle_square_target_aware(ctx, expr, target_expr)
-    {
-        return Some(rewrite);
-    }
-
-    if let Some(rewrite) =
-        cas_math::trig_half_angle_support::try_rewrite_hyperbolic_half_angle_squares_expr(
-            ctx,
-            target_expr,
-        )
-    {
-        if matches_target_modulo_simplify(ctx, rewrite.rewritten, expr) {
-            return Some(DeriveHyperbolicRewrite {
-                rewritten: target_expr,
-                kind: match rewrite.kind {
-                    cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::HyperbolicCosh => {
-                        DeriveHyperbolicRewriteKind::ContractHyperbolicCoshHalfAngleSquare
-                    }
-                    cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::HyperbolicSinh => {
-                        DeriveHyperbolicRewriteKind::ContractHyperbolicSinhHalfAngleSquare
-                    }
-                    _ => unreachable!("hyperbolic half-angle rewrite should stay hyperbolic"),
-                },
-            });
-        }
-    }
-
-    if let Some(rewrite) =
         try_rewrite_negated_cosh_double_angle_target_aware(ctx, expr, target_expr)
     {
         return Some(rewrite);
@@ -1694,6 +1802,113 @@ fn try_rewrite_hyperbolic_simplify_direct_target_aware(
         try_rewrite_negated_hyperbolic_triple_angle_target_aware(ctx, expr, target_expr)
     {
         return Some(rewrite);
+    }
+
+    None
+}
+
+fn try_rewrite_atanh_square_ratio_to_ln_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveHyperbolicRewrite> {
+    let rewrite =
+        cas_math::hyperbolic_core_support::try_rewrite_atanh_square_ratio_to_ln(ctx, expr)?;
+
+    if !strong_target_match(ctx, rewrite.rewritten, target_expr)
+        && !matches_target_modulo_simplify(ctx, rewrite.rewritten, target_expr)
+    {
+        return None;
+    }
+
+    Some(DeriveHyperbolicRewrite {
+        rewritten: target_expr,
+        kind: DeriveHyperbolicRewriteKind::AtanhSquareRatioToLn,
+    })
+}
+
+fn try_rewrite_hyperbolic_special_value_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveHyperbolicRewrite> {
+    let rewrite = cas_math::hyperbolic_core_support::try_eval_hyperbolic_special_value(ctx, expr)?;
+    if !strong_target_match(ctx, rewrite.rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveHyperbolicRewrite {
+        rewritten: rewrite.rewritten,
+        kind: DeriveHyperbolicRewriteKind::HyperbolicSpecialValue,
+    })
+}
+
+fn try_rewrite_hyperbolic_composition_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveHyperbolicRewrite> {
+    let rewrite = cas_math::hyperbolic_core_support::try_rewrite_hyperbolic_composition(ctx, expr)?;
+    if !strong_target_match(ctx, rewrite.rewritten, target_expr) {
+        return None;
+    }
+
+    Some(DeriveHyperbolicRewrite {
+        rewritten: rewrite.rewritten,
+        kind: DeriveHyperbolicRewriteKind::HyperbolicComposition,
+    })
+}
+
+fn try_rewrite_hyperbolic_half_angle_square_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveHyperbolicRewrite> {
+    if let Some(rewrite) =
+        cas_math::trig_half_angle_support::try_rewrite_hyperbolic_half_angle_squares_expr(ctx, expr)
+    {
+        if matches_target_modulo_simplify(ctx, rewrite.rewritten, target_expr) {
+            return Some(DeriveHyperbolicRewrite {
+                rewritten: rewrite.rewritten,
+                kind: match rewrite.kind {
+                    cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::HyperbolicCosh => {
+                        DeriveHyperbolicRewriteKind::ExpandHyperbolicCoshHalfAngleSquare
+                    }
+                    cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::HyperbolicSinh => {
+                        DeriveHyperbolicRewriteKind::ExpandHyperbolicSinhHalfAngleSquare
+                    }
+                    _ => unreachable!("hyperbolic half-angle rewrite should stay hyperbolic"),
+                },
+            });
+        }
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_negated_hyperbolic_half_angle_square_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        cas_math::trig_half_angle_support::try_rewrite_hyperbolic_half_angle_squares_expr(
+            ctx,
+            target_expr,
+        )
+    {
+        if matches_target_modulo_simplify(ctx, rewrite.rewritten, expr) {
+            return Some(DeriveHyperbolicRewrite {
+                rewritten: target_expr,
+                kind: match rewrite.kind {
+                    cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::HyperbolicCosh => {
+                        DeriveHyperbolicRewriteKind::ContractHyperbolicCoshHalfAngleSquare
+                    }
+                    cas_math::trig_half_angle_support::HalfAngleSquareRewriteKind::HyperbolicSinh => {
+                        DeriveHyperbolicRewriteKind::ContractHyperbolicSinhHalfAngleSquare
+                    }
+                    _ => unreachable!("hyperbolic half-angle rewrite should stay hyperbolic"),
+                },
+            });
+        }
     }
 
     None
@@ -5617,6 +5832,29 @@ mod tests {
     }
 
     #[test]
+    fn target_aware_hyperbolic_rewrite_rewrites_negative_parity_variants() {
+        let cases = [
+            ("sinh(-x)", "-sinh(x)"),
+            ("cosh(-x)", "cosh(x)"),
+            ("tanh(-x)", "-tanh(x)"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut ctx = cas_ast::Context::new();
+            let source = cas_parser::parse(source_text, &mut ctx).expect("parse source");
+            let target = cas_parser::parse(target_text, &mut ctx).expect("parse target");
+            let rewrite = try_rewrite_hyperbolic_simplify_target_aware(&mut ctx, source, target)
+                .expect("expected hyperbolic parity rewrite");
+
+            assert_eq!(
+                rewrite.kind,
+                DeriveHyperbolicRewriteKind::HyperbolicOddEvenParity
+            );
+            assert_eq!(rewrite.rewritten, target);
+        }
+    }
+
+    #[test]
     fn target_aware_hyperbolic_rewrite_expands_sinh_to_exponential_definition() {
         let mut ctx = cas_ast::Context::new();
         let source = cas_parser::parse("sinh(x)", &mut ctx).expect("parse source");
@@ -5673,6 +5911,74 @@ mod tests {
             rewrite.rewritten,
             target
         ));
+    }
+
+    #[test]
+    fn target_aware_hyperbolic_rewrite_recognizes_atanh_square_ratio_log_identity() {
+        let mut ctx = cas_ast::Context::new();
+        let source =
+            cas_parser::parse("atanh((x^2 - 1)/(x^2 + 1))", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("ln(x)", &mut ctx).expect("parse target");
+        let rewrite = try_rewrite_hyperbolic_simplify_target_aware(&mut ctx, source, target)
+            .expect("expected inverse hyperbolic target-aware rewrite");
+
+        assert_eq!(
+            rewrite.kind,
+            DeriveHyperbolicRewriteKind::AtanhSquareRatioToLn
+        );
+        assert_eq!(rewrite.rewritten, target);
+    }
+
+    #[test]
+    fn target_aware_hyperbolic_rewrite_recognizes_compositions() {
+        let cases = [
+            ("sinh(asinh(x))", "x"),
+            ("cosh(acosh(x))", "x"),
+            ("tanh(atanh(x))", "x"),
+            ("asinh(sinh(x))", "x"),
+            ("acosh(cosh(x))", "x"),
+            ("atanh(tanh(x))", "x"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut ctx = cas_ast::Context::new();
+            let source = cas_parser::parse(source_text, &mut ctx).expect("parse source");
+            let target = cas_parser::parse(target_text, &mut ctx).expect("parse target");
+            let rewrite = try_rewrite_hyperbolic_simplify_target_aware(&mut ctx, source, target)
+                .unwrap_or_else(|| panic!("expected composition rewrite for {source_text}"));
+
+            assert_eq!(rewrite.rewritten, target);
+            assert_eq!(
+                rewrite.kind,
+                DeriveHyperbolicRewriteKind::HyperbolicComposition
+            );
+        }
+    }
+
+    #[test]
+    fn target_aware_hyperbolic_rewrite_recognizes_special_values() {
+        let cases = [
+            ("sinh(0)", "0"),
+            ("cosh(0)", "1"),
+            ("tanh(0)", "0"),
+            ("asinh(0)", "0"),
+            ("atanh(0)", "0"),
+            ("acosh(1)", "0"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut ctx = cas_ast::Context::new();
+            let source = cas_parser::parse(source_text, &mut ctx).expect("parse source");
+            let target = cas_parser::parse(target_text, &mut ctx).expect("parse target");
+            let rewrite = try_rewrite_hyperbolic_simplify_target_aware(&mut ctx, source, target)
+                .unwrap_or_else(|| panic!("expected special-value rewrite for {source_text}"));
+
+            assert_eq!(rewrite.rewritten, target);
+            assert_eq!(
+                rewrite.kind,
+                DeriveHyperbolicRewriteKind::HyperbolicSpecialValue
+            );
+        }
     }
 
     #[test]

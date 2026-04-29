@@ -14,6 +14,7 @@ pub(crate) enum DeriveExponentialRewriteKind {
     ContractPower,
     LogExpInverse,
     ExpLogInverse,
+    ExpScaledLogPowerInverse,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,6 +39,7 @@ impl DeriveExponentialRewriteKind {
             Self::ContractPower => "Recognize exp(u)^n as exp(n·u)",
             Self::LogExpInverse => "Cancel ln(exp(u)) to u",
             Self::ExpLogInverse => "Cancel exp(ln(u)) to u",
+            Self::ExpScaledLogPowerInverse => "Recognize b^(k·log_b(u)) as u^k",
         }
     }
 
@@ -48,6 +50,7 @@ impl DeriveExponentialRewriteKind {
             Self::ExpandPower | Self::ContractPower => "Exponential Power Identity",
             Self::LogExpInverse => "Log-Exp Inverse",
             Self::ExpLogInverse => "Exponential-Log Inverse",
+            Self::ExpScaledLogPowerInverse => "Exponential-Log Power Inverse",
         }
     }
 }
@@ -228,6 +231,18 @@ fn try_rewrite_exponential_log_inverse_core(
         }
     }
 
+    if let Some(rewrite) =
+        cas_math::logarithm_inverse_support::try_rewrite_exponential_log_inverse_expr(ctx, expr)
+    {
+        if super::strong_target_match(ctx, rewrite.rewritten, target_expr) {
+            return Some(DeriveExponentialRewrite {
+                rewritten: target_expr,
+                kind: DeriveExponentialRewriteKind::ExpScaledLogPowerInverse,
+                assumed_positive: Some(rewrite.positive_subject),
+            });
+        }
+    }
+
     None
 }
 
@@ -245,7 +260,11 @@ fn extract_natural_log_argument(ctx: &cas_ast::Context, expr: ExprId) -> Option<
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
-    if !matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Ln)) || args.len() != 1 {
+    if !matches!(
+        ctx.builtin_of(*fn_id),
+        Some(BuiltinFn::Ln) | Some(BuiltinFn::Log)
+    ) || args.len() != 1
+    {
         return None;
     }
     Some(args[0])
@@ -711,6 +730,42 @@ mod tests {
         assert_eq!(rewrite.kind, DeriveExponentialRewriteKind::ExpLogInverse);
         assert_eq!(rewrite.rewritten, target);
         assert!(rewrite.assumed_positive.is_some());
+    }
+
+    #[test]
+    fn rewrites_scaled_log_power_inverse_target_aware() {
+        let mut ctx = cas_ast::Context::new();
+        let source = cas_parser::parse("exp(y*log(x))", &mut ctx).expect("parse source");
+        let target = cas_parser::parse("x^y", &mut ctx).expect("parse target");
+        let rewrite = try_rewrite_exponential_sum_diff_target_aware(&mut ctx, source, target)
+            .expect("expected scaled log power inverse rewrite");
+
+        assert_eq!(
+            rewrite.kind,
+            DeriveExponentialRewriteKind::ExpScaledLogPowerInverse
+        );
+        assert_eq!(rewrite.rewritten, target);
+        assert!(rewrite.assumed_positive.is_some());
+    }
+
+    #[test]
+    fn rewrites_general_base_log_power_inverse_target_aware() {
+        let cases = [("10^(y*log10(x))", "x^y"), ("b^(c*log(b,x))", "x^c")];
+
+        for (source, target) in cases {
+            let mut ctx = cas_ast::Context::new();
+            let source = cas_parser::parse(source, &mut ctx).expect("parse source");
+            let target = cas_parser::parse(target, &mut ctx).expect("parse target");
+            let rewrite = try_rewrite_exponential_sum_diff_target_aware(&mut ctx, source, target)
+                .expect("expected generalized log power inverse rewrite");
+
+            assert_eq!(
+                rewrite.kind,
+                DeriveExponentialRewriteKind::ExpScaledLogPowerInverse
+            );
+            assert_eq!(rewrite.rewritten, target);
+            assert!(rewrite.assumed_positive.is_some());
+        }
     }
 
     #[test]

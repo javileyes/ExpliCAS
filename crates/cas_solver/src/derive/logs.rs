@@ -3,6 +3,7 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_nary::{add_terms_signed, Sign};
 use cas_math::expr_rewrite::smart_mul;
 use cas_math::factor::factor;
+use cas_math::trig_roots_flatten::flatten_mul_chain;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
@@ -37,6 +38,7 @@ pub(crate) struct DeriveLogSimplifyRewrite {
 pub(crate) enum DeriveLogChangeOfBaseRewriteKind {
     QuotientToBaseLog,
     BaseLogToQuotient,
+    BaseLogToChain,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +68,7 @@ impl DeriveLogChangeOfBaseRewriteKind {
         match self {
             Self::QuotientToBaseLog => "Recognize a logarithm written by change of base",
             Self::BaseLogToQuotient => "Rewrite the logarithm using the change-of-base formula",
+            Self::BaseLogToChain => "Expand the logarithm using a change-of-base chain",
         }
     }
 
@@ -119,6 +122,13 @@ pub(crate) fn try_rewrite_log_change_of_base_target_aware(
         });
     }
 
+    if base_log_matches_change_of_base_chain(ctx, source_expr, target_expr) {
+        return Some(DeriveLogChangeOfBaseRewrite {
+            rewritten: target_expr,
+            kind: DeriveLogChangeOfBaseRewriteKind::BaseLogToChain,
+        });
+    }
+
     None
 }
 
@@ -159,7 +169,7 @@ pub(crate) fn try_rewrite_log_contraction_target_aware(
 ) -> Option<ExprId> {
     let terms = add_terms_signed(ctx, expr);
     if terms.len() < 2 {
-        return None;
+        return try_rewrite_single_scaled_log_contraction(ctx, expr);
     }
 
     let mut parsed_terms = Vec::with_capacity(terms.len());
@@ -217,6 +227,16 @@ pub(crate) fn try_rewrite_log_contraction_target_aware(
     Some(rewritten)
 }
 
+fn try_rewrite_single_scaled_log_contraction(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let term = extract_scaled_log_term(ctx, expr, Sign::Pos)?;
+    if !term.coeff.is_integer() || term.coeff <= BigRational::one() {
+        return None;
+    }
+
+    let arg = fold_log_coefficient_into_argument(ctx, term.arg, &term.coeff)?;
+    Some(make_log_expr(ctx, term.family, arg))
+}
+
 pub(crate) fn try_rewrite_log_contraction_to_target_aware(
     ctx: &mut Context,
     source_expr: ExprId,
@@ -257,6 +277,7 @@ pub(crate) fn try_rewrite_log_expansion_target_aware(
         if matches!(
             rewrite.kind,
             DeriveLogChangeOfBaseRewriteKind::BaseLogToQuotient
+                | DeriveLogChangeOfBaseRewriteKind::BaseLogToChain
         ) {
             return Some(rewrite.rewritten);
         }
@@ -575,6 +596,53 @@ fn base_log_matches_change_of_base_quotient(
     quotient_expr: ExprId,
 ) -> bool {
     change_of_base_quotient_matches_base_log(ctx, quotient_expr, base_log_expr)
+}
+
+fn base_log_matches_change_of_base_chain(
+    ctx: &mut Context,
+    base_log_expr: ExprId,
+    chain_expr: ExprId,
+) -> bool {
+    let Some((target_base, target_arg)) = extract_base_log_call(ctx, base_log_expr) else {
+        return false;
+    };
+    let factors = flatten_mul_chain(ctx, chain_expr);
+    let [left_factor, right_factor] = factors.as_slice() else {
+        return false;
+    };
+
+    change_of_base_chain_factors_match_base_log(
+        ctx,
+        *left_factor,
+        *right_factor,
+        target_base,
+        target_arg,
+    ) || change_of_base_chain_factors_match_base_log(
+        ctx,
+        *right_factor,
+        *left_factor,
+        target_base,
+        target_arg,
+    )
+}
+
+fn change_of_base_chain_factors_match_base_log(
+    ctx: &Context,
+    outer_factor: ExprId,
+    inner_factor: ExprId,
+    target_base: ExprId,
+    target_arg: ExprId,
+) -> bool {
+    let Some((outer_base, intermediate)) = extract_base_log_call(ctx, outer_factor) else {
+        return false;
+    };
+    let Some((inner_base, inner_arg)) = extract_base_log_call(ctx, inner_factor) else {
+        return false;
+    };
+
+    compare_expr(ctx, outer_base, target_base) == Ordering::Equal
+        && compare_expr(ctx, intermediate, inner_base) == Ordering::Equal
+        && compare_expr(ctx, inner_arg, target_arg) == Ordering::Equal
 }
 
 fn extract_log_change_of_base_quotient(
@@ -958,9 +1026,11 @@ mod tests {
             ("ln(x) + ln(y)", "ln(x*y)"),
             ("ln(x) - ln(y)", "ln(x/y)"),
             ("ln(x) + ln(y) - ln(z)", "ln((x*y)/z)"),
+            ("2*ln(abs(x))", "ln(x^2)"),
             ("2*ln(abs(x)) + ln(y) - ln(z) - ln(t)", "ln((x^2*y)/(z*t))"),
             ("3*ln(x) + 2*ln(abs(y))", "ln(x^3*y^2)"),
             ("3*ln(x) - 2*ln(y)", "ln(x^3/y^2)"),
+            ("3*log(2, x)", "log(2, x^3)"),
             ("log(2, x) - log(2, y)", "log(2, x/y)"),
             (
                 "2*log(b, x) + 3*log(b, y) - 2*log(b, z) - log(b, t)",
@@ -1025,6 +1095,28 @@ mod tests {
             assert_eq!(
                 rewrite.kind,
                 DeriveLogChangeOfBaseRewriteKind::BaseLogToQuotient
+            );
+            assert_eq!(rewrite.rewritten, target);
+        }
+    }
+
+    #[test]
+    fn expands_general_base_log_to_change_of_base_chain() {
+        let cases = [
+            ("log(b, c)", "log(b, a)*log(a, c)"),
+            ("log(b, c)", "log(a, c)*log(b, a)"),
+        ];
+
+        for (source_text, target_text) in cases {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_log_change_of_base_target_aware(&mut ctx, source, target)
+                .expect("change-of-base chain rewrite");
+
+            assert_eq!(
+                rewrite.kind,
+                DeriveLogChangeOfBaseRewriteKind::BaseLogToChain
             );
             assert_eq!(rewrite.rewritten, target);
         }

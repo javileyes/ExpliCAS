@@ -31,6 +31,15 @@ pub struct TrigLookupResult {
     pub value: &'static TrigValue,
 }
 
+fn canonical_table_fn_name(fn_name: &str) -> &str {
+    match fn_name {
+        "asin" => "arcsin",
+        "acos" => "arccos",
+        "atan" => "arctan",
+        _ => fn_name,
+    }
+}
+
 /// Resolve an exact trig or inverse-trig value from table data.
 ///
 /// Returns `None` if `arg` is not recognized as a special angle/input.
@@ -39,8 +48,10 @@ pub fn lookup_trig_or_inverse(
     fn_name: &str,
     arg: ExprId,
 ) -> Option<TrigLookupResult> {
+    let table_fn_name = canonical_table_fn_name(fn_name);
+
     if let Some(angle) = detect_special_angle(ctx, arg) {
-        if let Some(value) = lookup_trig_value(fn_name, angle) {
+        if let Some(value) = lookup_trig_value(table_fn_name, angle) {
             return Some(TrigLookupResult {
                 key_display: angle.display(),
                 value,
@@ -49,7 +60,7 @@ pub fn lookup_trig_or_inverse(
     }
 
     if let Some(input) = detect_inverse_trig_input(ctx, arg) {
-        if let Some(value) = lookup_inverse_trig_value(fn_name, input) {
+        if let Some(value) = lookup_inverse_trig_value(table_fn_name, input) {
             return Some(TrigLookupResult {
                 key_display: input.display(),
                 value,
@@ -143,6 +154,48 @@ mod tests {
         let out = lookup_trig_or_inverse(&ctx, "arctan", one).expect("expected inverse table hit");
         assert_eq!(out.key_display, "1");
         assert_eq!(out.value, &TrigValue::PiDiv(4));
+    }
+
+    #[test]
+    fn lookup_arctan_direct_sqrt_three() {
+        let mut ctx = Context::new();
+        let sqrt_three = cas_parser::parse("sqrt(3)", &mut ctx).expect("parse sqrt(3)");
+
+        let out =
+            lookup_trig_or_inverse(&ctx, "arctan", sqrt_three).expect("expected inverse table hit");
+        assert_eq!(out.key_display, "√3");
+        assert_eq!(out.value, &TrigValue::PiDiv(3));
+    }
+
+    #[test]
+    fn lookup_inverse_trig_aliases() {
+        let mut ctx = Context::new();
+        let zero = ctx.num(0);
+        let one = ctx.num(1);
+
+        let asin = lookup_trig_or_inverse(&ctx, "asin", zero).expect("asin alias");
+        assert_eq!(asin.value, &TrigValue::Zero);
+
+        let acos = lookup_trig_or_inverse(&ctx, "acos", one).expect("acos alias");
+        assert_eq!(acos.value, &TrigValue::Zero);
+
+        let atan = lookup_trig_or_inverse(&ctx, "atan", one).expect("atan alias");
+        assert_eq!(atan.value, &TrigValue::PiDiv(4));
+    }
+
+    #[test]
+    fn lookup_reciprocal_trig_values() {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse("pi/4", &mut ctx).expect("parse");
+
+        let sec = lookup_trig_or_inverse(&ctx, "sec", expr).expect("sec table hit");
+        assert_eq!(sec.value, &TrigValue::Sqrt(2));
+
+        let csc = lookup_trig_or_inverse(&ctx, "csc", expr).expect("csc table hit");
+        assert_eq!(csc.value, &TrigValue::Sqrt(2));
+
+        let cot = lookup_trig_or_inverse(&ctx, "cot", expr).expect("cot table hit");
+        assert_eq!(cot.value, &TrigValue::One);
     }
 
     #[test]

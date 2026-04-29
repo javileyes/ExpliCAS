@@ -251,7 +251,10 @@ derive shadow pressure summary: sampled=16 derived=16 unsupported=0 not_equivale
 derive shadow pressure stats: reachability_rate=1.000 mean_step_count=1.19 single_step_successes=13 multi_step_successes=3
 derive shadow pressure strategy specificity: generic_simplify_strategy_successes=2 distinct_actual_strategies=9
 derive shadow pressure generic-simplify-ids: identity_a,identity_b
-derive shadow pressure actual-strategy-counts: {"simplify": 2}
+derive shadow pressure actual-strategy-counts: {"simplify": 2, "contract logs": 1}
+derive shadow pressure derived-by-family: {"log_contract": 1, "simplify": 2}
+derive shadow pressure unsupported-equivalent-by-family: {"branch_sensitive": 1}
+derive shadow pressure not-equivalent-by-family: {}
 """
         )
 
@@ -261,6 +264,43 @@ derive shadow pressure actual-strategy-counts: {"simplify": 2}
             metrics["generic_simplify_strategy_ids"], ["identity_a", "identity_b"]
         )
         self.assertEqual(metrics["distinct_actual_strategies"], 9)
+        self.assertEqual(metrics["actual_strategy_counts"]["contract logs"], 1)
+        self.assertEqual(metrics["derived_by_family"]["log_contract"], 1)
+        self.assertEqual(metrics["unsupported_by_family"]["branch_sensitive"], 1)
+        self.assertEqual(metrics["not_equivalent_by_family"], {})
+
+    def test_parse_simplify_didactic_extracts_trace_quality_metrics(self):
+        metrics = MODULE.parse_simplify_didactic(
+            """
+simplify didactic audit summary: cases=14 flagged=1 no_wire_substeps=1 single_step_no_substeps=0 missing_math_sides=0 total_wire_substeps=20 mean_step_count=2.43
+didactic audit report written to docs/generated/DIDACTIC_STEP_QUALITY_AUDIT_REPORT.md
+"""
+        )
+
+        self.assertEqual(metrics["cases"], 14)
+        self.assertEqual(metrics["flagged_cases"], 1)
+        self.assertAlmostEqual(metrics["flagged_rate"], 1 / 14)
+        self.assertEqual(metrics["no_wire_substeps"], 1)
+        self.assertEqual(metrics["single_step_no_substeps"], 0)
+        self.assertEqual(metrics["missing_math_sides"], 0)
+        self.assertEqual(metrics["total_wire_substeps"], 20)
+        self.assertEqual(metrics["mean_step_count"], 2.43)
+
+    def test_parse_derive_didactic_extracts_trace_quality_metrics(self):
+        metrics = MODULE.parse_derive_didactic(
+            """
+derive didactic audit summary: cases=403 flagged=82 no_web_substeps=82 no_web_steps=0 total_web_substeps=320 mean_step_count=1.06
+wrote docs/generated/DERIVE_DIDACTIC_AUDIT.md
+"""
+        )
+
+        self.assertEqual(metrics["cases"], 403)
+        self.assertEqual(metrics["flagged_cases"], 82)
+        self.assertAlmostEqual(metrics["flagged_rate"], 82 / 403)
+        self.assertEqual(metrics["no_web_substeps"], 82)
+        self.assertEqual(metrics["no_web_steps"], 0)
+        self.assertEqual(metrics["total_web_substeps"], 320)
+        self.assertEqual(metrics["mean_step_count"], 1.06)
 
     def test_parse_corpus_extracts_complexity_and_orchestrator_profile_metrics(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
@@ -684,6 +724,115 @@ root.direct_small_zero_composition.candidate.three_core_groups
 
         self.assertNotIn("Low-family discovery pressure", markdown)
 
+    def test_render_markdown_includes_derive_shadow_count_maps(self):
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "derive_shadow_pressure": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.1,
+                    "metrics": {
+                        "sampled": 3,
+                        "derived": 2,
+                        "unsupported": 1,
+                        "not_equivalent": 0,
+                        "mean_step_count": 1.5,
+                        "single_step_successes": 1,
+                        "multi_step_successes": 1,
+                        "generic_simplify_strategy_successes": 0,
+                        "generic_simplify_strategy_ids": [],
+                        "distinct_actual_strategies": 2,
+                        "actual_strategy_counts": {
+                            "contract logs": 1,
+                            "nested fraction": 1,
+                        },
+                        "derived_by_family": {
+                            "log_contract": 1,
+                            "nested_fraction": 1,
+                        },
+                        "unsupported_by_family": {"branch_sensitive": 1},
+                        "not_equivalent_by_family": {},
+                    },
+                    "delta": {},
+                },
+            },
+        }
+
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn("## Derive Shadow Pressure", markdown)
+        self.assertIn("Actual strategy counts", markdown)
+        self.assertIn("contract logs:1", markdown)
+        self.assertIn("Derived family counts", markdown)
+        self.assertIn("log_contract:1", markdown)
+        self.assertIn("unsupported=branch_sensitive:1", markdown)
+        self.assertIn("not_equivalent=none", markdown)
+
+    def test_render_markdown_includes_simplify_didactic_trace_audit(self):
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "simplify_didactic_audit": {
+                    "status": "warn",
+                    "elapsed_seconds": 1.2,
+                    "metrics": {
+                        "cases": 14,
+                        "flagged_cases": 1,
+                        "flagged_rate": 1 / 14,
+                        "no_wire_substeps": 1,
+                        "single_step_no_substeps": 0,
+                        "missing_math_sides": 0,
+                        "total_wire_substeps": 20,
+                        "mean_step_count": 2.43,
+                    },
+                    "delta": {},
+                },
+            },
+        }
+
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn("## Simplify Didactic Trace Audit", markdown)
+        self.assertIn("cases=14 flagged=1", markdown)
+        self.assertIn("flagged_rate=7.1%", markdown)
+        self.assertIn("total_wire_substeps=20", markdown)
+        self.assertIn("no_wire_substeps=1", markdown)
+
+    def test_render_markdown_includes_derive_didactic_trace_audit(self):
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "derive_didactic_audit": {
+                    "status": "warn",
+                    "elapsed_seconds": 2.8,
+                    "metrics": {
+                        "cases": 403,
+                        "flagged_cases": 82,
+                        "flagged_rate": 82 / 403,
+                        "no_web_substeps": 82,
+                        "no_web_steps": 0,
+                        "total_web_substeps": 320,
+                        "mean_step_count": 1.06,
+                    },
+                    "delta": {},
+                },
+            },
+        }
+
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn("## Derive Didactic Trace Audit", markdown)
+        self.assertIn("cases=403 flagged=82", markdown)
+        self.assertIn("flagged_rate=20.3%", markdown)
+        self.assertIn("total_web_substeps=320", markdown)
+        self.assertIn("no_web_substeps=82", markdown)
+
     def test_render_markdown_includes_mixed_pressure_and_proof_shape_caveat(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
         scorecard = {
@@ -736,7 +885,13 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertIn("Engine hotspots", markdown)
         self.assertIn("Window slices", markdown)
         self.assertIn("Steady-state engine reruns", markdown)
+        self.assertIn("Steady-state dominant expressions", markdown)
         self.assertIn("#9 sum", markdown)
+        self.assertIn(
+            "expr=(ln(x^3) + ln(y^2) - ln(x^3 * y^2))",
+            markdown,
+        )
+        self.assertIn("expr=a*b - b*a", markdown)
         self.assertIn("sum total=3 failed=0 elapsed=12.00ms", markdown)
         self.assertIn("simplify=0.90ms", markdown)
         self.assertIn("sum simplify=0.90ms", markdown)

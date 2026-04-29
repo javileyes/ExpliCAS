@@ -35,6 +35,27 @@ pub fn normalize_condition_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
     expr
 }
 
+/// Normalize an expression for display in sign-sensitive domain conditions.
+///
+/// This preserves the inequality direction for predicates such as `x >= 0` and
+/// `x > 0`. For example, `1 - x^2 >= 0` must not be displayed as
+/// `x^2 - 1 >= 0`.
+pub fn normalize_condition_expr_preserve_sign(ctx: &mut Context, expr: ExprId) -> ExprId {
+    use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
+
+    let budget = PolyBudget {
+        max_terms: 50,
+        max_total_degree: 20,
+        max_pow_exp: 10,
+    };
+
+    if let Ok(poly) = multipoly_from_expr(ctx, expr, &budget) {
+        return multipoly_to_expr(&poly, ctx);
+    }
+
+    expr
+}
+
 /// Extract base when expression is `base^(2k)` with integer `k > 0`.
 ///
 /// Returns `Some(base)` only for positive even integer exponents.
@@ -83,6 +104,19 @@ mod tests {
         }
         .to_string();
         assert_eq!(rendered, "x + 1");
+    }
+
+    #[test]
+    fn normalize_condition_expr_preserve_sign_keeps_negative_leading_polynomial() {
+        let mut ctx = Context::new();
+        let expr = parse("1 - x^2", &mut ctx).expect("parse");
+        let norm = normalize_condition_expr_preserve_sign(&mut ctx, expr);
+        let rendered = cas_formatter::DisplayExpr {
+            context: &ctx,
+            id: norm,
+        }
+        .to_string();
+        assert_eq!(rendered, "1 - x^2");
     }
 
     #[test]

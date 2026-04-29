@@ -195,13 +195,12 @@ pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseT
             }
             None
         }
-        Expr::Pow(_, _) => {
+        _ => {
             if let Some(3) = extract_numeric_sqrt_radicand(ctx, expr) {
                 return Some(InverseTrigInput::Sqrt3);
             }
             None
         }
-        _ => None,
     }
 }
 
@@ -317,6 +316,18 @@ mod tests {
         assert_eq!(
             detect_inverse_trig_input(&ctx, rationalized),
             Some(InverseTrigInput::Sqrt2Over2)
+        );
+
+        let direct_sqrt3 = sqrt_expr(&mut ctx, 3);
+        assert_eq!(
+            detect_inverse_trig_input(&ctx, direct_sqrt3),
+            Some(InverseTrigInput::Sqrt3)
+        );
+
+        let parsed_sqrt3 = cas_parser::parse("sqrt(3)", &mut ctx).expect("sqrt(3)");
+        assert_eq!(
+            detect_inverse_trig_input(&ctx, parsed_sqrt3),
+            Some(InverseTrigInput::Sqrt3)
         );
     }
 

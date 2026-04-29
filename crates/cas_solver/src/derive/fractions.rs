@@ -192,6 +192,20 @@ pub(crate) fn try_rewrite_nested_fraction_target_aware(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> Option<ExprId> {
+    if let Some(rewritten) =
+        try_rewrite_nested_fraction_forward_target_aware(ctx, source_expr, target_expr)
+    {
+        return Some(rewritten);
+    }
+
+    try_rewrite_nested_fraction_reverse_target_aware(ctx, source_expr, target_expr)
+}
+
+fn try_rewrite_nested_fraction_forward_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExprId> {
     let rewritten = try_rewrite_simplify_nested_fraction_expr(ctx, source_expr)
         .map(|rewrite| rewrite.rewritten)
         .or_else(|| try_rewrite_unit_over_unit_fraction(ctx, source_expr))?;
@@ -207,6 +221,29 @@ pub(crate) fn try_rewrite_nested_fraction_target_aware(
 
     strip_division_by_one(ctx, rewritten)
         .filter(|stripped| strong_target_match(ctx, *stripped, target_expr))
+}
+
+fn try_rewrite_nested_fraction_reverse_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExprId> {
+    let simplified_target = try_rewrite_simplify_nested_fraction_expr(ctx, target_expr)
+        .map(|rewrite| rewrite.rewritten)
+        .or_else(|| try_rewrite_unit_over_unit_fraction(ctx, target_expr))?;
+
+    if strong_target_match(ctx, simplified_target, source_expr) {
+        return Some(target_expr);
+    }
+
+    let normalized = cas_math::canonical_forms::normalize_core(ctx, simplified_target);
+    if strong_target_match(ctx, normalized, source_expr) {
+        return Some(target_expr);
+    }
+
+    strip_division_by_one(ctx, simplified_target)
+        .filter(|stripped| strong_target_match(ctx, *stripped, source_expr))
+        .map(|_| target_expr)
 }
 
 fn try_rewrite_unit_over_unit_fraction(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -1226,6 +1263,9 @@ mod tests {
             ("1/(1/a + 1/b)", "(a*b)/(a+b)"),
             ("a/(b + c/d)", "a*d/(b*d+c)"),
             ("(a + b/c)/d", "(a*c+b)/(c*d)"),
+            ("z/(x*z+y)", "1/(x + y/z)"),
+            ("a*d/(b*d+c)", "a/(b + c/d)"),
+            ("(a*c+b)/(c*d)", "(a + b/c)/d"),
         ];
 
         for (source_text, target_text) in cases {

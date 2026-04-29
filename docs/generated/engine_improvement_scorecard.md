@@ -1,16 +1,16 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-04-28T17:21:36.399590+00:00
+- Generated: 2026-04-29T06:29:24.747197+00:00
 - Git branch: main
-- Git commit: `72d1ec7b49fef51c7beb97df58a0c1c85e5e9db7`
+- Git commit: `fdd525f4e0f06a01bc5a14090d368c6e6d0a654e`
 - Profile: `guardrail`
 
 ## Embedded Runtime Guardrail
 
 - Dimension: contextual simplify/equivalence under real wrappers.
 - Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 4.14s
-- Per-case runtime: 2.922ms/case
+- Elapsed: 3.97s
+- Per-case runtime: 2.802ms/case
 - Coverage axes: 7 wrappers across 23 families
 - Context axes: 4 complexity levels across 6 shell depths
 - Largest wrapper share: 20.3%
@@ -42,7 +42,7 @@
 
 - Dimension: source-to-target bridgeability and path quality.
 - Interpretation: measures planner/strategy reachability; not contextual wrapper strength.
-- Outcomes: derived=317 unsupported=0 not_equivalent=1
+- Outcomes: derived=373 unsupported=0 not_equivalent=1
 - Path quality: mean_step_count=1.05 long_path_rate=0.00
 - Strategy specificity: generic_simplify_expected=0 distinct_expected_strategies=28
 
@@ -50,10 +50,29 @@
 
 - Dimension: diagnostic engine-to-derive bridgeability over representative engine equivalence rows.
 - Interpretation: exposes where known engine/metamorphic identities are not yet reachable or provable as derive targets; diagnostic, not a support gate.
-- Outcomes: sampled=43 derived=43 unsupported=0 not_equivalent=0
-- Path signal: mean_step_count=1.07 single_step_successes=40 multi_step_successes=3
+- Outcomes: sampled=50 derived=50 unsupported=0 not_equivalent=0
+- Path signal: mean_step_count=1.08 single_step_successes=46 multi_step_successes=4
 - Strategy specificity: generic_simplify_strategy_successes=0 distinct_actual_strategies=28
 - Generic simplify shadow IDs: none
+- Actual strategy counts: finite sums/products:9, expand trig:3, number theory:3, rewrite exponentials:3, rewrite hyperbolics:3, combine powers:2, contract logs:2, log inverse power:2, nested fraction:2, rationalize:2, rewrite radicals:2, cancel fraction:1, +16 more
+- Derived family counts: Fundamental exp decomposition:3, Constant sum:2, Pythagorean Identities:2, log_exp_inverse:2, Addition of fractions:1, Binomial Expansion:1, Binomial coefficients (choose function):1, Change of base:1, Completing the square patterns:1, Difference of Squares:1, Exponential of logs:1, Factor-cancel patterns:1, +33 more
+- Problem family counts: unsupported=none not_equivalent=none
+
+## Derive Didactic Trace Audit
+
+- Dimension: educational quality of derive target-driven traces and web substeps.
+- Interpretation: diagnostic trace-quality lane; not a semantic correctness or runtime metric.
+- Outcomes: cases=455 flagged=0 flagged_rate=0.0%
+- Substeps: total_web_substeps=470 mean_step_count=1.05
+- Flags: no_web_substeps=0 no_web_steps=0
+
+## Simplify Didactic Trace Audit
+
+- Dimension: educational quality of simplify step traces and web substeps.
+- Interpretation: diagnostic trace-quality lane; not a semantic correctness or runtime metric.
+- Outcomes: cases=14 flagged=0 flagged_rate=0.0%
+- Substeps: total_wire_substeps=26 mean_step_count=2.29
+- Flags: no_wire_substeps=0 single_step_no_substeps=0 missing_math_sides=0
 
 ## Simplify Benchmark Interpretation
 
@@ -64,7 +83,9 @@
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 4.14s | passed=1417 failed=0 total=1417 wrappers=7 families=23 avg_case=2.922ms |
-| `derive_contract` | `pass` | 4.08s | derived=317 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
-| `derive_shadow_pressure` | `pass` | 0.16s | sampled=43 derived=43 unsupported=0 not_equivalent=0 mean_step_count=1.07 generic_simplify_strategy_successes=0 single_step=40 |
-| `simplify_strict` | `pass` | 17.05s | nf=0 proved=16518 numeric=0 inconclusive=0 timeouts=0 |
+| `embedded_equivalence_context` | `pass` | 3.97s | passed=1417 failed=0 total=1417 wrappers=7 families=23 avg_case=2.802ms |
+| `derive_contract` | `pass` | 3.93s | derived=373 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
+| `derive_shadow_pressure` | `pass` | 0.16s | sampled=50 derived=50 unsupported=0 not_equivalent=0 mean_step_count=1.08 generic_simplify_strategy_successes=0 single_step=46 |
+| `derive_didactic_audit` | `pass` | 15.77s | cases=455 flagged=0 no_web_substeps=0 no_web_steps=0 |
+| `simplify_didactic_audit` | `pass` | 0.93s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
+| `simplify_strict` | `pass` | 17.61s | nf=0 proved=16518 numeric=0 inconclusive=0 timeouts=0 |

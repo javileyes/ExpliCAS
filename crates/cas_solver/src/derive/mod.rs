@@ -69,5 +69,5 @@ pub(crate) use trig::{
     try_rewrite_shifted_double_angle_target_aware,
     try_rewrite_shifted_reciprocal_pythagorean_target_aware,
     try_rewrite_trig_contraction_target_aware, try_rewrite_trig_expansion,
-    try_rewrite_trig_identity_to_one_target_aware,
+    try_rewrite_trig_identity_to_one_target_aware, try_rewrite_trig_special_value_target_aware,
 };

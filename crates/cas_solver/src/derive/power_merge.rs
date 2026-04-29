@@ -1,4 +1,5 @@
-use cas_ast::{Context, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_destructure::as_div;
 use cas_math::expr_nary::{build_balanced_mul, mul_leaves};
 use cas_math::poly_compare::poly_eq;
 use std::cmp::Ordering;
@@ -58,6 +59,10 @@ fn try_combine_same_base_powers_to_target(
     expr: ExprId,
     target_expr: ExprId,
 ) -> Option<cas_math::power_product_support::PowerProductRewrite> {
+    if let Some(rewrite) = try_combine_same_base_quotient_powers_to_target(ctx, expr, target_expr) {
+        return Some(rewrite);
+    }
+
     if let Some(rewrite) = try_combine_same_base_powers_generic(ctx, expr) {
         if power_merge_matches_target(ctx, rewrite.rewritten, target_expr) {
             return Some(retarget_power_merge_rewrite(ctx, rewrite, target_expr));
@@ -65,6 +70,40 @@ fn try_combine_same_base_powers_to_target(
     }
 
     let rewrite = try_combine_same_base_powers_symbolic(ctx, expr)?;
+    power_merge_matches_target(ctx, rewrite.rewritten, target_expr)
+        .then_some(retarget_power_merge_rewrite(ctx, rewrite, target_expr))
+}
+
+fn try_combine_same_base_quotient_powers_to_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<cas_math::power_product_support::PowerProductRewrite> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    let (num_base, num_exp) = extract_power_factor(ctx, numerator)?;
+    let (den_base, den_exp) = extract_power_factor(ctx, denominator)?;
+
+    if cas_ast::ordering::compare_expr(ctx, num_base, den_base) != Ordering::Equal {
+        return None;
+    }
+
+    let raw_exponent = ctx.add(Expr::Sub(num_exp, den_exp));
+    let exponent = normalize_merged_exponent(ctx, raw_exponent);
+    let zero = ctx.num(0);
+    let one = ctx.num(1);
+    let rewritten = if cas_ast::ordering::compare_expr(ctx, exponent, zero) == Ordering::Equal {
+        one
+    } else if cas_ast::ordering::compare_expr(ctx, exponent, one) == Ordering::Equal {
+        num_base
+    } else {
+        ctx.add(Expr::Pow(num_base, exponent))
+    };
+
+    let rewrite = cas_math::power_product_support::PowerProductRewrite {
+        rewritten,
+        kind: cas_math::power_product_support::PowerProductRewriteKind::SameBaseNary,
+    };
+
     power_merge_matches_target(ctx, rewrite.rewritten, target_expr)
         .then_some(retarget_power_merge_rewrite(ctx, rewrite, target_expr))
 }
@@ -196,6 +235,8 @@ mod tests {
             ("x^a*x^b", "x^(a+b)", false),
             ("x*x^a", "x^(a+1)", false),
             ("x^a*x^b*x^c*x^d", "x^(a+b+c+d)", false),
+            ("x^a/x^b", "x^(a-b)", false),
+            ("2^a/2^b", "2^(a-b)", false),
             ("sqrt(x)*x^(1/3)", "x^(5/6)", true),
             ("sqrt(x)*x^a", "x^(a+1/2)", true),
         ];

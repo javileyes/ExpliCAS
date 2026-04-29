@@ -37,8 +37,15 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         }
         "Hyperbolic Double-Angle Identity" => "Aplicar identidad hiperbólica de ángulo doble",
         "Hyperbolic Triple-Angle Identity" => "Aplicar identidad hiperbólica de ángulo triple",
+        "Hyperbolic Half-Angle Squares" => "Aplicar identidad hiperbólica de ángulo mitad",
         "Hyperbolic Exponential Identity" => "Aplicar identidad exponencial hiperbólica",
         "Hyperbolic Pythagorean Identity" => "Aplicar identidad pitagórica hiperbólica",
+        "Hyperbolic Quotient Identity" => "Aplicar identidad hiperbólica de cociente",
+        "Evaluate Hyperbolic Functions" => "Evaluar valor hiperbólico especial",
+        "Evaluate Trigonometric Functions" => "Evaluar valor trigonométrico especial",
+        "Hyperbolic Composition" => "Cancelar funciones hiperbólicas inversas",
+        "Inverse Hyperbolic Log Identity" => "Convertir tangente hiperbólica inversa en logaritmo",
+        "Hyperbolic Parity (Odd/Even)" => "Aplicar paridad hiperbólica",
         "Sum-to-Product Identity" => "Aplicar suma a producto",
         "Sum-to-Product Identity Cancellation Bridge" => "Aplicar suma a producto",
         "Cofunction Identity" => "Aplicar identidad de cofunción",
@@ -46,6 +53,10 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Phase Shift Identity" => "Aplicar identidad de desfase",
         "Double Angle Expansion" => "Expandir ángulo doble",
         "Double Angle Contraction" => "Contraer ángulo doble",
+        "Tangent Double-Angle Identity" => "Aplicar identidad de tangente de ángulo doble",
+        "Tangent Angle Sum/Diff Identity" => {
+            "Aplicar identidad de tangente de suma/diferencia de ángulos"
+        }
         "Angle Consistency (Half-Angle)" => "Expandir coseno de ángulo doble",
         "Cos 2x Additive Contraction" => "Contraer ángulo doble",
         "Trig Square Identity" => "Aplicar identidad del cuadrado trigonométrico",
@@ -61,9 +72,11 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Quintuple Angle Identity" => "Reescribir ángulo quíntuple",
         "Triple Angle Expansion" | "Triple Angle Identity" => "Reescribir ángulo triple",
         "Half-Angle Tangent Identity" => "Aplicar identidad de tangente de ángulo mitad",
+        "Trig Parity (Odd/Even)" => "Aplicar paridad trigonométrica",
         "Trig Expansion" => "Expandir una identidad trigonométrica",
         "Trig Quotient" => "Convertir un cociente trigonométrico en tangente",
         "Cos-Diff / Sin-Diff Quotient" => "Convertir un cociente trigonométrico en tangente",
+        "Pythagorean Identity" => "Aplicar la identidad pitagórica",
         "Pythagorean Factor Form" => "Aplicar identidad pitagórica",
         "Pythagorean High-Power Factor" => "Aplicar identidad pitagórica y reagrupar",
         "Hyperbolic Pythagorean Identity Cancellation Bridge" => {
@@ -73,9 +86,10 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
             "Aplicar la identidad pitagórica hiperbólica"
         }
         "Consecutive Factorial Ratio" => "Cancelar factoriales consecutivos",
-        "Rationalize" | "Rationalize Linear Sqrt Denominator" | "Rationalize Denominator" => {
-            "Racionalizar el denominador"
-        }
+        "Rationalize"
+        | "Rationalize Cube Root Denominator"
+        | "Rationalize Linear Sqrt Denominator"
+        | "Rationalize Denominator" => "Racionalizar el denominador",
         "Distribute Division" => "Repartir el denominador común",
         "Mixed Fraction Split" => "Separar parte entera y resto",
         "Mixed Fraction Combine" => "Unir parte entera y fracción",
@@ -111,6 +125,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Combine Like Terms" => "Agrupar términos semejantes",
         "Combine Same Denominator Fractions" => "Sumar fracciones con mismo denominador",
         "Combine Same Denominator Sub" => "Restar fracciones con mismo denominador",
+        "Cancel Exact Additive Pairs" => "Cancelar términos opuestos",
         "Common Denominator" => "Llevar a denominador común",
         "Add Fractions" => "Sumar fracciones",
         "Subtract Fractions" => "Restar fracciones",
@@ -181,6 +196,9 @@ pub(crate) fn visible_rule_name_for_step<'a>(
     }
 
     match rule_name {
+        "Change of Base" if description == "Expand the logarithm using a change-of-base chain" => {
+            Cow::Borrowed("Expandir cambio de base")
+        }
         "Expand Log Product Power"
             if description == "Log expansion followed by exact cancellation" =>
         {
@@ -240,6 +258,11 @@ pub(crate) fn visible_rule_name_for_step<'a>(
         {
             Cow::Borrowed("Aplicar identidad hiperbólica de suma/diferencia de ángulos")
         }
+        "Hyperbolic Quotient Identity"
+            if description == "Recognize sinh(u) / cosh(u) as tanh(u)" =>
+        {
+            Cow::Borrowed("Reconocer tangente hiperbólica desde un cociente")
+        }
         "Collapse Exact Zero Additive Subexpression" if description == "Complete the Square" => {
             Cow::Borrowed("Completar el cuadrado")
         }
@@ -250,6 +273,27 @@ pub(crate) fn visible_rule_name_for_step<'a>(
         }
         "Evaluate Logarithms" if description == "log(b, x^y) = y * log(b, x)" => {
             Cow::Borrowed("Sacar un exponente fuera del logaritmo")
+        }
+        "Trig Expansion" if description == "Expand tangent to sine over cosine" => {
+            Cow::Borrowed("Expandir tangente como seno entre coseno")
+        }
+        "Reciprocal Trig Identity" if description == "Expand sec(u) as 1 / cos(u)" => {
+            Cow::Borrowed("Reescribir secante como recíproco del coseno")
+        }
+        "Reciprocal Trig Identity" if description == "Expand csc(u) as 1 / sin(u)" => {
+            Cow::Borrowed("Reescribir cosecante como recíproco del seno")
+        }
+        "Reciprocal Trig Identity" if description == "Expand cot(u) as cos(u) / sin(u)" => {
+            Cow::Borrowed("Reescribir cotangente como coseno entre seno")
+        }
+        "Reciprocal Trig Identity" if description == "Recognize 1 / cos(u) as sec(u)" => {
+            Cow::Borrowed("Reconocer secante desde un recíproco")
+        }
+        "Reciprocal Trig Identity" if description == "Recognize 1 / sin(u) as csc(u)" => {
+            Cow::Borrowed("Reconocer cosecante desde un recíproco")
+        }
+        "Reciprocal Trig Identity" if description == "Recognize cos(u) / sin(u) as cot(u)" => {
+            Cow::Borrowed("Reconocer cotangente desde un cociente")
         }
         "Rationalize Linear Sqrt Denominator" if description.contains("opaque substitution") => {
             Cow::Borrowed("Reconocer un cociente notable")

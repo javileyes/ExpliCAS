@@ -13,6 +13,11 @@ use num_traits::One;
 pub enum InverseTrigCompositionKind {
     SinArcsin,
     CosArccos,
+    CosArcsin,
+    SinArccos,
+    TanArcsin,
+    SinArctan,
+    CosArctan,
     TanArctan,
     ArctanTanArctan,
     ArcsinSinArctan,
@@ -191,6 +196,38 @@ fn match_var_times_sqrt_one_plus_square_expr(ctx: &Context, expr: ExprId, var: E
     saw_var && saw_sqrt
 }
 
+fn build_sqrt_one_plus_square(ctx: &mut Context, x: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    let x_squared = ctx.add(Expr::Pow(x, two));
+    let one = ctx.num(1);
+    let radicand = ctx.add(Expr::Add(x_squared, one));
+    ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand])
+}
+
+fn build_sqrt_one_minus_square(ctx: &mut Context, x: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    let x_squared = ctx.add(Expr::Pow(x, two));
+    let one = ctx.num(1);
+    let radicand = ctx.add(Expr::Sub(one, x_squared));
+    ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand])
+}
+
+fn build_sin_arctan_projection(ctx: &mut Context, x: ExprId) -> ExprId {
+    let denominator = build_sqrt_one_plus_square(ctx, x);
+    ctx.add(Expr::Div(x, denominator))
+}
+
+fn build_cos_arctan_projection(ctx: &mut Context, x: ExprId) -> ExprId {
+    let one = ctx.num(1);
+    let denominator = build_sqrt_one_plus_square(ctx, x);
+    ctx.add(Expr::Div(one, denominator))
+}
+
+fn build_tan_arcsin_projection(ctx: &mut Context, x: ExprId) -> ExprId {
+    let denominator = build_sqrt_one_minus_square(ctx, x);
+    ctx.add(Expr::Div(x, denominator))
+}
+
 fn try_match_safe_arcsin_sin_arctan_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     if let Expr::Function(sin_name, sin_args) = ctx.get(expr) {
         let is_sin = ctx.is_builtin(*sin_name, BuiltinFn::Sin);
@@ -282,6 +319,42 @@ pub fn try_plan_inverse_trig_composition_expr(
             });
         }
 
+        if ctx.is_builtin(*outer_name, BuiltinFn::Cos)
+            && (ctx.is_builtin(inner_name, BuiltinFn::Arcsin)
+                || ctx.is_builtin(inner_name, BuiltinFn::Asin))
+        {
+            let rewritten = build_sqrt_one_minus_square(ctx, x);
+            return Some(InverseTrigCompositionRewritePlan {
+                rewritten,
+                kind: InverseTrigCompositionKind::CosArcsin,
+                assume_defined_expr: None,
+            });
+        }
+
+        if ctx.is_builtin(*outer_name, BuiltinFn::Sin)
+            && (ctx.is_builtin(inner_name, BuiltinFn::Arccos)
+                || ctx.is_builtin(inner_name, BuiltinFn::Acos))
+        {
+            let rewritten = build_sqrt_one_minus_square(ctx, x);
+            return Some(InverseTrigCompositionRewritePlan {
+                rewritten,
+                kind: InverseTrigCompositionKind::SinArccos,
+                assume_defined_expr: None,
+            });
+        }
+
+        if ctx.is_builtin(*outer_name, BuiltinFn::Tan)
+            && (ctx.is_builtin(inner_name, BuiltinFn::Arcsin)
+                || ctx.is_builtin(inner_name, BuiltinFn::Asin))
+        {
+            let rewritten = build_tan_arcsin_projection(ctx, x);
+            return Some(InverseTrigCompositionRewritePlan {
+                rewritten,
+                kind: InverseTrigCompositionKind::TanArcsin,
+                assume_defined_expr: None,
+            });
+        }
+
         if ctx.is_builtin(*outer_name, BuiltinFn::Tan)
             && (ctx.is_builtin(inner_name, BuiltinFn::Arctan)
                 || ctx.is_builtin(inner_name, BuiltinFn::Atan))
@@ -289,6 +362,30 @@ pub fn try_plan_inverse_trig_composition_expr(
             return Some(InverseTrigCompositionRewritePlan {
                 rewritten: x,
                 kind: InverseTrigCompositionKind::TanArctan,
+                assume_defined_expr: None,
+            });
+        }
+
+        if ctx.is_builtin(*outer_name, BuiltinFn::Sin)
+            && (ctx.is_builtin(inner_name, BuiltinFn::Arctan)
+                || ctx.is_builtin(inner_name, BuiltinFn::Atan))
+        {
+            let rewritten = build_sin_arctan_projection(ctx, x);
+            return Some(InverseTrigCompositionRewritePlan {
+                rewritten,
+                kind: InverseTrigCompositionKind::SinArctan,
+                assume_defined_expr: None,
+            });
+        }
+
+        if ctx.is_builtin(*outer_name, BuiltinFn::Cos)
+            && (ctx.is_builtin(inner_name, BuiltinFn::Arctan)
+                || ctx.is_builtin(inner_name, BuiltinFn::Atan))
+        {
+            let rewritten = build_cos_arctan_projection(ctx, x);
+            return Some(InverseTrigCompositionRewritePlan {
+                rewritten,
+                kind: InverseTrigCompositionKind::CosArctan,
                 assume_defined_expr: None,
             });
         }
@@ -1062,6 +1159,77 @@ mod tests {
                 kind: InverseTrigCompositionKind::SinArcsin,
                 assume_defined: false,
             })
+        );
+    }
+
+    #[test]
+    fn inverse_trig_composition_plan_detects_arctan_right_triangle_projections() {
+        for (source_text, target_text, expected_kind) in [
+            (
+                "sin(arctan(x))",
+                "x/sqrt(x^2 + 1)",
+                InverseTrigCompositionKind::SinArctan,
+            ),
+            (
+                "cos(arctan(x))",
+                "1/sqrt(x^2 + 1)",
+                InverseTrigCompositionKind::CosArctan,
+            ),
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(source_text, &mut ctx).expect("parse source");
+            let expected = parse(target_text, &mut ctx).expect("parse target");
+            let plan =
+                try_plan_inverse_trig_composition_expr(&mut ctx, expr, false, true).expect("plan");
+
+            assert_eq!(plan.kind, expected_kind);
+            assert_eq!(
+                cas_ast::ordering::compare_expr(&ctx, plan.rewritten, expected),
+                std::cmp::Ordering::Equal
+            );
+        }
+    }
+
+    #[test]
+    fn inverse_trig_composition_plan_detects_arcsin_arccos_complement_projections() {
+        for (source_text, target_text, expected_kind) in [
+            (
+                "cos(arcsin(x))",
+                "sqrt(1 - x^2)",
+                InverseTrigCompositionKind::CosArcsin,
+            ),
+            (
+                "sin(arccos(x))",
+                "sqrt(1 - x^2)",
+                InverseTrigCompositionKind::SinArccos,
+            ),
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(source_text, &mut ctx).expect("parse source");
+            let expected = parse(target_text, &mut ctx).expect("parse target");
+            let plan =
+                try_plan_inverse_trig_composition_expr(&mut ctx, expr, false, true).expect("plan");
+
+            assert_eq!(plan.kind, expected_kind);
+            assert_eq!(
+                cas_ast::ordering::compare_expr(&ctx, plan.rewritten, expected),
+                std::cmp::Ordering::Equal
+            );
+        }
+    }
+
+    #[test]
+    fn inverse_trig_composition_plan_detects_tan_arcsin_projection() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(arcsin(x))", &mut ctx).expect("parse source");
+        let expected = parse("x/sqrt(1 - x^2)", &mut ctx).expect("parse target");
+        let plan =
+            try_plan_inverse_trig_composition_expr(&mut ctx, expr, false, true).expect("plan");
+
+        assert_eq!(plan.kind, InverseTrigCompositionKind::TanArcsin);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plan.rewritten, expected),
+            std::cmp::Ordering::Equal
         );
     }
 

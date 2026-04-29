@@ -229,7 +229,7 @@ fn build_report(cases: &[AuditCase], artifacts: &[AuditArtifact]) -> String {
             writeln!(out, "(no CLI lines emitted)").unwrap();
         } else {
             for line in &artifact.cli_lines {
-                writeln!(out, "{}", line).unwrap();
+                writeln!(out, "{}", line.trim_end()).unwrap();
             }
         }
         writeln!(out, "```").unwrap();
@@ -836,7 +836,34 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         .iter()
         .find(|case| case.id == "polynomial_expansion_cancel")
         .expect("missing polynomial_expansion_cancel audit case");
-    let polynomial_cli = simplify_case(polynomial_case).cli_lines.join("\n");
+    let polynomial_artifact = simplify_case(polynomial_case);
+    let polynomial_cli = polynomial_artifact.cli_lines.join("\n");
+    assert!(
+        polynomial_artifact.wire_substep_count >= 2,
+        "polynomial_expansion_cancel should explain exact additive cancellations after the direct expansion step, got {:?}",
+        polynomial_artifact
+            .wire_steps
+            .iter()
+            .flat_map(|step| step.substeps.iter())
+            .map(|substep| substep.title.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        polynomial_artifact
+            .wire_steps
+            .iter()
+            .flat_map(|step| step.substeps.iter())
+            .filter(|substep| substep.title == "Cancelar términos opuestos exactos")
+            .count()
+            >= 2,
+        "polynomial_expansion_cancel should show both exact additive cancellations, got {:?}",
+        polynomial_artifact
+            .wire_steps
+            .iter()
+            .flat_map(|step| step.substeps.iter())
+            .map(|substep| substep.title.as_str())
+            .collect::<Vec<_>>()
+    );
     assert!(
         !polynomial_cli.contains("\n3. -(2 * x) = -2 * x"),
         "polynomial_expansion_cancel CLI narrative should hide sign-canonicalization steps that do not create a visible human change, got:\n{}",
@@ -850,7 +877,9 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
     assert!(
         !polynomial_cli.contains("Cambio local: (a + b)^(2) ->")
             && !polynomial_cli.contains("Cambio local: a^(2) - a^(2) ->")
-            && !polynomial_cli.contains("Cambio local: 2 * a * b - 2 * a * b ->"),
+            && !polynomial_cli.contains("Cambio local: 2 * a * b - 2 * a * b ->")
+            && !polynomial_cli.contains("Cambio local: a^2 + b^2 + 2")
+            && !polynomial_cli.contains("Cambio local: b^2 + 2"),
         "polynomial_expansion_cancel CLI narrative should avoid dry local-change lines when the expansion and cancellation substeps already explain the move, got:\n{}",
         polynomial_cli
     );
@@ -859,9 +888,35 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         .iter()
         .find(|case| case.id == "pythagorean_identity")
         .expect("missing pythagorean_identity audit case");
-    let pythagorean_cli = simplify_case(pythagorean_case).cli_lines.join("\n");
+    let pythagorean_artifact = simplify_case(pythagorean_case);
+    let pythagorean_cli = pythagorean_artifact.cli_lines.join("\n");
     assert!(
-        !pythagorean_cli.contains("Cambio local: sin(x)^(2) + cos(x)^(2) ->"),
+        pythagorean_artifact.wire_substep_count >= 2,
+        "pythagorean_identity should explain the identity through concrete substeps, got {:?}",
+        pythagorean_artifact
+            .wire_steps
+            .iter()
+            .flat_map(|step| step.substeps.iter())
+            .map(|substep| substep.title.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        pythagorean_artifact
+            .wire_steps
+            .iter()
+            .flat_map(|step| step.substeps.iter())
+            .any(|substep| substep.title.contains("Reescribir cos(x)^2")),
+        "pythagorean_identity should expose the concrete cos^2 replacement, got {:?}",
+        pythagorean_artifact
+            .wire_steps
+            .iter()
+            .flat_map(|step| step.substeps.iter())
+            .map(|substep| substep.title.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        !pythagorean_cli.contains("Cambio local: sin(x)^(2) + cos(x)^(2) ->")
+            && !pythagorean_cli.contains("Cambio local: sin(x)^2 + cos(x)^2 ->"),
         "pythagorean_identity CLI narrative should avoid a dry local-change line when the identity substep already explains the move, got:\n{}",
         pythagorean_cli
     );
@@ -872,9 +927,59 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
 fn didactic_step_quality_audit_generates_markdown_report() {
     let cases = load_audit_cases();
     let artifacts: Vec<AuditArtifact> = cases.iter().map(simplify_case).collect();
+    let flagged_cases = artifacts
+        .iter()
+        .filter(|artifact| !artifact.flags.is_empty())
+        .count();
+    let no_wire_substeps = artifacts
+        .iter()
+        .filter(|artifact| {
+            artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "no wire substeps emitted")
+        })
+        .count();
+    let single_step_no_substeps = artifacts
+        .iter()
+        .filter(|artifact| {
+            artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "single step with no didactic substeps")
+        })
+        .count();
+    let missing_math_sides = artifacts
+        .iter()
+        .filter(|artifact| {
+            artifact
+                .flags
+                .iter()
+                .any(|flag| flag == "wire substeps with missing math sides")
+        })
+        .count();
+    let total_wire_substeps = artifacts
+        .iter()
+        .map(|artifact| artifact.wire_substep_count)
+        .sum::<usize>();
+    let mean_step_count = artifacts
+        .iter()
+        .map(|artifact| artifact.step_count)
+        .sum::<usize>() as f64
+        / artifacts.len().max(1) as f64;
     let report = build_report(&cases, &artifacts);
     let report_path = report_output_path();
     fs::create_dir_all(report_path.parent().expect("report dir")).expect("create report dir");
     fs::write(&report_path, report).expect("write report");
+    eprintln!(
+        "simplify didactic audit summary: cases={} flagged={} no_wire_substeps={} single_step_no_substeps={} missing_math_sides={} total_wire_substeps={} mean_step_count={:.2}",
+        cases.len(),
+        flagged_cases,
+        no_wire_substeps,
+        single_step_no_substeps,
+        missing_math_sides,
+        total_wire_substeps,
+        mean_step_count,
+    );
     eprintln!("didactic audit report written to {}", report_path.display());
 }

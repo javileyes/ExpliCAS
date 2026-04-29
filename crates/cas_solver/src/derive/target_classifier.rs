@@ -2,6 +2,8 @@ use std::collections::BTreeSet;
 
 use cas_ast::{BuiltinFn, Expr, ExprId};
 use cas_engine::NormalFormGoal;
+use cas_math::expr_extract::extract_i64_multiplier_and_base_factors;
+use cas_math::expr_nary::build_balanced_mul;
 use cas_math::inverse_trig_composition_support::{
     try_plan_inverse_atan_reciprocal_add_expr, try_plan_inverse_trig_composition_expr,
 };
@@ -338,12 +340,12 @@ fn detect_log_contracted_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
-    if !looks_like_log_contracted_target(ctx, source_expr, target_expr) {
-        return false;
-    }
-
     if try_rewrite_log_contraction_to_target_aware(ctx, source_expr, target_expr).is_some() {
         return true;
+    }
+
+    if !looks_like_log_contracted_target(ctx, source_expr, target_expr) {
+        return false;
     }
 
     let simplified = run_default_simplify(ctx, source_expr);
@@ -367,6 +369,10 @@ fn detect_trig_expanded_target(
 ) -> bool {
     if try_rewrite_trig_contraction_target_aware(ctx, source_expr, target_expr).is_some() {
         return false;
+    }
+
+    if detect_inverse_trig_double_angle_expanded_target(ctx, source_expr, target_expr) {
+        return true;
     }
 
     if contains_phase_shift_term(ctx, target_expr)
@@ -399,6 +405,78 @@ fn detect_trig_expanded_target(
         return false;
     };
     strong_target_match(ctx, expanded, target_expr)
+}
+
+fn detect_inverse_trig_double_angle_expanded_target(
+    ctx: &mut cas_ast::Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> bool {
+    let Some((outer, inverse, x)) = inverse_trig_double_angle_source_parts(ctx, source_expr) else {
+        return false;
+    };
+
+    let two = ctx.num(2);
+    let one = ctx.num(1);
+    let x_squared = ctx.add(Expr::Pow(x, two));
+    let expected = match (outer, inverse) {
+        (BuiltinFn::Sin, BuiltinFn::Arcsin | BuiltinFn::Arccos) => {
+            let radicand = ctx.add(Expr::Sub(one, x_squared));
+            let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+            build_balanced_mul(ctx, &[two, x, sqrt_radicand])
+        }
+        (BuiltinFn::Cos, BuiltinFn::Arcsin) => {
+            let double_x_squared = build_balanced_mul(ctx, &[two, x_squared]);
+            ctx.add(Expr::Sub(one, double_x_squared))
+        }
+        (BuiltinFn::Cos, BuiltinFn::Arccos) => {
+            let double_x_squared = build_balanced_mul(ctx, &[two, x_squared]);
+            ctx.add(Expr::Sub(double_x_squared, one))
+        }
+        _ => return false,
+    };
+
+    strong_target_match(ctx, expected, target_expr)
+}
+
+fn inverse_trig_double_angle_source_parts(
+    ctx: &cas_ast::Context,
+    source_expr: ExprId,
+) -> Option<(BuiltinFn, BuiltinFn, ExprId)> {
+    let Expr::Function(outer_fn, outer_args) = ctx.get(source_expr) else {
+        return None;
+    };
+    if outer_args.len() != 1 {
+        return None;
+    }
+    let outer = ctx.builtin_of(*outer_fn)?;
+    if !matches!(outer, BuiltinFn::Sin | BuiltinFn::Cos) {
+        return None;
+    }
+
+    let (multiple, base_factors) = extract_i64_multiplier_and_base_factors(ctx, outer_args[0]);
+    if multiple != 2 {
+        return None;
+    }
+    let base_factors = base_factors.into_vec();
+    if base_factors.len() != 1 {
+        return None;
+    }
+    let inverse_call = base_factors[0];
+
+    let Expr::Function(inverse_fn, inverse_args) = ctx.get(inverse_call) else {
+        return None;
+    };
+    if inverse_args.len() != 1 {
+        return None;
+    }
+    let inverse = match ctx.builtin_of(*inverse_fn)? {
+        BuiltinFn::Arcsin | BuiltinFn::Asin => BuiltinFn::Arcsin,
+        BuiltinFn::Arccos | BuiltinFn::Acos => BuiltinFn::Arccos,
+        _ => return None,
+    };
+
+    Some((outer, inverse, inverse_args[0]))
 }
 
 fn detect_trig_contracted_target(
@@ -456,9 +534,7 @@ fn detect_expanded_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
-    if cas_math::expr_predicates::contains_division_like_term(ctx, source_expr)
-        || !looks_expandable_source(ctx, source_expr)
-    {
+    if !looks_expandable_source(ctx, source_expr) {
         return false;
     }
 
@@ -472,6 +548,12 @@ fn detect_expanded_target(
     let Some(rewrite) = try_rewrite_expanded_target_aware(ctx, source_expr, target_expr) else {
         return false;
     };
+
+    if cas_math::expr_predicates::contains_division_like_term(ctx, source_expr)
+        && !matches!(rewrite.kind, super::ExpandRewriteKind::BinomialPower)
+    {
+        return false;
+    }
 
     looks_like_expanded_target(ctx, target_expr)
         || matches!(rewrite.kind, super::ExpandRewriteKind::BinomialPower)
@@ -706,7 +788,14 @@ fn contains_hyperbolic_fn(ctx: &cas_ast::Context, expr: ExprId) -> bool {
             Expr::Function(fn_id, args) => {
                 if matches!(
                     ctx.builtin_of(*fn_id),
-                    Some(BuiltinFn::Sinh | BuiltinFn::Cosh | BuiltinFn::Tanh)
+                    Some(
+                        BuiltinFn::Sinh
+                            | BuiltinFn::Cosh
+                            | BuiltinFn::Tanh
+                            | BuiltinFn::Asinh
+                            | BuiltinFn::Acosh
+                            | BuiltinFn::Atanh
+                    )
                 ) {
                     return true;
                 }
@@ -803,7 +892,9 @@ fn detect_inverse_trig_rewritten_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
-    if let Some(plan) = try_plan_inverse_trig_composition_expr(ctx, source_expr, false, true) {
+    if let Some(plan) = try_plan_inverse_trig_composition_expr(ctx, source_expr, false, true)
+        .or_else(|| try_plan_inverse_trig_composition_expr(ctx, source_expr, false, false))
+    {
         if strong_target_match(ctx, plan.rewritten, target_expr) {
             return true;
         }
@@ -1421,6 +1512,12 @@ mod tests {
     }
 
     #[test]
+    fn classifies_fractional_binomial_square_as_expanded_target() {
+        let profile = classify("(x + 1/2)^2", "x^2 + x + 1/4");
+        assert_eq!(profile.form, DeriveTargetForm::Expanded);
+    }
+
+    #[test]
     fn classifies_expanded_target_when_binomial_expansion_simplifies_to_single_term() {
         let profile = classify("(a+b)^2 - a^2 - 2*a*b", "b^2");
         assert_eq!(profile.form, DeriveTargetForm::Expanded);
@@ -1455,6 +1552,21 @@ mod tests {
                 profile.form,
                 DeriveTargetForm::HyperbolicRewritten,
                 "expected hyperbolic rewrite classification for `{source}` -> `{target}`"
+            );
+        }
+    }
+
+    #[test]
+    fn classifies_hyperbolic_half_angle_square_targets() {
+        for (source, target) in [
+            ("cosh(x/2)^2", "(cosh(x)+1)/2"),
+            ("sinh(x/2)^2", "(cosh(x)-1)/2"),
+        ] {
+            let profile = classify(source, target);
+            assert_eq!(
+                profile.form,
+                DeriveTargetForm::HyperbolicRewritten,
+                "expected hyperbolic half-angle target classification for `{source}` -> `{target}`"
             );
         }
     }
@@ -1546,9 +1658,11 @@ mod tests {
             ("ln(x) + ln(y)", "ln(x*y)"),
             ("ln(x) - ln(y)", "ln(x/y)"),
             ("ln(x) + ln(y) - ln(z)", "ln((x*y)/z)"),
+            ("2*ln(abs(x))", "ln(x^2)"),
             ("2*ln(abs(x)) + ln(y) - ln(z) - ln(t)", "ln((x^2*y)/(z*t))"),
             ("3*ln(x) + 2*ln(abs(y))", "ln(x^3*y^2)"),
             ("3*ln(x) - 2*ln(y)", "ln(x^3/y^2)"),
+            ("3*log(2, x)", "log(2, x^3)"),
             ("ln(x^2)+ln(y^2)", "ln((x*y)^2)"),
             ("2*ln(abs(x))+2*ln(abs(y))", "2*ln(abs(x*y))"),
             ("log(2, x) - log(2, y)", "log(2, x/y)"),
@@ -1625,7 +1739,15 @@ mod tests {
     fn classifies_tabulated_inverse_trig_rewritten_targets() {
         for (source, target) in [
             ("arctan(a) + arctan(1/a)", "pi/2"),
+            ("sin(arcsin(x))", "x"),
+            ("cos(arccos(x))", "x"),
+            ("tan(arctan(x))", "x"),
             ("asin(x/sqrt(x^2 + 1))", "arctan(x)"),
+            ("sin(arctan(x))", "x/sqrt(1+x^2)"),
+            ("cos(arctan(x))", "1/sqrt(1+x^2)"),
+            ("cos(arcsin(x))", "sqrt(1-x^2)"),
+            ("sin(arccos(x))", "sqrt(1-x^2)"),
+            ("tan(arcsin(x))", "x/sqrt(1-x^2)"),
         ] {
             let profile = classify(source, target);
             assert_eq!(profile.form, DeriveTargetForm::InverseTrigRewritten);
@@ -1680,8 +1802,14 @@ mod tests {
     fn classifies_tabulated_trig_expanded_targets() {
         let cases = [
             ("sin(2*x)", "2*sin(x)*cos(x)"),
+            ("sin(2*arcsin(x))", "2*x*sqrt(1-x^2)"),
+            ("cos(2*arcsin(x))", "1-2*x^2"),
+            ("sin(2*arccos(x))", "2*x*sqrt(1-x^2)"),
+            ("cos(2*arccos(x))", "2*x^2-1"),
             ("sec(x)", "1/cos(x)"),
             ("tan(x)", "(1-cos(2*x))/sin(2*x)"),
+            ("tan(x/2)", "sin(x)/(1+cos(x))"),
+            ("tan(x/2)", "(1-cos(x))/sin(x)"),
             ("sin(2*a*x)", "2*sin(a*x)*cos(a*x)"),
             ("sin(x)^4", "(3-4*cos(2*x)+cos(4*x))/8"),
             ("cos(x)^4", "(3+4*cos(2*x)+cos(4*x))/8"),

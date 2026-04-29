@@ -9,18 +9,18 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 | id | category | steps | wire substeps | flags |
 | --- | --- | ---: | ---: | --- |
 | `rationalize_linear_root` | `rationalization` | 6 | 3 | none |
-| `nested_fraction_one_over_sum` | `nested_fraction` | 2 | 1 | none |
-| `nested_fraction_fraction_over_sum` | `nested_fraction` | 2 | 1 | none |
+| `nested_fraction_one_over_sum` | `nested_fraction` | 2 | 3 | none |
+| `nested_fraction_fraction_over_sum` | `nested_fraction` | 2 | 3 | none |
 | `combine_like_terms_basic` | `combine` | 2 | 1 | none |
-| `log_product_cancellation` | `logs` | 1 | 3 | none |
+| `log_product_cancellation` | `logs` | 1 | 0 | none |
 | `same_denominator_fraction_focus` | `fractions` | 2 | 1 | none |
 | `cancel_factors_fraction` | `cancellation` | 1 | 0 | none |
-| `difference_of_squares_quotient` | `quotient` | 1 | 2 | none |
-| `pythagorean_identity` | `trig` | 1 | 0 | none |
+| `difference_of_squares_quotient` | `quotient` | 2 | 2 | none |
+| `pythagorean_identity` | `trig` | 1 | 2 | none |
 | `inverse_trig_identity` | `inverse_trig` | 5 | 1 | none |
-| `polynomial_expansion_cancel` | `polynomial` | 6 | 0 | no wire substeps emitted |
-| `perfect_square_root` | `radicals` | 2 | 2 | none |
-| `cube_quotient_radical` | `quotient` | 1 | 2 | none |
+| `polynomial_expansion_cancel` | `polynomial` | 5 | 2 | none |
+| `perfect_square_root` | `radicals` | 1 | 2 | none |
+| `cube_quotient_radical` | `quotient` | 1 | 3 | none |
 | `geometric_product_cancellation` | `polynomial` | 1 | 3 | none |
 
 ## rationalize_linear_root (rationalization)
@@ -81,7 +81,7 @@ Steps:
 2. `Collapse Common-Scale Equivalent Difference`
    - before: `sqrt(x) + 1 - (sqrt(x) + 1)`
    - after: `0`
-   - before_latex: `{\color{red}{\sqrt{x} + 1 - (\sqrt{x} + 1)}}`
+   - before_latex: `{\color{red}{1 + \sqrt{x} - 1 - \sqrt{x}}}`
    - after_latex: `{\color{green}{0}}`
    - substeps: none
 
@@ -91,7 +91,7 @@ Steps:
 - Focus: `narrate_common_denominator_without_magic`
 - Final result: `x * y / (x + y)`
 - Step count: `2`
-- Wire substep count: `1`
+- Wire substep count: `3`
 - Flags: none
 
 ### CLI Step By Step
@@ -108,6 +108,15 @@ Steps:
    After: 1/((x + y)/(x · y))
 2. Simplificar fracción anidada
    Before: 1/((x + y)/(x · y))
+   [Simplificación de fracción compleja]
+      [Invertir la fracción del denominador]
+        1/((x + y)/(x ·  y))
+        ->
+        1 ·  (x ·  y)/(x + y)
+      [Simplificar el producto resultante]
+        1 ·  (x ·  y)/(x + y)
+        ->
+        (x ·  y)/(x + y)
    After: (x · y)/(x + y)
 ```
 
@@ -127,7 +136,13 @@ Steps:
    - after: `(x · y)/(x + y)`
    - before_latex: `{\color{red}{\frac{1}{\frac{x + y}{x\cdot y}}}}`
    - after_latex: `{\color{green}{\frac{x\cdot y}{x + y}}}`
-   - substeps: none
+   - substeps:
+     1. `Invertir la fracción del denominador`
+        - before_latex: `\frac{1}{\frac{x + y}{x\cdot y}}`
+        - after_latex: `1\cdot \frac{x\cdot y}{x + y}`
+     2. `Simplificar el producto resultante`
+        - before_latex: `1\cdot \frac{x\cdot y}{x + y}`
+        - after_latex: `\frac{x\cdot y}{x + y}`
 
 ## nested_fraction_fraction_over_sum (nested_fraction)
 
@@ -135,7 +150,7 @@ Steps:
 - Focus: `explain_inner_fraction_then_outer_division`
 - Final result: `y * z / (x * y + x * z)`
 - Step count: `2`
-- Wire substep count: `1`
+- Wire substep count: `3`
 - Flags: none
 
 ### CLI Step By Step
@@ -152,6 +167,15 @@ Steps:
    After: (1/x)/((y + z)/(y · z))
 2. Simplificar fracción anidada
    Before: (1/x)/((y + z)/(y · z))
+   [Simplificación de fracción compleja]
+      [Invertir la fracción del denominador]
+        (1/x)/((y + z)/(y ·  z))
+        ->
+        (1/x) ·  (y ·  z)/(y + z)
+      [Simplificar el producto resultante]
+        (1/x) ·  (y ·  z)/(y + z)
+        ->
+        (y ·  z)/((y + z) ·  x)
    After: (y · z)/((y + z) · x)
 ```
 
@@ -168,10 +192,16 @@ Steps:
         - after_latex: `\frac{y + z}{y\cdot z}`
 2. `Simplificar fracción anidada`
    - before: `(1/x)/((y + z)/(y · z))`
-   - after: `(y · z)/((y + z) · x)`
+   - after: `(y · z)/(x · (y + z))`
    - before_latex: `{\color{red}{\frac{\frac{1}{x}}{\frac{y + z}{y\cdot z}}}}`
-   - after_latex: `{\color{green}{\frac{y\cdot z}{(y + z)\cdot x}}}`
-   - substeps: none
+   - after_latex: `{\color{green}{\frac{y\cdot z}{x\cdot (y + z)}}}`
+   - substeps:
+     1. `Invertir la fracción del denominador`
+        - before_latex: `\frac{\frac{1}{x}}{\frac{y + z}{y\cdot z}}`
+        - after_latex: `\left(\frac{1}{x}\right)\cdot \frac{y\cdot z}{y + z}`
+     2. `Simplificar el producto resultante`
+        - before_latex: `\left(\frac{1}{x}\right)\cdot \frac{y\cdot z}{y + z}`
+        - after_latex: `\frac{y\cdot z}{(y + z)\cdot x}`
 
 ## combine_like_terms_basic (combine)
 
@@ -216,48 +246,27 @@ Steps:
 - Focus: `avoid_single_redundant_cancellation_substep`
 - Final result: `0`
 - Step count: `1`
-- Wire substep count: `3`
+- Wire substep count: `0`
 - Flags: none
 
 ### CLI Step By Step
 
 ```text
 Steps:
-1. Log expansion followed by exact cancellation
+1.
    Before: ln(x^3) + ln(y^2) - ln(x^3 · y^2)
-      [Expandir el logaritmo del producto o del cociente]
-        ln(x^3 ·  y^2)
-        ->
-        ln(x^3) + ln(y^2)
-      [Sacar exponentes fuera del logaritmo cuando sea necesario]
-        ln(x^3) + ln(y^2) - ln(x^3) - ln(y^2)
-        ->
-        2 ·  ln(|y|) + 3 ·  ln(x) - 3 ·  ln(x) - 2 ·  ln(|y|)
-      [Cancelar términos iguales]
-        2 ·  ln(|y|) + 3 ·  ln(x) - 3 ·  ln(x) - 2 ·  ln(|y|)
-        ->
-        0
    Cambio local: ln(x^3) + ln(y^2) - ln(x^3 · y^2) -> 0
    After: 0
 ```
 
 ### Wire / Web Steps
 
-1. `Expandir logaritmos y cancelar términos iguales`
+1. `Collapse Exact Zero Additive Subexpression`
    - before: `ln(x^3) + ln(y^2) - ln(x^3 · y^2)`
    - after: `0`
    - before_latex: `{\color{red}{\ln({x}^{3}) + \ln({y}^{2}) - \ln({x}^{3}\cdot {y}^{2})}}`
    - after_latex: `{\color{green}{0}}`
-   - substeps:
-     1. `Expandir el logaritmo del producto o del cociente`
-        - before_latex: `\ln({x}^{3}\cdot {y}^{2})`
-        - after_latex: `\ln({x}^{3}) + \ln({y}^{2})`
-     2. `Sacar exponentes fuera del logaritmo cuando sea necesario`
-        - before_latex: `\ln({x}^{3}) + \ln({y}^{2}) - \ln({x}^{3}) - \ln({y}^{2})`
-        - after_latex: `2\cdot \ln(|y|) + 3\cdot \ln(x) - 3\cdot \ln(x) - 2\cdot \ln(|y|)`
-     3. `Cancelar términos iguales`
-        - before_latex: `2\cdot \ln(|y|) + 3\cdot \ln(x) - 3\cdot \ln(x) - 2\cdot \ln(|y|)`
-        - after_latex: `0`
+   - substeps: none
 
 ## same_denominator_fraction_focus (fractions)
 
@@ -275,7 +284,7 @@ Steps:
 1. Llevar a denominador común
    Before: a/d + b/d + 1
    After: b/d + (a + d)/d
-2. Sumar fracciones
+2.
    Before: b/d + (a + d)/d
    [Simplificación de fracción compleja]
       [Llevar a denominador común]
@@ -290,13 +299,13 @@ Steps:
 1. `Llevar a denominador común`
    - before: `a/d + b/d + 1`
    - after: `b/d + (a + d)/d`
-   - before_latex: `\frac{b}{d} + {\color{red}{\frac{a}{d} + 1}}`
-   - after_latex: `{\color{green}{\frac{a + d}{d}}} + \frac{b}{d}`
+   - before_latex: `{\color{red}{1 + \frac{a}{d}}} + \frac{b}{d}`
+   - after_latex: `\frac{b}{d} + {\color{green}{\frac{a + d}{d}}}`
    - substeps: none
 2. `Sumar fracciones`
    - before: `b/d + (a + d)/d`
    - after: `(a + b + d)/d`
-   - before_latex: `{\color{red}{\frac{a + d}{d} + \frac{b}{d}}}`
+   - before_latex: `{\color{red}{\frac{b}{d} + \frac{a + d}{d}}}`
    - after_latex: `{\color{green}{\frac{a + b + d}{d}}}`
    - substeps:
      1. `Llevar a denominador común`
@@ -307,7 +316,7 @@ Steps:
 
 - Input: `(2*x)/(4*x)`
 - Focus: `show_factorization_and_cancellation`
-- Final result: `1/2`
+- Final result: `2 / 4`
 - Step count: `1`
 - Wire substep count: `0`
 - Flags: none
@@ -335,7 +344,7 @@ Steps:
 - Input: `(x^2 - 1)/(x - 1)`
 - Focus: `factor_then_cancel_exactly`
 - Final result: `x + 1`
-- Step count: `1`
+- Step count: `2`
 - Wire substep count: `2`
 - Flags: none
 
@@ -343,7 +352,11 @@ Steps:
 
 ```text
 Steps:
-1. Cancelar factor común
+1. Factor: A² - B² = (A-B)(A+B)
+   Before: (x^2 - 1)/(x - 1)
+   Cambio local: x^2 - 1 -> (x + 1) * (x - 1)
+   After: ((x + 1) · (x - 1))/(x - 1)
+2. Cancelar factor común
    Before: ((x + 1) · (x - 1))/(x - 1)
    [Factorización de polinomios]
       [Usar la diferencia de cuadrados: a^2 - b^2 = (a - b)(a + b)]
@@ -359,7 +372,13 @@ Steps:
 
 ### Wire / Web Steps
 
-1. `Factorizar una diferencia de cuadrados y cancelar`
+1. `Pre-order Difference of Squares`
+   - before: `(x^2 - 1)/(x - 1)`
+   - after: `((x + 1) · (x - 1))/(x - 1)`
+   - before_latex: `\frac{{\color{red}{{x}^{2} - 1}}}{x - 1}`
+   - after_latex: `\frac{{\color{green}{(1 + x)\cdot (x - 1)}}}{x - 1}`
+   - substeps: none
+2. `Factorizar una diferencia de cuadrados y cancelar`
    - before: `((x + 1) · (x - 1))/(x - 1)`
    - after: `x + 1`
    - before_latex: `{\color{red}{\frac{(1 + x)\cdot (x - 1)}{x - 1}}}`
@@ -378,15 +397,23 @@ Steps:
 - Focus: `avoid_identity_as_magic_jump`
 - Final result: `1`
 - Step count: `1`
-- Wire substep count: `0`
+- Wire substep count: `2`
 - Flags: none
 
 ### CLI Step By Step
 
 ```text
 Steps:
-1. Aplicar la identidad pitagórica
+1. Pythagorean Identity
    Before: sin(x)^2 + cos(x)^2
+      [Reescribir cos(x)^2 como 1 - sin(x)^2]
+        sin(x)^2 + cos(x)^2
+        ->
+        sin(x)^2 + 1 - sin(x)^2
+      [Cancelar sin(x)^2 - sin(x)^2]
+        sin(x)^2 + 1 - sin(x)^2
+        ->
+        1
    After: 1
 ```
 
@@ -397,7 +424,13 @@ Steps:
    - after: `1`
    - before_latex: `{\color{red}{{\sin(x)}^{2} + {\cos(x)}^{2}}}`
    - after_latex: `{\color{green}{1}}`
-   - substeps: none
+   - substeps:
+     1. `Reescribir cos(x)^2 como 1 - sin(x)^2`
+        - before_latex: `{\sin(x)}^{2} + {\cos(x)}^{2}`
+        - after_latex: `{\sin(x)}^{2} + 1 - {\sin(x)}^{2}`
+     2. `Cancelar sin(x)^2 - sin(x)^2`
+        - before_latex: `{\sin(x)}^{2} + 1 - {\sin(x)}^{2}`
+        - after_latex: `1`
 
 ## inverse_trig_identity (inverse_trig)
 
@@ -429,7 +462,7 @@ Steps:
 1. `Aplicar identidad de arctangentes`
    - before: `arctan(1/3) + arctan(3) - 1/2 · pi`
    - after: `pi/2 - 1/2 · pi`
-   - before_latex: `{\color{red}{\text{arctan}(3)}} + {\color{red}{\text{arctan}(\frac{1}{3})}} - \frac{1}{2}\cdot \pi`
+   - before_latex: `{\color{red}{\text{arctan}(\frac{1}{3}) + \text{arctan}(3)}} - \frac{1}{2}\cdot \pi`
    - after_latex: `{\color{green}{\frac{\pi}{2}}} - \frac{1}{2}\cdot \pi`
    - substeps:
      1. `Juntar la pareja que encaja con la identidad`
@@ -441,9 +474,9 @@ Steps:
 - Input: `(a+b)^2 - a^2 - 2*a*b`
 - Focus: `expansion_and_collection_should_be_readable`
 - Final result: `b^2`
-- Step count: `6`
-- Wire substep count: `0`
-- Flags: no wire substeps emitted
+- Step count: `5`
+- Wire substep count: `2`
+- Flags: none
 
 ### CLI Step By Step
 
@@ -452,11 +485,19 @@ Steps:
 1. Expandir el binomio
    Before: ((a + b))^2 - a^2 - 2 · a · b
    After: b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b
-2. Cancelar términos opuestos
+2. Cancel exact additive pairs
    Before: a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b
+      [Cancelar términos opuestos exactos]
+        a^2 - a^2
+        ->
+        0
    After: b^2 + 2 · a · b - 2 · a · b
-3. Cancelar términos opuestos
+3. Cancel exact additive pairs
    Before: b^2 + 2 · a · b - 2 · a · b
+      [Cancelar términos opuestos exactos]
+        2 ·  a ·  b - 2 ·  a ·  b
+        ->
+        0
    After: b^2
 ```
 
@@ -464,29 +505,35 @@ Steps:
 
 1. `Expandir binomio`
    - before: `((a + b))^2 - a^2 - 2 · a · b`
-   - after: `b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b`
+   - after: `a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b`
    - before_latex: `{\color{red}{{(a + b)}^{2}}} - {a}^{2} - 2\cdot a\cdot b`
-   - after_latex: `{\color{green}{{b}^{2} + 2\cdot a\cdot b + {a}^{2}}} - {a}^{2} - 2\cdot a\cdot b`
+   - after_latex: `{\color{green}{{a}^{2} + {b}^{2} + 2\cdot a\cdot b}} - {a}^{2} - 2\cdot a\cdot b`
    - substeps: none
-2. `Agrupar términos semejantes`
+2. `Cancelar términos opuestos`
    - before: `a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b`
    - after: `b^2 + 2 · a · b - 2 · a · b`
-   - before_latex: `{\color{red}{{b}^{2} + 2\cdot a\cdot b + {a}^{2} - {a}^{2}}} - 2\cdot a\cdot b`
+   - before_latex: `{\color{red}{{a}^{2} + {b}^{2} + 2\cdot a\cdot b - {a}^{2}}} - 2\cdot a\cdot b`
    - after_latex: `{\color{green}{{b}^{2} + 2\cdot a\cdot b}} - 2\cdot a\cdot b`
-   - substeps: none
-3. `Agrupar términos semejantes`
+   - substeps:
+     1. `Cancelar términos opuestos exactos`
+        - before_latex: `{a}^{2} - {a}^{2}`
+        - after_latex: `0`
+3. `Cancelar términos opuestos`
    - before: `b^2 + 2 · a · b - 2 · a · b`
    - after: `b^2`
-   - before_latex: `{b}^{2} + {\color{red}{2\cdot a\cdot b}} - {\color{red}{2\cdot a\cdot b}}`
+   - before_latex: `{\color{red}{{b}^{2} + 2\cdot a\cdot b - 2\cdot a\cdot b}}`
    - after_latex: `{\color{green}{{b}^{2}}}`
-   - substeps: none
+   - substeps:
+     1. `Cancelar términos opuestos exactos`
+        - before_latex: `2\cdot a\cdot b - 2\cdot a\cdot b`
+        - after_latex: `0`
 
 ## perfect_square_root (radicals)
 
 - Input: `sqrt(x^2 + 2*x + 1)`
 - Focus: `show_square_pattern_and_abs`
 - Final result: `|x + 1|`
-- Step count: `2`
+- Step count: `1`
 - Wire substep count: `2`
 - Flags: none
 
@@ -528,7 +575,7 @@ Steps:
 - Focus: `show_exact_quotient_reason`
 - Final result: `sqrt(x) + 1 + sqrt(x)^2`
 - Step count: `1`
-- Wire substep count: `2`
+- Wire substep count: `3`
 - Flags: none
 
 ### CLI Step By Step
@@ -544,6 +591,10 @@ Steps:
         (sqrt(x) - 1) ·  (sqrt(x)^2 + sqrt(x) ·  1 + 1^2)
       [Ahora se cancela el factor (sqrt(x) - 1)]
         ((sqrt(x) - 1) ·  (sqrt(x)^2 + sqrt(x) ·  1 + 1^2))/(sqrt(x) - 1)
+        ->
+        sqrt(x) + 1 + sqrt(x)^2
+      [Reemplazar ese bloque en la expresión]
+        (sqrt(x)^3 - 1)/(sqrt(x) - 1)
         ->
         sqrt(x) + 1 + sqrt(x)^2
    After: sqrt(x) + 1 + sqrt(x)^2
@@ -562,6 +613,9 @@ Steps:
         - after_latex: `\left(\sqrt{x} - 1\right)\cdot \left({\sqrt{x}}^{2} + \sqrt{x}\cdot 1 + {1}^{2}\right)`
      2. `Ahora se cancela el factor (sqrt(x) - 1)`
         - before_latex: `\frac{\left(\sqrt{x} - 1\right)\cdot \left({\sqrt{x}}^{2} + \sqrt{x}\cdot 1 + {1}^{2}\right)}{\left(\sqrt{x} - 1\right)}`
+        - after_latex: `\sqrt{x} + 1 + {\sqrt{x}}^{2}`
+     3. `Reemplazar ese bloque en la expresión`
+        - before_latex: `\frac{{\sqrt{x}}^{3} - 1}{\sqrt{x} - 1}`
         - after_latex: `\sqrt{x} + 1 + {\sqrt{x}}^{2}`
 
 ## geometric_product_cancellation (polynomial)

@@ -333,6 +333,12 @@ fn extract_global_sign(ctx: &mut cas_ast::Context, expr: ExprId) -> (bool, ExprI
             (!negative, core)
         }
         Expr::Number(value) if value.is_negative() => (true, ctx.add(Expr::Number(-value))),
+        Expr::Div(num, den) => {
+            let (num_negative, num_core) = extract_global_sign(ctx, num);
+            let (den_negative, den_core) = extract_global_sign(ctx, den);
+            let core = ctx.add(Expr::Div(num_core, den_core));
+            (num_negative ^ den_negative, core)
+        }
         _ if ctx.is_mul_commutative(expr) => {
             let mut negative = false;
             let mut positive_factors = Vec::new();
@@ -528,6 +534,24 @@ mod tests {
         let mut ctx = cas_ast::Context::new();
         let actual = cas_parser::parse("-(2*sin(2*x)*sin(3*x))", &mut ctx).expect("actual");
         let target = cas_parser::parse("-2*sin(3*x)*sin(2*x)", &mut ctx).expect("target");
+        assert!(strong_target_match(&mut ctx, actual, target));
+        assert!(strong_target_match(&mut ctx, target, actual));
+    }
+
+    #[test]
+    fn matches_global_negation_against_negative_quotient_numerator() {
+        let mut ctx = cas_ast::Context::new();
+        let actual = cas_parser::parse("-(sqrt(2)/2)", &mut ctx).expect("actual");
+        let target = cas_parser::parse("-sqrt(2)/2", &mut ctx).expect("target");
+        assert!(strong_target_match(&mut ctx, actual, target));
+        assert!(strong_target_match(&mut ctx, target, actual));
+    }
+
+    #[test]
+    fn matches_negative_rational_quotient_surface_forms() {
+        let mut ctx = cas_ast::Context::new();
+        let actual = cas_parser::parse("-(1/2)", &mut ctx).expect("actual");
+        let target = cas_parser::parse("-1/2", &mut ctx).expect("target");
         assert!(strong_target_match(&mut ctx, actual, target));
         assert!(strong_target_match(&mut ctx, target, actual));
     }
