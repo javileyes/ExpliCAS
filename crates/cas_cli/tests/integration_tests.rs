@@ -948,7 +948,7 @@ fn test_enhanced_integration() {
         "1/3 * e^(3 * x + 1)"
     );
 
-    // Test 3: integrate(1/(2*x + 1), x) -> ln(2*x + 1)/2
+    // Test 3: integrate(1/(2*x + 1), x) -> ln(abs(2*x + 1))/2
     let input3 = "integrate(1/(2*x + 1), x)";
     let expr3 = parse(input3, &mut simplifier.context).expect("Failed to parse");
     let (result3, steps3) = simplifier.simplify(expr3);
@@ -978,7 +978,7 @@ fn test_enhanced_integration() {
                 id: result3
             }
         ),
-        "1/2 * ln(2 * x + 1)"
+        "1/2 * ln(|2 * x + 1|)"
     );
 
     // Test 4: integrate((3*x)^2, x) -> (3*x)^3 / (3*3) -> (3*x)^3 / 9
@@ -1016,5 +1016,71 @@ fn test_enhanced_integration() {
             }
         ),
         "3 * x^3"
+    );
+
+    // Test 5: integrate(1/(x^2+1), x) -> arctan(x)
+    let input5 = "integrate(1/(x^2+1), x)";
+    let expr5 = parse(input5, &mut simplifier.context).expect("Failed to parse");
+    let (result5, steps5) = simplifier.simplify(expr5);
+    println!(
+        "Result 5: {}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: result5
+        }
+    );
+    for (i, step) in steps5.iter().enumerate() {
+        println!(
+            "Step {}: {} -> {}",
+            i + 1,
+            step.rule_name,
+            DisplayExpr {
+                context: &simplifier.context,
+                id: step.after
+            }
+        );
+    }
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result5
+            }
+        ),
+        "arctan(x)"
+    );
+
+    // Test 6: integrate((x^2+1)^(-1/2), x) -> asinh(x)
+    let input6 = "integrate((x^2+1)^(-1/2), x)";
+    let expr6 = parse(input6, &mut simplifier.context).expect("Failed to parse");
+    let (result6, steps6) = simplifier.simplify(expr6);
+    println!(
+        "Result 6: {}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: result6
+        }
+    );
+    for (i, step) in steps6.iter().enumerate() {
+        println!(
+            "Step {}: {} -> {}",
+            i + 1,
+            step.rule_name,
+            DisplayExpr {
+                context: &simplifier.context,
+                id: step.after
+            }
+        );
+    }
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &simplifier.context,
+                id: result6
+            }
+        ),
+        "asinh(x)"
     );
 }

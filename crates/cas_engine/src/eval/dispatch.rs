@@ -172,6 +172,7 @@ impl Engine {
                 Vec::new(),
                 Vec::new(),
                 Vec::new(),
+                Vec::new(),
                 inherited_diagnostics,
                 session.store_mut(),
                 options,
@@ -187,6 +188,7 @@ impl Engine {
             solver_assumptions,
             output_scopes,
             solver_required,
+            rewrite_required,
         ) = self.dispatch_eval_action(options, req.action, resolved, resolved_equiv_other)?;
 
         // V2.15.36: Prepend synthetic cache hit step if any refs were resolved from cache
@@ -206,6 +208,7 @@ impl Engine {
             solver_assumptions,
             output_scopes,
             solver_required,
+            rewrite_required,
             inherited_diagnostics,
             session.store_mut(),
             options,

@@ -68,6 +68,7 @@ impl Engine {
             res,
             &steps,
         );
+        let rewrite_required = self.simplifier.take_required_conditions();
         Ok((
             EvalResult::Expr(res),
             warnings,
@@ -76,6 +77,7 @@ impl Engine {
             vec![],
             vec![],
             vec![],
+            rewrite_required,
         ))
     }
 
@@ -209,6 +211,7 @@ impl Engine {
 
         self.simplifier
             .extend_blocked_hints(ctx_simplifier.take_blocked_hints());
+        let rewrite_required = ctx_simplifier.take_required_conditions();
         let restored_step_listener = ctx_simplifier.replace_step_listener(None);
         self.simplifier.context = ctx_simplifier.context;
         self.simplifier.set_step_listener(restored_step_listener);
@@ -296,6 +299,7 @@ impl Engine {
             vec![],
             vec![],
             vec![],
+            rewrite_required,
         ))
     }
 }
@@ -355,7 +359,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -411,7 +424,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -467,7 +489,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -524,7 +555,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -581,7 +621,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -636,7 +685,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -665,7 +723,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -720,7 +787,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -748,7 +824,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -776,7 +861,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Solve;
         options.shared.semantics.domain_mode = crate::DomainMode::Strict;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -832,7 +926,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -860,7 +963,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -888,7 +1000,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -916,7 +1037,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -945,7 +1075,16 @@ mod tests {
         options.shared.context_mode = crate::options::ContextMode::Standard;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
-        let (result, _warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -1081,7 +1220,16 @@ mod tests {
         options.steps_mode = crate::options::StepsMode::Off;
         options.time_budget_ms = Some(0);
 
-        let (result, warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 
@@ -1117,7 +1265,16 @@ mod tests {
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
         options.time_budget_ms = Some(1);
 
-        let (result, warnings, _steps, _solve_steps, _assumptions, _scopes, _required) = engine
+        let (
+            result,
+            warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
             .eval_simplify(&options, parsed)
             .unwrap_or_else(|e| panic!("{e:?}"));
 

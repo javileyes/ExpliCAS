@@ -532,6 +532,8 @@ These are the runnable profiles exposed by the current scorecard runner:
 - `fast`
   - `metatest_csv_combinations_small`
   - `metatest_csv_contextual_pairs_strict`
+  - `metatest_csv_contextual_radical_pairs`
+  - `diff_step_contract_tests`
 - `fast_embedded`
   - `fast`
   - `embedded_equivalence_context`
@@ -541,6 +543,8 @@ These are the runnable profiles exposed by the current scorecard runner:
   - embedded equivalence context corpus
   - derive contract corpus
   - derive shadow pressure over representative engine identity rows
+  - public differentiation, limit, safe limit pre-simplification, and
+    integration contract lanes
   - unified simplification benchmark in `strict`
 - `pressure`
   - simplify-zero mixed corpus
@@ -576,7 +580,8 @@ At minimum, it should make room for:
 The scorecard should also grow calculus visibility over time. Initially this can
 be diagnostic rather than gating:
 
-- representative `diff`, `limit`, and `integrate` contract counts
+- representative `diff`, `limit`, safe limit pre-simplification, and
+  `integrate` contract counts
 - unsupported/residual counts by calculus family
 - calculus cases whose final result is correct but depends on a weak
   pre-calculus simplification route

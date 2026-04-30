@@ -95,6 +95,101 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-04-30: Variable-Base Log Diff Both-Variable Probe
+
+- area:
+  - calculus / symbolic differentiation / quotient simplification
+- status:
+  - `observe-only`
+- attempted case:
+  - `diff(log(x, x + 1), x)` via the change-of-base derivative of
+    `ln(x + 1) / ln(x)`
+- local lane:
+  - CLI probe:
+    `cargo run -q -p cas_cli -- eval 'diff(log(x, x+1), x)' --format json --steps on --no-pretty`
+- local result:
+  - the initial symbolic differentiation step produced the expected quotient
+    derivative:
+    `(ln(x)/(x + 1) - ln(x + 1)/x)/ln(x)^2`
+  - a later `Reconocer un cociente notable` simplification collapsed a
+    nonzero log quotient expression to `0`
+- global result:
+  - rejected before promotion; the retained calculus change is limited to
+    variable-base logs whose argument is constant with respect to the
+    differentiation variable
+- best current explanation:
+  - the notable-quotient recognizer is overmatching after nested-fraction and
+    distribution steps introduce log terms in both numerator and denominator
+- plausible follow-up:
+  - add a narrow guard to the notable-quotient simplifier so it proves the
+    numerator cancellation structurally before returning `0`, then reattempt
+    the full two-variable `log(base,arg)` derivative
+
+### 2026-04-30: Scaled `tan/cot` Integration Presentation Probe
+
+- area:
+  - calculus / symbolic integration / trig canonicalization
+- status:
+  - `observe-only`
+- attempted case:
+  - `integrate(sec(2*x + 1)^2, x) -> 1/2 * tan(2*x + 1)`
+  - `integrate(csc(2*x + 1)^2, x) -> -1/2 * cot(2*x + 1)`
+- local lane:
+  - `cargo test --release -q -p cas_math squared_kernel -- --nocapture`
+  - `cargo test --release -q -p cas_engine squared_kernel -- --nocapture`
+  - CLI probes for `tan(2*x + 1)/2` and `1/2*tan(2*x + 1)`
+- local result:
+  - constructing the antiderivative internally as `tan(u)` / `-cot(u)` is
+    straightforward in the symbolic helper
+  - the public root case can then lose the required nonzero condition unless
+    extra metadata is added for `sec(u)^2` / `csc(u)^2`
+  - the public linear case is still rewritten to
+    `sin(u)/(a*cos(u))` / `-cos(u)/(a*sin(u))`, and can duplicate conditions
+    if narrow metadata is layered on top of the quotient output
+- global result:
+  - rejected as a presentation/domain improvement before promotion; retained
+    only conservative public coverage for the current domain-preserving output
+- best current explanation:
+  - direct `tan(x)` remains presentable, but scaled `tan(u)/a` is canonicalized
+    through quotient form by existing trig simplification traffic
+  - the domain hook currently recognizes the quotient kernel more reliably than
+    a direct `tan/cot` antiderivative emitted by integration
+- plausible follow-up:
+  - add a narrow, cycle-safe canonicalization policy for scaled trig quotients
+    and a matching condition hook for direct `sec^2/csc^2` table outputs before
+    expecting integration to expose `tan(u)/a` and `-cot(u)/a`
+
+### 2026-04-29: `arcsin/arccos` Diff Radical-Domain Probe
+
+- area:
+  - calculus / symbolic differentiation / required-conditions
+- status:
+  - `observe-only`
+- attempted case:
+  - `diff(arcsin(x), x) -> 1/sqrt(1-x^2)`
+  - `diff(arccos(x), x) -> -1/sqrt(1-x^2)`
+- local lane:
+  - `cargo test -p cas_math symbolic_differentiation_support`
+  - `cargo test -p cas_solver --test diff_step_contract_tests inverse_function_diff_evaluates_with_required_domain_conditions -- --exact`
+- local result:
+  - the derivative formulas were easy to produce, but the public contract saw
+    only `1 - x^2 >= 0` from the surviving `sqrt(1-x^2)` denominator
+  - the derivative is undefined at the endpoints, so the retained condition must
+    be equivalent to `1 - x^2 > 0`
+- global result:
+  - rejected before promotion; no guardrail regression was introduced
+- decision:
+  - retain only total-domain inverse derivatives in this cycle:
+    `arctan` and `asinh`
+- best current explanation:
+  - required-condition extraction distinguishes positive radicands after some
+    reciprocal-root simplifications, but the symbolic-diff constructed
+    `Div(1, sqrt(...))` path can surface only non-negativity
+- plausible follow-up:
+  - add a domain-preserving representation or condition hook for reciprocal
+    square-root denominators, then reattempt `arcsin/arccos` derivatives with a
+    contract requiring `1 - x^2 > 0`
+
 ### 2026-04-29: `sin(4x)` Expanded Quadruple-Angle Derive Probe
 
 - area:

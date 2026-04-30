@@ -198,6 +198,61 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             MODULE.NF_FIRST_FULL_TIMEOUT_SECONDS,
         )
 
+    def test_fast_profile_includes_specialized_contextual_radical_lane(self):
+        fast_args = argparse.Namespace(profile="fast", suite=[])
+        fast_embedded_args = argparse.Namespace(profile="fast_embedded", suite=[])
+
+        fast_names = [spec.name for spec in MODULE.selected_suites(fast_args)]
+        fast_embedded_names = [
+            spec.name for spec in MODULE.selected_suites(fast_embedded_args)
+        ]
+
+        self.assertEqual(
+            fast_names,
+            [
+                "simplify_add_small",
+                "contextual_strict_fast",
+                "contextual_radical_fast",
+                "calculus_diff_contract",
+            ],
+        )
+        self.assertIn("contextual_radical_fast", fast_embedded_names)
+        self.assertIn("calculus_diff_contract", fast_embedded_names)
+        self.assertNotIn("calculus_limit_contract", fast_names)
+        self.assertNotIn("calculus_limit_presimplify_contract", fast_names)
+        self.assertNotIn("calculus_integrate_contract", fast_names)
+
+    def test_calculus_contracts_are_visible_in_guardrail_and_full_profiles(self):
+        guardrail_args = argparse.Namespace(profile="guardrail", suite=[])
+        full_args = argparse.Namespace(profile="full", suite=[])
+
+        guardrail_names = [
+            spec.name for spec in MODULE.selected_suites(guardrail_args)
+        ]
+        full_names = [spec.name for spec in MODULE.selected_suites(full_args)]
+
+        self.assertIn("calculus_diff_contract", guardrail_names)
+        self.assertIn("calculus_diff_contract", full_names)
+        self.assertIn("calculus_limit_contract", guardrail_names)
+        self.assertIn("calculus_limit_contract", full_names)
+        self.assertIn("calculus_limit_presimplify_contract", guardrail_names)
+        self.assertIn("calculus_limit_presimplify_contract", full_names)
+        self.assertIn("calculus_integrate_contract", guardrail_names)
+        self.assertIn("calculus_integrate_contract", full_names)
+        self.assertEqual(MODULE.SUITES["calculus_diff_contract"].category, "calculus")
+        self.assertEqual(MODULE.SUITES["calculus_limit_contract"].category, "calculus")
+        self.assertEqual(
+            MODULE.SUITES["calculus_limit_presimplify_contract"].category,
+            "calculus",
+        )
+        self.assertEqual(
+            MODULE.SUITES["calculus_integrate_contract"].category,
+            "calculus",
+        )
+        integrate_command = MODULE.SUITES["calculus_integrate_contract"].command
+        self.assertIn("integrate_contract_tests", integrate_command)
+        self.assertNotIn("test_enhanced_integration", integrate_command)
+
     def test_format_runtime_duration_preserves_subsecond_signal(self):
         self.assertEqual(MODULE.format_runtime_duration(0.00025), "0.25ms")
         self.assertEqual(MODULE.format_runtime_duration(0.15), "150.00ms")
@@ -874,6 +929,80 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertIn("flagged_rate=20.3%", markdown)
         self.assertIn("total_web_substeps=320", markdown)
         self.assertIn("no_web_substeps=82", markdown)
+
+    def test_render_markdown_includes_calculus_diff_contract_signal(self):
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "calculus_diff_contract": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.1,
+                        "metrics": {
+                            "cargo_status": "ok",
+                            "passed": 30,
+                            "failed": 0,
+                            "ignored": 0,
+                            "measured": 0,
+                            "filtered_out": 0,
+                        "timeouts": 0,
+                    },
+                    "delta": {},
+                },
+                "calculus_integrate_contract": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.2,
+                    "metrics": {
+                        "cargo_status": "ok",
+                        "passed": 23,
+                        "failed": 0,
+                        "ignored": 0,
+                        "measured": 0,
+                        "filtered_out": 0,
+                        "timeouts": 0,
+                    },
+                    "delta": {},
+                },
+                "calculus_limit_contract": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.2,
+                    "metrics": {
+                        "cargo_status": "ok",
+                        "passed": 6,
+                        "failed": 0,
+                        "ignored": 0,
+                        "measured": 0,
+                        "filtered_out": 0,
+                        "timeouts": 0,
+                    },
+                    "delta": {},
+                },
+                "calculus_limit_presimplify_contract": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.2,
+                    "metrics": {
+                        "cargo_status": "ok",
+                        "passed": 8,
+                        "failed": 0,
+                        "ignored": 0,
+                        "measured": 0,
+                        "filtered_out": 0,
+                        "timeouts": 0,
+                    },
+                    "delta": {},
+                },
+            },
+        }
+
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn("## Calculus Contract Signal", markdown)
+        self.assertIn("public calculus behavior", markdown)
+        self.assertIn("`diff`: passed=30 failed=0", markdown)
+        self.assertIn("`limit`: passed=6 failed=0", markdown)
+        self.assertIn("`limit_presimplify_safe`: passed=8 failed=0", markdown)
+        self.assertIn("`integrate`: passed=23 failed=0", markdown)
 
     def test_render_markdown_includes_mixed_pressure_and_proof_shape_caveat(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)

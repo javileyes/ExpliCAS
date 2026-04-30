@@ -1,11 +1,12 @@
 use crate::build::mul2_raw;
+use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, MultiPoly, PolyBudget};
 use crate::poly_compare::poly_eq;
 use crate::polynomial::Polynomial;
 use crate::trig_roots_flatten::{get_square_root, get_trig_arg, is_trig_pow};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
+use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive};
-// use num_rational::BigRational;
 use std::cmp::Ordering;
 
 /// Factors an expression.
@@ -16,39 +17,104 @@ pub fn factor(ctx: &mut Context, expr: ExprId) -> ExprId {
         return res;
     }
 
-    // 2. Try the alternating cubic Vandermonde identity:
+    // 2. Extract common multivariate content/monomial, then reuse existing
+    // factorization on the residual.
+    if let Some(res) = factor_common_content_then_residual(ctx, expr) {
+        return res;
+    }
+
+    // 3. Try the alternating cubic Vandermonde identity:
     // a^3(b-c) + b^3(c-a) + c^3(a-b) = (a-b)(a-c)(b-c)(a+b+c)
     if let Some(res) = factor_alternating_cubic_vandermonde(ctx, expr) {
         return res;
     }
 
-    // 3. Try difference of squares
+    // 4. Try difference of squares
     if let Some(res) = factor_difference_squares(ctx, expr) {
         return res;
     }
 
-    // 4. Try Sophie Germain identity: a^4 + 4b^4 = (a² + 2ab + 2b²)(a² - 2ab + 2b²)
+    // 5. Try Sophie Germain identity: a^4 + 4b^4 = (a² + 2ab + 2b²)(a² - 2ab + 2b²)
     if let Some(res) = factor_sophie_germain(ctx, expr) {
         return res;
     }
 
-    // 5. Try perfect square trinomial: a² ± 2ab + b² = (a ± b)²
+    // 6. Try perfect square trinomial: a² ± 2ab + b² = (a ± b)²
     if let Some(res) = factor_perfect_square_trinomial(ctx, expr) {
         return res;
     }
 
-    // 6. Try binomial cube identity: a^3 ± 3a^2b + 3ab^2 ± b^3 = (a ± b)^3
+    // 7. Try binomial cube identity: a^3 ± 3a^2b + 3ab^2 ± b^3 = (a ± b)^3
     if let Some(res) = factor_binomial_cube_identity(ctx, expr) {
         return res;
     }
 
-    // 5. Recursive factorization?
+    // Recursive factorization?
     // For now, just return original if no top-level factorization applies.
     // Ideally we should factor sub-expressions too.
     // But `factor` usually means "factor this polynomial".
     // Let's stick to top-level for now, or maybe recurse if it's a product/sum?
 
     expr
+}
+
+fn factor_common_content_then_residual(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+
+    let budget = PolyBudget {
+        max_terms: 24,
+        max_total_degree: 16,
+        max_pow_exp: 4,
+    };
+    let poly = multipoly_from_expr(ctx, expr, &budget).ok()?;
+    if poly.vars.len() < 2 || poly.num_terms() < 2 {
+        return None;
+    }
+
+    let content = poly.content();
+    let monomial_gcd = poly.monomial_gcd();
+    let has_content = content > BigRational::one();
+    let has_monomial = monomial_gcd.iter().any(|&exp| exp > 0);
+    if !has_content && !has_monomial {
+        return None;
+    }
+
+    let content_reduced = if has_content {
+        poly.div_scalar_exact(&content)?
+    } else {
+        poly.clone()
+    };
+    let residual_poly = if has_monomial {
+        content_reduced.div_monomial_exact(&monomial_gcd)?
+    } else {
+        content_reduced
+    };
+    if residual_poly.is_zero() {
+        return None;
+    }
+
+    let common_poly = MultiPoly {
+        vars: poly.vars.clone(),
+        terms: vec![(content, monomial_gcd)],
+    };
+    let common_expr = multipoly_to_expr(&common_poly, ctx);
+    let residual_expr = multipoly_to_expr(&residual_poly, ctx);
+    let residual_factored = factor(ctx, residual_expr);
+    let factored = mul2_raw(ctx, common_expr, residual_factored);
+
+    if compare_expr(ctx, factored, expr) == Ordering::Equal {
+        return None;
+    }
+
+    let old_nodes = cas_ast::count_nodes(ctx, expr);
+    let new_nodes = cas_ast::count_nodes(ctx, factored);
+    if new_nodes > old_nodes + 2 {
+        return None;
+    }
+
+    poly_eq(ctx, expr, factored).then_some(factored)
 }
 
 pub fn factor_binomial_cube_identity(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
@@ -809,5 +875,50 @@ mod tests {
         let res = factor(&mut ctx, expr);
         let expected = parse("(x^2 - 4*x + 8)*(x^2 + 4*x + 8)", &mut ctx).unwrap();
         assert!(poly_eq(&ctx, res, expected));
+    }
+
+    #[test]
+    fn test_factor_multivar_common_monomial_then_residual_square() {
+        let mut ctx = Context::new();
+        let expr = parse("y^2*z^2 + 2*y^2*z + y^2", &mut ctx).unwrap();
+        let res = factor(&mut ctx, expr);
+        let expected = parse("y^2*(z+1)^2", &mut ctx).unwrap();
+
+        assert!(poly_eq(&ctx, res, expected));
+        let rendered = s(&ctx, res);
+        assert!(
+            rendered.contains("y^2") && rendered.contains("(z + 1)^2"),
+            "unexpected factor shape: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_factor_multivar_common_numeric_content() {
+        let mut ctx = Context::new();
+        let expr = parse("2*x + 4*y", &mut ctx).unwrap();
+        let res = factor(&mut ctx, expr);
+        let expected = parse("2*(x + 2*y)", &mut ctx).unwrap();
+
+        assert!(poly_eq(&ctx, res, expected));
+        let rendered = s(&ctx, res);
+        assert!(
+            rendered.contains("2 * (x + 2 * y)"),
+            "unexpected factor shape: {rendered}"
+        );
+    }
+
+    #[test]
+    fn test_factor_multivar_common_content_and_monomial() {
+        let mut ctx = Context::new();
+        let expr = parse("2*x*y + 4*x*z", &mut ctx).unwrap();
+        let res = factor(&mut ctx, expr);
+        let expected = parse("2*x*(y + 2*z)", &mut ctx).unwrap();
+
+        assert!(poly_eq(&ctx, res, expected));
+        let rendered = s(&ctx, res);
+        assert!(
+            rendered.contains("2 * x * (y + 2 * z)"),
+            "unexpected factor shape: {rendered}"
+        );
     }
 }

@@ -144,6 +144,9 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 budget_exempt: _,
             } = rewrite;
 
+            self.required_conditions
+                .extend(main_required.iter().cloned());
+
             // Determine final result (last of chained, or main rewrite)
             let final_result = chained_rewrites
                 .last()
@@ -206,6 +209,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     poly_proof: chain_poly_proof,
                     importance: chain_importance,
                 } = chain_rw;
+                self.required_conditions
+                    .extend(chain_required_conditions.iter().cloned());
                 let chain_global_before = self.root_expr;
                 let chain_global_after = self.reconstruct_at_path(chain_after);
 
@@ -246,6 +251,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
         } else {
             // Without steps, keep emitting local rule events when a listener is attached.
             let mut current_before = expr_id;
+            self.required_conditions
+                .extend(rewrite.required_conditions.iter().cloned());
             self.emit_rule_applied_event(
                 rule.name(),
                 current_before,
@@ -256,6 +263,8 @@ impl<'a> LocalSimplificationTransformer<'a> {
             );
             current_before = rewrite.new_expr;
             for chained in rewrite.chained {
+                self.required_conditions
+                    .extend(chained.required_conditions.iter().cloned());
                 self.emit_rule_applied_event(
                     rule.name(),
                     current_before,

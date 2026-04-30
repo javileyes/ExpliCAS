@@ -5,6 +5,7 @@ This script centralizes the core regression and pressure suites we use to grow:
 - simplification
 - equivalence
 - derive reachability
+- bounded calculus visibility
 
 It is intentionally profile-based:
 - fast: iteration loop, cheap enough to run often
@@ -298,6 +299,112 @@ SUITES: dict[str, SuiteSpec] = {
         env={},
         parser="cargo_test_basic",
         description="Strict contextual metamorphic lane for quick wrapper-level sanity.",
+    ),
+    "contextual_radical_fast": SuiteSpec(
+        name="contextual_radical_fast",
+        category="equivalence",
+        profile_tags=("fast", "fast_embedded"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_solver",
+            "--test",
+            "metamorphic_simplification_tests",
+            "metatest_csv_contextual_radical_pairs",
+            "--",
+            "--ignored",
+            "--exact",
+            "--nocapture",
+        ],
+        env={},
+        parser="cargo_test_basic",
+        description="Specialized contextual radical lane for cheap wrapper-level radical coverage.",
+    ),
+    "calculus_diff_contract": SuiteSpec(
+        name="calculus_diff_contract",
+        category="calculus",
+        profile_tags=("fast", "fast_embedded", "guardrail", "full"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_solver",
+            "--test",
+            "diff_step_contract_tests",
+            "--",
+            "--nocapture",
+        ],
+        env={},
+        parser="cargo_test_basic",
+        description="Public differentiation contract lane for calculus visibility.",
+    ),
+    "calculus_limit_contract": SuiteSpec(
+        name="calculus_limit_contract",
+        category="calculus",
+        profile_tags=("guardrail", "full"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_cli",
+            "--test",
+            "limit_contract_tests",
+            "--",
+            "--nocapture",
+        ],
+        env={},
+        parser="cargo_test_basic",
+        description="Public limit contract lane for calculus visibility.",
+    ),
+    "calculus_limit_presimplify_contract": SuiteSpec(
+        name="calculus_limit_presimplify_contract",
+        category="calculus",
+        profile_tags=("guardrail", "full"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_cli",
+            "--test",
+            "presimplify_contract_tests",
+            "--",
+            "--nocapture",
+        ],
+        env={},
+        parser="cargo_test_basic",
+        description=(
+            "Public limit safe pre-simplification contract lane for "
+            "calculus/pre-calculus visibility."
+        ),
+    ),
+    "calculus_integrate_contract": SuiteSpec(
+        name="calculus_integrate_contract",
+        category="calculus",
+        profile_tags=("guardrail", "full"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_cli",
+            "--test",
+            "integrate_contract_tests",
+            "--",
+            "--nocapture",
+        ],
+        env={},
+        parser="cargo_test_basic",
+        description="Public integration contract lane for calculus visibility.",
     ),
 }
 
@@ -1817,7 +1924,11 @@ def suite_status(name: str, metrics: dict[str, Any], returncode: int) -> str:
         if metrics["timeouts"] > 0 or metrics["numeric_only"] > 0:
             return "warn"
         return "pass"
-    if name in {"simplify_add_small", "contextual_strict_fast"}:
+    if name in {
+        "simplify_add_small",
+        "contextual_strict_fast",
+        "contextual_radical_fast",
+    }:
         if metrics["failed"] > 0:
             return "fail"
         if metrics.get("timeouts", 0) > 0 or metrics.get("numeric_only", 0) > 0:
@@ -2849,6 +2960,44 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     "",
                 ]
             )
+
+    calculus_contract_rows = [
+        (label, suite)
+        for label, suite in (
+            ("diff", scorecard["suites"].get("calculus_diff_contract")),
+            ("limit", scorecard["suites"].get("calculus_limit_contract")),
+            (
+                "limit_presimplify_safe",
+                scorecard["suites"].get("calculus_limit_presimplify_contract"),
+            ),
+            ("integrate", scorecard["suites"].get("calculus_integrate_contract")),
+        )
+        if suite
+    ]
+    if calculus_contract_rows:
+        lines.extend(
+            [
+                "## Calculus Contract Signal",
+                "",
+                "- Dimension: public calculus behavior, result simplification, domain conditions, and step noise.",
+                "- Interpretation: small executable calculus vertical slices; failures should be classified before broadening pre-calculus rules.",
+            ]
+        )
+        for label, suite in calculus_contract_rows:
+            metrics = suite["metrics"]
+            if "parse_error" in metrics:
+                lines.append(
+                    f"- `{label}`: parse_error={metrics['parse_error']}"
+                )
+            else:
+                lines.append(
+                    (
+                        f"- `{label}`: passed={metrics['passed']} "
+                        f"failed={metrics['failed']} ignored={metrics['ignored']} "
+                        f"filtered_out={metrics['filtered_out']}"
+                    )
+                )
+        lines.append("")
 
     strict_suite = scorecard["suites"].get("simplify_strict")
     if strict_suite:

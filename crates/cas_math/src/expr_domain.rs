@@ -105,6 +105,7 @@ pub fn is_positive_power_of_base(ctx: &Context, expr: ExprId, base: ExprId) -> b
 
 /// Check if `source` is `k*target` where `k > 0`.
 pub fn is_positive_multiple_of(ctx: &Context, source: ExprId, target: ExprId) -> bool {
+    use crate::multipoly::{multipoly_from_expr, PolyBudget};
     use num_traits::Zero;
 
     if exprs_equivalent(ctx, source, target) {
@@ -125,7 +126,27 @@ pub fn is_positive_multiple_of(ctx: &Context, source: ExprId, target: ExprId) ->
             }
         }
     }
-    false
+
+    let budget = PolyBudget {
+        max_terms: 50,
+        max_total_degree: 20,
+        max_pow_exp: 10,
+    };
+
+    let (Ok(source_poly), Ok(target_poly)) = (
+        multipoly_from_expr(ctx, source, &budget),
+        multipoly_from_expr(ctx, target, &budget),
+    ) else {
+        return false;
+    };
+
+    if source_poly.is_zero() || target_poly.is_zero() {
+        return false;
+    }
+
+    let (_, source_primitive) = source_poly.primitive_part();
+    let (_, target_primitive) = target_poly.primitive_part();
+    source_primitive == target_primitive
 }
 
 /// Check if `expr` is `abs(inner)`.
@@ -285,6 +306,17 @@ mod tests {
         let neg_source = parse("-2*x", &mut ctx).expect("parse");
         assert!(is_positive_multiple_of(&ctx, source, target));
         assert!(!is_positive_multiple_of(&ctx, neg_source, target));
+    }
+
+    #[test]
+    fn positive_multiple_detection_matches_polynomial_scalar_content() {
+        let mut ctx = Context::new();
+        let source = parse("-4*x^2 - 4*x", &mut ctx).expect("parse source");
+        let target = parse("-x^2 - x", &mut ctx).expect("parse target");
+        let opposite = parse("4*x^2 + 4*x", &mut ctx).expect("parse opposite");
+
+        assert!(is_positive_multiple_of(&ctx, source, target));
+        assert!(!is_positive_multiple_of(&ctx, opposite, target));
     }
 
     #[test]

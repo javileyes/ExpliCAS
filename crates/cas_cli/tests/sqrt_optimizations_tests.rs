@@ -308,8 +308,8 @@ fn test_sqrt_not_perfect_square() {
 }
 
 #[test]
-fn test_abs_not_canonical() {
-    // abs(x^2 + x + 1) no debe tratarse como canónico
+fn test_abs_positive_definite_quadratic_simplifies() {
+    // x^2 + x + 1 is strictly positive over the real domain.
     let mut simplifier = create_simplifier();
     let expr = parse("abs(x^2 + x + 1)", &mut simplifier.context).unwrap();
     let (result, _steps) = simplifier.simplify(expr);
@@ -322,7 +322,24 @@ fn test_abs_not_canonical() {
         }
     );
 
-    // Debe mantener abs
+    assert_eq!(result_str, "x^2 + x + 1");
+}
+
+#[test]
+fn test_abs_indefinite_quadratic_not_canonical() {
+    // abs(x^2 - 1) changes sign, so simplification must preserve abs.
+    let mut simplifier = create_simplifier();
+    let expr = parse("abs(x^2 - 1)", &mut simplifier.context).unwrap();
+    let (result, _steps) = simplifier.simplify(expr);
+
+    let result_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    );
+
     assert!(result_str.contains('|'));
 }
 

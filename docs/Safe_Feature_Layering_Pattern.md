@@ -261,7 +261,7 @@ Especialmente importante cuando hay:
 **Problema:** mejorar resolución de límites sin inventar resultados ni asumir dominios.  
 **Solución:** capa safe con allowlist-only, lint denylist, contract tests.
 
-- **Canonical**: `limits::presimplify_safe`
+- **Canonical**: `cas_math::limits_support::presimplify_safe_for_limit`
 - **Policy**: `docs/LIMITS_POLICY.md`
 - **Enforcement**: `scripts/lint_limit_presimplify.sh`
 - **Contract tests**: `presimplify_contract_tests.rs` (8 tests)

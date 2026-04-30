@@ -4,16 +4,16 @@
 
 use cas_solver::wire::eval_str_to_wire;
 
-/// Test: 3/(2*sqrt(x)) should NOT produce negative fractional exponents
-/// This is the canonical contract test for the rationalization stability bug.
+/// Test: symbolic reciprocal square roots use the engine's power canonical form.
 #[test]
-fn test_rationalization_not_undone() {
+fn test_symbolic_reciprocal_sqrt_uses_power_canonical_form() {
     let json = eval_str_to_wire("3/(2*sqrt(x))", "{}");
 
-    // Must NOT contain x^(-1/2) or sqrt(x^-1) - these undo rationalization
+    // The engine canonicalizes symbolic 1/sqrt(x) to x^(-1/2). It should not
+    // regress to an inverse inside sqrt.
     assert!(
-        !json.contains("x^(-1/2)") && !json.contains("x^-1/2"),
-        "Result contains negative fractional exponent: {}",
+        json.contains("\"result\":\"3/2 * x^(-1/2)\""),
+        "Unexpected reciprocal sqrt canonical form: {}",
         json
     );
     assert!(

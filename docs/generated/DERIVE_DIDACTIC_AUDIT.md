@@ -2190,7 +2190,8 @@ Steps (Aggressive Mode):
 Result: log(b, (x * y)^(2))
 ℹ️ Requires:
   • b > 0
-  • x * y ≠ 0
+  • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2223,7 +2224,8 @@ Steps (Aggressive Mode):
 Result: log(b, (x * y)^(2)) + a
 ℹ️ Requires:
   • b > 0
-  • x * y ≠ 0
+  • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2516,7 +2518,6 @@ Steps (Aggressive Mode):
 Result: ln(x / y)
 ℹ️ Requires:
   • x / y > 0
-  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2548,7 +2549,7 @@ Steps (Aggressive Mode):
    After: ln(x^3 / y^2)
 Result: ln(x^(3) / y^(2))
 ℹ️ Requires:
-  • x^3 / y^2 > 0
+  • x > 0
   • y ≠ 0
 ```
 
@@ -2614,7 +2615,6 @@ Steps (Aggressive Mode):
 Result: log(2, x / y)
 ℹ️ Requires:
   • x / y > 0
-  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2646,7 +2646,7 @@ Steps (Aggressive Mode):
    After: log(2, x^3 / y^2)
 Result: log(2, x^(3) / y^(2))
 ℹ️ Requires:
-  • x^3 / y^2 > 0
+  • x > 0
   • y ≠ 0
 ```
 
@@ -2679,7 +2679,7 @@ Steps (Aggressive Mode):
    After: log(2, x^3)
 Result: log(2, x^(3))
 ℹ️ Requires:
-  • x^3 > 0
+  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -2712,9 +2712,7 @@ Steps (Aggressive Mode):
 Result: log(b, x^(2) * y^(3) / (t * z^(2)))
 ℹ️ Requires:
   • b > 0
-  • t ≠ 0
   • x^2 * y^3 / (t * z^2) > 0
-  • z ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2746,7 +2744,8 @@ Steps (Aggressive Mode):
    After: ln((x * y)^2)
 Result: ln((x * y)^(2))
 ℹ️ Requires:
-  • x * y ≠ 0
+  • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2778,7 +2777,8 @@ Steps (Aggressive Mode):
    After: ln((x * y)^2) + a
 Result: ln((x * y)^(2)) + a
 ℹ️ Requires:
-  • x * y ≠ 0
+  • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2810,9 +2810,7 @@ Steps (Aggressive Mode):
    After: ln(y * x^2 / (t * z))
 Result: ln(y * x^(2) / (t * z))
 ℹ️ Requires:
-  • t ≠ 0
   • y * x^2 / (t * z) > 0
-  • z ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2845,7 +2843,6 @@ Steps (Aggressive Mode):
 Result: ln(x * y / z)
 ℹ️ Requires:
   • x * y / z > 0
-  • z ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5821,7 +5818,6 @@ Steps (Aggressive Mode):
    After: ln(x) / ln(2)
 Result: ln(x) / ln(2)
 ℹ️ Requires:
-  • ln(2) ≠ 0
   • x > 0
 ```
 
@@ -10369,7 +10365,6 @@ Steps (Aggressive Mode):
 Result: x^(3) * (d / x^(3) + a * x^(4) + b * x^(2) + c)
 ℹ️ Requires:
   • x ≠ 0
-  • x^3 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13327,6 +13322,8 @@ Steps (Aggressive Mode):
    Cambio local: sqrt(x) * x^(1 / 3) -> x^(5 / 6)
    After: x^(5 / 6)
 Result: x^(5 / 6)
+ℹ️ Requires:
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -13387,6 +13384,8 @@ Steps (Aggressive Mode):
    Cambio local: x^(1 / 2) * x^(2 / 3) -> x^(7 / 6)
    After: x^(7 / 6)
 Result: x^(7 / 6)
+ℹ️ Requires:
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps

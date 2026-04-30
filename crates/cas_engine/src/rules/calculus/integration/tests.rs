@@ -124,7 +124,7 @@ fn test_integrate_linear_subst_trig() {
                 id: rewrite.new_expr
             }
         ),
-        "-cos(2 * x) / 2"
+        "-1/2 * cos(2 * x)"
     );
 }
 
@@ -149,7 +149,7 @@ fn test_integrate_linear_subst_exp() {
                 id: rewrite.new_expr
             }
         ),
-        "e^(3 * x) / 3"
+        "1/3 * e^(3 * x)"
     );
 }
 
@@ -186,7 +186,7 @@ fn test_integrate_linear_subst_power() {
 fn test_integrate_linear_subst_log() {
     let mut ctx = Context::new();
     let rule = IntegrateRule;
-    // integrate(1/(3*x), x) -> ln(3*x)/3
+    // integrate(1/(3*x), x) -> ln(abs(3*x))/3
     let expr = parse("integrate(1/(3*x), x)", &mut ctx).unwrap();
     let rewrite = rule
         .apply(
@@ -203,6 +203,102 @@ fn test_integrate_linear_subst_log() {
                 id: rewrite.new_expr
             }
         ),
-        "ln(3 * x) / 3"
+        "ln(|3 * x|) / 3"
     );
+}
+
+#[test]
+fn test_integrate_inverse_function_kernels() {
+    let mut ctx = Context::new();
+    let rule = IntegrateRule;
+
+    let arctan_expr = parse("integrate(1/(x^2+1), x)", &mut ctx).unwrap();
+    let arctan_rewrite = rule
+        .apply(
+            &mut ctx,
+            arctan_expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: arctan_rewrite.new_expr
+            }
+        ),
+        "arctan(x)"
+    );
+
+    let asinh_expr = parse("integrate((x^2+1)^(-1/2), x)", &mut ctx).unwrap();
+    let asinh_rewrite = rule
+        .apply(
+            &mut ctx,
+            asinh_expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: asinh_rewrite.new_expr
+            }
+        ),
+        "asinh(x)"
+    );
+}
+
+#[test]
+fn test_integrate_secant_squared_kernel() {
+    let mut ctx = Context::new();
+    let rule = IntegrateRule;
+    let expr = parse("integrate(1/cos(x)^2, x)", &mut ctx).unwrap();
+    let rewrite = rule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        ),
+        "sin(x) / cos(x)"
+    );
+    assert_eq!(rewrite.required_conditions.len(), 1);
+    assert_eq!(rewrite.required_conditions[0].display(&ctx), "cos(x) ≠ 0");
+}
+
+#[test]
+fn test_integrate_cosecant_squared_kernel() {
+    let mut ctx = Context::new();
+    let rule = IntegrateRule;
+    let expr = parse("integrate(1/sin(x)^2, x)", &mut ctx).unwrap();
+    let rewrite = rule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        ),
+        "-(cos(x) / sin(x))"
+    );
+    assert_eq!(rewrite.required_conditions.len(), 1);
+    assert_eq!(rewrite.required_conditions[0].display(&ctx), "sin(x) ≠ 0");
 }

@@ -77,6 +77,34 @@ fn test_mixed_roots_fraction() {
 }
 
 #[test]
+fn test_symbolic_root_quotient_negated_base_orientation() {
+    test_simplify("sqrt(1 - x^2)/(x^2 - 1)", "-((1 - x^2)^(-1/2))");
+}
+
+#[test]
+fn test_scaled_symbolic_root_quotient_cancels_numeric_factors() {
+    test_simplify("(-2*sqrt(u))/(2*u)", "-(u^(-1/2))");
+}
+
+#[test]
+fn test_scaled_function_root_quotient_cancels_numeric_factors() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let expr =
+        cas_parser::parse("(2*sqrt(sin(x)))/(4*sin(x))", &mut simplifier.context).expect("parse");
+    let (res, _) = simplifier.simplify(expr);
+    let res_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: res
+        }
+    );
+    println!("scaled function root quotient => {}", res_str);
+    assert!(res_str.contains("1/2"), "got '{res_str}'");
+    assert!(res_str.contains("sin(x)^(-1/2)"), "got '{res_str}'");
+}
+
+#[test]
 fn test_complex_expressions() {
     // (sqrt(12) + sqrt(27)) / sqrt(3)
     // = (2*sqrt(3) + 3*sqrt(3)) / sqrt(3)

@@ -80,10 +80,21 @@ fn steps_off_listener_keeps_chained_fraction_events() {
     let sink = Arc::new(Mutex::new(Vec::new()));
     simplifier.set_step_listener(Some(Box::new(CapturingListener::new(sink.clone()))));
 
-    let expr = parse("(27*x^3)/(9*x)", &mut simplifier.context).expect("parse");
+    let expr = parse("(2*x + 2*y)/(4*x + 4*y)", &mut simplifier.context).expect("parse");
 
     let (_result, steps) = simplifier.simplify(expr);
     let events = sink.lock().expect("listener sink poisoned");
+    let event_dump: Vec<String> = events
+        .iter()
+        .map(|event| {
+            let EngineEvent::RuleApplied {
+                rule_name,
+                is_chained,
+                ..
+            } = event;
+            format!("{rule_name} (chained={is_chained})")
+        })
+        .collect();
 
     assert!(steps.is_empty(), "steps should remain disabled");
     assert!(
@@ -95,6 +106,6 @@ fn steps_off_listener_keeps_chained_fraction_events() {
                 ..
             } if rule_name == "Simplify Nested Fraction"
         )),
-        "expected chained Simplify Nested Fraction event even with steps disabled"
+        "expected chained Simplify Nested Fraction event even with steps disabled; got {event_dump:?}"
     );
 }

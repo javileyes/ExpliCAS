@@ -75,6 +75,7 @@ impl Engine {
                     solver_assumptions,
                     output_scopes,
                     solver_required,
+                    vec![],
                 ))
             }
             Err(e) => Err(anyhow::anyhow!("Solver error: {}", e)),
@@ -90,6 +91,7 @@ impl Engine {
         let are_eq = self.simplifier.are_equivalent(resolved, resolved_other);
         Ok((
             EvalResult::Bool(are_eq),
+            vec![],
             vec![],
             vec![],
             vec![],
@@ -122,6 +124,7 @@ impl Engine {
         ) {
             Ok(result) => Ok((
                 EvalResult::Expr(result.expr),
+                vec![],
                 vec![],
                 vec![],
                 vec![],

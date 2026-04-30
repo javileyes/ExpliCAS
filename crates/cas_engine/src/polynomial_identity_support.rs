@@ -15,6 +15,7 @@ use cas_math::poly_convert::try_multipoly_from_expr_with_var_limit;
 use cas_math::substitute::{substitute_power_aware, SubstituteOptions};
 use num_rational::BigRational;
 use num_traits::{One, Zero};
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PolynomialIdentityProofKind {
@@ -403,6 +404,22 @@ fn rewrite_simple_divisions_for_negative_root_relation(
     }
 }
 
+fn allocate_opaque_temp(
+    ctx: &mut Context,
+    used_names: &mut BTreeSet<String>,
+    preferred_idx: usize,
+) -> (String, ExprId) {
+    let mut idx = preferred_idx;
+    loop {
+        let temp_name = format!("__opq{}", idx);
+        if used_names.insert(temp_name.clone()) {
+            let temp_var = ctx.var(&temp_name);
+            return (temp_name, temp_var);
+        }
+        idx += 1;
+    }
+}
+
 fn try_opaque_zero(
     ctx: &mut Context,
     expr: ExprId,
@@ -440,13 +457,16 @@ fn try_opaque_zero(
     let mut tmp_ctx = ctx.clone();
     let mut sub_expr = expr;
     let mut substitutions: Vec<(String, ExprId)> = Vec::new();
+    let mut temp_names: Vec<String> = Vec::new();
+    let mut used_temp_names: BTreeSet<String> =
+        cas_ast::collect_variables(ctx, expr).into_iter().collect();
     let mut atom_idx = 0;
     let mut reciprocal_power_relations: Vec<(usize, ExprId, u32)> = Vec::new();
     let mut negative_reciprocal_power_relations: Vec<(usize, ExprId, u32)> = Vec::new();
 
     if let Some(base) = exp_base {
-        let temp_name = format!("__opq{}", atom_idx);
-        let temp_var = tmp_ctx.var(&temp_name);
+        let (temp_name, temp_var) =
+            allocate_opaque_temp(&mut tmp_ctx, &mut used_temp_names, atom_idx);
         sub_expr = substitute_exp_atoms(
             &mut tmp_ctx,
             sub_expr,
@@ -458,6 +478,7 @@ fn try_opaque_zero(
         let e_const = ctx.add(Expr::Constant(Constant::E));
         let exp_display = ctx.add(Expr::Pow(e_const, base));
         substitutions.push((display_name(atom_idx), exp_display));
+        temp_names.push(temp_name);
         atom_idx += 1;
     }
 
@@ -465,8 +486,8 @@ fn try_opaque_zero(
         if extract_opaque_reciprocal_power_base(ctx, call_id).is_none() {
             continue;
         }
-        let temp_name = format!("__opq{}", atom_idx);
-        let temp_var = tmp_ctx.var(&temp_name);
+        let (temp_name, temp_var) =
+            allocate_opaque_temp(&mut tmp_ctx, &mut used_temp_names, atom_idx);
         sub_expr = substitute_power_aware(
             &mut tmp_ctx,
             sub_expr,
@@ -481,6 +502,7 @@ fn try_opaque_zero(
             reciprocal_power_relations.push((atom_idx, base_expr, root_index));
         }
         substitutions.push((display_name(atom_idx), call_id));
+        temp_names.push(temp_name);
         atom_idx += 1;
     }
 
@@ -488,8 +510,8 @@ fn try_opaque_zero(
         if extract_opaque_negative_reciprocal_power_base(ctx, call_id).is_none() {
             continue;
         }
-        let temp_name = format!("__opq{}", atom_idx);
-        let temp_var = tmp_ctx.var(&temp_name);
+        let (temp_name, temp_var) =
+            allocate_opaque_temp(&mut tmp_ctx, &mut used_temp_names, atom_idx);
         sub_expr = substitute_power_aware(
             &mut tmp_ctx,
             sub_expr,
@@ -518,6 +540,7 @@ fn try_opaque_zero(
             );
         }
         substitutions.push((display_name(atom_idx), call_id));
+        temp_names.push(temp_name);
         atom_idx += 1;
     }
 
@@ -539,7 +562,7 @@ fn try_opaque_zero(
                 {
                     let abs_numer = numer.unsigned_abs();
                     if denom == *root_index {
-                        let root_var = tmp_ctx.var(&format!("__opq{}", root_atom_idx));
+                        let root_var = tmp_ctx.var(temp_names.get(*root_atom_idx)?);
                         let replacement = if abs_numer == 1 {
                             root_var
                         } else {
@@ -556,7 +579,7 @@ fn try_opaque_zero(
                         continue;
                     }
                     if denom == 1 && abs_numer % *root_index == 0 {
-                        let root_var = tmp_ctx.var(&format!("__opq{}", root_atom_idx));
+                        let root_var = tmp_ctx.var(temp_names.get(*root_atom_idx)?);
                         let power = abs_numer / *root_index;
                         let replacement = if power == 1 {
                             root_var
@@ -585,7 +608,7 @@ fn try_opaque_zero(
                             && compare_expr(ctx, *rel_base, base_expr) == std::cmp::Ordering::Equal
                     })
             {
-                let root_var = tmp_ctx.var(&format!("__opq{}", root_atom_idx));
+                let root_var = tmp_ctx.var(temp_names.get(*root_atom_idx)?);
                 let replacement = if numer == 1 {
                     root_var
                 } else {
@@ -603,8 +626,8 @@ fn try_opaque_zero(
             }
         }
 
-        let temp_name = format!("__opq{}", atom_idx);
-        let temp_var = tmp_ctx.var(&temp_name);
+        let (temp_name, temp_var) =
+            allocate_opaque_temp(&mut tmp_ctx, &mut used_temp_names, atom_idx);
         sub_expr = substitute_power_aware(
             &mut tmp_ctx,
             sub_expr,
@@ -616,12 +639,13 @@ fn try_opaque_zero(
             },
         );
         substitutions.push((display_name(atom_idx), call_id));
+        temp_names.push(temp_name);
         atom_idx += 1;
     }
 
     for &constant_id in &unique_constants {
-        let temp_name = format!("__opq{}", atom_idx);
-        let temp_var = tmp_ctx.var(&temp_name);
+        let (temp_name, temp_var) =
+            allocate_opaque_temp(&mut tmp_ctx, &mut used_temp_names, atom_idx);
         sub_expr = substitute_power_aware(
             &mut tmp_ctx,
             sub_expr,
@@ -630,6 +654,7 @@ fn try_opaque_zero(
             SubstituteOptions::exact(),
         );
         substitutions.push((display_name(atom_idx), constant_id));
+        temp_names.push(temp_name);
         atom_idx += 1;
     }
 
@@ -655,7 +680,7 @@ fn try_opaque_zero(
         )?;
         let reduced = try_reduce_by_reciprocal_power_relation(
             &poly,
-            &format!("__opq{}", opaque_atom_idx),
+            temp_names.get(*opaque_atom_idx)?,
             *root_index,
             &base_poly,
             &policy.poly_budget,
@@ -676,7 +701,7 @@ fn try_opaque_zero(
         )?;
         let reduced = try_reduce_by_negative_reciprocal_power_relation(
             &poly,
-            &format!("__opq{}", opaque_atom_idx),
+            temp_names.get(*opaque_atom_idx)?,
             *root_index,
             &base_poly,
             &policy.poly_budget,
@@ -868,10 +893,8 @@ fn try_opaque_zero(
     let display_vars: Vec<String> = vars
         .iter()
         .map(|v| {
-            if let Some(idx_str) = v.strip_prefix("__opq") {
-                if let Ok(idx) = idx_str.parse::<usize>() {
-                    return display_name(idx);
-                }
+            if let Some(idx) = temp_names.iter().position(|temp_name| temp_name == v) {
+                return display_name(idx);
             }
             v.clone()
         })
@@ -1006,6 +1029,24 @@ mod tests {
         let plan = try_prove_polynomial_identity_zero_expr(&mut ctx, expr)
             .unwrap_or_else(|| panic!("plan"));
         assert_eq!(plan.kind, PolynomialIdentityProofKind::OpaqueSubstitution);
+    }
+
+    #[test]
+    fn proves_opaque_identity_with_existing_temp_like_variable() {
+        let mut ctx = Context::new();
+        let expr = parse("__opq0 + sin(x) + 1 - (sin(x) + 1) - __opq0", &mut ctx)
+            .unwrap_or_else(|_| panic!("parse"));
+        let plan = try_prove_polynomial_identity_zero_expr(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("plan"));
+        assert_eq!(plan.kind, PolynomialIdentityProofKind::OpaqueSubstitution);
+    }
+
+    #[test]
+    fn rejects_opaque_identity_created_only_by_temp_name_collision() {
+        let mut ctx = Context::new();
+        let expr = parse("__opq0 - ((ln(x + 1) + x*ln(x + 1))/x)", &mut ctx)
+            .unwrap_or_else(|_| panic!("parse"));
+        assert!(try_prove_polynomial_identity_zero_expr(&mut ctx, expr).is_none());
     }
 
     #[test]

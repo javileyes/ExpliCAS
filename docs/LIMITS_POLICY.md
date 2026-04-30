@@ -19,8 +19,8 @@ To improve resolution rate without breaking this guarantee, V1.3 introduces a **
 ### 2.1 Entry Point
 
 ```rust
-// limits/presimplify.rs
-pub fn presimplify_safe(ctx, expr, budget) -> Result<ExprId, CasError>
+// crates/cas_math/src/limits_support.rs
+pub fn presimplify_safe_for_limit(ctx, expr) -> ExprId
 ```
 
 Single point of entry ensures auditability and test coverage concentration.
@@ -65,7 +65,7 @@ Single point of entry ensures auditability and test coverage concentration.
 
 ### 3.1 Lint: `lint_limit_presimplify.sh`
 
-**HARD FAIL** if `presimplify.rs` contains:
+**HARD FAIL** if the isolated `presimplify_safe_for_limit` region contains:
 
 ```bash
 DENY_PATTERNS=(

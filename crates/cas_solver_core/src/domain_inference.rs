@@ -16,7 +16,8 @@ use cas_math::expr_extract::{
 use cas_math::expr_predicates::{
     contains_variable, has_positivity_structure, is_even_root_exponent,
 };
-use num_traits::Zero;
+use cas_math::numeric_eval::as_rational_const;
+use num_traits::{Signed, Zero};
 
 /// Result of domain delta check between input and output.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -331,8 +332,8 @@ fn add_positive_and_propagate<F>(
             derived.push(ImplicitCondition::Positive(arg));
         }
         Expr::Pow(base, exp) => {
-            if let Expr::Number(n) = ctx.get(*exp) {
-                if is_even_root_exponent(n) {
+            if let Some(n) = as_rational_const(ctx, *exp) {
+                if is_even_root_exponent(&n) {
                     derived.push(ImplicitCondition::Positive(expr));
                     derived.push(ImplicitCondition::Positive(*base));
                     return;
@@ -382,9 +383,13 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
                 }
             }
             Expr::Pow(base, exp) => {
-                if let Expr::Number(n) = ctx.get(*exp) {
-                    if is_even_root_exponent(n) && !matches!(ctx.get(*base), Expr::Number(_)) {
-                        domain.add_nonnegative(*base);
+                if let Some(n) = as_rational_const(ctx, *exp) {
+                    if is_even_root_exponent(&n) && !matches!(ctx.get(*base), Expr::Number(_)) {
+                        if n.is_negative() {
+                            domain.add_positive(*base);
+                        } else {
+                            domain.add_nonnegative(*base);
+                        }
                     }
                 }
                 stack.push(*base);
@@ -518,6 +523,22 @@ mod tests {
 
         assert!(domain.contains_nonzero(x_squared));
         assert!(domain.contains_nonzero(x));
+    }
+
+    #[test]
+    fn infer_negative_even_root_power_adds_positive_base() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let minus_one = ctx.num(-1);
+        let two = ctx.num(2);
+        let exponent = ctx.add(Expr::Div(minus_one, two));
+        let expr = ctx.add(Expr::Pow(x, exponent));
+
+        let domain = infer_implicit_domain(&ctx, expr, true);
+
+        assert!(domain.contains_positive(x));
+        assert!(!domain.contains_nonnegative(x));
+        assert!(!domain.contains_nonzero(x));
     }
 
     #[test]

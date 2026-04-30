@@ -12,7 +12,7 @@ mod simplify_action;
 
 /// Result type for individual action handlers in `Engine.eval()`.
 ///
-/// Fields: (result, domain_warnings, steps, solve_steps, solver_assumptions, output_scopes, solver_required)
+/// Fields: (result, domain_warnings, steps, solve_steps, solver_assumptions, output_scopes, solver_required, rewrite_required)
 pub(crate) type ActionResult = (
     EvalResult,
     Vec<DomainWarning>,
@@ -20,6 +20,7 @@ pub(crate) type ActionResult = (
     Vec<crate::api::SolveStep>,
     Vec<crate::AssumptionRecord>,
     Vec<cas_formatter::display_transforms::ScopeTag>,
+    Vec<crate::ImplicitCondition>,
     Vec<crate::ImplicitCondition>,
 );
 

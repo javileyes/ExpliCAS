@@ -4,19 +4,23 @@ use crate::domain_condition::ImplicitCondition;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_domain::{
     exprs_equivalent, exprs_equivalent_up_to_sign, is_abs_of, is_odd_power_of,
-    is_positive_power_of_base, is_product_dominated_by_positives,
+    is_positive_multiple_of, is_positive_power_of_base, is_product_dominated_by_positives,
 };
-use cas_math::expr_extract::{extract_abs_argument_view, extract_sqrt_argument_view};
-use cas_math::expr_nary::build_balanced_mul;
+use cas_math::expr_extract::{
+    extract_abs_argument_view, extract_log_base_argument_view, extract_sqrt_argument_view,
+};
+use cas_math::expr_nary::{build_balanced_mul, mul_leaves};
 use cas_math::expr_normalization::{
     extract_even_positive_power_base, normalize_condition_expr as normalize_condition_expr_math,
     normalize_condition_expr_preserve_sign,
 };
 use cas_math::factor::factor;
+use cas_math::multipoly::MultiPoly;
 use cas_math::numeric_eval::as_rational_const;
 use cas_math::prove_sign::{prove_nonnegative_depth_with, prove_positive_depth_with};
 use cas_math::tri_proof::TriProof;
-use num_traits::{One, Signed};
+use num_rational::BigRational;
+use num_traits::{One, Signed, Zero};
 
 const DISPLAY_SIGN_PROOF_DEPTH: usize = 12;
 
@@ -27,9 +31,17 @@ pub fn normalize_condition_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
 
 /// Normalize a condition for display (applies normalization to the inner expression).
 pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> ImplicitCondition {
-    // Positive(x^even) -> NonZero(x) because x^(2k) > 0 <=> x != 0 for reals.
     if let ImplicitCondition::Positive(e) = cond {
-        if let Some(base) = extract_even_positive_power_base(ctx, *e) {
+        if let Some(denominator) = positive_reciprocal_denominator(ctx, *e) {
+            return normalize_condition(ctx, &ImplicitCondition::Positive(denominator));
+        }
+
+        if let Some(base) = positive_odd_power_base(ctx, *e) {
+            let normalized_base = normalize_condition_expr_preserve_sign(ctx, base);
+            return ImplicitCondition::Positive(normalized_base);
+        }
+
+        if let Some(base) = positive_condition_equivalent_nonzero_base(ctx, *e) {
             let normalized_base = normalize_condition_expr(ctx, base);
             return ImplicitCondition::NonZero(normalized_base);
         }
@@ -51,12 +63,140 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
     }
 }
 
+fn positive_reciprocal_denominator(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+
+    as_rational_const(ctx, *num)
+        .is_some_and(|constant| constant.is_positive())
+        .then_some(*den)
+}
+
+fn positive_odd_power_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let Expr::Number(exp_num) = ctx.get(*exp) else {
+        return None;
+    };
+
+    if !exp_num.is_integer() {
+        return None;
+    }
+
+    let exp_int = exp_num.to_integer();
+    let zero: num_bigint::BigInt = 0.into();
+    let two: num_bigint::BigInt = 2.into();
+    let one: num_bigint::BigInt = 1.into();
+
+    (exp_int > zero && (&exp_int % &two) == one).then_some(*base)
+}
+
+fn positive_condition_equivalent_nonzero_base(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    // Positive(x^even) -> NonZero(x) because x^(2k) > 0 <=> x != 0 for reals.
+    if let Some(base) = extract_even_positive_power_base(ctx, expr) {
+        return Some(base);
+    }
+
+    if let Some(base) = positive_condition_equivalent_nonzero_base_from_factorable(ctx, expr) {
+        return Some(base);
+    }
+
+    let normalized = normalize_condition_expr_preserve_sign(ctx, expr);
+    (normalized != expr)
+        .then(|| positive_condition_equivalent_nonzero_base_from_factorable(ctx, normalized))
+        .flatten()
+}
+
+fn positive_condition_equivalent_nonzero_base_from_factorable(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let factored = factor(ctx, expr);
+    let factors: Vec<_> = mul_leaves(ctx, factored).into_iter().collect();
+    if factors.len() <= 1 {
+        return None;
+    }
+
+    let mut candidate_base = None;
+    for (factor_index, factor_expr) in factors.iter().copied().enumerate() {
+        let Some(base) = positive_multiple_even_power_base(ctx, factor_expr) else {
+            continue;
+        };
+
+        if !factors.iter().enumerate().all(|(other_index, other)| {
+            other_index == factor_index || is_intrinsically_positive_real(ctx, *other)
+        }) {
+            continue;
+        }
+
+        if candidate_base.replace(base).is_some() {
+            return None;
+        }
+    }
+
+    candidate_base
+}
+
+fn positive_condition_equivalent_nonzero_conditions(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<ImplicitCondition>> {
+    if let Some(base) = extract_even_positive_power_base(ctx, expr) {
+        return Some(expand_nonzero_condition_for_display(ctx, base));
+    }
+
+    if let Some(conditions) =
+        positive_condition_equivalent_nonzero_conditions_from_factorable(ctx, expr)
+    {
+        return Some(conditions);
+    }
+
+    let normalized = normalize_condition_expr_preserve_sign(ctx, expr);
+    (normalized != expr)
+        .then(|| positive_condition_equivalent_nonzero_conditions_from_factorable(ctx, normalized))
+        .flatten()
+}
+
+fn positive_condition_equivalent_nonzero_conditions_from_factorable(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<ImplicitCondition>> {
+    let factored = factor(ctx, expr);
+    let factors: Vec<_> = mul_leaves(ctx, factored).into_iter().collect();
+    if factors.len() <= 1 {
+        return None;
+    }
+
+    let mut expanded = Vec::new();
+    for factor_expr in factors {
+        if let Some(base) = positive_multiple_even_power_base(ctx, factor_expr) {
+            for condition in expand_nonzero_condition_for_display(ctx, base) {
+                if !expanded
+                    .iter()
+                    .any(|existing| conditions_equivalent(ctx, existing, &condition))
+                {
+                    expanded.push(condition);
+                }
+            }
+            continue;
+        }
+
+        if !is_intrinsically_positive_real(ctx, factor_expr) {
+            return None;
+        }
+    }
+
+    (!expanded.is_empty()).then_some(expanded)
+}
+
 fn strip_nonzero_scalar_factors_for_display(ctx: &mut Context, expr: ExprId) -> ExprId {
     match ctx.get(expr).clone() {
         Expr::Neg(inner) => strip_nonzero_scalar_factors_for_display(ctx, inner),
         Expr::Mul(_, _) => {
             let mut symbolic_factors = Vec::new();
-            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+            for factor in mul_leaves(ctx, expr) {
                 if as_rational_const(ctx, factor).is_none() {
                     symbolic_factors.push(strip_nonzero_scalar_factors_for_display(ctx, factor));
                 }
@@ -103,13 +243,136 @@ fn is_intrinsically_nonnegative_real(ctx: &Context, expr: ExprId) -> bool {
     .is_proven()
 }
 
-fn is_intrinsically_nonnegative_real_after_factoring(ctx: &mut Context, expr: ExprId) -> bool {
-    if is_intrinsically_nonnegative_real(ctx, expr) {
+fn is_nonnegative_under_display_conditions_or_factored(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+    skip_index: usize,
+    expr: ExprId,
+    depth: usize,
+) -> bool {
+    if is_nonnegative_under_display_conditions(ctx, conditions, skip_index, expr, depth) {
         return true;
     }
 
+    if unit_reciprocal_square_gap_is_nonnegative(ctx, conditions, skip_index, expr, depth) {
+        return true;
+    }
+
+    if depth == 0 {
+        return false;
+    }
+
     let factored = factor(ctx, expr);
-    factored != expr && is_intrinsically_nonnegative_real(ctx, factored)
+    factored != expr
+        && is_nonnegative_under_display_conditions(ctx, conditions, skip_index, factored, depth - 1)
+}
+
+fn unit_reciprocal_square_gap_is_nonnegative(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+    skip_index: usize,
+    expr: ExprId,
+    depth: usize,
+) -> bool {
+    if depth == 0 {
+        return false;
+    }
+
+    let Some(base) = one_minus_unit_reciprocal_square_base(ctx, expr) else {
+        return false;
+    };
+
+    if !is_positive_under_display_conditions(ctx, conditions, skip_index, base, depth - 1) {
+        return false;
+    }
+
+    let two = ctx.num(2);
+    let base_squared = ctx.add(Expr::Pow(base, two));
+    let one = ctx.num(1);
+    let gap = ctx.add(Expr::Sub(base_squared, one));
+    let normalized_gap = normalize_condition_expr_preserve_sign(ctx, gap);
+
+    is_nonnegative_under_display_conditions(ctx, conditions, skip_index, normalized_gap, depth - 1)
+}
+
+fn one_minus_unit_reciprocal_square_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) if as_rational_const(ctx, *left).is_some_and(|n| n.is_one()) => {
+            unit_reciprocal_square_base(ctx, *right)
+        }
+        Expr::Add(left, right) => negative_unit_reciprocal_square_base(ctx, *right)
+            .filter(|_| as_rational_const(ctx, *left).is_some_and(|n| n.is_one()))
+            .or_else(|| {
+                negative_unit_reciprocal_square_base(ctx, *left)
+                    .filter(|_| as_rational_const(ctx, *right).is_some_and(|n| n.is_one()))
+            }),
+        _ => None,
+    }
+}
+
+fn negative_unit_reciprocal_square_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => unit_reciprocal_square_base(ctx, *inner),
+        Expr::Mul(left, right)
+            if as_rational_const(ctx, *left).is_some_and(|n| n == -BigRational::one()) =>
+        {
+            unit_reciprocal_square_base(ctx, *right)
+        }
+        Expr::Mul(left, right)
+            if as_rational_const(ctx, *right).is_some_and(|n| n == -BigRational::one()) =>
+        {
+            unit_reciprocal_square_base(ctx, *left)
+        }
+        _ => None,
+    }
+}
+
+fn unit_reciprocal_square_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Div(num, den) if as_rational_const(ctx, *num).is_some_and(|n| n.is_one()) => {
+            square_base(ctx, *den)
+        }
+        Expr::Pow(inner, exp)
+            if as_rational_const(ctx, *exp)
+                .is_some_and(|n| n.is_integer() && n.to_integer() == 2.into()) =>
+        {
+            unit_reciprocal_base(ctx, *inner)
+        }
+        Expr::Pow(base, exp)
+            if as_rational_const(ctx, *exp)
+                .is_some_and(|n| n.is_integer() && n.to_integer() == (-2).into()) =>
+        {
+            Some(*base)
+        }
+        _ => None,
+    }
+}
+
+fn unit_reciprocal_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Div(num, den) if as_rational_const(ctx, *num).is_some_and(|n| n.is_one()) => {
+            Some(*den)
+        }
+        Expr::Pow(base, exp)
+            if as_rational_const(ctx, *exp)
+                .is_some_and(|n| n.is_integer() && n.to_integer() == (-1).into()) =>
+        {
+            Some(*base)
+        }
+        _ => None,
+    }
+}
+
+fn square_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp)
+            if as_rational_const(ctx, *exp)
+                .is_some_and(|n| n.is_integer() && n.to_integer() == 2.into()) =>
+        {
+            Some(*base)
+        }
+        _ => None,
+    }
 }
 
 fn extract_sqrt_like_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -126,6 +389,25 @@ fn extract_sqrt_like_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 
 fn exprs_equivalent_or_same_sqrt_like_base(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     exprs_equivalent_up_to_sign(ctx, left, right)
+        || match (
+            extract_sqrt_like_base(ctx, left),
+            extract_sqrt_like_base(ctx, right),
+        ) {
+            (Some(left_base), Some(right_base)) => exprs_equivalent(ctx, left_base, right_base),
+            _ => false,
+        }
+}
+
+fn positive_ordered_exprs_equivalent(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    is_positive_multiple_of(ctx, left, right) || is_positive_multiple_of(ctx, right, left)
+}
+
+fn positive_exprs_equivalent_or_same_sqrt_like_base(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    positive_ordered_exprs_equivalent(ctx, left, right)
         || match (
             extract_sqrt_like_base(ctx, left),
             extract_sqrt_like_base(ctx, right),
@@ -155,7 +437,7 @@ fn positive_target_from_nonzero_and_nonnegative(
 }
 
 fn combine_nonzero_nonnegative_into_positive(
-    ctx: &Context,
+    ctx: &mut Context,
     conditions: &mut Vec<ImplicitCondition>,
 ) {
     let mut to_remove: Vec<usize> = Vec::new();
@@ -184,13 +466,12 @@ fn combine_nonzero_nonnegative_into_positive(
             to_remove.push(i);
             to_remove.push(j);
 
-            let positive = ImplicitCondition::Positive(target);
-            let already_present = conditions
+            let positive = normalize_condition(ctx, &ImplicitCondition::Positive(target));
+            let already_present = conditions.iter().enumerate().any(|(idx, existing)| {
+                !to_remove.contains(&idx) && conditions_equivalent(ctx, existing, &positive)
+            }) || to_add
                 .iter()
-                .any(|existing| conditions_equivalent(ctx, existing, &positive))
-                || to_add
-                    .iter()
-                    .any(|existing| conditions_equivalent(ctx, existing, &positive));
+                .any(|existing| conditions_equivalent(ctx, existing, &positive));
             if !already_present {
                 to_add.push(positive);
             }
@@ -204,6 +485,481 @@ fn combine_nonzero_nonnegative_into_positive(
         conditions.remove(idx);
     }
     conditions.extend(to_add);
+}
+
+fn combine_factored_nonzero_nonnegative_into_positive(
+    ctx: &mut Context,
+    conditions: &mut Vec<ImplicitCondition>,
+) {
+    let mut to_remove: Vec<usize> = Vec::new();
+    let mut to_add: Vec<ImplicitCondition> = Vec::new();
+
+    for (i, cond) in conditions.iter().enumerate() {
+        let ImplicitCondition::NonNegative(nn_expr) = cond else {
+            continue;
+        };
+
+        let factored = factor(ctx, *nn_expr);
+        let mut factors = Vec::new();
+        collect_nonzero_atomic_factors(ctx, factored, &mut factors);
+        if factors.is_empty() {
+            continue;
+        }
+
+        let mut matched_indices = Vec::new();
+        let mut all_factors_matched = true;
+        for factor_expr in factors {
+            let Some((idx, _)) = conditions.iter().enumerate().find(|(idx, candidate)| {
+                *idx != i
+                    && !matched_indices.contains(idx)
+                    && matches!(
+                        candidate,
+                        ImplicitCondition::NonZero(nz_expr)
+                            if exprs_equivalent_or_same_sqrt_like_base(ctx, *nz_expr, factor_expr)
+                                || exprs_equivalent_up_to_nonzero_scalar(ctx, *nz_expr, factor_expr)
+                    )
+            }) else {
+                all_factors_matched = false;
+                break;
+            };
+            matched_indices.push(idx);
+        }
+
+        if !all_factors_matched || matched_indices.is_empty() {
+            continue;
+        }
+
+        if let Some(expanded_positive) =
+            positive_condition_equivalent_nonzero_conditions(ctx, *nn_expr)
+        {
+            let expanded_already_present = expanded_positive.iter().all(|expanded| {
+                conditions.iter().enumerate().any(|(idx, candidate)| {
+                    idx != i && conditions_equivalent(ctx, candidate, expanded)
+                })
+            });
+            if expanded_already_present {
+                to_remove.push(i);
+                continue;
+            }
+        }
+
+        to_remove.push(i);
+        to_remove.extend(matched_indices);
+
+        let positive = normalize_condition(ctx, &ImplicitCondition::Positive(*nn_expr));
+        let already_present = conditions.iter().enumerate().any(|(idx, existing)| {
+            !to_remove.contains(&idx) && conditions_equivalent(ctx, existing, &positive)
+        }) || to_add
+            .iter()
+            .any(|existing| conditions_equivalent(ctx, existing, &positive));
+        if !already_present {
+            to_add.push(positive);
+        }
+    }
+
+    to_remove.sort();
+    to_remove.dedup();
+    for idx in to_remove.into_iter().rev() {
+        conditions.remove(idx);
+    }
+    conditions.extend(to_add);
+}
+
+fn dedupe_conditions_in_place(ctx: &Context, conditions: &mut Vec<ImplicitCondition>) {
+    let mut deduped = Vec::new();
+    for condition in conditions.drain(..) {
+        if !deduped
+            .iter()
+            .any(|existing| conditions_equivalent(ctx, existing, &condition))
+        {
+            deduped.push(condition);
+        }
+    }
+    *conditions = deduped;
+}
+
+fn rewrite_sign_quotients_with_positive_components(
+    ctx: &mut Context,
+    conditions: &mut Vec<ImplicitCondition>,
+) {
+    let mut replacements: Vec<(usize, ImplicitCondition)> = Vec::new();
+
+    for (idx, condition) in conditions.iter().enumerate() {
+        let replacement = match condition {
+            ImplicitCondition::NonNegative(expr) => match ctx.get(*expr) {
+                Expr::Div(num, den) => Some((idx, false, *num, *den)),
+                _ => None,
+            },
+            ImplicitCondition::Positive(expr) => match ctx.get(*expr) {
+                Expr::Div(num, den) => Some((idx, true, *num, *den)),
+                _ => None,
+            },
+            ImplicitCondition::NonZero(_) => None,
+        };
+
+        let Some((idx, is_positive, num, den)) = replacement else {
+            continue;
+        };
+
+        if is_positive_under_display_conditions_or_factored(
+            ctx,
+            conditions,
+            idx,
+            den,
+            DISPLAY_SIGN_PROOF_DEPTH,
+        ) {
+            let replacement = if is_positive {
+                normalize_condition(ctx, &ImplicitCondition::Positive(num))
+            } else {
+                normalize_condition(ctx, &ImplicitCondition::NonNegative(num))
+            };
+            replacements.push((idx, replacement));
+            continue;
+        }
+
+        if is_positive_under_display_conditions_or_factored(
+            ctx,
+            conditions,
+            idx,
+            num,
+            DISPLAY_SIGN_PROOF_DEPTH,
+        ) {
+            replacements.push((
+                idx,
+                normalize_condition(ctx, &ImplicitCondition::Positive(den)),
+            ));
+        }
+    }
+
+    if replacements.is_empty() {
+        return;
+    }
+
+    for (idx, replacement) in replacements {
+        conditions[idx] = replacement;
+    }
+
+    dedupe_conditions_in_place(ctx, conditions);
+}
+
+fn is_positive_under_display_conditions_or_factored(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+    skip_index: usize,
+    expr: ExprId,
+    depth: usize,
+) -> bool {
+    if is_positive_under_display_conditions(ctx, conditions, skip_index, expr, depth) {
+        return true;
+    }
+
+    if depth == 0 {
+        return false;
+    }
+
+    let factored = factor(ctx, expr);
+    factored != expr
+        && is_positive_under_display_conditions(ctx, conditions, skip_index, factored, depth - 1)
+}
+
+fn nonzero_is_dominated_by_positive_condition(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+    expr: ExprId,
+) -> bool {
+    let stripped = strip_nonzero_scalar_factors_for_display(ctx, expr);
+    let normalized_expr = normalize_condition_expr(ctx, stripped);
+
+    conditions.iter().any(|condition| {
+        let ImplicitCondition::Positive(pos_expr) = condition else {
+            return false;
+        };
+        let normalized_positive = normalize_condition_expr_preserve_sign(ctx, *pos_expr);
+        exprs_equivalent_up_to_nonzero_scalar(ctx, normalized_expr, normalized_positive)
+            || positive_condition_contains_nonzero_factor(ctx, normalized_positive, normalized_expr)
+    })
+}
+
+fn exprs_equivalent_up_to_nonzero_scalar(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
+
+    if exprs_equivalent_up_to_sign(ctx, left, right) {
+        return true;
+    }
+
+    let budget = PolyBudget {
+        max_terms: 50,
+        max_total_degree: 20,
+        max_pow_exp: 10,
+    };
+
+    let (Ok(left_poly), Ok(right_poly)) = (
+        multipoly_from_expr(ctx, left, &budget),
+        multipoly_from_expr(ctx, right, &budget),
+    ) else {
+        return false;
+    };
+
+    if left_poly.is_zero() || right_poly.is_zero() {
+        return false;
+    }
+
+    let (_, left_primitive) = left_poly.primitive_part();
+    let (_, right_primitive) = right_poly.primitive_part();
+    left_primitive == right_primitive || left_primitive == right_primitive.neg()
+}
+
+fn positive_condition_contains_nonzero_factor(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    let positive_factored = factor(ctx, positive_expr);
+    let nonzero_factored = factor(ctx, nonzero_expr);
+    let mut positive_factors = Vec::new();
+    let mut nonzero_factors = Vec::new();
+    collect_nonzero_atomic_factors(ctx, positive_factored, &mut positive_factors);
+    collect_nonzero_atomic_factors(ctx, nonzero_factored, &mut nonzero_factors);
+
+    !nonzero_factors.is_empty()
+        && nonzero_factors.iter().all(|nonzero_factor| {
+            positive_factors.iter().any(|positive_factor| {
+                exprs_equivalent_up_to_nonzero_scalar(ctx, *nonzero_factor, *positive_factor)
+            })
+        })
+}
+
+fn nonzero_is_dominated_by_nonzero_factors(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+    skip_index: usize,
+    expr: ExprId,
+) -> bool {
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
+
+    let budget = PolyBudget {
+        max_terms: 50,
+        max_total_degree: 20,
+        max_pow_exp: 10,
+    };
+
+    let normalized_expr = normalize_condition_expr(ctx, expr);
+    let Ok(mut remaining) = multipoly_from_expr(ctx, normalized_expr, &budget) else {
+        return false;
+    };
+    if remaining.is_zero() {
+        return false;
+    }
+
+    let mut known_nonzero_factors = Vec::new();
+    for (idx, condition) in conditions.iter().enumerate() {
+        if idx == skip_index {
+            continue;
+        }
+
+        let ImplicitCondition::NonZero(other_expr) = condition else {
+            continue;
+        };
+        let normalized_other = normalize_condition_expr(ctx, *other_expr);
+        let Ok(factor_poly) = multipoly_from_expr(ctx, normalized_other, &budget) else {
+            continue;
+        };
+        if factor_poly.is_zero()
+            || factor_poly.is_constant()
+            || !factor_poly.vars.iter().all(|var| {
+                remaining
+                    .vars
+                    .iter()
+                    .any(|remaining_var| remaining_var == var)
+            })
+        {
+            continue;
+        }
+        known_nonzero_factors.push(factor_poly);
+    }
+
+    if known_nonzero_factors.is_empty() {
+        return false;
+    }
+
+    let max_divisions = remaining.total_degree() as usize;
+    for _ in 0..max_divisions {
+        if remaining.is_constant() {
+            return remaining
+                .constant_value()
+                .is_some_and(|constant| !constant.is_zero());
+        }
+
+        let mut divided = false;
+        for factor_poly in &known_nonzero_factors {
+            let aligned_factor = factor_poly.align_vars(&remaining.vars);
+            if let Some(quotient) = remaining.div_exact(&aligned_factor) {
+                if quotient == remaining {
+                    continue;
+                }
+                remaining = quotient;
+                divided = true;
+                break;
+            }
+        }
+
+        if !divided {
+            break;
+        }
+    }
+
+    remaining.is_constant()
+        && remaining
+            .constant_value()
+            .is_some_and(|constant| !constant.is_zero())
+}
+
+fn positive_even_power_gap_forces_nonzero(
+    ctx: &Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    if let Some(base) = positive_even_power_gap_base(ctx, positive_expr) {
+        if exprs_equivalent_up_to_sign(ctx, base, nonzero_expr) {
+            return true;
+        }
+    }
+
+    positive_quadratic_gap_forces_nonzero(ctx, positive_expr, nonzero_expr)
+}
+
+fn positive_quadratic_gap_forces_nonzero(
+    ctx: &Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
+
+    let budget = PolyBudget {
+        max_terms: 50,
+        max_total_degree: 20,
+        max_pow_exp: 10,
+    };
+
+    let (Ok(positive_poly), Ok(nonzero_poly)) = (
+        multipoly_from_expr(ctx, positive_expr, &budget),
+        multipoly_from_expr(ctx, nonzero_expr, &budget),
+    ) else {
+        return false;
+    };
+
+    if nonzero_poly.is_zero() {
+        return false;
+    }
+
+    let mut vars = positive_poly.vars.clone();
+    vars.extend(nonzero_poly.vars.iter().cloned());
+    vars.sort();
+    vars.dedup();
+
+    let positive_poly = positive_poly.align_vars(&vars);
+    let nonzero_poly = nonzero_poly.align_vars(&vars);
+    let Ok(nonzero_square) = nonzero_poly.mul(&nonzero_poly, &budget) else {
+        return false;
+    };
+
+    let Some(scale) = nonconstant_polynomial_scale(&positive_poly, &nonzero_square) else {
+        return false;
+    };
+    if !scale.is_positive() {
+        return false;
+    }
+
+    let scaled_square = nonzero_square.mul_scalar(&scale);
+    let Ok(remainder) = positive_poly.sub(&scaled_square) else {
+        return false;
+    };
+    remainder
+        .constant_value()
+        .is_some_and(|constant| constant.is_negative())
+}
+
+fn nonconstant_polynomial_scale(source: &MultiPoly, target: &MultiPoly) -> Option<BigRational> {
+    if source.vars != target.vars {
+        return None;
+    }
+
+    let zero_monomial = vec![0; source.vars.len()];
+    let source_terms = source.to_map();
+    let target_terms = target.to_map();
+    let mut scale: Option<BigRational> = None;
+
+    for (monomial, target_coeff) in &target_terms {
+        if monomial == &zero_monomial {
+            continue;
+        }
+        let source_coeff = source_terms.get(monomial)?;
+        let candidate = source_coeff.clone() / target_coeff.clone();
+        if let Some(existing) = &scale {
+            if existing != &candidate {
+                return None;
+            }
+        } else {
+            scale = Some(candidate);
+        }
+    }
+
+    for monomial in source_terms.keys() {
+        if monomial != &zero_monomial && !target_terms.contains_key(monomial) {
+            return None;
+        }
+    }
+
+    scale
+}
+
+fn positive_even_power_gap_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => as_rational_const(ctx, *right)
+            .is_some_and(|constant| constant.is_positive())
+            .then(|| positive_multiple_even_power_base(ctx, *left))
+            .flatten(),
+        Expr::Add(left, right) => even_power_minus_positive_constant(ctx, *left, *right)
+            .or_else(|| even_power_minus_positive_constant(ctx, *right, *left)),
+        _ => None,
+    }
+}
+
+fn even_power_minus_positive_constant(
+    ctx: &Context,
+    power_term: ExprId,
+    constant_term: ExprId,
+) -> Option<ExprId> {
+    if !as_rational_const(ctx, constant_term).is_some_and(|constant| constant.is_negative()) {
+        return None;
+    }
+
+    positive_multiple_even_power_base(ctx, power_term)
+}
+
+fn positive_multiple_even_power_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(base) = extract_even_positive_power_base(ctx, expr) {
+        return Some(base);
+    }
+
+    let Expr::Mul(left, right) = ctx.get(expr) else {
+        return None;
+    };
+
+    positive_scalar_times_even_power_base(ctx, *left, *right)
+        .or_else(|| positive_scalar_times_even_power_base(ctx, *right, *left))
+}
+
+fn positive_scalar_times_even_power_base(
+    ctx: &Context,
+    scalar: ExprId,
+    power_term: ExprId,
+) -> Option<ExprId> {
+    if !as_rational_const(ctx, scalar).is_some_and(|constant| constant.is_positive()) {
+        return None;
+    }
+
+    extract_even_positive_power_base(ctx, power_term)
 }
 
 fn has_nonzero_display_condition(
@@ -233,7 +989,7 @@ fn has_nonnegative_display_condition(
             && matches!(
                 cond,
                 ImplicitCondition::NonNegative(other) | ImplicitCondition::Positive(other)
-                    if exprs_equivalent_or_same_sqrt_like_base(ctx, *other, expr)
+                    if positive_exprs_equivalent_or_same_sqrt_like_base(ctx, *other, expr)
             )
     })
 }
@@ -249,7 +1005,7 @@ fn has_positive_display_condition(
             && matches!(
                 cond,
                 ImplicitCondition::Positive(other)
-                    if exprs_equivalent_or_same_sqrt_like_base(ctx, *other, expr)
+                    if positive_exprs_equivalent_or_same_sqrt_like_base(ctx, *other, expr)
             )
     })
 }
@@ -281,7 +1037,39 @@ fn is_nonnegative_under_display_conditions(
         );
     }
 
-    false
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            is_nonnegative_under_display_conditions(ctx, conditions, skip_index, *left, depth - 1)
+                && is_nonnegative_under_display_conditions(
+                    ctx,
+                    conditions,
+                    skip_index,
+                    *right,
+                    depth - 1,
+                )
+        }
+        Expr::Mul(left, right) => {
+            is_nonnegative_under_display_conditions(ctx, conditions, skip_index, *left, depth - 1)
+                && is_nonnegative_under_display_conditions(
+                    ctx,
+                    conditions,
+                    skip_index,
+                    *right,
+                    depth - 1,
+                )
+        }
+        Expr::Div(num, den) => {
+            is_nonnegative_under_display_conditions(ctx, conditions, skip_index, *num, depth - 1)
+                && is_positive_under_display_conditions(
+                    ctx,
+                    conditions,
+                    skip_index,
+                    *den,
+                    depth - 1,
+                )
+        }
+        _ => false,
+    }
 }
 
 fn is_positive_under_display_conditions(
@@ -367,20 +1155,22 @@ fn is_positive_under_display_conditions(
     }
 }
 
-/// Check if two conditions are equivalent (same type and expression-equivalent up to sign).
+/// Check if two conditions are equivalent.
 pub fn conditions_equivalent(
     ctx: &Context,
     c1: &ImplicitCondition,
     c2: &ImplicitCondition,
 ) -> bool {
-    let (e1, e2) = match (c1, c2) {
-        (ImplicitCondition::NonNegative(a), ImplicitCondition::NonNegative(b)) => (*a, *b),
-        (ImplicitCondition::Positive(a), ImplicitCondition::Positive(b)) => (*a, *b),
-        (ImplicitCondition::NonZero(a), ImplicitCondition::NonZero(b)) => (*a, *b),
-        _ => return false,
-    };
-
-    exprs_equivalent_up_to_sign(ctx, e1, e2)
+    match (c1, c2) {
+        (ImplicitCondition::NonNegative(a), ImplicitCondition::NonNegative(b))
+        | (ImplicitCondition::Positive(a), ImplicitCondition::Positive(b)) => {
+            positive_ordered_exprs_equivalent(ctx, *a, *b)
+        }
+        (ImplicitCondition::NonZero(a), ImplicitCondition::NonZero(b)) => {
+            exprs_equivalent_up_to_sign(ctx, *a, *b)
+        }
+        _ => false,
+    }
 }
 
 /// Normalize and deduplicate a list of conditions for display.
@@ -391,6 +1181,12 @@ pub fn normalize_and_dedupe_conditions(
     let mut result: Vec<ImplicitCondition> = Vec::new();
 
     for cond in conditions {
+        if let ImplicitCondition::NonZero(expr) = cond {
+            if nonzero_is_dominated_by_positive_condition(ctx, conditions, *expr) {
+                continue;
+            }
+        }
+
         for normalized in expand_condition_for_display(ctx, cond) {
             let is_duplicate = result
                 .iter()
@@ -403,6 +1199,9 @@ pub fn normalize_and_dedupe_conditions(
     }
 
     combine_nonzero_nonnegative_into_positive(ctx, &mut result);
+    rewrite_sign_quotients_with_positive_components(ctx, &mut result);
+    combine_nonzero_nonnegative_into_positive(ctx, &mut result);
+    combine_factored_nonzero_nonnegative_into_positive(ctx, &mut result);
     apply_dominance_rules(ctx, &mut result);
     result
 }
@@ -417,40 +1216,97 @@ fn expand_condition_for_display(
             if let Some(arg) = extract_abs_argument_view(ctx, *expr) {
                 return expand_nonzero_condition_for_display(ctx, arg);
             }
+            if let Some(expanded) = expand_positive_quotient_condition_for_display(ctx, *expr) {
+                return expanded;
+            }
+            if let Some(expanded) = positive_condition_equivalent_nonzero_conditions(ctx, *expr) {
+                return expanded;
+            }
             vec![normalize_condition(ctx, cond)]
         }
         _ => vec![normalize_condition(ctx, cond)],
     }
 }
 
+fn expand_positive_quotient_condition_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<ImplicitCondition>> {
+    let (num, den) = match ctx.get(expr) {
+        Expr::Div(num, den) => (*num, *den),
+        _ => return None,
+    };
+    let numerator_nonzero_conditions = positive_condition_equivalent_nonzero_conditions(ctx, num);
+    let denominator_nonzero_conditions = positive_condition_equivalent_nonzero_conditions(ctx, den);
+
+    let mut expanded = match numerator_nonzero_conditions {
+        Some(conditions) => conditions,
+        None if denominator_nonzero_conditions.is_some() => {
+            expand_condition_for_display(ctx, &ImplicitCondition::Positive(num))
+        }
+        None => return None,
+    };
+
+    let denominator_conditions = match denominator_nonzero_conditions {
+        Some(conditions) => conditions,
+        None => vec![normalize_condition(ctx, &ImplicitCondition::Positive(den))],
+    };
+    for condition in denominator_conditions {
+        if !expanded
+            .iter()
+            .any(|existing| conditions_equivalent(ctx, existing, &condition))
+        {
+            expanded.push(condition);
+        }
+    }
+
+    Some(expanded)
+}
+
 fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<ImplicitCondition> {
     let core_expr = extract_abs_argument_view(ctx, expr).unwrap_or(expr);
     let stripped_expr = strip_nonzero_scalar_factors_for_display(ctx, core_expr);
+
+    if let Some(arg_minus_one) = log_nonzero_argument_offset(ctx, stripped_expr) {
+        return expand_nonzero_condition_for_display(ctx, arg_minus_one);
+    }
+
     let normalized_expr = normalize_condition_expr(ctx, stripped_expr);
 
+    if let Some(arg_minus_one) = log_nonzero_argument_offset(ctx, normalized_expr) {
+        return expand_nonzero_condition_for_display(ctx, arg_minus_one);
+    }
+
     if let Some(base) = extract_even_positive_power_base(ctx, normalized_expr) {
-        return vec![ImplicitCondition::NonZero(normalize_condition_expr(
-            ctx, base,
-        ))];
+        return expand_nonzero_condition_for_display(ctx, base);
+    }
+
+    if let Some(expanded) = expand_common_factor_sum_nonzero_for_display(ctx, normalized_expr) {
+        return expanded;
     }
 
     let factored = factor(ctx, normalized_expr);
     let mut atomic_factors = Vec::new();
     collect_nonzero_atomic_factors(ctx, factored, &mut atomic_factors);
 
-    if atomic_factors.len() <= 1 {
+    if atomic_factors.is_empty() {
         return vec![ImplicitCondition::NonZero(normalized_expr)];
+    }
+
+    if atomic_factors.len() == 1 {
+        let atomic = normalize_condition_expr(ctx, atomic_factors[0]);
+        return vec![ImplicitCondition::NonZero(atomic)];
     }
 
     let mut expanded = Vec::new();
     for factor_expr in atomic_factors {
-        let normalized_factor = normalize_condition_expr(ctx, factor_expr);
-        let cond = ImplicitCondition::NonZero(normalized_factor);
-        if !expanded
-            .iter()
-            .any(|existing| conditions_equivalent(ctx, existing, &cond))
-        {
-            expanded.push(cond);
+        for cond in expand_nonzero_condition_for_display(ctx, factor_expr) {
+            if !expanded
+                .iter()
+                .any(|existing| conditions_equivalent(ctx, existing, &cond))
+            {
+                expanded.push(cond);
+            }
         }
     }
 
@@ -459,6 +1315,91 @@ fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<
     } else {
         expanded
     }
+}
+
+fn expand_common_factor_sum_nonzero_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<ImplicitCondition>> {
+    let (left, right, is_subtraction) = match ctx.get(expr) {
+        Expr::Add(left, right) => (*left, *right, false),
+        Expr::Sub(left, right) => (*left, *right, true),
+        _ => return None,
+    };
+
+    let left_factors: Vec<_> = mul_leaves(ctx, left).into_iter().collect();
+    let mut right_factors: Vec<_> = mul_leaves(ctx, right).into_iter().collect();
+    let mut common_factors = Vec::new();
+    let mut left_remaining = Vec::new();
+
+    for left_factor in left_factors {
+        if let Some(right_index) = right_factors
+            .iter()
+            .position(|right_factor| exprs_equivalent(ctx, left_factor, *right_factor))
+        {
+            common_factors.push(left_factor);
+            right_factors.remove(right_index);
+        } else {
+            left_remaining.push(left_factor);
+        }
+    }
+
+    if common_factors.is_empty() {
+        return None;
+    }
+
+    let common_expr = build_mul_or_one(ctx, &common_factors);
+    let left_residual = build_mul_or_one(ctx, &left_remaining);
+    let right_residual = build_mul_or_one(ctx, &right_factors);
+    let residual_expr = if is_subtraction {
+        ctx.add(Expr::Sub(left_residual, right_residual))
+    } else {
+        ctx.add(Expr::Add(left_residual, right_residual))
+    };
+
+    let mut expanded = Vec::new();
+    for factor_expr in [common_expr, residual_expr] {
+        if as_rational_const(ctx, factor_expr).is_some_and(|constant| !constant.is_zero()) {
+            continue;
+        }
+
+        for cond in expand_nonzero_condition_for_display(ctx, factor_expr) {
+            if !expanded
+                .iter()
+                .any(|existing| conditions_equivalent(ctx, existing, &cond))
+            {
+                expanded.push(cond);
+            }
+        }
+    }
+
+    (!expanded.is_empty()).then_some(expanded)
+}
+
+fn build_mul_or_one(ctx: &mut Context, factors: &[ExprId]) -> ExprId {
+    if factors.is_empty() {
+        ctx.num(1)
+    } else {
+        build_balanced_mul(ctx, factors)
+    }
+}
+
+fn log_nonzero_argument_offset(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let arg = if let Some((_base_opt, arg)) = extract_log_base_argument_view(ctx, expr) {
+        arg
+    } else {
+        let Expr::Function(fn_id, args) = ctx.get(expr) else {
+            return None;
+        };
+        match (ctx.sym_name(*fn_id), args.as_slice()) {
+            ("ln" | "log10", [arg]) => *arg,
+            ("log", [arg]) => *arg,
+            ("log", [_base, arg]) => *arg,
+            _ => return None,
+        }
+    };
+    let one = ctx.num(1);
+    Some(ctx.add(Expr::Sub(arg, one)))
 }
 
 fn collect_nonzero_atomic_factors(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
@@ -471,6 +1412,7 @@ fn collect_nonzero_atomic_factors(ctx: &Context, expr: ExprId, factors: &mut Vec
             collect_nonzero_atomic_factors(ctx, *num, factors);
             collect_nonzero_atomic_factors(ctx, *den, factors);
         }
+        Expr::Neg(inner) => collect_nonzero_atomic_factors(ctx, *inner, factors),
         Expr::Pow(base, exp) => {
             if let Expr::Number(n) = ctx.get(*exp) {
                 if n.is_integer() && n.is_positive() {
@@ -572,8 +1514,11 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
             match (cond, other) {
                 (ImplicitCondition::NonZero(nz_expr), ImplicitCondition::Positive(pos_expr)) => {
                     if exprs_equivalent(ctx, *nz_expr, *pos_expr)
+                        || exprs_equivalent_up_to_sign(ctx, *nz_expr, *pos_expr)
                         || is_abs_of(ctx, *nz_expr, *pos_expr)
                         || is_abs_of(ctx, *pos_expr, *nz_expr)
+                        || is_positive_power_of_base(ctx, *nz_expr, *pos_expr)
+                        || positive_even_power_gap_forces_nonzero(ctx, *pos_expr, *nz_expr)
                     {
                         to_remove.push(i);
                         break;
@@ -596,6 +1541,7 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                 ) => {
                     if exprs_equivalent(ctx, *nn_expr, *pos_expr)
                         || is_odd_power_of(ctx, *nn_expr, *pos_expr)
+                        || is_positive_multiple_of(ctx, *nn_expr, *pos_expr)
                     {
                         to_remove.push(i);
                         break;
@@ -635,7 +1581,13 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
             }
 
             if let ImplicitCondition::NonNegative(nn_expr) = cond {
-                if is_intrinsically_nonnegative_real_after_factoring(ctx, *nn_expr) {
+                if is_nonnegative_under_display_conditions_or_factored(
+                    ctx,
+                    conditions,
+                    i,
+                    *nn_expr,
+                    DISPLAY_SIGN_PROOF_DEPTH,
+                ) {
                     to_remove.push(i);
                     continue;
                 }
@@ -649,6 +1601,11 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                     *nz_expr,
                     DISPLAY_SIGN_PROOF_DEPTH,
                 ) {
+                    to_remove.push(i);
+                    continue;
+                }
+
+                if nonzero_is_dominated_by_nonzero_factors(ctx, conditions, i, *nz_expr) {
                     to_remove.push(i);
                     continue;
                 }
@@ -709,6 +1666,40 @@ pub fn render_conditions_normalized(
 mod tests {
     use super::*;
     use cas_parser::parse;
+
+    #[test]
+    fn unit_reciprocal_square_gap_proves_nonnegative_for_positive_shifted_square_base() {
+        let mut ctx = Context::new();
+        let expr = parse("1 - 1/(x^2 + 1)^2", &mut ctx).expect("parse expression");
+
+        let base = one_minus_unit_reciprocal_square_base(&ctx, expr).expect("extract base");
+        let two = ctx.num(2);
+        let base_squared = ctx.add(Expr::Pow(base, two));
+        let one = ctx.num(1);
+        let gap = ctx.add(Expr::Sub(base_squared, one));
+        let normalized_gap = normalize_condition_expr_preserve_sign(&mut ctx, gap);
+        assert!(is_positive_under_display_conditions(
+            &ctx,
+            &[],
+            0,
+            base,
+            DISPLAY_SIGN_PROOF_DEPTH
+        ));
+        assert!(is_nonnegative_under_display_conditions(
+            &ctx,
+            &[],
+            0,
+            normalized_gap,
+            DISPLAY_SIGN_PROOF_DEPTH
+        ));
+        assert!(unit_reciprocal_square_gap_is_nonnegative(
+            &mut ctx,
+            &[],
+            0,
+            expr,
+            DISPLAY_SIGN_PROOF_DEPTH
+        ));
+    }
 
     #[test]
     fn nonnegative_factorial_argument_dominates_factorial_nonzero_display_condition() {
@@ -877,6 +1868,66 @@ mod tests {
     }
 
     #[test]
+    fn nonzero_log_display_condition_normalizes_to_argument_not_one() {
+        let mut ctx = Context::new();
+        let ln_y = parse("ln(y)", &mut ctx).expect("parse ln(y)");
+        let y = parse("y", &mut ctx).expect("parse y");
+        let y_minus_one = parse("y - 1", &mut ctx).expect("parse y - 1");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(ln_y),
+                ImplicitCondition::Positive(y),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2);
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(y_minus_one))
+        }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(y)) }));
+    }
+
+    #[test]
+    fn nonzero_common_log_square_sum_normalizes_to_base_boundary() {
+        let mut ctx = Context::new();
+        let composite = parse("ln(x)^2 + x*ln(x)^2", &mut ctx).expect("parse composite condition");
+        let x = parse("x", &mut ctx).expect("parse x");
+        let x_minus_one = parse("x - 1", &mut ctx).expect("parse x - 1");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(composite),
+                ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2);
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_minus_one))
+        }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x)) }));
+    }
+
+    #[test]
+    fn nonzero_log_of_intrinsically_positive_quadratic_normalizes_to_base_nonzero() {
+        let mut ctx = Context::new();
+        let ln_quad = parse("ln(y^2 + 1)", &mut ctx).expect("parse ln(y^2 + 1)");
+        let y = parse("y", &mut ctx).expect("parse y");
+
+        let normalized =
+            normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonZero(ln_quad)]);
+
+        assert_eq!(normalized, vec![ImplicitCondition::NonZero(y)]);
+    }
+
+    #[test]
     fn positive_sum_under_other_display_conditions_drops_composite_nonzero_condition() {
         let mut ctx = Context::new();
         let reciprocal_sum = parse("1/sqrt(u) + 1", &mut ctx).expect("parse reciprocal sum");
@@ -935,6 +1986,97 @@ mod tests {
         );
 
         assert_eq!(normalized, vec![ImplicitCondition::Positive(u)]);
+    }
+
+    #[test]
+    fn factored_boundary_nonzeros_and_nonnegative_base_combine_into_positive_base() {
+        let mut ctx = Context::new();
+        let base = parse("1 - x^2", &mut ctx).expect("parse base");
+        let left_boundary = parse("x - 1", &mut ctx).expect("parse left boundary");
+        let right_boundary = parse("x + 1", &mut ctx).expect("parse right boundary");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonNegative(base),
+                ImplicitCondition::NonZero(left_boundary),
+                ImplicitCondition::NonZero(right_boundary),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 1);
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(base)
+        ));
+    }
+
+    #[test]
+    fn nonzero_boundary_base_is_dominated_by_positive_base_before_factor_display() {
+        let mut ctx = Context::new();
+        let base = parse("1 - x^2", &mut ctx).expect("parse base");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(base),
+                ImplicitCondition::Positive(base),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 1);
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(base)
+        ));
+    }
+
+    #[test]
+    fn positive_base_dominates_positive_scaled_nonnegative_polynomial() {
+        let mut ctx = Context::new();
+        let scaled = parse("-4*x^2 - 4*x", &mut ctx).expect("parse scaled");
+        let base = parse("-x^2 - x", &mut ctx).expect("parse base");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonNegative(scaled),
+                ImplicitCondition::Positive(base),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 1);
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(base)
+        ));
+    }
+
+    #[test]
+    fn positive_factored_polynomial_dominates_scaled_boundary_nonzeros() {
+        let mut ctx = Context::new();
+        let positive_base = parse("-4*x^2 - 4*x", &mut ctx).expect("parse positive base");
+        let x = parse("x", &mut ctx).expect("parse x");
+        let scaled_boundary = parse("2*x + 2", &mut ctx).expect("parse scaled boundary");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(x),
+                ImplicitCondition::NonZero(scaled_boundary),
+                ImplicitCondition::Positive(positive_base),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 1);
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(positive_base)
+        ));
     }
 
     #[test]
@@ -1062,5 +2204,50 @@ mod tests {
         );
 
         assert_eq!(normalized, vec![ImplicitCondition::NonNegative(x)]);
+    }
+
+    #[test]
+    fn positive_odd_power_normalizes_to_positive_base() {
+        let mut ctx = Context::new();
+        let x_cubed = parse("x^3", &mut ctx).expect("parse x^3");
+        let x = parse("x", &mut ctx).expect("parse x");
+        let x_plus_one = parse("x + 1", &mut ctx).expect("parse x + 1");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(x_cubed),
+                ImplicitCondition::NonZero(x),
+                ImplicitCondition::NonZero(x_plus_one),
+            ],
+        );
+
+        assert_eq!(normalized, vec![ImplicitCondition::Positive(x)]);
+    }
+
+    #[test]
+    fn positive_reciprocal_normalizes_to_positive_denominator_and_dominates_product() {
+        let mut ctx = Context::new();
+        let reciprocal_y = parse("1/y", &mut ctx).expect("parse 1/y");
+        let product = parse("x*y", &mut ctx).expect("parse product");
+        let x = parse("x", &mut ctx).expect("parse x");
+        let y = parse("y", &mut ctx).expect("parse y");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(reciprocal_y),
+                ImplicitCondition::Positive(product),
+                ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2);
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x)) }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(y)) }));
     }
 }

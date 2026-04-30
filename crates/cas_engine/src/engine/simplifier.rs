@@ -28,6 +28,8 @@ pub struct Simplifier {
     pub profiler: RuleProfiler,
     /// Domain warnings from last simplify() call (side-channel for Off mode)
     pub(super) last_domain_warnings: Vec<(String, String)>,
+    /// Required conditions introduced by rewrites in the last simplify() call.
+    pub(super) last_required_conditions: Vec<crate::ImplicitCondition>,
     /// Blocked hints from last simplify() call (pedagogical hints for blocked Analytic conditions)
     pub(super) last_blocked_hints: Vec<crate::BlockedHint>,
     /// Sticky root expression: when set, this is used instead of recalculating per-phase
@@ -64,6 +66,7 @@ impl Simplifier {
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false), // Disabled by default
             last_domain_warnings: Vec::new(),
+            last_required_conditions: Vec::new(),
             last_blocked_hints: Vec::new(),
             sticky_root_expr: None,
             sticky_implicit_domain: None,
@@ -111,6 +114,7 @@ impl Simplifier {
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false),
             last_domain_warnings: Vec::new(),
+            last_required_conditions: Vec::new(),
             last_blocked_hints: Vec::new(),
             sticky_root_expr: None,
             sticky_implicit_domain: None,
@@ -185,6 +189,7 @@ impl Simplifier {
             enable_polynomial_strategy: true,
             profiler: RuleProfiler::new(false),
             last_domain_warnings: Vec::new(),
+            last_required_conditions: Vec::new(),
             last_blocked_hints: Vec::new(),
             sticky_root_expr: None,
             sticky_implicit_domain: None,
@@ -290,6 +295,14 @@ impl Simplifier {
         let mut seen = std::collections::HashSet::new();
         warnings.retain(|w| seen.insert((w.0.clone(), w.1.clone())));
         warnings
+    }
+
+    /// Take and clear rewrite-introduced required conditions from the last simplify() call.
+    pub fn take_required_conditions(&mut self) -> Vec<crate::ImplicitCondition> {
+        let mut conditions = std::mem::take(&mut self.last_required_conditions);
+        let mut seen = std::collections::HashSet::new();
+        conditions.retain(|condition| seen.insert(condition.clone()));
+        conditions
     }
 
     /// Take and clear blocked hints from the last simplify() call.

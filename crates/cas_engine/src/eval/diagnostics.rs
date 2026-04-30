@@ -38,6 +38,18 @@ fn push_solver_requires(
     }
 }
 
+fn push_rewrite_requires(
+    rewrite_required: &[crate::ImplicitCondition],
+    diagnostics: &mut crate::diagnostics::Diagnostics,
+) {
+    for cond in rewrite_required {
+        diagnostics.push_required(
+            cond.clone(),
+            crate::diagnostics::RequireOrigin::RewriteAirbag,
+        );
+    }
+}
+
 fn eval_result_first_expr(result: &EvalResult) -> Option<ExprId> {
     match result {
         EvalResult::Expr(e) => Some(*e),
@@ -124,20 +136,34 @@ fn build_simplified_cache_update(
     }
 }
 
-fn build_eval_diagnostics(
-    ctx: &cas_ast::Context,
+struct EvalDiagnosticsInput<'a> {
+    ctx: &'a cas_ast::Context,
     resolved: ExprId,
-    result: &EvalResult,
-    steps: &[crate::Step],
-    solver_required: &[crate::ImplicitCondition],
-    blocked_hints: &[crate::BlockedHint],
-    inherited_diagnostics: &crate::diagnostics::Diagnostics,
-) -> crate::diagnostics::Diagnostics {
+    result: &'a EvalResult,
+    steps: &'a [crate::Step],
+    solver_required: &'a [crate::ImplicitCondition],
+    rewrite_required: &'a [crate::ImplicitCondition],
+    blocked_hints: &'a [crate::BlockedHint],
+    inherited_diagnostics: &'a crate::diagnostics::Diagnostics,
+}
+
+fn build_eval_diagnostics(input: EvalDiagnosticsInput<'_>) -> crate::diagnostics::Diagnostics {
+    let EvalDiagnosticsInput {
+        ctx,
+        resolved,
+        result,
+        steps,
+        solver_required,
+        rewrite_required,
+        blocked_hints,
+        inherited_diagnostics,
+    } = input;
     let mut diagnostics = crate::diagnostics::Diagnostics::new();
 
     // Each source gets its proper provenance/origin classification.
     push_step_requires_with_display_dedup(ctx, steps, &mut diagnostics);
     push_solver_requires(solver_required, &mut diagnostics);
+    push_rewrite_requires(rewrite_required, &mut diagnostics);
     push_structural_requires(ctx, resolved, result, &mut diagnostics);
     push_blocked_hints(blocked_hints, &mut diagnostics);
     push_assumed_from_steps(steps, &mut diagnostics);
@@ -167,6 +193,7 @@ impl Engine {
         solver_assumptions: Vec<crate::AssumptionRecord>,
         output_scopes: Vec<cas_formatter::display_transforms::ScopeTag>,
         solver_required: Vec<crate::ImplicitCondition>,
+        rewrite_required: Vec<crate::ImplicitCondition>,
         inherited_diagnostics: crate::diagnostics::Diagnostics,
         store: &mut StoreT,
         options: &crate::options::EvalOptions,
@@ -182,15 +209,16 @@ impl Engine {
         // Collect blocked hints from simplifier
         let blocked_hints = self.simplifier.take_blocked_hints();
 
-        let diagnostics = build_eval_diagnostics(
-            &self.simplifier.context,
+        let diagnostics = build_eval_diagnostics(EvalDiagnosticsInput {
+            ctx: &self.simplifier.context,
             resolved,
-            &result,
-            &steps,
-            &solver_required,
-            &blocked_hints,
-            &inherited_diagnostics,
-        );
+            result: &result,
+            steps: &steps,
+            solver_required: &solver_required,
+            rewrite_required: &rewrite_required,
+            blocked_hints: &blocked_hints,
+            inherited_diagnostics: &inherited_diagnostics,
+        });
 
         // Update stored entry with final diagnostics and optional simplified cache.
         // This keeps cache write policy centralized in session-core helpers.

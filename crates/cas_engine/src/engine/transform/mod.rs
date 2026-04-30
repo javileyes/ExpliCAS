@@ -61,6 +61,8 @@ pub(super) struct LocalSimplificationTransformer<'a> {
     pub(super) steps: Vec<Step>,
     /// Domain warnings collected regardless of steps_mode (for Off mode warning survival)
     pub(super) domain_warnings: Vec<(String, String)>, // (message, rule_name)
+    /// Required domain conditions introduced by rewrites, preserved even when steps are off.
+    pub(super) required_conditions: Vec<crate::ImplicitCondition>,
 
     // ── Traversal state ──────────────────────────────────────────────────
     pub(super) cache: HashMap<ExprId, ExprId>,

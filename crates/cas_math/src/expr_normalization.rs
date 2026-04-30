@@ -39,7 +39,9 @@ pub fn normalize_condition_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
 ///
 /// This preserves the inequality direction for predicates such as `x >= 0` and
 /// `x > 0`. For example, `1 - x^2 >= 0` must not be displayed as
-/// `x^2 - 1 >= 0`.
+/// `x^2 - 1 >= 0`. Positive rational polynomial content is removed because
+/// `p >= 0` and `p > 0` are unchanged by multiplying or dividing by a positive
+/// scalar.
 pub fn normalize_condition_expr_preserve_sign(ctx: &mut Context, expr: ExprId) -> ExprId {
     use crate::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
 
@@ -50,7 +52,8 @@ pub fn normalize_condition_expr_preserve_sign(ctx: &mut Context, expr: ExprId) -
     };
 
     if let Ok(poly) = multipoly_from_expr(ctx, expr, &budget) {
-        return multipoly_to_expr(&poly, ctx);
+        let (_, primitive) = poly.primitive_part();
+        return multipoly_to_expr(&primitive, ctx);
     }
 
     expr
@@ -117,6 +120,19 @@ mod tests {
         }
         .to_string();
         assert_eq!(rendered, "1 - x^2");
+    }
+
+    #[test]
+    fn normalize_condition_expr_preserve_sign_clears_positive_rational_content() {
+        let mut ctx = Context::new();
+        let expr = parse("3/4 - x^2/4 - x/2", &mut ctx).expect("parse");
+        let norm = normalize_condition_expr_preserve_sign(&mut ctx, expr);
+        let rendered = cas_formatter::DisplayExpr {
+            context: &ctx,
+            id: norm,
+        }
+        .to_string();
+        assert_eq!(rendered, "3 - x^2 - 2 * x");
     }
 
     #[test]

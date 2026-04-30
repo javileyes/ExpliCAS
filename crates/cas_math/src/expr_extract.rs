@@ -196,6 +196,7 @@ pub fn extract_log_base_argument_view(
 /// Recognizes:
 /// - `ln(arg)` -> `arg`
 /// - `log(arg)` -> `arg`
+/// - `log2(arg)` -> `arg`
 /// - `log10(arg)` -> `arg`
 ///
 /// This intentionally excludes `log(base, arg)`.
@@ -208,6 +209,9 @@ pub fn extract_unary_log_argument_view(ctx: &Context, expr: ExprId) -> Option<Ex
         return Some(args[0]);
     }
     if ctx.is_builtin(fn_id, BuiltinFn::Log) && args.len() == 1 {
+        return Some(args[0]);
+    }
+    if ctx.is_builtin(fn_id, BuiltinFn::Log2) && args.len() == 1 {
         return Some(args[0]);
     }
     if ctx.is_builtin(fn_id, BuiltinFn::Log10) && args.len() == 1 {
@@ -592,6 +596,18 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("log(x)", &mut ctx).expect("parse log(x)");
         let arg = extract_unary_log_argument_view(&ctx, expr).expect("must extract log arg");
+        let x = parse("x", &mut ctx).expect("parse x");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, arg, x),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extracts_unary_log_argument_from_log2() {
+        let mut ctx = Context::new();
+        let expr = parse("log2(x)", &mut ctx).expect("parse log2(x)");
+        let arg = extract_unary_log_argument_view(&ctx, expr).expect("must extract log2 arg");
         let x = parse("x", &mut ctx).expect("parse x");
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, arg, x),

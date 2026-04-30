@@ -103,6 +103,7 @@ impl Simplifier {
             steps_mode: self.steps_mode,
             steps: Vec::new(),
             domain_warnings: Vec::new(),
+            required_conditions: Vec::new(),
             cache: std::collections::HashMap::new(),
             current_path: smallvec::SmallVec::new(),
             profiler: &mut self.profiler,
@@ -142,6 +143,7 @@ impl Simplifier {
         let steps = std::mem::take(&mut local_transformer.steps);
         // Copy domain_warnings to self (survives even in Off mode)
         self.last_domain_warnings = std::mem::take(&mut local_transformer.domain_warnings);
+        self.last_required_conditions = std::mem::take(&mut local_transformer.required_conditions);
         drop(local_transformer);
         self.step_listener = step_listener;
 
@@ -172,6 +174,7 @@ impl Simplifier {
     ) -> (ExprId, Vec<Step>, crate::phase::PipelineStats) {
         // Clear blocked hints from previous simplifications
         crate::clear_blocked_hints();
+        self.last_required_conditions.clear();
 
         let mut orchestrator = crate::orchestrator::Orchestrator::new();
         orchestrator.enable_polynomial_strategy = self.enable_polynomial_strategy;
@@ -341,6 +344,7 @@ impl Simplifier {
             steps_mode,
             steps: Vec::new(),
             domain_warnings: Vec::new(),
+            required_conditions: Vec::new(),
             cache: std::collections::HashMap::new(),
             current_path: smallvec::SmallVec::new(),
             profiler: &mut self.profiler,
@@ -395,6 +399,8 @@ impl Simplifier {
         // Copy domain_warnings to self (survives even in Off mode)
         self.last_domain_warnings
             .append(&mut local_transformer.domain_warnings);
+        self.last_required_conditions
+            .append(&mut local_transformer.required_conditions);
         drop(local_transformer);
         self.step_listener = step_listener;
 

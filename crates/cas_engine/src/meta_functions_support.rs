@@ -88,4 +88,42 @@ mod tests {
         );
         assert!(rendered.contains("x^2"));
     }
+
+    #[test]
+    fn rewrites_factor_call_with_multivar_common_monomial() {
+        let mut ctx = Context::new();
+        let expr = parse("factor(y^2*z^2 + 2*y^2*z + y^2)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_meta_function_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "factor(x) -> factored form");
+        let rendered = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert!(
+            rendered.contains("y^2") && rendered.contains("(z + 1)^2"),
+            "unexpected factor shape: {rendered}"
+        );
+    }
+
+    #[test]
+    fn rewrites_factor_call_with_multivar_common_numeric_content() {
+        let mut ctx = Context::new();
+        let expr = parse("factor(2*x + 4*y)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_meta_function_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.desc, "factor(x) -> factored form");
+        let rendered = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert!(
+            rendered.contains("2 * (x + 2 * y)"),
+            "unexpected factor shape: {rendered}"
+        );
+    }
 }

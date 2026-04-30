@@ -5,9 +5,54 @@
 
 use crate::expr_extract::{extract_abs_argument_view, extract_sqrt_argument_view};
 use crate::expr_predicates::is_zero_expr as is_zero;
+use crate::polynomial::Polynomial;
 use crate::tri_proof::TriProof;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
-use num_traits::Signed;
+use num_rational::BigRational;
+use num_traits::{Signed, Zero};
+
+fn univariate_quadratic_shape(ctx: &Context, expr: ExprId) -> Option<(BigRational, BigRational)> {
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+
+    let var = vars.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, expr, var).ok()?;
+    if poly.degree() != 2 || poly.coeffs.len() < 3 {
+        return None;
+    }
+
+    let a = poly.coeffs.get(2)?.clone();
+    if a.is_zero() {
+        return None;
+    }
+
+    let b = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let c = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let four = BigRational::from_integer(4.into());
+    let discriminant = b.clone() * b - four * a.clone() * c;
+
+    Some((a, discriminant))
+}
+
+fn is_strictly_positive_univariate_quadratic(ctx: &Context, expr: ExprId) -> bool {
+    univariate_quadratic_shape(ctx, expr)
+        .is_some_and(|(a, discriminant)| a.is_positive() && discriminant.is_negative())
+}
+
+fn is_nonnegative_univariate_quadratic(ctx: &Context, expr: ExprId) -> bool {
+    univariate_quadratic_shape(ctx, expr)
+        .is_some_and(|(a, discriminant)| a.is_positive() && !discriminant.is_positive())
+}
 
 /// Prove whether an expression is strictly positive (`> 0`).
 ///
@@ -70,6 +115,11 @@ where
             } else {
                 TriProof::Unknown
             }
+        }
+        Expr::Add(_, _) | Expr::Sub(_, _)
+            if real_only && is_strictly_positive_univariate_quadratic(ctx, expr) =>
+        {
+            TriProof::Proven
         }
         Expr::Add(a, b) => {
             let proof_a_pos =
@@ -176,6 +226,20 @@ where
                 }
             }
         }
+        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Ln) && args.len() == 1 => {
+            let Some(n) = crate::numeric_eval::as_rational_const(ctx, args[0]) else {
+                return TriProof::Unknown;
+            };
+            let zero = num_rational::BigRational::from_integer(0.into());
+            let one = num_rational::BigRational::from_integer(1.into());
+            if n > one {
+                TriProof::Proven
+            } else if n > zero {
+                TriProof::Disproven
+            } else {
+                TriProof::Unknown
+            }
+        }
         Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => {
             let Some(arg) = extract_sqrt_argument_view(ctx, expr) else {
                 return TriProof::Unknown;
@@ -236,6 +300,11 @@ where
                 TriProof::Unknown
             }
         }
+        Expr::Add(_, _) | Expr::Sub(_, _)
+            if real_only && is_nonnegative_univariate_quadratic(ctx, expr) =>
+        {
+            TriProof::Proven
+        }
         Expr::Pow(base, exp) => {
             if let Expr::Number(n) = ctx.get(*exp) {
                 if n.is_integer() {
@@ -276,6 +345,20 @@ where
                     | Expr::Constant(cas_ast::Constant::E) => TriProof::Proven,
                     _ => TriProof::Unknown,
                 }
+            }
+        }
+        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, BuiltinFn::Ln) && args.len() == 1 => {
+            let Some(n) = crate::numeric_eval::as_rational_const(ctx, args[0]) else {
+                return TriProof::Unknown;
+            };
+            let zero = num_rational::BigRational::from_integer(0.into());
+            let one = num_rational::BigRational::from_integer(1.into());
+            if n >= one {
+                TriProof::Proven
+            } else if n > zero {
+                TriProof::Disproven
+            } else {
+                TriProof::Unknown
             }
         }
         Expr::Mul(a, b) => {
@@ -352,6 +435,36 @@ mod tests {
     }
 
     #[test]
+    fn positive_proves_positive_definite_quadratic() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("2*x^2 + 2*x + 1", &mut ctx).expect("parse");
+        let out = prove_positive_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
+            TriProof::Unknown
+        });
+        assert_eq!(out, TriProof::Proven);
+    }
+
+    #[test]
+    fn positive_does_not_prove_perfect_square_quadratic() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("x^2 + 2*x + 1", &mut ctx).expect("parse");
+        let out = prove_positive_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
+            TriProof::Unknown
+        });
+        assert_eq!(out, TriProof::Unknown);
+    }
+
+    #[test]
+    fn nonnegative_proves_expanded_perfect_square_quadratic() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("x^2 + 2*x + 1", &mut ctx).expect("parse");
+        let out = prove_nonnegative_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
+            TriProof::Unknown
+        });
+        assert_eq!(out, TriProof::Proven);
+    }
+
+    #[test]
     fn positive_abs_uses_nonzero_callback() {
         let mut ctx = cas_ast::Context::new();
         let expr = parse("abs(x)", &mut ctx).expect("parse");
@@ -374,5 +487,30 @@ mod tests {
             TriProof::Unknown
         });
         assert_eq!(out, TriProof::Unknown);
+    }
+
+    #[test]
+    fn proves_ln_of_rational_constant_sign() {
+        let mut ctx = cas_ast::Context::new();
+        let ln_two = parse("ln(2)", &mut ctx).expect("parse");
+        let ln_half = parse("ln(1/2)", &mut ctx).expect("parse");
+        let ln_one = parse("ln(1)", &mut ctx).expect("parse");
+
+        let positive_two =
+            prove_positive_depth_with(&ctx, ln_two, 20, true, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+        let positive_half =
+            prove_positive_depth_with(&ctx, ln_half, 20, true, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+        let nonnegative_one =
+            prove_nonnegative_depth_with(&ctx, ln_one, 20, true, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+
+        assert_eq!(positive_two, TriProof::Proven);
+        assert_eq!(positive_half, TriProof::Disproven);
+        assert_eq!(nonnegative_one, TriProof::Proven);
     }
 }

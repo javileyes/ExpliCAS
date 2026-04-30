@@ -8,15 +8,114 @@
 //! Domain-mode policy (strict/assume) is intentionally left to callers.
 
 use crate::expr_destructure::{as_div, as_pow};
+use crate::expr_nary::{build_balanced_mul, mul_leaves};
+use crate::expr_predicates::is_even_root_exponent;
+use crate::multipoly::{multipoly_from_expr, PolyBudget};
 use crate::numeric::as_i64;
+use crate::numeric_eval::as_rational_const;
 use crate::poly_compare::{poly_relation, SignRelation};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{Context, Expr, ExprId};
-use num_traits::{One, Signed};
+use num_rational::BigRational;
+use num_traits::{One, Signed, Zero};
 
 #[inline]
 fn expr_matches(ctx: &Context, lhs: ExprId, rhs: ExprId) -> bool {
     lhs == rhs || compare_expr(ctx, lhs, rhs) == std::cmp::Ordering::Equal
+}
+
+fn relation_to_base(ctx: &Context, base: ExprId, den: ExprId) -> Option<SignRelation> {
+    if expr_matches(ctx, base, den) {
+        Some(SignRelation::Same)
+    } else if let Expr::Neg(inner) = ctx.get(den) {
+        if expr_matches(ctx, base, *inner) {
+            Some(SignRelation::Negated)
+        } else {
+            poly_relation(ctx, base, den)
+        }
+    } else {
+        poly_relation(ctx, base, den)
+    }
+}
+
+fn compare_budget() -> PolyBudget {
+    PolyBudget {
+        max_terms: 100,
+        max_total_degree: 10,
+        max_pow_exp: 5,
+    }
+}
+
+fn scalar_multiple_to_base(ctx: &mut Context, base: ExprId, expr: ExprId) -> Option<BigRational> {
+    if expr_matches(ctx, base, expr) {
+        return Some(BigRational::one());
+    }
+
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        if expr_matches(ctx, base, *inner) {
+            return Some(-BigRational::one());
+        }
+    }
+
+    let (structural_scale, structural_core) = split_numeric_scale(ctx, expr);
+    if !structural_scale.is_zero() && expr_matches(ctx, base, structural_core) {
+        return Some(structural_scale);
+    }
+
+    let budget = compare_budget();
+    let base_poly = multipoly_from_expr(ctx, base, &budget).ok()?;
+    let expr_poly = multipoly_from_expr(ctx, expr, &budget).ok()?;
+    let base_content = base_poly.content();
+    let expr_content = expr_poly.content();
+    if base_content.is_zero() || expr_content.is_zero() {
+        return None;
+    }
+
+    let (_, base_primitive) = base_poly.primitive_part();
+    let (_, expr_primitive) = expr_poly.primitive_part();
+    if expr_primitive == base_primitive {
+        Some(expr_content / base_content)
+    } else if expr_primitive == base_primitive.neg() {
+        Some(-(expr_content / base_content))
+    } else {
+        None
+    }
+}
+
+fn split_numeric_scale(ctx: &mut Context, expr: ExprId) -> (BigRational, ExprId) {
+    if let Some(value) = as_rational_const(ctx, expr) {
+        return (value, ctx.num(1));
+    }
+
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        let (scale, core) = split_numeric_scale(ctx, *inner);
+        return (-scale, core);
+    }
+
+    let mut scale = BigRational::one();
+    let mut core_factors = Vec::new();
+    for factor in mul_leaves(ctx, expr) {
+        if let Some(value) = as_rational_const(ctx, factor) {
+            scale *= value;
+        } else {
+            core_factors.push(factor);
+        }
+    }
+
+    (scale, build_balanced_mul(ctx, &core_factors))
+}
+
+fn scale_rewrite_result(ctx: &mut Context, scale: BigRational, expr: ExprId) -> ExprId {
+    if scale.is_one() {
+        expr
+    } else if scale == -BigRational::one() {
+        ctx.add(Expr::Neg(expr))
+    } else if matches!(ctx.get(expr), Expr::Number(n) if n.is_one()) {
+        ctx.add(Expr::Number(scale))
+    } else {
+        let scale_expr = ctx.add(Expr::Number(scale));
+        ctx.add(Expr::Mul(scale_expr, expr))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -140,29 +239,57 @@ pub fn try_rewrite_cancel_identical_fraction_expr(
     })
 }
 
-/// Try to rewrite `P^n / P` or `P^n / (-P)` for integer `n >= 1`.
+/// Try to rewrite `P^n / P` or `P^n / (-P)` for integer `n >= 1`, plus
+/// positive even-root exponents such as `P^(1/2) / (-P)`.
 pub fn try_rewrite_cancel_power_fraction_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<CancelPowerFractionRewrite> {
     let (num, den) = as_div(ctx, expr)?;
-    let (base, exp) = as_pow(ctx, num)?;
+    let (num_scale, num_core) = split_numeric_scale(ctx, num);
+    let (base, exp) = as_pow(ctx, num_core)?;
+    let den_scale = scalar_multiple_to_base(ctx, base, den).or_else(|| {
+        relation_to_base(ctx, base, den).map(|relation| match relation {
+            SignRelation::Same => BigRational::one(),
+            SignRelation::Negated => -BigRational::one(),
+        })
+    })?;
+    if den_scale.is_zero() {
+        return None;
+    }
+    let result_scale = num_scale / den_scale.clone();
+
+    if let Expr::Number(exp_val) = ctx.get(exp).clone() {
+        if !exp_val.is_integer() && exp_val.is_positive() && is_even_root_exponent(&exp_val) {
+            let new_exp_val = exp_val - num_rational::BigRational::one();
+            let base_result = if new_exp_val.is_zero() {
+                ctx.num(1)
+            } else if new_exp_val.is_one() {
+                base
+            } else {
+                let new_exp = ctx.add(Expr::Number(new_exp_val));
+                ctx.add(Expr::Pow(base, new_exp))
+            };
+
+            let rewritten = scale_rewrite_result(ctx, result_scale, base_result);
+            let kind = if den_scale.is_positive() {
+                CancelPowerFractionRewriteKind::SameSign
+            } else {
+                CancelPowerFractionRewriteKind::NegatedDenominator
+            };
+
+            return Some(CancelPowerFractionRewrite {
+                rewritten,
+                nonzero_target: base,
+                kind,
+            });
+        }
+    }
+
     let exp_val = as_i64(ctx, exp)?;
     if exp_val < 1 {
         return None;
     }
-
-    let relation = if expr_matches(ctx, base, den) {
-        SignRelation::Same
-    } else if let Expr::Neg(inner) = ctx.get(den) {
-        if expr_matches(ctx, base, *inner) {
-            SignRelation::Negated
-        } else {
-            poly_relation(ctx, base, den)?
-        }
-    } else {
-        poly_relation(ctx, base, den)?
-    };
 
     let base_result = if exp_val == 1 {
         ctx.num(1)
@@ -173,17 +300,16 @@ pub fn try_rewrite_cancel_power_fraction_expr(
         ctx.add(Expr::Pow(base, new_exp))
     };
 
-    let (rewritten, kind) = match relation {
-        SignRelation::Same => (base_result, CancelPowerFractionRewriteKind::SameSign),
-        SignRelation::Negated => {
-            let negated = ctx.add(Expr::Neg(base_result));
-            (negated, CancelPowerFractionRewriteKind::NegatedDenominator)
-        }
+    let rewritten = scale_rewrite_result(ctx, result_scale, base_result);
+    let kind = if den_scale.is_positive() {
+        CancelPowerFractionRewriteKind::SameSign
+    } else {
+        CancelPowerFractionRewriteKind::NegatedDenominator
     };
 
     Some(CancelPowerFractionRewrite {
         rewritten,
-        nonzero_target: den,
+        nonzero_target: base,
         kind,
     })
 }
@@ -301,6 +427,70 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("(a^x)/a", &mut ctx).expect("parse");
         assert!(try_rewrite_cancel_power_fraction_expr(&mut ctx, expr).is_none());
+    }
+
+    #[test]
+    fn cancel_power_fraction_rewrites_negated_even_root_polynomial_orientation() {
+        let mut ctx = Context::new();
+        let base = parse("1-x^2", &mut ctx).expect("parse base");
+        let den = parse("x^2-1", &mut ctx).expect("parse denominator");
+        let half = ctx.rational(1, 2);
+        let num = ctx.add(Expr::Pow(base, half));
+        let expr = ctx.add(Expr::Div(num, den));
+        let rw = try_rewrite_cancel_power_fraction_expr(&mut ctx, expr).expect("rewrite");
+        let rendered = cas_formatter::render_expr(&ctx, rw.rewritten);
+
+        assert!(rendered.starts_with("-"), "rendered={rendered}");
+        assert!(rendered.contains("(1 - x^2)^(-1/2)"), "rendered={rendered}");
+    }
+
+    #[test]
+    fn cancel_power_fraction_rewrites_scaled_even_root_quotient() {
+        let mut ctx = Context::new();
+        let u = parse("u", &mut ctx).expect("parse u");
+        let half = ctx.rational(1, 2);
+        let pow = ctx.add(Expr::Pow(u, half));
+        let neg_two = ctx.num(-2);
+        let num = ctx.add(Expr::Mul(neg_two, pow));
+        let den = parse("2*u", &mut ctx).expect("parse denominator");
+        let expr = ctx.add(Expr::Div(num, den));
+        let rw = try_rewrite_cancel_power_fraction_expr(&mut ctx, expr).expect("rewrite");
+        let rendered = cas_formatter::render_expr(&ctx, rw.rewritten);
+
+        assert!(rendered.starts_with("-"), "rendered={rendered}");
+        assert!(rendered.contains("u^(-1/2)"), "rendered={rendered}");
+    }
+
+    #[test]
+    fn cancel_power_fraction_rewrites_scaled_opaque_even_root_denominator() {
+        let mut ctx = Context::new();
+        let base = parse("sin(x)", &mut ctx).expect("parse base");
+        let half = ctx.rational(1, 2);
+        let num = ctx.add(Expr::Pow(base, half));
+        let den = parse("2*sin(x)", &mut ctx).expect("parse denominator");
+        let expr = ctx.add(Expr::Div(num, den));
+        let rw = try_rewrite_cancel_power_fraction_expr(&mut ctx, expr).expect("rewrite");
+        let rendered = cas_formatter::render_expr(&ctx, rw.rewritten);
+
+        assert!(rendered.contains("1/2"), "rendered={rendered}");
+        assert!(rendered.contains("sin(x)^(-1/2)"), "rendered={rendered}");
+    }
+
+    #[test]
+    fn cancel_power_fraction_rewrites_scaled_polynomial_denominator() {
+        let mut ctx = Context::new();
+        let base = parse("-x^2-x", &mut ctx).expect("parse base");
+        let half = ctx.rational(1, 2);
+        let pow = ctx.add(Expr::Pow(base, half));
+        let neg_two = ctx.num(-2);
+        let num = ctx.add(Expr::Mul(neg_two, pow));
+        let den = parse("-2*x^2-2*x", &mut ctx).expect("parse denominator");
+        let expr = ctx.add(Expr::Div(num, den));
+        let rw = try_rewrite_cancel_power_fraction_expr(&mut ctx, expr).expect("rewrite");
+        let rendered = cas_formatter::render_expr(&ctx, rw.rewritten);
+
+        assert!(rendered.starts_with("-"), "rendered={rendered}");
+        assert!(rendered.contains("(-1/2)"), "rendered={rendered}");
     }
 
     #[test]
