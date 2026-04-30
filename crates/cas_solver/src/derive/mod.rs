@@ -1,6 +1,7 @@
 mod collect;
 mod expand;
 mod exponentials;
+mod factor;
 mod factor_division;
 mod factorials;
 mod fractions;
@@ -25,6 +26,7 @@ pub(crate) use expand::{try_rewrite_expanded_target_aware, ExpandRewriteKind};
 pub(crate) use exponentials::{
     try_plan_log_exp_power_inverse_target_aware, try_rewrite_exponential_sum_diff_target_aware,
 };
+pub(crate) use factor::try_rewrite_factored_target_aware;
 pub(crate) use factor_division::{
     detect_factor_out_with_division_target, extract_factored_division_target,
 };

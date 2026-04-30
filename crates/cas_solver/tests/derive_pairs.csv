@@ -7,6 +7,7 @@ factor_out_with_division_quadratic,conditional_factor,a*x^2 + b*x + c,x*(a*x + b
 factor_out_square_with_division_quartic,conditional_factor,a*x^4 + b*x^3 + c*x^2 + d,x^2*(a*x^2 + b*x + c + d/x^2),derived,factor out with division
 factor_out_cube_with_division_septic,conditional_factor,a*x^7 + b*x^5 + c*x^3 + d,x^3*(a*x^4 + b*x^2 + c + d/x^3),derived,factor out with division
 factor_difference_squares,factor,a^2 - b^2,(a - b)*(a + b),derived,factor
+factor_difference_squares_with_passthrough,factor,a+x^2-1,a+(x-1)*(x+1),derived,factor
 factor_perfect_square_trinomial_symbolic,factor,a^2 + 2*a*b + b^2,(a + b)^2,derived,factor
 factor_sophie_germain,factor,x^4 + 4*y^4,(x^2 - 2*x*y + 2*y^2)*(x^2 + 2*x*y + 2*y^2),derived,factor
 factor_alternating_cubic_vandermonde,factor,a^3*(b-c) + b^3*(c-a) + c^3*(a-b),(a-b)*(a-c)*(b-c)*(a+b+c),derived,factor
@@ -161,6 +162,8 @@ contract_trig_double_tangent,trig_contract,2*tan(x)/(1-tan(x)^2),tan(2*x),derive
 expand_trig_after_simplify,trig_expand,sin(x + x),2*sin(x)*cos(x),derived,expand trig
 contract_trig_tan_quotient,trig_contract,(sin(2*x))/(cos(2*x)),tan(2*x),derived,contract trig
 contract_trig_tan_quotient_after_arg_simplify,trig_contract,sin(2*x)/cos(x+x),tan(2*x),derived,contract trig
+contract_trig_tan_quotient_with_cofactor,trig_contract,x*sin(x^2)/cos(x^2),x*tan(x^2),derived,contract trig
+contract_trig_tan_quotient_with_additive_passthrough,trig_contract,1+x*sin(x^2)/cos(x^2),1+x*tan(x^2),derived,contract trig
 expand_trig_tan_to_sin_cos,trig_expand,tan(x),sin(x)/cos(x),derived,expand trig
 expand_trig_sec_reciprocal,trig_expand,sec(x),1/cos(x),derived,expand trig
 expand_trig_csc_reciprocal,trig_expand,csc(x),1/sin(x),derived,expand trig
@@ -267,6 +270,8 @@ expand_fraction_two_cancellations_plus_remainder,fraction_expand,(a*x+b*y+c)/(x*
 expand_fraction_three_factor_cross_cancellation_plus_remainder,fraction_expand,(a*x*y+b*y*z+c*x*z+d)/(x*y*z),a/z + b/x + c/y + d/(x*y*z),derived,expand fraction
 expand_fraction_three_factor_three_cancellations_to_constant,fraction_expand,(a*x*y+b*x*z+c*y*z+d*x*y*z)/(x*y*z),a/z + b/y + c/x + d,derived,expand fraction
 nested_fraction_one_over_sum,nested_fraction,1/(1/a + 1/b),(a*b)/(a+b),derived,nested fraction
+nested_fraction_one_over_sum_with_passthrough,nested_fraction,a+1/(1/x + 1/y),a+(x*y)/(x+y),derived,nested fraction
+nested_fraction_one_over_sum_with_subtractive_passthrough,nested_fraction,a-1/(1/x + 1/y),a-(x*y)/(x+y),derived,nested fraction
 nested_fraction_reciprocal_inverse,nested_fraction,1/(1/x),x,derived,nested fraction
 nested_fraction_fraction_over_sum_with_fraction_general,nested_fraction,a/(b + c/d),a*d/(b*d+c),derived,nested fraction
 nested_fraction_sum_with_fraction_over_scalar_general,nested_fraction,(a + b/c)/d,(a*c+b)/(c*d),derived,nested fraction
@@ -298,6 +303,7 @@ merge_same_base_fractional_powers,power_merge,x^(1/2)*x^(2/3),x^(7/6),derived,co
 merge_same_base_symbolic_powers,power_merge,x^a*x^b,x^(a+b),derived,combine powers
 merge_same_base_symbolic_quotient_powers,power_merge,x^a/x^b,x^(a-b),derived,combine powers
 merge_mixed_root_and_symbolic_power,power_merge,sqrt(x)*x^a,x^(a+1/2),derived,combine powers
+merge_mixed_root_and_fractional_powers_to_integer_with_passthrough,power_merge,sqrt(x)*x^(3/2)+a,x^2+a,derived,combine powers
 log_sum_difference_cancels_to_zero,simplify,ln(x^3) + ln(y^2) - ln(x^3*y^2),0,derived,expand_log
 expand_odd_half_power,radical_power,x^(3/2),abs(x)*sqrt(x),derived,expand odd half power
 expand_odd_half_power_after_simplify,radical_power,sqrt(x^3),abs(x)*sqrt(x),derived,expand odd half power

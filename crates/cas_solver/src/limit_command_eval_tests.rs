@@ -14,7 +14,7 @@ mod tests {
 
     #[test]
     fn parse_limit_command_input_defaults_var_and_direction() {
-        let parsed = parse_limit_command_input("x^2");
+        let parsed = parse_limit_command_input("x^2").expect("parse");
         assert_eq!(parsed.expr, "x^2");
         assert_eq!(parsed.var, "x");
         assert_eq!(parsed.approach, Approach::PosInfinity);
@@ -23,7 +23,8 @@ mod tests {
 
     #[test]
     fn parse_limit_command_input_reads_neg_infinity_and_safe() {
-        let parsed = parse_limit_command_input("(x^2+1)/(2*x^2-3), t, -infinity, safe");
+        let parsed =
+            parse_limit_command_input("(x^2+1)/(2*x^2-3), t, -infinity, safe").expect("parse");
         assert_eq!(parsed.expr, "(x^2+1)/(2*x^2-3)");
         assert_eq!(parsed.var, "t");
         assert_eq!(parsed.approach, Approach::NegInfinity);
@@ -31,9 +32,27 @@ mod tests {
     }
 
     #[test]
+    fn parse_limit_command_input_rejects_unsupported_finite_direction() {
+        let err = parse_limit_command_input("x, x, 0").expect_err("finite point unsupported");
+        assert!(err.contains("Unsupported limit direction `0`"));
+        assert!(err.contains("Only infinity and -infinity"));
+    }
+
+    #[test]
     fn evaluate_limit_command_input_rejects_empty_input() {
         let err = evaluate_limit_command_input("  ").expect_err("expected empty-input error");
         assert_eq!(err, LimitCommandEvalError::EmptyInput);
+    }
+
+    #[test]
+    fn evaluate_limit_command_input_rejects_unsupported_finite_direction() {
+        let err = evaluate_limit_command_input("x, x, 0").expect_err("finite point unsupported");
+        match err {
+            LimitCommandEvalError::Parse(message) => {
+                assert!(message.contains("Unsupported limit direction `0`"));
+            }
+            other => panic!("expected parse error, got {other:?}"),
+        }
     }
 
     #[test]

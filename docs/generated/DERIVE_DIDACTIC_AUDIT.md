@@ -6,9 +6,9 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 ## Summary
 
-- Derived cases audited: `465`
+- Derived cases audited: `471`
 - Mean top-level step count: `1.06`
-- Total web substeps: `478`
+- Total web substeps: `483`
 
 ## Flag Summary
 
@@ -22,7 +22,7 @@ No audit flags emitted.
 | `collect` | 6 | 0 | 0 | 0 |
 | `conditional_factor` | 6 | 0 | 0 | 12 |
 | `expand` | 34 | 0 | 0 | 44 |
-| `factor` | 16 | 0 | 0 | 20 |
+| `factor` | 17 | 0 | 0 | 21 |
 | `finite_aggregate` | 17 | 0 | 0 | 34 |
 | `finite_telescoping` | 9 | 0 | 0 | 21 |
 | `fraction_combine` | 13 | 0 | 0 | 0 |
@@ -33,16 +33,16 @@ No audit flags emitted.
 | `log_exp_inverse` | 5 | 0 | 0 | 6 |
 | `log_expand` | 17 | 0 | 0 | 2 |
 | `log_inverse_power` | 2 | 0 | 0 | 4 |
-| `nested_fraction` | 10 | 0 | 0 | 17 |
+| `nested_fraction` | 12 | 0 | 0 | 21 |
 | `number_theory` | 3 | 0 | 0 | 5 |
 | `polynomial_product` | 11 | 0 | 0 | 24 |
-| `power_merge` | 9 | 0 | 0 | 2 |
+| `power_merge` | 10 | 0 | 0 | 2 |
 | `radical_power` | 6 | 0 | 0 | 12 |
 | `rationalize` | 9 | 0 | 0 | 25 |
 | `simplify` | 89 | 0 | 0 | 83 |
 | `solve_prep` | 8 | 0 | 0 | 21 |
 | `telescoping_fraction` | 15 | 0 | 0 | 30 |
-| `trig_contract` | 47 | 0 | 0 | 25 |
+| `trig_contract` | 49 | 0 | 0 | 25 |
 | `trig_expand` | 87 | 0 | 0 | 59 |
 
 | id | family | web steps | web substeps | flags |
@@ -163,6 +163,8 @@ No audit flags emitted.
 | `contract_trig_square_double_angle_sine_cosine_product` | `trig_contract` | 1 | 1 | none |
 | `contract_trig_tan_quotient` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_tan_quotient_after_arg_simplify` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_tan_quotient_with_additive_passthrough` | `trig_contract` | 1 | 0 | none |
+| `contract_trig_tan_quotient_with_cofactor` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_tangent_angle_difference` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_tangent_angle_sum` | `trig_contract` | 1 | 0 | none |
 | `contract_trig_triple_angle_cosine` | `trig_contract` | 1 | 1 | none |
@@ -350,6 +352,7 @@ No audit flags emitted.
 | `factor_common_factor_sum_three_terms` | `factor` | 1 | 1 | none |
 | `factor_difference_cubes` | `factor` | 1 | 1 | none |
 | `factor_difference_squares` | `factor` | 1 | 1 | none |
+| `factor_difference_squares_with_passthrough` | `factor` | 1 | 1 | none |
 | `factor_full_cyclotomic_sixth_power_difference` | `factor` | 1 | 1 | none |
 | `factor_geometric_difference_power_6` | `factor` | 1 | 1 | none |
 | `factor_out_cube_with_division_septic` | `conditional_factor` | 1 | 2 | none |
@@ -445,6 +448,7 @@ No audit flags emitted.
 | `log_sum_difference_cancels_to_zero` | `simplify` | 1 | 0 | none |
 | `merge_four_same_base_symbolic_powers` | `power_merge` | 1 | 0 | none |
 | `merge_mixed_root_and_fractional_power_five_sixths` | `power_merge` | 1 | 0 | none |
+| `merge_mixed_root_and_fractional_powers_to_integer_with_passthrough` | `power_merge` | 1 | 0 | none |
 | `merge_mixed_root_and_symbolic_power` | `power_merge` | 1 | 0 | none |
 | `merge_same_base_fractional_powers` | `power_merge` | 1 | 0 | none |
 | `merge_same_base_fractional_powers_to_integer` | `power_merge` | 1 | 0 | none |
@@ -457,6 +461,8 @@ No audit flags emitted.
 | `nested_fraction_one_over_sum` | `nested_fraction` | 1 | 2 | none |
 | `nested_fraction_one_over_sum_with_fraction` | `nested_fraction` | 1 | 2 | none |
 | `nested_fraction_one_over_sum_with_fraction_reverse` | `nested_fraction` | 1 | 1 | none |
+| `nested_fraction_one_over_sum_with_passthrough` | `nested_fraction` | 1 | 2 | none |
+| `nested_fraction_one_over_sum_with_subtractive_passthrough` | `nested_fraction` | 1 | 2 | none |
 | `nested_fraction_one_over_three_reciprocals` | `nested_fraction` | 1 | 2 | none |
 | `nested_fraction_reciprocal_inverse` | `nested_fraction` | 1 | 2 | none |
 | `nested_fraction_sum_over_reciprocal` | `nested_fraction` | 1 | 2 | none |
@@ -4196,6 +4202,66 @@ Result: tan(2 * x)
 1. `Convertir un cociente trigonométrico en tangente`
    - before: `sin(2 · x)/cos(x + x)`
    - after: `tan(2 · x)`
+   - substeps: none
+
+## contract_trig_tan_quotient_with_additive_passthrough (trig_contract)
+
+- Source: `1+x*sin(x^2)/cos(x^2)`
+- Target: `1+x*tan(x^2)`
+- Result: `x * tan(x^2) + 1`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: x * sin(x^2) / cos(x^2) + 1
+Target: x * tan(x^2) + 1
+Strategy: contract trig
+Steps (Aggressive Mode):
+1. Recognize sin(u) / cos(u) as tan(u)  [Trig Quotient]
+   Before: x * sin(x^(2)) / cos(x^(2)) + 1
+   Cambio local: x * sin(x^(2)) / cos(x^(2)) + 1 -> x * tan(x^(2)) + 1
+   After: x * tan(x^2) + 1
+Result: x * tan(x^(2)) + 1
+```
+
+### Web / JSON Steps
+
+1. `Convertir un cociente trigonométrico en tangente`
+   - before: `(x · sin(x^2))/cos(x^2) + 1`
+   - after: `x · tan(x^2) + 1`
+   - substeps: none
+
+## contract_trig_tan_quotient_with_cofactor (trig_contract)
+
+- Source: `x*sin(x^2)/cos(x^2)`
+- Target: `x*tan(x^2)`
+- Result: `x * tan(x^2)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: x * sin(x^2) / cos(x^2)
+Target: x * tan(x^2)
+Strategy: contract trig
+Steps (Aggressive Mode):
+1. Recognize sin(u) / cos(u) as tan(u)  [Trig Quotient]
+   Before: x * sin(x^(2)) / cos(x^(2))
+   Cambio local: x * sin(x^(2)) / cos(x^(2)) -> x * tan(x^(2))
+   After: x * tan(x^2)
+Result: x * tan(x^(2))
+```
+
+### Web / JSON Steps
+
+1. `Convertir un cociente trigonométrico en tangente`
+   - before: `(x · sin(x^2))/cos(x^2)`
+   - after: `x · tan(x^2)`
    - substeps: none
 
 ## contract_trig_tangent_angle_difference (trig_contract)
@@ -10280,6 +10346,37 @@ Result: (a + b) * (a - b)
    - substeps:
      1. `Aquí la diferencia de cuadrados usa bases a y b`
 
+## factor_difference_squares_with_passthrough (factor)
+
+- Source: `a+x^2-1`
+- Target: `a+(x-1)*(x+1)`
+- Result: `(x + 1) * (x - 1) + a`
+- Web step count: `1`
+- Web substep count: `1`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: x^2 + a - 1
+Target: (x + 1) * (x - 1) + a
+Strategy: factor
+Steps (Aggressive Mode):
+1. Factorization  [Factorization]
+   Before: x^(2) + a - 1
+   Cambio local: x^(2) - 1 -> (x + 1) * (x - 1)
+   After: (x + 1) * (x - 1) + a
+Result: (x + 1) * (x - 1) + a
+```
+
+### Web / JSON Steps
+
+1. `Factorizar`
+   - before: `x^2 + a - 1`
+   - after: `(x + 1) · (x - 1) + a`
+   - substeps:
+     1. `Aquí la diferencia de potencias usa base x y exponente 2`
+
 ## factor_full_cyclotomic_sixth_power_difference (factor)
 
 - Source: `x^6 - 1`
@@ -13333,6 +13430,36 @@ Result: x^(5 / 6)
    - after: `sqrt[6]x^5`
    - substeps: none
 
+## merge_mixed_root_and_fractional_powers_to_integer_with_passthrough (power_merge)
+
+- Source: `sqrt(x)*x^(3/2)+a`
+- Target: `x^2+a`
+- Result: `x^2 + a`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sqrt(x) * x^(3 / 2) + a
+Target: x^2 + a
+Strategy: combine powers
+Steps (Aggressive Mode):
+1. Combine powers with same base (n-ary)  [Combine powers with same base (n-ary)]
+   Before: sqrt(x) * sqrt(x^3) + a
+   Cambio local: sqrt(x) * sqrt(x^3) + a -> x^(2) + a
+   After: x^2 + a
+Result: x^(2) + a
+```
+
+### Web / JSON Steps
+
+1. `Sumar exponentes de la misma base`
+   - before: `sqrt(x) · sqrt(x^3) + a`
+   - after: `x^2 + a`
+   - substeps: none
+
 ## merge_mixed_root_and_symbolic_power (power_merge)
 
 - Source: `sqrt(x)*x^a`
@@ -13716,6 +13843,74 @@ Result: 1 / (y / z + x)
    - after: `1/(y/z + x)`
    - substeps:
      1. `Reescribir el denominador sacando factor común z`
+
+## nested_fraction_one_over_sum_with_passthrough (nested_fraction)
+
+- Source: `a+1/(1/x + 1/y)`
+- Target: `a+(x*y)/(x+y)`
+- Result: `x * y / (x + y) + a`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: 1 / (1 / x + 1 / y) + a
+Target: x * y / (x + y) + a
+Strategy: nested fraction
+Steps (Aggressive Mode):
+1. Simplify nested fraction  [Simplify Nested Fraction]
+   Before: 1 / (1 / x + 1 / y) + a
+   Cambio local: 1 / (1 / x + 1 / y) + a -> x * y / (x + y) + a
+   After: x * y / (x + y) + a
+Result: x * y / (x + y) + a
+ℹ️ Requires:
+  • x + y ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Cancelar factores en una fracción`
+   - before: `1/(1/x + 1/y) + a`
+   - after: `(x · y)/(x + y) + a`
+   - substeps:
+     1. `Llevar a denominador común dentro del denominador`
+     2. `Invertir la fracción del denominador`
+
+## nested_fraction_one_over_sum_with_subtractive_passthrough (nested_fraction)
+
+- Source: `a-1/(1/x + 1/y)`
+- Target: `a-(x*y)/(x+y)`
+- Result: `a - x * y / (x + y)`
+- Web step count: `1`
+- Web substep count: `2`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: a - 1 / (1 / x + 1 / y)
+Target: a - x * y / (x + y)
+Strategy: nested fraction
+Steps (Aggressive Mode):
+1. Simplify nested fraction  [Simplify Nested Fraction]
+   Before: a - 1 / (1 / x + 1 / y)
+   Cambio local: a - 1 / (1 / x + 1 / y) -> a - x * y / (x + y)
+   After: a - x * y / (x + y)
+Result: a - x * y / (x + y)
+ℹ️ Requires:
+  • x + y ≠ 0
+```
+
+### Web / JSON Steps
+
+1. `Cancelar factores en una fracción`
+   - before: `a - 1/(1/x + 1/y)`
+   - after: `a - x · y/(x + y)`
+   - substeps:
+     1. `Llevar a denominador común dentro del denominador`
+     2. `Invertir la fracción del denominador`
 
 ## nested_fraction_one_over_three_reciprocals (nested_fraction)
 

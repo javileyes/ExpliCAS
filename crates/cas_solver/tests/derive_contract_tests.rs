@@ -1241,6 +1241,8 @@ fn derive_pairs_follow_expected_outcomes_trig_representatives() {
             "contract_trig_phase_shift_sum_to_shifted_sine",
             "expand_trig_phase_shift_general_shifted_sine_to_sum",
             "contract_trig_tan_quotient_after_arg_simplify",
+            "contract_trig_tan_quotient_with_cofactor",
+            "contract_trig_tan_quotient_with_additive_passthrough",
             "expand_trig_tan_to_sin_cos",
             "contract_trig_sec_reciprocal",
             "contract_trig_csc_reciprocal",

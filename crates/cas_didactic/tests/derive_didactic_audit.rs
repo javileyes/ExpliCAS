@@ -1551,6 +1551,11 @@ fn derive_didactic_difference_of_squares_factorization_identifies_bases() {
         "Factorizar",
         &["Aquí la diferencia de cuadrados usa bases a y b"],
     );
+    assert_case_step_titles(
+        "factor_difference_squares_with_passthrough",
+        "Factorizar",
+        &["Aquí la diferencia de potencias usa base x y exponente 2"],
+    );
 }
 
 #[test]
@@ -3874,6 +3879,7 @@ fn derive_didactic_representative_root_power_merge_cases_explain_root_then_merge
     let cases = [
         "merge_mixed_root_and_fractional_power_five_sixths",
         "merge_mixed_root_and_symbolic_power",
+        "merge_mixed_root_and_fractional_powers_to_integer_with_passthrough",
     ];
 
     for case_id in cases {
@@ -4036,6 +4042,26 @@ fn derive_didactic_representative_direct_nested_fraction_cases_have_expected_sub
             "Llevar a denominador común dentro del denominador",
             "Invertir la fracción del denominador",
         ],
+    );
+    assert_case_step_titles(
+        "nested_fraction_one_over_sum_with_passthrough",
+        "Cancelar factores en una fracción",
+        &[
+            "Llevar a denominador común dentro del denominador",
+            "Invertir la fracción del denominador",
+        ],
+    );
+    assert_case_has_no_no_web_substeps_flag("nested_fraction_one_over_sum_with_passthrough");
+    assert_case_step_titles(
+        "nested_fraction_one_over_sum_with_subtractive_passthrough",
+        "Cancelar factores en una fracción",
+        &[
+            "Llevar a denominador común dentro del denominador",
+            "Invertir la fracción del denominador",
+        ],
+    );
+    assert_case_has_no_no_web_substeps_flag(
+        "nested_fraction_one_over_sum_with_subtractive_passthrough",
     );
 
     assert_case_step_titles(

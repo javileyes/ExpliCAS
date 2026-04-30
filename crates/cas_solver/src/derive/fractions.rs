@@ -193,12 +193,64 @@ pub(crate) fn try_rewrite_nested_fraction_target_aware(
     target_expr: ExprId,
 ) -> Option<ExprId> {
     if let Some(rewritten) =
+        try_rewrite_nested_fraction_direct_target_aware(ctx, source_expr, target_expr)
+    {
+        return Some(rewritten);
+    }
+
+    try_rewrite_nested_fraction_additive_target_aware(ctx, source_expr, target_expr)
+}
+
+fn try_rewrite_nested_fraction_direct_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExprId> {
+    if let Some(rewritten) =
         try_rewrite_nested_fraction_forward_target_aware(ctx, source_expr, target_expr)
     {
         return Some(rewritten);
     }
 
     try_rewrite_nested_fraction_reverse_target_aware(ctx, source_expr, target_expr)
+}
+
+fn try_rewrite_nested_fraction_additive_target_aware(
+    ctx: &mut Context,
+    source_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<ExprId> {
+    let (passthrough_terms, source_focus_terms, target_focus_terms) =
+        extract_additive_passthrough_terms(ctx, source_expr, target_expr)?;
+    let source_focus = build_balanced_add(ctx, &source_focus_terms);
+    let target_focus = build_balanced_add(ctx, &target_focus_terms);
+    let rewritten_focus =
+        try_rewrite_nested_fraction_focus_target_aware(ctx, source_focus, target_focus)?;
+
+    let mut rebuilt_terms = passthrough_terms;
+    rebuilt_terms.push(rewritten_focus);
+    let rebuilt = build_balanced_add(ctx, &rebuilt_terms);
+    strong_target_match(ctx, rebuilt, target_expr).then_some(rebuilt)
+}
+
+fn try_rewrite_nested_fraction_focus_target_aware(
+    ctx: &mut Context,
+    source_focus: ExprId,
+    target_focus: ExprId,
+) -> Option<ExprId> {
+    if let Some(rewritten) =
+        try_rewrite_nested_fraction_direct_target_aware(ctx, source_focus, target_focus)
+    {
+        return Some(rewritten);
+    }
+
+    let (source_inner, target_inner) = match (ctx.get(source_focus), ctx.get(target_focus)) {
+        (Expr::Neg(source_inner), Expr::Neg(target_inner)) => (*source_inner, *target_inner),
+        _ => return None,
+    };
+    let rewritten_inner =
+        try_rewrite_nested_fraction_direct_target_aware(ctx, source_inner, target_inner)?;
+    Some(ctx.add(Expr::Neg(rewritten_inner)))
 }
 
 fn try_rewrite_nested_fraction_forward_target_aware(
@@ -1261,6 +1313,8 @@ mod tests {
         let cases = [
             ("1/(1/a)", "a"),
             ("1/(1/a + 1/b)", "(a*b)/(a+b)"),
+            ("a + 1/(1/x + 1/y)", "a + (x*y)/(x+y)"),
+            ("a - 1/(1/x + 1/y)", "a - (x*y)/(x+y)"),
             ("a/(b + c/d)", "a*d/(b*d+c)"),
             ("(a + b/c)/d", "(a*c+b)/(c*d)"),
             ("z/(x*z+y)", "1/(x + y/z)"),

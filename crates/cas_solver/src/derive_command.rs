@@ -9,8 +9,9 @@ use crate::derive::{
     try_plan_log_exp_power_inverse_target_aware, try_rewrite_collect_monomial_target_aware,
     try_rewrite_consecutive_factorial_ratio_target_aware,
     try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
-    try_rewrite_exponential_sum_diff_target_aware, try_rewrite_fraction_combination_target_aware,
-    try_rewrite_fraction_expansion_target_aware, try_rewrite_hyperbolic_expansion_target_aware,
+    try_rewrite_exponential_sum_diff_target_aware, try_rewrite_factored_target_aware,
+    try_rewrite_fraction_combination_target_aware, try_rewrite_fraction_expansion_target_aware,
+    try_rewrite_hyperbolic_expansion_target_aware,
     try_rewrite_hyperbolic_exponential_bridge_target_aware,
     try_rewrite_hyperbolic_simplify_target_aware, try_rewrite_integrate_prep_target_aware,
     try_rewrite_log_argument_factorization_target_aware,
@@ -747,6 +748,7 @@ fn try_supported_derive_strategies_inner(
         let stage = run_factored_stage(
             simplifier,
             resolved_expr,
+            target_expr,
             collect_steps,
             simplify_options.clone(),
         );
@@ -1622,6 +1624,7 @@ fn try_supported_derive_strategies_inner(
                     run_factored_stage(
                         simplifier,
                         resolved_expr,
+                        target_expr,
                         collect_steps,
                         simplify_options.clone(),
                     )
@@ -1864,6 +1867,7 @@ fn try_supported_derive_strategies_inner(
                     run_factored_stage(
                         simplifier,
                         first_stage.expr,
+                        target_expr,
                         collect_steps,
                         simplify_options.clone(),
                     )
@@ -6800,10 +6804,15 @@ fn run_collect_stage(
 fn run_factored_stage(
     simplifier: &mut crate::Simplifier,
     expr: ExprId,
+    target_expr: ExprId,
     _collect_steps: bool,
     _simplify_options: crate::SimplifyOptions,
 ) -> DeriveStageOutput {
-    let factored_expr = cas_math::factor::factor(&mut simplifier.context, expr);
+    let target_rewrite =
+        try_rewrite_factored_target_aware(&mut simplifier.context, expr, target_expr);
+    let factored_expr = target_rewrite
+        .map(|rewrite| rewrite.rewritten)
+        .unwrap_or_else(|| cas_math::factor::factor(&mut simplifier.context, expr));
     let steps = if factored_expr == expr {
         Vec::new()
     } else {
@@ -6819,6 +6828,10 @@ fn run_factored_stage(
         );
         step.importance = cas_solver_core::step_types::ImportanceLevel::Medium;
         step.category = cas_solver_core::step_types::StepCategory::Factor;
+        if let Some(rewrite) = target_rewrite {
+            step.meta_mut().before_local = rewrite.focus_before;
+            step.meta_mut().after_local = rewrite.focus_after;
+        }
         vec![step]
     };
 

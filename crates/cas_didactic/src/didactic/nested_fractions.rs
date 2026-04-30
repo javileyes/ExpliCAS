@@ -6,7 +6,7 @@ mod structured;
 use crate::runtime::Step;
 use cas_ast::{Context, Expr, ExprId};
 
-use super::nested_fraction_analysis::classify_nested_fraction;
+use super::nested_fraction_analysis::{classify_nested_fraction, find_div_in_expr};
 use super::SubStep;
 
 /// Generate sub-steps explaining nested fraction simplification
@@ -32,6 +32,20 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
         );
     }
 
+    if let Some((before_focus, after_focus, pattern)) =
+        additive_nested_fraction_focus_pair(ctx, before_expr, after_expr)
+    {
+        return dispatch::generate_nested_fraction_substeps_for_pattern(
+            ctx,
+            before_focus,
+            after_focus,
+            pattern,
+            &hints,
+            general::generate_general_nested_fraction_substeps,
+            structured::generate_structured_nested_fraction_substeps,
+        );
+    }
+
     if let Some(pattern) = classify_nested_fraction(ctx, global_after) {
         return generate_reverse_nested_fraction_substeps(
             ctx,
@@ -42,6 +56,24 @@ pub(crate) fn generate_nested_fraction_substeps(ctx: &Context, step: &Step) -> V
     }
 
     Vec::new()
+}
+
+fn additive_nested_fraction_focus_pair(
+    ctx: &Context,
+    before_expr: ExprId,
+    after_expr: ExprId,
+) -> Option<(
+    ExprId,
+    ExprId,
+    super::nested_fraction_analysis::NestedFractionPattern,
+)> {
+    let before_focus = find_div_in_expr(ctx, before_expr)?;
+    if before_focus == before_expr {
+        return None;
+    }
+    let pattern = classify_nested_fraction(ctx, before_focus)?;
+    let after_focus = find_div_in_expr(ctx, after_expr)?;
+    Some((before_focus, after_focus, pattern))
 }
 
 fn nested_fraction_latex(

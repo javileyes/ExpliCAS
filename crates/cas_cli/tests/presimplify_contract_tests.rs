@@ -7,20 +7,7 @@ use std::process::Command;
 
 /// Get path to the cas_cli binary
 fn cas_cli_binary() -> PathBuf {
-    let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR not set");
-    let workspace_root = PathBuf::from(manifest_dir)
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
-        .to_path_buf();
-
-    let release = workspace_root.join("target/release/cas_cli");
-    if release.exists() {
-        release
-    } else {
-        workspace_root.join("target/debug/cas_cli")
-    }
+    PathBuf::from(env!("CARGO_BIN_EXE_cas_cli"))
 }
 
 /// Helper to run limit command
@@ -137,10 +124,15 @@ fn test_presimplify_no_expand_irrationals() {
     // sqrt(x) + 1 should not be expanded or rationalized
     let (success, stdout) = run_limit("sqrt(x)+1", "x", "infinity", "safe", "json");
     assert!(success, "Command should succeed");
-    // Result should contain infinity (sqrt(x) → ∞ as x → ∞)
+    // Safe pre-simplification must not be needed for the limit rule to see growth.
     assert!(
-        stdout.contains("infinity") || stdout.contains("\"warning\""),
-        "sqrt(x)+1 should be infinity or residual, got: {}",
+        stdout.contains("\"result\":\"infinity\""),
+        "sqrt(x)+1 should resolve to infinity, got: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("\"warning\""),
+        "Resolved sqrt growth limit should not warn, got: {}",
         stdout
     );
 }

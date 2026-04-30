@@ -23,8 +23,8 @@ use super::{
     try_rewrite_collect_monomial_target_aware, try_rewrite_combine_like_terms_target_aware,
     try_rewrite_consecutive_factorial_ratio_target_aware,
     try_rewrite_exact_fraction_cancel_target_aware, try_rewrite_expanded_target_aware,
-    try_rewrite_exponential_sum_diff_target_aware, try_rewrite_fraction_combination_target_aware,
-    try_rewrite_fraction_expansion_target_aware,
+    try_rewrite_exponential_sum_diff_target_aware, try_rewrite_factored_target_aware,
+    try_rewrite_fraction_combination_target_aware, try_rewrite_fraction_expansion_target_aware,
     try_rewrite_hyperbolic_exponential_bridge_target_aware,
     try_rewrite_hyperbolic_simplify_target_aware, try_rewrite_integrate_prep_target_aware,
     try_rewrite_log_argument_factorization_target_aware,
@@ -288,6 +288,10 @@ fn detect_factored_target(
     source_expr: ExprId,
     target_expr: ExprId,
 ) -> bool {
+    if try_rewrite_factored_target_aware(ctx, source_expr, target_expr).is_some() {
+        return true;
+    }
+
     if !looks_like_factored_target(ctx, target_expr) {
         return false;
     }
@@ -1443,6 +1447,12 @@ mod tests {
     }
 
     #[test]
+    fn classifies_additive_passthrough_factor_target() {
+        let profile = classify("a+x^2-1", "a+(x-1)*(x+1)");
+        assert_eq!(profile.form, DeriveTargetForm::Factored);
+    }
+
+    #[test]
     fn classifies_perfect_square_factor_target() {
         let profile = classify("x^2 + 2*x + 1", "(x + 1)^2");
         assert_eq!(profile.form, DeriveTargetForm::Factored);
@@ -1781,7 +1791,12 @@ mod tests {
 
     #[test]
     fn classifies_tabulated_nested_fraction_targets() {
-        for (source, target) in [("1/(1/a)", "a"), ("1/(1/a + 1/b)", "(a*b)/(a+b)")] {
+        for (source, target) in [
+            ("1/(1/a)", "a"),
+            ("1/(1/a + 1/b)", "(a*b)/(a+b)"),
+            ("a + 1/(1/x + 1/y)", "a + (x*y)/(x+y)"),
+            ("a - 1/(1/x + 1/y)", "a - (x*y)/(x+y)"),
+        ] {
             let profile = classify(source, target);
             assert_eq!(profile.form, DeriveTargetForm::NestedFractionSimplified);
         }
@@ -1875,6 +1890,8 @@ mod tests {
     fn classifies_tabulated_trig_contracted_targets() {
         let cases = [
             ("(sin(2*x))/(cos(2*x))", "tan(2*x)"),
+            ("x*sin(x^2)/cos(x^2)", "x*tan(x^2)"),
+            ("1+x*sin(x^2)/cos(x^2)", "1+x*tan(x^2)"),
             ("1/cos(x)", "sec(x)"),
             ("1 + tan(x)^2", "sec(x)^2"),
             ("2*sin(a*x)*cos(a*x)", "sin(2*a*x)"),

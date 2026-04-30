@@ -5016,15 +5016,25 @@ fn try_rewrite_normalized_reciprocal_trig_contraction_target_aware(
         return None;
     }
 
-    let rewrite = cas_math::trig_canonicalization_support::try_rewrite_trig_quotient_div_expr(
-        ctx,
-        normalized_expr,
-    )?;
-
-    if !strong_target_match(ctx, rewrite.rewritten, target_expr) {
-        return None;
+    if let Some((rewritten, kind)) = trig_quotient_rewrite_from_expr(ctx, normalized_expr) {
+        if strong_target_match(ctx, rewritten, target_expr) {
+            return Some(DeriveTrigRewrite { rewritten, kind });
+        }
     }
 
+    try_rewrite_reciprocal_trig_contraction_with_cofactor_target_aware(
+        ctx,
+        normalized_expr,
+        target_expr,
+    )
+}
+
+fn trig_quotient_rewrite_from_expr(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, DeriveTrigRewriteKind)> {
+    let rewrite =
+        cas_math::trig_canonicalization_support::try_rewrite_trig_quotient_div_expr(ctx, expr)?;
     let kind = match rewrite.kind {
         Some(
             cas_math::trig_canonicalization_support::TrigCanonicalRewriteKind::SinOverCosToTan,
@@ -5041,10 +5051,154 @@ fn try_rewrite_normalized_reciprocal_trig_contraction_target_aware(
         _ => return None,
     };
 
-    Some(DeriveTrigRewrite {
-        rewritten: rewrite.rewritten,
-        kind,
-    })
+    Some((rewrite.rewritten, kind))
+}
+
+fn try_rewrite_reciprocal_trig_contraction_with_cofactor_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    if let Some(rewrite) =
+        try_rewrite_reciprocal_trig_contraction_term_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    try_rewrite_additive_reciprocal_trig_contraction_target_aware(ctx, expr, target_expr)
+}
+
+fn try_rewrite_reciprocal_trig_contraction_term_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    if let Some((rewritten, kind)) = trig_quotient_rewrite_from_expr(ctx, expr) {
+        if strong_target_match(ctx, rewritten, target_expr) {
+            return Some(DeriveTrigRewrite { rewritten, kind });
+        }
+    }
+
+    if let Some(rewrite) =
+        try_rewrite_div_numerator_trig_quotient_factor_target_aware(ctx, expr, target_expr)
+    {
+        return Some(rewrite);
+    }
+
+    try_rewrite_product_trig_quotient_factor_target_aware(ctx, expr, target_expr)
+}
+
+fn try_rewrite_additive_reciprocal_trig_contraction_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let source_terms = add_terms_signed(ctx, expr);
+    let target_terms = add_terms_signed(ctx, target_expr);
+    if source_terms.len() <= 1 || target_terms.len() <= 1 {
+        return None;
+    }
+
+    for (source_index, (source_term, source_sign)) in source_terms.iter().copied().enumerate() {
+        for (target_index, (target_term, target_sign)) in target_terms.iter().copied().enumerate() {
+            if source_sign != target_sign {
+                continue;
+            }
+
+            let Some(rewrite) = try_rewrite_reciprocal_trig_contraction_term_target_aware(
+                ctx,
+                source_term,
+                target_term,
+            ) else {
+                continue;
+            };
+
+            if signed_additive_passthrough_terms_match(
+                ctx,
+                &source_terms,
+                source_index,
+                &target_terms,
+                target_index,
+            ) {
+                return Some(DeriveTrigRewrite {
+                    rewritten: target_expr,
+                    kind: rewrite.kind,
+                });
+            }
+        }
+    }
+
+    None
+}
+
+fn try_rewrite_product_trig_quotient_factor_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for (idx, factor) in factors.iter().enumerate() {
+        let Some((rewritten_factor, kind)) = trig_quotient_rewrite_from_expr(ctx, *factor) else {
+            continue;
+        };
+        let rewritten = rebuild_product_with_rewritten_factor(ctx, &factors, idx, rewritten_factor);
+        if strong_target_match(ctx, rewritten, target_expr) {
+            return Some(DeriveTrigRewrite { rewritten, kind });
+        }
+    }
+
+    None
+}
+
+fn try_rewrite_div_numerator_trig_quotient_factor_target_aware(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    target_expr: ExprId,
+) -> Option<DeriveTrigRewrite> {
+    let (num, den) = match ctx.get(expr).clone() {
+        Expr::Div(num, den) => (num, den),
+        _ => return None,
+    };
+    let factors = flatten_mul_chain(ctx, num);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for (idx, factor) in factors.iter().enumerate() {
+        let quotient = ctx.add(Expr::Div(*factor, den));
+        let Some((rewritten_factor, kind)) = trig_quotient_rewrite_from_expr(ctx, quotient) else {
+            continue;
+        };
+        let rewritten = rebuild_product_with_rewritten_factor(ctx, &factors, idx, rewritten_factor);
+        if strong_target_match(ctx, rewritten, target_expr) {
+            return Some(DeriveTrigRewrite { rewritten, kind });
+        }
+    }
+
+    None
+}
+
+fn rebuild_product_with_rewritten_factor(
+    ctx: &mut cas_ast::Context,
+    factors: &[ExprId],
+    rewrite_index: usize,
+    rewritten_factor: ExprId,
+) -> ExprId {
+    factors
+        .iter()
+        .enumerate()
+        .fold(ctx.num(1), |acc, (idx, factor)| {
+            let factor = if idx == rewrite_index {
+                rewritten_factor
+            } else {
+                *factor
+            };
+            smart_mul(ctx, acc, factor)
+        })
 }
 
 fn try_rewrite_mixed_sine_double_angle_product_target_aware(
@@ -7070,33 +7224,13 @@ fn try_rewrite_reciprocal_trig_contraction_target_aware(
         return Some(rewrite);
     }
 
-    let rewrite =
-        cas_math::trig_canonicalization_support::try_rewrite_trig_quotient_div_expr(ctx, expr)?;
-
-    if !strong_target_match(ctx, rewrite.rewritten, target_expr) {
-        return None;
+    if let Some((rewritten, kind)) = trig_quotient_rewrite_from_expr(ctx, expr) {
+        if strong_target_match(ctx, rewritten, target_expr) {
+            return Some(DeriveTrigRewrite { rewritten, kind });
+        }
     }
 
-    let kind = match rewrite.kind {
-        Some(
-            cas_math::trig_canonicalization_support::TrigCanonicalRewriteKind::SinOverCosToTan,
-        ) => DeriveTrigRewriteKind::RecognizeSinOverCosAsTan,
-        Some(
-            cas_math::trig_canonicalization_support::TrigCanonicalRewriteKind::OneOverCosToSec,
-        ) => DeriveTrigRewriteKind::RecognizeRecipCosAsSec,
-        Some(
-            cas_math::trig_canonicalization_support::TrigCanonicalRewriteKind::OneOverSinToCsc,
-        ) => DeriveTrigRewriteKind::RecognizeRecipSinAsCsc,
-        Some(
-            cas_math::trig_canonicalization_support::TrigCanonicalRewriteKind::CosOverSinToCot,
-        ) => DeriveTrigRewriteKind::RecognizeCosOverSinAsCot,
-        _ => return None,
-    };
-
-    Some(DeriveTrigRewrite {
-        rewritten: rewrite.rewritten,
-        kind,
-    })
+    try_rewrite_reciprocal_trig_contraction_with_cofactor_target_aware(ctx, expr, target_expr)
 }
 
 fn try_rewrite_tangent_double_angle_contraction_target_aware(
@@ -8645,6 +8779,66 @@ mod tests {
             DeriveTrigRewriteKind::RecognizeSinOverCosAsTan
         );
         assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+    }
+
+    #[test]
+    fn recognizes_trig_quotient_factors_inside_products_target_aware() {
+        for (source_text, target_text, expected_kind) in [
+            (
+                "x*sin(x^2)/cos(x^2)",
+                "x*tan(x^2)",
+                DeriveTrigRewriteKind::RecognizeSinOverCosAsTan,
+            ),
+            (
+                "x^2*cos(x^3)/sin(x^3)",
+                "x^2*cot(x^3)",
+                DeriveTrigRewriteKind::RecognizeCosOverSinAsCot,
+            ),
+            (
+                "x*(sin(2*x)/cos(x+x))",
+                "x*tan(2*x)",
+                DeriveTrigRewriteKind::RecognizeSinOverCosAsTan,
+            ),
+        ] {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_trig_contraction_target_aware(&mut ctx, source, target)
+                .unwrap_or_else(|| panic!("rewrite for `{source_text}` -> `{target_text}`"));
+
+            assert_eq!(rewrite.kind, expected_kind);
+            assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+        }
+    }
+
+    #[test]
+    fn recognizes_trig_quotient_terms_with_additive_passthrough_target_aware() {
+        for (source_text, target_text, expected_kind) in [
+            (
+                "1+x*sin(x^2)/cos(x^2)",
+                "1+x*tan(x^2)",
+                DeriveTrigRewriteKind::RecognizeSinOverCosAsTan,
+            ),
+            (
+                "a+x^2*cos(x^3)/sin(x^3)",
+                "a+x^2*cot(x^3)",
+                DeriveTrigRewriteKind::RecognizeCosOverSinAsCot,
+            ),
+            (
+                "a+sin(2*x)/cos(x+x)",
+                "a+tan(2*x)",
+                DeriveTrigRewriteKind::RecognizeSinOverCosAsTan,
+            ),
+        ] {
+            let mut ctx = Context::new();
+            let source = parse(source_text, &mut ctx).expect("source");
+            let target = parse(target_text, &mut ctx).expect("target");
+            let rewrite = try_rewrite_trig_contraction_target_aware(&mut ctx, source, target)
+                .unwrap_or_else(|| panic!("rewrite for `{source_text}` -> `{target_text}`"));
+
+            assert_eq!(rewrite.kind, expected_kind);
+            assert!(strong_target_match(&mut ctx, rewrite.rewritten, target));
+        }
     }
 
     #[test]

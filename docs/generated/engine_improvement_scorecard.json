@@ -1,23 +1,353 @@
 {
-  "generated_at": "2026-04-30T08:27:26.882939+00:00",
+  "generated_at": "2026-04-30T13:59:18.099533+00:00",
   "generated_discovery": {
     "families": {},
     "observe_only_discoveries": 0,
     "recent": [],
     "wrappers": {}
   },
-  "generated_discovery_pressure": {},
+  "generated_discovery_pressure": {
+    "blocked_low_families": {},
+    "blocked_low_family_count": 0,
+    "low_family_count": 0,
+    "unblocked_low_families": {}
+  },
   "git": {
     "branch": "main",
-    "commit": "5bca778c5a132fd912ece96b44ad48f759f0b6ae"
+    "commit": "5d224d4dd0020d59c21d8d3ffc1ce8af3641f715"
   },
   "orchestrator_profile_filter": null,
   "orchestrator_profile_limit": null,
   "orchestrator_profile_requested": false,
-  "profile": "pressure",
+  "profile": "guardrail",
   "suites": {
-    "simplify_zero_mixed": {
-      "category": "simplify",
+    "calculus_diff_contract": {
+      "category": "calculus",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-q",
+        "-p",
+        "cas_solver",
+        "--test",
+        "diff_step_contract_tests",
+        "--",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 0.224,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "cargo_status": "ok",
+        "failed": 0,
+        "filtered_out": 0,
+        "ignored": 0,
+        "measured": 0,
+        "passed": 41,
+        "timeouts": 0
+      },
+      "process_elapsed_seconds": 0.224,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    },
+    "calculus_integrate_contract": {
+      "category": "calculus",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-q",
+        "-p",
+        "cas_cli",
+        "--test",
+        "integrate_contract_tests",
+        "--",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 0.798,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "cargo_status": "ok",
+        "failed": 0,
+        "filtered_out": 0,
+        "ignored": 0,
+        "measured": 0,
+        "passed": 62,
+        "timeouts": 0
+      },
+      "process_elapsed_seconds": 0.798,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    },
+    "calculus_limit_contract": {
+      "category": "calculus",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-q",
+        "-p",
+        "cas_cli",
+        "--test",
+        "limit_contract_tests",
+        "--",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 8.016,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "cargo_status": "ok",
+        "failed": 0,
+        "filtered_out": 0,
+        "ignored": 0,
+        "measured": 0,
+        "passed": 54,
+        "timeouts": 0
+      },
+      "process_elapsed_seconds": 8.016,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    },
+    "calculus_limit_presimplify_contract": {
+      "category": "calculus",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-q",
+        "-p",
+        "cas_cli",
+        "--test",
+        "presimplify_contract_tests",
+        "--",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 0.623,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "cargo_status": "ok",
+        "failed": 0,
+        "filtered_out": 0,
+        "ignored": 0,
+        "measured": 0,
+        "passed": 8,
+        "timeouts": 0
+      },
+      "process_elapsed_seconds": 0.623,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    },
+    "derive_contract": {
+      "category": "derive",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-q",
+        "-p",
+        "cas_solver",
+        "--test",
+        "derive_contract_tests",
+        "derive_pairs_follow_expected_outcomes",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 3.998,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "derived": 389,
+        "distinct_expected_strategies": 28,
+        "generic_simplify_expected": 0,
+        "long_path_rate": 0.0,
+        "mean_step_count": 1.05,
+        "not_equivalent": 1,
+        "reachability_rate": 1.0,
+        "supported_equiv_rate": 1.0,
+        "unsupported": 0
+      },
+      "process_elapsed_seconds": 3.998,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    },
+    "derive_didactic_audit": {
+      "category": "didactic",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-q",
+        "-p",
+        "cas_didactic",
+        "--test",
+        "derive_didactic_audit",
+        "derive_didactic_audit_generates_markdown_report",
+        "--",
+        "--ignored",
+        "--exact",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 16.195,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "cases": 471,
+        "flagged_cases": 0,
+        "flagged_rate": 0.0,
+        "mean_step_count": 1.06,
+        "no_web_steps": 0,
+        "no_web_substeps": 0,
+        "total_web_substeps": 483
+      },
+      "process_elapsed_seconds": 16.195,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    },
+    "derive_shadow_pressure": {
+      "category": "derive",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-q",
+        "-p",
+        "cas_solver",
+        "--test",
+        "derive_contract_tests",
+        "derive_engine_identity_shadow_pressure_reports_reachability",
+        "--",
+        "--exact",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 0.171,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "actual_strategy_counts": {
+          "cancel fraction": 1,
+          "collect": 1,
+          "combine fraction": 1,
+          "combine like terms": 1,
+          "combine powers": 2,
+          "contract logs": 2,
+          "contract trig": 1,
+          "expand": 1,
+          "expand fraction": 1,
+          "expand odd half power": 1,
+          "expand trig": 3,
+          "expand_log": 1,
+          "factor": 1,
+          "factor out with division": 1,
+          "finite sums/products": 9,
+          "integrate prep": 1,
+          "log inverse power": 2,
+          "nested fraction": 2,
+          "number theory": 3,
+          "rationalize": 2,
+          "rewrite exponentials": 3,
+          "rewrite factorials": 1,
+          "rewrite hyperbolics": 3,
+          "rewrite inverse trigs": 1,
+          "rewrite radicals": 2,
+          "rewrite trigs": 1,
+          "solve prep": 1,
+          "split fraction": 1
+        },
+        "classification_rate": 1.0,
+        "classified": 50,
+        "derived": 50,
+        "derived_by_family": {
+          "Addition of fractions": 1,
+          "Binomial Expansion": 1,
+          "Binomial coefficients (choose function)": 1,
+          "Change of base": 1,
+          "Completing the square patterns": 1,
+          "Constant sum": 2,
+          "Difference of Squares": 1,
+          "Exponential of logs": 1,
+          "Factor-cancel patterns": 1,
+          "Fraction Simplification": 1,
+          "Fractional exponent combination": 1,
+          "Fundamental exp decomposition": 3,
+          "Geometric sum: sum(r^k, k, 0, n) = (r^(n+1) - 1)/(r - 1)": 1,
+          "Log of complex products": 1,
+          "Mixed fraction decomposition": 1,
+          "Nested radicals": 1,
+          "Partial fractions / telescoping patterns": 1,
+          "Pascal's identity: C(n,k) + C(n,k+1) = C(n+1,k+1)": 1,
+          "Power of roots": 1,
+          "Power tower identities": 1,
+          "Product = factorial: product(k, k, 1, n) = n!": 1,
+          "Product of constant: product(c, k, 1, n) = c^n": 1,
+          "Product of powers: product(k^2, k, 1, n)": 1,
+          "Pythagorean Identities": 2,
+          "Rationalize denominators with conjugates": 1,
+          "Rationalize with cube roots": 1,
+          "Root Rules": 1,
+          "Sqrt Arithmetic": 1,
+          "Sum of cubes: sum(k^3, k, 1, n) = (n*(n+1)/2)^2": 1,
+          "Sum of first n integers: sum(k, k, 1, n) = n*(n+1)/2": 1,
+          "Sum of squares: sum(k^2, k, 1, n) = n*(n+1)*(2n+1)/6": 1,
+          "Symmetry: C(n,k) = C(n,n-k)": 1,
+          "Tangent half-angle substitution": 1,
+          "Triple angle": 1,
+          "arctan compositions": 1,
+          "collect": 1,
+          "conditional_factor": 1,
+          "integrate_prep": 1,
+          "log_contract": 1,
+          "log_exp_inverse": 2,
+          "log_inverse_power": 1,
+          "nested_fraction": 1,
+          "power_merge": 1,
+          "simplify": 1,
+          "trig_contract": 1
+        },
+        "distinct_actual_strategies": 28,
+        "generic_simplify_strategy_ids": [],
+        "generic_simplify_strategy_successes": 0,
+        "mean_step_count": 1.08,
+        "multi_step_successes": 4,
+        "not_equivalent": 0,
+        "not_equivalent_by_family": {},
+        "reachability_rate": 1.0,
+        "sampled": 50,
+        "single_step_successes": 46,
+        "unsupported": 0,
+        "unsupported_by_family": {}
+      },
+      "process_elapsed_seconds": 0.171,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    },
+    "embedded_equivalence_context": {
+      "category": "equivalence",
       "command": [
         "cargo",
         "run",
@@ -26,210 +356,1510 @@
         "-p",
         "cas_solver",
         "--example",
-        "run_simplify_zero_mixed_corpus",
-        "--",
-        "--window",
-        "sum:0:100",
-        "--window",
-        "sum:700:100",
-        "--window",
-        "difference:0:50",
-        "--window",
-        "product:0:100",
-        "--window",
-        "shifted_quotient:0:100"
+        "run_embedded_equivalence_context_corpus",
+        "--"
       ],
       "delta": {},
-      "elapsed_seconds": 0.448,
+      "elapsed_seconds": 4.26,
       "env": {},
       "guardrail": null,
       "metrics": {
-        "composition_rows": {
-          "difference": {
-            "avg_case_ms": 1.33,
-            "avg_parse_ms": 0.04,
-            "avg_simplify_ms": 0.11,
-            "avg_wire_ms": 0.14,
-            "elapsed_seconds": 0.06659999999999999,
+        "average_wrapper_overhead_nodes": 13.31,
+        "complexity_level_count": 4,
+        "complexity_rows": {
+          "l0_root_pair": {
+            "avg_shell_depth": 0.0,
+            "avg_wrapper_overhead_nodes": 0.0,
             "failed": 0,
-            "parse_elapsed_seconds": 0.00177,
-            "passed": 50,
-            "simplify_elapsed_seconds": 0.00532,
-            "total": 50,
-            "wire_elapsed_seconds": 0.0071200000000000005
+            "max_shell_depth": 0,
+            "passed": 5,
+            "total": 5
           },
-          "product": {
-            "avg_case_ms": 0.97,
-            "avg_parse_ms": 0.03,
-            "avg_simplify_ms": 0.1,
-            "avg_wire_ms": 0.13,
-            "elapsed_seconds": 0.09684000000000001,
+          "l1_single_wrapper": {
+            "avg_shell_depth": 1.0,
+            "avg_wrapper_overhead_nodes": 5.1,
             "failed": 0,
-            "parse_elapsed_seconds": 0.00344,
-            "passed": 100,
-            "simplify_elapsed_seconds": 0.009800000000000001,
-            "total": 100,
-            "wire_elapsed_seconds": 0.01329
+            "max_shell_depth": 1,
+            "passed": 10,
+            "total": 10
           },
-          "shifted_quotient": {
-            "avg_case_ms": 1.44,
-            "avg_parse_ms": 0.05,
-            "avg_simplify_ms": 0.12,
-            "avg_wire_ms": 0.17,
-            "elapsed_seconds": 0.14406,
+          "l2_wrapper_plus_noise": {
+            "avg_shell_depth": 1.9,
+            "avg_wrapper_overhead_nodes": 10.16,
             "failed": 0,
-            "parse_elapsed_seconds": 0.00514,
-            "passed": 100,
-            "simplify_elapsed_seconds": 0.012130000000000002,
-            "total": 100,
-            "wire_elapsed_seconds": 0.01731
+            "max_shell_depth": 2,
+            "passed": 1003,
+            "total": 1003
           },
-          "sum": {
-            "avg_case_ms": 0.7,
-            "avg_parse_ms": 0.03,
-            "avg_simplify_ms": 0.12,
-            "avg_wire_ms": 0.15,
-            "elapsed_seconds": 0.13966,
+          "l3_nested_or_composed": {
+            "avg_shell_depth": 2.63,
+            "avg_wrapper_overhead_nodes": 21.05,
             "failed": 0,
-            "parse_elapsed_seconds": 0.00639,
-            "passed": 200,
-            "simplify_elapsed_seconds": 0.02308,
-            "total": 200,
-            "wire_elapsed_seconds": 0.02956
+            "max_shell_depth": 5,
+            "passed": 427,
+            "total": 427
           }
         },
+        "corpus_structure": {
+          "combined_additive_zero": {
+            "above_min_family_counts": {
+              "finite_aggregate": 7,
+              "number_theory": 7,
+              "simplify": 15
+            },
+            "collapse_family_count": 25,
+            "collapse_rows": 144,
+            "depth4_family_count": 25,
+            "depth4_missing_families": [],
+            "depth4_rows": 37,
+            "family_count": 25,
+            "family_counts": {
+              "collect": 6,
+              "conditional_factor": 6,
+              "expand": 6,
+              "factor": 6,
+              "finite_aggregate": 7,
+              "finite_telescoping": 6,
+              "fraction_combine": 6,
+              "fraction_decompose": 6,
+              "fraction_expand": 6,
+              "integrate_prep": 6,
+              "log_contract": 6,
+              "log_exp_inverse": 6,
+              "log_expand": 6,
+              "log_inverse_power": 6,
+              "nested_fraction": 6,
+              "number_theory": 7,
+              "polynomial_product": 6,
+              "power_merge": 6,
+              "radical_power": 6,
+              "rationalize": 6,
+              "simplify": 15,
+              "solve_prep": 6,
+              "telescoping_fraction": 6,
+              "trig_contract": 6,
+              "trig_expand": 6
+            },
+            "low_family_count": 22,
+            "low_family_counts": {
+              "collect": 6,
+              "conditional_factor": 6,
+              "expand": 6,
+              "factor": 6,
+              "finite_telescoping": 6,
+              "fraction_combine": 6,
+              "fraction_decompose": 6,
+              "fraction_expand": 6,
+              "integrate_prep": 6,
+              "log_contract": 6,
+              "log_exp_inverse": 6,
+              "log_expand": 6,
+              "log_inverse_power": 6,
+              "nested_fraction": 6,
+              "polynomial_product": 6,
+              "power_merge": 6,
+              "radical_power": 6,
+              "rationalize": 6,
+              "solve_prep": 6,
+              "telescoping_fraction": 6,
+              "trig_contract": 6,
+              "trig_expand": 6
+            },
+            "min_family_case_count": 6,
+            "multi_core_family_count": 25,
+            "multi_core_missing_families": [],
+            "multi_core_rows": 42,
+            "orientation_family_count": 25,
+            "orientation_missing_families": [],
+            "orientation_rows": 44,
+            "target_family_case_count": 6,
+            "total": 161,
+            "under_target_family_count": 0,
+            "under_target_family_counts": {}
+          },
+          "family_count": 25,
+          "row_count": 1445
+        },
         "failed": 0,
-        "passed": 450,
-        "reported_elapsed": "447.52ms",
-        "reported_elapsed_per_case_ms": 0.9945,
-        "reported_elapsed_seconds": 0.44752,
-        "steady_engine_heavy_rows": [
-          {
-            "case_number": 288,
-            "composition": "shifted_quotient",
-            "expression": "((1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) + 1)/((x^6 - 1 - (x-1)*(x^5+x^4+x^3+x^2+x+1)) + 1)",
-            "median_elapsed_seconds": 0.0012900000000000001,
-            "median_parse_seconds": 7.000000000000001e-05,
-            "median_simplify_seconds": 0.0005200000000000001,
-            "median_wire_seconds": 0.0006,
-            "runs": 3,
-            "window_label": "shifted_quotient@0+100"
+        "family_count": 25,
+        "largest_wrapper_complexity_share_percent": 17.2,
+        "largest_wrapper_share_percent": 20.1,
+        "max_expression_depth": 18,
+        "max_shell_depth": 5,
+        "passed": 1445,
+        "reported_elapsed": "4.26s",
+        "reported_elapsed_per_case_ms": 2.9481,
+        "reported_elapsed_seconds": 4.26,
+        "shell_depth_count": 6,
+        "shell_depth_rows": {
+          "0": {
+            "failed": 0,
+            "passed": 5,
+            "total": 5
           },
-          {
-            "case_number": 132,
-            "composition": "shifted_quotient",
-            "expression": "((ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + 1)/((x^6 - 1 - (x-1)*(x^5+x^4+x^3+x^2+x+1)) + 1)",
-            "median_elapsed_seconds": 0.00163,
-            "median_parse_seconds": 6e-05,
-            "median_simplify_seconds": 0.00048,
-            "median_wire_seconds": 0.00054,
-            "runs": 3,
-            "window_label": "shifted_quotient@0+100"
+          "1": {
+            "failed": 0,
+            "passed": 140,
+            "total": 140
           },
-          {
-            "case_number": 25,
-            "composition": "sum",
-            "expression": "(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + (cosh(x) + sinh(x) - e^x)",
-            "median_elapsed_seconds": 0.0007199999999999999,
-            "median_parse_seconds": 2e-05,
-            "median_simplify_seconds": 0.00012,
-            "median_wire_seconds": 0.00014000000000000001,
-            "runs": 3,
-            "window_label": "sum@0+100"
+          "2": {
+            "failed": 0,
+            "passed": 1096,
+            "total": 1096
           },
-          {
-            "case_number": 13,
-            "composition": "sum",
-            "expression": "(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + (1/(sqrt(a) + sqrt(b)) - (sqrt(a) - sqrt(b))/(a - b))",
-            "median_elapsed_seconds": 0.00242,
-            "median_parse_seconds": 3e-05,
-            "median_simplify_seconds": 0.0001,
-            "median_wire_seconds": 0.00013000000000000002,
-            "runs": 3,
-            "window_label": "sum@0+100"
+          "3": {
+            "failed": 0,
+            "passed": 114,
+            "total": 114
           },
+          "4": {
+            "failed": 0,
+            "passed": 86,
+            "total": 86
+          },
+          "5": {
+            "failed": 0,
+            "passed": 4,
+            "total": 4
+          }
+        },
+        "sparse_wrapper_noise_budget_rows": [
           {
-            "case_number": 1,
-            "composition": "sum",
-            "expression": "(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + (1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1))",
-            "median_elapsed_seconds": 0.0034500000000000004,
-            "median_parse_seconds": 4e-05,
-            "median_simplify_seconds": 0.00014000000000000001,
-            "median_wire_seconds": 0.00017999999999999998,
-            "runs": 3,
-            "window_label": "sum@0+100"
+            "avg_shell_depth": 3.46,
+            "avg_wrapper_overhead_nodes": 19.92,
+            "failed": 0,
+            "max_shell_depth": 4,
+            "max_wrapper_overhead_nodes": 36,
+            "passed": 50,
+            "total": 50,
+            "wrapper": "reciprocal_shifted_difference_zero"
           }
         ],
-        "total_cases": 450,
-        "window_rows": {
-          "difference@0+50": {
-            "avg_case_ms": 1.33,
-            "avg_parse_ms": 0.04,
-            "avg_simplify_ms": 0.11,
-            "avg_wire_ms": 0.14,
-            "elapsed_seconds": 0.06659999999999999,
+        "total_cases": 1445,
+        "wrapper_complexity_family_rows": [
+          {
             "failed": 0,
-            "parse_elapsed_seconds": 0.00177,
-            "passed": 50,
-            "simplify_elapsed_seconds": 0.00532,
-            "total": 50,
-            "wire_elapsed_seconds": 0.0071200000000000005
+            "family": "collect",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
           },
-          "product@0+100": {
-            "avg_case_ms": 0.97,
-            "avg_parse_ms": 0.03,
-            "avg_simplify_ms": 0.1,
-            "avg_wire_ms": 0.13,
-            "elapsed_seconds": 0.09684000000000001,
+          {
             "failed": 0,
-            "parse_elapsed_seconds": 0.00344,
-            "passed": 100,
-            "simplify_elapsed_seconds": 0.009800000000000001,
-            "total": 100,
-            "wire_elapsed_seconds": 0.01329
+            "family": "conditional_factor",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
           },
-          "shifted_quotient@0+100": {
-            "avg_case_ms": 1.44,
-            "avg_parse_ms": 0.05,
-            "avg_simplify_ms": 0.12,
-            "avg_wire_ms": 0.17,
-            "elapsed_seconds": 0.14406,
+          {
             "failed": 0,
-            "parse_elapsed_seconds": 0.00514,
-            "passed": 100,
-            "simplify_elapsed_seconds": 0.012130000000000002,
-            "total": 100,
-            "wire_elapsed_seconds": 0.01731
+            "family": "expand",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
           },
-          "sum@0+100": {
-            "avg_case_ms": 1.01,
-            "avg_parse_ms": 0.04,
-            "avg_simplify_ms": 0.13,
-            "avg_wire_ms": 0.16,
-            "elapsed_seconds": 0.10064000000000001,
+          {
             "failed": 0,
-            "parse_elapsed_seconds": 0.0035099999999999997,
-            "passed": 100,
-            "simplify_elapsed_seconds": 0.01264,
-            "total": 100,
-            "wire_elapsed_seconds": 0.016190000000000003
+            "family": "factor",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
           },
-          "sum@700+100": {
-            "avg_case_ms": 0.39,
-            "avg_parse_ms": 0.03,
-            "avg_simplify_ms": 0.1,
-            "avg_wire_ms": 0.13,
-            "elapsed_seconds": 0.039020000000000006,
+          {
             "failed": 0,
-            "parse_elapsed_seconds": 0.0028799999999999997,
-            "passed": 100,
-            "simplify_elapsed_seconds": 0.01044,
-            "total": 100,
-            "wire_elapsed_seconds": 0.01337
+            "family": "finite_aggregate",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "finite_telescoping",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_combine",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_decompose",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_expand",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "integrate_prep",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_contract",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_exp_inverse",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_expand",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_inverse_power",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "nested_fraction",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "number_theory",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "polynomial_product",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "power_merge",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "radical_power",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "rationalize",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "simplify",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "solve_prep",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "telescoping_fraction",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "trig_contract",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "trig_expand",
+            "level": "l3_nested_or_composed",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
           }
-        }
+        ],
+        "wrapper_complexity_rows": [
+          {
+            "avg_shell_depth": 2.0,
+            "avg_wrapper_overhead_nodes": 10.16,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 2,
+            "passed": 249,
+            "total": 249,
+            "wrapper": "common_denominator_zero"
+          },
+          {
+            "avg_shell_depth": 1.87,
+            "avg_wrapper_overhead_nodes": 10.16,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 2,
+            "passed": 249,
+            "total": 249,
+            "wrapper": "scaled_difference_zero"
+          },
+          {
+            "avg_shell_depth": 1.88,
+            "avg_wrapper_overhead_nodes": 10.16,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 2,
+            "passed": 249,
+            "total": 249,
+            "wrapper": "shifted_quotient_one"
+          },
+          {
+            "avg_shell_depth": 1.88,
+            "avg_wrapper_overhead_nodes": 10.16,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 2,
+            "passed": 248,
+            "total": 248,
+            "wrapper": "additive_passthrough_zero"
+          },
+          {
+            "avg_shell_depth": 2.91,
+            "avg_wrapper_overhead_nodes": 27.52,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 5,
+            "passed": 139,
+            "total": 139,
+            "wrapper": "combined_additive_zero"
+          },
+          {
+            "avg_shell_depth": 3.32,
+            "avg_wrapper_overhead_nodes": 16.68,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 4,
+            "passed": 74,
+            "total": 74,
+            "wrapper": "squared_passthrough_zero"
+          },
+          {
+            "avg_shell_depth": 3.46,
+            "avg_wrapper_overhead_nodes": 19.92,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 4,
+            "passed": 50,
+            "total": 50,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "avg_shell_depth": 1.68,
+            "avg_wrapper_overhead_nodes": 17.88,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 2,
+            "passed": 41,
+            "total": 41,
+            "wrapper": "additive_passthrough_zero"
+          },
+          {
+            "avg_shell_depth": 2.0,
+            "avg_wrapper_overhead_nodes": 17.88,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 2,
+            "passed": 41,
+            "total": 41,
+            "wrapper": "common_denominator_zero"
+          },
+          {
+            "avg_shell_depth": 1.9,
+            "avg_wrapper_overhead_nodes": 17.88,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 2,
+            "passed": 41,
+            "total": 41,
+            "wrapper": "scaled_difference_zero"
+          },
+          {
+            "avg_shell_depth": 1.68,
+            "avg_wrapper_overhead_nodes": 17.88,
+            "failed": 0,
+            "level": "l3_nested_or_composed",
+            "max_shell_depth": 2,
+            "passed": 41,
+            "total": 41,
+            "wrapper": "shifted_quotient_one"
+          },
+          {
+            "avg_shell_depth": 1.0,
+            "avg_wrapper_overhead_nodes": 5.33,
+            "failed": 0,
+            "level": "l1_single_wrapper",
+            "max_shell_depth": 1,
+            "passed": 9,
+            "total": 9,
+            "wrapper": "combined_additive_zero"
+          },
+          {
+            "avg_shell_depth": 1.0,
+            "avg_wrapper_overhead_nodes": 10.38,
+            "failed": 0,
+            "level": "l2_wrapper_plus_noise",
+            "max_shell_depth": 1,
+            "passed": 8,
+            "total": 8,
+            "wrapper": "combined_additive_zero"
+          },
+          {
+            "avg_shell_depth": 0.0,
+            "avg_wrapper_overhead_nodes": 0.0,
+            "failed": 0,
+            "level": "l0_root_pair",
+            "max_shell_depth": 0,
+            "passed": 5,
+            "total": 5,
+            "wrapper": "combined_additive_zero"
+          },
+          {
+            "avg_shell_depth": 1.0,
+            "avg_wrapper_overhead_nodes": 3.0,
+            "failed": 0,
+            "level": "l1_single_wrapper",
+            "max_shell_depth": 1,
+            "passed": 1,
+            "total": 1,
+            "wrapper": "additive_passthrough_zero"
+          }
+        ],
+        "wrapper_count": 7,
+        "wrapper_family_rows": [
+          {
+            "failed": 0,
+            "family": "collect",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "conditional_factor",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "expand",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "factor",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "finite_aggregate",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "finite_telescoping",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_combine",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_decompose",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_expand",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "integrate_prep",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_contract",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_exp_inverse",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_expand",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_inverse_power",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "nested_fraction",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "number_theory",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "polynomial_product",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "power_merge",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "radical_power",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "rationalize",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "simplify",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "solve_prep",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "telescoping_fraction",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "trig_contract",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "trig_expand",
+            "passed": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          }
+        ],
+        "wrapper_names": [
+          "additive_passthrough_zero",
+          "combined_additive_zero",
+          "common_denominator_zero",
+          "reciprocal_shifted_difference_zero",
+          "scaled_difference_zero",
+          "shifted_quotient_one",
+          "squared_passthrough_zero"
+        ],
+        "wrapper_rows": {
+          "additive_passthrough_zero": {
+            "failed": 0,
+            "passed": 290,
+            "total": 290
+          },
+          "combined_additive_zero": {
+            "failed": 0,
+            "passed": 161,
+            "total": 161
+          },
+          "common_denominator_zero": {
+            "failed": 0,
+            "passed": 290,
+            "total": 290
+          },
+          "reciprocal_shifted_difference_zero": {
+            "failed": 0,
+            "passed": 50,
+            "total": 50
+          },
+          "scaled_difference_zero": {
+            "failed": 0,
+            "passed": 290,
+            "total": 290
+          },
+          "shifted_quotient_one": {
+            "failed": 0,
+            "passed": 290,
+            "total": 290
+          },
+          "squared_passthrough_zero": {
+            "failed": 0,
+            "passed": 74,
+            "total": 74
+          }
+        },
+        "wrapper_shell_depth_family_rows": [
+          {
+            "failed": 0,
+            "family": "collect",
+            "passed": 1,
+            "shell_depth": 2,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_decompose",
+            "passed": 1,
+            "shell_depth": 2,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "conditional_factor",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "expand",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "factor",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "finite_aggregate",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "finite_telescoping",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_combine",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_expand",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "integrate_prep",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_contract",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_exp_inverse",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_expand",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_inverse_power",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "nested_fraction",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "number_theory",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "polynomial_product",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "power_merge",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "radical_power",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "rationalize",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "simplify",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "solve_prep",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "telescoping_fraction",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "trig_contract",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "trig_expand",
+            "passed": 1,
+            "shell_depth": 3,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "collect",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "conditional_factor",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "expand",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "factor",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "finite_aggregate",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "finite_telescoping",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_combine",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_decompose",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "fraction_expand",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "integrate_prep",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_contract",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_exp_inverse",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_expand",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "log_inverse_power",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "nested_fraction",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "number_theory",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "polynomial_product",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "power_merge",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "radical_power",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "rationalize",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "simplify",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "solve_prep",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "telescoping_fraction",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "trig_contract",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "family": "trig_expand",
+            "passed": 1,
+            "shell_depth": 4,
+            "total": 1,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          }
+        ],
+        "wrapper_shell_depth_rows": [
+          {
+            "failed": 0,
+            "passed": 2,
+            "shell_depth": 2,
+            "total": 2,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "passed": 23,
+            "shell_depth": 3,
+            "total": 23,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          },
+          {
+            "failed": 0,
+            "passed": 25,
+            "shell_depth": 4,
+            "total": 25,
+            "wrapper": "reciprocal_shifted_difference_zero"
+          }
+        ]
       },
-      "process_elapsed_seconds": 1.492,
+      "process_elapsed_seconds": 5.441,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    },
+    "simplify_didactic_audit": {
+      "category": "didactic",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-q",
+        "-p",
+        "cas_didactic",
+        "--test",
+        "didactic_step_quality_audit",
+        "didactic_step_quality_audit_generates_markdown_report",
+        "--",
+        "--ignored",
+        "--exact",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 0.911,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "cases": 14,
+        "flagged_cases": 0,
+        "flagged_rate": 0.0,
+        "mean_step_count": 2.29,
+        "missing_math_sides": 0,
+        "no_wire_substeps": 0,
+        "single_step_no_substeps": 0,
+        "total_wire_substeps": 26
+      },
+      "process_elapsed_seconds": 0.911,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    },
+    "simplify_strict": {
+      "category": "simplify",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-p",
+        "cas_solver",
+        "--test",
+        "metamorphic_simplification_tests",
+        "metatest_unified_benchmark",
+        "--",
+        "--ignored",
+        "--exact",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 17.025,
+      "env": {
+        "METATEST_MAX_EXAMPLES": "20",
+        "METATEST_PROGRESS_EVERY": "1000",
+        "METATEST_VERBOSE": "1"
+      },
+      "guardrail": null,
+      "metrics": {
+        "cycles": 0,
+        "effective_combos": 16519,
+        "failed": 0,
+        "inconclusive": 0,
+        "inconclusive_rate_percent": 0.0,
+        "nf_convergent": 0,
+        "nf_rate_percent": 0.0,
+        "normalization_gap": 16519,
+        "normalization_gap_rate_percent": 100.0,
+        "numeric_only": 0,
+        "numeric_only_rate_percent": 0.0,
+        "proof_shape_mix": {
+          "composed_share_percent": 78.8,
+          "non_composed_share_percent": 21.2,
+          "non_composed_symbolic": 3498
+        },
+        "proved_breakdown": {
+          "composed": 13021,
+          "difference": 0,
+          "quotient": 3498
+        },
+        "proved_symbolic": 16519,
+        "proved_symbolic_rate_percent": 100.0,
+        "skipped": 0,
+        "suite_rows": {
+          "add": {
+            "combos": 435,
+            "cycles": 0,
+            "effective_combos": 435,
+            "failed": 0,
+            "inconclusive": 0,
+            "inconclusive_rate_percent": 0.0,
+            "nf_convergent": 0,
+            "nf_rate_percent": 0.0,
+            "normalization_gap": 435,
+            "normalization_gap_rate_percent": 100.0,
+            "numeric_only": 0,
+            "numeric_only_rate_percent": 0.0,
+            "proved_symbolic": 435,
+            "proved_symbolic_rate_percent": 100.0,
+            "skipped": 0,
+            "symbolic_closure": 435,
+            "symbolic_closure_rate_percent": 100.0,
+            "timeouts": 0
+          },
+          "div": {
+            "combos": 976,
+            "cycles": 0,
+            "effective_combos": 976,
+            "failed": 0,
+            "inconclusive": 0,
+            "inconclusive_rate_percent": 0.0,
+            "nf_convergent": 0,
+            "nf_rate_percent": 0.0,
+            "normalization_gap": 976,
+            "normalization_gap_rate_percent": 100.0,
+            "numeric_only": 0,
+            "numeric_only_rate_percent": 0.0,
+            "proved_symbolic": 976,
+            "proved_symbolic_rate_percent": 100.0,
+            "skipped": 0,
+            "symbolic_closure": 976,
+            "symbolic_closure_rate_percent": 100.0,
+            "timeouts": 0
+          },
+          "mul": {
+            "combos": 11175,
+            "cycles": 0,
+            "effective_combos": 11175,
+            "failed": 0,
+            "inconclusive": 0,
+            "inconclusive_rate_percent": 0.0,
+            "nf_convergent": 0,
+            "nf_rate_percent": 0.0,
+            "normalization_gap": 11175,
+            "normalization_gap_rate_percent": 100.0,
+            "numeric_only": 0,
+            "numeric_only_rate_percent": 0.0,
+            "proved_symbolic": 11175,
+            "proved_symbolic_rate_percent": 100.0,
+            "skipped": 0,
+            "symbolic_closure": 11175,
+            "symbolic_closure_rate_percent": 100.0,
+            "timeouts": 0
+          },
+          "sub": {
+            "combos": 435,
+            "cycles": 0,
+            "effective_combos": 435,
+            "failed": 0,
+            "inconclusive": 0,
+            "inconclusive_rate_percent": 0.0,
+            "nf_convergent": 0,
+            "nf_rate_percent": 0.0,
+            "normalization_gap": 435,
+            "normalization_gap_rate_percent": 100.0,
+            "numeric_only": 0,
+            "numeric_only_rate_percent": 0.0,
+            "proved_symbolic": 435,
+            "proved_symbolic_rate_percent": 100.0,
+            "skipped": 0,
+            "symbolic_closure": 435,
+            "symbolic_closure_rate_percent": 100.0,
+            "timeouts": 0
+          },
+          "\u21c4ctx": {
+            "combos": 64,
+            "cycles": 0,
+            "effective_combos": 64,
+            "failed": 0,
+            "inconclusive": 0,
+            "inconclusive_rate_percent": 0.0,
+            "nf_convergent": 0,
+            "nf_rate_percent": 0.0,
+            "normalization_gap": 64,
+            "normalization_gap_rate_percent": 100.0,
+            "numeric_only": 0,
+            "numeric_only_rate_percent": 0.0,
+            "proved_symbolic": 64,
+            "proved_symbolic_rate_percent": 100.0,
+            "skipped": 0,
+            "symbolic_closure": 64,
+            "symbolic_closure_rate_percent": 100.0,
+            "timeouts": 0
+          },
+          "\u21c4ctx#2": {
+            "combos": 21,
+            "cycles": 0,
+            "effective_combos": 21,
+            "failed": 0,
+            "inconclusive": 0,
+            "inconclusive_rate_percent": 0.0,
+            "nf_convergent": 0,
+            "nf_rate_percent": 0.0,
+            "normalization_gap": 21,
+            "normalization_gap_rate_percent": 100.0,
+            "numeric_only": 0,
+            "numeric_only_rate_percent": 0.0,
+            "proved_symbolic": 21,
+            "proved_symbolic_rate_percent": 100.0,
+            "skipped": 0,
+            "symbolic_closure": 21,
+            "symbolic_closure_rate_percent": 100.0,
+            "timeouts": 0
+          },
+          "\u21c4ctx#3": {
+            "combos": 19,
+            "cycles": 0,
+            "effective_combos": 19,
+            "failed": 0,
+            "inconclusive": 0,
+            "inconclusive_rate_percent": 0.0,
+            "nf_convergent": 0,
+            "nf_rate_percent": 0.0,
+            "normalization_gap": 19,
+            "normalization_gap_rate_percent": 100.0,
+            "numeric_only": 0,
+            "numeric_only_rate_percent": 0.0,
+            "proved_symbolic": 19,
+            "proved_symbolic_rate_percent": 100.0,
+            "skipped": 0,
+            "symbolic_closure": 19,
+            "symbolic_closure_rate_percent": 100.0,
+            "timeouts": 0
+          },
+          "\u21c4ctx#4": {
+            "combos": 19,
+            "cycles": 0,
+            "effective_combos": 19,
+            "failed": 0,
+            "inconclusive": 0,
+            "inconclusive_rate_percent": 0.0,
+            "nf_convergent": 0,
+            "nf_rate_percent": 0.0,
+            "normalization_gap": 19,
+            "normalization_gap_rate_percent": 100.0,
+            "numeric_only": 0,
+            "numeric_only_rate_percent": 0.0,
+            "proved_symbolic": 19,
+            "proved_symbolic_rate_percent": 100.0,
+            "skipped": 0,
+            "symbolic_closure": 19,
+            "symbolic_closure_rate_percent": 100.0,
+            "timeouts": 0
+          },
+          "\u21c4ctx#5": {
+            "combos": 15,
+            "cycles": 0,
+            "effective_combos": 15,
+            "failed": 0,
+            "inconclusive": 0,
+            "inconclusive_rate_percent": 0.0,
+            "nf_convergent": 0,
+            "nf_rate_percent": 0.0,
+            "normalization_gap": 15,
+            "normalization_gap_rate_percent": 100.0,
+            "numeric_only": 0,
+            "numeric_only_rate_percent": 0.0,
+            "proved_symbolic": 15,
+            "proved_symbolic_rate_percent": 100.0,
+            "skipped": 0,
+            "symbolic_closure": 15,
+            "symbolic_closure_rate_percent": 100.0,
+            "timeouts": 0
+          },
+          "\u21c4sub": {
+            "combos": 2016,
+            "cycles": 0,
+            "effective_combos": 2016,
+            "failed": 0,
+            "inconclusive": 0,
+            "inconclusive_rate_percent": 0.0,
+            "nf_convergent": 0,
+            "nf_rate_percent": 0.0,
+            "normalization_gap": 2016,
+            "normalization_gap_rate_percent": 100.0,
+            "numeric_only": 0,
+            "numeric_only_rate_percent": 0.0,
+            "proved_symbolic": 2016,
+            "proved_symbolic_rate_percent": 100.0,
+            "skipped": 0,
+            "symbolic_closure": 2016,
+            "symbolic_closure_rate_percent": 100.0,
+            "timeouts": 0
+          },
+          "\u21c4sub+": {
+            "combos": 1344,
+            "cycles": 0,
+            "effective_combos": 1344,
+            "failed": 0,
+            "inconclusive": 0,
+            "inconclusive_rate_percent": 0.0,
+            "nf_convergent": 0,
+            "nf_rate_percent": 0.0,
+            "normalization_gap": 1344,
+            "normalization_gap_rate_percent": 100.0,
+            "numeric_only": 0,
+            "numeric_only_rate_percent": 0.0,
+            "proved_symbolic": 1344,
+            "proved_symbolic_rate_percent": 100.0,
+            "skipped": 0,
+            "symbolic_closure": 1344,
+            "symbolic_closure_rate_percent": 100.0,
+            "timeouts": 0
+          }
+        },
+        "symbolic_closure": 16519,
+        "symbolic_closure_rate_percent": 100.0,
+        "timeouts": 0,
+        "total_combos": 16519
+      },
+      "process_elapsed_seconds": 17.025,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,

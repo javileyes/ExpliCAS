@@ -10,7 +10,7 @@ pub fn evaluate_limit_command_input(
         return Err(LimitCommandEvalError::EmptyInput);
     }
 
-    let parsed = parse_limit_command_input(trimmed);
+    let parsed = parse_limit_command_input(trimmed).map_err(LimitCommandEvalError::Parse)?;
     match eval_limit_from_str(parsed.expr, parsed.var, parsed.approach, parsed.presimplify) {
         Ok(limit_result) => Ok(LimitCommandEvalOutput {
             var: parsed.var.to_string(),

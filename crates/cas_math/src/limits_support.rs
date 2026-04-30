@@ -1,8 +1,9 @@
 use crate::infinity_support::{mk_infinity, InfSign};
 use crate::limit_types::{Approach, LimitEvalOutcome, LimitOptions, PreSimplifyMode};
-use cas_ast::{Constant, Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
+use num_traits::{Signed, Zero};
 
 /// Check if an expression depends on a specific variable id.
 ///
@@ -164,6 +165,896 @@ pub fn apply_reciprocal_power_rule(ctx: &mut Context, expr: ExprId, var: ExprId)
     }
 }
 
+fn infinity_sign_of_expr(ctx: &Context, expr: ExprId) -> Option<InfSign> {
+    match ctx.get(expr) {
+        Expr::Constant(Constant::Infinity) => Some(InfSign::Pos),
+        Expr::Neg(inner) if matches!(ctx.get(*inner), Expr::Constant(Constant::Infinity)) => {
+            Some(InfSign::Neg)
+        }
+        _ => None,
+    }
+}
+
+fn neg_inf_sign(sign: InfSign) -> InfSign {
+    match sign {
+        InfSign::Pos => InfSign::Neg,
+        InfSign::Neg => InfSign::Pos,
+    }
+}
+
+fn negate_limit_result(ctx: &mut Context, expr: ExprId) -> ExprId {
+    if let Some(sign) = infinity_sign_of_expr(ctx, expr) {
+        return mk_infinity(ctx, neg_inf_sign(sign));
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Number(value) => ctx.add(Expr::Number(-value)),
+        _ => ctx.add(Expr::Neg(expr)),
+    }
+}
+
+fn numeric_limit_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Number(value) => Some(value.clone()),
+        _ => None,
+    }
+}
+
+fn scale_infinity(ctx: &mut Context, scale: &BigRational, sign: InfSign) -> Option<ExprId> {
+    if scale.is_zero() {
+        return None;
+    }
+
+    let result_sign = if scale.is_positive() {
+        sign
+    } else {
+        neg_inf_sign(sign)
+    };
+    Some(mk_infinity(ctx, result_sign))
+}
+
+#[derive(Debug, Clone)]
+struct PolynomialGrowthInfo {
+    degree: u32,
+    leading_coeff: BigRational,
+}
+
+fn polynomial_growth_info(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+) -> Option<PolynomialGrowthInfo> {
+    use crate::multipoly::{multipoly_from_expr, PolyBudget};
+
+    let Expr::Variable(var_sym_id) = ctx.get(var).clone() else {
+        return None;
+    };
+    let var_name = ctx.sym_name(var_sym_id);
+
+    let budget = PolyBudget {
+        max_terms: 100,
+        max_total_degree: 20,
+        max_pow_exp: 4,
+    };
+
+    let poly = multipoly_from_expr(ctx, expr, &budget).ok()?;
+    if poly.is_zero() {
+        return None;
+    }
+
+    let var_idx = poly.var_index(var_name)?;
+    let degree = poly.degree_in(var_idx);
+    if degree == 0 {
+        return None;
+    }
+
+    let leading_coeff = poly.leading_coeff_in(var_idx).constant_value()?;
+    Some(PolynomialGrowthInfo {
+        degree,
+        leading_coeff,
+    })
+}
+
+fn combine_add_limit_results(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> Option<ExprId> {
+    match (
+        infinity_sign_of_expr(ctx, lhs),
+        infinity_sign_of_expr(ctx, rhs),
+    ) {
+        (Some(left), Some(right)) if left == right => Some(mk_infinity(ctx, left)),
+        (Some(_), Some(_)) => None,
+        (Some(sign), None) | (None, Some(sign)) => Some(mk_infinity(ctx, sign)),
+        (None, None) => {
+            if let (Some(lhs_value), Some(rhs_value)) =
+                (numeric_limit_value(ctx, lhs), numeric_limit_value(ctx, rhs))
+            {
+                return Some(ctx.add(Expr::Number(lhs_value + rhs_value)));
+            }
+            Some(ctx.add(Expr::Add(lhs, rhs)))
+        }
+    }
+}
+
+fn combine_sub_limit_results(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> Option<ExprId> {
+    match (
+        infinity_sign_of_expr(ctx, lhs),
+        infinity_sign_of_expr(ctx, rhs),
+    ) {
+        (Some(left), Some(right)) if left == right => None,
+        (Some(left), Some(right)) if left != right => Some(mk_infinity(ctx, left)),
+        (Some(sign), None) => Some(mk_infinity(ctx, sign)),
+        (None, Some(sign)) => Some(mk_infinity(ctx, neg_inf_sign(sign))),
+        (None, None) => {
+            if let (Some(lhs_value), Some(rhs_value)) =
+                (numeric_limit_value(ctx, lhs), numeric_limit_value(ctx, rhs))
+            {
+                return Some(ctx.add(Expr::Number(lhs_value - rhs_value)));
+            }
+            Some(ctx.add(Expr::Sub(lhs, rhs)))
+        }
+        _ => None,
+    }
+}
+
+fn combine_mul_limit_results(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> Option<ExprId> {
+    let lhs_inf = infinity_sign_of_expr(ctx, lhs);
+    let rhs_inf = infinity_sign_of_expr(ctx, rhs);
+
+    match (lhs_inf, rhs_inf) {
+        (Some(left), Some(right)) => {
+            let sign = if left == right {
+                InfSign::Pos
+            } else {
+                InfSign::Neg
+            };
+            return Some(mk_infinity(ctx, sign));
+        }
+        (Some(sign), None) => {
+            let scale = numeric_limit_value(ctx, rhs)?;
+            return scale_infinity(ctx, &scale, sign);
+        }
+        (None, Some(sign)) => {
+            let scale = numeric_limit_value(ctx, lhs)?;
+            return scale_infinity(ctx, &scale, sign);
+        }
+        (None, None) => {}
+    }
+
+    let lhs_value = numeric_limit_value(ctx, lhs)?;
+    let rhs_value = numeric_limit_value(ctx, rhs)?;
+    Some(ctx.add(Expr::Number(lhs_value * rhs_value)))
+}
+
+fn combine_div_limit_results(ctx: &mut Context, num: ExprId, den: ExprId) -> Option<ExprId> {
+    let num_inf = infinity_sign_of_expr(ctx, num);
+    let den_inf = infinity_sign_of_expr(ctx, den);
+
+    match (num_inf, den_inf) {
+        (Some(_), Some(_)) => return None,
+        (Some(sign), None) => {
+            let den_value = numeric_limit_value(ctx, den)?;
+            if den_value.is_zero() {
+                return None;
+            }
+            return scale_infinity(
+                ctx,
+                &(BigRational::from_integer(BigInt::from(1)) / den_value),
+                sign,
+            );
+        }
+        (None, Some(_)) => {
+            numeric_limit_value(ctx, num)?;
+            return Some(ctx.num(0));
+        }
+        (None, None) => {}
+    }
+
+    let num_value = numeric_limit_value(ctx, num)?;
+    let den_value = numeric_limit_value(ctx, den)?;
+    if den_value.is_zero() {
+        return None;
+    }
+    Some(ctx.add(Expr::Number(num_value / den_value)))
+}
+
+fn limit_growth_sign(leading_coeff: &BigRational, degree: u32, approach: InfSign) -> InfSign {
+    let coeff_positive = leading_coeff.is_positive();
+    let power_positive = match approach {
+        InfSign::Pos => true,
+        InfSign::Neg => degree.is_multiple_of(2),
+    };
+
+    if coeff_positive == power_positive {
+        InfSign::Pos
+    } else {
+        InfSign::Neg
+    }
+}
+
+fn linear_argument_tail_sign(
+    ctx: &Context,
+    arg: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<InfSign> {
+    let growth = polynomial_growth_info(ctx, arg, var)?;
+    if growth.degree != 1 {
+        return None;
+    }
+    Some(limit_growth_sign(
+        &growth.leading_coeff,
+        growth.degree,
+        approach,
+    ))
+}
+
+#[derive(Debug, Clone)]
+struct ScaledLinearExpTailInfo {
+    coeff: BigRational,
+    tail: InfSign,
+}
+
+fn linear_exp_tail_sign(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<InfSign> {
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Exp)) =>
+        {
+            linear_argument_tail_sign(ctx, args[0], var, approach)
+        }
+        Expr::Pow(base, exp) if matches!(ctx.get(base), Expr::Constant(Constant::E)) => {
+            linear_argument_tail_sign(ctx, exp, var, approach)
+        }
+        _ => None,
+    }
+}
+
+fn scaled_linear_exp_tail_info(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ScaledLinearExpTailInfo> {
+    if let Some(tail) = linear_exp_tail_sign(ctx, expr, var, approach) {
+        return Some(ScaledLinearExpTailInfo {
+            coeff: BigRational::from_integer(BigInt::from(1)),
+            tail,
+        });
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let mut info = scaled_linear_exp_tail_info(ctx, inner, var, approach)?;
+            info.coeff = -info.coeff;
+            Some(info)
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(lhs_scale) = numeric_limit_value(ctx, lhs) {
+                if let Some(mut rhs_info) = scaled_linear_exp_tail_info(ctx, rhs, var, approach) {
+                    rhs_info.coeff *= lhs_scale;
+                    return Some(rhs_info);
+                }
+            }
+            if let Some(rhs_scale) = numeric_limit_value(ctx, rhs) {
+                if let Some(mut lhs_info) = scaled_linear_exp_tail_info(ctx, lhs, var, approach) {
+                    lhs_info.coeff *= rhs_scale;
+                    return Some(lhs_info);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn nonzero_scaled_linear_exp_tail_info(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ScaledLinearExpTailInfo> {
+    let info = scaled_linear_exp_tail_info(ctx, expr, var, approach)?;
+    if info.coeff.is_zero() {
+        None
+    } else {
+        Some(info)
+    }
+}
+
+fn polynomial_or_numeric_tail_sign(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<InfSign> {
+    if let Some(growth) = polynomial_growth_info(ctx, expr, var) {
+        return Some(limit_growth_sign(
+            &growth.leading_coeff,
+            growth.degree,
+            approach,
+        ));
+    }
+
+    let value = numeric_limit_value(ctx, expr)?;
+    if value.is_zero() {
+        None
+    } else if value.is_positive() {
+        Some(InfSign::Pos)
+    } else {
+        Some(InfSign::Neg)
+    }
+}
+
+fn rational_one() -> BigRational {
+    BigRational::from_integer(BigInt::from(1))
+}
+
+fn constant_rational_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr).clone() {
+        Expr::Number(value) => Some(value),
+        Expr::Neg(inner) => Some(-constant_rational_value(ctx, inner)?),
+        Expr::Div(num, den) => {
+            let den_value = constant_rational_value(ctx, den)?;
+            if den_value.is_zero() {
+                return None;
+            }
+            Some(constant_rational_value(ctx, num)? / den_value)
+        }
+        _ => None,
+    }
+}
+
+fn is_exact_named_gt_one_base(ctx: &Context, expr: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Constant(Constant::E | Constant::Pi | Constant::Phi)
+    )
+}
+
+fn is_rational_one(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(value) if value == &rational_one())
+}
+
+fn exact_named_log_base_tail_sign(ctx: &Context, base: ExprId) -> Option<InfSign> {
+    if is_exact_named_gt_one_base(ctx, base) {
+        return Some(InfSign::Pos);
+    }
+
+    if let Expr::Div(num, den) = ctx.get(base).clone() {
+        if is_rational_one(ctx, num) {
+            return match exact_named_log_base_tail_sign(ctx, den)? {
+                InfSign::Pos => Some(InfSign::Neg),
+                InfSign::Neg => Some(InfSign::Pos),
+            };
+        }
+    }
+
+    if let Expr::Pow(pow_base, exp) = ctx.get(base).clone() {
+        let base_sign = exact_named_log_base_tail_sign(ctx, pow_base)?;
+        let exponent = crate::expr_extract::extract_i64_integer(ctx, exp)?;
+        if exponent == 0 {
+            return None;
+        }
+        return match (base_sign, exponent.is_positive()) {
+            (InfSign::Pos, true) | (InfSign::Neg, false) => Some(InfSign::Pos),
+            (InfSign::Pos, false) | (InfSign::Neg, true) => Some(InfSign::Neg),
+        };
+    }
+
+    None
+}
+
+fn log_base_tail_coeff_from_sign(sign: InfSign) -> BigRational {
+    match sign {
+        InfSign::Pos => rational_one(),
+        InfSign::Neg => -rational_one(),
+    }
+}
+
+fn positive_log_base_tail_coeff(ctx: &Context, base: ExprId) -> Option<BigRational> {
+    if let Some(sign) = exact_named_log_base_tail_sign(ctx, base) {
+        return Some(log_base_tail_coeff_from_sign(sign));
+    }
+
+    let base_value = constant_rational_value(ctx, base)?;
+    let one = rational_one();
+    if !base_value.is_positive() || base_value == one {
+        return None;
+    }
+    if base_value > one {
+        Some(one)
+    } else {
+        Some(-one)
+    }
+}
+
+fn linear_subpolynomial_tail_coeff(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<BigRational> {
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) => {
+            let builtin = ctx.builtin_of(fn_id)?;
+            match (builtin, args.as_slice()) {
+                (BuiltinFn::Ln | BuiltinFn::Sqrt | BuiltinFn::Log2 | BuiltinFn::Log10, [arg])
+                    if linear_argument_tail_sign(ctx, *arg, var, approach)? == InfSign::Pos =>
+                {
+                    Some(rational_one())
+                }
+                (BuiltinFn::Log, [base, arg])
+                    if linear_argument_tail_sign(ctx, *arg, var, approach)? == InfSign::Pos =>
+                {
+                    positive_log_base_tail_coeff(ctx, *base)
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+#[derive(Debug, Clone)]
+struct ScaledSubpolynomialTailInfo {
+    coeff: BigRational,
+}
+
+fn scaled_linear_subpolynomial_tail_info(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ScaledSubpolynomialTailInfo> {
+    if let Some(coeff) = linear_subpolynomial_tail_coeff(ctx, expr, var, approach) {
+        return Some(ScaledSubpolynomialTailInfo { coeff });
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let mut info = scaled_linear_subpolynomial_tail_info(ctx, inner, var, approach)?;
+            info.coeff = -info.coeff;
+            Some(info)
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(lhs_scale) = numeric_limit_value(ctx, lhs) {
+                if let Some(mut rhs_info) =
+                    scaled_linear_subpolynomial_tail_info(ctx, rhs, var, approach)
+                {
+                    rhs_info.coeff *= lhs_scale;
+                    return Some(rhs_info);
+                }
+            }
+            if let Some(rhs_scale) = numeric_limit_value(ctx, rhs) {
+                if let Some(mut lhs_info) =
+                    scaled_linear_subpolynomial_tail_info(ctx, lhs, var, approach)
+                {
+                    lhs_info.coeff *= rhs_scale;
+                    return Some(lhs_info);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn nonzero_scaled_linear_subpolynomial_tail_info(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ScaledSubpolynomialTailInfo> {
+    let info = scaled_linear_subpolynomial_tail_info(ctx, expr, var, approach)?;
+    if info.coeff.is_zero() {
+        None
+    } else {
+        Some(info)
+    }
+}
+
+fn subpolynomial_tail_sign(info: &ScaledSubpolynomialTailInfo) -> Option<InfSign> {
+    if info.coeff.is_zero() {
+        None
+    } else if info.coeff.is_positive() {
+        Some(InfSign::Pos)
+    } else {
+        Some(InfSign::Neg)
+    }
+}
+
+fn elementary_linear_argument_limit_at_infinity(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    arg: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let arg_tail = linear_argument_tail_sign(ctx, arg, var, approach)?;
+    match (builtin, arg_tail) {
+        (BuiltinFn::Sqrt | BuiltinFn::Ln, InfSign::Pos) => Some(mk_infinity(ctx, InfSign::Pos)),
+        (BuiltinFn::Exp, InfSign::Pos) => Some(mk_infinity(ctx, InfSign::Pos)),
+        (BuiltinFn::Exp, InfSign::Neg) => Some(ctx.num(0)),
+        _ => None,
+    }
+}
+
+/// Elementary linear-argument limits as `x -> ±∞`.
+///
+/// This intentionally accepts only degree-one polynomial arguments with numeric
+/// leading coefficient. Higher-degree or non-polynomial compositions stay
+/// residual until their domain and dominance policy are represented explicitly.
+pub fn elementary_function_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let builtin = ctx.builtin_of(fn_id)?;
+            elementary_linear_argument_limit_at_infinity(ctx, builtin, args[0], var, approach)
+        }
+        Expr::Pow(base, exp) if matches!(ctx.get(base), Expr::Constant(Constant::E)) => {
+            elementary_linear_argument_limit_at_infinity(ctx, BuiltinFn::Exp, exp, var, approach)
+        }
+        _ => None,
+    }
+}
+
+pub fn additive_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) => {
+            let lhs_limit = try_limit_rules_at_infinity(ctx, lhs, var, approach)?;
+            let rhs_limit = try_limit_rules_at_infinity(ctx, rhs, var, approach)?;
+            combine_add_limit_results(ctx, lhs_limit, rhs_limit)
+        }
+        Expr::Sub(lhs, rhs) => {
+            let lhs_limit = try_limit_rules_at_infinity(ctx, lhs, var, approach)?;
+            let rhs_limit = try_limit_rules_at_infinity(ctx, rhs, var, approach)?;
+            combine_sub_limit_results(ctx, lhs_limit, rhs_limit)
+        }
+        _ => None,
+    }
+}
+
+pub fn multiplicative_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let inner_limit = try_limit_rules_at_infinity(ctx, inner, var, approach)?;
+            Some(negate_limit_result(ctx, inner_limit))
+        }
+        Expr::Mul(lhs, rhs) => {
+            let lhs_limit = try_limit_rules_at_infinity(ctx, lhs, var, approach)?;
+            let rhs_limit = try_limit_rules_at_infinity(ctx, rhs, var, approach)?;
+            combine_mul_limit_results(ctx, lhs_limit, rhs_limit)
+        }
+        Expr::Div(num, den) => {
+            let num_limit = try_limit_rules_at_infinity(ctx, num, var, approach)?;
+            let den_limit = try_limit_rules_at_infinity(ctx, den, var, approach)?;
+            combine_div_limit_results(ctx, num_limit, den_limit)
+        }
+        _ => None,
+    }
+}
+
+/// Dominance rule for linear-argument exponentials against polynomial growth as `x -> ±∞`.
+///
+/// This is intentionally narrow: only `exp(linear)`/`e^(linear)` with optional
+/// numeric scaling is compared with polynomials whose relevant leading
+/// coefficient is numeric. Nonlinear exponentials such as `exp(x^2)` remain
+/// residual.
+pub fn exponential_polynomial_dominance_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) => {
+            if let Some(info) = nonzero_scaled_linear_exp_tail_info(ctx, lhs, var, approach) {
+                if info.tail != InfSign::Pos {
+                    return None;
+                }
+                polynomial_growth_info(ctx, rhs, var)?;
+                return scale_infinity(ctx, &info.coeff, InfSign::Pos);
+            }
+            if let Some(info) = nonzero_scaled_linear_exp_tail_info(ctx, rhs, var, approach) {
+                if info.tail != InfSign::Pos {
+                    return None;
+                }
+                polynomial_growth_info(ctx, lhs, var)?;
+                return scale_infinity(ctx, &info.coeff, InfSign::Pos);
+            }
+            None
+        }
+        Expr::Sub(lhs, rhs) => {
+            if let Some(info) = nonzero_scaled_linear_exp_tail_info(ctx, lhs, var, approach) {
+                if info.tail != InfSign::Pos {
+                    return None;
+                }
+                polynomial_growth_info(ctx, rhs, var)?;
+                return scale_infinity(ctx, &info.coeff, InfSign::Pos);
+            }
+            if let Some(info) = nonzero_scaled_linear_exp_tail_info(ctx, rhs, var, approach) {
+                if info.tail != InfSign::Pos {
+                    return None;
+                }
+                polynomial_growth_info(ctx, lhs, var)?;
+                return scale_infinity(ctx, &(-info.coeff), InfSign::Pos);
+            }
+            None
+        }
+        Expr::Div(num, den) => {
+            if let Some(den_info) = nonzero_scaled_linear_exp_tail_info(ctx, den, var, approach) {
+                if den_info.tail == InfSign::Pos {
+                    polynomial_or_numeric_tail_sign(ctx, num, var, approach)?;
+                    return Some(ctx.num(0));
+                }
+
+                if let Some(num_sign) = polynomial_or_numeric_tail_sign(ctx, num, var, approach) {
+                    return scale_infinity(
+                        ctx,
+                        &(BigRational::from_integer(BigInt::from(1)) / den_info.coeff),
+                        num_sign,
+                    );
+                }
+            }
+
+            if let Some(num_info) = nonzero_scaled_linear_exp_tail_info(ctx, num, var, approach) {
+                if num_info.tail != InfSign::Pos {
+                    return None;
+                }
+                let den_sign = polynomial_or_numeric_tail_sign(ctx, den, var, approach)?;
+                return scale_infinity(ctx, &num_info.coeff, den_sign);
+            }
+            None
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(info) = scaled_linear_exp_tail_info(ctx, lhs, var, approach) {
+                if info.coeff.is_zero() || info.tail == InfSign::Neg {
+                    polynomial_growth_info(ctx, rhs, var)?;
+                    return Some(ctx.num(0));
+                }
+            }
+            if let Some(info) = scaled_linear_exp_tail_info(ctx, rhs, var, approach) {
+                if info.coeff.is_zero() || info.tail == InfSign::Neg {
+                    polynomial_growth_info(ctx, lhs, var)?;
+                    return Some(ctx.num(0));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Dominance rule for `ln(linear)`/`sqrt(linear)` against polynomial growth.
+///
+/// The subpolynomial side is accepted only when its linear argument tends to
+/// `+∞`, which makes the real-domain tail explicit. Nonlinear arguments and
+/// subpolynomial-vs-subpolynomial comparisons remain residual.
+pub fn subpolynomial_polynomial_dominance_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) => {
+            if scaled_linear_subpolynomial_tail_info(ctx, lhs, var, approach).is_some() {
+                let growth = polynomial_growth_info(ctx, rhs, var)?;
+                let sign = limit_growth_sign(&growth.leading_coeff, growth.degree, approach);
+                return Some(mk_infinity(ctx, sign));
+            }
+            if scaled_linear_subpolynomial_tail_info(ctx, rhs, var, approach).is_some() {
+                let growth = polynomial_growth_info(ctx, lhs, var)?;
+                let sign = limit_growth_sign(&growth.leading_coeff, growth.degree, approach);
+                return Some(mk_infinity(ctx, sign));
+            }
+            None
+        }
+        Expr::Sub(lhs, rhs) => {
+            if scaled_linear_subpolynomial_tail_info(ctx, lhs, var, approach).is_some() {
+                let growth = polynomial_growth_info(ctx, rhs, var)?;
+                let sign = limit_growth_sign(&growth.leading_coeff, growth.degree, approach);
+                return Some(mk_infinity(ctx, neg_inf_sign(sign)));
+            }
+            if scaled_linear_subpolynomial_tail_info(ctx, rhs, var, approach).is_some() {
+                let growth = polynomial_growth_info(ctx, lhs, var)?;
+                let sign = limit_growth_sign(&growth.leading_coeff, growth.degree, approach);
+                return Some(mk_infinity(ctx, sign));
+            }
+            None
+        }
+        Expr::Div(num, den) => {
+            if scaled_linear_subpolynomial_tail_info(ctx, num, var, approach).is_some() {
+                polynomial_growth_info(ctx, den, var)?;
+                return Some(ctx.num(0));
+            }
+
+            if let Some(den_info) =
+                nonzero_scaled_linear_subpolynomial_tail_info(ctx, den, var, approach)
+            {
+                let growth = polynomial_growth_info(ctx, num, var)?;
+                let num_sign = limit_growth_sign(&growth.leading_coeff, growth.degree, approach);
+                return scale_infinity(
+                    ctx,
+                    &(BigRational::from_integer(BigInt::from(1)) / den_info.coeff),
+                    num_sign,
+                );
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn scaled_exp_subpoly_product_limit(
+    ctx: &mut Context,
+    exp_info: ScaledLinearExpTailInfo,
+    subpoly_info: ScaledSubpolynomialTailInfo,
+) -> Option<ExprId> {
+    if exp_info.coeff.is_zero() || subpoly_info.coeff.is_zero() || exp_info.tail == InfSign::Neg {
+        return Some(ctx.num(0));
+    }
+
+    scale_infinity(ctx, &(exp_info.coeff * subpoly_info.coeff), InfSign::Pos)
+}
+
+/// Dominance rule for linear-argument exponentials against `ln/sqrt(linear)`.
+///
+/// Both sides are accepted only through existing tail analyzers: exponential
+/// exponents must be linear, and logarithm/radical arguments must tend to
+/// `+∞` on the real tail. Nonlinear exponentials such as `exp(x^2)` remain
+/// residual.
+pub fn exponential_subpolynomial_dominance_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) => {
+            if let Some(exp_info) = nonzero_scaled_linear_exp_tail_info(ctx, lhs, var, approach) {
+                if exp_info.tail == InfSign::Pos
+                    && scaled_linear_subpolynomial_tail_info(ctx, rhs, var, approach).is_some()
+                {
+                    return scale_infinity(ctx, &exp_info.coeff, InfSign::Pos);
+                }
+            }
+            if let Some(exp_info) = nonzero_scaled_linear_exp_tail_info(ctx, rhs, var, approach) {
+                if exp_info.tail == InfSign::Pos
+                    && scaled_linear_subpolynomial_tail_info(ctx, lhs, var, approach).is_some()
+                {
+                    return scale_infinity(ctx, &exp_info.coeff, InfSign::Pos);
+                }
+            }
+            None
+        }
+        Expr::Sub(lhs, rhs) => {
+            if let Some(exp_info) = nonzero_scaled_linear_exp_tail_info(ctx, lhs, var, approach) {
+                if exp_info.tail == InfSign::Pos
+                    && scaled_linear_subpolynomial_tail_info(ctx, rhs, var, approach).is_some()
+                {
+                    return scale_infinity(ctx, &exp_info.coeff, InfSign::Pos);
+                }
+            }
+            if let Some(exp_info) = nonzero_scaled_linear_exp_tail_info(ctx, rhs, var, approach) {
+                if exp_info.tail == InfSign::Pos
+                    && scaled_linear_subpolynomial_tail_info(ctx, lhs, var, approach).is_some()
+                {
+                    return scale_infinity(ctx, &(-exp_info.coeff), InfSign::Pos);
+                }
+            }
+            None
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(exp_info) = scaled_linear_exp_tail_info(ctx, lhs, var, approach) {
+                if let Some(subpoly_info) =
+                    scaled_linear_subpolynomial_tail_info(ctx, rhs, var, approach)
+                {
+                    return scaled_exp_subpoly_product_limit(ctx, exp_info, subpoly_info);
+                }
+            }
+            if let Some(exp_info) = scaled_linear_exp_tail_info(ctx, rhs, var, approach) {
+                if let Some(subpoly_info) =
+                    scaled_linear_subpolynomial_tail_info(ctx, lhs, var, approach)
+                {
+                    return scaled_exp_subpoly_product_limit(ctx, exp_info, subpoly_info);
+                }
+            }
+            None
+        }
+        Expr::Div(num, den) => {
+            if let Some(den_info) = nonzero_scaled_linear_exp_tail_info(ctx, den, var, approach) {
+                if let Some(num_info) =
+                    scaled_linear_subpolynomial_tail_info(ctx, num, var, approach)
+                {
+                    let Some(num_sign) = subpolynomial_tail_sign(&num_info) else {
+                        return Some(ctx.num(0));
+                    };
+                    if den_info.tail == InfSign::Pos {
+                        return Some(ctx.num(0));
+                    }
+                    return scale_infinity(
+                        ctx,
+                        &(BigRational::from_integer(BigInt::from(1)) / den_info.coeff),
+                        num_sign,
+                    );
+                }
+            }
+
+            if let Some(num_info) = scaled_linear_exp_tail_info(ctx, num, var, approach) {
+                if let Some(den_info) =
+                    nonzero_scaled_linear_subpolynomial_tail_info(ctx, den, var, approach)
+                {
+                    if num_info.coeff.is_zero() || num_info.tail == InfSign::Neg {
+                        return Some(ctx.num(0));
+                    }
+                    return scale_infinity(ctx, &(num_info.coeff / den_info.coeff), InfSign::Pos);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Polynomial limit rule for `P(x)` as `x -> ±∞`.
+///
+/// This handles polynomial expressions whose leading coefficient in `var` is a
+/// numeric constant. Symbolic leading coefficients remain unresolved because
+/// their sign is not known under the conservative limit policy.
+pub fn polynomial_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    use crate::multipoly::{multipoly_from_expr, PolyBudget};
+
+    let Expr::Variable(var_sym_id) = ctx.get(var).clone() else {
+        return None;
+    };
+    let var_name = ctx.sym_name(var_sym_id);
+
+    let budget = PolyBudget {
+        max_terms: 100,
+        max_total_degree: 20,
+        max_pow_exp: 4,
+    };
+
+    let poly = multipoly_from_expr(ctx, expr, &budget).ok()?;
+    if poly.is_zero() {
+        return Some(ctx.num(0));
+    }
+
+    let var_idx = poly.var_index(var_name)?;
+    let degree = poly.degree_in(var_idx);
+    if degree == 0 {
+        return None;
+    }
+
+    let leading_coeff = poly.leading_coeff_in(var_idx);
+    let leading_value = leading_coeff.constant_value()?;
+    let sign = limit_growth_sign(&leading_value, degree, approach);
+    Some(mk_infinity(ctx, sign))
+}
+
 /// Rational polynomial limit rule for `P(x)/Q(x)` as `x -> ±∞`.
 ///
 /// Compares polynomial degrees in `var`:
@@ -177,7 +1068,6 @@ pub fn rational_poly_limit(
     approach: InfSign,
 ) -> Option<ExprId> {
     use crate::multipoly::{multipoly_from_expr, PolyBudget};
-    use num_traits::Signed;
 
     // Match Div(num, den)
     let Expr::Div(num, den) = ctx.get(expr).clone() else {
@@ -247,24 +1137,7 @@ pub fn rational_poly_limit(
     // Sign = sign(lc_p/lc_q) * sign(x^k) where k = deg_p - deg_q
     let k = deg_p - deg_q;
     let ratio = &lc_p_val / &lc_q_val;
-
-    // Determine sign of ratio
-    let ratio_positive = ratio.is_positive();
-
-    // Determine sign of x^k for the approach
-    let xk_positive = match approach {
-        InfSign::Pos => true,
-        InfSign::Neg => k % 2 == 0, // x^even is positive, x^odd is negative
-    };
-
-    // Combined sign: positive if both same, negative if different
-    let result_positive = ratio_positive == xk_positive;
-    let sign = if result_positive {
-        InfSign::Pos
-    } else {
-        InfSign::Neg
-    };
-
+    let sign = limit_growth_sign(&ratio, k, approach);
     Some(mk_infinity(ctx, sign))
 }
 
@@ -275,7 +1148,14 @@ pub fn rational_poly_limit(
 /// 2. Variable
 /// 3. Power
 /// 4. Reciprocal power
-/// 5. Rational polynomial
+/// 5. Elementary exact-argument functions
+/// 6. Additive combination
+/// 7. Determinate multiplicative combination
+/// 8. Exact exponential-vs-polynomial dominance
+/// 9. Exact subpolynomial-vs-polynomial dominance
+/// 10. Exact exponential-vs-subpolynomial dominance
+/// 11. Polynomial
+/// 12. Rational polynomial
 pub fn try_limit_rules_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
@@ -292,6 +1172,29 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     if let Some(r) = apply_reciprocal_power_rule(ctx, expr, var) {
+        return Some(r);
+    }
+    if let Some(r) = elementary_function_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = additive_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = multiplicative_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = exponential_polynomial_dominance_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = subpolynomial_polynomial_dominance_limit_at_infinity(ctx, expr, var, approach)
+    {
+        return Some(r);
+    }
+    if let Some(r) = exponential_subpolynomial_dominance_limit_at_infinity(ctx, expr, var, approach)
+    {
+        return Some(r);
+    }
+    if let Some(r) = polynomial_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     rational_poly_limit(ctx, expr, var, approach)
@@ -544,6 +1447,630 @@ mod tests {
     }
 
     #[test]
+    fn polynomial_limit_at_infinity_handles_numeric_leading_coeff_and_parity() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let positive_even = parse_expr(&mut ctx, "x^2 + 1");
+        let negative_odd = parse_expr(&mut ctx, "x - 2*x^3");
+
+        let pos_even_out = polynomial_limit_at_infinity(&mut ctx, positive_even, x, InfSign::Neg)
+            .expect("positive even polynomial");
+        let neg_odd_pos_out = polynomial_limit_at_infinity(&mut ctx, negative_odd, x, InfSign::Pos)
+            .expect("negative odd at +inf");
+        let neg_odd_neg_out = polynomial_limit_at_infinity(&mut ctx, negative_odd, x, InfSign::Neg)
+            .expect("negative odd at -inf");
+
+        assert!(matches!(
+            ctx.get(pos_even_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(ctx.get(neg_odd_pos_out), Expr::Neg(_)));
+        assert!(matches!(
+            ctx.get(neg_odd_neg_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+    }
+
+    #[test]
+    fn polynomial_limit_at_infinity_rejects_symbolic_leading_coeff() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let symbolic_lc = parse_expr(&mut ctx, "y*x^2 + 1");
+
+        let out = polynomial_limit_at_infinity(&mut ctx, symbolic_lc, x, InfSign::Pos);
+
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn elementary_function_limit_at_infinity_handles_exact_growth_cases() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let sqrt_x = parse_expr(&mut ctx, "sqrt(x)");
+        let ln_x = parse_expr(&mut ctx, "ln(x)");
+        let exp_x = parse_expr(&mut ctx, "exp(x)");
+        let exp_neg_x = parse_expr(&mut ctx, "exp(-x)");
+        let exp_two_x = parse_expr(&mut ctx, "exp(2*x)");
+        let ln_neg_linear = parse_expr(&mut ctx, "ln(-x + 1)");
+        let sqrt_neg_linear = parse_expr(&mut ctx, "sqrt(1 - x)");
+        let exp_quadratic = parse_expr(&mut ctx, "exp(x^2)");
+
+        let sqrt_pos = elementary_function_limit_at_infinity(&mut ctx, sqrt_x, x, InfSign::Pos)
+            .expect("sqrt at +inf");
+        let ln_pos = elementary_function_limit_at_infinity(&mut ctx, ln_x, x, InfSign::Pos)
+            .expect("ln at +inf");
+        let exp_pos = elementary_function_limit_at_infinity(&mut ctx, exp_x, x, InfSign::Pos)
+            .expect("exp at +inf");
+        let exp_neg = elementary_function_limit_at_infinity(&mut ctx, exp_x, x, InfSign::Neg)
+            .expect("exp at -inf");
+        let exp_neg_x_pos =
+            elementary_function_limit_at_infinity(&mut ctx, exp_neg_x, x, InfSign::Pos)
+                .expect("exp(-x) at +inf");
+        let exp_two_x_neg =
+            elementary_function_limit_at_infinity(&mut ctx, exp_two_x, x, InfSign::Neg)
+                .expect("exp(2*x) at -inf");
+        let ln_neg_linear_neg =
+            elementary_function_limit_at_infinity(&mut ctx, ln_neg_linear, x, InfSign::Neg)
+                .expect("ln(-x + 1) at -inf");
+        let sqrt_neg_linear_neg =
+            elementary_function_limit_at_infinity(&mut ctx, sqrt_neg_linear, x, InfSign::Neg)
+                .expect("sqrt(1 - x) at -inf");
+
+        assert!(matches!(
+            ctx.get(sqrt_pos),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(
+            ctx.get(ln_pos),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(
+            ctx.get(exp_pos),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(
+            matches!(ctx.get(exp_neg), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(
+            matches!(ctx.get(exp_neg_x_pos), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(
+            matches!(ctx.get(exp_two_x_neg), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(
+            ctx.get(ln_neg_linear_neg),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(
+            ctx.get(sqrt_neg_linear_neg),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(elementary_function_limit_at_infinity(&mut ctx, sqrt_x, x, InfSign::Neg).is_none());
+        assert!(elementary_function_limit_at_infinity(&mut ctx, ln_x, x, InfSign::Neg).is_none());
+        assert!(
+            elementary_function_limit_at_infinity(&mut ctx, exp_quadratic, x, InfSign::Pos)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn additive_limit_at_infinity_combines_finite_and_infinite_terms_conservatively() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let sqrt_plus_one = parse_expr(&mut ctx, "sqrt(x) + 1");
+        let decaying_exp_plus_one = parse_expr(&mut ctx, "exp(-x) + 1");
+        let exp_minus_poly = parse_expr(&mut ctx, "exp(x) - x^2");
+        let poly_cancel = parse_expr(&mut ctx, "x^2 - x^2");
+
+        let sqrt_plus_one_out =
+            try_limit_rules_at_infinity(&mut ctx, sqrt_plus_one, x, InfSign::Pos)
+                .expect("sqrt plus one");
+        let decaying_exp_plus_one_out =
+            try_limit_rules_at_infinity(&mut ctx, decaying_exp_plus_one, x, InfSign::Pos)
+                .expect("decaying exp plus one");
+        let poly_cancel_out = try_limit_rules_at_infinity(&mut ctx, poly_cancel, x, InfSign::Pos)
+            .expect("polynomial cancellation");
+
+        assert!(matches!(
+            ctx.get(sqrt_plus_one_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(
+            matches!(ctx.get(decaying_exp_plus_one_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(1)))
+        );
+        let exp_minus_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, exp_minus_poly, x, InfSign::Pos)
+                .expect("exp dominates polynomial");
+        assert!(matches!(
+            ctx.get(exp_minus_poly_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(
+            matches!(ctx.get(poly_cancel_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+    }
+
+    #[test]
+    fn multiplicative_limit_at_infinity_combines_only_determined_products_and_quotients() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let scaled_sqrt = parse_expr(&mut ctx, "2*sqrt(x)");
+        let neg_sqrt = parse_expr(&mut ctx, "-sqrt(x)");
+        let reciprocal_exp = parse_expr(&mut ctx, "1/exp(x)");
+        let indeterminate_exp_difference = parse_expr(&mut ctx, "exp(x)-exp(x)");
+
+        let scaled_sqrt_out = try_limit_rules_at_infinity(&mut ctx, scaled_sqrt, x, InfSign::Pos)
+            .expect("scaled sqrt");
+        let neg_sqrt_out =
+            try_limit_rules_at_infinity(&mut ctx, neg_sqrt, x, InfSign::Pos).expect("neg sqrt");
+        let reciprocal_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, reciprocal_exp, x, InfSign::Pos)
+                .expect("reciprocal exp");
+
+        assert!(matches!(
+            ctx.get(scaled_sqrt_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(ctx.get(neg_sqrt_out), Expr::Neg(_)));
+        assert!(
+            matches!(ctx.get(reciprocal_exp_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(try_limit_rules_at_infinity(
+            &mut ctx,
+            indeterminate_exp_difference,
+            x,
+            InfSign::Pos
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn exponential_polynomial_dominance_handles_only_exact_safe_shapes() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let exp_minus_poly = parse_expr(&mut ctx, "exp(x) - x^2");
+        let poly_minus_exp = parse_expr(&mut ctx, "x^2 - exp(x)");
+        let poly_over_exp = parse_expr(&mut ctx, "x^2/exp(x)");
+        let exp_over_poly = parse_expr(&mut ctx, "exp(x)/x^2");
+        let poly_times_decaying_exp = parse_expr(&mut ctx, "x*exp(x)");
+        let poly_over_linear_exp = parse_expr(&mut ctx, "x^2/exp(2*x)");
+        let linear_exp_over_poly = parse_expr(&mut ctx, "exp(2*x)/x^2");
+        let poly_times_decaying_linear_exp = parse_expr(&mut ctx, "x^2*exp(2*x)");
+        let poly_over_decaying_linear_exp = parse_expr(&mut ctx, "x^2/exp(-2*x)");
+        let constant_over_decaying_linear_exp = parse_expr(&mut ctx, "1/exp(-2*x)");
+        let composed_exp_over_poly = parse_expr(&mut ctx, "exp(x^2)/x^2");
+        let even_poly_over_exp_neg = parse_expr(&mut ctx, "x^2/exp(x)");
+        let odd_poly_over_exp_neg = parse_expr(&mut ctx, "x/exp(x)");
+        let neg_scaled_exp_den_neg = parse_expr(&mut ctx, "x^2/(-2*exp(x))");
+        let zero_scaled_exp_den = parse_expr(&mut ctx, "x^2/(0*exp(x))");
+        let zero_scaled_linear_exp_den = parse_expr(&mut ctx, "x^2/(0*exp(2*x))");
+
+        let exp_minus_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, exp_minus_poly, x, InfSign::Pos)
+                .expect("exp dominates polynomial difference");
+        let poly_minus_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, poly_minus_exp, x, InfSign::Pos)
+                .expect("negative exponential dominance");
+        let poly_over_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, poly_over_exp, x, InfSign::Pos)
+                .expect("polynomial over exp");
+        let exp_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, exp_over_poly, x, InfSign::Pos)
+                .expect("exp over polynomial");
+        let poly_times_decaying_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, poly_times_decaying_exp, x, InfSign::Neg)
+                .expect("polynomial times decaying exp");
+        let poly_over_linear_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, poly_over_linear_exp, x, InfSign::Pos)
+                .expect("polynomial over linear exp");
+        let linear_exp_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, linear_exp_over_poly, x, InfSign::Pos)
+                .expect("linear exp over polynomial");
+        let poly_times_decaying_linear_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, poly_times_decaying_linear_exp, x, InfSign::Neg)
+                .expect("polynomial times decaying linear exp");
+        let poly_over_decaying_linear_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, poly_over_decaying_linear_exp, x, InfSign::Pos)
+                .expect("polynomial over decaying linear exp");
+        let constant_over_decaying_linear_exp_out = try_limit_rules_at_infinity(
+            &mut ctx,
+            constant_over_decaying_linear_exp,
+            x,
+            InfSign::Pos,
+        )
+        .expect("constant over decaying linear exp");
+        let even_poly_over_exp_neg_out =
+            try_limit_rules_at_infinity(&mut ctx, even_poly_over_exp_neg, x, InfSign::Neg)
+                .expect("even polynomial over decaying exp");
+        let odd_poly_over_exp_neg_out =
+            try_limit_rules_at_infinity(&mut ctx, odd_poly_over_exp_neg, x, InfSign::Neg)
+                .expect("odd polynomial over decaying exp");
+        let neg_scaled_exp_den_neg_out =
+            try_limit_rules_at_infinity(&mut ctx, neg_scaled_exp_den_neg, x, InfSign::Neg)
+                .expect("negative scaled exp denominator");
+
+        assert!(matches!(
+            ctx.get(exp_minus_poly_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(ctx.get(poly_minus_exp_out), Expr::Neg(_)));
+        assert!(
+            matches!(ctx.get(poly_over_exp_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(
+            ctx.get(exp_over_poly_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(
+            matches!(ctx.get(poly_times_decaying_exp_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(
+            matches!(ctx.get(poly_over_linear_exp_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(
+            ctx.get(linear_exp_over_poly_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(
+            matches!(ctx.get(poly_times_decaying_linear_exp_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(
+            ctx.get(poly_over_decaying_linear_exp_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(
+            ctx.get(constant_over_decaying_linear_exp_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(
+            ctx.get(even_poly_over_exp_neg_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(ctx.get(odd_poly_over_exp_neg_out), Expr::Neg(_)));
+        assert!(matches!(ctx.get(neg_scaled_exp_den_neg_out), Expr::Neg(_)));
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, composed_exp_over_poly, x, InfSign::Pos)
+                .is_none()
+        );
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, zero_scaled_exp_den, x, InfSign::Pos).is_none()
+        );
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, zero_scaled_linear_exp_den, x, InfSign::Pos)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn subpolynomial_polynomial_dominance_handles_only_domain_safe_shapes() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let log_over_poly = parse_expr(&mut ctx, "ln(x)/x");
+        let poly_over_log = parse_expr(&mut ctx, "x/ln(x)");
+        let root_over_poly = parse_expr(&mut ctx, "sqrt(x)/x");
+        let poly_over_root = parse_expr(&mut ctx, "x/sqrt(x)");
+        let base_log_over_poly = parse_expr(&mut ctx, "log(2, x)/x");
+        let unary_log10_over_poly = parse_expr(&mut ctx, "log10(x)/x");
+        let poly_over_half_base_log = parse_expr(&mut ctx, "x/log(1/2, x)");
+        let e_base_log_over_poly = parse_expr(&mut ctx, "log(e, x)/x");
+        let pi_base_log_over_poly = parse_expr(&mut ctx, "log(pi, x)/x");
+        let phi_base_log_over_poly = parse_expr(&mut ctx, "log(phi, x)/x");
+        let poly_over_reciprocal_e_base_log = parse_expr(&mut ctx, "x/log(1/e, x)");
+        let powered_e_base_log_over_poly = parse_expr(&mut ctx, "log(e^2, x)/x");
+        let powered_phi_base_log_over_poly = parse_expr(&mut ctx, "log(phi^3, x)/x");
+        let poly_over_negative_power_e_base_log = parse_expr(&mut ctx, "x/log(e^-2, x)");
+        let poly_over_reciprocal_power_pi_base_log = parse_expr(&mut ctx, "x/log((1/pi)^2, x)");
+        let neg_tail_log_over_poly = parse_expr(&mut ctx, "ln(1 - x)/x^2");
+        let neg_tail_poly_over_log = parse_expr(&mut ctx, "x/ln(1 - x)");
+        let log_minus_poly = parse_expr(&mut ctx, "ln(x) - x");
+        let poly_minus_root = parse_expr(&mut ctx, "x - sqrt(x)");
+        let bad_domain_log = parse_expr(&mut ctx, "ln(x)/x");
+        let bad_domain_base_log = parse_expr(&mut ctx, "log(2, x)/x");
+        let invalid_base_log = parse_expr(&mut ctx, "log(1, x)/x");
+        let negative_named_base_log = parse_expr(&mut ctx, "log(-e, x)/x");
+        let zero_power_named_base_log = parse_expr(&mut ctx, "log(e^0, x)/x");
+        let nonlinear_log = parse_expr(&mut ctx, "ln(x^2)/x");
+        let subpoly_over_subpoly = parse_expr(&mut ctx, "ln(x)/sqrt(x)");
+        let zero_scaled_log_den = parse_expr(&mut ctx, "x/(0*ln(x))");
+
+        let log_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, log_over_poly, x, InfSign::Pos)
+                .expect("log over polynomial");
+        let poly_over_log_out =
+            try_limit_rules_at_infinity(&mut ctx, poly_over_log, x, InfSign::Pos)
+                .expect("polynomial over log");
+        let root_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, root_over_poly, x, InfSign::Pos)
+                .expect("root over polynomial");
+        let poly_over_root_out =
+            try_limit_rules_at_infinity(&mut ctx, poly_over_root, x, InfSign::Pos)
+                .expect("polynomial over root");
+        let base_log_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, base_log_over_poly, x, InfSign::Pos)
+                .expect("general-base log over polynomial");
+        let unary_log10_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, unary_log10_over_poly, x, InfSign::Pos)
+                .expect("log10 over polynomial");
+        let poly_over_half_base_log_out =
+            try_limit_rules_at_infinity(&mut ctx, poly_over_half_base_log, x, InfSign::Pos)
+                .expect("polynomial over base < 1 log");
+        let e_base_log_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, e_base_log_over_poly, x, InfSign::Pos)
+                .expect("e-base log over polynomial");
+        let pi_base_log_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, pi_base_log_over_poly, x, InfSign::Pos)
+                .expect("pi-base log over polynomial");
+        let phi_base_log_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, phi_base_log_over_poly, x, InfSign::Pos)
+                .expect("phi-base log over polynomial");
+        let poly_over_reciprocal_e_base_log_out =
+            try_limit_rules_at_infinity(&mut ctx, poly_over_reciprocal_e_base_log, x, InfSign::Pos)
+                .expect("polynomial over reciprocal e-base log");
+        let powered_e_base_log_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, powered_e_base_log_over_poly, x, InfSign::Pos)
+                .expect("powered e-base log over polynomial");
+        let powered_phi_base_log_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, powered_phi_base_log_over_poly, x, InfSign::Pos)
+                .expect("powered phi-base log over polynomial");
+        let poly_over_negative_power_e_base_log_out = try_limit_rules_at_infinity(
+            &mut ctx,
+            poly_over_negative_power_e_base_log,
+            x,
+            InfSign::Pos,
+        )
+        .expect("polynomial over negative powered e-base log");
+        let poly_over_reciprocal_power_pi_base_log_out = try_limit_rules_at_infinity(
+            &mut ctx,
+            poly_over_reciprocal_power_pi_base_log,
+            x,
+            InfSign::Pos,
+        )
+        .expect("polynomial over reciprocal power pi-base log");
+        let neg_tail_log_over_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, neg_tail_log_over_poly, x, InfSign::Neg)
+                .expect("negative-tail log over polynomial");
+        let neg_tail_poly_over_log_out =
+            try_limit_rules_at_infinity(&mut ctx, neg_tail_poly_over_log, x, InfSign::Neg)
+                .expect("negative-tail polynomial over log");
+        let log_minus_poly_out =
+            try_limit_rules_at_infinity(&mut ctx, log_minus_poly, x, InfSign::Pos)
+                .expect("log minus polynomial");
+        let poly_minus_root_out =
+            try_limit_rules_at_infinity(&mut ctx, poly_minus_root, x, InfSign::Pos)
+                .expect("polynomial minus root");
+
+        assert!(
+            matches!(ctx.get(log_over_poly_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(
+            ctx.get(poly_over_log_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(
+            matches!(ctx.get(root_over_poly_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(
+            ctx.get(poly_over_root_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(
+            matches!(ctx.get(base_log_over_poly_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(
+            matches!(ctx.get(unary_log10_over_poly_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(ctx.get(poly_over_half_base_log_out), Expr::Neg(_)));
+        assert!(
+            matches!(ctx.get(e_base_log_over_poly_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(
+            matches!(ctx.get(pi_base_log_over_poly_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(
+            matches!(ctx.get(phi_base_log_over_poly_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(
+            ctx.get(poly_over_reciprocal_e_base_log_out),
+            Expr::Neg(_)
+        ));
+        assert!(
+            matches!(ctx.get(powered_e_base_log_over_poly_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(
+            matches!(ctx.get(powered_phi_base_log_over_poly_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(
+            ctx.get(poly_over_negative_power_e_base_log_out),
+            Expr::Neg(_)
+        ));
+        assert!(matches!(
+            ctx.get(poly_over_reciprocal_power_pi_base_log_out),
+            Expr::Neg(_)
+        ));
+        assert!(
+            matches!(ctx.get(neg_tail_log_over_poly_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(ctx.get(neg_tail_poly_over_log_out), Expr::Neg(_)));
+        assert!(matches!(ctx.get(log_minus_poly_out), Expr::Neg(_)));
+        assert!(matches!(
+            ctx.get(poly_minus_root_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(try_limit_rules_at_infinity(&mut ctx, bad_domain_log, x, InfSign::Neg).is_none());
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, bad_domain_base_log, x, InfSign::Neg).is_none()
+        );
+        assert!(try_limit_rules_at_infinity(&mut ctx, invalid_base_log, x, InfSign::Pos).is_none());
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, negative_named_base_log, x, InfSign::Pos)
+                .is_none()
+        );
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, zero_power_named_base_log, x, InfSign::Pos)
+                .is_none()
+        );
+        assert!(try_limit_rules_at_infinity(&mut ctx, nonlinear_log, x, InfSign::Pos).is_none());
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, subpoly_over_subpoly, x, InfSign::Pos).is_none()
+        );
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, zero_scaled_log_den, x, InfSign::Pos).is_none()
+        );
+    }
+
+    #[test]
+    fn exponential_subpolynomial_dominance_handles_only_domain_safe_shapes() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let log_over_exp = parse_expr(&mut ctx, "ln(x)/exp(x)");
+        let exp_over_log = parse_expr(&mut ctx, "exp(x)/ln(x)");
+        let root_times_decaying_exp = parse_expr(&mut ctx, "sqrt(x)*exp(-x)");
+        let log_over_decaying_exp = parse_expr(&mut ctx, "ln(x)/exp(-x)");
+        let negative_log_over_decaying_exp = parse_expr(&mut ctx, "-ln(x)/exp(-x)");
+        let exp_over_negative_root = parse_expr(&mut ctx, "exp(x)/(-sqrt(x))");
+        let base_log_over_exp = parse_expr(&mut ctx, "log(2, x)/exp(x)");
+        let exp_over_half_base_log = parse_expr(&mut ctx, "exp(x)/log(1/2, x)");
+        let exp_over_unary_log2 = parse_expr(&mut ctx, "exp(x)/log2(x)");
+        let exp_over_e_base_log = parse_expr(&mut ctx, "exp(x)/log(e, x)");
+        let exp_over_reciprocal_e_base_log = parse_expr(&mut ctx, "exp(x)/log(1/e, x)");
+        let exp_over_powered_e_base_log = parse_expr(&mut ctx, "exp(x)/log(e^2, x)");
+        let exp_over_negative_power_e_base_log = parse_expr(&mut ctx, "exp(x)/log(e^-2, x)");
+        let exp_minus_log = parse_expr(&mut ctx, "exp(x) - ln(x)");
+        let log_minus_exp = parse_expr(&mut ctx, "ln(x) - exp(x)");
+        let neg_tail_log_times_decaying_exp = parse_expr(&mut ctx, "ln(1 - x)*exp(x)");
+        let bad_domain_log_over_exp = parse_expr(&mut ctx, "ln(x)/exp(-x)");
+        let invalid_base_log_over_exp = parse_expr(&mut ctx, "log(1, x)/exp(x)");
+        let negative_named_base_log_over_exp = parse_expr(&mut ctx, "log(-e, x)/exp(x)");
+        let nonlinear_exp_over_log = parse_expr(&mut ctx, "exp(x^2)/ln(x)");
+        let zero_exp_denominator = parse_expr(&mut ctx, "ln(x)/(0*exp(x))");
+
+        let log_over_exp_out = try_limit_rules_at_infinity(&mut ctx, log_over_exp, x, InfSign::Pos)
+            .expect("log over growing exp");
+        let exp_over_log_out = try_limit_rules_at_infinity(&mut ctx, exp_over_log, x, InfSign::Pos)
+            .expect("growing exp over log");
+        let root_times_decaying_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, root_times_decaying_exp, x, InfSign::Pos)
+                .expect("root times decaying exp");
+        let log_over_decaying_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, log_over_decaying_exp, x, InfSign::Pos)
+                .expect("log over decaying exp");
+        let negative_log_over_decaying_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, negative_log_over_decaying_exp, x, InfSign::Pos)
+                .expect("negative log over decaying exp");
+        let exp_over_negative_root_out =
+            try_limit_rules_at_infinity(&mut ctx, exp_over_negative_root, x, InfSign::Pos)
+                .expect("exp over negative root");
+        let base_log_over_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, base_log_over_exp, x, InfSign::Pos)
+                .expect("general-base log over growing exp");
+        let exp_over_half_base_log_out =
+            try_limit_rules_at_infinity(&mut ctx, exp_over_half_base_log, x, InfSign::Pos)
+                .expect("growing exp over base < 1 log");
+        let exp_over_unary_log2_out =
+            try_limit_rules_at_infinity(&mut ctx, exp_over_unary_log2, x, InfSign::Pos)
+                .expect("growing exp over log2");
+        let exp_over_e_base_log_out =
+            try_limit_rules_at_infinity(&mut ctx, exp_over_e_base_log, x, InfSign::Pos)
+                .expect("growing exp over e-base log");
+        let exp_over_reciprocal_e_base_log_out =
+            try_limit_rules_at_infinity(&mut ctx, exp_over_reciprocal_e_base_log, x, InfSign::Pos)
+                .expect("growing exp over reciprocal e-base log");
+        let exp_over_powered_e_base_log_out =
+            try_limit_rules_at_infinity(&mut ctx, exp_over_powered_e_base_log, x, InfSign::Pos)
+                .expect("growing exp over powered e-base log");
+        let exp_over_negative_power_e_base_log_out = try_limit_rules_at_infinity(
+            &mut ctx,
+            exp_over_negative_power_e_base_log,
+            x,
+            InfSign::Pos,
+        )
+        .expect("growing exp over negative powered e-base log");
+        let exp_minus_log_out =
+            try_limit_rules_at_infinity(&mut ctx, exp_minus_log, x, InfSign::Pos)
+                .expect("exp minus log");
+        let log_minus_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, log_minus_exp, x, InfSign::Pos)
+                .expect("log minus exp");
+        let neg_tail_log_times_decaying_exp_out =
+            try_limit_rules_at_infinity(&mut ctx, neg_tail_log_times_decaying_exp, x, InfSign::Neg)
+                .expect("negative-tail log times decaying exp");
+
+        assert!(
+            matches!(ctx.get(log_over_exp_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(
+            ctx.get(exp_over_log_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(
+            matches!(ctx.get(root_times_decaying_exp_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(
+            ctx.get(log_over_decaying_exp_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(
+            ctx.get(negative_log_over_decaying_exp_out),
+            Expr::Neg(_)
+        ));
+        assert!(matches!(ctx.get(exp_over_negative_root_out), Expr::Neg(_)));
+        assert!(
+            matches!(ctx.get(base_log_over_exp_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(matches!(ctx.get(exp_over_half_base_log_out), Expr::Neg(_)));
+        assert!(matches!(
+            ctx.get(exp_over_unary_log2_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(
+            ctx.get(exp_over_e_base_log_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(
+            ctx.get(exp_over_reciprocal_e_base_log_out),
+            Expr::Neg(_)
+        ));
+        assert!(matches!(
+            ctx.get(exp_over_powered_e_base_log_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(
+            ctx.get(exp_over_negative_power_e_base_log_out),
+            Expr::Neg(_)
+        ));
+        assert!(matches!(
+            ctx.get(exp_minus_log_out),
+            Expr::Constant(Constant::Infinity)
+        ));
+        assert!(matches!(ctx.get(log_minus_exp_out), Expr::Neg(_)));
+        assert!(
+            matches!(ctx.get(neg_tail_log_times_decaying_exp_out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
+        );
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, bad_domain_log_over_exp, x, InfSign::Neg)
+                .is_none()
+        );
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, invalid_base_log_over_exp, x, InfSign::Pos)
+                .is_none()
+        );
+        assert!(try_limit_rules_at_infinity(
+            &mut ctx,
+            negative_named_base_log_over_exp,
+            x,
+            InfSign::Pos,
+        )
+        .is_none());
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, nonlinear_exp_over_log, x, InfSign::Pos)
+                .is_none()
+        );
+        assert!(
+            try_limit_rules_at_infinity(&mut ctx, zero_exp_denominator, x, InfSign::Pos).is_none()
+        );
+    }
+
+    #[test]
     fn apply_power_rule_handles_zero_and_negative_exponents() {
         let mut ctx = Context::new();
         let x = parse_expr(&mut ctx, "x");
@@ -602,6 +2129,17 @@ mod tests {
         assert!(
             matches!(ctx.get(out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0)))
         );
+    }
+
+    #[test]
+    fn try_limit_rules_at_infinity_uses_polynomial_growth_before_residual() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let expr = parse_expr(&mut ctx, "2*x^3 + x");
+
+        let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos).expect("polynomial");
+
+        assert!(matches!(ctx.get(out), Expr::Constant(Constant::Infinity)));
     }
 
     #[test]
