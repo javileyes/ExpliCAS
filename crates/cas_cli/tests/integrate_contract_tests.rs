@@ -1,21 +1,70 @@
+use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_session::SessionState;
 use cas_solver::api::render_conditions_normalized;
 use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult, Simplifier};
 
+fn render_expr(ctx: &Context, id: ExprId) -> String {
+    format!("{}", DisplayExpr { context: ctx, id })
+}
+
 fn simplified_integral(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     simplifier.disable_rule("Double Angle Identity");
     let expr = parse(input, &mut simplifier.context).expect("parse integration input");
     let (result, _) = simplifier.simplify(expr);
-    format!(
-        "{}",
-        DisplayExpr {
-            context: &simplifier.context,
-            id: result,
-        }
-    )
+    render_expr(&simplifier.context, result)
+}
+
+fn explicit_integrate_call_parts(ctx: &Context, expr: ExprId) -> (ExprId, String) {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        panic!(
+            "expected integrate(...) call, got {}",
+            render_expr(ctx, expr)
+        );
+    };
+    assert_eq!(
+        ctx.sym_name(*fn_id),
+        "integrate",
+        "expected integrate(...) call, got {}",
+        render_expr(ctx, expr)
+    );
+    assert_eq!(
+        args.len(),
+        2,
+        "antiderivative verification currently requires explicit integrate(expr, var)"
+    );
+
+    let var = args[1];
+    let Expr::Variable(sym_id) = ctx.get(var) else {
+        panic!(
+            "antiderivative verification requires a variable integration target, got {}",
+            render_expr(ctx, var)
+        );
+    };
+
+    (args[0], ctx.sym_name(*sym_id).to_string())
+}
+
+fn assert_antiderivative_verifies(input: &str) {
+    let mut simplifier = Simplifier::with_default_rules();
+    simplifier.disable_rule("Double Angle Identity");
+    let expr = parse(input, &mut simplifier.context).expect("parse integration input");
+    let (integrand, var_name) = explicit_integrate_call_parts(&simplifier.context, expr);
+
+    let (antiderivative, _) = simplifier.simplify(expr);
+    let var = simplifier.context.var(&var_name);
+    let diff_call = simplifier.context.call("diff", vec![antiderivative, var]);
+    let (derivative, _) = simplifier.simplify(diff_call);
+    let (expected_integrand, _) = simplifier.simplify(integrand);
+
+    assert_eq!(
+        render_expr(&simplifier.context, derivative),
+        render_expr(&simplifier.context, expected_integrand),
+        "antiderivative verification failed for {input}\nintegral result: {}",
+        render_expr(&simplifier.context, antiderivative),
+    );
 }
 
 fn evaluated_integral_with_required_conditions(input: &str) -> (String, Vec<String>) {
@@ -45,6 +94,39 @@ fn evaluated_integral_with_required_conditions(input: &str) -> (String, Vec<Stri
         render_conditions_normalized(&mut engine.simplifier.context, &output.required_conditions);
 
     (result, required)
+}
+
+#[test]
+fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
+    for input in [
+        "integrate(2*x + 3, x)",
+        "integrate((3*x)^2, x)",
+        "integrate(sin(2*x), x)",
+        "integrate(cos(x), x)",
+        "integrate(exp(3*x + 1), x)",
+        "integrate(2*x*exp(x^2), x)",
+        "integrate(2*x*cos(x^2), x)",
+        "integrate(2*x*sin(x^2), x)",
+        "integrate(sinh(2*x + 1), x)",
+        "integrate(cosh(2*x + 1), x)",
+        "integrate(tanh(2*x + 1), x)",
+        "integrate(sinh(2*x + 1)/cosh(2*x + 1), x)",
+        "integrate(cosh(2*x + 1)/sinh(2*x + 1), x)",
+        "integrate(1/cosh(2*x + 1)^2, x)",
+        "integrate(1/x, x)",
+        "integrate(1/(2*x + 1), x)",
+        "integrate(1/(x^2+1), x)",
+        "integrate(2*x/(1+x^4), x)",
+        "integrate(2*x/sqrt(1+x^4), x)",
+        "integrate((x^2+1)^(-1/2), x)",
+        "integrate(sec(x)^2, x)",
+        "integrate(csc(x)^2, x)",
+        "integrate(tan(2*x + 1), x)",
+        "integrate(sec(2*x + 1)*tan(2*x + 1), x)",
+        "integrate(2*x*sec(x^2)*tan(x^2), x)",
+    ] {
+        assert_antiderivative_verifies(input);
+    }
 }
 
 #[test]

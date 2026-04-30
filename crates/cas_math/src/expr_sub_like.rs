@@ -346,6 +346,22 @@ pub fn try_rewrite_canonicalize_negation_expr(
             });
         }
 
+        if let Some((num, den)) = as_div(ctx, inner) {
+            let positive_num = match ctx.get(num).clone() {
+                Expr::Neg(inner_num) => Some(inner_num),
+                Expr::Number(n) if n.is_negative() => Some(ctx.add(Expr::Number(-n))),
+                _ => None,
+            };
+
+            if let Some(positive_num) = positive_num {
+                let rewritten = ctx.add(Expr::Div(positive_num, den));
+                return Some(CanonicalizeNegationRewrite {
+                    rewritten,
+                    desc: "-((-a) / b) = a / b".to_string(),
+                });
+            }
+        }
+
         if let Some((lhs, rhs)) = as_add(ctx, inner) {
             let neg_lhs = if let Expr::Number(n) = ctx.get(lhs) {
                 ctx.add(Expr::Number(-n.clone()))
@@ -820,6 +836,29 @@ mod tests {
         let expected_div = ctx.add(Expr::Neg(div_ab));
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, r2.rewritten, expected_div),
+            Ordering::Equal
+        );
+
+        let neg_one = ctx.num(-1);
+        let numeric_negative_num_div = ctx.add(Expr::Div(neg_one, b));
+        let neg_numeric_negative_num_div = ctx.add(Expr::Neg(numeric_negative_num_div));
+        let r3 = try_rewrite_canonicalize_negation_expr(&mut ctx, neg_numeric_negative_num_div)
+            .expect("negated numeric negative numerator division rewrite");
+        let one = ctx.num(1);
+        let expected_numeric = ctx.add(Expr::Div(one, b));
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, r3.rewritten, expected_numeric),
+            Ordering::Equal
+        );
+
+        let neg_a = ctx.add(Expr::Neg(a));
+        let structural_negative_num_div = ctx.add(Expr::Div(neg_a, b));
+        let neg_structural_negative_num_div = ctx.add(Expr::Neg(structural_negative_num_div));
+        let r4 = try_rewrite_canonicalize_negation_expr(&mut ctx, neg_structural_negative_num_div)
+            .expect("negated structural negative numerator division rewrite");
+        let expected_structural = ctx.add(Expr::Div(a, b));
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, r4.rewritten, expected_structural),
             Ordering::Equal
         );
     }
