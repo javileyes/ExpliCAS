@@ -37,6 +37,7 @@ mod best_so_far_tests;
 pub(crate) mod budget;
 #[cfg(test)]
 mod budget_tests;
+mod calculus_residual_support;
 mod cancel_runtime;
 pub(crate) mod collect;
 mod collect_by_var_support;

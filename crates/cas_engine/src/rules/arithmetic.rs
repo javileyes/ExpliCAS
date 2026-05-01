@@ -12827,6 +12827,9 @@ fn try_build_exact_hyperbolic_equivalence_zero_scope_rewrite(
     if !(2..=3).contains(&view.terms.len()) {
         return None;
     }
+    if reject_linear_hyperbolic_combination_before_zero_scope(ctx, expr) {
+        return None;
+    }
 
     for subset_len in 1..=2 {
         for first_index in 0..view.terms.len() {
@@ -14461,6 +14464,11 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
     let two_term_cores = extract_two_term_core_difference(ctx, expr);
     let direct_term_count = AddView::from_expr(ctx, expr).terms.len();
     let has_direct_trig_expr = expr_contains_direct_trig_builtin(ctx, expr);
+    if expr_contains_direct_hyperbolic_builtin(ctx, expr)
+        && reject_linear_hyperbolic_combination_before_zero_scope(ctx, expr)
+    {
+        return None;
+    }
 
     let try_rule = |ctx: &mut cas_ast::Context, rewrite: Option<Rewrite>| -> Option<Rewrite> {
         let rewrite = rewrite?;
@@ -20468,6 +20476,84 @@ fn reject_obvious_hyperbolic_pair_before_default_simplify(
     }
 
     None
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SingleHyperbolicTermRejectProfile {
+    builtin: BuiltinFn,
+    arg: cas_ast::ExprId,
+}
+
+fn extract_scaled_single_hyperbolic_term_for_reject(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<SingleHyperbolicTermRejectProfile> {
+    let expr = strip_unit_negation_for_phase_shift(ctx, expr).unwrap_or(expr);
+    if let Some((builtin, arg)) = extract_hyperbolic_linear_term_for_profile(ctx, expr) {
+        return Some(SingleHyperbolicTermRejectProfile { builtin, arg });
+    }
+
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut hyperbolic_arg = None;
+    let mut hyperbolic_builtin = None;
+    for factor in factors {
+        if let Some((builtin, arg)) = extract_hyperbolic_linear_term_for_profile(ctx, factor) {
+            if hyperbolic_arg.replace(arg).is_some() {
+                return None;
+            }
+            hyperbolic_builtin = Some(builtin);
+            continue;
+        }
+
+        if expr_contains_any_function_call(ctx, factor) {
+            return None;
+        }
+    }
+
+    Some(SingleHyperbolicTermRejectProfile {
+        builtin: hyperbolic_builtin?,
+        arg: hyperbolic_arg?,
+    })
+}
+
+fn reject_linear_hyperbolic_combination_before_zero_scope(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if !(2..=3).contains(&view.terms.len()) {
+        return false;
+    }
+
+    let mut profiles = Vec::with_capacity(view.terms.len());
+    for (term_expr, term_sign) in view.terms {
+        let (term_expr, _) = normalize_signed_add_term(ctx, term_expr, term_sign);
+        let Some(profile) = extract_scaled_single_hyperbolic_term_for_reject(ctx, term_expr) else {
+            return false;
+        };
+        profiles.push(profile);
+    }
+
+    let first_arg = profiles[0].arg;
+    if profiles
+        .iter()
+        .any(|profile| compare_expr(ctx, profile.arg, first_arg) != Ordering::Equal)
+    {
+        return false;
+    }
+
+    let has_sinh = profiles
+        .iter()
+        .any(|profile| profile.builtin == BuiltinFn::Sinh);
+    let has_cosh = profiles
+        .iter()
+        .any(|profile| profile.builtin == BuiltinFn::Cosh);
+
+    has_sinh && has_cosh
 }
 
 #[derive(Clone, Copy)]
@@ -27575,6 +27661,42 @@ mod tests {
     }
 
     #[test]
+    fn scaled_single_hyperbolic_zero_scope_reject_preserves_double_angle_product_match() {
+        let mut ctx = Context::new();
+        let expr = parse("2*sinh(x)*cosh(x)-sinh(2*x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::reject_linear_hyperbolic_combination_before_zero_scope(&mut ctx, expr));
+    }
+
+    #[test]
+    fn linear_hyperbolic_zero_scope_reject_matches_symbolic_scale_mismatch() {
+        let mut ctx = Context::new();
+        let expr = parse("x*cosh(2*x+1) - sinh(2*x+1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::reject_linear_hyperbolic_combination_before_zero_scope(&mut ctx, expr));
+    }
+
+    #[test]
+    fn linear_hyperbolic_zero_scope_reject_matches_expanded_scaled_mismatch() {
+        let mut ctx = Context::new();
+        let expr = parse("2*x*cosh(2*x+1) + 3*cosh(2*x+1) - sinh(2*x+1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::reject_linear_hyperbolic_combination_before_zero_scope(&mut ctx, expr));
+    }
+
+    #[test]
+    fn linear_hyperbolic_zero_scope_reject_preserves_same_family_numeric_cancellation() {
+        let mut ctx = Context::new();
+        let expr = parse("2*cosh(x) - cosh(x) - cosh(x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(!super::reject_linear_hyperbolic_combination_before_zero_scope(&mut ctx, expr));
+    }
+
+    #[test]
     fn maybe_two_term_tanh_exp_equivalence_candidate_accepts_tanh_ratio_partner() {
         let mut ctx = Context::new();
         let lhs_core = parse("tanh(x)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
@@ -28924,6 +29046,18 @@ mod tests {
             "0"
         );
         assert_empty_or_legacy_description(&rewrite.description, "Hyperbolic Pythagorean Identity");
+    }
+
+    #[test]
+    fn direct_exact_hyperbolic_zero_scope_rejects_scaled_single_term_mismatch() {
+        let mut ctx = Context::new();
+        let expr = parse("x*cosh(2*x+1) - sinh(2*x+1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            super::try_build_exact_hyperbolic_equivalence_zero_scope_rewrite(&mut ctx, expr)
+                .is_none()
+        );
     }
 
     #[test]

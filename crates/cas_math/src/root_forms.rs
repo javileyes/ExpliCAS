@@ -442,6 +442,8 @@ pub fn try_rewrite_root_denesting_expr(
 /// Examples:
 /// - `(4*x)^(1/2) -> 2*x^(1/2)`
 /// - `(8*x)^(1/2) -> 2*(2*x)^(1/2)`
+/// - `((1/4)*x)^(1/2) -> (1/2)*x^(1/2)`
+/// - `((1/4)*x)^(-1/2) -> 2*x^(-1/2)`
 /// - `(16*x)^(1/4) -> 2*x^(1/4)`
 pub fn try_rewrite_extract_perfect_power_from_radicand_expr(
     ctx: &mut Context,
@@ -452,36 +454,44 @@ pub fn try_rewrite_extract_perfect_power_from_radicand_expr(
         _ => return None,
     };
 
-    let root_index: u32 = match ctx.get(exp_id) {
-        Expr::Number(n) if n.numer() == &1.into() => {
-            let d = n.denom();
-            let d_u32 = d.to_u32_digits().1.first().copied()?;
-            if d_u32 >= 2 && d.sign() == num_bigint::Sign::Plus && d.bits() <= 32 {
-                d_u32
-            } else {
-                return None;
-            }
-        }
-        Expr::Div(num, den) => {
-            let Expr::Number(num_n) = ctx.get(*num) else {
-                return None;
-            };
-            let Expr::Number(den_n) = ctx.get(*den) else {
-                return None;
-            };
-            if !num_n.is_one() || !den_n.is_integer() || den_n <= &BigRational::zero() {
-                return None;
-            }
-            let d = den_n.to_integer();
-            let d_u32 = d.to_u32_digits().1.first().copied()?;
-            if d_u32 >= 2 && d.sign() == num_bigint::Sign::Plus && d.bits() <= 32 {
-                d_u32
-            } else {
-                return None;
-            }
-        }
-        _ => return None,
+    #[derive(Clone, Copy)]
+    enum RootExponentSign {
+        Positive,
+        Negative,
+    }
+
+    let exp_value = cas_ast::views::as_rational_const(ctx, exp_id, 4)?;
+    let exponent_sign = if exp_value.numer() == &1.into() {
+        RootExponentSign::Positive
+    } else if exp_value.numer() == &(-1).into() {
+        RootExponentSign::Negative
+    } else {
+        return None;
     };
+    let d = exp_value.denom();
+    let d_u32 = d.to_u32_digits().1.first().copied()?;
+    let root_index = if d_u32 >= 2 && d.sign() == num_bigint::Sign::Plus && d.bits() <= 32 {
+        d_u32
+    } else {
+        return None;
+    };
+
+    if matches!(exponent_sign, RootExponentSign::Negative) && root_index == 2 {
+        if let Some(rewritten) = try_rewrite_scaled_unit_square_reciprocal_root(ctx, base, exp_id) {
+            return Some(ExtractPerfectPowerFromRadicandRewrite {
+                rewritten,
+                kind: ExtractPerfectPowerFromRadicandKind::ExtractPerfectSquare,
+            });
+        }
+        if let Some(rewritten) =
+            try_rewrite_scaled_square_plus_unit_reciprocal_root(ctx, base, exp_id)
+        {
+            return Some(ExtractPerfectPowerFromRadicandRewrite {
+                rewritten,
+                kind: ExtractPerfectPowerFromRadicandKind::ExtractPerfectSquare,
+            });
+        }
+    }
 
     let (num_val, rest) = match ctx.get(base) {
         Expr::Mul(l, r) => {
@@ -497,46 +507,17 @@ pub fn try_rewrite_extract_perfect_power_from_radicand_expr(
         _ => return None,
     };
 
-    if !num_val.is_positive() || !num_val.is_integer() {
-        return None;
-    }
+    let (outside_coeff, new_coeff) = extract_positive_rational_power_factor(&num_val, root_index)?;
 
-    let int_val = num_val.to_integer();
-    let mut k = num_bigint::BigInt::from(1);
-    let mut remaining = int_val.clone();
-    let mut trial: num_bigint::BigInt = 2.into();
-    loop {
-        if &trial * &trial > remaining {
-            break;
-        }
-        let mut count: u32 = 0;
-        while (&remaining % &trial).is_zero() {
-            remaining /= &trial;
-            count += 1;
-        }
-        let extracted = count / root_index;
-        if extracted > 0 {
-            for _ in 0..extracted {
-                k *= &trial;
-            }
-        }
-        trial += 1;
-    }
-    if k == num_bigint::BigInt::from(1) {
-        return None;
-    }
-
-    let mut k_power = num_bigint::BigInt::from(1);
-    for _ in 0..root_index {
-        k_power *= &k;
-    }
-    let new_coeff = &int_val / &k_power;
-
-    let k_expr = ctx.add(Expr::Number(BigRational::from_integer(k)));
-    let new_radicand = if new_coeff == num_bigint::BigInt::from(1) {
+    let extracted_coeff = match exponent_sign {
+        RootExponentSign::Positive => outside_coeff,
+        RootExponentSign::Negative => reciprocal_positive_rational(&outside_coeff),
+    };
+    let k_expr = ctx.add(Expr::Number(extracted_coeff));
+    let new_radicand = if new_coeff.is_one() {
         rest
     } else {
-        let new_coeff_expr = ctx.add(Expr::Number(BigRational::from_integer(new_coeff)));
+        let new_coeff_expr = ctx.add(Expr::Number(new_coeff));
         ctx.add(Expr::Mul(new_coeff_expr, rest))
     };
     let new_root = ctx.add(Expr::Pow(new_radicand, exp_id));
@@ -554,6 +535,176 @@ pub fn try_rewrite_extract_perfect_power_from_radicand_expr(
         rewritten,
         kind: ExtractPerfectPowerFromRadicandKind::ExtractPerfectSquare,
     })
+}
+
+fn try_rewrite_scaled_unit_square_reciprocal_root(
+    ctx: &mut Context,
+    base: ExprId,
+    exp_id: ExprId,
+) -> Option<ExprId> {
+    let (left, square_term) = match ctx.get(base) {
+        Expr::Sub(left, square_term) => (*left, *square_term),
+        _ => return None,
+    };
+    let Expr::Number(left_num) = ctx.get(left) else {
+        return None;
+    };
+    if !left_num.is_one() {
+        return None;
+    }
+
+    let (scale, inner) = positive_scaled_square_base(ctx, square_term)?;
+    if scale.is_one() {
+        return None;
+    }
+
+    let scale_squared = &scale * &scale;
+    let offset = BigRational::one() / scale_squared;
+    let outside = reciprocal_positive_rational(&scale);
+    let two = ctx.num(2);
+    let inner_square = ctx.add(Expr::Pow(inner, two));
+    let offset_expr = ctx.add(Expr::Number(offset));
+    let new_base = ctx.add(Expr::Sub(offset_expr, inner_square));
+    let new_root = ctx.add(Expr::Pow(new_base, exp_id));
+    if outside.is_one() {
+        Some(new_root)
+    } else {
+        let outside_expr = ctx.add(Expr::Number(outside));
+        Some(ctx.add(Expr::Mul(outside_expr, new_root)))
+    }
+}
+
+fn try_rewrite_scaled_square_plus_unit_reciprocal_root(
+    ctx: &mut Context,
+    base: ExprId,
+    exp_id: ExprId,
+) -> Option<ExprId> {
+    let square_term = match ctx.get(base) {
+        Expr::Add(l, r) => {
+            let (l, r) = (*l, *r);
+            match (ctx.get(l), ctx.get(r)) {
+                (Expr::Number(n), _) if n.is_one() => r,
+                (_, Expr::Number(n)) if n.is_one() => l,
+                _ => return None,
+            }
+        }
+        _ => return None,
+    };
+
+    let (scale, inner) = positive_scaled_square_base(ctx, square_term)?;
+    if scale.is_one() {
+        return None;
+    }
+
+    let scale_squared = &scale * &scale;
+    let offset = BigRational::one() / scale_squared;
+    let outside = reciprocal_positive_rational(&scale);
+    let two = ctx.num(2);
+    let inner_square = ctx.add(Expr::Pow(inner, two));
+    let offset_expr = ctx.add(Expr::Number(offset));
+    let new_base = ctx.add(Expr::Add(offset_expr, inner_square));
+    let new_root = ctx.add(Expr::Pow(new_base, exp_id));
+    if outside.is_one() {
+        Some(new_root)
+    } else {
+        let outside_expr = ctx.add(Expr::Number(outside));
+        Some(ctx.add(Expr::Mul(outside_expr, new_root)))
+    }
+}
+
+fn positive_scaled_square_base(
+    ctx: &Context,
+    square_term: ExprId,
+) -> Option<(BigRational, ExprId)> {
+    let (square_base, square_exp) = match ctx.get(square_term) {
+        Expr::Pow(square_base, square_exp) => (*square_base, *square_exp),
+        _ => return None,
+    };
+    let Expr::Number(exp_num) = ctx.get(square_exp) else {
+        return None;
+    };
+    if *exp_num != BigRational::from_integer(2.into()) {
+        return None;
+    }
+
+    match ctx.get(square_base) {
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if let Some(scale) = positive_rational_const(ctx, l) {
+                Some((scale, r))
+            } else {
+                positive_rational_const(ctx, r).map(|scale| (scale, l))
+            }
+        }
+        Expr::Div(num, den) => {
+            let Expr::Number(den_num) = ctx.get(*den) else {
+                return None;
+            };
+            if !den_num.is_positive() {
+                return None;
+            }
+            Some((reciprocal_positive_rational(den_num), *num))
+        }
+        _ => None,
+    }
+}
+
+fn positive_rational_const(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    let value = cas_ast::views::as_rational_const(ctx, expr, 4)?;
+    value.is_positive().then_some(value)
+}
+
+fn extract_positive_rational_power_factor(
+    value: &BigRational,
+    root_index: u32,
+) -> Option<(BigRational, BigRational)> {
+    if !value.is_positive() {
+        return None;
+    }
+
+    let (outside_num, remaining_num) =
+        extract_positive_integer_power_factor(value.numer(), root_index);
+    let (outside_den, remaining_den) =
+        extract_positive_integer_power_factor(value.denom(), root_index);
+    let outside = BigRational::new(outside_num, outside_den);
+    if outside.is_one() {
+        return None;
+    }
+
+    Some((outside, BigRational::new(remaining_num, remaining_den)))
+}
+
+fn reciprocal_positive_rational(value: &BigRational) -> BigRational {
+    BigRational::new(value.denom().clone(), value.numer().clone())
+}
+
+fn extract_positive_integer_power_factor(value: &BigInt, root_index: u32) -> (BigInt, BigInt) {
+    let mut outside = BigInt::from(1);
+    let mut remaining = value.clone();
+    let mut trial = BigInt::from(2);
+
+    loop {
+        if &trial * &trial > remaining {
+            break;
+        }
+        let mut count: u32 = 0;
+        while (&remaining % &trial).is_zero() {
+            remaining /= &trial;
+            count += 1;
+        }
+        let extracted = count / root_index;
+        for _ in 0..extracted {
+            outside *= &trial;
+        }
+        trial += 1;
+    }
+
+    let mut outside_power = BigInt::from(1);
+    for _ in 0..root_index {
+        outside_power *= &outside;
+    }
+
+    (outside, value / outside_power)
 }
 
 fn try_extract_square_factors_from_mixed_radicand(
@@ -2661,6 +2812,70 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("(8*x)^(1/2)", &mut ctx).expect("expr");
         let expected = parse("2*(2*x)^(1/2)", &mut ctx).expect("expected");
+        let rewrite =
+            try_rewrite_extract_perfect_power_from_radicand_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extract_perfect_power_from_radicand_rewrite_rational_sqrt_factor_case() {
+        let mut ctx = Context::new();
+        let rest = parse("4-x^4", &mut ctx).expect("rest");
+        let quarter = ctx.add(Expr::Number(BigRational::new(1.into(), 4.into())));
+        let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+        let base = ctx.add(Expr::Mul(quarter, rest));
+        let expr = ctx.add(Expr::Pow(base, half));
+        let expected_coeff = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+        let expected_root = ctx.add(Expr::Pow(rest, half));
+        let expected = ctx.add(Expr::Mul(expected_coeff, expected_root));
+        let rewrite =
+            try_rewrite_extract_perfect_power_from_radicand_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extract_perfect_power_from_radicand_rewrite_reciprocal_rational_sqrt_factor_case() {
+        let mut ctx = Context::new();
+        let rest = parse("3-x^2-2*x", &mut ctx).expect("rest");
+        let quarter = ctx.add(Expr::Number(BigRational::new(1.into(), 4.into())));
+        let neg_half = ctx.add(Expr::Number(BigRational::new((-1).into(), 2.into())));
+        let base = ctx.add(Expr::Mul(quarter, rest));
+        let expr = ctx.add(Expr::Pow(base, neg_half));
+        let expected_coeff = ctx.add(Expr::Number(BigRational::from_integer(2.into())));
+        let expected_root = ctx.add(Expr::Pow(rest, neg_half));
+        let expected = ctx.add(Expr::Mul(expected_coeff, expected_root));
+        let rewrite =
+            try_rewrite_extract_perfect_power_from_radicand_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extract_perfect_power_from_radicand_rewrite_scaled_unit_square_reciprocal_case() {
+        let mut ctx = Context::new();
+        let expr = parse("(1 - (1/2*(x+1))^2)^(-1/2)", &mut ctx).expect("expr");
+        let expected = parse("2*(4 - (x+1)^2)^(-1/2)", &mut ctx).expect("expected");
+        let rewrite =
+            try_rewrite_extract_perfect_power_from_radicand_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extract_perfect_power_from_radicand_rewrite_scaled_square_plus_unit_reciprocal_case() {
+        let mut ctx = Context::new();
+        let expr = parse("(1 + (1/2*(x+1))^2)^(-1/2)", &mut ctx).expect("expr");
+        let expected = parse("2*(4 + (x+1)^2)^(-1/2)", &mut ctx).expect("expected");
         let rewrite =
             try_rewrite_extract_perfect_power_from_radicand_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(

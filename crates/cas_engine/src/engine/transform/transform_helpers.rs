@@ -326,6 +326,29 @@ impl<'a> LocalSimplificationTransformer<'a> {
         }
 
         if matches!(op, BinaryOp::Sub) {
+            if let Some(zero) =
+                crate::calculus_residual_support::try_diff_log_abs_hyperbolic_residual_zero_preorder(
+                    self.context,
+                    l,
+                    r,
+                )
+                .or_else(|| {
+                    crate::calculus_residual_support::try_diff_log_abs_hyperbolic_residual_zero_preorder(
+                        self.context,
+                        r,
+                        l,
+                    )
+                })
+            {
+                self.record_step(
+                    "Cancel matching hyperbolic log-abs derivative residual",
+                    "Hyperbolic Diff Residual",
+                    id,
+                    zero,
+                );
+                return zero;
+            }
+
             if let Some(rewrite) =
                 crate::rules::arithmetic::try_build_direct_trig_power_reduction_equivalence_rewrite(
                     self.context,

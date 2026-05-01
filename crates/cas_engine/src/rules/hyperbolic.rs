@@ -9,6 +9,7 @@ use cas_math::hyperbolic_core_support::{
     try_rewrite_hyperbolic_composition,
 };
 use cas_math::hyperbolic_identity_support::{
+    try_rewrite_cosh_sinh_to_reciprocal_tanh_identity_expr,
     try_rewrite_hyperbolic_double_angle_sub_chain, try_rewrite_hyperbolic_double_angle_sum,
     try_rewrite_hyperbolic_pythagorean_sub_expr, try_rewrite_hyperbolic_triple_angle,
     try_rewrite_sinh_cosh_to_exp, try_rewrite_sinh_cosh_to_tanh_identity_expr,
@@ -217,6 +218,9 @@ fn format_hyperbolic_identity_desc(
         }
         cas_math::hyperbolic_identity_support::HyperbolicIdentityRewriteKind::SinhCoshToTanh => {
             "sinh(x)/cosh(x) = tanh(x)"
+        }
+        cas_math::hyperbolic_identity_support::HyperbolicIdentityRewriteKind::CoshSinhToReciprocalTanh => {
+            "cosh(x)/sinh(x) = 1/tanh(x)"
         }
         cas_math::hyperbolic_identity_support::HyperbolicIdentityRewriteKind::TanhToSinhCosh => {
             "tanh(x) = sinh(x)/cosh(x)"
@@ -1067,6 +1071,26 @@ define_rule!(
     }
 );
 
+// Rule: cosh(x) / sinh(x) → 1/tanh(x)
+define_rule!(
+    CoshSinhToReciprocalTanhRule,
+    "cosh(x)/sinh(x) = 1/tanh(x)",
+    Some(crate::target_kind::TargetKindSet::DIV),
+    |ctx, expr, parent_ctx| {
+        let diff_fn = ctx.intern_symbol("diff");
+        if parent_ctx.has_ancestor_matching(ctx, |c, ancestor| {
+            matches!(
+                c.get(ancestor),
+                Expr::Function(fn_id, _) if *fn_id == diff_fn
+            )
+        }) {
+            return None;
+        }
+        let rewrite = try_rewrite_cosh_sinh_to_reciprocal_tanh_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_identity_desc(rewrite.kind)))
+    }
+);
+
 // ==================== Recognize Hyperbolic From Exponential ====================
 
 // Rule 5: Recognize hyperbolic functions from exponential definitions
@@ -1117,6 +1141,7 @@ pub fn register(simplifier: &mut crate::engine::Simplifier) {
     // DISABLED: TanhToSinhCoshRule breaks tanh(atanh(x))→x and tanh(-x)→-tanh(x) paths
     // simplifier.add_rule(Box::new(TanhToSinhCoshRule)); // tanh(x) → sinh(x)/cosh(x)
     simplifier.add_rule(Box::new(SinhCoshToTanhRule)); // sinh(x)/cosh(x) → tanh(x) (contraction)
+    simplifier.add_rule(Box::new(CoshSinhToReciprocalTanhRule)); // cosh(x)/sinh(x) → 1/tanh(x)
     simplifier.add_rule(Box::new(SinhDoubleAngleExpansionRule)); // sinh(2x) → 2sinh(x)cosh(x)
     simplifier.add_rule(Box::new(TanhDoubleAngleExpansionRule)); // tanh(2x) → 2tanh(x)/(1+tanh(x)^2)
     simplifier.add_rule(Box::new(RecognizeHyperbolicFromExpRule));
@@ -1177,6 +1202,35 @@ mod tests {
             .to_string(),
             "0"
         );
+    }
+
+    #[test]
+    fn cosh_sinh_to_reciprocal_tanh_skips_diff_target() {
+        let mut ctx = Context::new();
+        let diff = parse("diff(cosh(2*x+1)/sinh(2*x+1), x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("expr: {err}"));
+        let cas_ast::Expr::Function(_, args) = ctx.get(diff) else {
+            panic!("expected diff function");
+        };
+        let target = args[0];
+
+        assert!(
+            super::CoshSinhToReciprocalTanhRule
+                .apply(
+                    &mut ctx,
+                    target,
+                    &crate::parent_context::ParentContext::root(),
+                )
+                .is_some(),
+            "root quotient should still normalize"
+        );
+
+        let guarded = super::CoshSinhToReciprocalTanhRule.apply(
+            &mut ctx,
+            target,
+            &crate::parent_context::ParentContext::with_parent(diff),
+        );
+        assert!(guarded.is_none());
     }
 
     #[test]

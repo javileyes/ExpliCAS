@@ -106,6 +106,20 @@ impl Polynomial {
                 let p2 = Polynomial::from_expr(context, *r, var)?;
                 Ok(p1.mul(&p2))
             }
+            Expr::Div(l, r) => {
+                let p_num = Polynomial::from_expr(context, *l, var)?;
+                let p_den = Polynomial::from_expr(context, *r, var)?;
+                if p_den.is_zero() {
+                    return Err(PolynomialError::DivisionByZero);
+                }
+                if p_den.degree() != 0 {
+                    return Err(PolynomialError::Unsupported(
+                        "Polynomial denominator is not constant".to_string(),
+                    ));
+                }
+
+                Ok(p_num.div_scalar(&p_den.coeffs[0]))
+            }
             Expr::Pow(base, exp) => {
                 // Only handle x^n where n is non-negative integer
                 if let Expr::Number(n) = context.get(*exp) {
@@ -608,6 +622,27 @@ mod tests {
         assert_eq!(g.coeffs.len(), 2);
         assert_eq!(g.coeffs[0], BigRational::one());
         assert_eq!(g.coeffs[1], BigRational::one());
+    }
+
+    #[test]
+    fn from_expr_accepts_division_by_constant_polynomial() {
+        let mut ctx = Context::new();
+        let expr = parse("(3*x + 2)/2", &mut ctx).unwrap();
+        let p = Polynomial::from_expr(&ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            p.coeffs,
+            vec![
+                BigRational::from_integer(1.into()),
+                BigRational::new(3.into(), 2.into())
+            ]
+        );
+
+        let expr = parse("x/(x + 1)", &mut ctx).unwrap();
+        assert!(matches!(
+            Polynomial::from_expr(&ctx, expr, "x"),
+            Err(PolynomialError::Unsupported(_))
+        ));
     }
 
     #[test]

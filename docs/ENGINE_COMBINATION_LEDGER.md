@@ -95,6 +95,79 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-01: Shifted Hyperbolic Diff Residual Probe
+
+- area:
+  - calculus / symbolic differentiation / hyperbolic equivalence
+- status:
+  - `superseded`
+- attempted case:
+  - promote the residual
+    `diff(ln(abs(sinh(2*x+1))), x)/2 - cosh(2*x+1)/sinh(2*x+1)`
+    as a cheap contract case
+- local lane:
+  - CLI and contract probes around
+    `diff(ln(abs(sinh(2*x+1))), x)` and the equivalent residual above
+- local result:
+  - the direct public derivative can be compacted to `1 / tanh(2*x + 1)`
+    for the divided-by-two case, with the expected `sinh(2*x + 1) ≠ 0`
+    domain condition
+  - the residual eventually simplifies to `0`, but it still emits repeated
+    `depth_overflow` / `cycle_detected` warnings and is too hot to promote as
+    a normal contract representative
+- global result:
+  - not promoted as a retained residual test in this iteration
+  - retained work is limited to compact direct `diff` output and reusable
+    `cosh(u)/sinh(u) -> 1/tanh(u)` normalization
+- best current explanation:
+  - equivalence/simplification of shifted hyperbolic residuals can expand
+    `sinh(2*x + 1)` / `cosh(2*x + 1)` into sum and double-angle forms before
+    recognizing the compact reciprocal-`tanh` identity
+- plausible follow-up:
+  - add a cheap equivalence gate or normal-form route for reciprocal hyperbolic
+    quotients before angle-sum expansion, then reattempt the residual as a
+    pressure or stress representative rather than a default live contract case
+- retained follow-up:
+  - 2026-05-01 added a narrow root/embedded gate for
+    `diff(ln(abs(sinh(u))), x)/u'` and `diff(ln(abs(cosh(u))), x)/u'`
+    residuals against compact `tanh`/reciprocal-`tanh` forms, including
+    quotient spellings like `cosh(u)/sinh(u)` before angle-sum expansion.
+  - public probes now reduce the shifted residuals to `0` without
+    `depth_overflow` or `cycle_detected`, with guardrail and pressure lanes
+    still green.
+
+### 2026-04-30: Scaled `arcsin` Antiderivative Verification Probe
+
+- area:
+  - calculus / integration verification / radical normalization
+- status:
+  - `superseded`
+- attempted case:
+  - promote `integrate(2*x/sqrt(4-x^4), x)` into the generic
+    antiderivative-verifies-by-`diff` contract
+- local lane:
+  - CLI residual probe:
+    `cargo run -q -p cas_cli -- eval 'diff(arcsin(1/2*x^2), x) - 2*x/sqrt(4-x^4)' --format json`
+- original local result:
+  - the residual did not simplify to zero
+  - the surviving shape was
+    `(x*(1/4*(4 - x^4))^(1/2) - 1/2*x*(4 - x^4)^(1/2))/(1/4*(4 - x^4))`
+  - the probe also surfaced `x^2 - 2 ≠ 0` alongside the expected
+    `4 - x^4 > 0`
+- global result:
+  - retained follow-up promoted `integrate(2*x/sqrt(4-x^4), x)` into the
+    generic antiderivative-verifies-by-`diff` contract
+  - the residual now simplifies to `0` with the expected `4 - x^4 > 0`
+    condition after positive rational perfect-power extraction under radicals
+- closure explanation:
+  - residual proof for the scaled `arcsin` antiderivative needed a
+    domain-safe radical scaling step such as
+    `sqrt((4 - x^4)/4) -> sqrt(4 - x^4)/2`; the retained follow-up supplies
+    that as a reusable positive-rational extraction under radicals
+- closure:
+  - closed by a narrow positive-rational coefficient extraction rule for
+    `(c*u)^(1/n)` with `c > 0`; no reciprocal-root workaround was needed
+
 ### 2026-04-30: Variable-Base Log Diff Both-Variable Probe
 
 - area:
@@ -8314,3 +8387,240 @@ The burden of proof stays the same:
   - retained as observability: the scorecard now exposes the structural-depth
     bucket that recent coverage work optimized, with all guardrails green and no
     runtime code touched
+
+## 2026-05-01 - Discovery observe-only: displaced hyperbolic by-parts outputs
+
+- area:
+  - calculus / integration / hyperbolic simplification
+- status:
+  - `observe-only`
+- attempted case:
+  - promote `integrate((2*x+3)*sinh(2*x+1), x)` and
+    `integrate((2*x+3)*cosh(2*x+1), x)` while adding hyperbolic integration by
+    parts
+- local lane:
+  - smoke probes:
+    `gtimeout 15s cargo run -q -p cas_cli -- eval 'integrate((2*x+3)*sinh(2*x+1), x)' --format json`
+    and the analogous `cosh` probe
+  - direct-output probes:
+    `gtimeout 15s cargo run -q -p cas_cli -- eval '((2*x+3)*cosh(2*x+1)-sinh(2*x+1))/2' --format json`
+    and the analogous `sinh/cosh` swap
+- local result:
+  - simple unit-argument probes `integrate(x*sinh(x), x)` and
+    `integrate(x*cosh(x), x)` completed in milliseconds and were retained
+  - displaced/scaled argument probes timed out at 10-15s before promotion
+  - smaller direct probes showed the reusable signature: subtractive
+    hyperbolic sums with shifted linear arguments and linear coefficients can
+    spend seconds in simplification even when no integration remains
+- global result:
+  - the displaced/scaled cases were not promoted
+  - the retained patch was narrowed to unit-argument `linear * sinh(x)` /
+    `linear * cosh(x)` so public `integrate` does not inherit the slow route
+- why it regressed globally:
+  - the antiderivative shape introduces a subtractive linear-combination of
+    `sinh(linear)`/`cosh(linear)` terms; existing hyperbolic simplification can
+    explore expensive rewrite paths for shifted linear arguments
+- what could make it combinable later:
+  - a cheap simplifier gate for subtractive hyperbolic linear combinations, or a
+    canonical compact form that avoids triggering the expensive hyperbolic
+    rewrite path
+- decision:
+  - observe-only discovery; do not retry the displaced/scaled integration
+    promotion until the simplification cost signature has a bounded fix
+
+## 2026-05-01 - Discovery observe-only: negative-affine hyperbolic by-parts orientation
+
+- area:
+  - calculus / integration / hyperbolic simplification / orientation robustness
+- status:
+  - `observe-only`
+- attempted case:
+  - reduce runtime for `integrate((2*x+3)*sinh(1-2*x), x)` and
+    `integrate((2*x+3)*cosh(1-2*x), x)` after shifted positive-affine
+    hyperbolic by-parts became promotable
+- local lane:
+  - CLI probes for the two negative-affine cases
+  - targeted contract smoke:
+    `cargo test -p cas_cli integrate_contract_linear_times_hyperbolic_linear_by_parts -- --nocapture`
+- local result:
+  - baseline probes returned correct antiderivatives with no required
+    conditions, but spent roughly 12-14s and emitted `depth_overflow` warnings
+  - a local normalization attempt that rewrote negative affine arguments through
+    hyperbolic parity did not bound the public CLI path
+  - treating `integrate/int` as HoldAll avoided child pre-simplification in
+    principle, but regressed already-promoted positive-affine hyperbolic
+    by-parts probes from milliseconds to multi-second runs
+- global result:
+  - no runtime or calculus code from the attempt was retained
+  - the existing positive-affine contracts were restored to their prior fast
+    path; targeted hyperbolic by-parts contract passes again in about 0.07s
+- reusable signature:
+  - negative orientation of affine hyperbolic arguments can force the
+    bottom-up simplifier into expensive hyperbolic angle expansion before or
+    after integration, even when the calculus rule itself has a simple
+    antiderivative
+- what could make it combinable later:
+  - a narrow preorder/root guard that canonicalizes `sinh/cosh(a-b*x)` to a
+    positive-slope argument before expensive hyperbolic expansion, without
+    making all `integrate` calls HoldAll
+  - or a cheap rejection gate for nonzero linear combinations of
+    `sinh/cosh(affine)` with polynomial coefficients before recursive
+    hyperbolic expansion
+- decision:
+  - observe-only discovery; do not promote negative-affine hyperbolic by-parts
+    until the simplifier has a bounded orientation fix that preserves embedded
+    and positive-affine integration runtime
+
+## 2026-05-01 - Discovery observe-only: raw rational-affine hyperbolic integration boundary
+
+- area:
+  - calculus / integration / pre-simplification boundary
+- status:
+  - `observe-only`
+- attempted case:
+  - add a low-level `cas_math` unit for
+    `integrate_symbolic_expr((x+1)*sinh((3*x+2)/2), x)` and the analogous
+    `cosh` case while promoting the same public CLI inputs
+  - add the same two public inputs to the heavyweight
+    antiderivative-by-`diff` verification list
+- local lane:
+  - `cargo test -p cas_math integrates_linear_times_hyperbolic_linear_by_parts -- --nocapture`
+  - `cargo test --release -q -p cas_cli --test integrate_contract_tests integrate_contract_supported_antiderivatives_verify_by_differentiation -- --exact --nocapture`
+  - public smoke probes:
+    `cargo run -q -p cas_cli -- eval 'integrate((x+1)*sinh((3*x+2)/2), x)' --format json`
+    and the analogous `cosh` probe
+- local result:
+  - public CLI probes completed in roughly 17-19ms, returned simplified
+    antiderivatives, and emitted no required conditions
+  - the direct `cas_math` helper path returned `None` for the raw rational
+    affine argument, showing that this helper currently relies on the public
+    pre-simplification/normalization boundary for this shape
+  - the antiderivative-by-`diff` list exceeded 60s in release with these two
+    cases added, so that heavyweight promotion was rejected
+- global result:
+  - the low-level unit promotion was not retained
+  - the heavyweight antiderivative-by-`diff` promotion was not retained
+  - the narrow public CLI no-condition/output contract remains the correct
+    promoted surface for this iteration
+- reusable signature:
+  - rational affine arguments represented with explicit division can be public
+    `integrate` successes while still being below the raw
+    `integrate_symbolic_expr` helper's accepted polynomial-normalized input
+    shape
+- what could make it combinable later:
+  - either normalize rational affine arguments before calling low-level
+    integration helpers, or teach the polynomial extractor to accept these raw
+    rational coefficient shapes directly
+  - add a cheaper antiderivative verification path for rational-affine
+    hyperbolic outputs before putting them in the global differentiation list
+- decision:
+  - observe-only discovery; do not broaden low-level unit expectations or the
+    heavyweight differentiation verification list until the helper boundary and
+    residual simplification cost are made explicit or normalized
+
+## 2026-05-01 - Discovery observe-only: rational-affine hyperbolic residual verification remains slow
+
+- area:
+  - calculus / integration / antiderivative verification / hyperbolic simplification
+- status:
+  - `observe-only`
+- attempted case:
+  - after teaching polynomial extraction to accept division by a constant
+    polynomial, re-probe the residual for
+    `integrate((x+1)*sinh((3*x+2)/2), x)` before promoting it to the
+    heavyweight antiderivative-by-`diff` contract
+- local lane:
+  - `gtimeout 30s cargo run -q -p cas_cli -- eval 'diff(cosh(1/2*(3*x+2))*(2/3*x+2/3) - 4/9*sinh(1/2*(3*x+2)), x) - (x+1)*sinh((3*x+2)/2)' --format json`
+- local result:
+  - the probe still timed out at 30s, so the earlier low-level polynomial
+    boundary fix did not make the hyperbolic residual cheap enough for the
+    global differentiation verifier
+  - the analogous rational-affine trigonometric residuals simplified to `0`
+    quickly and were promoted instead
+- reusable signature:
+  - rational-affine hyperbolic by-parts antiderivatives remain dominated by
+    residual simplification cost, not by low-level argument extraction
+- what could make it combinable later:
+  - add a bounded simplification path for subtractive affine
+    `sinh`/`cosh` linear combinations before retrying heavyweight
+    antiderivative verification
+- decision:
+  - observe-only discovery; keep the hyperbolic rational-affine public output
+    contract, but do not add it to the global by-`diff` verifier yet
+
+## 2026-05-01 - Discovery observe-only: linear hyperbolic reciprocal residual verifier
+
+- area:
+  - calculus / integration / antiderivative verification / hyperbolic reciprocal simplification
+- status:
+  - `observe-only`
+- attempted case:
+  - promote linear hyperbolic reciprocal antiderivatives such as
+    `integrate(1/sinh(2*x+1)^2, x)`,
+    `integrate(sinh(2*x+1)/cosh(2*x+1)^2, x)`,
+    `integrate(cosh(2*x+1)/sinh(2*x+1)^2, x)`, and
+    `integrate(1/tanh(2*x+1), x)` into the heavyweight
+    antiderivative-by-`diff` verifier
+- local lane:
+  - public CLI residual probes comparing `diff(antiderivative, x)` against the
+    original integrand before adding the cases to
+    `integrate_contract_supported_antiderivatives_verify_by_differentiation`
+- local result:
+  - some probes eventually reduce to `0`, but they emit repeated
+    `depth_overflow` and `cycle_detected` warnings
+  - the `ln(abs(sinh(2*x+1)))` residual for `1/tanh(2*x+1)` stayed on the
+    expensive expansion path long enough to require manual termination
+- reusable signature:
+  - composed `sinh`/`cosh` reciprocal residuals can expand affine hyperbolic
+    arguments into large products before proving the compact derivative
+    identity
+- what could make it combinable later:
+  - add a bounded residual simplification path for `coth`/`sech`/`csch`-like
+    derivatives, or verify these antiderivatives through a compact staged
+    identity before the global residual simplifier expands affine
+    `sinh`/`cosh` terms
+- decision:
+  - observe-only discovery; do not promote these hyperbolic reciprocal cases to
+    the global by-`diff` verifier until the residual path is bounded
+
+## 2026-05-01 - Discovery observe-only: shifted denominator-square integration after child expansion
+
+- area:
+  - calculus / integration / traversal order / expanded denominator powers
+- status:
+  - `observe-only`
+- attempted case:
+  - promote the syntactic public form
+    `integrate((2*x+1)/(x^2+x-1)^2, x)` after adding exact expanded-square
+    denominator recovery to the integration helper
+- local lane:
+  - `cargo test --release -q -p cas_cli --test integrate_contract_tests integrate_contract_shifted_polynomial_derivative_over_expanded_denominator_square_preserves_nonzero_domain -- --exact --nocapture`
+  - `cargo run --release -q -p cas_cli -- eval 'integrate((2*x+1)/(x^2+x-1)^2, x)' --steps on --format json`
+  - `cargo run --release -q -p cas_cli -- eval 'integrate((2*x+1)/(x^4+2*x^3-x^2-2*x+1), x)' --format json`
+- local result:
+  - the already-expanded denominator form integrates to
+    `-(1 / (x^2 + x - 1))` with required condition
+    `x^2 + x - 1 ≠ 0`
+  - the syntactic denominator-square form is expanded by a child
+    `Small Multinomial Expansion` step inside `integrate(...)` and remains a
+    residual integral, so the root integration rule is not reaching the newly
+    expanded shape in that pass
+- reusable signature:
+  - shifted polynomial denominator powers can be integrable after expansion,
+    but child expansion under `integrate(...)` can preempt the root calculus
+    rule and leave a residual
+- what could make it combinable later:
+  - either run the root `integrate` rule before expanding children in
+    `integrate(...)`, or add a bounded revisit/hold policy for calculus calls
+    that preserves integration candidates before transform-phase expansion
+- decision:
+  - retain the low-level expanded-square integration capability and public
+    expanded-denominator contract; do not promote the syntactic
+    denominator-square case until the traversal-order issue is addressed
+- retained follow-up:
+  - a later cycle kept `Small Multinomial Expansion` out of `integrate(...)`
+    descendants, preserving the syntactic `u'/u^2` denominator-power shape
+    without making all `integrate` calls HoldAll
+  - the syntactic public form was promoted as
+    `integrate((2*x+1)/(x^2+x-1)^2, x)` with compact nonzero condition
+    `x^2 + x - 1 ≠ 0`

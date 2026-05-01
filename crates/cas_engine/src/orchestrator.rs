@@ -25829,6 +25829,25 @@ impl Orchestrator {
         let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
         self.pattern_marks_expr = None;
 
+        if let Some(zero) =
+            crate::calculus_residual_support::try_diff_log_abs_hyperbolic_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            let shortcut_steps = if collect_steps {
+                vec![build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Cancel matching hyperbolic log-abs derivative residual",
+                    "Hyperbolic Diff Residual",
+                )]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
         // Narrow hidden solve root shortcuts. Keep them limited to the
         // no-steps, no-listener solve path and dispatch by root kind so we do
         // not pay unrelated matchers on every expression.
@@ -27424,6 +27443,26 @@ impl Orchestrator {
             }
 
             if pow_root {
+                if let Some(extract) = try_rewrite_extract_perfect_power_from_radicand_expr(
+                    &mut simplifier.context,
+                    expr,
+                ) {
+                    let rewrite = crate::rule::Rewrite::new(extract.rewritten)
+                        .desc("Extract perfect square from under radical");
+                    let (result, shortcut_steps) = finish_standard_root_shortcut(
+                        &simplifier.context,
+                        expr,
+                        rewrite,
+                        "Extract Perfect Square from Radicand",
+                        collect_steps,
+                    );
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
+
                 let parent_ctx =
                     build_root_shortcut_parent_ctx(&self.options, &simplifier.context, expr);
                 let root_pow_cancel = crate::rules::exponents::RootPowCancelRule;
@@ -39298,7 +39337,7 @@ mod tests {
         let mut orchestrator = Orchestrator::new();
         let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
         let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
-        let expected = "x * (x^2 + 1)^(1/2) * (u^3 + u^2 + u + 1) / (x^2 + 1)";
+        let expected = "x * (x^2 + 1)^(-1/2) * (u^3 + u^2 + u + 1)";
         assert_eq!(render(&simplifier.context, source_nf), expected);
         assert_eq!(render(&simplifier.context, target_nf), expected);
     }
@@ -39366,7 +39405,7 @@ mod tests {
         let mut orchestrator = Orchestrator::new();
         let (target_nf, _steps, _stats) = orchestrator.simplify_pipeline(target, &mut simplifier);
         let (source_nf, _steps, _stats) = orchestrator.simplify_pipeline(source, &mut simplifier);
-        let expected = "x * (x^2 + 1)^(1/2) * (u^2 + 5 * u + 6) / (x^2 + 1)";
+        let expected = "x * (x^2 + 1)^(-1/2) * (u^2 + 5 * u + 6)";
         assert_eq!(render(&simplifier.context, source_nf), expected);
         assert_eq!(render(&simplifier.context, target_nf), expected);
     }

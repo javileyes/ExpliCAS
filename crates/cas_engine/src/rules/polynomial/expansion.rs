@@ -177,8 +177,18 @@ impl crate::rule::Rule for SmallMultinomialExpansionRule {
         &self,
         ctx: &mut Context,
         expr: ExprId,
-        _parent_ctx: &crate::parent_context::ParentContext,
+        parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
+        let integrate_fn = ctx.intern_symbol("integrate");
+        if parent_ctx.has_ancestor_matching(ctx, |c, ancestor| {
+            matches!(
+                c.get(ancestor),
+                Expr::Function(fn_id, _) if *fn_id == integrate_fn
+            )
+        }) {
+            return None;
+        }
+
         let plan = try_expand_small_multinomial_expr(ctx, expr, SmallMultinomialPolicy::default())?;
         let k = plan.term_count;
         let n = plan.exponent;

@@ -1,7 +1,7 @@
 //! Condition normalization, deduplication, and dominance rules.
 
 use crate::domain_condition::ImplicitCondition;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_domain::{
     exprs_equivalent, exprs_equivalent_up_to_sign, is_abs_of, is_odd_power_of,
     is_positive_multiple_of, is_positive_power_of_base, is_product_dominated_by_positives,
@@ -17,7 +17,9 @@ use cas_math::expr_normalization::{
 use cas_math::factor::factor;
 use cas_math::multipoly::MultiPoly;
 use cas_math::numeric_eval::as_rational_const;
+use cas_math::polynomial::Polynomial;
 use cas_math::prove_sign::{prove_nonnegative_depth_with, prove_positive_depth_with};
+use cas_math::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind};
 use cas_math::tri_proof::TriProof;
 use num_rational::BigRational;
 use num_traits::{One, Signed, Zero};
@@ -99,14 +101,27 @@ fn positive_condition_equivalent_nonzero_base(ctx: &mut Context, expr: ExprId) -
         return Some(base);
     }
 
+    // Positive(sqrt(x^even)) -> NonZero(x) because sqrt(x^(2k)) > 0 <=> x != 0.
+    if let Some(base) = positive_sqrt_even_power_base(ctx, expr) {
+        return Some(base);
+    }
+
+    if let Some(base) = positive_perfect_square_base_from_sqrt_rewrite(ctx, expr) {
+        return Some(base);
+    }
+
     if let Some(base) = positive_condition_equivalent_nonzero_base_from_factorable(ctx, expr) {
         return Some(base);
     }
 
     let normalized = normalize_condition_expr_preserve_sign(ctx, expr);
-    (normalized != expr)
-        .then(|| positive_condition_equivalent_nonzero_base_from_factorable(ctx, normalized))
-        .flatten()
+    if normalized == expr {
+        return None;
+    }
+
+    positive_sqrt_even_power_base(ctx, normalized)
+        .or_else(|| positive_perfect_square_base_from_sqrt_rewrite(ctx, normalized))
+        .or_else(|| positive_condition_equivalent_nonzero_base_from_factorable(ctx, normalized))
 }
 
 fn positive_condition_equivalent_nonzero_base_from_factorable(
@@ -147,6 +162,14 @@ fn positive_condition_equivalent_nonzero_conditions(
         return Some(expand_nonzero_condition_for_display(ctx, base));
     }
 
+    if let Some(base) = positive_sqrt_even_power_base(ctx, expr) {
+        return Some(expand_nonzero_condition_for_display(ctx, base));
+    }
+
+    if let Some(base) = positive_perfect_square_base_from_sqrt_rewrite(ctx, expr) {
+        return Some(expand_nonzero_condition_for_display(ctx, base));
+    }
+
     if let Some(conditions) =
         positive_condition_equivalent_nonzero_conditions_from_factorable(ctx, expr)
     {
@@ -154,8 +177,39 @@ fn positive_condition_equivalent_nonzero_conditions(
     }
 
     let normalized = normalize_condition_expr_preserve_sign(ctx, expr);
-    (normalized != expr)
-        .then(|| positive_condition_equivalent_nonzero_conditions_from_factorable(ctx, normalized))
+    if normalized == expr {
+        return None;
+    }
+
+    if let Some(base) = positive_sqrt_even_power_base(ctx, normalized) {
+        return Some(expand_nonzero_condition_for_display(ctx, base));
+    }
+
+    if let Some(base) = positive_perfect_square_base_from_sqrt_rewrite(ctx, normalized) {
+        return Some(expand_nonzero_condition_for_display(ctx, base));
+    }
+
+    positive_condition_equivalent_nonzero_conditions_from_factorable(ctx, normalized)
+}
+
+fn positive_sqrt_even_power_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let sqrt_arg = extract_sqrt_like_base(ctx, expr)?;
+    extract_even_positive_power_base(ctx, sqrt_arg)
+}
+
+fn positive_perfect_square_base_from_sqrt_rewrite(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => {}
+        _ => return None,
+    }
+
+    let sqrt_expr = ctx.call_builtin(BuiltinFn::Sqrt, vec![expr]);
+    let rewrite = try_rewrite_simplify_square_root_expr(ctx, sqrt_expr)?;
+    (rewrite.kind == SimplifySquareRootRewriteKind::PerfectSquare)
+        .then(|| extract_abs_argument_view(ctx, rewrite.rewritten))
         .flatten()
 }
 
@@ -418,7 +472,7 @@ fn positive_exprs_equivalent_or_same_sqrt_like_base(
 }
 
 fn positive_target_from_nonzero_and_nonnegative(
-    ctx: &Context,
+    ctx: &mut Context,
     nonzero_expr: ExprId,
     nonnegative_expr: ExprId,
 ) -> Option<ExprId> {
@@ -428,12 +482,88 @@ fn positive_target_from_nonzero_and_nonnegative(
         return Some(nonnegative_expr);
     }
 
-    let nonzero_base = extract_sqrt_like_base(ctx, nonzero_core)?;
-    if exprs_equivalent(ctx, nonzero_base, nonnegative_expr) {
+    if exprs_equivalent_up_to_nonzero_scalar(ctx, nonzero_core, nonnegative_expr) {
+        return Some(nonnegative_expr);
+    }
+
+    if let Some(nonzero_base) = extract_sqrt_like_base(ctx, nonzero_core) {
+        if exprs_equivalent(ctx, nonzero_base, nonnegative_expr) {
+            return Some(nonnegative_expr);
+        }
+    }
+
+    if nonzero_product_contains_nonnegative_factor_with_positive_cofactors(
+        ctx,
+        nonzero_core,
+        nonnegative_expr,
+    ) {
         return Some(nonnegative_expr);
     }
 
     None
+}
+
+fn nonzero_product_contains_nonnegative_factor_with_positive_cofactors(
+    ctx: &mut Context,
+    nonzero_expr: ExprId,
+    nonnegative_expr: ExprId,
+) -> bool {
+    let factored = factor(ctx, nonzero_expr);
+    let mut factors = Vec::new();
+    collect_nonzero_atomic_factors(ctx, factored, &mut factors);
+    if factors.len() <= 1 {
+        return polynomial_nonzero_quotient_is_intrinsically_positive(
+            ctx,
+            nonzero_expr,
+            nonnegative_expr,
+        );
+    }
+
+    factors
+        .iter()
+        .enumerate()
+        .any(|(factor_index, factor_expr)| {
+            exprs_equivalent_up_to_nonzero_scalar(ctx, *factor_expr, nonnegative_expr)
+                && factors.iter().enumerate().all(|(other_index, other_expr)| {
+                    other_index == factor_index || is_intrinsically_positive_real(ctx, *other_expr)
+                })
+        })
+        || polynomial_nonzero_quotient_is_intrinsically_positive(
+            ctx,
+            nonzero_expr,
+            nonnegative_expr,
+        )
+}
+
+fn polynomial_nonzero_quotient_is_intrinsically_positive(
+    ctx: &mut Context,
+    nonzero_expr: ExprId,
+    nonnegative_expr: ExprId,
+) -> bool {
+    let mut variables = cas_ast::collect_variables(ctx, nonzero_expr);
+    variables.extend(cas_ast::collect_variables(ctx, nonnegative_expr));
+    if variables.len() != 1 {
+        return false;
+    }
+
+    let Some(var) = variables.iter().next() else {
+        return false;
+    };
+    let Ok(nonzero_poly) = Polynomial::from_expr(ctx, nonzero_expr, var.as_str()) else {
+        return false;
+    };
+    let Ok(nonnegative_poly) = Polynomial::from_expr(ctx, nonnegative_expr, var.as_str()) else {
+        return false;
+    };
+    let Ok((quotient, remainder)) = nonzero_poly.div_rem(&nonnegative_poly) else {
+        return false;
+    };
+    if !remainder.is_zero() {
+        return false;
+    }
+
+    let quotient_expr = quotient.to_expr(ctx);
+    is_intrinsically_positive_real(ctx, quotient_expr)
 }
 
 fn combine_nonzero_nonnegative_into_positive(
@@ -1267,14 +1397,42 @@ fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<
     let core_expr = extract_abs_argument_view(ctx, expr).unwrap_or(expr);
     let stripped_expr = strip_nonzero_scalar_factors_for_display(ctx, core_expr);
 
+    if let Some(sinh_expr) = tanh_nonzero_equivalent_sinh(ctx, stripped_expr) {
+        return expand_nonzero_condition_for_display(ctx, sinh_expr);
+    }
+
     if let Some(arg_minus_one) = log_nonzero_argument_offset(ctx, stripped_expr) {
         return expand_nonzero_condition_for_display(ctx, arg_minus_one);
     }
 
+    if let Some(expanded) = expand_abs_unit_offset_nonzero_for_display(ctx, stripped_expr) {
+        return expanded;
+    }
+
+    if let Some(expanded) =
+        expand_sqrt_even_power_unit_offset_nonzero_for_display(ctx, stripped_expr)
+    {
+        return expanded;
+    }
+
     let normalized_expr = normalize_condition_expr(ctx, stripped_expr);
+
+    if let Some(sinh_expr) = tanh_nonzero_equivalent_sinh(ctx, normalized_expr) {
+        return expand_nonzero_condition_for_display(ctx, sinh_expr);
+    }
 
     if let Some(arg_minus_one) = log_nonzero_argument_offset(ctx, normalized_expr) {
         return expand_nonzero_condition_for_display(ctx, arg_minus_one);
+    }
+
+    if let Some(expanded) = expand_abs_unit_offset_nonzero_for_display(ctx, normalized_expr) {
+        return expanded;
+    }
+
+    if let Some(expanded) =
+        expand_sqrt_even_power_unit_offset_nonzero_for_display(ctx, normalized_expr)
+    {
+        return expanded;
     }
 
     if let Some(base) = extract_even_positive_power_base(ctx, normalized_expr) {
@@ -1317,15 +1475,102 @@ fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<
     }
 }
 
+fn expand_abs_unit_offset_nonzero_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<ImplicitCondition>> {
+    let abs_arg = match ctx.get(expr) {
+        Expr::Sub(left, right) if is_one_constant(ctx, *right) => {
+            extract_abs_argument_view(ctx, *left)
+        }
+        Expr::Sub(left, right) if is_one_constant(ctx, *left) => {
+            extract_abs_argument_view(ctx, *right)
+        }
+        _ => None,
+    }?;
+
+    if is_intrinsically_nonnegative_real(ctx, abs_arg) {
+        let boundary = even_power_unit_offset_nonzero_boundary(ctx, abs_arg).unwrap_or_else(|| {
+            let one = ctx.num(1);
+            ctx.add(Expr::Sub(abs_arg, one))
+        });
+        return Some(expand_nonzero_condition_for_display(ctx, boundary));
+    }
+
+    expand_signed_unit_boundaries_nonzero_for_display(ctx, abs_arg)
+}
+
+fn even_power_unit_offset_nonzero_boundary(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let base = extract_even_positive_power_base(ctx, expr)?;
+    let two = ctx.num(2);
+    let base_squared = ctx.add(Expr::Pow(base, two));
+    let one = ctx.num(1);
+    Some(ctx.add(Expr::Sub(base_squared, one)))
+}
+
+fn expand_sqrt_even_power_unit_offset_nonzero_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<ImplicitCondition>> {
+    let sqrt_arg = match ctx.get(expr) {
+        Expr::Sub(left, right) if is_one_constant(ctx, *right) => {
+            extract_sqrt_like_base(ctx, *left)
+        }
+        Expr::Sub(left, right) if is_one_constant(ctx, *left) => {
+            extract_sqrt_like_base(ctx, *right)
+        }
+        _ => None,
+    }?;
+    let base = extract_even_positive_power_base(ctx, sqrt_arg)?;
+
+    expand_signed_unit_boundaries_nonzero_for_display(ctx, base)
+}
+
+fn expand_signed_unit_boundaries_nonzero_for_display(
+    ctx: &mut Context,
+    base: ExprId,
+) -> Option<Vec<ImplicitCondition>> {
+    let one = ctx.num(1);
+    let lower_boundary = ctx.add(Expr::Sub(base, one));
+    let upper_boundary = ctx.add(Expr::Add(base, one));
+    let mut expanded = Vec::new();
+
+    for boundary in [lower_boundary, upper_boundary] {
+        for cond in expand_nonzero_condition_for_display(ctx, boundary) {
+            if !expanded
+                .iter()
+                .any(|existing| conditions_equivalent(ctx, existing, &cond))
+            {
+                expanded.push(cond);
+            }
+        }
+    }
+
+    (!expanded.is_empty()).then_some(expanded)
+}
+
+fn is_one_constant(ctx: &Context, expr: ExprId) -> bool {
+    as_rational_const(ctx, expr).is_some_and(|constant| constant.is_one())
+}
+
+fn tanh_nonzero_equivalent_sinh(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let arg = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Tanh) && args.len() == 1 =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+
+    Some(ctx.call_builtin(BuiltinFn::Sinh, vec![arg]))
+}
+
 fn expand_common_factor_sum_nonzero_for_display(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<Vec<ImplicitCondition>> {
-    let (left, right, is_subtraction) = match ctx.get(expr) {
-        Expr::Add(left, right) => (*left, *right, false),
-        Expr::Sub(left, right) => (*left, *right, true),
-        _ => return None,
-    };
+    let (left, right, is_subtraction) = additive_common_factor_terms(ctx, expr)?;
 
     let left_factors: Vec<_> = mul_leaves(ctx, left).into_iter().collect();
     let mut right_factors: Vec<_> = mul_leaves(ctx, right).into_iter().collect();
@@ -1374,6 +1619,22 @@ fn expand_common_factor_sum_nonzero_for_display(
     }
 
     (!expanded.is_empty()).then_some(expanded)
+}
+
+fn additive_common_factor_terms(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId, bool)> {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            if let Expr::Neg(inner) = ctx.get(*right) {
+                return Some((*left, *inner, true));
+            }
+            if let Expr::Neg(inner) = ctx.get(*left) {
+                return Some((*right, *inner, true));
+            }
+            Some((*left, *right, false))
+        }
+        Expr::Sub(left, right) => Some((*left, *right, true)),
+        _ => None,
+    }
 }
 
 fn build_mul_or_one(ctx: &mut Context, factors: &[ExprId]) -> ExprId {
@@ -1770,6 +2031,37 @@ mod tests {
     }
 
     #[test]
+    fn positive_expanded_perfect_square_collapses_to_base_nonzero_condition() {
+        let mut ctx = Context::new();
+
+        for (input, expected_base) in [("x^2 + 2*x + 1", "x + 1"), ("4*x^2 + 4*x + 1", "2*x + 1")] {
+            let square = parse(input, &mut ctx).expect("parse square");
+            let base = parse(expected_base, &mut ctx).expect("parse base");
+
+            let normalized =
+                normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::Positive(square)]);
+
+            assert_eq!(
+                normalized.len(),
+                1,
+                "input: {input}, got: {:?}",
+                normalized
+                    .iter()
+                    .map(|cond| cond.display(&ctx))
+                    .collect::<Vec<_>>()
+            );
+            assert!(
+                conditions_equivalent(&ctx, &normalized[0], &ImplicitCondition::NonZero(base)),
+                "input: {input}, expected NonZero({expected_base}), got: {:?}",
+                normalized
+                    .iter()
+                    .map(|cond| cond.display(&ctx))
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
     fn atomic_positive_factors_dominate_composite_log_argument_positive_condition() {
         let mut ctx = Context::new();
         let t = parse("t", &mut ctx).expect("parse t");
@@ -1892,6 +2184,28 @@ mod tests {
     }
 
     #[test]
+    fn nonzero_tanh_display_condition_normalizes_to_sinh_nonzero() {
+        let mut ctx = Context::new();
+        let tanh_expr = parse("tanh(2*x + 1)", &mut ctx).expect("parse tanh");
+        let sinh_expr = parse("sinh(2*x + 1)", &mut ctx).expect("parse sinh");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(tanh_expr),
+                ImplicitCondition::NonZero(sinh_expr),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 1);
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::NonZero(sinh_expr)
+        ));
+    }
+
+    #[test]
     fn nonzero_common_log_square_sum_normalizes_to_base_boundary() {
         let mut ctx = Context::new();
         let composite = parse("ln(x)^2 + x*ln(x)^2", &mut ctx).expect("parse composite condition");
@@ -1903,6 +2217,32 @@ mod tests {
             &[
                 ImplicitCondition::NonZero(composite),
                 ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2);
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_minus_one))
+        }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x)) }));
+    }
+
+    #[test]
+    fn nonzero_common_log_square_difference_normalizes_under_positive_base() {
+        let mut ctx = Context::new();
+        let composite =
+            parse("x^3*ln(x)^2 - x*ln(x)^2", &mut ctx).expect("parse composite condition");
+        let x = parse("x", &mut ctx).expect("parse x");
+        let x_minus_one = parse("x - 1", &mut ctx).expect("parse x - 1");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(x_minus_one),
+                ImplicitCondition::Positive(x),
+                ImplicitCondition::NonZero(composite),
             ],
         );
 
@@ -2009,6 +2349,30 @@ mod tests {
             &ctx,
             &normalized[0],
             &ImplicitCondition::Positive(base)
+        ));
+    }
+
+    #[test]
+    fn nonzero_positive_cofactor_and_nonnegative_factor_combine_into_positive_factor() {
+        let mut ctx = Context::new();
+        let nonzero_product =
+            parse("(x^2 + 1/2) * (x^4 + x^2 - 3/4)", &mut ctx).expect("parse product");
+        let scaled_gap =
+            parse("4*x^4 + 4*x^2 - 3", &mut ctx).expect("parse scaled nonnegative gap");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(nonzero_product),
+                ImplicitCondition::NonNegative(scaled_gap),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 1, "got: {normalized:?}");
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(scaled_gap)
         ));
     }
 
@@ -2149,6 +2513,140 @@ mod tests {
         assert!(normalized
             .iter()
             .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(y)) }));
+    }
+
+    #[test]
+    fn positive_sqrt_even_power_expands_to_atomic_nonzero_base() {
+        let mut ctx = Context::new();
+        let x_minus_one = parse("x - 1", &mut ctx).expect("parse x - 1");
+        let x_plus_one = parse("x + 1", &mut ctx).expect("parse x + 1");
+
+        for input in ["sqrt((x^2 - 1)^2)", "((x^2 - 1)^2)^(1/2)"] {
+            let expr = parse(input, &mut ctx).expect("parse sqrt even power");
+            let normalized =
+                normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::Positive(expr)]);
+
+            assert_eq!(normalized.len(), 2, "input: {input}, got: {normalized:?}");
+            assert!(normalized.iter().any(|cond| {
+                conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_minus_one))
+            }));
+            assert!(normalized.iter().any(|cond| {
+                conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_plus_one))
+            }));
+        }
+    }
+
+    #[test]
+    fn nonzero_abs_unit_offset_expands_to_signed_boundaries() {
+        let mut ctx = Context::new();
+        let x_minus_one = parse("x - 1", &mut ctx).expect("parse x - 1");
+        let x_plus_one = parse("x + 1", &mut ctx).expect("parse x + 1");
+
+        for input in ["abs(x) - 1", "1 - abs(x)"] {
+            let expr = parse(input, &mut ctx).expect("parse abs unit offset");
+            let normalized =
+                normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonZero(expr)]);
+
+            assert_eq!(normalized.len(), 2, "input: {input}, got: {normalized:?}");
+            assert!(normalized.iter().any(|cond| {
+                conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_minus_one))
+            }));
+            assert!(normalized.iter().any(|cond| {
+                conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_plus_one))
+            }));
+        }
+    }
+
+    #[test]
+    fn nonzero_abs_nonnegative_unit_offset_drops_impossible_positive_boundary() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).expect("parse x");
+        let x_square_minus_two = parse("x^2 - 2", &mut ctx).expect("parse x^2 - 2");
+        let impossible_boundary =
+            parse("x^4 + 2 - 2*x^2", &mut ctx).expect("parse impossible boundary");
+
+        for input in ["abs((x^2 - 1)^2) - 1", "1 - abs((x^2 - 1)^2)"] {
+            let expr = parse(input, &mut ctx).expect("parse abs nonnegative unit offset");
+            let normalized =
+                normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonZero(expr)]);
+
+            assert_eq!(normalized.len(), 2, "input: {input}, got: {normalized:?}");
+            assert!(normalized
+                .iter()
+                .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x)) }));
+            assert!(normalized.iter().any(|cond| {
+                conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_square_minus_two))
+            }));
+            assert!(
+                !normalized.iter().any(|cond| {
+                    conditions_equivalent(
+                        &ctx,
+                        cond,
+                        &ImplicitCondition::NonZero(impossible_boundary),
+                    )
+                }),
+                "input: {input}, impossible nonzero boundary should be dropped: {normalized:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn nonzero_abs_nonnegative_higher_even_power_unit_offset_drops_positive_factor_boundary() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).expect("parse x");
+        let x_square_minus_two = parse("x^2 - 2", &mut ctx).expect("parse x^2 - 2");
+        let mixed_positive_factor_boundary =
+            parse("x^6 + 6*x^2 - 4*x^4 - 4", &mut ctx).expect("parse mixed boundary");
+
+        for input in ["abs((x^2 - 1)^4) - 1", "1 - abs((x^2 - 1)^4)"] {
+            let expr = parse(input, &mut ctx).expect("parse higher abs nonnegative unit offset");
+            let normalized =
+                normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonZero(expr)]);
+
+            assert_eq!(normalized.len(), 2, "input: {input}, got: {normalized:?}");
+            assert!(normalized
+                .iter()
+                .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x)) }));
+            assert!(normalized.iter().any(|cond| {
+                conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_square_minus_two))
+            }));
+            assert!(
+                !normalized.iter().any(|cond| {
+                    conditions_equivalent(
+                        &ctx,
+                        cond,
+                        &ImplicitCondition::NonZero(mixed_positive_factor_boundary),
+                    )
+                }),
+                "input: {input}, positive factor boundary should not leak: {normalized:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn nonzero_sqrt_even_power_unit_offset_expands_to_signed_boundaries() {
+        let mut ctx = Context::new();
+        let x_minus_one = parse("x - 1", &mut ctx).expect("parse x - 1");
+        let x_plus_one = parse("x + 1", &mut ctx).expect("parse x + 1");
+
+        for input in [
+            "sqrt(x^2) - 1",
+            "1 - sqrt(x^2)",
+            "(x^2)^(1/2) - 1",
+            "1 - (x^2)^(1/2)",
+        ] {
+            let expr = parse(input, &mut ctx).expect("parse sqrt unit offset");
+            let normalized =
+                normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonZero(expr)]);
+
+            assert_eq!(normalized.len(), 2, "input: {input}, got: {normalized:?}");
+            assert!(normalized.iter().any(|cond| {
+                conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_minus_one))
+            }));
+            assert!(normalized.iter().any(|cond| {
+                conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_plus_one))
+            }));
+        }
     }
 
     #[test]

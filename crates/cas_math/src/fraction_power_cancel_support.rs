@@ -118,6 +118,60 @@ fn scale_rewrite_result(ctx: &mut Context, scale: BigRational, expr: ExprId) -> 
     }
 }
 
+fn is_one_expr(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if n.is_one())
+}
+
+fn build_product_or_one(ctx: &mut Context, factors: &[ExprId]) -> ExprId {
+    if factors.is_empty() {
+        ctx.num(1)
+    } else {
+        build_balanced_mul(ctx, factors)
+    }
+}
+
+fn scaled_power_factor_from_numerator(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+) -> Option<(BigRational, ExprId, ExprId, ExprId, BigRational)> {
+    let (num_scale, num_core) = split_numeric_scale(ctx, num);
+    if let Some((base, exp)) = as_pow(ctx, num_core) {
+        let den_scale = scalar_multiple_to_base(ctx, base, den).or_else(|| {
+            relation_to_base(ctx, base, den).map(|relation| match relation {
+                SignRelation::Same => BigRational::one(),
+                SignRelation::Negated => -BigRational::one(),
+            })
+        })?;
+        return Some((num_scale, ctx.num(1), base, exp, den_scale));
+    }
+
+    let factors = mul_leaves(ctx, num_core);
+    for (idx, factor) in factors.iter().enumerate() {
+        let Some((base, exp)) = as_pow(ctx, *factor) else {
+            continue;
+        };
+        let Some(den_scale) = scalar_multiple_to_base(ctx, base, den).or_else(|| {
+            relation_to_base(ctx, base, den).map(|relation| match relation {
+                SignRelation::Same => BigRational::one(),
+                SignRelation::Negated => -BigRational::one(),
+            })
+        }) else {
+            continue;
+        };
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(factor_idx, factor)| (factor_idx != idx).then_some(*factor))
+            .collect();
+        let cofactor = build_product_or_one(ctx, &cofactor_factors);
+        return Some((num_scale, cofactor, base, exp, den_scale));
+    }
+
+    None
+}
+
 #[derive(Debug, Clone)]
 pub struct CancelSameBasePowersRewrite {
     pub rewritten: ExprId,
@@ -246,14 +300,8 @@ pub fn try_rewrite_cancel_power_fraction_expr(
     expr: ExprId,
 ) -> Option<CancelPowerFractionRewrite> {
     let (num, den) = as_div(ctx, expr)?;
-    let (num_scale, num_core) = split_numeric_scale(ctx, num);
-    let (base, exp) = as_pow(ctx, num_core)?;
-    let den_scale = scalar_multiple_to_base(ctx, base, den).or_else(|| {
-        relation_to_base(ctx, base, den).map(|relation| match relation {
-            SignRelation::Same => BigRational::one(),
-            SignRelation::Negated => -BigRational::one(),
-        })
-    })?;
+    let (num_scale, cofactor, base, exp, den_scale) =
+        scaled_power_factor_from_numerator(ctx, num, den)?;
     if den_scale.is_zero() {
         return None;
     }
@@ -271,7 +319,12 @@ pub fn try_rewrite_cancel_power_fraction_expr(
                 ctx.add(Expr::Pow(base, new_exp))
             };
 
-            let rewritten = scale_rewrite_result(ctx, result_scale, base_result);
+            let scaled = scale_rewrite_result(ctx, result_scale, base_result);
+            let rewritten = if is_one_expr(ctx, cofactor) {
+                scaled
+            } else {
+                ctx.add(Expr::Mul(cofactor, scaled))
+            };
             let kind = if den_scale.is_positive() {
                 CancelPowerFractionRewriteKind::SameSign
             } else {
@@ -300,7 +353,12 @@ pub fn try_rewrite_cancel_power_fraction_expr(
         ctx.add(Expr::Pow(base, new_exp))
     };
 
-    let rewritten = scale_rewrite_result(ctx, result_scale, base_result);
+    let scaled = scale_rewrite_result(ctx, result_scale, base_result);
+    let rewritten = if is_one_expr(ctx, cofactor) {
+        scaled
+    } else {
+        ctx.add(Expr::Mul(cofactor, scaled))
+    };
     let kind = if den_scale.is_positive() {
         CancelPowerFractionRewriteKind::SameSign
     } else {
@@ -474,6 +532,22 @@ mod tests {
 
         assert!(rendered.contains("1/2"), "rendered={rendered}");
         assert!(rendered.contains("sin(x)^(-1/2)"), "rendered={rendered}");
+    }
+
+    #[test]
+    fn cancel_power_fraction_rewrites_cofactored_even_root_quotient() {
+        let mut ctx = Context::new();
+        let base = parse("u^2 + 1", &mut ctx).expect("parse base");
+        let x = parse("x", &mut ctx).expect("parse x");
+        let half = ctx.rational(1, 2);
+        let pow = ctx.add(Expr::Pow(base, half));
+        let num = ctx.add(Expr::Mul(x, pow));
+        let expr = ctx.add(Expr::Div(num, base));
+        let rw = try_rewrite_cancel_power_fraction_expr(&mut ctx, expr).expect("rewrite");
+        let rendered = cas_formatter::render_expr(&ctx, rw.rewritten);
+
+        assert!(rendered.contains("x"), "rendered={rendered}");
+        assert!(rendered.contains("(u^2 + 1)^(-1/2)"), "rendered={rendered}");
     }
 
     #[test]

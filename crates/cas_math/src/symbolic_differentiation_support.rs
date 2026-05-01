@@ -1,10 +1,19 @@
 //! Symbolic differentiation helpers shared by differentiation-facing rule layers.
 
 use crate::build::mul2_raw;
+use crate::expr_nary::{build_balanced_mul, mul_leaves};
 use crate::expr_predicates::contains_named_var;
+use crate::polynomial::Polynomial;
+use crate::prove_sign::prove_positive_depth_with;
+use crate::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind};
+use crate::tri_proof::TriProof;
 use cas_ast::{ordering::compare_expr, BuiltinFn, Context, Expr, ExprId};
-use num_traits::{One, Zero};
+use num_integer::Integer;
+use num_rational::BigRational;
+use num_traits::{One, Signed, Zero};
 use std::cmp::Ordering;
+
+const SYMBOLIC_DIFF_SIGN_PROOF_DEPTH: usize = 8;
 
 fn is_zero(ctx: &Context, expr: ExprId) -> bool {
     matches!(ctx.get(expr), Expr::Number(n) if n.is_zero())
@@ -46,12 +55,145 @@ fn mul_pruned(ctx: &mut Context, left: ExprId, right: ExprId) -> ExprId {
     }
 }
 
+fn div_pruned(ctx: &mut Context, num: ExprId, den: ExprId) -> ExprId {
+    if is_zero(ctx, num) {
+        ctx.num(0)
+    } else if is_one(ctx, den) {
+        num
+    } else {
+        ctx.add(Expr::Div(num, den))
+    }
+}
+
+fn hyperbolic_linear_factor(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    unary_builtin_arg(ctx, expr, BuiltinFn::Sinh)
+        .map(|arg| (BuiltinFn::Sinh, arg))
+        .or_else(|| unary_builtin_arg(ctx, expr, BuiltinFn::Cosh).map(|arg| (BuiltinFn::Cosh, arg)))
+}
+
+fn polynomial_times_builtin(ctx: &mut Context, poly: &Polynomial, builtin_expr: ExprId) -> ExprId {
+    if poly.is_zero() {
+        return ctx.num(0);
+    }
+
+    let poly_expr = poly.to_expr(ctx);
+    mul_pruned(ctx, poly_expr, builtin_expr)
+}
+
+fn try_linear_times_hyperbolic_linear_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for (hyperbolic_index, factor) in factors.iter().copied().enumerate() {
+        let Some((builtin, arg)) = hyperbolic_linear_factor(ctx, factor) else {
+            continue;
+        };
+
+        let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+        if arg_poly.degree() != 1 {
+            continue;
+        }
+        let arg_slope = arg_poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if arg_slope.is_zero() {
+            continue;
+        }
+
+        let cofactor_factors: Vec<_> = factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != hyperbolic_index).then_some(factor))
+            .collect();
+        let cofactor = build_balanced_mul(ctx, &cofactor_factors);
+        let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+        if cofactor_poly.degree() > 1 {
+            continue;
+        }
+
+        let cofactor_derivative = cofactor_poly.derivative();
+        let slope_poly = Polynomial::new(vec![arg_slope], var.to_string());
+        let scaled_cofactor = cofactor_poly.mul(&slope_poly);
+
+        let companion_builtin = match builtin {
+            BuiltinFn::Sinh => BuiltinFn::Cosh,
+            BuiltinFn::Cosh => BuiltinFn::Sinh,
+            _ => return None,
+        };
+        let companion = ctx.call_builtin(companion_builtin, vec![arg]);
+        let term_from_cofactor = polynomial_times_builtin(ctx, &cofactor_derivative, factor);
+        let term_from_chain = polynomial_times_builtin(ctx, &scaled_cofactor, companion);
+
+        return Some(add_pruned(ctx, term_from_cofactor, term_from_chain));
+    }
+
+    None
+}
+
 fn one_minus_arg_square_sqrt(ctx: &mut Context, arg: ExprId) -> ExprId {
     let one = ctx.num(1);
     let two = ctx.num(2);
     let arg_sq = ctx.add(Expr::Pow(arg, two));
     let inner = ctx.add(Expr::Sub(one, arg_sq));
     ctx.call_builtin(BuiltinFn::Sqrt, vec![inner])
+}
+
+fn positive_scaled_arg(ctx: &Context, arg: ExprId) -> Option<(BigRational, ExprId)> {
+    match ctx.get(arg) {
+        Expr::Mul(l, r) => {
+            let (l, r) = (*l, *r);
+            if let Some(scale) = positive_rational_const(ctx, l) {
+                Some((scale, r))
+            } else {
+                positive_rational_const(ctx, r).map(|scale| (scale, l))
+            }
+        }
+        Expr::Div(num, den) => {
+            let den_value = positive_rational_const(ctx, *den)?;
+            Some((reciprocal_positive_rational(&den_value), *num))
+        }
+        _ => None,
+    }
+}
+
+fn positive_rational_const(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    let value = cas_ast::views::as_rational_const(ctx, expr, 4)?;
+    value.is_positive().then_some(value)
+}
+
+fn reciprocal_positive_rational(value: &BigRational) -> BigRational {
+    BigRational::new(value.denom().clone(), value.numer().clone())
+}
+
+fn scaled_one_minus_arg_square_derivative(
+    ctx: &mut Context,
+    arg: ExprId,
+    d_arg: ExprId,
+) -> Option<ExprId> {
+    let (scale, inner) = positive_scaled_arg(ctx, arg)?;
+    if scale.is_one() {
+        return None;
+    }
+
+    let scale_squared = &scale * &scale;
+    let offset = BigRational::one() / scale_squared;
+    let two = ctx.num(2);
+    let inner_sq = ctx.add(Expr::Pow(inner, two));
+    let offset_expr = ctx.add(Expr::Number(offset));
+    let radicand = ctx.add(Expr::Sub(offset_expr, inner_sq));
+    let den = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let numerator_scale = ctx.add(Expr::Number(reciprocal_positive_rational(&scale)));
+    let numerator = mul_pruned(ctx, d_arg, numerator_scale);
+    Some(ctx.add(Expr::Div(numerator, den)))
 }
 
 fn unit_reciprocal_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -78,7 +220,89 @@ fn one_minus_reciprocal_arg_square_sqrt(ctx: &mut Context, arg: ExprId) -> (Expr
     (ctx.call_builtin(BuiltinFn::Sqrt, vec![inner]), arg_sq)
 }
 
+fn is_intrinsically_positive_real(ctx: &Context, expr: ExprId) -> bool {
+    prove_positive_depth_with(
+        ctx,
+        expr,
+        SYMBOLIC_DIFF_SIGN_PROOF_DEPTH,
+        true,
+        |_inner_ctx, _inner_expr, _inner_depth| TriProof::Unknown,
+    )
+    .is_proven()
+}
+
+fn is_positive_integer_power(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(_, exp) => match ctx.get(*exp) {
+            Expr::Number(n) => n.is_integer() && n.is_positive(),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+fn is_positive_even_integer_power(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(_, exp) => match ctx.get(*exp) {
+            Expr::Number(n) => n.is_integer() && n.is_positive() && n.to_integer().is_even(),
+            _ => false,
+        },
+        _ => false,
+    }
+}
+
+fn acosh_left_radicand(ctx: &mut Context, arg: ExprId) -> ExprId {
+    match ctx.get(arg) {
+        Expr::Add(left, right) if is_one(ctx, *right) => *left,
+        Expr::Add(left, right) if is_one(ctx, *left) => *right,
+        _ => {
+            let one = ctx.num(1);
+            ctx.add(Expr::Sub(arg, one))
+        }
+    }
+}
+
+fn has_perfect_square_sqrt_rewrite(ctx: &mut Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => {}
+        _ => return false,
+    }
+
+    let sqrt_expr = ctx.call_builtin(BuiltinFn::Sqrt, vec![expr]);
+    try_rewrite_simplify_square_root_expr(ctx, sqrt_expr)
+        .is_some_and(|rewrite| rewrite.kind == SimplifySquareRootRewriteKind::PerfectSquare)
+}
+
+fn positive_arg_arcsec_like_derivative(
+    ctx: &mut Context,
+    arg: ExprId,
+    d_arg: ExprId,
+    sign: i64,
+) -> Option<ExprId> {
+    if is_positive_integer_power(ctx, arg) || !is_intrinsically_positive_real(ctx, arg) {
+        return None;
+    }
+
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let arg_sq = ctx.add(Expr::Pow(arg, two));
+    let gap = ctx.add(Expr::Sub(arg_sq, one));
+    let sqrt_gap = ctx.call_builtin(BuiltinFn::Sqrt, vec![gap]);
+    let denominator = mul_pruned(ctx, arg, sqrt_gap);
+    let numerator = if sign < 0 {
+        ctx.add(Expr::Neg(d_arg))
+    } else {
+        d_arg
+    };
+
+    Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
 fn arcsec_like_derivative(ctx: &mut Context, arg: ExprId, d_arg: ExprId, sign: i64) -> ExprId {
+    if let Some(derivative) = positive_arg_arcsec_like_derivative(ctx, arg, d_arg, sign) {
+        return derivative;
+    }
+
     let one = ctx.num(1);
     let (sqrt_gap, arg_sq) = one_minus_reciprocal_arg_square_sqrt(ctx, arg);
     let numerator = mul_pruned(ctx, d_arg, sqrt_gap);
@@ -101,12 +325,20 @@ fn arccot_derivative(ctx: &mut Context, arg: ExprId, d_arg: ExprId) -> ExprId {
 }
 
 fn acosh_derivative(ctx: &mut Context, arg: ExprId, d_arg: ExprId) -> ExprId {
+    let left = acosh_left_radicand(ctx, arg);
     let one = ctx.num(1);
     let minus_one = ctx.num(-1);
     let two = ctx.num(2);
     let neg_half = ctx.add(Expr::Div(minus_one, two));
-    let left = ctx.add(Expr::Sub(arg, one));
     let right = ctx.add(Expr::Add(arg, one));
+
+    if is_positive_even_integer_power(ctx, left) || has_perfect_square_sqrt_rewrite(ctx, left) {
+        let sqrt_left = ctx.call_builtin(BuiltinFn::Sqrt, vec![left]);
+        let sqrt_right = ctx.call_builtin(BuiltinFn::Sqrt, vec![right]);
+        let denominator = mul_pruned(ctx, sqrt_left, sqrt_right);
+        return div_pruned(ctx, d_arg, denominator);
+    }
+
     let left_inv_sqrt = ctx.add(Expr::Pow(left, neg_half));
     let sqrt_right = ctx.call_builtin(BuiltinFn::Sqrt, vec![right]);
     let numerator = mul_pruned(ctx, d_arg, left_inv_sqrt);
@@ -177,6 +409,12 @@ fn canonical_reciprocal_trig_div_kind(
     }
 }
 
+fn canonical_hyperbolic_coth_div_arg(ctx: &Context, num: ExprId, den: ExprId) -> Option<ExprId> {
+    let cosh_arg = unary_builtin_arg(ctx, num, BuiltinFn::Cosh)?;
+    let sinh_arg = unary_builtin_arg(ctx, den, BuiltinFn::Sinh)?;
+    (compare_expr(ctx, cosh_arg, sinh_arg) == Ordering::Equal).then_some(cosh_arg)
+}
+
 fn squared_builtin_call(ctx: &mut Context, builtin: BuiltinFn, arg: ExprId) -> ExprId {
     let call = ctx.call_builtin(builtin, vec![arg]);
     let two = ctx.num(2);
@@ -204,6 +442,12 @@ fn cotangent_derivative(ctx: &mut Context, arg: ExprId, d_arg: ExprId) -> ExprId
     ctx.add(Expr::Div(neg_d_arg, sin_sq))
 }
 
+fn hyperbolic_coth_derivative(ctx: &mut Context, arg: ExprId, d_arg: ExprId) -> ExprId {
+    let sinh_sq = squared_builtin_call(ctx, BuiltinFn::Sinh, arg);
+    let neg_d_arg = ctx.add(Expr::Neg(d_arg));
+    ctx.add(Expr::Div(neg_d_arg, sinh_sq))
+}
+
 fn reciprocal_trig_derivative(
     ctx: &mut Context,
     kind: ReciprocalTrigDerivativeKind,
@@ -215,6 +459,142 @@ fn reciprocal_trig_derivative(
         ReciprocalTrigDerivativeKind::Csc => cosecant_derivative(ctx, arg, d_arg),
         ReciprocalTrigDerivativeKind::Cot => cotangent_derivative(ctx, arg, d_arg),
     }
+}
+
+fn log_abs_builtin_derivative(ctx: &mut Context, arg: ExprId, var: &str) -> Option<ExprId> {
+    let inner_expr = unary_builtin_arg(ctx, arg, BuiltinFn::Abs)?;
+
+    if let Expr::Div(num, den) = ctx.get(inner_expr) {
+        let (num, den) = (*num, *den);
+        let d_num = differentiate_symbolic_expr(ctx, num, var)?;
+        let d_den = differentiate_symbolic_expr(ctx, den, var)?;
+        if is_zero(ctx, d_den) {
+            return Some(div_pruned(ctx, d_num, num));
+        }
+        if is_zero(ctx, d_num) {
+            let den_part = div_pruned(ctx, d_den, den);
+            return Some(ctx.add(Expr::Neg(den_part)));
+        }
+
+        let term1 = mul_pruned(ctx, d_num, den);
+        let term2 = mul_pruned(ctx, num, d_den);
+        let numerator = sub_pruned(ctx, term1, term2);
+        let denominator = mul_pruned(ctx, num, den);
+        return Some(div_pruned(ctx, numerator, denominator));
+    }
+
+    if let Expr::Mul(left, right) = ctx.get(inner_expr) {
+        let (left, right) = (*left, *right);
+        let d_left = differentiate_symbolic_expr(ctx, left, var)?;
+        let d_right = differentiate_symbolic_expr(ctx, right, var)?;
+        if is_zero(ctx, d_right) {
+            return Some(div_pruned(ctx, d_left, left));
+        }
+        if is_zero(ctx, d_left) {
+            return Some(div_pruned(ctx, d_right, right));
+        }
+
+        let term1 = mul_pruned(ctx, d_left, right);
+        let term2 = mul_pruned(ctx, left, d_right);
+        let numerator = add_pruned(ctx, term1, term2);
+        let denominator = mul_pruned(ctx, left, right);
+        return Some(div_pruned(ctx, numerator, denominator));
+    }
+
+    if let Some(trig_arg) = unary_builtin_arg(ctx, inner_expr, BuiltinFn::Sin) {
+        let d_trig_arg = differentiate_symbolic_expr(ctx, trig_arg, var)?;
+        let cos_u = ctx.call_builtin(BuiltinFn::Cos, vec![trig_arg]);
+        let numerator = mul_pruned(ctx, d_trig_arg, cos_u);
+        return Some(ctx.add(Expr::Div(numerator, inner_expr)));
+    }
+
+    if let Some(trig_arg) = unary_builtin_arg(ctx, inner_expr, BuiltinFn::Cos) {
+        let d_trig_arg = differentiate_symbolic_expr(ctx, trig_arg, var)?;
+        let sin_u = ctx.call_builtin(BuiltinFn::Sin, vec![trig_arg]);
+        let neg_sin_u = ctx.add(Expr::Neg(sin_u));
+        let numerator = mul_pruned(ctx, d_trig_arg, neg_sin_u);
+        return Some(ctx.add(Expr::Div(numerator, inner_expr)));
+    }
+
+    if let Some(hyperbolic_arg) = unary_builtin_arg(ctx, inner_expr, BuiltinFn::Sinh) {
+        let d_hyperbolic_arg = differentiate_symbolic_expr(ctx, hyperbolic_arg, var)?;
+        let tanh_u = ctx.call_builtin(BuiltinFn::Tanh, vec![hyperbolic_arg]);
+        return Some(ctx.add(Expr::Div(d_hyperbolic_arg, tanh_u)));
+    }
+
+    if let Some(hyperbolic_arg) = unary_builtin_arg(ctx, inner_expr, BuiltinFn::Cosh) {
+        let d_hyperbolic_arg = differentiate_symbolic_expr(ctx, hyperbolic_arg, var)?;
+        let tanh_u = ctx.call_builtin(BuiltinFn::Tanh, vec![hyperbolic_arg]);
+        return Some(mul_pruned(ctx, d_hyperbolic_arg, tanh_u));
+    }
+
+    let d_inner = differentiate_symbolic_expr(ctx, inner_expr, var)?;
+    Some(div_pruned(ctx, d_inner, inner_expr))
+}
+
+fn fixed_base_log_abs_derivative(
+    ctx: &mut Context,
+    arg: ExprId,
+    base: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let derivative = log_abs_builtin_derivative(ctx, arg, var)?;
+    let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
+    let one = ctx.num(1);
+    let reciprocal_ln_base = ctx.add(Expr::Div(one, ln_base));
+    Some(mul_pruned(ctx, reciprocal_ln_base, derivative))
+}
+
+fn variable_base_log_abs_derivative(
+    ctx: &mut Context,
+    base: ExprId,
+    d_base: ExprId,
+    arg: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let arg_ratio = log_abs_builtin_derivative(ctx, arg, var)?;
+    let ln_arg = ctx.call_builtin(BuiltinFn::Ln, vec![arg]);
+    let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
+    let two = ctx.num(2);
+    let ln_base_sq = ctx.add(Expr::Pow(ln_base, two));
+    let base_ratio =
+        log_abs_builtin_derivative(ctx, base, var).unwrap_or_else(|| div_pruned(ctx, d_base, base));
+    let term_arg = mul_pruned(ctx, arg_ratio, ln_base);
+    let term_base = mul_pruned(ctx, ln_arg, base_ratio);
+    let numerator = sub_pruned(ctx, term_arg, term_base);
+    Some(ctx.add(Expr::Div(numerator, ln_base_sq)))
+}
+
+fn numeric_fixed_base_log_abs_derivative(
+    ctx: &mut Context,
+    arg: ExprId,
+    var: &str,
+    base: i64,
+) -> Option<ExprId> {
+    let base = ctx.num(base);
+    fixed_base_log_abs_derivative(ctx, arg, base, var)
+}
+
+fn abs_quotient_derivative(
+    ctx: &mut Context,
+    arg: ExprId,
+    quotient_num: ExprId,
+    quotient_den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let d_num = differentiate_symbolic_expr(ctx, quotient_num, var)?;
+    let d_den = differentiate_symbolic_expr(ctx, quotient_den, var)?;
+    let term1 = mul_pruned(ctx, d_num, quotient_den);
+    let term2 = mul_pruned(ctx, quotient_num, d_den);
+    let quotient_derivative_num = sub_pruned(ctx, term1, term2);
+    let numerator = mul_pruned(ctx, quotient_num, quotient_derivative_num);
+
+    let three = ctx.num(3);
+    let den_cubed = ctx.add(Expr::Pow(quotient_den, three));
+    let abs_arg = ctx.call_builtin(BuiltinFn::Abs, vec![arg]);
+    let denominator = mul_pruned(ctx, abs_arg, den_cubed);
+
+    Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
 /// Differentiate `expr` with respect to variable `var`.
@@ -250,6 +630,10 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         }
         Expr::Mul(l, r) => {
             let (l, r) = (*l, *r);
+            if let Some(derivative) = try_linear_times_hyperbolic_linear_derivative(ctx, expr, var)
+            {
+                return Some(derivative);
+            }
             let dl = differentiate_symbolic_expr(ctx, l, var)?;
             let dr = differentiate_symbolic_expr(ctx, r, var)?;
             let term1 = mul_pruned(ctx, dl, r);
@@ -261,6 +645,10 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
             if let Some((kind, arg)) = canonical_reciprocal_trig_div_kind(ctx, l, r) {
                 let d_arg = differentiate_symbolic_expr(ctx, arg, var)?;
                 return Some(reciprocal_trig_derivative(ctx, kind, arg, d_arg));
+            }
+            if let Some(arg) = canonical_hyperbolic_coth_div_arg(ctx, l, r) {
+                let d_arg = differentiate_symbolic_expr(ctx, arg, var)?;
+                return Some(hyperbolic_coth_derivative(ctx, arg, d_arg));
             }
 
             let dl = differentiate_symbolic_expr(ctx, l, var)?;
@@ -309,6 +697,12 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
                     let ln_base_sq = ctx.add(Expr::Pow(ln_base, two));
 
                     if contains_named_var(ctx, arg, var) {
+                        if let Some(derivative) =
+                            variable_base_log_abs_derivative(ctx, base, db, arg, var)
+                        {
+                            return Some(derivative);
+                        }
+
                         let da = differentiate_symbolic_expr(ctx, arg, var)?;
                         let arg_ratio = ctx.add(Expr::Div(da, arg));
                         let base_ratio = ctx.add(Expr::Div(db, base));
@@ -324,6 +718,10 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
                     return Some(ctx.add(Expr::Div(neg_numerator, denominator)));
                 }
 
+                if let Some(derivative) = fixed_base_log_abs_derivative(ctx, arg, base, var) {
+                    return Some(derivative);
+                }
+
                 let da = differentiate_symbolic_expr(ctx, arg, var)?;
                 let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
                 let den = mul_pruned(ctx, arg, ln_base);
@@ -334,6 +732,22 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
                 return None;
             }
             let arg = args[0];
+
+            if ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln) {
+                if let Some(derivative) = log_abs_builtin_derivative(ctx, arg, var) {
+                    return Some(derivative);
+                }
+            }
+            if ctx.builtin_of(fn_id) == Some(BuiltinFn::Log2) {
+                if let Some(derivative) = numeric_fixed_base_log_abs_derivative(ctx, arg, var, 2) {
+                    return Some(derivative);
+                }
+            }
+            if ctx.builtin_of(fn_id) == Some(BuiltinFn::Log10) {
+                if let Some(derivative) = numeric_fixed_base_log_abs_derivative(ctx, arg, var, 10) {
+                    return Some(derivative);
+                }
+            }
 
             if let Some(recip_base) = unit_reciprocal_base(ctx, arg) {
                 match ctx.builtin_of(fn_id) {
@@ -350,6 +764,13 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
                         return Some(arccot_derivative(ctx, recip_base, d_base));
                     }
                     _ => {}
+                }
+            }
+
+            if ctx.builtin_of(fn_id) == Some(BuiltinFn::Abs) {
+                if let Expr::Div(num, den) = ctx.get(arg) {
+                    let (num, den) = (*num, *den);
+                    return abs_quotient_derivative(ctx, arg, num, den, var);
                 }
             }
 
@@ -410,12 +831,18 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
                     Some(ctx.add(Expr::Div(da, den)))
                 }
                 Some(BuiltinFn::Arcsin | BuiltinFn::Asin) => {
+                    if let Some(scaled) = scaled_one_minus_arg_square_derivative(ctx, arg, da) {
+                        return Some(scaled);
+                    }
                     let den = one_minus_arg_square_sqrt(ctx, arg);
                     Some(ctx.add(Expr::Div(da, den)))
                 }
                 Some(BuiltinFn::Arccos | BuiltinFn::Acos) => {
-                    let den = one_minus_arg_square_sqrt(ctx, arg);
                     let neg_da = ctx.add(Expr::Neg(da));
+                    if let Some(scaled) = scaled_one_minus_arg_square_derivative(ctx, arg, neg_da) {
+                        return Some(scaled);
+                    }
+                    let den = one_minus_arg_square_sqrt(ctx, arg);
                     Some(ctx.add(Expr::Div(neg_da, den)))
                 }
                 Some(BuiltinFn::Arcsec | BuiltinFn::Asec) => {
@@ -518,6 +945,20 @@ mod tests {
 
             assert_eq!(rendered(&ctx, out), expected, "input: {input}");
         }
+
+        let mut ctx = Context::new();
+        let expr = parse("acosh(x^2 + 2*x + 2)", &mut ctx).expect("parse expanded square");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff expanded square");
+        let text = rendered(&ctx, out);
+
+        assert!(
+            text.contains("sqrt(x^2 + 2 * x + 2 - 1)"),
+            "expanded perfect-square acosh derivative should keep sqrt(left): {text}"
+        );
+        assert!(
+            !text.contains("(x^2 + 2 * x + 2 - 1)^(-1 / 2)"),
+            "expanded perfect-square acosh derivative should avoid inverse-power left radicand: {text}"
+        );
     }
 
     #[test]
@@ -535,6 +976,168 @@ mod tests {
 
             assert_eq!(rendered(&ctx, out), expected, "input: {input}");
         }
+    }
+
+    #[test]
+    fn differentiates_log_abs_builtins_through_domain_carrying_quotients() {
+        let cases = [
+            ("ln(abs(sin(x)))", "cos(x) / sin(x)"),
+            ("ln(abs(cos(x)))", "-sin(x) / cos(x)"),
+            ("ln(abs(sinh(x)))", "1 / tanh(x)"),
+            ("ln(abs(cosh(x)))", "tanh(x)"),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+
+            assert_eq!(rendered(&ctx, out), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn differentiates_log_abs_quotient_without_abs_squared_noise() {
+        let cases = [
+            (
+                "ln(abs((x-1)/(x+1)))",
+                "(x + 1 - (x - 1)) / ((x - 1) * (x + 1))",
+            ),
+            ("ln(abs(x/y))", "1 / x"),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+
+            assert_eq!(rendered(&ctx, out), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn differentiates_log_abs_product_without_abs_squared_noise() {
+        let cases = [
+            ("ln(abs(x*y))", "1 / x"),
+            (
+                "ln(abs((x-1)*(x+1)))",
+                "(x + x + 1 - 1) / ((x + 1) * (x - 1))",
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+
+            assert_eq!(rendered(&ctx, out), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn differentiates_generic_log_abs_without_abs_squared_noise() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(abs(x^2-1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        let text = rendered(&ctx, out);
+
+        assert!(
+            text.contains("/ (x^2 - 1)") || text.contains("/(x^2 - 1)"),
+            "generic ln(abs(u)) derivative should divide by u directly: {text}"
+        );
+        assert!(
+            !text.contains('|'),
+            "generic ln(abs(u)) derivative should not route through abs noise: {text}"
+        );
+    }
+
+    #[test]
+    fn differentiates_fixed_base_log_abs_without_abs_squared_noise() {
+        let cases = [
+            ("log(2, abs(x^2-1))", "ln(2)"),
+            ("log(y, abs(x^2-1))", "ln(y)"),
+            ("log2(abs(x^2-1))", "ln(2)"),
+            ("log10(abs(x^2-1))", "ln(10)"),
+        ];
+
+        for (input, expected_log_base) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+            let text = rendered(&ctx, out);
+
+            assert!(
+                text.contains(expected_log_base),
+                "fixed-base log(abs(u)) derivative should divide by {expected_log_base}: {text}"
+            );
+            assert!(
+                text.contains("x^2 - 1"),
+                "fixed-base log(abs(u)) derivative should divide by u directly: {text}"
+            );
+            assert!(
+                !text.contains('|'),
+                "fixed-base log(abs(u)) derivative should not route through abs noise: {text}"
+            );
+        }
+    }
+
+    #[test]
+    fn differentiates_variable_base_log_abs_without_abs_squared_noise() {
+        let mut ctx = Context::new();
+        let expr = parse("log(x, abs(x^2-1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        let text = rendered(&ctx, out);
+
+        assert!(text.contains("ln(x)"), "{text}");
+        assert!(text.contains("ln(|x^2 - 1|)"), "{text}");
+        assert!(
+            text.contains("/ (x^2 - 1)")
+                || text.contains("/(x^2 - 1)")
+                || text.contains("/((x^2 - 1))"),
+            "variable-base log(abs(u)) derivative should divide by u directly: {text}"
+        );
+        assert!(
+            !text.contains("/ |x^2 - 1|") && !text.contains("/(|x^2 - 1|"),
+            "variable-base log(abs(u)) derivative should not divide by abs(u): {text}"
+        );
+        assert!(
+            !text.contains("|x^2 - 1|)^2"),
+            "variable-base log(abs(u)) derivative should not route through abs-squared cleanup: {text}"
+        );
+    }
+
+    #[test]
+    fn differentiates_variable_abs_base_log_abs_without_abs_base_noise() {
+        let mut ctx = Context::new();
+        let expr = parse("log(abs(x), abs(x^2-1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        let text = rendered(&ctx, out);
+
+        assert!(text.contains("ln(|x|)"), "{text}");
+        assert!(text.contains("ln(|x^2 - 1|)"), "{text}");
+        assert!(
+            text.contains("/ x") || text.contains("/x"),
+            "variable abs-base log(abs(u)) derivative should divide by the base inner directly: {text}"
+        );
+        assert!(
+            !text.contains("/ |x|") && !text.contains("x / |x|"),
+            "variable abs-base log(abs(u)) derivative should not route through abs-base cleanup: {text}"
+        );
+    }
+
+    #[test]
+    fn differentiates_abs_quotient_without_nested_fraction_noise() {
+        let mut ctx = Context::new();
+        let expr = parse("abs((x-1)/(x+1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        let text = rendered(&ctx, out);
+
+        assert!(text.contains("|(x - 1) / (x + 1)|"), "{text}");
+        assert!(text.contains("(x + 1)^3"), "{text}");
+        assert!(
+            !text.contains("(x + 1)^2"),
+            "unexpected quotient-rule denominator expansion in {text}"
+        );
     }
 
     #[test]
@@ -563,6 +1166,34 @@ mod tests {
         assert!(text.contains("cosh(x^2)"), "{text}");
         assert!(text.contains("2 * x"), "{text}");
         assert!(!text.contains("diff("), "{text}");
+    }
+
+    #[test]
+    fn differentiates_linear_times_hyperbolic_linear_with_compact_chain_factor() {
+        let cases = [
+            (
+                "(2/3*x+2/3)*cosh((3*x+2)/2)",
+                "2/3 * cosh((3 * x + 2) / 2) + (x + 1) * sinh((3 * x + 2) / 2)",
+            ),
+            ("4/9*sinh((3*x+2)/2)", "2/3 * cosh((3 * x + 2) / 2)"),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+
+            assert_eq!(rendered(&ctx, out), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn differentiates_hyperbolic_coth_quotient_directly() {
+        let mut ctx = Context::new();
+        let expr = parse("cosh(x)/sinh(x)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+
+        assert_eq!(rendered(&ctx, out), "-1 / sinh(x)^2");
     }
 
     #[test]
@@ -659,6 +1290,32 @@ mod tests {
     }
 
     #[test]
+    fn positive_inverse_reciprocal_trig_chain_rule_uses_direct_positive_argument_form() {
+        let cases = [("arcsec(x^2 + 1)", false), ("arccsc(x^2 + 1)", true)];
+
+        for (input, expect_negative) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+            let text = rendered(&ctx, out);
+
+            assert!(
+                !text.contains("1 - 1 /"),
+                "positive argument derivative should not use reciprocal-square gap: {text}"
+            );
+            assert!(
+                text.contains("sqrt((x^2 + 1)^2 - 1)"),
+                "positive argument derivative should expose the direct gap: {text}"
+            );
+            assert_eq!(
+                text.starts_with("-"),
+                expect_negative,
+                "unexpected sign for {input}: {text}"
+            );
+        }
+    }
+
+    #[test]
     fn reciprocal_inverse_trig_rewrite_targets_keep_compact_derivative_core() {
         let cases = [
             "arccos(1/(x^2 + 1)^2)",
@@ -689,7 +1346,11 @@ mod tests {
             ("acosh(x)", "(x - 1)^(-1 / 2) / sqrt(x + 1)"),
             (
                 "acosh(2*x + 1)",
-                "2 * (2 * x + 1 - 1)^(-1 / 2) / sqrt(2 * x + 1 + 1)",
+                "2 * (2 * x)^(-1 / 2) / sqrt(2 * x + 1 + 1)",
+            ),
+            (
+                "acosh(x^2 + 1)",
+                "2 * x^(2 - 1) / (sqrt(x^2) * sqrt(x^2 + 1 + 1))",
             ),
         ];
 
