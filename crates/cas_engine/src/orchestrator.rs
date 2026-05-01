@@ -25829,17 +25829,15 @@ impl Orchestrator {
         let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
         self.pattern_marks_expr = None;
 
-        if let Some(zero) =
-            crate::calculus_residual_support::try_diff_log_abs_hyperbolic_residual_root_zero(
-                &mut simplifier.context,
-                expr,
-            )
-        {
+        if let Some(zero) = crate::calculus_residual_support::try_diff_hyperbolic_residual_root_zero(
+            &mut simplifier.context,
+            expr,
+        ) {
             let shortcut_steps = if collect_steps {
                 vec![build_root_shortcut_compact_step(
                     expr,
                     zero,
-                    "Cancel matching hyperbolic log-abs derivative residual",
+                    "Cancel matching hyperbolic derivative residual",
                     "Hyperbolic Diff Residual",
                 )]
             } else {

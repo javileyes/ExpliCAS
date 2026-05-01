@@ -3,15 +3,20 @@
 use crate::expand_estimate::estimate_expand_terms;
 use crate::expand_ops::expand;
 use crate::poly_store::expand_expr_modp_materialized_hold;
+use crate::polynomial::Polynomial;
 use cas_ast::hold::strip_all_holds;
 use cas_ast::ordering::compare_expr;
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{collect_variables, BuiltinFn, Context, Expr, ExprId};
+use num_traits::{ToPrimitive, Zero};
 use std::cmp::Ordering;
 
 /// Default limit for materializing expanded AST terms.
 pub const DEFAULT_EXPAND_MAX_MATERIALIZE_TERMS: u64 = 200_000;
 /// Default threshold for switching to mod-p expansion.
 pub const DEFAULT_EXPAND_MODP_THRESHOLD: u64 = 1_000;
+const EXPLICIT_EXPAND_POLY_COMPACT_MAX_INPUT_NODES: usize = 160;
+const EXPLICIT_EXPAND_POLY_COMPACT_MAX_DEGREE: usize = 16;
+const EXPLICIT_EXPAND_POLY_COMPACT_MAX_TERMS: usize = 32;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ExpandCallPolicy {
@@ -76,6 +81,13 @@ pub fn try_plan_conservative_implicit_expand_expr(
     Some(rewritten)
 }
 
+/// Expand an explicit `expand(arg)` payload and apply bounded post-compaction.
+pub fn expand_explicit_arg_with_post_compaction(ctx: &mut Context, arg: ExprId) -> ExprId {
+    let expanded = expand(ctx, arg);
+    let stripped = strip_all_holds(ctx, expanded);
+    compact_explicit_expand_polynomial(ctx, stripped)
+}
+
 /// Decide rewrite for function call `expand(arg)`.
 ///
 /// Returns `None` when `expr` is not an `expand(...)` call.
@@ -105,7 +117,8 @@ pub fn decide_expand_call_rewrite_with_policy(
 
     if estimated_terms.unwrap_or(0) > policy.modp_threshold {
         if let Some(result) = expand_expr_modp_materialized_hold(ctx, arg) {
-            let rewritten = strip_all_holds(ctx, result);
+            let stripped = strip_all_holds(ctx, result);
+            let rewritten = compact_explicit_expand_polynomial(ctx, stripped);
             return Some(ExpandCallDecision::Rewrite(ExpandCallRewrite {
                 rewritten,
                 kind: ExpandCallRewriteKind::ModpFastPath,
@@ -113,8 +126,7 @@ pub fn decide_expand_call_rewrite_with_policy(
         }
     }
 
-    let expanded = expand(ctx, arg);
-    let rewritten = strip_all_holds(ctx, expanded);
+    let rewritten = expand_explicit_arg_with_post_compaction(ctx, arg);
     if rewritten != expr {
         Some(ExpandCallDecision::Rewrite(ExpandCallRewrite {
             rewritten,
@@ -128,6 +140,85 @@ pub fn decide_expand_call_rewrite_with_policy(
     }
 }
 
+fn compact_explicit_expand_polynomial(ctx: &mut Context, expr: ExprId) -> ExprId {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return expr;
+    }
+
+    let old_nodes = cas_ast::count_nodes(ctx, expr);
+    if old_nodes > EXPLICIT_EXPAND_POLY_COMPACT_MAX_INPUT_NODES {
+        return expr;
+    }
+    if contains_integer_power_above_compact_limit(ctx, expr) {
+        return expr;
+    }
+
+    let variables = collect_variables(ctx, expr);
+    if variables.len() != 1 {
+        return expr;
+    }
+    let Some(var) = variables.iter().next() else {
+        return expr;
+    };
+
+    let Ok(poly) = Polynomial::from_expr(ctx, expr, var) else {
+        return expr;
+    };
+    if poly.degree() > EXPLICIT_EXPAND_POLY_COMPACT_MAX_DEGREE {
+        return expr;
+    }
+    let output_terms = poly.coeffs.iter().filter(|coeff| !coeff.is_zero()).count();
+    if output_terms > EXPLICIT_EXPAND_POLY_COMPACT_MAX_TERMS {
+        return expr;
+    }
+
+    let rewritten = poly.to_expr(ctx);
+    if rewritten == expr {
+        return expr;
+    }
+
+    let new_nodes = cas_ast::count_nodes(ctx, rewritten);
+    if new_nodes >= old_nodes {
+        return expr;
+    }
+
+    rewritten
+}
+
+fn contains_integer_power_above_compact_limit(ctx: &Context, expr: ExprId) -> bool {
+    let mut stack = vec![expr];
+
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            Expr::Pow(base, exp) => {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if n.is_integer() {
+                        match n.to_integer().to_usize() {
+                            Some(exp) if exp > EXPLICIT_EXPAND_POLY_COMPACT_MAX_DEGREE => {
+                                return true;
+                            }
+                            None => return true,
+                            _ => {}
+                        }
+                    }
+                }
+                stack.push(*base);
+                stack.push(*exp);
+            }
+            Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) => {
+                stack.push(*l);
+                stack.push(*r);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(_, args) => stack.extend(args.iter().copied()),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -137,6 +228,24 @@ mod tests {
     };
     use cas_ast::Context;
     use cas_parser::parse;
+
+    fn rewrite_text(input: &str) -> (Context, cas_ast::ExprId) {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx).expect("parse");
+        let decision = decide_expand_call_rewrite_with_policy(
+            &mut ctx,
+            expr,
+            ExpandCallPolicy {
+                max_materialize_terms: u64::MAX,
+                modp_threshold: u64::MAX,
+            },
+        )
+        .expect("decision");
+        match decision {
+            ExpandCallDecision::Rewrite(rewrite) => (ctx, rewrite.rewritten),
+            other => panic!("expected rewrite, got {other:?}"),
+        }
+    }
 
     #[test]
     fn rewrites_expand_atom_to_inner() {
@@ -216,5 +325,36 @@ mod tests {
         .expect("conservative");
         assert!(matches!(defaulted, ExpandCallDecision::Rewrite(_)));
         assert!(matches!(conservative, ExpandCallDecision::Rewrite(_)));
+    }
+
+    #[test]
+    fn explicit_expand_compacts_univariate_polynomial_square_terms() {
+        let (mut ctx, rewritten) = rewrite_text("expand((x^2+2*x+1)^2)");
+        let expected = parse("x^4 + 4*x^3 + 6*x^2 + 4*x + 1", &mut ctx).expect("expected");
+        assert!(crate::poly_compare::poly_eq(&ctx, rewritten, expected));
+        assert_eq!(
+            cas_formatter::render_expr(&ctx, rewritten),
+            "x^4 + 4 * x^3 + 6 * x^2 + 4 * x + 1"
+        );
+    }
+
+    #[test]
+    fn explicit_expand_compacts_subtracted_univariate_polynomial_square() {
+        let (mut ctx, rewritten) = rewrite_text("expand(3-(x^2+2*x+1)^2)");
+        let expected = parse("2 - x^4 - 4*x^3 - 6*x^2 - 4*x", &mut ctx).expect("expected");
+        assert!(crate::poly_compare::poly_eq(&ctx, rewritten, expected));
+        assert_eq!(
+            cas_formatter::render_expr(&ctx, rewritten),
+            "2 - x^4 - 4 * x^3 - 6 * x^2 - 4 * x"
+        );
+    }
+
+    #[test]
+    fn explicit_expand_compaction_rejects_high_power_residuals() {
+        let (ctx, rewritten) = rewrite_text("expand(3-(x^2+2*x+1)^1000)");
+        assert_eq!(
+            cas_formatter::render_expr(&ctx, rewritten),
+            "3 - (x^2 + 2 * x + 1)^1000"
+        );
     }
 }

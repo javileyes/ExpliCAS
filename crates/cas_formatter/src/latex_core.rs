@@ -57,6 +57,26 @@ fn clean_latex_negatives_shared(latex: &str) -> String {
     result
 }
 
+fn unwrap_internal_hold_for_latex(ctx: &Context, id: ExprId) -> ExprId {
+    let mut current = id;
+    loop {
+        match ctx.get(current) {
+            Expr::Hold(inner) => current = *inner,
+            Expr::Function(fn_id, args)
+                if args.len() == 1 && crate::hold::is_internal_hold_name(ctx.sym_name(*fn_id)) =>
+            {
+                current = args[0];
+            }
+            _ => return current,
+        }
+    }
+}
+
+fn is_add_sub_after_internal_hold(ctx: &Context, id: ExprId) -> bool {
+    let id = unwrap_internal_hold_for_latex(ctx, id);
+    matches!(ctx.get(id), Expr::Add(_, _) | Expr::Sub(_, _))
+}
+
 /// Core trait for LaTeX rendering
 ///
 /// Implementors provide context access and optional hooks for
@@ -218,7 +238,7 @@ pub trait LaTeXRenderer {
         let ctx = self.context();
         match ctx.get(id) {
             Expr::Neg(inner) => {
-                let inner_is_add_sub = matches!(ctx.get(*inner), Expr::Add(_, _) | Expr::Sub(_, _));
+                let inner_is_add_sub = is_add_sub_after_internal_hold(ctx, *inner);
                 if inner_is_add_sub {
                     (true, format!("({})", self.expr_to_latex(*inner, false)))
                 } else {
@@ -307,8 +327,7 @@ pub trait LaTeXRenderer {
         let left = self.expr_to_latex(l, false);
         // Right operand needs parentheses if it's Add or Sub to preserve precedence
         // e.g., A - (B + C) must show parens, otherwise it looks like A - B + C
-        let r_expr = self.context().get(r);
-        let right = if matches!(r_expr, Expr::Add(_, _) | Expr::Sub(_, _)) {
+        let right = if is_add_sub_after_internal_hold(self.context(), r) {
             format!("({})", self.expr_to_latex(r, false))
         } else {
             self.expr_to_latex(r, false)
@@ -509,7 +528,7 @@ pub trait LaTeXRenderer {
     fn format_neg(&self, e: ExprId) -> String {
         // Check if inner is Add/Sub - needs parentheses to preserve grouping
         // e.g., -(a + b) should display as "-(a + b)" not "-a + b"
-        let inner_is_add_sub = matches!(self.context().get(e), Expr::Add(_, _) | Expr::Sub(_, _));
+        let inner_is_add_sub = is_add_sub_after_internal_hold(self.context(), e);
         let inner = self.expr_to_latex(e, true);
         if inner_is_add_sub {
             format!("-({})", inner)
@@ -643,7 +662,8 @@ pub trait LaTeXRenderer {
 
     /// Helper for multiplication operands - adds parens for Add/Sub
     fn expr_to_latex_mul(&self, id: ExprId) -> String {
-        match self.context().get(id) {
+        let display_id = unwrap_internal_hold_for_latex(self.context(), id);
+        match self.context().get(display_id) {
             Expr::Add(_, _) | Expr::Sub(_, _) => {
                 format!("({})", self.expr_to_latex(id, false))
             }
@@ -653,7 +673,8 @@ pub trait LaTeXRenderer {
 
     /// Helper for power base - adds parens for composite expressions
     fn expr_to_latex_base(&self, id: ExprId) -> String {
-        match self.context().get(id) {
+        let display_id = unwrap_internal_hold_for_latex(self.context(), id);
+        match self.context().get(display_id) {
             Expr::Add(_, _)
             | Expr::Sub(_, _)
             | Expr::Mul(_, _)
@@ -961,8 +982,7 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
     fn term_to_latex_with_sign_path(&self, id: ExprId, path: &ExprPath) -> (bool, String) {
         match self.context.get(id) {
             Expr::Neg(inner) => {
-                let inner_is_add_sub =
-                    matches!(self.context.get(*inner), Expr::Add(_, _) | Expr::Sub(_, _));
+                let inner_is_add_sub = is_add_sub_after_internal_hold(self.context, *inner);
                 if inner_is_add_sub {
                     (
                         true,
@@ -1026,7 +1046,8 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
     }
 
     fn direct_negative_factor_latex_path(&self, id: ExprId, path: &ExprPath) -> Option<String> {
-        match self.context.get(id) {
+        let display_id = unwrap_internal_hold_for_latex(self.context, id);
+        match self.context.get(display_id) {
             Expr::Neg(inner) => Some(self.render_mul_operand(*inner, &self.child_path(path, 0))),
             Expr::Number(n) if n.is_negative() => {
                 let positive = -n;
@@ -1089,7 +1110,8 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
     }
 
     fn render_mul_operand(&self, id: ExprId, path: &ExprPath) -> String {
-        match self.context.get(id) {
+        let display_id = unwrap_internal_hold_for_latex(self.context, id);
+        match self.context.get(display_id) {
             Expr::Add(_, _) | Expr::Sub(_, _) => {
                 format!("({})", self.render_with_path(id, false, path))
             }
@@ -1230,7 +1252,7 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
     }
 
     fn format_neg_path(&self, e: ExprId, path: &ExprPath) -> String {
-        let inner_is_add_sub = matches!(self.context.get(e), Expr::Add(_, _) | Expr::Sub(_, _));
+        let inner_is_add_sub = is_add_sub_after_internal_hold(self.context, e);
         let inner = self.render_with_path(e, true, &self.child_path(path, 0));
         if inner_is_add_sub {
             format!("-({})", inner)

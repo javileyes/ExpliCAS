@@ -1,8 +1,10 @@
 use cas_formatter::DisplayExpr;
+use cas_math::eval_f64;
 use cas_parser::parse;
 use cas_session::SessionState;
 use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult, StepsMode};
 use cas_solver_core::domain_normalization::normalize_and_dedupe_conditions;
+use std::collections::HashMap;
 
 #[test]
 fn polynomial_diff_first_step_omits_zero_products_and_unit_factors() {
@@ -115,6 +117,165 @@ fn chain_rule_power_composition_diff_evaluates_to_simplified_product() {
 }
 
 #[test]
+fn trinomial_power_diff_preserves_raw_target_until_derivative() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let input = "diff((x^2+2*x+1)^3, x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert!(!result.contains("diff("), "input: {input}, got: {result}");
+    let expected =
+        parse("3*(2*x+2)*(x^2+2*x+1)^2", &mut engine.simplifier.context).expect("parse expected");
+    assert!(
+        engine.simplifier.are_equivalent(result_expr, expected),
+        "input: {input}, expected compact chain-rule derivative, got: {result}"
+    );
+    assert!(
+        result.contains("(x^2 + 2 * x + 1)^2"),
+        "input: {input}, expected compact polynomial-power factor, got: {result}"
+    );
+    assert!(
+        result.contains("(x + 1)"),
+        "input: {input}, expected common linear factor in compact derivative, got: {result}"
+    );
+    assert!(
+        !result.contains("x^4") && !result.contains("x * x^2"),
+        "input: {input}, derivative should not expand the polynomial-power factor, got: {result}"
+    );
+    assert!(
+        !result.contains("+ 6 * x *"),
+        "input: {input}, derivative should factor the shared compact power and scale, got: {result}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+    assert!(
+        required.is_empty(),
+        "polynomial power derivative should not add domain conditions: {required:?}"
+    );
+
+    let diff_step_index = output
+        .steps
+        .iter()
+        .position(|step| step.rule_name.as_str() == "Symbolic Differentiation")
+        .expect("expected a visible differentiation step");
+    assert!(
+        !output.steps[..diff_step_index].iter().any(|step| {
+            step.rule_name.contains("Expand") || step.rule_name.contains("Expansion")
+        }),
+        "target should not expand before differentiation; steps: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        !output
+            .steps
+            .iter()
+            .any(|step| step.rule_name.as_str() == "Expandir la expresión"),
+        "compact power derivative should not distribute and refactor the chain-rule product; steps: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn reciprocal_polynomial_power_diff_preserves_compact_target_until_derivative() {
+    let cases = [
+        ("diff(-1/(2*(x^2+x-1)^2), x)", "(2*x+1)/(x^2+x-1)^3"),
+        ("diff(-1/(2*(x^2+x-1)^3), x)", "(3*x+3/2)/(x^2+x-1)^4"),
+    ];
+
+    for (input, expected_derivative) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert!(!result.contains("diff("), "input: {input}, got: {result}");
+
+        let expected =
+            parse(expected_derivative, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "input: {input}, expected derivative equivalent to {expected_derivative}, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec!["x^2 + x - 1 ≠ 0".to_string()],
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name.as_str() == "Symbolic Differentiation"),
+            "expected a visible differentiation step for {input}"
+        );
+    }
+}
+
+#[test]
 fn scaled_arcsin_linear_diff_evaluates_to_reciprocal_root() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -196,6 +357,67 @@ fn scaled_asinh_linear_diff_evaluates_to_reciprocal_root() {
     assert!(
         required.is_empty(),
         "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn inverse_hyperbolic_asinh_surd_quotient_diff_compacts_positive_gap() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::Off;
+    let input = "diff(asinh((x^2+x+1)/sqrt(7)), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert_eq!(
+        result, "(x^4 + 2 * x^3 + 3 * x^2 + 2 * x + 8)^(-1/2) * (2 * x + 1)",
+        "input: {input}, unexpected derivative result"
+    );
+    assert!(
+        !result.contains("sqrt(") && !result.contains("1/7"),
+        "input: {input}, expected normalized positive gap, got: {result}"
+    );
+
+    let expected = parse(
+        "(2*x+1)/(sqrt(7)*sqrt(1+((x^2+x+1)/sqrt(7))^2))",
+        &mut engine.simplifier.context,
+    )
+    .expect("parse expected");
+    assert!(
+        engine.simplifier.are_equivalent(result_expr, expected),
+        "input: {input}, expected derivative equivalent to chain rule, got: {result}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert!(
+        required.is_empty(),
+        "asinh is defined on all real inputs and the positive denominator gap should be proved: {required:?}"
     );
 }
 
@@ -2426,6 +2648,83 @@ fn hyperbolic_diff_evaluates_to_symbolic_derivatives() {
 }
 
 #[test]
+fn affine_tanh_diff_uses_compact_chain_quotient_with_pole_conditions() {
+    let cases = [
+        (
+            "diff(tanh(2*x+1), x)",
+            "2/cosh(2*x+1)^2",
+            "cosh(2 * x + 1) ≠ 0",
+        ),
+        (
+            "diff(sinh(1-2*x)/cosh(1-2*x), x)",
+            "-2/cosh(1-2*x)^2",
+            "cosh(1 - 2 * x) ≠ 0",
+        ),
+    ];
+
+    for (input, expected_derivative, expected_condition) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert!(!result.contains("diff("), "input: {input}, got: {result}");
+        assert!(
+            !result.contains("1 *") && !result.contains("1·"),
+            "affine tanh derivative should not expose a unit multiplier: {result}"
+        );
+
+        let expected =
+            parse(expected_derivative, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "input: {input}, expected derivative equivalent to {expected_derivative}, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec![expected_condition.to_string()],
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name.as_str() == "Symbolic Differentiation"),
+            "expected a visible differentiation step for {input}"
+        );
+    }
+}
+
+#[test]
 fn reciprocal_trig_diff_evaluates_with_pole_conditions() {
     let cases = [
         ("diff(sec(x), x)", "sin(x)/cos(x)^2", "cos(x) ≠ 0"),
@@ -2479,6 +2778,360 @@ fn reciprocal_trig_diff_evaluates_with_pole_conditions() {
             required,
             vec![expected_condition.to_string()],
             "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn affine_sec_csc_diff_uses_chain_rule_with_pole_conditions() {
+    let cases = [
+        (
+            "diff(sec(2*x+1), x)",
+            "2*sin(2*x+1)/cos(2*x+1)^2",
+            "cos(2 * x + 1) ≠ 0",
+        ),
+        (
+            "diff(csc(1-2*x), x)",
+            "2*cos(1-2*x)/sin(1-2*x)^2",
+            "sin(1 - 2 * x) ≠ 0",
+        ),
+    ];
+
+    for (input, expected_derivative, expected_condition) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert!(!result.contains("diff("), "input: {input}, got: {result}");
+
+        let expected =
+            parse(expected_derivative, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "input: {input}, expected derivative equivalent to {expected_derivative}, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec![expected_condition.to_string()],
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name.as_str() == "Symbolic Differentiation"),
+            "expected a visible differentiation step for {input}"
+        );
+    }
+}
+
+#[test]
+fn affine_linear_times_tan_diff_keeps_product_rule_shape() {
+    let cases = [
+        (
+            "diff((x+1)*tan(2*x+1), x)",
+            "tan(2 * x + 1) + (2 * x + 2) / cos(2 * x + 1)^2",
+        ),
+        (
+            "diff((3*x+2)*tan(2*x+1), x)",
+            "3 * tan(2 * x + 1) + (6 * x + 4) / cos(2 * x + 1)^2",
+        ),
+    ];
+
+    for (input, expected) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected, "unexpected result for {input}");
+        assert!(
+            !result.contains("diff("),
+            "unexpected residual diff for {input}: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec!["cos(2 * x + 1) ≠ 0".to_string()],
+            "input {input}: unexpected required_conditions: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name.as_str() == "Symbolic Differentiation"),
+            "expected a visible differentiation step for {input}"
+        );
+    }
+}
+
+#[test]
+fn affine_linear_times_tanh_diff_keeps_product_rule_shape() {
+    let cases = [
+        (
+            "diff((x+1)*tanh(2*x+1), x)",
+            "tanh(2 * x + 1) + (2 * x + 2) / cosh(2 * x + 1)^2",
+        ),
+        (
+            "diff((3*x+2)*tanh(2*x+1), x)",
+            "3 * tanh(2 * x + 1) + (6 * x + 4) / cosh(2 * x + 1)^2",
+        ),
+    ];
+
+    for (input, expected) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected, "unexpected result for {input}");
+        assert!(
+            !result.contains("diff("),
+            "unexpected residual diff for {input}: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec!["cosh(2 * x + 1) ≠ 0".to_string()],
+            "input {input}: unexpected required_conditions: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name.as_str() == "Symbolic Differentiation"),
+            "expected a visible differentiation step for {input}"
+        );
+    }
+}
+
+#[test]
+fn affine_linear_times_cot_diff_keeps_product_rule_shape() {
+    let cases = [
+        (
+            "diff((x+1)*cot(2*x+1), x)",
+            "cot(2 * x + 1) - (2 * x + 2) / sin(2 * x + 1)^2",
+        ),
+        (
+            "diff((3*x+2)*cot(2*x+1), x)",
+            "3 * cot(2 * x + 1) - (6 * x + 4) / sin(2 * x + 1)^2",
+        ),
+    ];
+
+    for (input, expected) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected, "unexpected result for {input}");
+        assert!(
+            !result.contains("diff("),
+            "unexpected residual diff for {input}: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec!["sin(2 * x + 1) ≠ 0".to_string()],
+            "input {input}: unexpected required_conditions: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name.as_str() == "Symbolic Differentiation"),
+            "expected a visible differentiation step for {input}"
+        );
+    }
+}
+
+#[test]
+fn affine_linear_times_sec_csc_diff_avoids_reciprocal_expansion_timeout_shape() {
+    let cases = [
+        (
+            "diff((x+1)*sec(2*x+1), x)",
+            "(cos(2 * x + 1) + 2 * sin(2 * x + 1) + 2 * x * sin(2 * x + 1)) / cos(2 * x + 1)^2",
+            "cos(2 * x + 1) ≠ 0",
+        ),
+        (
+            "diff((3*x+2)*sec(2*x+1), x)",
+            "(3 * cos(2 * x + 1) + 4 * sin(2 * x + 1) + 6 * x * sin(2 * x + 1)) / cos(2 * x + 1)^2",
+            "cos(2 * x + 1) ≠ 0",
+        ),
+        (
+            "diff((x+1)*csc(2*x+1), x)",
+            "csc(2 * x + 1) - cos(2 * x + 1) * (2 * x + 2) / sin(2 * x + 1)^2",
+            "sin(2 * x + 1) ≠ 0",
+        ),
+        (
+            "diff((3*x+2)*csc(2*x+1), x)",
+            "3 * csc(2 * x + 1) - cos(2 * x + 1) * (6 * x + 4) / sin(2 * x + 1)^2",
+            "sin(2 * x + 1) ≠ 0",
+        ),
+    ];
+
+    for (input, expected_display, expected_condition) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert!(!result.contains("diff("), "input: {input}, got: {result}");
+        assert_eq!(result, expected_display, "unexpected result for {input}");
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec![expected_condition.to_string()],
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name.as_str() == "Symbolic Differentiation"),
+            "expected a visible differentiation step for {input}"
         );
     }
 }
@@ -2610,6 +3263,58 @@ fn affine_hyperbolic_coth_quotient_diff_uses_direct_derivative() {
             .iter()
             .any(|step| step.rule_name.as_str() == "Pythagorean Identity"),
         "hyperbolic coth quotient derivative should not require a post-quotient identity collapse"
+    );
+}
+
+#[test]
+fn affine_linear_times_hyperbolic_coth_diff_keeps_product_rule_shape() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let input = "diff((x+1)*cosh(2*x+1)/sinh(2*x+1), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert_eq!(
+        result,
+        "1 / tanh(2 * x + 1) - (2 * x + 2) / sinh(2 * x + 1)^2"
+    );
+    assert!(
+        !result.contains("diff("),
+        "unexpected residual diff: {result}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["sinh(2 * x + 1) ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
     );
 }
 
@@ -3165,6 +3870,261 @@ fn inverse_hyperbolic_atanh_scaled_affine_diff_dedupes_boundary_conditions_witho
 }
 
 #[test]
+fn inverse_hyperbolic_atanh_surd_polynomial_diff_uses_compact_open_interval_condition() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::Off;
+    let input = "diff(atanh(x^2/sqrt(3)), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    assert!(
+        output.steps.is_empty(),
+        "steps-off contract should not rely on recorded steps"
+    );
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert!(!result.contains("diff("), "input: {input}, got: {result}");
+
+    let expected = parse(
+        "2*x/(sqrt(3)*(1-(x^2/sqrt(3))^2))",
+        &mut engine.simplifier.context,
+    )
+    .expect("parse expected");
+    assert!(
+        engine.simplifier.are_equivalent(result_expr, expected),
+        "input: {input}, expected derivative equivalent to chain rule over atanh, got: {result}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["3 - x^4 > 0".to_string()],
+        "input: {input}, unexpected required_conditions: {required:?}"
+    );
+    assert!(
+        !required.iter().any(|cond| cond.contains("sqrt(")),
+        "atanh open-interval condition should not leak sqrt denominator form: {required:?}"
+    );
+}
+
+#[test]
+fn inverse_hyperbolic_atanh_shifted_surd_polynomial_diff_uses_compact_open_interval_condition() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::Off;
+    let input = "diff(atanh((x+1)^2/sqrt(3)), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    assert!(
+        output.steps.is_empty(),
+        "steps-off contract should not rely on recorded steps"
+    );
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert!(!result.contains("diff("), "input: {input}, got: {result}");
+
+    assert_eq!(
+        result, "3^(1/2) * (2 * x + 2) / (3 - (x + 1)^4)",
+        "input: {input}, unexpected derivative result"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["3 - (x + 1)^4 > 0".to_string()],
+        "input: {input}, unexpected required_conditions: {required:?}"
+    );
+    assert!(
+        !required.iter().any(|cond| cond.contains("sqrt(")),
+        "atanh open-interval condition should not leak sqrt denominator form: {required:?}"
+    );
+}
+
+#[test]
+fn inverse_hyperbolic_atanh_negatively_oriented_shifted_surd_polynomial_diff_compacts_result() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::Off;
+    let input = "diff(atanh((1-2*x)^2/sqrt(3)), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    assert!(
+        output.steps.is_empty(),
+        "steps-off contract should not rely on recorded steps"
+    );
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert_eq!(
+        result, "3^(1/2) * (8 * x - 4) / (3 - (1 - 2 * x)^4)",
+        "input: {input}, unexpected derivative result"
+    );
+    assert!(!result.contains("diff("), "input: {input}, got: {result}");
+
+    let expected = parse(
+        "(8*x-4)/(sqrt(3)*(1-((1-2*x)^2/sqrt(3))^2))",
+        &mut engine.simplifier.context,
+    )
+    .expect("parse expected");
+    assert!(
+        engine.simplifier.are_equivalent(result_expr, expected),
+        "input: {input}, expected derivative equivalent to chain rule over atanh, got: {result}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["3 - (1 - 2 * x)^4 > 0".to_string()],
+        "input: {input}, unexpected required_conditions: {required:?}"
+    );
+    assert!(
+        !required.iter().any(|cond| cond.contains("sqrt(")),
+        "atanh open-interval condition should not leak sqrt denominator form: {required:?}"
+    );
+}
+
+#[test]
+fn inverse_hyperbolic_atanh_quadratic_surd_diff_normalizes_result_denominator_domain() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::Off;
+    let input = "diff(atanh((x^2+x+1)/sqrt(7)), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    assert!(
+        output.steps.is_empty(),
+        "steps-off contract should not rely on recorded steps"
+    );
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert_eq!(
+        result, "7^(1/2) * (2 * x + 1) / (6 - x^4 - 2 * x^3 - 3 * x^2 - 2 * x)",
+        "input: {input}, unexpected derivative result"
+    );
+    assert!(!result.contains("diff("), "input: {input}, got: {result}");
+
+    let expected = parse(
+        "(2*x+1)/(sqrt(7)*(1-((x^2+x+1)/sqrt(7))^2))",
+        &mut engine.simplifier.context,
+    )
+    .expect("parse expected");
+    assert!(
+        engine.simplifier.are_equivalent(result_expr, expected),
+        "input: {input}, expected derivative equivalent to chain rule over atanh, got: {result}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["6 - x^4 - 2 * x^3 - 3 * x^2 - 2 * x > 0".to_string()],
+        "input: {input}, unexpected required_conditions: {required:?}"
+    );
+    assert!(
+        !required.iter().any(|cond| cond.contains("≠")),
+        "positive atanh interval should dominate derivative denominator nonzero guard: {required:?}"
+    );
+}
+
+#[test]
 fn bounded_inverse_trig_diff_evaluates_with_strict_required_domain_conditions() {
     let cases = [
         ("diff(arcsin(x), x)", "1/sqrt(1-x^2)"),
@@ -3232,6 +4192,181 @@ fn bounded_inverse_trig_diff_evaluates_with_strict_required_domain_conditions() 
 }
 
 #[test]
+fn bounded_inverse_trig_surd_quotient_diff_compacts_open_interval_gap() {
+    let cases = [
+        (
+            "diff(arcsin((x^2+x+1)/sqrt(7)), x)",
+            "(6 - x^4 - 2 * x^3 - 3 * x^2 - 2 * x)^(-1/2) * (2 * x + 1)",
+            "(2*x+1)/(sqrt(7)*sqrt(1-((x^2+x+1)/sqrt(7))^2))",
+        ),
+        (
+            "diff(arccos((x^2+x+1)/sqrt(7)), x)",
+            "(6 - x^4 - 2 * x^3 - 3 * x^2 - 2 * x)^(-1/2) * (-2 * x - 1)",
+            "-(2*x+1)/(sqrt(7)*sqrt(1-((x^2+x+1)/sqrt(7))^2))",
+        ),
+    ];
+
+    for (input, expected_result, expected_chain_rule) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::Off;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_result, "input: {input}");
+        assert!(
+            !result.contains("sqrt(") && !result.contains("1/7"),
+            "input: {input}, expected compact normalized gap, got: {result}"
+        );
+
+        let expected =
+            parse(expected_chain_rule, &mut engine.simplifier.context).expect("parse expected");
+        for sample in [-0.25, 0.0, 0.25] {
+            let mut vars = HashMap::new();
+            vars.insert("x".to_string(), sample);
+            let actual_value = eval_f64(&engine.simplifier.context, result_expr, &vars)
+                .unwrap_or_else(|| panic!("input: {input}, could not eval result at x={sample}"));
+            let expected_value = eval_f64(&engine.simplifier.context, expected, &vars)
+                .unwrap_or_else(|| {
+                    panic!("input: {input}, could not eval chain-rule form at x={sample}")
+                });
+            assert!(
+                (actual_value - expected_value).abs() < 1e-10,
+                "input: {input}, x={sample}, expected numeric chain-rule value {expected_value}, got {actual_value}"
+            );
+        }
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec!["6 - x^4 - 2 * x^3 - 3 * x^2 - 2 * x > 0".to_string()],
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+        assert!(
+            !required
+                .iter()
+                .any(|cond| cond.contains("sqrt(") || cond.contains("1/7") || cond.contains("≠")),
+            "input: {input}, required condition should be the strict normalized gap: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn surd_quotient_diff_preserves_rational_content_scale() {
+    let cases = [
+        (
+            "diff(arcsin(x/sqrt(1/2)), x)",
+            "2^(1/2) * (1 - 2 * x^2)^(-1/2)",
+            "1/(sqrt(1/2)*sqrt(1-(x/sqrt(1/2))^2))",
+            vec!["1 - 2 * x^2 > 0"],
+        ),
+        (
+            "diff(asinh(x/sqrt(1/2)), x)",
+            "2^(1/2) * (2 * x^2 + 1)^(-1/2)",
+            "1/(sqrt(1/2)*sqrt(1+(x/sqrt(1/2))^2))",
+            vec![],
+        ),
+        (
+            "diff(atanh(x/sqrt(1/2)), x)",
+            "2^(1/2) / (1 - 2 * x^2)",
+            "1/(sqrt(1/2)*(1-(x/sqrt(1/2))^2))",
+            vec!["1 - 2 * x^2 > 0"],
+        ),
+    ];
+
+    for (input, expected_result, expected_chain_rule, expected_conditions) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::Off;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_result, "input: {input}");
+        assert!(
+            result.contains("2^(1/2)"),
+            "input: {input}, expected retained sqrt(2) scale, got: {result}"
+        );
+
+        let expected =
+            parse(expected_chain_rule, &mut engine.simplifier.context).expect("parse expected");
+        for sample in [-0.25, 0.0, 0.25] {
+            let mut vars = HashMap::new();
+            vars.insert("x".to_string(), sample);
+            let actual_value = eval_f64(&engine.simplifier.context, result_expr, &vars)
+                .unwrap_or_else(|| panic!("input: {input}, could not eval result at x={sample}"));
+            let expected_value = eval_f64(&engine.simplifier.context, expected, &vars)
+                .unwrap_or_else(|| {
+                    panic!("input: {input}, could not eval chain-rule form at x={sample}")
+                });
+            assert!(
+                (actual_value - expected_value).abs() < 1e-10,
+                "input: {input}, x={sample}, expected numeric chain-rule value {expected_value}, got {actual_value}"
+            );
+        }
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+        let expected_required: Vec<String> =
+            expected_conditions.into_iter().map(String::from).collect();
+
+        assert_eq!(
+            required, expected_required,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
+}
+
+#[test]
 fn inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions() {
     let cases = [
         (
@@ -3289,6 +4424,31 @@ fn inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions() {
             "(sqrt(x^4 + x^2 - 3/4)*x*(-2))/((x^2+1/2)*(x^4+x^2-3/4))",
             vec!["4 * x^4 + 4 * x^2 - 3 > 0"],
         ),
+        (
+            "diff(arcsec((x^2+x+3)/sqrt(2)), x)",
+            "sqrt(2)*(2*x+1)*(x^4+2*x^3+7*x^2+6*x+7)^(-1/2)/(x^2+x+3)",
+            vec![],
+        ),
+        (
+            "diff(arcsec((x^2+x+3)/sqrt(1/2)), x)",
+            "(2*x+1)*(2*x^4+4*x^3+14*x^2+12*x+17)^(-1/2)/(x^2+x+3)",
+            vec![],
+        ),
+        (
+            "diff(arcsec(sqrt(2)*(x^2+x+3)), x)",
+            "(2*x+1)*(2*x^4+4*x^3+14*x^2+12*x+17)^(-1/2)/(x^2+x+3)",
+            vec![],
+        ),
+        (
+            "diff(arccsc(sqrt(2)*(x^2+x+3)), x)",
+            "-(2*x+1)*(2*x^4+4*x^3+14*x^2+12*x+17)^(-1/2)/(x^2+x+3)",
+            vec![],
+        ),
+        (
+            "diff(arccsc((x^2+x+3)/sqrt(2)), x)",
+            "-sqrt(2)*(2*x+1)*(x^4+2*x^3+7*x^2+6*x+7)^(-1/2)/(x^2+x+3)",
+            vec![],
+        ),
         ("diff(arccot(x), x)", "-1/(x^2 + 1)", vec![]),
     ];
 
@@ -3333,6 +4493,34 @@ fn inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions() {
             assert!(
                 result.contains("x^4 + 2 * x^2"),
                 "positive argument inverse reciprocal trig derivative should expose the direct gap: {result}"
+            );
+        }
+        if matches!(
+            input,
+            "diff(arcsec((x^2+x+3)/sqrt(2)), x)" | "diff(arccsc((x^2+x+3)/sqrt(2)), x)"
+        ) {
+            assert!(
+                !result.contains("1 - 1 /") && !result.contains("1 - 2 /"),
+                "positive surd quotient inverse reciprocal trig derivative should expose direct gap: {result}"
+            );
+            assert!(
+                result.contains("x^4 + 2 * x^3 + 7 * x^2 + 6 * x + 7"),
+                "positive surd quotient inverse reciprocal trig derivative should expose q^2-k: {result}"
+            );
+        }
+        if matches!(
+            input,
+            "diff(arcsec((x^2+x+3)/sqrt(1/2)), x)"
+                | "diff(arcsec(sqrt(2)*(x^2+x+3)), x)"
+                | "diff(arccsc(sqrt(2)*(x^2+x+3)), x)"
+        ) {
+            assert!(
+                !result.contains("x^8") && !result.contains("1 - 1 /"),
+                "scaled surd inverse reciprocal trig derivative should keep compact direct gap: {result}"
+            );
+            assert!(
+                result.contains("2 * x^4 + 4 * x^3 + 14 * x^2 + 12 * x + 17"),
+                "scaled surd inverse reciprocal trig derivative should expose value-preserving gap: {result}"
             );
         }
 

@@ -95,6 +95,104 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-01: Shifted Quadratic Arcsin Antiderivative Verification Probe
+
+- area:
+  - calculus / integration verification / polynomial-square presentation
+- status:
+  - `superseded`
+- attempted case:
+  - promote `integrate((2*x+2)/sqrt(3-(x^2+2*x+1)^2), x)` as a public
+    shifted-polynomial `arcsin` antiderivative contract with diff verification
+- local lane:
+  - `cargo test -q -p cas_cli --test integrate_contract_tests integrate_contract_shifted_polynomial_arcsin_surd_width_dedupes_positive_domain -- --nocapture`
+  - probe:
+    `cargo run --release -q -p cas_cli -- eval 'simplify(3-(x^2+2*x+1)^2)' --format json --budget small`
+- local result:
+  - integration produced the expected `arcsin(1/3 * 3^(1/2) * (x^2 + 2*x + 1))`
+    shape, but antiderivative verification did not reduce the residual to `0`
+  - a later probe showed the suspected expansion sign issue was not a semantic
+    polynomial failure: the expanded AST proves equivalent to
+    `2 - x^4 - 4*x^3 - 6*x^2 - 4*x`; the rendered flat display remains easy to
+    misread because it does not expose grouping around the subtracted expanded
+    sum
+- global result:
+  - the factored-radicand case is now promoted as a public integrate contract
+    after integration compacts the antiderivative argument to `(x + 1)^2`
+  - the retained contract verifies the antiderivative by `diff` and preserves
+    the compact strict condition `3 - (x + 1)^4 > 0`
+- best current explanation:
+  - verification was blocked by presentation/form mismatch in the
+    antiderivative argument, not by a wrong polynomial expansion
+- plausible follow-up:
+  - consider a separate display or normalization iteration for subtracting
+    expanded sums so public strings like `3 - (...)` cannot be misread as a
+    different flat polynomial
+
+### 2026-05-01: Shifted Hyperbolic Sech-Squared Verification Probe
+
+- area:
+  - calculus / symbolic differentiation / hyperbolic reciprocal-square residuals
+- status:
+  - `observe-only`
+- attempted case:
+  - promote `integrate(sinh(2*x+1)/cosh(2*x+1)^2, x)` into the generic
+    antiderivative-verifies-by-`diff` contract
+- local lane:
+  - CLI residual probe:
+    `cargo run --release -q -p cas_cli -- eval 'diff(-(1/(2*cosh(2*x+1))), x) - sinh(2*x+1)/cosh(2*x+1)^2' --format json --budget small`
+- local result:
+  - the residual eventually simplified to `0` with the expected
+    `cosh(2*x + 1) ≠ 0` condition
+  - the probe took about 45.6s and emitted repeated `depth_overflow` warnings,
+    making it too hot and noisy for promotion as a normal contract row
+  - the adjacent `csch^2` residual
+    `diff(-(1/(2*tanh(2*x+1))), x) - 1/sinh(2*x+1)^2` also simplified to
+    `0`, but took about 3.2s and emitted repeated `cycle_detected` warnings
+- global result:
+  - not promoted in this iteration
+  - retained work is limited to the cheaper `1/tanh(2*x + 1)` antiderivative
+    verification path
+- best current explanation:
+  - shifted reciprocal-square hyperbolic residuals can expand into angle-sum
+    and double-angle rational shapes before recognizing the compact
+    reciprocal-square identity
+- plausible follow-up:
+  - add a cheap pre-expansion residual gate for `sech(u)^2` / `csch(u)^2`
+    antiderivative checks, then reattempt as pressure rather than default live
+    contract coverage
+
+### 2026-05-01: Affine `tan` Anti-Expansion Integrate Coupling
+
+- area:
+  - calculus / trig normalization / symbolic integration
+- status:
+  - `superseded`
+- attempted case:
+  - retain `tan(2*x+1)` during post-diff simplification so
+    `diff(2*x*tan(2*x+1), x)` avoids expanding through
+    `sin(2*x+1)/cos(2*x+1)`
+- local lane:
+  - CLI probe:
+    `cargo run --release -q -p cas_cli -- eval 'diff(2*x*tan(2*x+1), x)' --format json --time-budget-ms 50`
+- local result:
+  - derivative reduced to
+    `2*tan(2*x+1) + (4*x)/cos(2*x+1)^2`
+  - no `Simplification Time Budget` warning under the 50 ms probe
+- global result:
+  - first guardrail run failed `calculus_integrate_contract` because
+    `integrate(sec(2*x+1)*tan(2*x+1), x)` simplified to the now-preserved
+    `tan(2*x+1)/cos(2*x+1)` form, which the integrator did not recognize
+- best current explanation:
+  - the diff-side anti-expansion policy changed an integration-facing
+    intermediate representation from `sin(u)/cos(u)^2` to `tan(u)/cos(u)`
+    without a matching conservative antiderivative recognizer
+- retained follow-up:
+  - added a narrow `tan(u)/cos(u)` and `cot(u)/sin(u)` integration recognizer
+    guarded by polynomial `u'` matching and explicit nonzero denominator
+    conditions
+  - guardrail and pressure reruns are green after the paired fix
+
 ### 2026-05-01: Shifted Hyperbolic Diff Residual Probe
 
 - area:
@@ -8624,3 +8722,156 @@ The burden of proof stays the same:
   - the syntactic public form was promoted as
     `integrate((2*x+1)/(x^2+x-1)^2, x)` with compact nonzero condition
     `x^2 + x - 1 ≠ 0`
+
+## 2026-05-01 - Rejected combination: global diff HoldAll traversal
+
+- area:
+  - calculus / differentiation / traversal order / domain conditions
+- status:
+  - `rejected-combination`
+- attempted combination:
+  - make every `diff(...)` call HoldAll so direct derivative rules see the raw
+    target before child simplification
+- local lane:
+  - `diff(tan(2*x+1), x)` with `--time-budget-ms 50`
+- local result:
+  - local runtime improved and the public result stayed
+    `2 / cos(2*x + 1)^2` with `cos(2*x + 1) != 0`
+- global guardrail failure:
+  - `cargo test --release -q -p cas_solver --test diff_step_contract_tests -- --nocapture`
+    failed
+    `variable_base_power_log_diff_simplifies_constant_with_minimal_domain_conditions`
+  - the global HoldAll policy dropped the normalized `x - 1 != 0` condition for
+    `diff(log(x^2, x^3), x)`, leaving only `x > 0`
+- reusable signature:
+  - some `diff` families rely on pre-differentiation simplification to expose
+    normalized domain conditions, while `tan(u)` benefits from preserving the
+    raw direct target before trig quotient expansion
+- retained decision:
+  - reject global `diff` HoldAll
+  - retain only the narrow root-`tan(...)` preservation path for direct
+    derivative dispatch
+
+## 2026-05-01 - Discovery observe-only: non-unit linear tan product diff still pressures post-simplification
+
+- area:
+  - calculus / differentiation / traversal order / product-rule trig
+- status:
+  - `observe-only`
+- attempted case:
+  - broaden the narrow `diff` target preservation from `x*tan(u)` to
+    `linear-polynomial*tan(u)`
+- local lane:
+  - `cargo run --release -q -p cas_cli -- eval 'diff((x+1)*tan(2*x+1), x)' --format json --time-budget-ms 50`
+  - `cargo run --release -q -p cas_cli -- eval 'diff(2*x*tan(2*x+1), x)' --format json --time-budget-ms 50`
+- local result:
+  - preserving the broader raw product target avoids the first destructive
+    child expansion, but post-differentiation simplification still tries to
+    combine tangent/product-rule terms into deeper `sin`/`cos` quotients and
+    can hit `Simplification Time Budget`
+- reusable signature:
+  - non-unit or offset polynomial cofactors around `tan(u)` need a bounded
+    post-diff presentation policy; target preservation alone is not enough
+- decision:
+  - do not promote the broader `linear-polynomial*tan(u)` route
+  - retain only the minimal `x*tan(u)` representative that exits under budget
+    with the existing product rule and `cos(u) != 0` condition
+
+## 2026-05-01 - Discovery observe-only: shifted hyperbolic coth product diff pressures post-simplification
+
+- area:
+  - calculus / differentiation / hyperbolic quotient / post-diff simplification
+- status:
+  - `observe-only`
+- attempted case:
+  - directly differentiate affine cofactors around
+    `cosh(2*x+1)/sinh(2*x+1)`, for example
+    `diff((x+1)*cosh(2*x+1)/sinh(2*x+1), x)`
+- local lane:
+  - `cargo run --release -q -p cas_cli -- eval 'diff((x+1)*cosh(2*x+1)/sinh(2*x+1), x)' --format json --time-budget-ms 50`
+  - direct `cas_math` differentiation probe for the same product family
+- local result:
+  - the direct derivative can be built, but the public eval path still spends
+    seconds in post-simplification and emits `Simplification Time Budget` for
+    compact shifted `sinh(u)*cosh(u)/sinh(u)^2` outputs
+  - a separate observability bug surfaced while reporting cycle events for
+    displays containing `·`; that byte-boundary panic is handled separately as
+    a robustness fix
+- reusable signature:
+  - shifted hyperbolic quotient product-rule outputs need a bounded
+    presentation/normalization path before the family is safe to promote
+- decision:
+  - observe-only discovery; do not promote affine hyperbolic coth product diff
+    until the shifted `sinh(u)*cosh(u)` post-simplification path is bounded
+- retained follow-up:
+  - a later cycle added a bounded direct derivative for affine cofactors around
+    `cosh(u)/sinh(u)` when `u` is linear, including already-distributed
+    numerator forms
+  - the public no-artificial-budget contract now returns compactly as
+    `1/tanh(2*x+1) - (2*x+2)/sinh(2*x+1)^2` with required condition
+    `sinh(2*x+1) != 0`
+  - the strict `--time-budget-ms 50` probe still reports a post-simplification
+    budget warning, so the remaining work is presentation/runtime for compact
+    reciprocal-hyperbolic sums rather than derivative correctness
+
+## 2026-05-01 - Discovery observe-only: reciprocal tanh fraction guard does not bound compact coth diff sum
+
+- area:
+  - calculus / differentiation / fraction combination / post-diff runtime
+- status:
+  - `observe-only`
+- attempted case:
+  - block `AddFractions` only for compact same-argument reciprocal-hyperbolic
+    sums shaped like `1/tanh(u) - p/sinh(u)^2`
+- local lane:
+  - `cargo test -q -p cas_math fraction_pair_guard_support::tests:: -- --nocapture`
+  - `cargo test -q -p cas_engine eval::simplify_action::tests::eval_simplify_steps_off_diff_shifted_linear_times_coth_avoids_post_diff_timeout -- --nocapture`
+  - `cargo run --release -q -p cas_cli -- eval '1/tanh(2*x+1) - (2*x+2)/sinh(2*x+1)^2' --format json --time-budget-ms 50 --budget small`
+- local result:
+  - the guard can recognize the intended denominator signature, but the public
+    eval path still emits `Simplification Time Budget`
+  - probes showed the expensive path is broader than a single root-level
+    `AddFractions` application and includes repeated multiplication
+    canonicalization/rule-attempt traversal on the compact output
+- reusable signature:
+  - compact reciprocal-hyperbolic sums need a bounded presentation/runtime path
+    above individual fraction-pair guards; blocking one common-denominator rule
+    is insufficient
+- decision:
+  - reject the guard and leave no code retained from this attempt
+
+## 2026-05-01 - Discovery observe-only: product-form surd scale in inverse reciprocal trig diff
+
+- area:
+  - calculus / differentiation / inverse reciprocal trig / surd-scale
+    normalization
+- status:
+  - `observe-only`
+- attempted case:
+  - use the product form `sqrt(2)*(x^2+x+3)` as the argument of `arcsec` and
+    `arccsc`
+- local lane:
+  - `cargo run --release -q -p cas_cli -- eval 'diff(arcsec(sqrt(2)*(x^2+x+3)), x)' --format json --budget small`
+  - `cargo run --release -q -p cas_cli -- eval 'diff(arccsc(sqrt(2)*(x^2+x+3)), x)' --format json --budget small`
+- local result:
+  - the quotient spelling `(x^2+x+3)/sqrt(1/2)` reaches a compact derivative
+    and is now handled by the scaled sign-proof improvement
+  - the product spelling triggers `depth_overflow` warnings and produces a
+    much larger derivative/condition shape before the same semantic gap can be
+    used safely
+- reusable signature:
+  - inverse reciprocal trig derivatives are sensitive to equivalent surd-scale
+    orientation; quotient-form positive gaps are compact, while product-form
+    surd scaling still needs a bounded normalization/presentation route
+- decision:
+  - observe-only discovery; do not promote the product spelling in this cycle
+  - retain only the reusable scaled sign proof plus the compact quotient-form
+    public contract
+- retained follow-up:
+  - a later cycle made the inverse reciprocal trig derivative use a
+    value-preserving primitive positive gap and added a narrow raw-target
+    preservation gate for `arcsec/arccsc(sqrt(c)*q(x))` when `q` is a strictly
+    positive quadratic
+  - the public product spelling now returns the same compact derivative as the
+    quotient spelling, with no `depth_overflow` warnings and empty required
+    conditions for the promoted representative

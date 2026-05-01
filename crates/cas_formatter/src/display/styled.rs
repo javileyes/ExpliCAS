@@ -3,7 +3,10 @@
 use crate::{Constant, Context, Expr, ExprId};
 use std::fmt;
 
-use super::expr::{check_negative, collect_signed_add_terms, direct_negative_factor, precedence};
+use super::expr::{
+    check_negative, collect_signed_add_terms, direct_negative_factor,
+    is_add_sub_after_internal_hold, precedence,
+};
 use super::mul_symbol;
 use super::ordering::cmp_term_for_display;
 use super::{is_pretty_output, number_to_superscript, unicode_root_prefix};
@@ -138,8 +141,7 @@ impl<'a> DisplayExprStyled<'a> {
             Expr::Sub(l, r) => {
                 // Check if RHS needs parens (same logic as DisplayExpr):
                 // RHS is Add/Sub: a - (b + c) or a - (b - c) needs parens to preserve associativity
-                let rhs_is_add_sub =
-                    matches!(self.context.get(*r), Expr::Add(_, _) | Expr::Sub(_, _));
+                let rhs_is_add_sub = is_add_sub_after_internal_hold(self.context, *r);
                 self.fmt_internal(f, *l)?;
                 write!(f, " - ")?;
                 if rhs_is_add_sub {
@@ -387,8 +389,7 @@ impl<'a> DisplayExprStyled<'a> {
             Expr::Neg(inner) => {
                 // Add parentheses when inner is Add/Sub to preserve grouping
                 // The "-" has already been printed by the caller
-                let inner_is_add_sub =
-                    matches!(self.context.get(*inner), Expr::Add(_, _) | Expr::Sub(_, _));
+                let inner_is_add_sub = is_add_sub_after_internal_hold(self.context, *inner);
                 if inner_is_add_sub {
                     write!(f, "(")?;
                     self.fmt_internal(f, *inner)?;

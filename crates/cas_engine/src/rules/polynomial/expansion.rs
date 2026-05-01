@@ -9,6 +9,8 @@ use cas_math::expansion_rule_support::{
     try_expand_small_multinomial_expr, AutoExpandPowSumPolicy, AutoSubCancelPolicy,
     SmallMultinomialPolicy,
 };
+use cas_math::{numeric::as_i64, polynomial::Polynomial};
+use num_traits::Signed;
 
 // =============================================================================
 // BinomialExpansionRule
@@ -93,6 +95,14 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
             return None;
         }
 
+        if should_preserve_compact_reciprocal_polynomial_power_denominator(ctx, expr, parent_ctx) {
+            return None;
+        }
+
+        if should_preserve_compact_power_gap_in_quotient(ctx, expr, parent_ctx) {
+            return None;
+        }
+
         // Get budget - use default if in context but no explicit budget set
         let default_budget = crate::phase::ExpandBudget::default();
         let budget = parent_ctx.auto_expand_budget().unwrap_or(&default_budget);
@@ -143,6 +153,63 @@ impl crate::rule::Rule for AutoExpandPowSumRule {
     }
 }
 
+fn should_preserve_compact_power_gap_in_quotient(
+    ctx: &Context,
+    expr: ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    if !is_under_division(ctx, parent_ctx) || !is_high_additive_power(ctx, expr) {
+        return false;
+    }
+
+    let Some(parent) = parent_ctx.immediate_parent() else {
+        return false;
+    };
+    let Expr::Sub(left, right) = ctx.get(parent) else {
+        return false;
+    };
+
+    *right == expr && matches!(ctx.get(*left), Expr::Number(n) if n.is_positive())
+}
+
+fn is_under_division(ctx: &Context, parent_ctx: &crate::parent_context::ParentContext) -> bool {
+    parent_ctx.has_ancestor_matching(ctx, |c, ancestor| {
+        matches!(c.get(ancestor), Expr::Div(_, _))
+    })
+}
+
+fn is_high_additive_power(ctx: &Context, expr: ExprId) -> bool {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return false;
+    };
+    let Expr::Number(exp_num) = ctx.get(*exp) else {
+        return false;
+    };
+    if !exp_num.is_integer() || exp_num.to_integer() < 4.into() {
+        return false;
+    }
+
+    matches!(ctx.get(*base), Expr::Add(_, _) | Expr::Sub(_, _))
+        && additive_leaf_count_up_to(ctx, *base, 2).is_some()
+}
+
+fn additive_leaf_count_up_to(ctx: &Context, expr: ExprId, limit: usize) -> Option<usize> {
+    if limit == 0 {
+        return None;
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right) | Expr::Sub(left, right) => {
+            let left_count = additive_leaf_count_up_to(ctx, *left, limit)?;
+            let remaining = limit.checked_sub(left_count)?;
+            let right_count = additive_leaf_count_up_to(ctx, *right, remaining)?;
+            let total = left_count + right_count;
+            (total <= limit).then_some(total)
+        }
+        _ => Some(1),
+    }
+}
+
 // =============================================================================
 // SmallMultinomialExpansionRule
 // =============================================================================
@@ -179,6 +246,10 @@ impl crate::rule::Rule for SmallMultinomialExpansionRule {
         expr: ExprId,
         parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<Rewrite> {
+        if parent_ctx.context_mode() == crate::options::ContextMode::IntegratePrep {
+            return None;
+        }
+
         let integrate_fn = ctx.intern_symbol("integrate");
         if parent_ctx.has_ancestor_matching(ctx, |c, ancestor| {
             matches!(
@@ -186,6 +257,18 @@ impl crate::rule::Rule for SmallMultinomialExpansionRule {
                 Expr::Function(fn_id, _) if *fn_id == integrate_fn
             )
         }) {
+            return None;
+        }
+
+        if should_preserve_compact_low_degree_power_product(ctx, expr, parent_ctx) {
+            return None;
+        }
+
+        if should_preserve_compact_low_degree_power_shared_sum(ctx, expr, parent_ctx) {
+            return None;
+        }
+
+        if should_preserve_compact_reciprocal_polynomial_power_denominator(ctx, expr, parent_ctx) {
             return None;
         }
 
@@ -206,6 +289,244 @@ impl crate::rule::Rule for SmallMultinomialExpansionRule {
     fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
         Some(crate::target_kind::TargetKindSet::POW)
     }
+}
+
+fn should_preserve_compact_low_degree_power_product(
+    ctx: &Context,
+    expr: ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    if parent_ctx.is_expand_mode()
+        || parent_ctx.is_auto_expand()
+        || parent_ctx.in_auto_expand_context()
+    {
+        return false;
+    }
+
+    let Some((_power, poly)) = low_degree_multiterm_polynomial_power(ctx, expr) else {
+        return false;
+    };
+    let var = poly.var.as_str();
+
+    parent_ctx.has_ancestor_matching(ctx, |c, ancestor| {
+        matches!(c.get(ancestor), Expr::Mul(_, _))
+            && cas_math::expr_nary::mul_leaves(c, ancestor)
+                .into_iter()
+                .any(|factor| {
+                    factor != expr && is_nonconstant_linear_polynomial_factor(c, factor, var)
+                })
+    })
+}
+
+fn should_preserve_compact_low_degree_power_shared_sum(
+    ctx: &Context,
+    expr: ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    if parent_ctx.is_expand_mode()
+        || parent_ctx.is_auto_expand()
+        || parent_ctx.in_auto_expand_context()
+    {
+        return false;
+    }
+
+    let Some((_power, poly)) = low_degree_multiterm_polynomial_power(ctx, expr) else {
+        return false;
+    };
+    let var = poly.var.as_str();
+
+    parent_ctx.has_ancestor_matching(ctx, |c, ancestor| {
+        if !matches!(c.get(ancestor), Expr::Add(_, _)) {
+            return false;
+        }
+
+        let terms = cas_math::expr_nary::add_leaves(c, ancestor);
+        if !(2..=4).contains(&terms.len()) {
+            return false;
+        }
+
+        let mut terms_with_power = 0usize;
+        let mut term_with_linear_partner = false;
+        for term in terms {
+            let factors = cas_math::expr_nary::mul_leaves(c, term);
+            if !factors
+                .iter()
+                .any(|factor| same_low_degree_polynomial_power(c, expr, *factor))
+            {
+                continue;
+            }
+
+            terms_with_power += 1;
+            if factors.iter().any(|factor| {
+                !same_low_degree_polynomial_power(c, expr, *factor)
+                    && is_nonconstant_linear_polynomial_factor(c, *factor, var)
+            }) {
+                term_with_linear_partner = true;
+            }
+        }
+
+        terms_with_power >= 2 && term_with_linear_partner
+    })
+}
+
+fn low_degree_multiterm_polynomial_power(ctx: &Context, expr: ExprId) -> Option<(i64, Polynomial)> {
+    let Expr::Pow(base, _) = ctx.get(expr) else {
+        return None;
+    };
+    if additive_leaf_count_up_to(ctx, *base, 2).is_some() {
+        return None;
+    }
+
+    low_degree_polynomial_power(ctx, expr)
+}
+
+fn is_nonconstant_linear_polynomial_factor(ctx: &Context, factor: ExprId, var: &str) -> bool {
+    matches!(Polynomial::from_expr(ctx, factor, var), Ok(poly) if !poly.is_zero() && poly.degree() == 1)
+        || symbolic_degree_with_small_literal_exponents(ctx, factor, var, 1) == Some(1)
+}
+
+fn symbolic_degree_with_small_literal_exponents(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    max_degree: usize,
+) -> Option<usize> {
+    let degree = match ctx.get(expr) {
+        Expr::Number(_) | Expr::Constant(_) => 0,
+        Expr::Variable(sym_id) => {
+            if ctx.sym_name(*sym_id) == var {
+                1
+            } else {
+                return None;
+            }
+        }
+        Expr::Add(left, right) | Expr::Sub(left, right) => {
+            let left_degree =
+                symbolic_degree_with_small_literal_exponents(ctx, *left, var, max_degree)?;
+            let right_degree =
+                symbolic_degree_with_small_literal_exponents(ctx, *right, var, max_degree)?;
+            left_degree.max(right_degree)
+        }
+        Expr::Mul(left, right) => {
+            let left_degree =
+                symbolic_degree_with_small_literal_exponents(ctx, *left, var, max_degree)?;
+            let right_degree =
+                symbolic_degree_with_small_literal_exponents(ctx, *right, var, max_degree)?;
+            left_degree.checked_add(right_degree)?
+        }
+        Expr::Div(left, right) => {
+            let numerator_degree =
+                symbolic_degree_with_small_literal_exponents(ctx, *left, var, max_degree)?;
+            let denominator_degree =
+                symbolic_degree_with_small_literal_exponents(ctx, *right, var, max_degree)?;
+            if denominator_degree != 0 {
+                return None;
+            }
+            numerator_degree
+        }
+        Expr::Pow(base, exp) => {
+            let exponent = small_literal_integer_value(ctx, *exp)?;
+            if exponent < 0 {
+                return None;
+            }
+            let base_degree =
+                symbolic_degree_with_small_literal_exponents(ctx, *base, var, max_degree)?;
+            base_degree.checked_mul(exponent as usize)?
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            symbolic_degree_with_small_literal_exponents(ctx, *inner, var, max_degree)?
+        }
+        _ => return None,
+    };
+
+    (degree <= max_degree).then_some(degree)
+}
+
+fn small_literal_integer_value(ctx: &Context, expr: ExprId) -> Option<i64> {
+    match ctx.get(expr) {
+        Expr::Number(_) => as_i64(ctx, expr),
+        Expr::Neg(inner) => small_literal_integer_value(ctx, *inner)?.checked_neg(),
+        Expr::Add(left, right) => small_literal_integer_value(ctx, *left)?
+            .checked_add(small_literal_integer_value(ctx, *right)?),
+        Expr::Sub(left, right) => small_literal_integer_value(ctx, *left)?
+            .checked_sub(small_literal_integer_value(ctx, *right)?),
+        Expr::Mul(left, right) => small_literal_integer_value(ctx, *left)?
+            .checked_mul(small_literal_integer_value(ctx, *right)?),
+        Expr::Div(left, right) => {
+            let numerator = small_literal_integer_value(ctx, *left)?;
+            let denominator = small_literal_integer_value(ctx, *right)?;
+            if denominator == 0 || numerator % denominator != 0 {
+                return None;
+            }
+            Some(numerator / denominator)
+        }
+        _ => None,
+    }
+}
+
+fn should_preserve_compact_reciprocal_polynomial_power_denominator(
+    ctx: &Context,
+    expr: ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    if parent_ctx.is_expand_mode() || parent_ctx.is_auto_expand() {
+        return false;
+    }
+
+    let has_matching_div_denominator = parent_ctx.has_ancestor_matching(ctx, |c, ancestor| {
+        matches!(
+            c.get(ancestor),
+            Expr::Div(_, den) if denominator_contains_matching_low_degree_power(c, expr, *den)
+        )
+    });
+    if !has_matching_div_denominator {
+        return false;
+    }
+
+    low_degree_polynomial_power(ctx, expr).is_some()
+}
+
+fn denominator_contains_matching_low_degree_power(
+    ctx: &Context,
+    expr: ExprId,
+    denominator: ExprId,
+) -> bool {
+    same_low_degree_polynomial_power(ctx, expr, denominator)
+        || cas_math::expr_nary::mul_leaves(ctx, denominator)
+            .into_iter()
+            .any(|factor| same_low_degree_polynomial_power(ctx, expr, factor))
+}
+
+fn same_low_degree_polynomial_power(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let Some((left_power, left_poly)) = low_degree_polynomial_power(ctx, left) else {
+        return false;
+    };
+    let Some((right_power, right_poly)) = low_degree_polynomial_power(ctx, right) else {
+        return false;
+    };
+
+    left_power == right_power && left_poly == right_poly
+}
+
+fn low_degree_polynomial_power(ctx: &Context, expr: ExprId) -> Option<(i64, Polynomial)> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let power = as_i64(ctx, *exp)?;
+    if !(2..=8).contains(&power) {
+        return None;
+    }
+
+    let variables = cas_ast::collect_variables(ctx, *base);
+    let var = variables.iter().next()?;
+    if variables.len() != 1 {
+        return None;
+    }
+
+    Polynomial::from_expr(ctx, *base, var.as_str())
+        .ok()
+        .filter(|poly| (1..=2).contains(&poly.degree()))
+        .map(|poly| (power, poly))
 }
 
 // =============================================================================

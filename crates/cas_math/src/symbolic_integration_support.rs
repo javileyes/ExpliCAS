@@ -4,6 +4,7 @@ use crate::build::mul2_raw;
 use crate::expr_extract::extract_abs_argument_view;
 use crate::expr_nary::{build_balanced_mul, mul_leaves};
 use crate::expr_predicates::contains_named_var;
+use crate::factor::factor;
 use crate::polynomial::Polynomial;
 use crate::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind};
 use cas_ast::ordering::compare_expr;
@@ -15,6 +16,26 @@ use std::cmp::Ordering;
 fn ln_abs(ctx: &mut Context, arg: ExprId) -> ExprId {
     let abs_arg = ctx.call_builtin(BuiltinFn::Abs, vec![arg]);
     ctx.call_builtin(BuiltinFn::Ln, vec![abs_arg])
+}
+
+fn compact_single_power_polynomial_arg(ctx: &mut Context, arg: ExprId) -> ExprId {
+    let factored = factor(ctx, arg);
+    if factored == arg {
+        return arg;
+    }
+
+    match ctx.get(factored) {
+        Expr::Pow(_, exp) if is_integer_power_at_least_two(ctx, *exp) => factored,
+        _ => arg,
+    }
+}
+
+fn is_integer_power_at_least_two(ctx: &Context, expr: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Number(n)
+            if n.denom().is_one() && *n >= BigRational::from_integer(2.into())
+    )
 }
 
 fn is_number(ctx: &Context, expr: ExprId, value: i64) -> bool {
@@ -661,6 +682,85 @@ fn polynomial_trig_reciprocal_derivative_antiderivative(
     Some(mul2_raw(ctx, scale_expr, integral))
 }
 
+fn reciprocal_trig_factor_parts(ctx: &Context, den: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    match ctx.get(den) {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let builtin = ctx.builtin_of(*fn_id)?;
+            match builtin {
+                BuiltinFn::Cos | BuiltinFn::Sin => Some((builtin, args[0])),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn polynomial_trig_reciprocal_factor_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (den_builtin, arg) = reciprocal_trig_factor_parts(ctx, den)?;
+    let numerator_builtin = match den_builtin {
+        BuiltinFn::Cos => BuiltinFn::Tan,
+        BuiltinFn::Sin => BuiltinFn::Cot,
+        _ => return None,
+    };
+    if !contains_named_var(ctx, arg, var) {
+        return None;
+    }
+
+    let factors = mul_leaves(ctx, num);
+    let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
+        unary_builtin_arg(ctx, **factor, numerator_builtin)
+            .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
+    })?;
+
+    let cofactor_factors: Vec<ExprId> = factors
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
+        .collect();
+    let cofactor = if cofactor_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        build_balanced_mul(ctx, &cofactor_factors)
+    };
+
+    let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    let derivative = arg_poly.derivative();
+    let scale = constant_polynomial_ratio(&cofactor_poly, &derivative)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let integral = match den_builtin {
+        BuiltinFn::Cos => {
+            let one = ctx.num(1);
+            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+            ctx.add(Expr::Div(one, cos_arg))
+        }
+        BuiltinFn::Sin => {
+            let one = ctx.num(1);
+            let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+            let reciprocal_sin = ctx.add(Expr::Div(one, sin_arg));
+            ctx.add(Expr::Neg(reciprocal_sin))
+        }
+        _ => return None,
+    };
+    if scale.is_one() {
+        return Some(integral);
+    }
+    if scale == -BigRational::one() {
+        return Some(ctx.add(Expr::Neg(integral)));
+    }
+
+    let scale_expr = ctx.add(Expr::Number(scale));
+    Some(mul2_raw(ctx, scale_expr, integral))
+}
+
 fn constant_scaled_trig_reciprocal_derivative_antiderivative(
     ctx: &mut Context,
     constant: ExprId,
@@ -751,6 +851,52 @@ fn polynomial_trig_reciprocal_derivative_required_nonzero(
         _ => return None,
     };
     polynomial_trig_reciprocal_derivative_required_nonzero_from_parts(ctx, num, den, var)
+}
+
+fn polynomial_trig_reciprocal_factor_required_nonzero(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (num, den) = match ctx.get(expr).clone() {
+        Expr::Div(num, den) => (num, den),
+        _ => return None,
+    };
+    let (den_builtin, arg) = reciprocal_trig_factor_parts(ctx, den)?;
+    let numerator_builtin = match den_builtin {
+        BuiltinFn::Cos => BuiltinFn::Tan,
+        BuiltinFn::Sin => BuiltinFn::Cot,
+        _ => return None,
+    };
+    if !contains_named_var(ctx, arg, var) {
+        return None;
+    }
+
+    let factors = mul_leaves(ctx, num);
+    let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
+        unary_builtin_arg(ctx, **factor, numerator_builtin)
+            .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
+    })?;
+    let cofactor_factors: Vec<ExprId> = factors
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
+        .collect();
+    let cofactor = if cofactor_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        build_balanced_mul(ctx, &cofactor_factors)
+    };
+
+    let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    let derivative = arg_poly.derivative();
+    let scale = constant_polynomial_ratio(&cofactor_poly, &derivative)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    Some(ctx.call_builtin(den_builtin, vec![arg]))
 }
 
 fn constant_scaled_trig_reciprocal_derivative_required_nonzero(
@@ -1033,7 +1179,7 @@ fn polynomial_denominator_power_parts(
     ctx: &mut Context,
     den: ExprId,
     var: &str,
-) -> Option<(ExprId, BigRational)> {
+) -> Option<(ExprId, BigRational, BigRational)> {
     if let Expr::Pow(base, exp) = ctx.get(den) {
         let base = *base;
         let exp = *exp;
@@ -1045,11 +1191,63 @@ fn polynomial_denominator_power_parts(
             return None;
         }
 
-        return Some((base, exponent));
+        return Some((base, exponent, BigRational::one()));
     }
 
-    expanded_square_denominator_base(ctx, den, var)
-        .map(|base| (base, BigRational::from_integer(2.into())))
+    scaled_syntactic_polynomial_denominator_power_parts(ctx, den, var)
+        .or_else(|| {
+            expanded_square_denominator_base(ctx, den, var).map(|base| {
+                (
+                    base,
+                    BigRational::from_integer(2.into()),
+                    BigRational::one(),
+                )
+            })
+        })
+        .or_else(|| expanded_polynomial_denominator_power_parts(ctx, den, var))
+}
+
+fn scaled_syntactic_polynomial_denominator_power_parts(
+    ctx: &mut Context,
+    den: ExprId,
+    var: &str,
+) -> Option<(ExprId, BigRational, BigRational)> {
+    let factors = mul_leaves(ctx, den);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut scale = BigRational::one();
+    let mut power_part = None;
+
+    for factor in factors {
+        if power_part.is_none() {
+            let candidate = match ctx.get(factor) {
+                Expr::Pow(base, exp) => Some((*base, *exp)),
+                _ => None,
+            };
+
+            if let Some((base, exp)) = candidate {
+                let exponent = rational_constant_value(ctx, exp)?;
+                if exponent.is_integer()
+                    && exponent > BigRational::one()
+                    && contains_named_var(ctx, base, var)
+                    && Polynomial::from_expr(ctx, base, var).is_ok()
+                {
+                    power_part = Some((base, exponent));
+                    continue;
+                }
+            }
+        }
+
+        scale *= rational_constant_value(ctx, factor)?;
+    }
+
+    if scale.is_zero() {
+        return None;
+    }
+
+    power_part.map(|(base, exponent)| (base, exponent, scale))
 }
 
 fn expanded_square_denominator_base(ctx: &mut Context, den: ExprId, var: &str) -> Option<ExprId> {
@@ -1069,14 +1267,91 @@ fn expanded_square_denominator_base(ctx: &mut Context, den: ExprId, var: &str) -
     Some(base)
 }
 
+fn expanded_polynomial_denominator_power_parts(
+    ctx: &mut Context,
+    den: ExprId,
+    var: &str,
+) -> Option<(ExprId, BigRational, BigRational)> {
+    const MAX_EXPANDED_DENOMINATOR_POWER: usize = 5;
+
+    let den_poly = Polynomial::from_expr(ctx, den, var).ok()?;
+    if den_poly.degree() < 2 {
+        return None;
+    }
+
+    let derivative = den_poly.derivative();
+    if derivative.is_zero() {
+        return None;
+    }
+
+    let repeated_factor = den_poly.gcd(&derivative);
+    if repeated_factor.is_zero() || repeated_factor.degree() == 0 {
+        return None;
+    }
+
+    let (mut base_poly, remainder) = den_poly.div_rem(&repeated_factor).ok()?;
+    if !remainder.is_zero() || base_poly.is_zero() || base_poly.degree() == 0 {
+        return None;
+    }
+
+    let base_lc = base_poly.leading_coeff();
+    if base_lc.is_zero() {
+        return None;
+    }
+    base_poly = base_poly.div_scalar(&base_lc);
+
+    let base_degree = base_poly.degree();
+    if den_poly.degree() % base_degree != 0 {
+        return None;
+    }
+
+    let exponent = den_poly.degree() / base_degree;
+    if !(2..=MAX_EXPANDED_DENOMINATOR_POWER).contains(&exponent) {
+        return None;
+    }
+
+    let mut reconstructed = Polynomial::one(var.to_string());
+    for _ in 0..exponent {
+        reconstructed = reconstructed.mul(&base_poly);
+    }
+    let denominator_scale = constant_polynomial_ratio(&den_poly, &reconstructed)?;
+    if denominator_scale.is_zero() {
+        return None;
+    }
+
+    let base = base_poly.to_expr(ctx);
+    if !contains_named_var(ctx, base, var) {
+        return None;
+    }
+
+    Some((
+        base,
+        BigRational::from_integer((exponent as i64).into()),
+        denominator_scale,
+    ))
+}
+
 fn polynomial_denominator_power_substitution_antiderivative(
     ctx: &mut Context,
     num: ExprId,
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    let (base, denominator_exponent) = polynomial_denominator_power_parts(ctx, den, var)?;
-    polynomial_power_substitution_from_base(ctx, num, base, -denominator_exponent, var)
+    let (base, denominator_exponent, denominator_scale) =
+        polynomial_denominator_power_parts(ctx, den, var)?;
+    if denominator_scale.is_zero() {
+        return None;
+    }
+
+    let adjusted_num = if denominator_scale.is_one() {
+        num
+    } else {
+        let reciprocal_scale = BigRational::one() / denominator_scale;
+        let reciprocal_scale = ctx.add(Expr::Number(reciprocal_scale));
+        mul2_raw(ctx, reciprocal_scale, num)
+    };
+
+    polynomial_power_substitution_from_base(ctx, adjusted_num, base, -denominator_exponent, var)
 }
 
 fn polynomial_denominator_power_substitution_required_nonzero(
@@ -1088,7 +1363,7 @@ fn polynomial_denominator_power_substitution_required_nonzero(
         Expr::Div(num, den) => (*num, *den),
         _ => return None,
     };
-    let (base, _) = polynomial_denominator_power_parts(ctx, den, var)?;
+    let (base, _, _) = polynomial_denominator_power_parts(ctx, den, var)?;
     polynomial_denominator_power_substitution_antiderivative(ctx, num, den, var)?;
     Some(base)
 }
@@ -1465,6 +1740,30 @@ fn exact_rational_sqrt(value: &BigRational) -> Option<BigRational> {
     }
 }
 
+fn positive_rational_sqrt_expr(ctx: &mut Context, value: &BigRational) -> Option<ExprId> {
+    if value <= &BigRational::zero() {
+        return None;
+    }
+
+    if let Some(root) = exact_rational_sqrt(value) {
+        return Some(ctx.add(Expr::Number(root)));
+    }
+
+    let radicand = ctx.add(Expr::Number(value.clone()));
+    Some(ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]))
+}
+
+fn constant_polynomial_value(poly: &Polynomial) -> Option<BigRational> {
+    if poly.is_zero() {
+        return Some(BigRational::zero());
+    }
+    if poly.degree() != 0 {
+        return None;
+    }
+
+    poly.coeffs.first().cloned()
+}
+
 fn exact_polynomial_square_plus_positive_constant(
     poly: &Polynomial,
 ) -> Option<(Polynomial, BigRational)> {
@@ -1695,8 +1994,14 @@ fn arctan_polynomial_substitution_antiderivative(
 ) -> Option<ExprId> {
     let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
     let denominator = Polynomial::from_expr(ctx, den, var).ok()?;
-    let (arg_poly, offset_square) = exact_polynomial_square_plus_positive_constant(&denominator)?;
-    let offset = exact_rational_sqrt(&offset_square)?;
+    let Some((arg_poly, offset_square)) =
+        exact_polynomial_square_plus_positive_constant(&denominator)
+    else {
+        return arctan_scaled_quadratic_antiderivative(ctx, &numerator, &denominator);
+    };
+    let Some(offset) = exact_rational_sqrt(&offset_square) else {
+        return arctan_surd_offset_antiderivative(ctx, &numerator, &arg_poly, &offset_square);
+    };
     if offset.is_zero() {
         return None;
     }
@@ -1724,6 +2029,139 @@ fn arctan_polynomial_substitution_antiderivative(
     Some(mul2_raw(ctx, scale_expr, arctan))
 }
 
+fn arctan_surd_offset_antiderivative(
+    ctx: &mut Context,
+    numerator: &Polynomial,
+    arg_poly: &Polynomial,
+    offset_square: &BigRational,
+) -> Option<ExprId> {
+    let offset_expr = positive_rational_sqrt_expr(ctx, offset_square)?;
+    let derivative = arg_poly.derivative();
+    let scale = constant_polynomial_ratio(numerator, &derivative)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let arg = arg_poly.to_expr(ctx);
+    let arctan_arg = ctx.add(Expr::Div(arg, offset_expr));
+    let arctan = ctx.call_builtin(BuiltinFn::Arctan, vec![arctan_arg]);
+    let numerator = if scale.is_one() {
+        arctan
+    } else {
+        let scale_num = ctx.add(Expr::Number(scale));
+        mul2_raw(ctx, scale_num, arctan)
+    };
+    Some(ctx.add(Expr::Div(numerator, offset_expr)))
+}
+
+fn arctan_scaled_quadratic_antiderivative(
+    ctx: &mut Context,
+    numerator: &Polynomial,
+    denominator: &Polynomial,
+) -> Option<ExprId> {
+    if denominator.degree() != 2 {
+        return None;
+    }
+
+    let a = denominator
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if a <= BigRational::zero() {
+        return None;
+    }
+    let b = denominator
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let c = denominator
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+
+    let two = BigRational::from_integer(2.into());
+    let four = BigRational::from_integer(4.into());
+    let discriminant = four.clone() * a.clone() * c - b.clone() * b.clone();
+    if discriminant <= BigRational::zero() {
+        return None;
+    }
+
+    let arg_poly = Polynomial::new(vec![b, two * a.clone()], denominator.var.clone());
+    let Some(offset) = exact_rational_sqrt(&discriminant) else {
+        return arctan_scaled_quadratic_surd_antiderivative(
+            ctx,
+            numerator,
+            &arg_poly,
+            &discriminant,
+        );
+    };
+    if offset.is_zero() {
+        return None;
+    }
+
+    let derivative = arg_poly.derivative();
+    let denominator_scale = offset.clone() / (four * a);
+    let scaled_derivative = Polynomial::new(
+        derivative
+            .coeffs
+            .iter()
+            .map(|coeff| coeff.clone() * denominator_scale.clone())
+            .collect(),
+        denominator.var.clone(),
+    );
+    let scale = constant_polynomial_ratio(numerator, &scaled_derivative)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let arg_over_offset = Polynomial::new(
+        arg_poly
+            .coeffs
+            .iter()
+            .map(|coeff| coeff.clone() / offset.clone())
+            .collect(),
+        denominator.var.clone(),
+    )
+    .to_expr(ctx);
+    let arctan = ctx.call_builtin(BuiltinFn::Arctan, vec![arg_over_offset]);
+    if scale.is_one() {
+        return Some(arctan);
+    }
+
+    let scale_expr = ctx.add(Expr::Number(scale));
+    Some(mul2_raw(ctx, scale_expr, arctan))
+}
+
+fn arctan_scaled_quadratic_surd_antiderivative(
+    ctx: &mut Context,
+    numerator: &Polynomial,
+    arg_poly: &Polynomial,
+    discriminant: &BigRational,
+) -> Option<ExprId> {
+    let numerator_constant = constant_polynomial_value(numerator)?;
+    if numerator_constant.is_zero() {
+        return None;
+    }
+
+    let offset_expr = positive_rational_sqrt_expr(ctx, discriminant)?;
+    let arg = arg_poly.to_expr(ctx);
+    let arctan_arg = ctx.add(Expr::Div(arg, offset_expr));
+    let arctan = ctx.call_builtin(BuiltinFn::Arctan, vec![arctan_arg]);
+
+    let two = BigRational::from_integer(2.into());
+    let scale = two * numerator_constant;
+    let numerator = if scale.is_one() {
+        arctan
+    } else {
+        let scale_num = ctx.add(Expr::Number(scale));
+        mul2_raw(ctx, scale_num, arctan)
+    };
+    Some(ctx.add(Expr::Div(numerator, offset_expr)))
+}
+
 fn atanh_polynomial_substitution_antiderivative(
     ctx: &mut Context,
     num: ExprId,
@@ -1733,7 +2171,9 @@ fn atanh_polynomial_substitution_antiderivative(
     let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
     let denominator = Polynomial::from_expr(ctx, den, var).ok()?;
     let (arg_poly, offset_square) = exact_positive_constant_minus_polynomial_square(&denominator)?;
-    let offset = exact_rational_sqrt(&offset_square)?;
+    let Some(offset) = exact_rational_sqrt(&offset_square) else {
+        return atanh_surd_offset_antiderivative(ctx, &numerator, &arg_poly, &offset_square);
+    };
     if offset.is_zero() {
         return None;
     }
@@ -1759,6 +2199,31 @@ fn atanh_polynomial_substitution_antiderivative(
 
     let scale_expr = ctx.add(Expr::Number(scaled));
     Some(mul2_raw(ctx, scale_expr, atanh))
+}
+
+fn atanh_surd_offset_antiderivative(
+    ctx: &mut Context,
+    numerator: &Polynomial,
+    arg_poly: &Polynomial,
+    offset_square: &BigRational,
+) -> Option<ExprId> {
+    let offset_expr = positive_rational_sqrt_expr(ctx, offset_square)?;
+    let derivative = arg_poly.derivative();
+    let scale = constant_polynomial_ratio(numerator, &derivative)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let arg = arg_poly.to_expr(ctx);
+    let atanh_arg = ctx.add(Expr::Div(arg, offset_expr));
+    let atanh = ctx.call_builtin(BuiltinFn::Atanh, vec![atanh_arg]);
+    let numerator = if scale.is_one() {
+        atanh
+    } else {
+        let scale_num = ctx.add(Expr::Number(scale));
+        mul2_raw(ctx, scale_num, atanh)
+    };
+    Some(ctx.add(Expr::Div(numerator, offset_expr)))
 }
 
 fn polynomial_square_minus_constant_log_antiderivative(
@@ -1835,10 +2300,7 @@ fn arcsin_polynomial_substitution_from_radicand(
     let numerator = Polynomial::from_expr(ctx, numerator, var).ok()?;
     let radicand = Polynomial::from_expr(ctx, radicand, var).ok()?;
     let (arg_poly, offset_square) = exact_positive_constant_minus_polynomial_square(&radicand)?;
-    let offset = exact_rational_sqrt(&offset_square)?;
-    if offset.is_zero() {
-        return None;
-    }
+    let offset_expr = positive_rational_sqrt_expr(ctx, &offset_square)?;
 
     let derivative = arg_poly.derivative();
     let scale = constant_polynomial_ratio(&numerator, &derivative)?;
@@ -1846,11 +2308,11 @@ fn arcsin_polynomial_substitution_from_radicand(
         return None;
     }
 
-    let arg = arg_poly.to_expr(ctx);
-    let arcsin_arg = if offset.is_one() {
+    let raw_arg = arg_poly.to_expr(ctx);
+    let arg = compact_single_power_polynomial_arg(ctx, raw_arg);
+    let arcsin_arg = if offset_square.is_one() {
         arg
     } else {
-        let offset_expr = ctx.add(Expr::Number(offset));
         ctx.add(Expr::Div(arg, offset_expr))
     };
     let arcsin = ctx.call_builtin(BuiltinFn::Arcsin, vec![arcsin_arg]);
@@ -1871,10 +2333,7 @@ fn asinh_polynomial_substitution_from_radicand(
     let numerator = Polynomial::from_expr(ctx, numerator, var).ok()?;
     let radicand = Polynomial::from_expr(ctx, radicand, var).ok()?;
     let (arg_poly, offset_square) = exact_polynomial_square_plus_positive_constant(&radicand)?;
-    let offset = exact_rational_sqrt(&offset_square)?;
-    if offset.is_zero() {
-        return None;
-    }
+    let offset_expr = positive_rational_sqrt_expr(ctx, &offset_square)?;
 
     let derivative = arg_poly.derivative();
     let scale = constant_polynomial_ratio(&numerator, &derivative)?;
@@ -1882,11 +2341,11 @@ fn asinh_polynomial_substitution_from_radicand(
         return None;
     }
 
-    let arg = arg_poly.to_expr(ctx);
-    let asinh_arg = if offset.is_one() {
+    let raw_arg = arg_poly.to_expr(ctx);
+    let arg = compact_single_power_polynomial_arg(ctx, raw_arg);
+    let asinh_arg = if offset_square.is_one() {
         arg
     } else {
-        let offset_expr = ctx.add(Expr::Number(offset));
         ctx.add(Expr::Div(arg, offset_expr))
     };
     let asinh = ctx.call_builtin(BuiltinFn::Asinh, vec![asinh_arg]);
@@ -2267,15 +2726,38 @@ fn atanh_polynomial_substitution_denominator(
     Some(den)
 }
 
+fn constant_scaled_integrand_inner(ctx: &Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => Some(*inner),
+        Expr::Mul(left, right) => {
+            let left_depends_on_var = contains_named_var(ctx, *left, var);
+            let right_depends_on_var = contains_named_var(ctx, *right, var);
+            match (left_depends_on_var, right_depends_on_var) {
+                (false, true) => Some(*right),
+                (true, false) => Some(*left),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 pub fn integrate_symbolic_required_nonzero_conditions(
     ctx: &mut Context,
     expr: ExprId,
     var: &str,
 ) -> Vec<ExprId> {
+    if let Some(inner) = constant_scaled_integrand_inner(ctx, expr, var) {
+        return integrate_symbolic_required_nonzero_conditions(ctx, inner, var);
+    }
+
     trig_log_required_nonzero(ctx, expr, var)
         .into_iter()
         .chain(trig_reciprocal_derivative_required_nonzero(ctx, expr, var))
         .chain(polynomial_trig_reciprocal_derivative_required_nonzero(
+            ctx, expr, var,
+        ))
+        .chain(polynomial_trig_reciprocal_factor_required_nonzero(
             ctx, expr, var,
         ))
         .chain(constant_scaled_trig_reciprocal_derivative_required_nonzero(
@@ -2504,6 +2986,11 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
 
         if let Some(integral) =
             polynomial_trig_reciprocal_derivative_antiderivative(ctx, num, den, var)
+        {
+            return Some(integral);
+        }
+
+        if let Some(integral) = polynomial_trig_reciprocal_factor_antiderivative(ctx, num, den, var)
         {
             return Some(integral);
         }
@@ -3129,9 +3616,17 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "1/2 * arctan(x^2 / 2)");
 
+        let expr = parse("2*x/(3+x^4)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan(x^2 / sqrt(3)) / sqrt(3)");
+
         let expr = parse("1/(4+(x+1)^2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "1/2 * arctan((x + 1) / 2)");
+
+        let expr = parse("1/(2*x^2+2*x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan(2 * x + 1)");
     }
 
     #[test]
@@ -3145,9 +3640,41 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "1/4 * atanh(x^2 / 2)");
 
+        let expr = parse("2*x/(3-x^4)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "atanh(x^2 / sqrt(3)) / sqrt(3)");
+
+        let expr = parse("(2*x+2)/(5-(x^2+2*x+1)^2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "atanh((x^2 + 2 * x + 1) / sqrt(5)) / sqrt(5)"
+        );
+
         let expr = parse("1/(4-(x+1)^2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "1/2 * atanh((x + 1) / 2)");
+    }
+
+    #[test]
+    fn integrates_inverse_sqrt_substitution_with_surd_width() {
+        let mut ctx = Context::new();
+
+        let expr = parse("2*x/sqrt(3-x^4)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arcsin(x^2 / sqrt(3))");
+
+        let expr = parse("2*x/sqrt(3+x^4)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "asinh(x^2 / sqrt(3))");
+
+        let expr = parse("(2*x+2)/sqrt(2 - x^4 - 4*x^3 - 6*x^2 - 4*x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arcsin((x + 1)^2 / sqrt(3))");
+
+        let expr = parse("(2*x+2)/sqrt(4 + 4*x + 6*x^2 + 4*x^3 + x^4)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "asinh((x + 1)^2 / sqrt(3))");
     }
 
     #[test]
@@ -3313,6 +3840,36 @@ mod tests {
         let expr = parse("(2*x+1)/(x^4+2*x^3-x^2-2*x+1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "-1/((x^2 + x - 1))");
+
+        let expr = parse("(2*x+1)/(3*(x^2+x-1)^2)", &mut ctx).expect("parse");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "x^2 + x - 1");
+
+        let expr = parse("(2*x+1)/(3*x^4+6*x^3-3*x^2-6*x+3)", &mut ctx).expect("parse");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "x^2 + x - 1");
+
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-1/3/((x^2 + x - 1))");
+
+        let expr = parse("1/3*((2*x+1)/(x^2+x-1)^2)", &mut ctx).expect("parse");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "x^2 + x - 1");
+
+        let expr = parse("(2*x+1)/(x^6+3*x^5-5*x^3+3*x-1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-1/2/((x^2 + x - 1)^2)");
+
+        let expr = parse("(2*x+1)/(4*x^6+12*x^5-20*x^3+12*x-4)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-1/8/((x^2 + x - 1)^2)");
+
+        let expr = parse("1/(x^5+5*x^4+10*x^3+10*x^2+5*x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-1/4/((x + 1)^4)");
     }
 
     #[test]
@@ -3365,6 +3922,22 @@ mod tests {
         let expr = parse("cos(2*x + 1)/sin(2*x + 1)^2", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "-csc(2 * x + 1) / (0 + 2)");
+
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "sin(2 * x + 1)");
+
+        let expr = parse("tan(2*x + 1)/cos(2*x + 1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "(1 * 1/2)/cos(2 * x + 1)");
+
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "cos(2 * x + 1)");
+
+        let expr = parse("cot(2*x + 1)/sin(2*x + 1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-(1 * 1/2)/sin(2 * x + 1)");
 
         let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
         assert_eq!(conditions.len(), 1);

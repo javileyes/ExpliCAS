@@ -37,7 +37,11 @@ pub fn truncate_display(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else {
-        let mut truncated = s[..max_len].to_string();
+        let mut end = max_len;
+        while !s.is_char_boundary(end) {
+            end -= 1;
+        }
+        let mut truncated = s[..end].to_string();
         truncated.push('…');
         truncated
     }
@@ -140,5 +144,12 @@ mod tests {
     fn truncate_display_adds_ellipsis() {
         assert_eq!(truncate_display("short", 10), "short");
         assert_eq!(truncate_display("a long string here", 6), "a long…");
+    }
+
+    #[test]
+    fn truncate_display_respects_utf8_boundaries() {
+        assert_eq!(truncate_display("abcd·efgh", 5), "abcd…");
+        assert_eq!(truncate_display("abcd·efgh", 6), "abcd·…");
+        assert_eq!(truncate_display("·prefix", 1), "…");
     }
 }

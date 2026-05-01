@@ -83,8 +83,7 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 // 2. RHS is Add/Sub: a - (b + c) or a - (b - c) needs parens to preserve associativity
                 // 3. RHS has lower/equal precedence
                 let rhs_is_neg = matches!(self.context.get(*r), Expr::Neg(_));
-                let rhs_is_add_sub =
-                    matches!(self.context.get(*r), Expr::Add(_, _) | Expr::Sub(_, _));
+                let rhs_is_add_sub = is_add_sub_after_internal_hold(self.context, *r);
 
                 if rhs_prec <= op_prec || rhs_is_neg || rhs_is_add_sub {
                     write!(
@@ -589,6 +588,7 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
 // ============================================================================
 
 pub(super) fn precedence(ctx: &Context, id: ExprId) -> i32 {
+    let id = unwrap_internal_hold_for_display(ctx, id);
     match ctx.get(id) {
         Expr::Add(_, _) | Expr::Sub(_, _) => 1,
         Expr::Mul(_, _) | Expr::Div(_, _) => 2,
@@ -600,6 +600,26 @@ pub(super) fn precedence(ctx: &Context, id: ExprId) -> i32 {
         | Expr::Constant(_)
         | Expr::Matrix { .. }
         | Expr::SessionRef(_) => 5,
+    }
+}
+
+pub(super) fn is_add_sub_after_internal_hold(ctx: &Context, id: ExprId) -> bool {
+    let id = unwrap_internal_hold_for_display(ctx, id);
+    matches!(ctx.get(id), Expr::Add(_, _) | Expr::Sub(_, _))
+}
+
+fn unwrap_internal_hold_for_display(ctx: &Context, id: ExprId) -> ExprId {
+    let mut current = id;
+    loop {
+        match ctx.get(current) {
+            Expr::Hold(inner) => current = *inner,
+            Expr::Function(fn_id, args)
+                if args.len() == 1 && crate::hold::is_internal_hold_name(ctx.sym_name(*fn_id)) =>
+            {
+                current = args[0];
+            }
+            _ => return current,
+        }
     }
 }
 
@@ -679,7 +699,7 @@ pub(super) fn format_term_absolute(
 ) -> fmt::Result {
     match ctx.get(id) {
         Expr::Neg(inner) => {
-            let inner_is_add_sub = matches!(ctx.get(*inner), Expr::Add(_, _) | Expr::Sub(_, _));
+            let inner_is_add_sub = is_add_sub_after_internal_hold(ctx, *inner);
             if inner_is_add_sub {
                 write!(
                     f,

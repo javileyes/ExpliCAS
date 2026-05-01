@@ -22,7 +22,7 @@ use cas_math::prove_sign::{prove_nonnegative_depth_with, prove_positive_depth_wi
 use cas_math::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind};
 use cas_math::tri_proof::TriProof;
 use num_rational::BigRational;
-use num_traits::{One, Signed, Zero};
+use num_traits::{One, Signed, ToPrimitive, Zero};
 
 const DISPLAY_SIGN_PROOF_DEPTH: usize = 12;
 
@@ -47,6 +47,10 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
             let normalized_base = normalize_condition_expr(ctx, base);
             return ImplicitCondition::NonZero(normalized_base);
         }
+
+        if let Some(compact) = compact_positive_power_gap_for_display(ctx, *e) {
+            return ImplicitCondition::Positive(compact);
+        }
     }
 
     let normalized_expr = match cond {
@@ -54,13 +58,25 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
         ImplicitCondition::Positive(e) => normalize_condition_expr_preserve_sign(ctx, *e),
         ImplicitCondition::NonZero(e) => {
             let stripped = strip_nonzero_scalar_factors_for_display(ctx, *e);
-            normalize_condition_expr(ctx, stripped)
+            normalize_nonzero_condition_expr_for_display(ctx, stripped)
         }
     };
 
     match cond {
-        ImplicitCondition::NonNegative(_) => ImplicitCondition::NonNegative(normalized_expr),
-        ImplicitCondition::Positive(_) => ImplicitCondition::Positive(normalized_expr),
+        ImplicitCondition::NonNegative(_) => {
+            if let Some(compact) = compact_positive_power_gap_for_display(ctx, normalized_expr) {
+                ImplicitCondition::NonNegative(compact)
+            } else {
+                ImplicitCondition::NonNegative(normalized_expr)
+            }
+        }
+        ImplicitCondition::Positive(_) => {
+            if let Some(compact) = compact_positive_power_gap_for_display(ctx, normalized_expr) {
+                ImplicitCondition::Positive(compact)
+            } else {
+                ImplicitCondition::Positive(normalized_expr)
+            }
+        }
         ImplicitCondition::NonZero(_) => ImplicitCondition::NonZero(normalized_expr),
     }
 }
@@ -295,6 +311,277 @@ fn is_intrinsically_nonnegative_real(ctx: &Context, expr: ExprId) -> bool {
         |_inner_ctx, _inner_expr, _inner_depth| TriProof::Unknown,
     )
     .is_proven()
+}
+
+fn compact_positive_power_gap_for_display(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(compact) = compact_structured_positive_power_gap_for_display(ctx, expr) {
+        return Some(compact);
+    }
+
+    compact_expanded_shifted_fourth_gap_for_display(ctx, expr)
+}
+
+fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId) -> ExprId {
+    if let Some((base, _)) = positive_integer_power_parts(ctx, expr) {
+        return normalize_nonzero_condition_expr_for_display(ctx, base);
+    }
+
+    if let Some(base) = compact_expanded_monic_low_degree_power_for_display(ctx, expr) {
+        return normalize_nonzero_condition_expr_for_display(ctx, base);
+    }
+
+    let normalized = normalize_condition_expr(ctx, expr);
+    let normalized =
+        primitive_nonzero_polynomial_for_display(ctx, normalized).unwrap_or(normalized);
+    if let Some((base, _)) = positive_integer_power_parts(ctx, normalized) {
+        return normalize_nonzero_condition_expr_for_display(ctx, base);
+    }
+
+    if let Some(base) = compact_expanded_monic_low_degree_power_for_display(ctx, normalized) {
+        return normalize_nonzero_condition_expr_for_display(ctx, base);
+    }
+
+    compact_nonzero_power_gap_for_display(ctx, expr)
+        .or_else(|| compact_nonzero_power_gap_for_display(ctx, normalized))
+        .unwrap_or(normalized)
+}
+
+fn primitive_nonzero_polynomial_for_display(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    use cas_math::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
+
+    let budget = PolyBudget {
+        max_terms: 50,
+        max_total_degree: 20,
+        max_pow_exp: 10,
+    };
+    let poly = multipoly_from_expr(ctx, expr, &budget).ok()?;
+    if poly.is_zero() || poly.is_constant() {
+        return None;
+    }
+
+    let (content, primitive) = poly.primitive_part();
+    if content.is_zero() || content.is_one() {
+        return None;
+    }
+
+    Some(multipoly_to_expr(&primitive, ctx))
+}
+
+fn compact_nonzero_power_gap_for_display(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(compact) = compact_positive_power_gap_for_display(ctx, expr) {
+        return Some(compact);
+    }
+
+    let negated = ctx.add(Expr::Neg(expr));
+    compact_positive_power_gap_for_display(ctx, negated)
+}
+
+fn compact_structured_positive_power_gap_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let Expr::Sub(left, right) = ctx.get(expr).clone() else {
+        return None;
+    };
+    as_rational_const(ctx, left)?;
+
+    let compact_right = compact_high_additive_power_for_display(ctx, right)?;
+    Some(ctx.add(Expr::Sub(left, compact_right)))
+}
+
+fn compact_high_additive_power_for_display(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (base, outer_exp) = positive_integer_power_parts(ctx, expr)?;
+    let (compact_base, inner_exp) = positive_integer_power_parts(ctx, base).unwrap_or((base, 1));
+    let combined_exp = outer_exp.checked_mul(inner_exp)?;
+
+    if combined_exp < 4 || !is_small_additive_shape(ctx, compact_base) {
+        return None;
+    }
+
+    let exp = ctx.num(combined_exp);
+    Some(ctx.add(Expr::Pow(compact_base, exp)))
+}
+
+fn compact_expanded_shifted_fourth_gap_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, expr, var).ok()?;
+    if poly.degree() != 4 {
+        return None;
+    }
+
+    let coeff = |degree: usize| {
+        poly.coeffs
+            .get(degree)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+    };
+    let c4 = coeff(4);
+    if c4 != -BigRational::one() {
+        return None;
+    }
+
+    let four = BigRational::from_integer(4.into());
+    let six = BigRational::from_integer(6.into());
+    let shift = -coeff(3) / four.clone();
+    if shift.is_zero() {
+        return None;
+    }
+
+    let shift_sq = shift.clone() * shift.clone();
+    let shift_cu = shift_sq.clone() * shift.clone();
+    let shift_fourth = shift_sq.clone() * shift_sq.clone();
+    if coeff(2) != -(six * shift_sq) || coeff(1) != -(four * shift_cu) {
+        return None;
+    }
+
+    let width = coeff(0) + shift_fourth;
+    if !width.is_positive() {
+        return None;
+    }
+
+    let width_expr = ctx.add(Expr::Number(width));
+    let base = shifted_var_expr_for_display(ctx, var, &shift);
+    let exp = ctx.num(4);
+    let power = ctx.add(Expr::Pow(base, exp));
+    Some(ctx.add(Expr::Sub(width_expr, power)))
+}
+
+fn shifted_var_expr_for_display(ctx: &mut Context, var: &str, shift: &BigRational) -> ExprId {
+    let var_expr = ctx.var(var);
+    if shift.is_zero() {
+        return var_expr;
+    }
+
+    let shift_expr = ctx.add(Expr::Number(shift.abs()));
+    if shift.is_positive() {
+        ctx.add(Expr::Add(var_expr, shift_expr))
+    } else {
+        ctx.add(Expr::Sub(var_expr, shift_expr))
+    }
+}
+
+fn positive_integer_power_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, i64)> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let Expr::Number(exp_num) = ctx.get(*exp) else {
+        return None;
+    };
+
+    if !exp_num.is_integer() {
+        return None;
+    }
+
+    let exp_i64 = exp_num.to_integer().to_i64()?;
+    (exp_i64 > 0).then_some((*base, exp_i64))
+}
+
+fn compact_expanded_monic_low_degree_power_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let variables = cas_ast::collect_variables(ctx, expr);
+    if variables.len() != 1 {
+        return None;
+    }
+    let var = variables.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, expr, var.as_str()).ok()?;
+    let degree = poly.degree();
+    if degree < 2 || poly.leading_coeff() != BigRational::one() {
+        return None;
+    }
+
+    for power in 2..=8_i64 {
+        let power_usize = power as usize;
+        if degree % power_usize != 0 {
+            continue;
+        }
+        let base_degree = degree / power_usize;
+        if !(1..=2).contains(&base_degree) {
+            continue;
+        }
+
+        let candidate = monic_power_root_candidate(&poly, var, power, base_degree)?;
+        if polynomial_positive_power(&candidate, power) == poly {
+            return Some(candidate.to_expr(ctx));
+        }
+    }
+
+    None
+}
+
+fn monic_power_root_candidate(
+    poly: &Polynomial,
+    var: &str,
+    power: i64,
+    base_degree: usize,
+) -> Option<Polynomial> {
+    let coeff = |degree: usize| {
+        poly.coeffs
+            .get(degree)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+    };
+    let degree = poly.degree();
+    let power_rat = BigRational::from_integer(power.into());
+
+    match base_degree {
+        1 => {
+            let constant = coeff(degree - 1) / power_rat;
+            Some(Polynomial::new(
+                vec![constant, BigRational::one()],
+                var.to_string(),
+            ))
+        }
+        2 => {
+            let linear = coeff(degree - 1) / power_rat.clone();
+            let pair_count = BigRational::from_integer(((power * (power - 1)) / 2).into());
+            let constant =
+                (coeff(degree - 2) - pair_count * linear.clone() * linear.clone()) / power_rat;
+            Some(Polynomial::new(
+                vec![constant, linear, BigRational::one()],
+                var.to_string(),
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn polynomial_positive_power(poly: &Polynomial, power: i64) -> Polynomial {
+    let mut out = Polynomial::one(poly.var.clone());
+    for _ in 0..power {
+        out = out.mul(poly);
+    }
+    out
+}
+
+fn is_small_additive_shape(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
+        && additive_leaf_count_up_to(ctx, expr, 2).is_some()
+}
+
+fn additive_leaf_count_up_to(ctx: &Context, expr: ExprId, limit: usize) -> Option<usize> {
+    if limit == 0 {
+        return None;
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right) | Expr::Sub(left, right) => {
+            let left_count = additive_leaf_count_up_to(ctx, *left, limit)?;
+            let remaining = limit.checked_sub(left_count)?;
+            let right_count = additive_leaf_count_up_to(ctx, *right, remaining)?;
+            let total = left_count + right_count;
+            (total <= limit).then_some(total)
+        }
+        _ => Some(1),
+    }
 }
 
 fn is_nonnegative_under_display_conditions_or_factored(
@@ -912,6 +1199,16 @@ fn nonzero_is_dominated_by_nonzero_factors(
         return false;
     }
 
+    let (_, remaining_primitive) = remaining.primitive_part();
+    known_nonzero_factors.retain(|factor_poly| {
+        let (_, factor_primitive) = factor_poly.primitive_part();
+        factor_primitive != remaining_primitive && factor_primitive != remaining_primitive.neg()
+    });
+
+    if known_nonzero_factors.is_empty() {
+        return false;
+    }
+
     let max_divisions = remaining.total_degree() as usize;
     for _ in 0..max_divisions {
         if remaining.is_constant() {
@@ -1303,6 +1600,10 @@ pub fn conditions_equivalent(
     }
 }
 
+fn conditions_same_display(ctx: &Context, c1: &ImplicitCondition, c2: &ImplicitCondition) -> bool {
+    c1.display(ctx) == c2.display(ctx)
+}
+
 /// Normalize and deduplicate a list of conditions for display.
 pub fn normalize_and_dedupe_conditions(
     ctx: &mut Context,
@@ -1311,6 +1612,10 @@ pub fn normalize_and_dedupe_conditions(
     let mut result: Vec<ImplicitCondition> = Vec::new();
 
     for cond in conditions {
+        if condition_is_intrinsically_satisfied(ctx, cond) {
+            continue;
+        }
+
         if let ImplicitCondition::NonZero(expr) = cond {
             if nonzero_is_dominated_by_positive_condition(ctx, conditions, *expr) {
                 continue;
@@ -1318,9 +1623,10 @@ pub fn normalize_and_dedupe_conditions(
         }
 
         for normalized in expand_condition_for_display(ctx, cond) {
-            let is_duplicate = result
-                .iter()
-                .any(|existing| conditions_equivalent(ctx, existing, &normalized));
+            let is_duplicate = result.iter().any(|existing| {
+                conditions_equivalent(ctx, existing, &normalized)
+                    || conditions_same_display(ctx, existing, &normalized)
+            });
 
             if !is_duplicate {
                 result.push(normalized);
@@ -1334,6 +1640,14 @@ pub fn normalize_and_dedupe_conditions(
     combine_factored_nonzero_nonnegative_into_positive(ctx, &mut result);
     apply_dominance_rules(ctx, &mut result);
     result
+}
+
+fn condition_is_intrinsically_satisfied(ctx: &Context, cond: &ImplicitCondition) -> bool {
+    match cond {
+        ImplicitCondition::Positive(expr) => is_intrinsically_positive_real(ctx, *expr),
+        ImplicitCondition::NonNegative(expr) => is_intrinsically_nonnegative_real(ctx, *expr),
+        ImplicitCondition::NonZero(_) => false,
+    }
 }
 
 fn expand_condition_for_display(
@@ -1448,11 +1762,13 @@ fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<
     collect_nonzero_atomic_factors(ctx, factored, &mut atomic_factors);
 
     if atomic_factors.is_empty() {
-        return vec![ImplicitCondition::NonZero(normalized_expr)];
+        return vec![ImplicitCondition::NonZero(
+            normalize_nonzero_condition_expr_for_display(ctx, normalized_expr),
+        )];
     }
 
     if atomic_factors.len() == 1 {
-        let atomic = normalize_condition_expr(ctx, atomic_factors[0]);
+        let atomic = normalize_nonzero_condition_expr_for_display(ctx, atomic_factors[0]);
         return vec![ImplicitCondition::NonZero(atomic)];
     }
 
@@ -1469,7 +1785,9 @@ fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<
     }
 
     if expanded.is_empty() {
-        vec![ImplicitCondition::NonZero(normalized_expr)]
+        vec![ImplicitCondition::NonZero(
+            normalize_nonzero_condition_expr_for_display(ctx, normalized_expr),
+        )]
     } else {
         expanded
     }
@@ -2014,6 +2332,51 @@ mod tests {
     }
 
     #[test]
+    fn nonzero_scaled_square_and_expanded_denominator_preserve_base_condition() {
+        let mut ctx = Context::new();
+        let scaled_square = parse("3*(x^2+x-1)^2", &mut ctx).expect("parse scaled square");
+        let expanded_scaled = parse("3*x^2+3*x-3", &mut ctx).expect("parse expanded scaled");
+        let base = parse("x^2+x-1", &mut ctx).expect("parse base");
+
+        let inputs = [
+            ImplicitCondition::NonZero(scaled_square),
+            ImplicitCondition::NonZero(expanded_scaled),
+            ImplicitCondition::NonZero(base),
+        ];
+        let normalized = normalize_and_dedupe_conditions(&mut ctx, &inputs);
+        assert_eq!(normalized.len(), 1, "got: {:?}", normalized);
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::NonZero(base)
+        ));
+    }
+
+    #[test]
+    fn nonzero_expanded_low_degree_polynomial_power_normalizes_to_base() {
+        let cases = [
+            "x^6 + 3*x^5 - 5*x^3 + 3*x - 1",
+            "x^8 + 4*x^7 + 2*x^6 - 8*x^5 - 5*x^4 + 8*x^3 + 2*x^2 - 4*x + 1",
+        ];
+
+        for input in cases {
+            let mut ctx = Context::new();
+            let expanded = parse(input, &mut ctx).expect("parse expanded");
+            let base = parse("x^2 + x - 1", &mut ctx).expect("parse base");
+
+            let normalized =
+                normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonZero(expanded)]);
+
+            assert_eq!(normalized.len(), 1, "input: {input}");
+            assert!(
+                conditions_equivalent(&ctx, &normalized[0], &ImplicitCondition::NonZero(base)),
+                "input: {input}, got: {:?}",
+                normalized
+            );
+        }
+    }
+
+    #[test]
     fn positive_abs_dominates_base_nonzero_condition() {
         let mut ctx = Context::new();
         let x = parse("x", &mut ctx).expect("parse x");
@@ -2301,6 +2664,17 @@ mod tests {
     }
 
     #[test]
+    fn intrinsically_positive_square_plus_constant_condition_is_dropped() {
+        let mut ctx = Context::new();
+        let expr = parse("x^4 + 2*x^3 + 3*x^2 + 2*x + 8", &mut ctx).expect("parse expr");
+
+        let normalized =
+            normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::Positive(expr)]);
+
+        assert!(normalized.is_empty());
+    }
+
+    #[test]
     fn factored_perfect_square_nonnegative_display_condition_is_dropped() {
         let mut ctx = Context::new();
         let expr = parse("a^2 + 2*a*b + b^2", &mut ctx).expect("parse expr");
@@ -2417,6 +2791,96 @@ mod tests {
             &normalized[0],
             &ImplicitCondition::Positive(base)
         ));
+    }
+
+    #[test]
+    fn positive_shifted_high_power_gap_preserves_compact_display() {
+        let mut ctx = Context::new();
+        let gap = parse("3 - ((x + 1)^2)^2", &mut ctx).expect("parse shifted power gap");
+
+        let normalized =
+            normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::Positive(gap)]);
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["3 - (x + 1)^4 > 0".to_string()]);
+    }
+
+    #[test]
+    fn positive_expanded_shifted_fourth_gap_preserves_compact_display() {
+        let mut ctx = Context::new();
+        let gap = parse("2 - x^4 - 4*x^3 - 6*x^2 - 4*x", &mut ctx).expect("parse expanded gap");
+
+        let normalized =
+            normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::Positive(gap)]);
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["3 - (x + 1)^4 > 0".to_string()]);
+    }
+
+    #[test]
+    fn positive_shifted_fourth_gap_dominates_expanded_nonnegative_gap() {
+        let mut ctx = Context::new();
+        let positive_gap = parse("3 - (x + 1)^4", &mut ctx).expect("parse positive gap");
+        let nonnegative_gap =
+            parse("2 - x^4 - 4*x^3 - 6*x^2 - 4*x", &mut ctx).expect("parse nonnegative gap");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(positive_gap),
+                ImplicitCondition::NonNegative(nonnegative_gap),
+            ],
+        );
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["3 - (x + 1)^4 > 0".to_string()]);
+    }
+
+    #[test]
+    fn nonzero_shifted_high_power_gap_preserves_compact_display_up_to_sign() {
+        let cases = ["3 - (x + 1)^4", "x^4 + 4*x^3 + 6*x^2 + 4*x - 2"];
+
+        for input in cases {
+            let mut ctx = Context::new();
+            let gap = parse(input, &mut ctx).expect("parse gap");
+
+            let normalized =
+                normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonZero(gap)]);
+            let rendered: Vec<String> = normalized
+                .iter()
+                .map(|condition| condition.display(&ctx))
+                .collect();
+
+            assert_eq!(
+                rendered,
+                vec!["3 - (x + 1)^4 ≠ 0".to_string()],
+                "input: {input}"
+            );
+        }
+    }
+
+    #[test]
+    fn positive_affine_square_gap_keeps_expanded_display() {
+        let mut ctx = Context::new();
+        let gap = parse("1 - (2*x + 1)^2", &mut ctx).expect("parse affine square gap");
+
+        let normalized =
+            normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::Positive(gap)]);
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["-x^2 - x > 0".to_string()]);
     }
 
     #[test]

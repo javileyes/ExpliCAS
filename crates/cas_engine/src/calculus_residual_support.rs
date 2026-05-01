@@ -1,4 +1,5 @@
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use num_traits::Zero;
 
 fn expr_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
@@ -33,6 +34,41 @@ fn diff_call_with_optional_divisor(ctx: &mut Context, expr: ExprId) -> Option<(E
     let den = *den;
     crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, num)?;
     Some((num, den))
+}
+
+fn is_constant_scaled_hyperbolic_reciprocal_target(ctx: &Context, expr: ExprId) -> bool {
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        return is_constant_scaled_hyperbolic_reciprocal_target(ctx, *inner);
+    }
+
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return false;
+    };
+    if cas_ast::views::as_rational_const(ctx, *num, 4).is_none() {
+        return false;
+    }
+
+    let mut matched_hyperbolic = false;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, *den) {
+        if unary_builtin_arg(ctx, factor, BuiltinFn::Sinh).is_some()
+            || unary_builtin_arg(ctx, factor, BuiltinFn::Cosh).is_some()
+        {
+            if matched_hyperbolic {
+                return false;
+            }
+            matched_hyperbolic = true;
+            continue;
+        }
+
+        let Some(factor_scale) = cas_ast::views::as_rational_const(ctx, factor, 4) else {
+            return false;
+        };
+        if factor_scale.is_zero() {
+            return false;
+        }
+    }
+
+    matched_hyperbolic
 }
 
 fn scaled_expected_matches(
@@ -131,7 +167,52 @@ pub(crate) fn try_diff_log_abs_hyperbolic_residual_zero_preorder(
         .map(|_| ctx.num(0))
 }
 
-pub(crate) fn try_diff_log_abs_hyperbolic_residual_root_zero(
+fn constant_scaled_hyperbolic_reciprocal_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<bool> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if !is_constant_scaled_hyperbolic_reciprocal_target(ctx, call.target) {
+        return None;
+    }
+
+    let derivative = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        ctx,
+        call.target,
+        &call.var_name,
+    )?;
+    let expected = if expr_is_one(ctx, divisor) {
+        derivative
+    } else {
+        ctx.add(Expr::Div(derivative, divisor))
+    };
+
+    Some(expr_eq(ctx, expected, right))
+}
+
+pub(crate) fn try_diff_hyperbolic_reciprocal_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<ExprId> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    constant_scaled_hyperbolic_reciprocal_diff_matches(ctx, diff_expr, divisor, right)
+        .filter(|matched| *matched)
+        .map(|_| ctx.num(0))
+}
+
+pub(crate) fn try_diff_hyperbolic_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<ExprId> {
+    try_diff_log_abs_hyperbolic_residual_zero_preorder(ctx, left, right)
+        .or_else(|| try_diff_hyperbolic_reciprocal_residual_zero_preorder(ctx, left, right))
+}
+
+pub(crate) fn try_diff_hyperbolic_residual_root_zero(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ExprId> {
@@ -139,8 +220,8 @@ pub(crate) fn try_diff_log_abs_hyperbolic_residual_root_zero(
         Expr::Sub(left, right) => (*left, *right),
         _ => return None,
     };
-    try_diff_log_abs_hyperbolic_residual_zero_preorder(ctx, left, right)
-        .or_else(|| try_diff_log_abs_hyperbolic_residual_zero_preorder(ctx, right, left))
+    try_diff_hyperbolic_residual_zero_preorder(ctx, left, right)
+        .or_else(|| try_diff_hyperbolic_residual_zero_preorder(ctx, right, left))
 }
 
 #[cfg(test)]
@@ -157,8 +238,7 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse(input, &mut ctx)
             .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
-        try_diff_log_abs_hyperbolic_residual_root_zero(&mut ctx, expr)
-            .map(|result| render(&ctx, result))
+        try_diff_hyperbolic_residual_root_zero(&mut ctx, expr).map(|result| render(&ctx, result))
     }
 
     fn simplify_text(input: &str) -> String {
@@ -176,6 +256,25 @@ mod tests {
             "diff(ln(abs(sinh(2*x+1))), x)/2 - cosh(2*x+1)/sinh(2*x+1)",
             "diff(ln(abs(cosh(2*x+1))), x)/2 - tanh(2*x+1)",
             "diff(ln(abs(cosh(2*x+1))), x)/2 - sinh(2*x+1)/cosh(2*x+1)",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_hyperbolic_reciprocal_residual_root_cancels_compact_forms() {
+        let cases = [
+            "diff(-1/(2*cosh(2*x+1)), x) - sinh(2*x+1)/cosh(2*x+1)^2",
+            "diff(-1/(2*sinh(2*x+1)), x) - cosh(2*x+1)/sinh(2*x+1)^2",
+            "sinh(2*x+1)/cosh(2*x+1)^2 - diff(-1/(2*cosh(2*x+1)), x)",
+            "cosh(2*x+1)/sinh(2*x+1)^2 - diff(-1/(2*sinh(2*x+1)), x)",
         ];
 
         for input in cases {

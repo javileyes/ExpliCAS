@@ -9,7 +9,7 @@ use crate::polynomial::Polynomial;
 use crate::tri_proof::TriProof;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::{Signed, Zero};
+use num_traits::{One, Signed, Zero};
 
 fn univariate_quadratic_shape(ctx: &Context, expr: ExprId) -> Option<(BigRational, BigRational)> {
     let vars = cas_ast::collect_variables(ctx, expr);
@@ -52,6 +52,122 @@ fn is_strictly_positive_univariate_quadratic(ctx: &Context, expr: ExprId) -> boo
 fn is_nonnegative_univariate_quadratic(ctx: &Context, expr: ExprId) -> bool {
     univariate_quadratic_shape(ctx, expr)
         .is_some_and(|(a, discriminant)| a.is_positive() && !discriminant.is_positive())
+}
+
+fn square_coeff(coeffs: &[BigRational], degree: usize) -> BigRational {
+    let mut out = BigRational::zero();
+    for i in 0..=degree {
+        let Some(left) = coeffs.get(i) else {
+            continue;
+        };
+        let Some(right) = coeffs.get(degree - i) else {
+            continue;
+        };
+        out += left * right;
+    }
+    out
+}
+
+fn scaled_monic_square_root_and_constant_residual(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, Polynomial, BigRational)> {
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+
+    let var = vars.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, expr, var).ok()?;
+    let degree = poly.degree();
+    let scale = poly.leading_coeff();
+    if degree < 2 || degree % 2 != 0 || !scale.is_positive() {
+        return None;
+    }
+
+    let half = degree / 2;
+    let mut root_coeffs = vec![BigRational::zero(); half + 1];
+    root_coeffs[half] = BigRational::one();
+    let two = BigRational::from_integer(2.into());
+
+    for root_degree in (0..half).rev() {
+        let target_degree = half + root_degree;
+        let target_coeff = poly
+            .coeffs
+            .get(target_degree)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+            / scale.clone();
+        let known = square_coeff(&root_coeffs, target_degree);
+        root_coeffs[root_degree] = (target_coeff - known) / two.clone();
+    }
+
+    let root = Polynomial::new(root_coeffs, var.clone());
+    let scaled_square = Polynomial::new(
+        root.mul(&root)
+            .coeffs
+            .into_iter()
+            .map(|coeff| coeff * scale.clone())
+            .collect(),
+        var.clone(),
+    );
+    let residual = poly.sub(&scaled_square);
+    if residual.is_zero() {
+        return Some((scale, root, BigRational::zero()));
+    }
+    if residual.degree() != 0 {
+        return None;
+    }
+
+    residual
+        .coeffs
+        .first()
+        .cloned()
+        .map(|constant| (scale, root, constant))
+}
+
+fn positive_quadratic_minimum(poly: &Polynomial) -> Option<BigRational> {
+    if poly.degree() != 2 || poly.coeffs.len() < 3 {
+        return None;
+    }
+
+    let a = poly.coeffs.get(2)?.clone();
+    if !a.is_positive() {
+        return None;
+    }
+
+    let b = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let c = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let four = BigRational::from_integer(4.into());
+    let minimum = c - (b.clone() * b) / (four * a);
+    minimum.is_positive().then_some(minimum)
+}
+
+fn is_strictly_positive_monic_square_with_constant_offset(ctx: &Context, expr: ExprId) -> bool {
+    let Some((scale, root, constant)) = scaled_monic_square_root_and_constant_residual(ctx, expr)
+    else {
+        return false;
+    };
+
+    if constant.is_positive() {
+        return true;
+    }
+
+    if !constant.is_negative() {
+        return false;
+    }
+
+    positive_quadratic_minimum(&root)
+        .map(|minimum| scale * minimum.clone() * minimum + constant)
+        .is_some_and(|lower_bound| lower_bound.is_positive())
 }
 
 /// Prove whether an expression is strictly positive (`> 0`).
@@ -118,6 +234,11 @@ where
         }
         Expr::Add(_, _) | Expr::Sub(_, _)
             if real_only && is_strictly_positive_univariate_quadratic(ctx, expr) =>
+        {
+            TriProof::Proven
+        }
+        Expr::Add(_, _) | Expr::Sub(_, _)
+            if real_only && is_strictly_positive_monic_square_with_constant_offset(ctx, expr) =>
         {
             TriProof::Proven
         }
@@ -448,6 +569,66 @@ mod tests {
     fn positive_does_not_prove_perfect_square_quadratic() {
         let mut ctx = cas_ast::Context::new();
         let expr = parse("x^2 + 2*x + 1", &mut ctx).expect("parse");
+        let out = prove_positive_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
+            TriProof::Unknown
+        });
+        assert_eq!(out, TriProof::Unknown);
+    }
+
+    #[test]
+    fn positive_proves_expanded_monic_square_plus_constant() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("x^4 + 2*x^3 + 3*x^2 + 2*x + 8", &mut ctx).expect("parse");
+        let out = prove_positive_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
+            TriProof::Unknown
+        });
+        assert_eq!(out, TriProof::Proven);
+    }
+
+    #[test]
+    fn positive_proves_expanded_positive_quadratic_square_minus_small_constant() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("x^4 + 2*x^3 + 7*x^2 + 6*x + 7", &mut ctx).expect("parse");
+        let out = prove_positive_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
+            TriProof::Unknown
+        });
+        assert_eq!(out, TriProof::Proven);
+    }
+
+    #[test]
+    fn positive_proves_expanded_scaled_positive_quadratic_square_minus_small_constant() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("2*x^4 + 4*x^3 + 14*x^2 + 12*x + 17", &mut ctx).expect("parse");
+        let out = prove_positive_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
+            TriProof::Unknown
+        });
+        assert_eq!(out, TriProof::Proven);
+    }
+
+    #[test]
+    fn positive_does_not_prove_expanded_monic_perfect_square_without_offset() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("x^4 + 2*x^3 + 3*x^2 + 2*x + 1", &mut ctx).expect("parse");
+        let out = prove_positive_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
+            TriProof::Unknown
+        });
+        assert_eq!(out, TriProof::Unknown);
+    }
+
+    #[test]
+    fn positive_does_not_prove_expanded_quadratic_square_minus_large_constant() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("x^4 + 2*x^3 + 7*x^2 + 6*x - 1", &mut ctx).expect("parse");
+        let out = prove_positive_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
+            TriProof::Unknown
+        });
+        assert_eq!(out, TriProof::Unknown);
+    }
+
+    #[test]
+    fn positive_does_not_prove_expanded_scaled_quadratic_square_minus_large_constant() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("2*x^4 + 4*x^3 + 14*x^2 + 12*x", &mut ctx).expect("parse");
         let out = prove_positive_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
             TriProof::Unknown
         });

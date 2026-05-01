@@ -1,7 +1,26 @@
-use super::hyperbolic::{HyperbolicDoubleAngleRule, RecognizeHyperbolicFromExpRule};
+use super::hyperbolic::{
+    HyperbolicDoubleAngleRule, RecognizeHyperbolicFromExpRule, SinhDoubleAngleExpansionRule,
+    TanhDoubleAngleExpansionRule,
+};
+use crate::parent_context::ParentContext;
 use crate::rule::Rule;
-use cas_ast::{Context, Expr};
+use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
+use cas_parser::parse;
+
+fn denominator_of_div(ctx: &Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr) {
+        Expr::Div(_, denominator) => *denominator,
+        other => panic!("expected division, got {other:?}"),
+    }
+}
+
+fn base_of_pow(ctx: &Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr) {
+        Expr::Pow(base, _) => *base,
+        other => panic!("expected power, got {other:?}"),
+    }
+}
 
 #[test]
 fn test_recognize_cosh_from_exp() {
@@ -241,5 +260,47 @@ fn test_hyperbolic_double_angle_rule() {
         result.contains("cosh") && result.contains("2"),
         "Should be cosh(2*x), got: {}",
         result
+    );
+}
+
+#[test]
+fn sinh_double_angle_expansion_still_applies_at_root() {
+    let mut ctx = Context::new();
+    let expr = parse("sinh(2*x)", &mut ctx).expect("parse");
+
+    let rewrite = SinhDoubleAngleExpansionRule.apply(&mut ctx, expr, &ParentContext::root());
+
+    assert!(
+        rewrite.is_some(),
+        "root-level sinh double-angle expansion should remain available"
+    );
+}
+
+#[test]
+fn hyperbolic_double_angle_expansion_skips_division_denominators() {
+    let mut ctx = Context::new();
+    let sinh_quotient = parse("1/sinh(2*x)^2", &mut ctx).expect("parse sinh quotient");
+    let sinh_denominator = denominator_of_div(&ctx, sinh_quotient);
+    let sinh = base_of_pow(&ctx, sinh_denominator);
+    let sinh_parent_ctx = ParentContext::root()
+        .extend_with_div_check(sinh_quotient, &ctx)
+        .extend_with_div_check(sinh_denominator, &ctx);
+
+    assert!(
+        SinhDoubleAngleExpansionRule
+            .apply(&mut ctx, sinh, &sinh_parent_ctx)
+            .is_none(),
+        "sinh double-angle expansion should not expand denominator internals"
+    );
+
+    let tanh_quotient = parse("1/tanh(2*x)", &mut ctx).expect("parse tanh quotient");
+    let tanh = denominator_of_div(&ctx, tanh_quotient);
+    let tanh_parent_ctx = ParentContext::root().extend_with_div_check(tanh_quotient, &ctx);
+
+    assert!(
+        TanhDoubleAngleExpansionRule
+            .apply(&mut ctx, tanh, &tanh_parent_ctx)
+            .is_none(),
+        "tanh double-angle expansion should not expand denominator internals"
     );
 }

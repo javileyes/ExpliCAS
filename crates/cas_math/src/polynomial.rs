@@ -72,6 +72,7 @@ impl Polynomial {
 
     // Convert Expr to Polynomial. Returns an error if expression is not a polynomial in `var`.
     pub fn from_expr(context: &Context, expr: ExprId, var: &str) -> Result<Self, PolynomialError> {
+        let expr = cas_ast::hold::unwrap_internal_hold(context, expr);
         let expr_data = context.get(expr);
         match expr_data {
             Expr::Number(n) => Ok(Polynomial::new(vec![n.clone()], var.to_string())),
@@ -145,6 +146,7 @@ impl Polynomial {
                 let p = Polynomial::from_expr(context, *e, var)?;
                 Ok(p.neg())
             }
+            Expr::Hold(e) => Polynomial::from_expr(context, *e, var),
             _ => Err(PolynomialError::Unsupported(format!(
                 "Unsupported expression type for polynomial: {:?}",
                 expr_data
@@ -643,6 +645,25 @@ mod tests {
             Polynomial::from_expr(&ctx, expr, "x"),
             Err(PolynomialError::Unsupported(_))
         ));
+    }
+
+    #[test]
+    fn from_expr_treats_hold_as_transparent_polynomial_wrapper() {
+        let mut ctx = Context::new();
+        let expr = parse("5 - (x^2 + 2*x + 1)^2", &mut ctx).unwrap();
+        let expanded = crate::expand_ops::expand(&mut ctx, expr);
+        let p = Polynomial::from_expr(&ctx, expanded, "x").unwrap();
+
+        assert_eq!(
+            p.coeffs,
+            vec![
+                BigRational::from_integer(4.into()),
+                BigRational::from_integer((-4).into()),
+                BigRational::from_integer((-6).into()),
+                BigRational::from_integer((-4).into()),
+                BigRational::from_integer((-1).into()),
+            ]
+        );
     }
 
     #[test]

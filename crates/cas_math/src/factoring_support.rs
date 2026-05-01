@@ -33,6 +33,11 @@ pub struct FactorCommonIntegerFromAddRewrite {
     pub gcd_int: BigInt,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FactorCommonIntegerFromAddPolicy {
+    pub allow_variable_terms: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SumThreeCubesZeroRewrite {
     pub rewritten: ExprId,
@@ -266,6 +271,18 @@ pub fn try_rewrite_factor_common_integer_from_add_expr(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<FactorCommonIntegerFromAddRewrite> {
+    try_rewrite_factor_common_integer_from_add_expr_with_policy(
+        ctx,
+        expr,
+        FactorCommonIntegerFromAddPolicy::default(),
+    )
+}
+
+pub fn try_rewrite_factor_common_integer_from_add_expr_with_policy(
+    ctx: &mut Context,
+    expr: ExprId,
+    policy: FactorCommonIntegerFromAddPolicy,
+) -> Option<FactorCommonIntegerFromAddRewrite> {
     let (left, right) = match ctx.get(expr) {
         Expr::Add(l, r) => (*l, *r),
         _ => return None,
@@ -274,7 +291,9 @@ pub fn try_rewrite_factor_common_integer_from_add_expr(
     let coef_left = get_integer_coefficient(ctx, left)?;
     let coef_right = get_integer_coefficient(ctx, right)?;
 
-    if contains_variable(ctx, left) || contains_variable(ctx, right) {
+    if !policy.allow_variable_terms
+        && (contains_variable(ctx, left) || contains_variable(ctx, right))
+    {
         return None;
     }
 
@@ -484,8 +503,10 @@ mod tests {
     use super::{
         try_rewrite_automatic_factor_expr, try_rewrite_difference_of_squares_product_expr,
         try_rewrite_factor_common_integer_from_add_expr,
+        try_rewrite_factor_common_integer_from_add_expr_with_policy,
         try_rewrite_factor_difference_squares_nary_expr, try_rewrite_factor_function_expr,
         try_rewrite_sum_three_cubes_zero_expr, AutomaticFactorRewriteKind,
+        FactorCommonIntegerFromAddPolicy,
     };
     use cas_ast::{BuiltinFn, Context, Expr};
     use cas_parser::parse;
@@ -522,6 +543,30 @@ mod tests {
         let expr = parse("2*sqrt(2)+4", &mut ctx).expect("parse");
         let rewrite =
             try_rewrite_factor_common_integer_from_add_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(rewrite.gcd_int, 2.into());
+        assert!(matches!(ctx.get(rewrite.rewritten), Expr::Mul(_, _)));
+    }
+
+    #[test]
+    fn factor_common_integer_support_rejects_variable_terms_by_default() {
+        let mut ctx = Context::new();
+        let expr = parse("2*x+2", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_factor_common_integer_from_add_expr(&mut ctx, expr);
+        assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn factor_common_integer_support_can_extract_variable_terms_with_policy() {
+        let mut ctx = Context::new();
+        let expr = parse("2*x+2", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_factor_common_integer_from_add_expr_with_policy(
+            &mut ctx,
+            expr,
+            FactorCommonIntegerFromAddPolicy {
+                allow_variable_terms: true,
+            },
+        )
+        .expect("rewrite");
         assert_eq!(rewrite.gcd_int, 2.into());
         assert!(matches!(ctx.get(rewrite.rewritten), Expr::Mul(_, _)));
     }

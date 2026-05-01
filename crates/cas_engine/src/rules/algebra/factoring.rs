@@ -4,11 +4,14 @@ use crate::rule::Rewrite;
 use cas_math::factoring_support::{
     try_rewrite_automatic_factor_expr, try_rewrite_difference_of_squares_product_expr,
     try_rewrite_factor_common_integer_from_add_expr,
+    try_rewrite_factor_common_integer_from_add_expr_with_policy,
     try_rewrite_factor_difference_squares_nary_expr, try_rewrite_factor_function_expr,
     try_rewrite_sum_three_cubes_zero_expr, AutomaticFactorRewriteKind,
-    DifferenceOfSquaresProductRewriteKind, FactorDifferenceSquaresNaryRewriteKind,
-    FactorFunctionRewriteKind, SumThreeCubesZeroRewriteKind,
+    DifferenceOfSquaresProductRewriteKind, FactorCommonIntegerFromAddPolicy,
+    FactorDifferenceSquaresNaryRewriteKind, FactorFunctionRewriteKind,
+    SumThreeCubesZeroRewriteKind,
 };
+use cas_math::polynomial::Polynomial;
 use num_bigint::BigInt;
 
 fn format_factor_common_integer_from_add_desc(gcd_int: &BigInt) -> String {
@@ -117,13 +120,73 @@ define_rule!(
     "Factor Common Integer",
     None,
     PhaseMask::POST,
-    |ctx, expr| {
-        let rewrite = try_rewrite_factor_common_integer_from_add_expr(ctx, expr)?;
+    |ctx, expr, parent_ctx| {
+        let rewrite = try_rewrite_factor_common_integer_from_add_expr(ctx, expr).or_else(|| {
+            should_factor_variable_common_integer_in_compact_power_product(ctx, expr, parent_ctx)
+                .then(|| {
+                    try_rewrite_factor_common_integer_from_add_expr_with_policy(
+                        ctx,
+                        expr,
+                        FactorCommonIntegerFromAddPolicy {
+                            allow_variable_terms: true,
+                        },
+                    )
+                })
+                .flatten()
+        })?;
         let rewritten = rewrite.rewritten;
         let desc = format_factor_common_integer_from_add_desc(&rewrite.gcd_int);
         Some(Rewrite::new(rewritten).desc(desc).local(expr, rewritten))
     }
 );
+
+fn should_factor_variable_common_integer_in_compact_power_product(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    if parent_ctx.is_expand_mode() || parent_ctx.is_auto_expand() || parent_ctx.is_solve_context() {
+        return false;
+    }
+
+    if cas_ast::collect_variables(ctx, expr).is_empty() {
+        return false;
+    }
+
+    parent_ctx.has_ancestor_matching(ctx, |c, ancestor| {
+        if !matches!(c.get(ancestor), cas_ast::Expr::Mul(_, _)) {
+            return false;
+        }
+
+        let factors = cas_math::expr_nary::mul_leaves(c, ancestor);
+        factors.contains(&expr)
+            && factors
+                .iter()
+                .any(|&factor| is_compact_low_degree_polynomial_power(c, factor))
+    })
+}
+
+fn is_compact_low_degree_polynomial_power(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    let cas_ast::Expr::Pow(base, exp) = ctx.get(expr) else {
+        return false;
+    };
+    let Some(power) = cas_math::numeric::as_i64(ctx, *exp) else {
+        return false;
+    };
+    if !(2..=8).contains(&power) || cas_ast::count_nodes(ctx, *base) > 25 {
+        return false;
+    }
+
+    let variables = cas_ast::collect_variables(ctx, *base);
+    let Some(var) = variables.iter().next() else {
+        return false;
+    };
+    variables.len() == 1
+        && matches!(
+            Polynomial::from_expr(ctx, *base, var.as_str()),
+            Ok(poly) if (1..=2).contains(&poly.degree())
+        )
+}
 
 // SumThreeCubesZeroRule: Simplifies x³ + y³ + z³ → 3xyz when x + y + z = 0
 // Classic identity: x³ + y³ + z³ - 3xyz = (x+y+z)(x²+y²+z²-xy-yz-zx)

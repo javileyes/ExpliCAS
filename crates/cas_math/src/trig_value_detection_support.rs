@@ -6,7 +6,7 @@ use crate::trig_canonicalization_support::{
     is_inverse_trig_function_call, try_rewrite_tan_to_sin_cos_function_expr,
     TrigCanonicalRewritePlan,
 };
-use crate::trig_multi_angle_support::is_multiple_angle;
+use crate::trig_multi_angle_support::{has_large_coefficient, is_multiple_angle};
 use crate::trig_tan_triple_support::is_part_of_tan_triple_product_with_ancestors;
 use cas_ast::{Context, Expr, ExprId};
 use num_rational::BigRational;
@@ -209,7 +209,9 @@ pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseT
 /// - multiple-angle argument `n*x` with `|n| > 1`
 /// - special-angle argument where table evaluation is preferred
 pub fn should_block_tan_to_sin_cos_for_arg(ctx: &Context, arg: ExprId) -> bool {
-    is_multiple_angle(ctx, arg) || detect_special_angle(ctx, arg).is_some()
+    is_multiple_angle(ctx, arg)
+        || has_large_coefficient(ctx, arg)
+        || detect_special_angle(ctx, arg).is_some()
 }
 
 /// Whether `tan(expr)` should be preserved due to pre-scanned structural marks.
@@ -336,10 +338,14 @@ mod tests {
         let mut ctx = Context::new();
         let blocked1 = cas_parser::parse("3*x", &mut ctx).expect("3*x");
         let blocked2 = cas_parser::parse("pi/6", &mut ctx).expect("pi/6");
+        let blocked3 = cas_parser::parse("2*x+1", &mut ctx).expect("2*x+1");
+        let allowed_shift = cas_parser::parse("x+1", &mut ctx).expect("x+1");
         let allowed = cas_parser::parse("x+y", &mut ctx).expect("x+y");
 
         assert!(should_block_tan_to_sin_cos_for_arg(&ctx, blocked1));
         assert!(should_block_tan_to_sin_cos_for_arg(&ctx, blocked2));
+        assert!(should_block_tan_to_sin_cos_for_arg(&ctx, blocked3));
+        assert!(!should_block_tan_to_sin_cos_for_arg(&ctx, allowed_shift));
         assert!(!should_block_tan_to_sin_cos_for_arg(&ctx, allowed));
     }
 

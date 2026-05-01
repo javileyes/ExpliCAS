@@ -5,7 +5,7 @@
 //!
 //! Bug fix: Ensures -(a + b) is rendered as "-(a + b)" not "-a + b"
 
-use cas_ast::{Context, Expr};
+use cas_ast::{hold, Context, Expr};
 use cas_formatter::DisplayExpr;
 
 // ============================================================================
@@ -113,6 +113,71 @@ fn test_unary_neg_add_has_parentheses() {
     assert!(
         display.starts_with("-("),
         "Unary neg of sum should start with '-('. Got: '{}'",
+        display
+    );
+}
+
+/// Internal hold barriers are transparent for display grouping decisions.
+#[test]
+fn test_unary_neg_internal_hold_add_has_parentheses() {
+    let mut ctx = Context::new();
+
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+
+    let a_plus_b = ctx.add(Expr::Add(a, b));
+    let held_sum = hold::wrap_hold(&mut ctx, a_plus_b);
+    let neg_sum = ctx.add(Expr::Neg(held_sum));
+
+    let display = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: neg_sum
+        }
+    );
+
+    assert!(
+        display.starts_with("-("),
+        "Internal hold around a negated sum must keep grouping. Got: '{}'",
+        display
+    );
+    assert!(
+        display.contains("a + b") || display.contains("b + a"),
+        "Expected held sum inside parentheses. Got: '{}'",
+        display
+    );
+}
+
+/// Internal hold barriers on the RHS of subtraction still need parentheses.
+#[test]
+fn test_sub_internal_hold_add_has_parentheses() {
+    let mut ctx = Context::new();
+
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+    let c = ctx.var("c");
+
+    let a_plus_b = ctx.add(Expr::Add(a, b));
+    let held_sum = hold::wrap_hold(&mut ctx, a_plus_b);
+    let expr = ctx.add(Expr::Sub(c, held_sum));
+
+    let display = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: expr
+        }
+    );
+
+    assert!(
+        display.contains("- ("),
+        "Subtraction from an internal held sum must keep grouping. Got: '{}'",
+        display
+    );
+    assert!(
+        display.contains("a + b") || display.contains("b + a"),
+        "Expected held sum inside subtraction parentheses. Got: '{}'",
         display
     );
 }

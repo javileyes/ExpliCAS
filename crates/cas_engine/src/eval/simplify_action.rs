@@ -319,7 +319,7 @@ mod tests {
             parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
         let mut options = crate::options::EvalOptions::default();
         options.steps_mode = crate::options::StepsMode::Off;
-        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.context_mode = crate::options::ContextMode::Auto;
         options.shared.semantics.domain_mode = crate::DomainMode::Generic;
 
         let output = engine
@@ -410,6 +410,620 @@ mod tests {
             .to_string(),
             "0"
         );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_tan_affine_avoids_pre_diff_trig_expansion_timeout() {
+        let mut engine = Engine::new();
+        let expr_text = "diff(tan(2*x+1), x)";
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        options.time_budget_ms = Some(50);
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "2 / cos(2 * x + 1)^2"
+        );
+        assert!(
+            output
+                .domain_warnings
+                .iter()
+                .all(|warning| warning.rule_name != "Simplification Time Budget"),
+            "unexpected timeout warning: {:?}",
+            output.domain_warnings
+        );
+        let required_display: Vec<_> = output
+            .required_conditions
+            .iter()
+            .map(|condition| condition.display(&engine.simplifier.context))
+            .collect();
+        assert_eq!(
+            required_display
+                .iter()
+                .filter(|condition| condition.as_str() == "cos(2 * x + 1) ≠ 0")
+                .count(),
+            1,
+            "expected exactly one displayed cos-domain condition, got: {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_scaled_atanh_surd_polynomial_uses_direct_route() {
+        let cases = [
+            "diff(1/3 * atanh(1/3 * sqrt(3) * (x^2 + 2*x + 1)) * sqrt(3), x)",
+            "diff(atanh((x^2 + 2*x + 1)/sqrt(3))/sqrt(3), x)",
+        ];
+
+        for expr_text in cases {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+            options.time_budget_ms = Some(50);
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{e:?}"));
+
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("expected expression result");
+            };
+            assert_eq!(
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: result,
+                }
+                .to_string(),
+                "(2 * x + 2) / (3 - (x + 1)^4)",
+                "input: {expr_text}"
+            );
+            assert!(
+                output
+                    .domain_warnings
+                    .iter()
+                    .all(|warning| warning.rule_name != "Simplification Time Budget"),
+                "unexpected timeout warning for {expr_text}: {:?}",
+                output.domain_warnings
+            );
+        }
+    }
+
+    #[test]
+    fn eval_simplify_integrate_scaled_denominator_square_preserves_required_domain() {
+        let mut engine = Engine::new();
+        let expr_text = "integrate((2*x+1)/(3*(x^2+x-1)^2), x)";
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let required_display = crate::render_conditions_normalized(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        );
+        assert_eq!(
+            required_display,
+            vec!["x^2 + x - 1 ≠ 0".to_string()],
+            "unexpected required_conditions: {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_tan_square_avoids_pre_diff_trig_expansion_timeout() {
+        let mut engine = Engine::new();
+        let expr_text = "diff(tan(2*x+1)^2, x)";
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        options.time_budget_ms = Some(50);
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "(tan(2 * x + 1) * 4)/cos(2 * x + 1)^2"
+        );
+        assert!(
+            output
+                .domain_warnings
+                .iter()
+                .all(|warning| warning.rule_name != "Simplification Time Budget"),
+            "unexpected timeout warning: {:?}",
+            output.domain_warnings
+        );
+        let required_display: Vec<_> = output
+            .required_conditions
+            .iter()
+            .map(|condition| condition.display(&engine.simplifier.context))
+            .collect();
+        assert_eq!(
+            required_display
+                .iter()
+                .filter(|condition| condition.as_str() == "cos(2 * x + 1) ≠ 0")
+                .count(),
+            1,
+            "expected exactly one displayed cos-domain condition, got: {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_variable_times_tan_avoids_pre_diff_trig_expansion_timeout() {
+        let mut engine = Engine::new();
+        let expr_text = "diff(x*tan(2*x+1), x)";
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        options.time_budget_ms = Some(50);
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "tan(2 * x + 1) + (x * 2)/cos(2 * x + 1)^2"
+        );
+        assert!(
+            output
+                .domain_warnings
+                .iter()
+                .all(|warning| warning.rule_name != "Simplification Time Budget"),
+            "unexpected timeout warning: {:?}",
+            output.domain_warnings
+        );
+        let required_display: Vec<_> = output
+            .required_conditions
+            .iter()
+            .map(|condition| condition.display(&engine.simplifier.context))
+            .collect();
+        assert_eq!(
+            required_display
+                .iter()
+                .filter(|condition| condition.as_str() == "cos(2 * x + 1) ≠ 0")
+                .count(),
+            1,
+            "expected exactly one displayed cos-domain condition, got: {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_scaled_variable_times_tan_avoids_post_diff_trig_timeout() {
+        let mut engine = Engine::new();
+        let expr_text = "diff(2*x*tan(2*x+1), x)";
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+        options.time_budget_ms = Some(50);
+
+        let output = engine
+            .eval_stateless(
+                options,
+                crate::EvalRequest {
+                    raw_input: expr_text.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "2 * tan(2 * x + 1) + (x * 4)/cos(2 * x + 1)^2"
+        );
+        assert!(
+            output
+                .domain_warnings
+                .iter()
+                .all(|warning| warning.rule_name != "Simplification Time Budget"),
+            "unexpected timeout warning: {:?}",
+            output.domain_warnings
+        );
+        let required_display: Vec<_> = output
+            .required_conditions
+            .iter()
+            .map(|condition| condition.display(&engine.simplifier.context))
+            .collect();
+        assert_eq!(
+            required_display
+                .iter()
+                .filter(|condition| condition.as_str() == "cos(2 * x + 1) ≠ 0")
+                .count(),
+            1,
+            "expected exactly one displayed cos-domain condition, got: {required_display:?}"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_shifted_linear_times_tan_keeps_product_rule_shape() {
+        let cases = [
+            (
+                "diff((x+1)*tan(2*x+1), x)",
+                "tan(2 * x + 1) + (2 * x + 2) / cos(2 * x + 1)^2",
+            ),
+            (
+                "diff((3*x+2)*tan(2*x+1), x)",
+                "3 * tan(2 * x + 1) + (6 * x + 4) / cos(2 * x + 1)^2",
+            ),
+        ];
+
+        for (expr_text, expected) in cases {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+            options.time_budget_ms = Some(50);
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{e:?}"));
+
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("expected expression result");
+            };
+            assert_eq!(
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: result,
+                }
+                .to_string(),
+                expected,
+                "unexpected result for {expr_text}"
+            );
+            assert!(
+                output
+                    .domain_warnings
+                    .iter()
+                    .all(|warning| warning.rule_name != "Simplification Time Budget"),
+                "input {expr_text}: unexpected timeout warning: {:?}",
+                output.domain_warnings
+            );
+            let required_display: Vec<_> = output
+                .required_conditions
+                .iter()
+                .map(|condition| condition.display(&engine.simplifier.context))
+                .collect();
+            assert_eq!(
+                required_display
+                    .iter()
+                    .filter(|condition| condition.as_str() == "cos(2 * x + 1) ≠ 0")
+                    .count(),
+                1,
+                "input {expr_text}: expected exactly one displayed cos-domain condition, got: {required_display:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_shifted_linear_times_tanh_avoids_timeout() {
+        let cases = [
+            (
+                "diff((x+1)*tanh(2*x+1), x)",
+                "tanh(2 * x + 1) + (2 * x + 2) / cosh(2 * x + 1)^2",
+            ),
+            (
+                "diff((3*x+2)*tanh(2*x+1), x)",
+                "3 * tanh(2 * x + 1) + (6 * x + 4) / cosh(2 * x + 1)^2",
+            ),
+        ];
+
+        for (expr_text, expected) in cases {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+            options.time_budget_ms = Some(50);
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{e:?}"));
+
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("expected expression result");
+            };
+            assert_eq!(
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: result,
+                }
+                .to_string(),
+                expected,
+                "unexpected result for {expr_text}"
+            );
+            assert!(
+                output
+                    .domain_warnings
+                    .iter()
+                    .all(|warning| warning.rule_name != "Simplification Time Budget"),
+                "input {expr_text}: unexpected timeout warning: {:?}",
+                output.domain_warnings
+            );
+            let required_display: Vec<_> = output
+                .required_conditions
+                .iter()
+                .map(|condition| condition.display(&engine.simplifier.context))
+                .collect();
+            assert_eq!(
+                required_display
+                    .iter()
+                    .filter(|condition| condition.as_str() == "cosh(2 * x + 1) ≠ 0")
+                    .count(),
+                1,
+                "input {expr_text}: expected exactly one displayed cosh-domain condition, got: {required_display:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_shifted_linear_times_cot_keeps_product_rule_shape() {
+        let cases = [
+            (
+                "diff((x+1)*cot(2*x+1), x)",
+                "cot(2 * x + 1) - (2 * x + 2) / sin(2 * x + 1)^2",
+            ),
+            (
+                "diff((3*x+2)*cot(2*x+1), x)",
+                "3 * cot(2 * x + 1) - (6 * x + 4) / sin(2 * x + 1)^2",
+            ),
+        ];
+
+        for (expr_text, expected) in cases {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+            options.time_budget_ms = Some(50);
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{e:?}"));
+
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("expected expression result");
+            };
+            assert_eq!(
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: result,
+                }
+                .to_string(),
+                expected,
+                "unexpected result for {expr_text}"
+            );
+            assert!(
+                output
+                    .domain_warnings
+                    .iter()
+                    .all(|warning| warning.rule_name != "Simplification Time Budget"),
+                "input {expr_text}: unexpected timeout warning: {:?}",
+                output.domain_warnings
+            );
+            let required_display: Vec<_> = output
+                .required_conditions
+                .iter()
+                .map(|condition| condition.display(&engine.simplifier.context))
+                .collect();
+            assert_eq!(
+                required_display
+                    .iter()
+                    .filter(|condition| condition.as_str() == "sin(2 * x + 1) ≠ 0")
+                    .count(),
+                1,
+                "input {expr_text}: expected exactly one displayed sin-domain condition, got: {required_display:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_diff_shifted_linear_times_sec_csc_avoids_timeout() {
+        let cases = [
+            (
+                "diff((x+1)*sec(2*x+1), x)",
+                "(cos(2 * x + 1) + 2 * sin(2 * x + 1) + 2 * x * sin(2 * x + 1)) / cos(2 * x + 1)^2",
+                "cos(2 * x + 1) ≠ 0",
+            ),
+            (
+                "diff((3*x+2)*sec(2*x+1), x)",
+                "(3 * cos(2 * x + 1) + 4 * sin(2 * x + 1) + 6 * x * sin(2 * x + 1)) / cos(2 * x + 1)^2",
+                "cos(2 * x + 1) ≠ 0",
+            ),
+            (
+                "diff((x+1)*csc(2*x+1), x)",
+                "csc(2 * x + 1) - cos(2 * x + 1) * (2 * x + 2) / sin(2 * x + 1)^2",
+                "sin(2 * x + 1) ≠ 0",
+            ),
+            (
+                "diff((3*x+2)*csc(2*x+1), x)",
+                "3 * csc(2 * x + 1) - cos(2 * x + 1) * (6 * x + 4) / sin(2 * x + 1)^2",
+                "sin(2 * x + 1) ≠ 0",
+            ),
+        ];
+
+        for (expr_text, expected, expected_condition) in cases {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+            options.time_budget_ms = Some(200);
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{e:?}"));
+
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("expected expression result");
+            };
+            assert_eq!(
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: result,
+                }
+                .to_string(),
+                expected,
+                "unexpected result for {expr_text}"
+            );
+            assert!(
+                output
+                    .domain_warnings
+                    .iter()
+                    .all(|warning| warning.rule_name != "Simplification Time Budget"),
+                "input {expr_text}: unexpected timeout warning: {:?}",
+                output.domain_warnings
+            );
+            let required_display: Vec<_> = output
+                .required_conditions
+                .iter()
+                .map(|condition| condition.display(&engine.simplifier.context))
+                .collect();
+            assert_eq!(
+                required_display
+                    .iter()
+                    .filter(|condition| condition.as_str() == expected_condition)
+                    .count(),
+                1,
+                "input {expr_text}: expected exactly one displayed domain condition, got: {required_display:?}"
+            );
+        }
     }
 
     #[test]

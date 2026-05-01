@@ -108,6 +108,7 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
         "integrate(2*x + 3, x)",
         "integrate((3*x)^2, x)",
         "integrate(sin(2*x), x)",
+        "integrate(-(sin(x)), x)",
         "integrate(cos(x), x)",
         "integrate(exp(3*x + 1), x)",
         "integrate(x*exp(x), x)",
@@ -141,12 +142,17 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
         "integrate(2*x*tanh(x^2), x)",
         "integrate(sinh(2*x + 1)/cosh(2*x + 1), x)",
         "integrate(cosh(2*x + 1)/sinh(2*x + 1), x)",
+        "integrate(1/tanh(2*x + 1), x)",
+        "integrate(2*x*cosh(x^2)/sinh(x^2), x)",
         "integrate(2*x/tanh(x^2), x)",
         "integrate(1/cosh(2*x + 1)^2, x)",
+        "integrate(1/sinh(2*x + 1)^2, x)",
         "integrate(2*x/cosh(x^2)^2, x)",
         "integrate(2*x/sinh(x^2)^2, x)",
+        "integrate(sinh(2*x + 1)/cosh(2*x + 1)^2, x)",
         "integrate(2*x*sinh(x^2)/cosh(x^2)^2, x)",
         "integrate(-x*sinh(x^2)/cosh(x^2)^2, x)",
+        "integrate(cosh(2*x + 1)/sinh(2*x + 1)^2, x)",
         "integrate(2*x*cosh(x^2)/sinh(x^2)^2, x)",
         "integrate(-x*cosh(x^2)/sinh(x^2)^2, x)",
         "integrate(ln(x), x)",
@@ -163,15 +169,25 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
         "integrate(1/(x^2-1), x)",
         "integrate(2*x/(x^2-1)^2, x)",
         "integrate((2*x+1)/(x^2+x-1)^2, x)",
+        "integrate((2*x+1)/(3*(x^2+x-1)^2), x)",
         "integrate((2*x+1)/(x^2+x-1)^3, x)",
+        "integrate((3*x+3/2)/(x^2+x-1)^4, x)",
+        "integrate((8*x+2)/(3*(2*x^2+x-1)^3), x)",
         "integrate((2*x+1)/(x^4+2*x^3-x^2-2*x+1), x)",
+        "integrate((2*x+1)/(x^6+3*x^5-5*x^3+3*x-1), x)",
+        "integrate((2*x+1)/(4*x^6+12*x^5-20*x^3+12*x-4), x)",
+        "integrate((2*x+1)/(-4*x^6-12*x^5+20*x^3-12*x+4), x)",
+        "integrate((3*x+3/2)/(x^8+4*x^7+2*x^6-8*x^5-5*x^4+8*x^3+2*x^2-4*x+1), x)",
+        "integrate(1/(x^5+5*x^4+10*x^3+10*x^2+5*x+1), x)",
         "integrate(2*x/(x^4-4), x)",
         "integrate((2*x + 1)/(x^2 + x - 1), x)",
         "integrate((4*x + 2)/(x^2 + x + 1), x)",
         "integrate(2*x/sqrt(4-x^4), x)",
+        "integrate(2*x/sqrt(3-x^4), x)",
         "integrate(1/sqrt(4-(x+1)^2), x)",
         "integrate(2*x/sqrt(1+x^4), x)",
         "integrate(2*x/sqrt(4+x^4), x)",
+        "integrate(2*x/sqrt(3+x^4), x)",
         "integrate(1/sqrt(4+(x+1)^2), x)",
         "integrate(x/sqrt(x^2+1), x)",
         "integrate(2*x/sqrt(x^2-1), x)",
@@ -191,10 +207,14 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
         "integrate(cot(2*x + 1), x)",
         "integrate(2*x*tan(x^2), x)",
         "integrate(3*x^2*cot(x^3), x)",
+        "integrate(2*(x*sin(x^2)/cos(x^2)), x)",
+        "integrate(3*(x^2*cos(x^3)/sin(x^3)), x)",
         "integrate(sec(2*x + 1)*tan(2*x + 1), x)",
+        "integrate(x*sec(x^2)*tan(x^2), x)",
         "integrate(2*x*sec(x^2)*tan(x^2), x)",
         "integrate(-x*sec(x^2)*tan(x^2), x)",
         "integrate(csc(2*x + 1)*cot(2*x + 1), x)",
+        "integrate(x^2*csc(x^3)*cot(x^3), x)",
         "integrate(3*x^2*csc(x^3)*cot(x^3), x)",
         "integrate(-x^2*csc(x^3)*cot(x^3), x)",
     ] {
@@ -796,6 +816,29 @@ fn integrate_contract_scaled_polynomial_derivative_arctan_substitution() {
 }
 
 #[test]
+fn integrate_contract_scaled_affine_arctan_kernel_survives_quadratic_normalization() {
+    let input = "integrate(2/(1+(2*x+1)^2), x)";
+    assert_eq!(simplified_integral(input), "arctan(2 * x + 1)");
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_arctan_positive_quadratic_with_surd_width() {
+    let input = "integrate(1/(2*x^2+4*x+5), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "1/6 * arctan(1/12 * 6^(1/2) * (4 * x + 4)) * 6^(1/2)"
+    );
+    assert!(
+        required.is_empty(),
+        "positive quadratic arctan kernel should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
 fn integrate_contract_scaled_polynomial_derivative_atanh_substitution() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(2*x/(4-x^4), x)");
@@ -806,6 +849,68 @@ fn integrate_contract_scaled_polynomial_derivative_atanh_substitution() {
         vec!["4 - x^4 > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+}
+
+#[test]
+fn integrate_contract_atanh_quadratic_kernel_with_surd_width_preserves_positive_domain() {
+    let input = "integrate(1/(3-x^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "1/3 * atanh(1/3 * x * 3^(1/2)) * 3^(1/2)");
+    assert_eq!(
+        required,
+        vec!["3 - x^2 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_polynomial_atanh_surd_width_uses_compact_positive_domain() {
+    let input = "integrate(2*x/(3-x^4), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "1/3 * atanh(1/3 * 3^(1/2) * x^2) * 3^(1/2)");
+    assert_eq!(
+        required,
+        vec!["3 - x^4 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_shifted_polynomial_atanh_surd_width_uses_compact_positive_domain() {
+    let input = "integrate((2*x+2)/(3-(x+1)^4), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "1/3 * atanh(1/3 * 3^(1/2) * (x^2 + 2 * x + 1)) * 3^(1/2)"
+    );
+    assert_eq!(
+        required,
+        vec!["3 - (x + 1)^4 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_expanded_square_atanh_surd_width_uses_compact_positive_domain() {
+    let input = "integrate((2*x+2)/(5-(x^2+2*x+1)^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "1/5 * atanh(1/5 * 5^(1/2) * (x^2 + 2 * x + 1)) * 5^(1/2)"
+    );
+    assert_eq!(
+        required,
+        vec!["5 - (x + 1)^4 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
 }
 
 #[test]
@@ -862,19 +967,152 @@ fn integrate_contract_shifted_polynomial_derivative_over_syntactic_denominator_s
 }
 
 #[test]
+fn integrate_contract_scaled_syntactic_denominator_square_preserves_nonzero_domain() {
+    let input = "integrate((2*x+1)/(3*(x^2+x-1)^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "-1 / (3 * x^2 + 3 * x - 3)");
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
 fn integrate_contract_shifted_polynomial_derivative_over_syntactic_denominator_cube_preserves_nonzero_domain(
 ) {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate((2*x+1)/(x^2+x-1)^3, x)");
 
-    assert!(
-        !result.starts_with("integrate("),
-        "expected supported integral, got residual: {result}"
-    );
+    assert_eq!(result, "-1 / (2 * (x^2 + x - 1)^2)");
     assert_eq!(
         required,
         vec!["x^2 + x - 1 ≠ 0".to_string()],
         "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_scaled_polynomial_derivative_over_higher_denominator_power_preserves_compact_form_and_nonzero_domain(
+) {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate((3*x+3/2)/(x^2+x-1)^4, x)");
+
+    assert_eq!(result, "-1 / (2 * (x^2 + x - 1)^3)");
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_scaled_syntactic_denominator_power_preserves_full_nonzero_domain() {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate((8*x+2)/(3*(2*x^2+x-1)^3), x)");
+
+    assert_eq!(result, "-1 / (3 * (2 * x^2 + x - 1)^2)");
+    assert_eq!(
+        required,
+        vec!["x + 1 ≠ 0".to_string(), "2 * x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_shifted_polynomial_derivative_over_expanded_denominator_cube_recovers_compact_base_and_nonzero_domain(
+) {
+    let (result, required) = evaluated_integral_with_required_conditions(
+        "integrate((2*x+1)/(x^6+3*x^5-5*x^3+3*x-1), x)",
+    );
+
+    assert_eq!(result, "-1 / (2 * (x^2 + x - 1)^2)");
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_shifted_polynomial_derivative_over_scaled_expanded_denominator_cube_recovers_compact_base_and_nonzero_domain(
+) {
+    let (result, required) = evaluated_integral_with_required_conditions(
+        "integrate((2*x+1)/(4*x^6+12*x^5-20*x^3+12*x-4), x)",
+    );
+
+    assert_eq!(result, "-1 / (8 * (x^2 + x - 1)^2)");
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_shifted_polynomial_derivative_over_negatively_scaled_expanded_denominator_cube_preserves_sign_and_domain(
+) {
+    let (result, required) = evaluated_integral_with_required_conditions(
+        "integrate((2*x+1)/(-4*x^6-12*x^5+20*x^3-12*x+4), x)",
+    );
+
+    assert_eq!(result, "1 / (8 * (x^2 + x - 1)^2)");
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_scaled_polynomial_derivative_over_expanded_denominator_fourth_power_recovers_compact_base_and_nonzero_domain(
+) {
+    let (result, required) = evaluated_integral_with_required_conditions(
+        "integrate((3*x+3/2)/(x^8+4*x^7+2*x^6-8*x^5-5*x^4+8*x^3+2*x^2-4*x+1), x)",
+    );
+
+    assert_eq!(result, "-1 / (2 * (x^2 + x - 1)^3)");
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_expanded_linear_denominator_fifth_power_recovers_compact_base_and_nonzero_domain(
+) {
+    let (result, required) = evaluated_integral_with_required_conditions(
+        "integrate(1/(x^5+5*x^4+10*x^3+10*x^2+5*x+1), x)",
+    );
+
+    assert_eq!(result, "-1 / (4 * (x + 1)^4)");
+    assert_eq!(
+        required,
+        vec!["x + 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_near_expanded_denominator_power_remains_residual_without_compact_base_domain()
+{
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate((2*x+1)/(x^6+3*x^5-5*x^3+3*x), x)");
+
+    assert!(
+        result.starts_with("integrate("),
+        "near denominator power should remain residual, got {result}"
+    );
+    assert!(
+        !result.contains("-1 / (2 * (x^2 + x - 1)^2)"),
+        "near denominator power must not reuse the exact-power antiderivative"
+    );
+    assert!(
+        !required.contains(&"x^2 + x - 1 ≠ 0".to_string()),
+        "near denominator power must not collapse domain to compact base: {required:?}"
     );
 }
 
@@ -926,6 +1164,48 @@ fn integrate_contract_scaled_polynomial_derivative_arcsin_substitution() {
 }
 
 #[test]
+fn integrate_contract_polynomial_derivative_arcsin_surd_width_preserves_positive_domain() {
+    let input = "integrate(2*x/sqrt(3-x^4), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "arcsin(1/3 * 3^(1/2) * x^2)");
+    assert_eq!(
+        required,
+        vec!["3 - x^4 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_expanded_shifted_polynomial_arcsin_surd_width_dedupes_positive_domain() {
+    let input = "integrate((2*x+2)/sqrt(2 - x^4 - 4*x^3 - 6*x^2 - 4*x), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "arcsin(1/3 * 3^(1/2) * (x + 1)^2)");
+    assert_eq!(
+        required,
+        vec!["3 - (x + 1)^4 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_factored_shifted_polynomial_arcsin_surd_width_verifies_positive_domain() {
+    let input = "integrate((2*x+2)/sqrt(3-(x^2+2*x+1)^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "arcsin(1/3 * 3^(1/2) * (x + 1)^2)");
+    assert_eq!(
+        required,
+        vec!["3 - (x + 1)^4 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
 fn integrate_contract_shifted_linear_scaled_arcsin_substitution() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(1/sqrt(4-(x+1)^2), x)");
@@ -952,6 +1232,19 @@ fn integrate_contract_scaled_polynomial_derivative_asinh_substitution() {
         simplified_integral("integrate(2*x/sqrt(4+x^4), x)"),
         "asinh(1/2 * x^2)"
     );
+}
+
+#[test]
+fn integrate_contract_polynomial_derivative_asinh_surd_width_remains_unconditional() {
+    let input = "integrate(2*x/sqrt(3+x^4), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "asinh(1/3 * 3^(1/2) * x^2)");
+    assert!(
+        required.is_empty(),
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
 }
 
 #[test]

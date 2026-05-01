@@ -4,13 +4,386 @@
 //! size of `transform_expr_recursive`.
 
 use super::*;
+use cas_math::expr_predicates::contains_named_var;
 use cas_math::factoring_support::{
     try_rewrite_difference_of_squares_product_expr, DifferenceOfSquaresProductRewriteKind,
 };
 use cas_math::logarithm_inverse_support::try_rewrite_exponential_log_inverse_expr;
 use cas_math::numeric::as_i64;
+use cas_math::polynomial::Polynomial;
 use cas_math::pow_preorder_support::{try_plan_sqrt_square_pow_rewrite, SqrtSquarePowRewriteKind};
+use cas_math::root_forms::extract_square_root_base;
+use num_rational::BigRational;
+use num_traits::{Signed, Zero};
 use smallvec::SmallVec;
+
+fn diff_call_should_preserve_raw_target_for_direct_derivative(
+    ctx: &cas_ast::Context,
+    name: &str,
+    args: &[ExprId],
+) -> bool {
+    if name != "diff" || args.len() != 2 {
+        return false;
+    }
+    diff_target_should_preserve_raw_derivative_route(ctx, args[0], args[1])
+}
+
+fn diff_target_should_preserve_raw_derivative_route(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    variable: ExprId,
+) -> bool {
+    if diff_target_is_direct_tan_or_tan_square(ctx, target) {
+        return true;
+    }
+
+    let Some(var_name) = diff_variable_name(ctx, variable) else {
+        return false;
+    };
+    diff_target_is_affine_polynomial_times_direct_builtin_derivative_target(ctx, target, var_name)
+        || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
+        || expr_is_positive_integer_power_of_low_degree_polynomial(ctx, target, var_name)
+        || diff_target_is_constant_scaled_reciprocal_polynomial_power(ctx, target, var_name)
+        || diff_target_is_constant_scaled_atanh_surd_polynomial(ctx, target, var_name)
+}
+
+fn diff_variable_name(ctx: &cas_ast::Context, variable: ExprId) -> Option<&str> {
+    let Expr::Variable(sym_id) = ctx.get(variable) else {
+        return None;
+    };
+    Some(ctx.sym_name(*sym_id))
+}
+
+fn diff_target_is_direct_tan_or_tan_square(ctx: &cas_ast::Context, target: ExprId) -> bool {
+    if expr_is_direct_tan_call(ctx, target) {
+        return true;
+    }
+    let Expr::Pow(base, exp) = ctx.get(target) else {
+        return false;
+    };
+    expr_is_direct_tan_call(ctx, *base)
+        && matches!(ctx.get(*exp), Expr::Number(n) if n.is_integer() && n.to_integer() == 2.into())
+}
+
+fn diff_target_is_affine_polynomial_times_direct_builtin_derivative_target(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Mul(left, right) = ctx.get(target) else {
+        return false;
+    };
+
+    (expr_is_direct_supported_builtin_derivative_call(ctx, *left)
+        && expr_is_affine_polynomial_in_named_variable(ctx, *right, var_name))
+        || (expr_is_direct_supported_builtin_derivative_call(ctx, *right)
+            && expr_is_affine_polynomial_in_named_variable(ctx, *left, var_name))
+}
+
+fn expr_is_affine_polynomial_in_named_variable(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) else {
+        return false;
+    };
+    !poly.is_zero() && poly.degree() <= 1
+}
+
+fn expr_is_direct_tan_call(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    let Expr::Function(fn_id, fn_args) = ctx.get(expr) else {
+        return false;
+    };
+    fn_args.len() == 1 && ctx.builtin_of(*fn_id) == Some(cas_ast::BuiltinFn::Tan)
+}
+
+fn expr_is_direct_supported_builtin_derivative_call(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    let Expr::Function(fn_id, fn_args) = ctx.get(expr) else {
+        return false;
+    };
+    fn_args.len() == 1
+        && matches!(
+            ctx.builtin_of(*fn_id),
+            Some(
+                cas_ast::BuiltinFn::Tan
+                    | cas_ast::BuiltinFn::Cot
+                    | cas_ast::BuiltinFn::Sec
+                    | cas_ast::BuiltinFn::Csc
+                    | cas_ast::BuiltinFn::Tanh
+            )
+        )
+}
+
+fn diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, fn_args) = ctx.get(target) else {
+        return false;
+    };
+    if fn_args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(
+                cas_ast::BuiltinFn::Arcsec
+                    | cas_ast::BuiltinFn::Asec
+                    | cas_ast::BuiltinFn::Arccsc
+                    | cas_ast::BuiltinFn::Acsc
+            )
+        )
+    {
+        return false;
+    }
+
+    expr_is_positive_surd_times_positive_quadratic(ctx, fn_args[0], var_name)
+}
+
+fn diff_target_is_constant_scaled_reciprocal_polynomial_power(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let target = match ctx.get(target) {
+        Expr::Neg(inner) => *inner,
+        _ => target,
+    };
+
+    let Expr::Div(num, den) = ctx.get(target) else {
+        return false;
+    };
+    if cas_ast::views::as_rational_const(ctx, *num, 4).is_none() {
+        return false;
+    }
+
+    let mut matched_power = false;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, *den) {
+        if expr_is_positive_integer_power_of_low_degree_polynomial(ctx, factor, var_name) {
+            if matched_power {
+                return false;
+            }
+            matched_power = true;
+            continue;
+        }
+
+        let Some(scale) = cas_ast::views::as_rational_const(ctx, factor, 4) else {
+            return false;
+        };
+        if scale.is_zero() {
+            return false;
+        }
+    }
+
+    matched_power
+}
+
+fn diff_target_is_constant_scaled_atanh_surd_polynomial(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Some(arg) = constant_scaled_atanh_arg(ctx, target, var_name) else {
+        return false;
+    };
+    expr_is_surd_scaled_polynomial_arg(ctx, arg, var_name)
+}
+
+fn constant_scaled_atanh_arg(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    if let Expr::Function(fn_id, args) = ctx.get(expr) {
+        if ctx.builtin_of(*fn_id) == Some(cas_ast::BuiltinFn::Atanh) && args.len() == 1 {
+            return Some(args[0]);
+        }
+    }
+
+    match ctx.get(expr) {
+        Expr::Neg(inner) => constant_scaled_atanh_arg(ctx, *inner, var_name),
+        Expr::Div(num, den) => {
+            if contains_named_var(ctx, *den, var_name) || !expr_is_constant_sqrt_scale(ctx, *den) {
+                return None;
+            }
+            constant_scaled_atanh_arg(ctx, *num, var_name)
+        }
+        Expr::Mul(_, _) => {
+            let mut atanh_arg = None;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if let Expr::Function(fn_id, args) = ctx.get(factor) {
+                    if ctx.builtin_of(*fn_id) == Some(cas_ast::BuiltinFn::Atanh) && args.len() == 1
+                    {
+                        if atanh_arg.replace(args[0]).is_some() {
+                            return None;
+                        }
+                        continue;
+                    }
+                }
+
+                if contains_named_var(ctx, factor, var_name)
+                    || !expr_is_constant_sqrt_scale(ctx, factor)
+                {
+                    return None;
+                }
+            }
+            atanh_arg
+        }
+        _ => None,
+    }
+}
+
+fn expr_is_surd_scaled_polynomial_arg(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    if let Expr::Div(num, den) = ctx.get(expr) {
+        if contains_named_var(ctx, *den, var_name) || !expr_is_constant_sqrt_scale(ctx, *den) {
+            return false;
+        }
+        return expr_has_single_polynomial_factor(ctx, *num, var_name);
+    }
+
+    let mut saw_polynomial = false;
+    let mut saw_nontrivial_scale = false;
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if !contains_named_var(ctx, factor, var_name) {
+            if !expr_is_constant_sqrt_scale(ctx, factor) {
+                return false;
+            }
+            saw_nontrivial_scale = true;
+            continue;
+        }
+
+        if saw_polynomial {
+            return false;
+        }
+        let Ok(poly) = Polynomial::from_expr(ctx, factor, var_name) else {
+            return false;
+        };
+        if poly.is_zero() {
+            return false;
+        }
+        saw_polynomial = true;
+    }
+
+    saw_polynomial && saw_nontrivial_scale
+}
+
+fn expr_has_single_polynomial_factor(ctx: &cas_ast::Context, expr: ExprId, var_name: &str) -> bool {
+    let mut saw_polynomial = false;
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if !contains_named_var(ctx, factor, var_name) {
+            if !expr_is_constant_sqrt_scale(ctx, factor) {
+                return false;
+            }
+            continue;
+        }
+
+        if saw_polynomial {
+            return false;
+        }
+        let Ok(poly) = Polynomial::from_expr(ctx, factor, var_name) else {
+            return false;
+        };
+        if poly.is_zero() {
+            return false;
+        }
+        saw_polynomial = true;
+    }
+
+    saw_polynomial
+}
+
+fn expr_is_constant_sqrt_scale(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    if cas_ast::views::as_rational_const(ctx, expr, 8).is_some_and(|value| !value.is_zero()) {
+        return true;
+    }
+
+    expr_is_positive_rational_sqrt(ctx, expr)
+}
+
+fn expr_is_positive_integer_power_of_low_degree_polynomial(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return false;
+    };
+    let Some(power) = as_i64(ctx, *exp) else {
+        return false;
+    };
+    if !(2..=8).contains(&power) {
+        return false;
+    }
+
+    let Ok(poly) = Polynomial::from_expr(ctx, *base, var_name) else {
+        return false;
+    };
+    (1..=2).contains(&poly.degree())
+}
+
+fn expr_is_positive_surd_times_positive_quadratic(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Mul(left, right) = ctx.get(expr) else {
+        return false;
+    };
+
+    (expr_is_positive_rational_sqrt(ctx, *left)
+        && expr_is_strictly_positive_quadratic_in_named_variable(ctx, *right, var_name))
+        || (expr_is_positive_rational_sqrt(ctx, *right)
+            && expr_is_strictly_positive_quadratic_in_named_variable(ctx, *left, var_name))
+}
+
+fn expr_is_positive_rational_sqrt(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    let Some(radicand) = extract_square_root_base(ctx, expr) else {
+        return false;
+    };
+    cas_ast::views::as_rational_const(ctx, radicand, 8).is_some_and(|value| value.is_positive())
+}
+
+fn expr_is_strictly_positive_quadratic_in_named_variable(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) else {
+        return false;
+    };
+    if poly.degree() != 2 || poly.coeffs.len() < 3 {
+        return false;
+    }
+
+    let a = poly
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if !a.is_positive() {
+        return false;
+    }
+
+    let b = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let c = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let four = BigRational::from_integer(4.into());
+    let discriminant = b.clone() * b - four * a * c;
+    discriminant.is_negative()
+}
 
 fn format_difference_of_squares_product_desc(
     kind: DifferenceOfSquaresProductRewriteKind,
@@ -327,13 +700,13 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
         if matches!(op, BinaryOp::Sub) {
             if let Some(zero) =
-                crate::calculus_residual_support::try_diff_log_abs_hyperbolic_residual_zero_preorder(
+                crate::calculus_residual_support::try_diff_hyperbolic_residual_zero_preorder(
                     self.context,
                     l,
                     r,
                 )
                 .or_else(|| {
-                    crate::calculus_residual_support::try_diff_log_abs_hyperbolic_residual_zero_preorder(
+                    crate::calculus_residual_support::try_diff_hyperbolic_residual_zero_preorder(
                         self.context,
                         r,
                         l,
@@ -341,7 +714,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 })
             {
                 self.record_step(
-                    "Cancel matching hyperbolic log-abs derivative residual",
+                    "Cancel matching hyperbolic derivative residual",
                     "Hyperbolic Diff Residual",
                     id,
                     zero,
@@ -510,6 +883,16 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 "HoldAll function, skipping child simplification: {:?}",
                 self.context.get(id)
             );
+            return id;
+        }
+
+        if diff_call_should_preserve_raw_target_for_direct_derivative(self.context, name, &args) {
+            let new_var = self.transform_child_at(id, crate::step::PathStep::Arg(1), args[1]);
+            if new_var != args[1] {
+                return self
+                    .context
+                    .add(Expr::Function(fn_id, vec![args[0], new_var]));
+            }
             return id;
         }
 

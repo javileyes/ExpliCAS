@@ -90,6 +90,12 @@ fn format_hyperbolic_special_value_desc(ctx: &Context, expr: ExprId) -> Option<&
     }
 }
 
+fn should_block_hyperbolic_double_angle_expansion(
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    parent_ctx.is_inside_division()
+}
+
 fn format_hyperbolic_composition_desc(ctx: &Context, expr: ExprId) -> Option<&'static str> {
     let Expr::Function(outer_fn, outer_args) = ctx.get(expr) else {
         return None;
@@ -1026,7 +1032,10 @@ define_rule!(
     SinhDoubleAngleExpansionRule,
     "sinh(2x) = 2·sinh(x)·cosh(x)",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        if should_block_hyperbolic_double_angle_expansion(parent_ctx) {
+            return None;
+        }
         let rewrite = try_rewrite_sinh_double_angle_expansion_identity_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_identity_desc(rewrite.kind)))
     }
@@ -1037,7 +1046,10 @@ define_rule!(
     TanhDoubleAngleExpansionRule,
     "tanh(2x) = 2·tanh(x)/(1+tanh(x)^2)",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
-    |ctx, expr| {
+    |ctx, expr, parent_ctx| {
+        if should_block_hyperbolic_double_angle_expansion(parent_ctx) {
+            return None;
+        }
         let rewrite = try_rewrite_tanh_double_angle_expansion_identity_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_hyperbolic_identity_desc(rewrite.kind)))
     }

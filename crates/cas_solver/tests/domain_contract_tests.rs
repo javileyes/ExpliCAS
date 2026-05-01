@@ -1150,6 +1150,21 @@ fn required_conditions_sqrt_x_squared_simplifies_with_requires() {
     );
 }
 
+#[test]
+fn required_conditions_preserve_compact_shifted_power_gap_denominator() {
+    let (result, required) = simplify_generic_with_required("sqrt(3)*(2*x+2)/(3-(x+1)^4)");
+
+    assert!(
+        result.contains("3 - (x + 1)^4"),
+        "expected compact result denominator, got: {result}"
+    );
+    assert_eq!(
+        required,
+        vec!["3 - (x + 1)^4 ≠ 0".to_string()],
+        "unexpected required conditions"
+    );
+}
+
 /// CONTRACT: sqrt(x)^2 does NOT simplify in Strict mode
 #[test]
 fn required_conditions_sqrt_x_squared_blocked_in_strict() {

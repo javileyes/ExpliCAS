@@ -105,6 +105,20 @@ fn heuristic_normalizes_pow4_plus_multiple() {
 }
 
 #[test]
+fn heuristic_preserves_compact_high_power_gap_in_fraction_denominator() {
+    let result = simplify_with_heuristic_poly("sqrt(3)*(2*x+2)/(3-(x+1)^4)", HeuristicPoly::On);
+
+    assert!(
+        result.contains("3 - (x + 1)^4"),
+        "expected compact denominator, got: {result}"
+    );
+    assert!(
+        !result.contains("2 - x^4 - 4 * x^3 - 6 * x^2 - 4 * x"),
+        "denominator should not expand the shifted fourth-power gap: {result}"
+    );
+}
+
+#[test]
 fn heuristic_identity_equals_zero() {
     // (x+1)^5 - expansion = 0
     let result = simplify_with_heuristic_poly(

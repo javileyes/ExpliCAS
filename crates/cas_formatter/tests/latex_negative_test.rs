@@ -1,4 +1,4 @@
-use cas_ast::{Context, Expr};
+use cas_ast::{hold, Context, Expr};
 use cas_formatter::LaTeXExpr;
 
 #[test]
@@ -192,6 +192,67 @@ fn test_latex_unary_neg_add_has_parentheses() {
     assert!(
         result.starts_with("-(") || result.contains("-("),
         "Expected '-(...)' format for unary neg of sum in LaTeX. Got: '{}'",
+        result
+    );
+}
+
+#[test]
+fn test_latex_unary_neg_internal_hold_add_has_parentheses() {
+    let mut ctx = Context::new();
+
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+
+    let a_plus_b = ctx.add(Expr::Add(a, b));
+    let held_sum = hold::wrap_hold(&mut ctx, a_plus_b);
+    let neg_sum = ctx.add(Expr::Neg(held_sum));
+
+    let latex = LaTeXExpr {
+        context: &ctx,
+        id: neg_sum,
+    };
+
+    let result = latex.to_latex();
+
+    assert!(
+        result.starts_with("-("),
+        "Expected '-(...)' for unary neg of internally held sum in LaTeX. Got: '{}'",
+        result
+    );
+    assert!(
+        result.contains("a + b") || result.contains("b + a"),
+        "Expected held sum inside parentheses in LaTeX. Got: '{}'",
+        result
+    );
+}
+
+#[test]
+fn test_latex_sub_internal_hold_add_has_parentheses() {
+    let mut ctx = Context::new();
+
+    let a = ctx.var("a");
+    let b = ctx.var("b");
+    let c = ctx.var("c");
+
+    let a_plus_b = ctx.add(Expr::Add(a, b));
+    let held_sum = hold::wrap_hold(&mut ctx, a_plus_b);
+    let expr = ctx.add(Expr::Sub(c, held_sum));
+
+    let latex = LaTeXExpr {
+        context: &ctx,
+        id: expr,
+    };
+
+    let result = latex.to_latex();
+
+    assert!(
+        result.contains("- ("),
+        "Expected subtraction from an internally held sum to keep grouping in LaTeX. Got: '{}'",
+        result
+    );
+    assert!(
+        result.contains("a + b") || result.contains("b + a"),
+        "Expected held sum inside subtraction parentheses in LaTeX. Got: '{}'",
         result
     );
 }

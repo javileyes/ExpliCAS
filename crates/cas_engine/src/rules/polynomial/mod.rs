@@ -125,6 +125,11 @@ define_rule!(
             return None;
         }
 
+        if should_preserve_compact_power_product_with_factorable_integer_add(ctx, l, r, parent_ctx)
+        {
+            return None;
+        }
+
         // Multiplicative distribution uses cas_math helper that preserves
         // historical guard ordering and semantics.
         let parent_mul_terms =
@@ -153,6 +158,94 @@ define_rule!(
         None
     }
 );
+
+fn should_preserve_compact_power_product_with_factorable_integer_add(
+    ctx: &cas_ast::Context,
+    left: cas_ast::ExprId,
+    right: cas_ast::ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    if parent_ctx.is_expand_mode() || parent_ctx.is_auto_expand() {
+        return false;
+    }
+
+    (side_has_compact_low_degree_polynomial_power(ctx, left)
+        && binary_add_has_variable_common_integer_factor(ctx, right))
+        || (side_has_compact_low_degree_polynomial_power(ctx, right)
+            && binary_add_has_variable_common_integer_factor(ctx, left))
+}
+
+fn side_has_compact_low_degree_polynomial_power(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    is_compact_low_degree_polynomial_power(ctx, expr)
+        || cas_math::expr_nary::mul_leaves(ctx, expr)
+            .iter()
+            .any(|&factor| is_compact_low_degree_polynomial_power(ctx, factor))
+}
+
+fn is_compact_low_degree_polynomial_power(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return false;
+    };
+    let Some(power) = cas_math::numeric::as_i64(ctx, *exp) else {
+        return false;
+    };
+    if !(2..=8).contains(&power) || cas_ast::count_nodes(ctx, *base) > 25 {
+        return false;
+    }
+
+    let variables = cas_ast::collect_variables(ctx, *base);
+    let Some(var) = variables.iter().next() else {
+        return false;
+    };
+    variables.len() == 1
+        && matches!(
+            cas_math::polynomial::Polynomial::from_expr(ctx, *base, var.as_str()),
+            Ok(poly) if (1..=2).contains(&poly.degree())
+        )
+}
+
+fn binary_add_has_variable_common_integer_factor(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return false;
+    };
+    if cas_ast::collect_variables(ctx, expr).is_empty() {
+        return false;
+    }
+
+    let Some(left_coeff) = integer_coefficient_abs(ctx, *left) else {
+        return false;
+    };
+    let Some(right_coeff) = integer_coefficient_abs(ctx, *right) else {
+        return false;
+    };
+    gcd_abs(left_coeff, right_coeff) > 1
+}
+
+fn integer_coefficient_abs(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> Option<i64> {
+    match ctx.get(expr) {
+        Expr::Number(_) => cas_math::numeric::as_i64(ctx, expr)?.checked_abs(),
+        Expr::Mul(left, right) => cas_math::numeric::as_i64(ctx, *left)
+            .or_else(|| cas_math::numeric::as_i64(ctx, *right))?
+            .checked_abs(),
+        Expr::Neg(inner) => integer_coefficient_abs(ctx, *inner),
+        _ => None,
+    }
+}
+
+fn gcd_abs(mut left: i64, mut right: i64) -> i64 {
+    while right != 0 {
+        let next = left % right;
+        left = right;
+        right = next;
+    }
+    left.abs()
+}
 
 // AnnihilationRule: Detects and cancels terms like x - x or __hold(sum) - sum
 // Domain Mode Policy: Like AddInverseRule, we must respect domain_mode

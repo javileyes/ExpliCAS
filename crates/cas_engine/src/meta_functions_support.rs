@@ -1,4 +1,5 @@
 use cas_ast::{Context, Expr, ExprId};
+use cas_math::expand_call_support::expand_explicit_arg_with_post_compaction;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct MetaFunctionRewrite {
@@ -44,7 +45,7 @@ pub fn try_rewrite_meta_function_expr(
             })
         }
         "expand" => Some(MetaFunctionRewrite {
-            rewritten: cas_math::expand_ops::expand(ctx, arg),
+            rewritten: expand_explicit_arg_with_post_compaction(ctx, arg),
             desc: "expand(x) -> expanded form",
         }),
         _ => None,
@@ -87,6 +88,21 @@ mod tests {
             }
         );
         assert!(rendered.contains("x^2"));
+    }
+
+    #[test]
+    fn rewrites_expand_call_with_compact_univariate_polynomial_terms() {
+        let mut ctx = Context::new();
+        let expr = parse("expand(3-(x^2+2*x+1)^2)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_meta_function_expr(&mut ctx, expr).expect("rewrite");
+        let rendered = format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.rewritten
+            }
+        );
+        assert_eq!(rendered, "2 - x^4 - 4 * x^3 - 6 * x^2 - 4 * x");
     }
 
     #[test]

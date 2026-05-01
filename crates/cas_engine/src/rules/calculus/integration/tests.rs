@@ -103,6 +103,28 @@ fn test_integrate_linearity() {
     assert!(res.contains("x^2 / 2"));
     assert!(res.contains("1 * x") || res.contains("x"));
 }
+
+#[test]
+fn test_integrate_scaled_denominator_square_carries_required_domain() {
+    let mut ctx = Context::new();
+    let rule = IntegrateRule;
+    let expr = parse("integrate((2*x+1)/(3*(x^2+x-1)^2), x)", &mut ctx).unwrap();
+    let rewrite = rule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+
+    let required: Vec<_> = rewrite
+        .required_conditions
+        .iter()
+        .map(|condition| condition.display(&ctx))
+        .collect();
+    assert_eq!(required, vec!["x^2 + x - 1 ≠ 0".to_string()]);
+}
+
 #[test]
 fn test_integrate_linear_subst_trig() {
     let mut ctx = Context::new();
@@ -249,6 +271,23 @@ fn test_integrate_inverse_function_kernels() {
         ),
         "asinh(x)"
     );
+}
+
+#[test]
+fn test_integrate_atanh_surd_open_interval_condition_compacts_to_denominator() {
+    let mut ctx = Context::new();
+    let rule = IntegrateRule;
+    let expr = parse("integrate(2*x/(3-x^4), x)", &mut ctx).unwrap();
+    let rewrite = rule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+
+    assert_eq!(rewrite.required_conditions.len(), 1);
+    assert_eq!(rewrite.required_conditions[0].display(&ctx), "3 - x^4 > 0");
 }
 
 #[test]

@@ -1,5 +1,6 @@
 //! Guard policies for Add/Sub fraction-pair rewrites.
 
+use crate::expr_predicates::{contains_function, contains_function_or_root};
 use crate::fraction_function_mix_support::{
     should_block_add_function_constant_mix, should_block_sub_function_constant_mix,
     AddFunctionConstantMixInput,
@@ -54,6 +55,18 @@ pub fn should_block_add_fraction_pair(ctx: &Context, input: AddFractionPairGuard
         return true;
     }
 
+    if should_block_add_function_over_function_denominator_mix(
+        ctx,
+        input.l,
+        input.d1,
+        input.is_frac1,
+        input.r,
+        input.d2,
+        input.is_frac2,
+    ) {
+        return true;
+    }
+
     should_block_root_trivial_fraction_mix(
         ctx,
         input.l,
@@ -63,6 +76,22 @@ pub fn should_block_add_fraction_pair(ctx: &Context, input: AddFractionPairGuard
         input.d2,
         input.is_frac2,
     )
+}
+
+fn should_block_add_function_over_function_denominator_mix(
+    ctx: &Context,
+    l: ExprId,
+    d1: ExprId,
+    is_frac1: bool,
+    r: ExprId,
+    d2: ExprId,
+    is_frac2: bool,
+) -> bool {
+    (!is_frac1 && is_frac2 && contains_function(ctx, l) && contains_function_or_root(ctx, d2))
+        || (is_frac1
+            && !is_frac2
+            && contains_function_or_root(ctx, d1)
+            && contains_function(ctx, r))
 }
 
 /// True when SubFractions-style rewrite should be blocked.
@@ -139,6 +168,30 @@ mod tests {
                 n1,
                 d1,
                 is_frac1: true,
+                n2,
+                d2,
+                is_frac2: true,
+            }
+        ));
+    }
+
+    #[test]
+    fn add_blocks_function_term_with_function_denominator_fraction() {
+        let mut ctx = Context::new();
+        let l = parse("3*tanh(2*x+1)", &mut ctx).expect("parse");
+        let r = parse("(6*x+4)/cosh(2*x+1)^2", &mut ctx).expect("parse");
+        let n1 = parse("3*tanh(2*x+1)", &mut ctx).expect("parse");
+        let d1 = parse("1", &mut ctx).expect("parse");
+        let n2 = parse("6*x+4", &mut ctx).expect("parse");
+        let d2 = parse("cosh(2*x+1)^2", &mut ctx).expect("parse");
+        assert!(should_block_add_fraction_pair(
+            &ctx,
+            AddFractionPairGuardInput {
+                l,
+                r,
+                n1,
+                d1,
+                is_frac1: false,
                 n2,
                 d2,
                 is_frac2: true,

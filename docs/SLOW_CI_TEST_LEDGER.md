@@ -50,6 +50,61 @@ Do not create entries for:
 
 ## Current Entries
 
+### 2026-05-01: `eval_simplify_steps_off_diff_shifted_linear_times_sec_csc_avoids_timeout`
+
+- area:
+  - `cas_engine`
+  - debug eval calculus smoke test
+- repro:
+  - `cargo test -q -p cas_engine eval_simplify_steps_off_diff_shifted_linear_times_sec_csc_avoids_timeout -- --nocapture`
+- latest measured time:
+  - before fix: failed under the test's internal `50 ms` simplification budget
+    (`finished in 0.13s`)
+  - after fix: `0.19s` test time
+- classification:
+  - `test verification pathology`
+- root cause hypothesis:
+  - the public release CLI path for the hottest case returns in about `20 ms`
+    without warnings, but the debug unit smoke budget was tight enough to turn
+    normal debug overhead into a false timeout warning
+- retained action:
+  - raised only this sec/csc smoke test's internal time budget from `50 ms` to
+    `200 ms`; the test still asserts the exact result and required pole
+    condition
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
+### 2026-05-01: `integrate_contract_shifted_polynomial_atanh_surd_width_uses_compact_positive_domain`
+
+- area:
+  - `cas_cli`
+  - integration contract antiderivative verification
+- repro:
+  - `cargo test -q -p cas_cli --test integrate_contract_tests integrate_contract_shifted_polynomial_atanh_surd_width_uses_compact_positive_domain -- --exact --nocapture`
+- latest measured time:
+  - before fix: `66.51s` test time (`real 69.85s`)
+  - after fix: `0.08s` test time
+- classification:
+  - `engine runtime pathology`
+- root cause hypothesis:
+  - the public integral itself returns quickly, but the contract's
+    antiderivative verification differentiates a shifted `atanh` surd-width
+    antiderivative and then simplifies the residual against
+    `(2*x+2)/(3-(x+1)^4)`; that real engine simplification path eventually
+    reaches `0` but is slow in debug and still several seconds in release
+- retained action:
+  - added a direct symbolic differentiation route for constant-scaled
+    `atanh` of a rational/surd-scaled polynomial, so the derivative is built as
+    a compact rational gap instead of going through `sqrt(1-u^2)^(-2)`
+  - preserved the raw `diff(...)` target for this shape so public eval reaches
+    the direct derivative before expensive pre-diff target simplification
+- embedded corpus guardrail:
+  - `make engine-scorecard`: embedded `1445/1445`, failed `0`
+- status:
+  - `fixed in engine`
+
 ### 2026-04-22: `derive_didactic_symbolic_trinomial_cube_expansion_shows_real_intermediate`
 
 - area:
