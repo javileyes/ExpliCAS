@@ -305,6 +305,14 @@ impl Simplifier {
         conditions
     }
 
+    /// Record required conditions discovered by orchestrator shortcuts.
+    pub(crate) fn extend_required_conditions<I>(&mut self, conditions: I)
+    where
+        I: IntoIterator<Item = crate::ImplicitCondition>,
+    {
+        self.last_required_conditions.extend(conditions);
+    }
+
     /// Take and clear blocked hints from the last simplify() call.
     /// These are pedagogical hints when Generic mode blocks Analytic conditions.
     /// Hints are deduplicated by (rule, assumption_key), preserving first-occurrence order.

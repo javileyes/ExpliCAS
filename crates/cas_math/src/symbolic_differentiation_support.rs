@@ -2223,6 +2223,28 @@ fn scale_expr_by_rational(ctx: &mut Context, scale: BigRational, expr: ExprId) -
     mul_pruned(ctx, scale_expr, expr)
 }
 
+fn non_integer_rational_constant_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    let scale = rational_constant_value(ctx, expr)?;
+    (!scale.denom().is_one()).then_some(scale)
+}
+
+fn scaled_square_denominator_ratio(
+    ctx: &mut Context,
+    scale: BigRational,
+    numerator_core: ExprId,
+    denominator_square: ExprId,
+) -> ExprId {
+    if scale.is_zero() {
+        return ctx.num(0);
+    }
+
+    let numerator_scale = BigRational::from_integer(scale.numer().clone());
+    let denominator_scale = BigRational::from_integer(scale.denom().clone());
+    let numerator = scale_expr_by_rational(ctx, numerator_scale, numerator_core);
+    let denominator = scale_expr_by_rational(ctx, denominator_scale, denominator_square);
+    div_pruned(ctx, numerator, denominator)
+}
+
 fn cosh_arg_cofactor(ctx: &mut Context, expr: ExprId, arg: ExprId) -> Option<ExprId> {
     if let Some(cosh_arg) = unary_builtin_arg(ctx, expr, BuiltinFn::Cosh) {
         if compare_expr(ctx, cosh_arg, arg) == Ordering::Equal {
@@ -2397,6 +2419,10 @@ fn cosecant_derivative(ctx: &mut Context, arg: ExprId, d_arg: ExprId) -> ExprId 
 
 fn cotangent_derivative(ctx: &mut Context, arg: ExprId, d_arg: ExprId) -> ExprId {
     let sin_sq = squared_builtin_call(ctx, BuiltinFn::Sin, arg);
+    if let Some(scale) = non_integer_rational_constant_value(ctx, d_arg) {
+        let one = ctx.num(1);
+        return scaled_square_denominator_ratio(ctx, -scale, one, sin_sq);
+    }
     let neg_d_arg = ctx.add(Expr::Neg(d_arg));
     ctx.add(Expr::Div(neg_d_arg, sin_sq))
 }
@@ -2943,6 +2969,10 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
                     let cos_u = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
                     let two = ctx.num(2);
                     let cos_sq = ctx.add(Expr::Pow(cos_u, two));
+                    if let Some(scale) = non_integer_rational_constant_value(ctx, da) {
+                        let one = ctx.num(1);
+                        return Some(scaled_square_denominator_ratio(ctx, scale, one, cos_sq));
+                    }
                     Some(ctx.add(Expr::Div(da, cos_sq)))
                 }
                 Some(BuiltinFn::Sec) => Some(secant_derivative(ctx, arg, da)),
@@ -3257,6 +3287,8 @@ mod tests {
             ("sec(2*x + 1)", "sin(2 * x + 1) * 2 / cos(2 * x + 1)^2"),
             ("csc(2*x + 1)", "-cos(2 * x + 1) * 2 / sin(2 * x + 1)^2"),
             ("cot(2*x + 1)", "-2 / sin(2 * x + 1)^2"),
+            ("tan((3*x + 2)/2)", "3 / (2 * cos((3 * x + 2) / 2)^2)"),
+            ("cot((2 - 3*x)/2)", "3 / (2 * sin((2 - 3 * x) / 2)^2)"),
         ];
 
         for (input, expected) in cases {

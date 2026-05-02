@@ -50,6 +50,33 @@ Do not create entries for:
 
 ## Current Entries
 
+### 2026-05-02: `integrate_contract_supported_antiderivatives_verify_by_differentiation`
+
+- area:
+  - `cas_cli`
+  - integration contract antiderivative verification
+- repro:
+  - `cargo test -p cas_cli --test integrate_contract_tests integrate_contract_supported_antiderivatives_verify_by_differentiation -- --exact --nocapture`
+- latest measured time:
+  - `65.24s` test time (`real 65.34s`)
+- classification:
+  - `test verification pathology`
+- root cause hypothesis:
+  - the contract intentionally walks the supported-antiderivative table and
+    verifies each primitive by differentiating and simplifying the residual, so
+    the single test remains broad and debug-slow even when the individual
+    public integration cases are passing
+- retained action:
+  - none for the slow path in this CI repair; the functional CI failure was a
+    duplicate required-condition assertion and was fixed in the integration
+    condition publisher
+  - pending follow-up: split this broad verification table into smaller
+    representative debug shards or move heavyweight rows to a slower profile
+- embedded corpus guardrail:
+  - unchanged engine runtime path for the slow-test classification
+- status:
+  - `open`
+
 ### 2026-05-01: `eval_simplify_steps_off_diff_shifted_linear_times_sec_csc_avoids_timeout`
 
 - area:

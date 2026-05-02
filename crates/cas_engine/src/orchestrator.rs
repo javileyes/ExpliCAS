@@ -17364,6 +17364,82 @@ fn is_pure_arithmetic_constant_expr_root(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+fn extract_scaled_plain_sin_or_cos_arg_root(
+    ctx: &mut Context,
+    expr: ExprId,
+    expected_fn: BuiltinFn,
+) -> Option<ExprId> {
+    if let Some((trig_fn, arg)) = extract_plain_sin_or_cos_arg_root(ctx, expr) {
+        return (trig_fn == expected_fn).then_some(arg);
+    }
+
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut trig_arg = None;
+    let mut scalar_seen = false;
+    for factor in factors {
+        if let Some((trig_fn, arg)) = extract_plain_sin_or_cos_arg_root(ctx, factor) {
+            if trig_fn != expected_fn || trig_arg.is_some() {
+                return None;
+            }
+            trig_arg = Some(arg);
+            continue;
+        }
+
+        match ctx.get(factor) {
+            Expr::Number(_) if !scalar_seen => {
+                scalar_seen = true;
+            }
+            _ => return None,
+        }
+    }
+
+    trig_arg
+}
+
+fn matches_reciprocal_trig_half_angle_fraction_passthrough_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    let Expr::Div(numerator, denominator) = ctx.get(expr).clone() else {
+        return false;
+    };
+
+    let Some((denominator_square_fn, full_arg)) =
+        extract_direct_scaled_half_angle_square_target_root(ctx, denominator)
+    else {
+        return false;
+    };
+    let numerator_fn = match denominator_square_fn {
+        BuiltinFn::Cos => BuiltinFn::Sin,
+        BuiltinFn::Sin => BuiltinFn::Cos,
+        _ => return false,
+    };
+
+    let Some(numerator_arg) =
+        extract_scaled_plain_sin_or_cos_arg_root(ctx, numerator, numerator_fn)
+    else {
+        return false;
+    };
+    let Some(numerator_full_arg) = extract_half_scaled_base_root(ctx, numerator_arg) else {
+        return false;
+    };
+
+    compare_expr(ctx, numerator_full_arg, full_arg) == Ordering::Equal
+}
+
+fn try_standard_reciprocal_trig_half_angle_fraction_passthrough_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    _collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    matches_reciprocal_trig_half_angle_fraction_passthrough_root(ctx, expr)
+        .then_some((expr, Vec::new()))
+}
+
 fn rewrite_small_exp_product_root(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     let factors = flatten_mul_chain(ctx, expr);
     if factors.len() != 2 {
@@ -25846,6 +25922,69 @@ impl Orchestrator {
             return (zero, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
+        if let Some(zero) =
+            crate::calculus_residual_support::try_diff_reciprocal_trig_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            let shortcut_steps = if collect_steps {
+                vec![build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Cancel matching reciprocal trig derivative residual",
+                    "Reciprocal Trig Diff Residual",
+                )]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_diff_integral_reciprocal_trig_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify matching reciprocal trig antiderivative residual",
+                    "Reciprocal Trig Integral Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_diff_integral_plain_trig_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify matching trig log antiderivative residual",
+                    "Trig Log Integral Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
         // Narrow hidden solve root shortcuts. Keep them limited to the
         // no-steps, no-listener solve path and dispatch by root kind so we do
         // not pay unrelated matchers on every expression.
@@ -27041,6 +27180,22 @@ impl Orchestrator {
                 }
             }
             if div_root {
+                if let Some((result, shortcut_steps)) = run_profiled_root_shortcut(
+                    "root.div.00.reciprocal_trig_half_angle_fraction_passthrough",
+                    || {
+                        try_standard_reciprocal_trig_half_angle_fraction_passthrough_shortcut(
+                            &mut simplifier.context,
+                            expr,
+                            collect_steps,
+                        )
+                    },
+                ) {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
                 if let Some((result, shortcut_steps)) =
                     try_standard_direct_positive_double_cos_square_diff_shortcut(
                         &self.options,

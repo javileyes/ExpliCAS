@@ -3272,6 +3272,246 @@ fn affine_cot_diff_uses_direct_reciprocal_trig_derivative_after_canonicalization
 }
 
 #[test]
+fn rational_affine_tan_cot_diff_avoids_half_angle_cleanup_warnings() {
+    let cases = [
+        (
+            "diff(tan((3*x+2)/2), x)",
+            "3 / (cos(3 * x + 2) + 1)",
+            "3/(2*cos((3*x+2)/2)^2)",
+            vec!["cos(3 * x + 2) + 1 ≠ 0".to_string()],
+        ),
+        (
+            "diff(cot((2-3*x)/2), x)",
+            "3 / (1 - cos(2 - 3 * x))",
+            "3/(2*sin((2-3*x)/2)^2)",
+            vec!["1 - cos(2 - 3 * x) ≠ 0".to_string()],
+        ),
+    ];
+
+    for (input, expected_display, expected_derivative, expected_conditions) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        assert!(
+            output.domain_warnings.is_empty(),
+            "input: {input}, unexpected warnings: {:?}",
+            output.domain_warnings
+        );
+
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_display, "input: {input}");
+        assert!(!result.contains("diff("), "input: {input}, got: {result}");
+
+        let expected =
+            parse(expected_derivative, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "input: {input}, expected derivative equivalent to {expected_derivative}, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_conditions,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name.as_str() == "Symbolic Differentiation"),
+            "expected a visible differentiation step for {input}"
+        );
+    }
+}
+
+#[test]
+fn rational_affine_sec_csc_diff_avoids_half_angle_cleanup_warnings() {
+    let cases = [
+        (
+            "diff(sec((3*x+2)/2), x)",
+            "3*sin((3*x+2)/2)/(2*cos((3*x+2)/2)^2)",
+            "cos(",
+        ),
+        (
+            "diff(csc((2-3*x)/2), x)",
+            "3*cos((2-3*x)/2)/(2*sin((2-3*x)/2)^2)",
+            "sin(",
+        ),
+    ];
+
+    for (input, expected_derivative, expected_condition_fn) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        assert!(
+            output.domain_warnings.is_empty(),
+            "input: {input}, unexpected warnings: {:?}",
+            output.domain_warnings
+        );
+
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert!(!result.contains("diff("), "input: {input}, got: {result}");
+        assert!(
+            !result.contains("+ 1 - 1") && !result.contains("1 - (2 *"),
+            "input: {input}, noisy half-angle cleanup survived: {result}"
+        );
+
+        let expected =
+            parse(expected_derivative, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "input: {input}, expected derivative equivalent to {expected_derivative}, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required.len(),
+            1,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+        assert!(
+            required[0].contains(expected_condition_fn),
+            "input: {input}, unexpected required condition: {:?}",
+            required
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name.as_str() == "Symbolic Differentiation"),
+            "expected a visible differentiation step for {input}"
+        );
+    }
+}
+
+#[test]
+fn reciprocal_trig_half_angle_fraction_passthrough_keeps_compact_form() {
+    let cases = [
+        "3*sin((3*x+2)/2)/(1+cos(3*x+2))",
+        "3*cos((2-3*x)/2)/(1-cos(2-3*x))",
+    ];
+
+    for input in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        assert!(
+            output.domain_warnings.is_empty(),
+            "input: {input}, unexpected warnings: {:?}",
+            output.domain_warnings
+        );
+
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert!(!result.contains("diff("), "input: {input}, got: {result}");
+        assert!(
+            !result.contains("+ 1 - 1") && !result.contains("1 - (2 *"),
+            "input: {input}, noisy half-angle cleanup survived: {result}"
+        );
+        assert!(
+            !result.contains("^2"),
+            "input: {input}, expected compact half-angle fraction to be preserved, got: {result}"
+        );
+
+        let expected = parse(input, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "input: {input}, expected passthrough equivalent to source, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required.len(),
+            1,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
+}
+
+#[test]
 fn affine_hyperbolic_coth_quotient_diff_uses_direct_derivative() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();

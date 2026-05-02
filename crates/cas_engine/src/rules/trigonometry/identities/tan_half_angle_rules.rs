@@ -7,17 +7,21 @@
 //! - Tan double angle contraction
 
 use crate::define_rule;
+use crate::parent_context::ParentContext;
 use crate::rule::Rewrite;
 use crate::rules::trig_canonicalization::format_trig_canonical_rewrite_desc;
-use cas_ast::ExprId;
+use cas_ast::ordering::compare_expr;
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::trig_canonicalization_support::try_rewrite_trig_quotient_div_expr;
 use cas_math::trig_contraction_support::{
     try_rewrite_generalized_sin_cos_contraction_expr, try_rewrite_tan_double_angle_contraction_expr,
 };
 use cas_math::trig_half_angle_support::{
-    try_rewrite_hyperbolic_half_angle_squares_expr, try_rewrite_trig_half_angle_squares_expr,
-    HalfAngleSquareRewriteKind,
+    is_half_angle, try_rewrite_hyperbolic_half_angle_squares_expr,
+    try_rewrite_trig_half_angle_squares_expr, HalfAngleSquareRewriteKind,
 };
+use num_rational::BigRational;
+use std::cmp::Ordering;
 
 // =============================================================================
 
@@ -36,6 +40,132 @@ fn format_generalized_sin_cos_contraction_desc() -> &'static str {
 
 fn format_tan_double_angle_contraction_desc() -> &'static str {
     "2·tan(t)/(1-tan²(t)) = tan(2t)"
+}
+
+fn is_two(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if *n == BigRational::from_integer(2.into()))
+}
+
+fn extract_half_angle_trig_call(ctx: &Context, expr: ExprId) -> Option<(ExprId, bool)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    let is_sin = matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Sin));
+    let is_cos = matches!(ctx.builtin_of(*fn_id), Some(BuiltinFn::Cos));
+    if !(is_sin || is_cos) || is_half_angle(ctx, args[0]).is_none() {
+        return None;
+    }
+
+    Some((args[0], is_sin))
+}
+
+fn extract_half_angle_trig_square(ctx: &Context, expr: ExprId) -> Option<(ExprId, bool)> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) if is_two(ctx, *exp) => extract_half_angle_trig_call(ctx, *base),
+        Expr::Mul(left, right) => {
+            let (left_arg, left_is_sin) = extract_half_angle_trig_call(ctx, *left)?;
+            let (right_arg, right_is_sin) = extract_half_angle_trig_call(ctx, *right)?;
+            if left_is_sin == right_is_sin
+                && compare_expr(ctx, left_arg, right_arg) == Ordering::Equal
+            {
+                Some((left_arg, left_is_sin))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn expr_contains_structural(ctx: &Context, haystack: ExprId, needle: ExprId) -> bool {
+    if haystack == needle || compare_expr(ctx, haystack, needle) == Ordering::Equal {
+        return true;
+    }
+
+    match ctx.get(haystack) {
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right) => {
+            expr_contains_structural(ctx, *left, needle)
+                || expr_contains_structural(ctx, *right, needle)
+        }
+        Expr::Pow(base, exp) => {
+            expr_contains_structural(ctx, *base, needle)
+                || expr_contains_structural(ctx, *exp, needle)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_structural(ctx, *inner, needle),
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| expr_contains_structural(ctx, *arg, needle)),
+        _ => false,
+    }
+}
+
+fn expr_contains_matching_trig_call(
+    ctx: &Context,
+    haystack: ExprId,
+    expected_fn: BuiltinFn,
+    expected_arg: ExprId,
+) -> bool {
+    match ctx.get(haystack) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.builtin_of(*fn_id), Some(found) if found == expected_fn)
+                && compare_expr(ctx, args[0], expected_arg) == Ordering::Equal =>
+        {
+            true
+        }
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right) => {
+            expr_contains_matching_trig_call(ctx, *left, expected_fn, expected_arg)
+                || expr_contains_matching_trig_call(ctx, *right, expected_fn, expected_arg)
+        }
+        Expr::Pow(base, exp) => {
+            expr_contains_matching_trig_call(ctx, *base, expected_fn, expected_arg)
+                || expr_contains_matching_trig_call(ctx, *exp, expected_fn, expected_arg)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            expr_contains_matching_trig_call(ctx, *inner, expected_fn, expected_arg)
+        }
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| expr_contains_matching_trig_call(ctx, *arg, expected_fn, expected_arg)),
+        _ => false,
+    }
+}
+
+fn should_keep_reciprocal_trig_derivative_denominator_square(
+    ctx: &Context,
+    expr: ExprId,
+    parent_ctx: &ParentContext,
+) -> bool {
+    if !parent_ctx.is_inside_division() {
+        return false;
+    }
+
+    let Some((half_arg, denominator_is_sin)) = extract_half_angle_trig_square(ctx, expr) else {
+        return false;
+    };
+    let expected_numerator_fn = if denominator_is_sin {
+        BuiltinFn::Cos
+    } else {
+        BuiltinFn::Sin
+    };
+
+    parent_ctx.all_ancestors().iter().any(|&ancestor| {
+        let Expr::Div(numerator, denominator) = ctx.get(ancestor) else {
+            return false;
+        };
+        expr_contains_structural(ctx, *denominator, expr)
+            && expr_contains_matching_trig_call(ctx, *numerator, expected_numerator_fn, half_arg)
+    })
 }
 
 define_rule!(
@@ -68,8 +198,12 @@ impl crate::rule::Rule for TrigHalfAngleSquaresRule {
         &self,
         ctx: &mut cas_ast::Context,
         expr: ExprId,
-        _parent_ctx: &crate::parent_context::ParentContext,
+        parent_ctx: &crate::parent_context::ParentContext,
     ) -> Option<crate::rule::Rewrite> {
+        if should_keep_reciprocal_trig_derivative_denominator_square(ctx, expr, parent_ctx) {
+            return None;
+        }
+
         let rewrite = try_rewrite_trig_half_angle_squares_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_half_angle_square_desc(rewrite.kind)))
     }

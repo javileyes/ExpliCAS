@@ -8997,3 +8997,34 @@ The burden of proof stays the same:
   - the public nested residual still closes to `0`, so compact presentation is
     now backed by the same differentiation verification instead of being an
     answer-only shortcut
+
+## 2026-05-02 - Discovery observe-only: rational-affine sec/csc diff still pressures half-angle cleanup
+
+- area:
+  - calculus / differentiation / reciprocal trig / post-cleanup presentation
+- status:
+  - `observe-only`
+- attempted case:
+  - extend the retained rational-affine `tan`/`cot` derivative construction to
+    product-shaped reciprocal trig derivatives:
+    `diff(sec((3*x+2)/2), x)` and `diff(csc((2-3*x)/2), x)`
+- local lane:
+  - `cargo run --release -q -p cas_cli -- eval 'diff(sec((3*x+2)/2), x)' --format json`
+  - `cargo run --release -q -p cas_cli -- eval 'diff(csc((2-3*x)/2), x)' --format json`
+  - direct probes of equivalent compact forms such as
+    `3*sin((3*x+2)/2)/(2*cos((3*x+2)/2)^2)`
+- local result:
+  - the mathematically compact forms still route through half-angle/post-cleanup
+    and emit `depth_overflow`
+  - representative public output for `sec` stayed shaped like
+    `(sin(1/2*(3*x+2))*3)/((2*cos(1/2*(3*x+2))^2 + 1 - 1))`
+- reusable signature:
+  - rational-affine reciprocal trig derivatives with a numerator
+    `sin(u)`/`cos(u)` over a squared denominator need a bounded presentation
+    rule that cancels additive identity noise after half-angle normalization,
+    independent of how the derivative is initially constructed
+- decision:
+  - observe-only discovery; do not retain the ineffective `sec`/`csc`
+    construction changes in this cycle
+  - retain only the `tan`/`cot` rational-affine denominator-square split that
+    measurably removes warnings/nontermination in the public diff lane

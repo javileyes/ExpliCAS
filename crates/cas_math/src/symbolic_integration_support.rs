@@ -1071,6 +1071,70 @@ fn trig_log_required_nonzero(ctx: &mut Context, expr: ExprId, var: &str) -> Opti
     Some(ctx.call_builtin(nonzero_builtin, vec![arg]))
 }
 
+fn polynomial_trig_log_required_nonzero(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    let (trig_index, builtin, arg) =
+        factors
+            .iter()
+            .enumerate()
+            .find_map(|(idx, factor)| match ctx.get(*factor) {
+                Expr::Function(fn_id, args) if args.len() == 1 => {
+                    let builtin = ctx.builtin_of(*fn_id)?;
+                    matches!(builtin, BuiltinFn::Tan | BuiltinFn::Cot)
+                        .then_some((idx, builtin, args[0]))
+                }
+                _ => None,
+            })?;
+
+    if factors.iter().enumerate().any(|(idx, factor)| {
+        idx != trig_index
+            && matches!(
+                ctx.get(*factor),
+                Expr::Function(fn_id, args)
+                    if args.len() == 1
+                        && ctx
+                            .builtin_of(*fn_id)
+                            .is_some_and(|builtin| matches!(builtin, BuiltinFn::Tan | BuiltinFn::Cot))
+            )
+    }) {
+        return None;
+    }
+
+    if !contains_named_var(ctx, arg, var) {
+        return None;
+    }
+
+    let cofactor_factors: Vec<ExprId> = factors
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
+        .collect();
+    let cofactor = if cofactor_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        build_balanced_mul(ctx, &cofactor_factors)
+    };
+
+    let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    let derivative = arg_poly.derivative();
+    let scale = constant_polynomial_ratio(&cofactor_poly, &derivative)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let nonzero_builtin = match builtin {
+        BuiltinFn::Tan => BuiltinFn::Cos,
+        BuiltinFn::Cot => BuiltinFn::Sin,
+        _ => return None,
+    };
+    Some(ctx.call_builtin(nonzero_builtin, vec![arg]))
+}
+
 fn reciprocal_trig_log_required_nonzero(
     ctx: &mut Context,
     expr: ExprId,
@@ -4273,8 +4337,9 @@ pub fn integrate_symbolic_required_nonzero_conditions(
         return integrate_symbolic_required_nonzero_conditions(ctx, inner, var);
     }
 
-    trig_log_required_nonzero(ctx, expr, var)
+    let conditions: Vec<_> = trig_log_required_nonzero(ctx, expr, var)
         .into_iter()
+        .chain(polynomial_trig_log_required_nonzero(ctx, expr, var))
         .chain(reciprocal_trig_log_required_nonzero(ctx, expr, var))
         .chain(trig_log_derivative_ratio_required_nonzero(ctx, expr, var))
         .chain(trig_reciprocal_derivative_required_nonzero(ctx, expr, var))
@@ -4297,7 +4362,23 @@ pub fn integrate_symbolic_required_nonzero_conditions(
                 ctx, expr, var,
             ),
         )
-        .collect()
+        .collect();
+
+    dedup_required_conditions(ctx, conditions)
+}
+
+fn dedup_required_conditions(ctx: &Context, conditions: Vec<ExprId>) -> Vec<ExprId> {
+    let mut unique = Vec::new();
+    for condition in conditions {
+        if unique
+            .iter()
+            .any(|existing| compare_expr(ctx, *existing, condition) == Ordering::Equal)
+        {
+            continue;
+        }
+        unique.push(condition);
+    }
+    unique
 }
 
 pub fn integrate_symbolic_required_positive_conditions(
@@ -4782,8 +4863,40 @@ pub fn get_linear_coeffs(ctx: &mut Context, expr: ExprId, var: &str) -> Option<(
             if !contains_named_var(ctx, l, var) && is_var(ctx, r, var) {
                 return Some((l, ctx.num(0)));
             }
+            if !contains_named_var(ctx, l, var) {
+                let (a, b) = get_linear_coeffs(ctx, r, var)?;
+                if !contains_named_var(ctx, a, var) && !contains_named_var(ctx, b, var) {
+                    return Some((
+                        multiply_linear_part(ctx, l, a),
+                        multiply_linear_part(ctx, l, b),
+                    ));
+                }
+            }
             if is_var(ctx, l, var) && !contains_named_var(ctx, r, var) {
                 return Some((r, ctx.num(0)));
+            }
+            if !contains_named_var(ctx, r, var) {
+                let (a, b) = get_linear_coeffs(ctx, l, var)?;
+                if !contains_named_var(ctx, a, var) && !contains_named_var(ctx, b, var) {
+                    return Some((
+                        multiply_linear_part(ctx, r, a),
+                        multiply_linear_part(ctx, r, b),
+                    ));
+                }
+            }
+            None
+        }
+        Expr::Div(num, den) => {
+            let (num, den) = (*num, *den);
+            if contains_named_var(ctx, den, var) {
+                return None;
+            }
+            let (a, b) = get_linear_coeffs(ctx, num, var)?;
+            if !contains_named_var(ctx, a, var) && !contains_named_var(ctx, b, var) {
+                return Some((
+                    divide_linear_part(ctx, a, den),
+                    divide_linear_part(ctx, b, den),
+                ));
             }
             None
         }
@@ -4824,6 +4937,26 @@ pub fn get_linear_coeffs(ctx: &mut Context, expr: ExprId, var: &str) -> Option<(
     }
 }
 
+fn multiply_linear_part(ctx: &mut Context, factor: ExprId, part: ExprId) -> ExprId {
+    if is_number(ctx, part, 0) {
+        ctx.num(0)
+    } else if is_number(ctx, factor, 1) {
+        part
+    } else {
+        mul2_raw(ctx, factor, part)
+    }
+}
+
+fn divide_linear_part(ctx: &mut Context, part: ExprId, denominator: ExprId) -> ExprId {
+    if is_number(ctx, part, 0) {
+        ctx.num(0)
+    } else if is_number(ctx, denominator, 1) {
+        part
+    } else {
+        ctx.add(Expr::Div(part, denominator))
+    }
+}
+
 fn is_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
     if let Expr::Variable(sym_id) = ctx.get(expr) {
         ctx.sym_name(*sym_id) == var
@@ -4835,12 +4968,22 @@ fn is_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{get_linear_coeffs, integrate_symbolic_expr};
+    use crate::polynomial::Polynomial;
     use cas_ast::Context;
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+    use num_rational::BigRational;
 
     fn rendered(ctx: &Context, id: cas_ast::ExprId) -> String {
         format!("{}", DisplayExpr { context: ctx, id })
+    }
+
+    fn assert_constant_expr(ctx: &Context, id: cas_ast::ExprId, numerator: i64, denominator: i64) {
+        let poly = Polynomial::from_expr(ctx, id, "x").expect("constant polynomial");
+        assert_eq!(
+            poly.coeffs,
+            vec![BigRational::new(numerator.into(), denominator.into())]
+        );
     }
 
     #[test]
@@ -6056,6 +6199,9 @@ mod tests {
         let expr = parse("2*x*tan(x^2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "-ln(|cos(x^2)|)");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "cos(x^2)");
 
         let expr = parse("x*tan(x^2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
@@ -6064,6 +6210,9 @@ mod tests {
         let expr = parse("3*x^2*cot(x^3)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "ln(|sin(x^3)|)");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "sin(x^3)");
     }
 
     #[test]
@@ -6102,6 +6251,16 @@ mod tests {
         assert!(a_text == "-2" || a_text == "0 - 2", "{a_text}");
         let b_text = rendered(&ctx, b);
         assert!(b_text == "1" || b_text == "1 - 0", "{b_text}");
+
+        let expr = parse("1/2*(3*x + 2)", &mut ctx).expect("parse scaled affine");
+        let (a, b) = get_linear_coeffs(&mut ctx, expr, "x").expect("scaled affine coeffs");
+        assert_constant_expr(&ctx, a, 3, 2);
+        assert_constant_expr(&ctx, b, 1, 1);
+
+        let expr = parse("(3*x + 2)/2", &mut ctx).expect("parse divided affine");
+        let (a, b) = get_linear_coeffs(&mut ctx, expr, "x").expect("divided affine coeffs");
+        assert_constant_expr(&ctx, a, 3, 2);
+        assert_constant_expr(&ctx, b, 1, 1);
 
         let expr = parse("asinh(1 - 2*x)", &mut ctx).expect("parse shifted asinh");
         assert!(super::integrate_symbolic_is_asinh_affine_variable_target(

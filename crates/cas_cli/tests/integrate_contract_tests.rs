@@ -302,6 +302,8 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
         "integrate(3*x^2*cot(x^3), x)",
         "integrate(2*(x*sin(x^2)/cos(x^2)), x)",
         "integrate(3*(x^2*cos(x^3)/sin(x^3)), x)",
+        "integrate(sec((3*x+2)/2), x)",
+        "integrate(csc((2-3*x)/2), x)",
         "integrate(sec(2*x + 1)*tan(2*x + 1), x)",
         "integrate(x*sec(x^2)*tan(x^2), x)",
         "integrate(2*x*sec(x^2)*tan(x^2), x)",
@@ -2377,6 +2379,105 @@ fn integrate_contract_linear_cosecant_uses_abs_log_and_nonzero_domain() {
 }
 
 #[test]
+fn integrate_contract_scaled_affine_secant_cosecant_uses_abs_log_and_nonzero_domain() {
+    let cases = [
+        (
+            "integrate(sec((3*x+2)/2), x)",
+            "2/3 * ln(|(sin(1/2 * (3 * x + 2)) + 1) / cos(1/2 * (3 * x + 2))|)",
+            "cos(1/2 * (3 * x + 2)) ≠ 0",
+        ),
+        (
+            "integrate(csc((2-3*x)/2), x)",
+            "-2/3 * ln(|(cos(1/2 * (2 - 3 * x)) - 1) / sin(1/2 * (2 - 3 * x))|)",
+            "sin(1/2 * (2 - 3 * x)) ≠ 0",
+        ),
+    ];
+
+    for (input, expected_result, expected_condition) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected_result, "unexpected result for {input}");
+        assert_eq!(
+            required,
+            vec![expected_condition.to_string()],
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_rendered_antiderivative_verifies(input, &result);
+    }
+}
+
+#[test]
+fn integrate_contract_nested_reciprocal_trig_residual_verifies_antiderivative() {
+    let cases = [
+        (
+            "diff(integrate(sec((3*x+2)/2), x), x) - sec((3*x+2)/2)",
+            "cos((3 * x + 2) / 2) ≠ 0",
+        ),
+        (
+            "diff(integrate(csc((2-3*x)/2), x), x) - csc((2-3*x)/2)",
+            "sin((2 - 3 * x) / 2) ≠ 0",
+        ),
+        (
+            "diff(integrate(1/sin((2-3*x)/2), x), x) - 1/sin((2-3*x)/2)",
+            "sin((2 - 3 * x) / 2) ≠ 0",
+        ),
+        (
+            "diff(integrate(2*x*sec(x^2)*tan(x^2), x), x) - 2*x*sec(x^2)*tan(x^2)",
+            "cos(x^2) ≠ 0",
+        ),
+        (
+            "diff(integrate(2*x*csc(x^2)*cot(x^2), x), x) - 2*x*csc(x^2)*cot(x^2)",
+            "sin(x^2) ≠ 0",
+        ),
+        (
+            "diff(integrate((4*x^3-2*x)*sec(x^4-x^2)*tan(x^4-x^2), x), x) - (4*x^3-2*x)*sec(x^4-x^2)*tan(x^4-x^2)",
+            "cos(x^4 - x^2) ≠ 0",
+        ),
+        (
+            "diff(integrate((4*x^3-2*x)*csc(x^4-x^2)*cot(x^4-x^2), x), x) - (4*x^3-2*x)*csc(x^4-x^2)*cot(x^4-x^2)",
+            "sin(x^4 - x^2) ≠ 0",
+        ),
+    ];
+
+    for (input, expected_condition) in cases {
+        let (result, required) = evaluated_expr_with_required_conditions(input);
+        assert_eq!(result, "0", "unexpected nested residual for {input}");
+        assert_eq!(
+            required,
+            vec![expected_condition.to_string()],
+            "nested residual should preserve required domain for {input}: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_wrapped_nested_reciprocal_trig_residual_verifies_antiderivative() {
+    let cases = [
+        (
+            "(diff(integrate((4*x^3-2*x)*sec(x^4-x^2)*tan(x^4-x^2), x), x) - (4*x^3-2*x)*sec(x^4-x^2)*tan(x^4-x^2)) + 0",
+            vec!["cos(x^4 - x^2) ≠ 0"],
+        ),
+        (
+            "2*(diff(integrate((4*x^3-2*x)*csc(x^4-x^2)*cot(x^4-x^2), x), x) - (4*x^3-2*x)*csc(x^4-x^2)*cot(x^4-x^2))",
+            vec!["sin(x^4 - x^2) ≠ 0"],
+        ),
+        (
+            "(diff(integrate((4*x^3-2*x)*sec(x^4-x^2)*tan(x^4-x^2), x), x) - (4*x^3-2*x)*sec(x^4-x^2)*tan(x^4-x^2))/(x+1)",
+            vec!["cos(x^4 - x^2) ≠ 0", "x + 1 ≠ 0"],
+        ),
+    ];
+
+    for (input, expected_conditions) in cases {
+        let (result, required) = evaluated_expr_with_required_conditions(input);
+        assert_eq!(result, "0", "unexpected wrapped residual for {input}");
+        assert_eq!(
+            required, expected_conditions,
+            "wrapped residual should preserve required domain for {input}: {required:?}"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_linear_tangent_uses_abs_log_and_nonzero_domain() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(tan(2*x + 1), x)");
@@ -2400,6 +2501,77 @@ fn integrate_contract_linear_cotangent_uses_abs_log_and_nonzero_domain() {
         vec!["sin(2 * x + 1) ≠ 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+}
+
+#[test]
+fn integrate_contract_nested_tangent_cotangent_residual_verifies_antiderivative() {
+    let cases = [
+        (
+            "diff(integrate(tan(2*x+1), x), x) - tan(2*x+1)",
+            "cos(2 * x + 1) ≠ 0",
+        ),
+        (
+            "diff(integrate(cot(2*x+1), x), x) - cot(2*x+1)",
+            "sin(2 * x + 1) ≠ 0",
+        ),
+        (
+            "diff(integrate(cos(2*x+1)/sin(2*x+1), x), x) - cos(2*x+1)/sin(2*x+1)",
+            "sin(2 * x + 1) ≠ 0",
+        ),
+        (
+            "diff(integrate(2*x*tan(x^2), x), x) - 2*x*tan(x^2)",
+            "cos(x^2) ≠ 0",
+        ),
+        (
+            "diff(integrate(3*x^2*cot(x^3), x), x) - 3*x^2*cot(x^3)",
+            "sin(x^3) ≠ 0",
+        ),
+        (
+            "diff(integrate((4*x^3-2*x)*tan(x^4-x^2), x), x) - (4*x^3-2*x)*tan(x^4-x^2)",
+            "cos(x^4 - x^2) ≠ 0",
+        ),
+        (
+            "diff(integrate((4*x^3-2*x)*cot(x^4-x^2), x), x) - (4*x^3-2*x)*cot(x^4-x^2)",
+            "sin(x^4 - x^2) ≠ 0",
+        ),
+    ];
+
+    for (input, expected_condition) in cases {
+        let (result, required) = evaluated_expr_with_required_conditions(input);
+        assert_eq!(result, "0", "unexpected nested residual for {input}");
+        assert_eq!(
+            required,
+            vec![expected_condition.to_string()],
+            "nested residual should preserve required domain for {input}: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_wrapped_nested_tangent_cotangent_residual_verifies_antiderivative() {
+    let cases = [
+        (
+            "(diff(integrate((4*x^3-2*x)*tan(x^4-x^2), x), x) - (4*x^3-2*x)*tan(x^4-x^2)) + 0",
+            vec!["cos(x^4 - x^2) ≠ 0"],
+        ),
+        (
+            "2*(diff(integrate((4*x^3-2*x)*cot(x^4-x^2), x), x) - (4*x^3-2*x)*cot(x^4-x^2))",
+            vec!["sin(x^4 - x^2) ≠ 0"],
+        ),
+        (
+            "(diff(integrate((4*x^3-2*x)*cot(x^4-x^2), x), x) - (4*x^3-2*x)*cot(x^4-x^2))/(x+1)",
+            vec!["sin(x^4 - x^2) ≠ 0", "x + 1 ≠ 0"],
+        ),
+    ];
+
+    for (input, expected_conditions) in cases {
+        let (result, required) = evaluated_expr_with_required_conditions(input);
+        assert_eq!(result, "0", "unexpected wrapped residual for {input}");
+        assert_eq!(
+            required, expected_conditions,
+            "wrapped residual should preserve required domain for {input}: {required:?}"
+        );
+    }
 }
 
 #[test]
