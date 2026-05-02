@@ -25,6 +25,7 @@ fn contains_symbol(ctx: &Context, e: ExprId) -> bool {
 /// Canonicalize reciprocal-square-root forms:
 ///
 /// - `1/sqrt(x) -> x^(-1/2)`
+/// - `f/sqrt(x) -> f*x^(-1/2)` when `f` contains symbols
 /// - `sqrt(x)/x -> x^(-1/2)`
 ///
 /// Guarded to symbolic bases only (skip pure numeric bases).
@@ -54,7 +55,20 @@ pub fn try_rewrite_reciprocal_sqrt_canon_expr(
         }
     }
 
-    // Pattern 2: sqrt(x)/x -> x^(-1/2)
+    // Pattern 2: f/sqrt(x) -> f*x^(-1/2), for symbolic numerators.
+    if let Some(base) = crate::root_forms::extract_square_root_base(ctx, den) {
+        if contains_symbol(ctx, base) && contains_symbol(ctx, num) {
+            let exp = ctx.add(Expr::Number(num_rational::BigRational::new(
+                (-1).into(),
+                2.into(),
+            )));
+            let reciprocal_root = ctx.add(Expr::Pow(base, exp));
+            let rewritten = ctx.add(Expr::Mul(num, reciprocal_root));
+            return Some(ReciprocalSqrtCanonRewrite { rewritten });
+        }
+    }
+
+    // Pattern 3: sqrt(x)/x -> x^(-1/2)
     if let Some(sqrt_base) = crate::root_forms::extract_square_root_base(ctx, num) {
         if compare_expr(ctx, sqrt_base, den) == std::cmp::Ordering::Equal {
             if !contains_symbol(ctx, sqrt_base) {
@@ -108,6 +122,36 @@ mod tests {
         let expr = parse("sqrt(x)/x", &mut ctx).expect("parse");
         let rewrite = try_rewrite_reciprocal_sqrt_canon_expr(&mut ctx, expr);
         assert!(rewrite.is_some());
+    }
+
+    #[test]
+    fn rewrites_scaled_numerator_over_sqrt_symbolic() {
+        let mut ctx = Context::new();
+        let expr = parse("2*x/sqrt(3+x^4)", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_reciprocal_sqrt_canon_expr(&mut ctx, expr).expect("rewrite");
+        let numerator = parse("2*x", &mut ctx).expect("numerator");
+        let expected_base = parse("3+x^4", &mut ctx).expect("expected base");
+        let Expr::Mul(left, right) = ctx.get(rewrite.rewritten) else {
+            panic!("scaled reciprocal sqrt should rewrite to a product");
+        };
+        let candidates = [(*left, *right), (*right, *left)];
+        let matched = candidates.iter().any(|(num_candidate, root_candidate)| {
+            if cas_ast::ordering::compare_expr(&ctx, *num_candidate, numerator)
+                != std::cmp::Ordering::Equal
+            {
+                return false;
+            }
+            let Expr::Pow(base, exp) = ctx.get(*root_candidate) else {
+                return false;
+            };
+            let Expr::Number(exp_value) = ctx.get(*exp) else {
+                return false;
+            };
+            cas_ast::ordering::compare_expr(&ctx, *base, expected_base).is_eq()
+                && *exp_value.numer() == (-1).into()
+                && *exp_value.denom() == 2.into()
+        });
+        assert!(matched, "unexpected rewrite shape");
     }
 
     #[test]

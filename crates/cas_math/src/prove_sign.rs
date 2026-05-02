@@ -232,6 +232,11 @@ where
                 TriProof::Unknown
             }
         }
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Hold) && args.len() == 1 =>
+        {
+            prove_positive_depth_inner(ctx, args[0], depth - 1, real_only, prove_nonzero)
+        }
         Expr::Add(_, _) | Expr::Sub(_, _)
             if real_only && is_strictly_positive_univariate_quadratic(ctx, expr) =>
         {
@@ -421,6 +426,11 @@ where
                 TriProof::Unknown
             }
         }
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Hold) && args.len() == 1 =>
+        {
+            prove_nonnegative_depth_inner(ctx, args[0], depth - 1, real_only, prove_nonzero)
+        }
         Expr::Add(_, _) | Expr::Sub(_, _)
             if real_only && is_nonnegative_univariate_quadratic(ctx, expr) =>
         {
@@ -552,6 +562,29 @@ mod tests {
         let out = prove_nonnegative_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
             TriProof::Unknown
         });
+        assert_eq!(out, TriProof::Proven);
+    }
+
+    #[test]
+    fn internal_hold_is_transparent_to_sign_proofs() {
+        let mut ctx = cas_ast::Context::new();
+        let positive = parse("(2*x+1)^2 + 1", &mut ctx).expect("parse");
+        let held_positive = cas_ast::hold::wrap_hold(&mut ctx, positive);
+        let out =
+            prove_positive_depth_with(&ctx, held_positive, 20, true, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+        assert_eq!(out, TriProof::Proven);
+
+        let nonnegative = parse("(x+1)^2", &mut ctx).expect("parse");
+        let held_nonnegative = cas_ast::hold::wrap_hold(&mut ctx, nonnegative);
+        let out = prove_nonnegative_depth_with(
+            &ctx,
+            held_nonnegative,
+            20,
+            true,
+            |_ctx, _expr, _depth| TriProof::Unknown,
+        );
         assert_eq!(out, TriProof::Proven);
     }
 

@@ -75,6 +75,11 @@ where
         Expr::Neg(a) | Expr::Hold(a) => {
             prove_nonzero_depth_inner(ctx, *a, depth - 1, prove_positive, try_ground_nonzero)
         }
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Hold) && args.len() == 1 =>
+        {
+            prove_nonzero_depth_inner(ctx, args[0], depth - 1, prove_positive, try_ground_nonzero)
+        }
         Expr::Mul(a, b) => {
             let proof_a =
                 prove_nonzero_depth_inner(ctx, *a, depth - 1, prove_positive, try_ground_nonzero);

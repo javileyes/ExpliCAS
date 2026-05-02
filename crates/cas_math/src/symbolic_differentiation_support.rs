@@ -1,7 +1,9 @@
 //! Symbolic differentiation helpers shared by differentiation-facing rule layers.
 
 use crate::build::mul2_raw;
-use crate::expr_nary::{add_leaves, build_balanced_add, build_balanced_mul, mul_leaves};
+use crate::expr_nary::{
+    add_leaves, build_balanced_add, build_balanced_mul, mul_leaves, AddView, Sign,
+};
 use crate::expr_predicates::contains_named_var;
 use crate::polynomial::Polynomial;
 use crate::prove_sign::prove_positive_depth_with;
@@ -65,6 +67,1042 @@ fn div_pruned(ctx: &mut Context, num: ExprId, den: ExprId) -> ExprId {
     } else {
         ctx.add(Expr::Div(num, den))
     }
+}
+
+fn rational_constant_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Add(l, r) => {
+            let left = rational_constant_value(ctx, *l)?;
+            let right = rational_constant_value(ctx, *r)?;
+            Some(left + right)
+        }
+        Expr::Sub(l, r) => {
+            let left = rational_constant_value(ctx, *l)?;
+            let right = rational_constant_value(ctx, *r)?;
+            Some(left - right)
+        }
+        Expr::Mul(l, r) => {
+            let left = rational_constant_value(ctx, *l)?;
+            let right = rational_constant_value(ctx, *r)?;
+            Some(left * right)
+        }
+        Expr::Div(num, den) => {
+            let numerator = rational_constant_value(ctx, *num)?;
+            let denominator = rational_constant_value(ctx, *den)?;
+            if denominator.is_zero() {
+                None
+            } else {
+                Some(numerator / denominator)
+            }
+        }
+        Expr::Neg(inner) => rational_constant_value(ctx, *inner).map(|value| -value),
+        _ => None,
+    }
+}
+
+fn expr_is_additive(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
+}
+
+fn collect_scaled_add_terms(
+    ctx: &Context,
+    expr: ExprId,
+    scale: BigRational,
+    terms: &mut Vec<(BigRational, ExprId)>,
+) {
+    if scale.is_zero() {
+        return;
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            collect_scaled_add_terms(ctx, *left, scale.clone(), terms);
+            collect_scaled_add_terms(ctx, *right, scale, terms);
+        }
+        Expr::Sub(left, right) => {
+            collect_scaled_add_terms(ctx, *left, scale.clone(), terms);
+            collect_scaled_add_terms(ctx, *right, -scale, terms);
+        }
+        Expr::Neg(inner) => collect_scaled_add_terms(ctx, *inner, -scale, terms),
+        Expr::Div(num, den) => {
+            if let Some(den_scale) = rational_constant_value(ctx, *den) {
+                if !den_scale.is_zero() {
+                    collect_scaled_add_terms(ctx, *num, scale / den_scale, terms);
+                    return;
+                }
+            }
+            terms.push((scale, expr));
+        }
+        Expr::Mul(_, _) => {
+            let factors = mul_leaves(ctx, expr);
+            let original_scale = scale.clone();
+            let mut scaled = scale;
+            let mut additive = None;
+            let mut can_distribute = true;
+
+            for factor in factors {
+                if let Some(value) = rational_constant_value(ctx, factor) {
+                    scaled *= value;
+                    continue;
+                }
+
+                if expr_is_additive(ctx, factor) {
+                    if additive.replace(factor).is_some() {
+                        terms.push((original_scale, expr));
+                        return;
+                    }
+                    continue;
+                }
+
+                can_distribute = false;
+                break;
+            }
+
+            if can_distribute {
+                if let Some(additive) = additive {
+                    collect_scaled_add_terms(ctx, additive, scaled, terms);
+                } else {
+                    terms.push((original_scale, expr));
+                }
+            } else {
+                terms.push((original_scale, expr));
+            }
+        }
+        _ => terms.push((scale, expr)),
+    }
+}
+
+fn scaled_polynomial(poly: &Polynomial, scale: BigRational) -> Polynomial {
+    poly.mul(&Polynomial::new(vec![scale], poly.var.clone()))
+}
+
+fn constant_polynomial_ratio(
+    numerator: &Polynomial,
+    denominator: &Polynomial,
+) -> Option<BigRational> {
+    if denominator.is_zero() {
+        return None;
+    }
+
+    let pivot = denominator
+        .coeffs
+        .iter()
+        .position(|coeff| !coeff.is_zero())?;
+    let numerator_pivot = numerator
+        .coeffs
+        .get(pivot)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let scale = numerator_pivot / denominator.coeffs[pivot].clone();
+    let len = numerator.coeffs.len().max(denominator.coeffs.len());
+
+    for idx in 0..len {
+        let left = numerator
+            .coeffs
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        let right = denominator
+            .coeffs
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+            * scale.clone();
+        if left != right {
+            return None;
+        }
+    }
+
+    Some(scale)
+}
+
+fn split_constant_scaled_single_factor(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            let (scale, core) = split_constant_scaled_single_factor(ctx, *inner)?;
+            return Some((-scale, core));
+        }
+        Expr::Div(num, den) => {
+            let den_scale = rational_constant_value(ctx, *den)?;
+            if den_scale.is_zero() {
+                return None;
+            }
+            let (scale, core) = split_constant_scaled_single_factor(ctx, *num)?;
+            return Some((scale / den_scale, core));
+        }
+        _ => {}
+    }
+
+    let factors = mul_leaves(ctx, expr);
+    let mut scale = BigRational::one();
+    let mut core = None;
+
+    for factor in factors {
+        if let Some(value) = rational_constant_value(ctx, factor) {
+            scale *= value;
+            continue;
+        }
+        if core.replace(factor).is_some() {
+            return None;
+        }
+    }
+
+    core.map(|core| (scale, core))
+}
+
+fn arctan_reciprocal_affine_factor(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, Polynomial)> {
+    let arg = unary_builtin_arg(ctx, expr, BuiltinFn::Arctan)
+        .or_else(|| unary_builtin_arg(ctx, expr, BuiltinFn::Atan))?;
+    let reciprocal_base = unit_reciprocal_base(ctx, arg)?;
+    let base_poly = Polynomial::from_expr(ctx, reciprocal_base, var).ok()?;
+    if base_poly.degree() != 1 {
+        return None;
+    }
+    Some((expr, base_poly))
+}
+
+fn arctan_reciprocal_affine_term(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, Polynomial, Polynomial)> {
+    let factors = mul_leaves(ctx, expr);
+    let mut arctan_expr = None;
+    let mut base_poly = None;
+    let mut cofactor_poly = Polynomial::one(var.to_string());
+
+    for factor in factors {
+        if let Some((atan, base)) = arctan_reciprocal_affine_factor(ctx, factor, var) {
+            if arctan_expr.replace(atan).is_some() {
+                return None;
+            }
+            base_poly = Some(base);
+            continue;
+        }
+
+        let factor_poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+        cofactor_poly = cofactor_poly.mul(&factor_poly);
+    }
+
+    Some((arctan_expr?, base_poly?, cofactor_poly))
+}
+
+fn atanh_affine_factor(ctx: &Context, expr: ExprId, var: &str) -> Option<(ExprId, Polynomial)> {
+    let arg = unary_builtin_arg(ctx, expr, BuiltinFn::Atanh)?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    if arg_poly.degree() != 1 {
+        return None;
+    }
+    Some((expr, arg_poly))
+}
+
+fn atanh_affine_term(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, Polynomial, Polynomial)> {
+    let factors = mul_leaves(ctx, expr);
+    let mut atanh_expr = None;
+    let mut arg_poly = None;
+    let mut cofactor_poly = Polynomial::one(var.to_string());
+
+    for factor in factors {
+        if let Some((atanh, arg)) = atanh_affine_factor(ctx, factor, var) {
+            if atanh_expr.replace(atanh).is_some() {
+                return None;
+            }
+            arg_poly = Some(arg);
+            continue;
+        }
+
+        let factor_poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+        cofactor_poly = cofactor_poly.mul(&factor_poly);
+    }
+
+    Some((atanh_expr?, arg_poly?, cofactor_poly))
+}
+
+fn asinh_affine_factor(ctx: &Context, expr: ExprId, var: &str) -> Option<(ExprId, Polynomial)> {
+    let arg = unary_builtin_arg(ctx, expr, BuiltinFn::Asinh)?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    if arg_poly.degree() != 1 {
+        return None;
+    }
+    Some((expr, arg_poly))
+}
+
+fn asinh_affine_term(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, Polynomial, Polynomial)> {
+    let factors = mul_leaves(ctx, expr);
+    let mut asinh_expr = None;
+    let mut arg_poly = None;
+    let mut cofactor_poly = Polynomial::one(var.to_string());
+
+    for factor in factors {
+        if let Some((asinh, arg)) = asinh_affine_factor(ctx, factor, var) {
+            if asinh_expr.replace(asinh).is_some() {
+                return None;
+            }
+            arg_poly = Some(arg);
+            continue;
+        }
+
+        let factor_poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+        cofactor_poly = cofactor_poly.mul(&factor_poly);
+    }
+
+    Some((asinh_expr?, arg_poly?, cofactor_poly))
+}
+
+fn acosh_affine_factor(ctx: &Context, expr: ExprId, var: &str) -> Option<(ExprId, Polynomial)> {
+    let arg = unary_builtin_arg(ctx, expr, BuiltinFn::Acosh)?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    if arg_poly.degree() != 1 {
+        return None;
+    }
+    Some((expr, arg_poly))
+}
+
+fn acosh_affine_term(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, Polynomial, Polynomial)> {
+    let factors = mul_leaves(ctx, expr);
+    let mut acosh_expr = None;
+    let mut arg_poly = None;
+    let mut cofactor_poly = Polynomial::one(var.to_string());
+
+    for factor in factors {
+        if let Some((acosh, arg)) = acosh_affine_factor(ctx, factor, var) {
+            if acosh_expr.replace(acosh).is_some() {
+                return None;
+            }
+            arg_poly = Some(arg);
+            continue;
+        }
+
+        let factor_poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+        cofactor_poly = cofactor_poly.mul(&factor_poly);
+    }
+
+    Some((acosh_expr?, arg_poly?, cofactor_poly))
+}
+
+fn sqrt_product_pair_term(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(BigRational, Polynomial, Polynomial)> {
+    let factors = mul_leaves(ctx, expr);
+    let mut scale = BigRational::one();
+    let mut radicands = Vec::new();
+
+    for factor in factors {
+        if let Some(value) = rational_constant_value(ctx, factor) {
+            scale *= value;
+            continue;
+        }
+
+        let radicand = unary_builtin_arg(ctx, factor, BuiltinFn::Sqrt)?;
+        radicands.push(Polynomial::from_expr(ctx, radicand, var).ok()?);
+    }
+
+    if radicands.len() != 2 {
+        return None;
+    }
+    Some((scale, radicands.remove(0), radicands.remove(0)))
+}
+
+fn sqrt_gap_term(ctx: &Context, expr: ExprId, var: &str) -> Option<(BigRational, Polynomial)> {
+    let (scale, core) = split_constant_scaled_single_factor(ctx, expr)?;
+    let radicand = if let Some(radicand) = unary_builtin_arg(ctx, core, BuiltinFn::Sqrt) {
+        radicand
+    } else {
+        let Expr::Pow(base, exp) = ctx.get(core) else {
+            return None;
+        };
+        if !matches!(
+            ctx.get(*exp),
+            Expr::Number(n) if *n == BigRational::new(1.into(), 2.into())
+        ) {
+            return None;
+        }
+        *base
+    };
+
+    Some((scale, Polynomial::from_expr(ctx, radicand, var).ok()?))
+}
+
+fn ln_quadratic_term(ctx: &Context, expr: ExprId, var: &str) -> Option<(BigRational, Polynomial)> {
+    let (scale, core) = split_constant_scaled_single_factor(ctx, expr)?;
+    let ln_arg = unary_builtin_arg(ctx, core, BuiltinFn::Ln)?;
+    let poly = Polynomial::from_expr(ctx, ln_arg, var).ok()?;
+    if poly.is_zero() || poly.degree() > 2 {
+        return None;
+    }
+    Some((scale, poly))
+}
+
+fn log_minus_one_core(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Sub(log_expr, one) if is_one(ctx, *one) => Some(*log_expr),
+        Expr::Add(left, right) => {
+            if rational_constant_value(ctx, *left) == Some(-BigRational::one()) {
+                return Some(*right);
+            }
+            if rational_constant_value(ctx, *right) == Some(-BigRational::one()) {
+                return Some(*left);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn log_minus_one_square_base(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    if !matches!(ctx.get(*exp), Expr::Number(n) if *n == BigRational::from_integer(2.into())) {
+        return None;
+    }
+
+    let log_expr = log_minus_one_core(ctx, *base)?;
+    let log_base = unary_builtin_arg(ctx, log_expr, BuiltinFn::Ln)?;
+    Some((log_expr, log_base))
+}
+
+fn log_shift_square_polynomial_term(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, Polynomial, Polynomial)> {
+    let factors = mul_leaves(ctx, expr);
+    let mut log_expr = None;
+    let mut log_base_poly = None;
+    let mut cofactor_poly = Polynomial::one(var.to_string());
+
+    for factor in factors {
+        if log_expr.is_none() {
+            if let Some((candidate_log_expr, log_base)) = log_minus_one_square_base(ctx, factor) {
+                log_base_poly = Some(Polynomial::from_expr(ctx, log_base, var).ok()?);
+                log_expr = Some(candidate_log_expr);
+                continue;
+            }
+        }
+
+        let factor_poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+        cofactor_poly = cofactor_poly.mul(&factor_poly);
+    }
+
+    Some((log_expr?, log_base_poly?, cofactor_poly))
+}
+
+fn natural_log_power_factor(ctx: &Context, factor: ExprId) -> Option<(ExprId, ExprId, u32)> {
+    match ctx.get(factor) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(BuiltinFn::Ln) =>
+        {
+            Some((factor, args[0], 1))
+        }
+        Expr::Pow(base, exp) => {
+            let power = match ctx.get(*exp) {
+                Expr::Number(n) if *n == BigRational::from_integer(2.into()) => 2,
+                Expr::Number(n) if *n == BigRational::from_integer(3.into()) => 3,
+                _ => return None,
+            };
+            let Expr::Function(fn_id, args) = ctx.get(*base) else {
+                return None;
+            };
+            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(BuiltinFn::Ln) {
+                Some((*base, args[0], power))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn log_power_polynomial_term(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, Polynomial, u32, Polynomial)> {
+    let factors = mul_leaves(ctx, expr);
+    let mut log_expr = None;
+    let mut log_base_poly = None;
+    let mut power = None;
+    let mut cofactor_poly = Polynomial::one(var.to_string());
+
+    for factor in factors {
+        if log_expr.is_none() {
+            if let Some((candidate_log_expr, log_base, candidate_power)) =
+                natural_log_power_factor(ctx, factor)
+            {
+                log_base_poly = Some(Polynomial::from_expr(ctx, log_base, var).ok()?);
+                log_expr = Some(candidate_log_expr);
+                power = Some(candidate_power);
+                continue;
+            }
+        }
+
+        let factor_poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+        cofactor_poly = cofactor_poly.mul(&factor_poly);
+    }
+
+    Some((log_expr?, log_base_poly?, power?, cofactor_poly))
+}
+
+fn expand_polynomial_times_additive_term(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<Vec<(BigRational, ExprId)>> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut scale = BigRational::one();
+    let mut additive = None;
+    let mut cofactor_factors = Vec::new();
+
+    for factor in factors {
+        if let Some(value) = rational_constant_value(ctx, factor) {
+            scale *= value;
+            continue;
+        }
+
+        if expr_is_additive(ctx, factor) {
+            if Polynomial::from_expr(ctx, factor, var).is_ok() {
+                cofactor_factors.push(factor);
+                continue;
+            }
+            if additive.replace(factor).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        Polynomial::from_expr(ctx, factor, var).ok()?;
+        cofactor_factors.push(factor);
+    }
+
+    let additive = additive?;
+    if cofactor_factors.is_empty() {
+        return None;
+    }
+
+    let cofactor = build_balanced_mul(ctx, &cofactor_factors);
+    let mut out = Vec::new();
+    for (term, sign) in AddView::from_expr(ctx, additive).terms {
+        let term_scale = match sign {
+            Sign::Pos => scale.clone(),
+            Sign::Neg => -scale.clone(),
+        };
+        let expanded = mul_pruned(ctx, cofactor, term);
+        out.push((term_scale, expanded));
+    }
+    Some(out)
+}
+
+fn collect_log_square_by_parts_terms(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Vec<(BigRational, ExprId)> {
+    let mut raw_terms = Vec::new();
+    collect_scaled_add_terms(ctx, expr, BigRational::one(), &mut raw_terms);
+
+    let mut out = Vec::new();
+    for (scale, term) in raw_terms {
+        if let Some(expanded_terms) = expand_polynomial_times_additive_term(ctx, term, var) {
+            for (inner_scale, inner_term) in expanded_terms {
+                out.push((scale.clone() * inner_scale, inner_term));
+            }
+        } else {
+            out.push((scale, term));
+        }
+    }
+    out
+}
+
+fn log_square_by_parts_derivative(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    let terms = collect_log_square_by_parts_terms(ctx, expr, var);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut log_expr = None;
+    let mut base_poly = None;
+    let mut shifted_square_poly = Polynomial::zero(var.to_string());
+    let mut log_cube_poly = Polynomial::zero(var.to_string());
+    let mut log_square_poly = Polynomial::zero(var.to_string());
+    let mut log_linear_poly = Polynomial::zero(var.to_string());
+    let mut plain_poly = Polynomial::zero(var.to_string());
+
+    for (scale, term) in terms {
+        if let Some((candidate_log_expr, candidate_base_poly, cofactor_poly)) =
+            log_shift_square_polynomial_term(ctx, term, var)
+        {
+            if let Some(existing) = log_expr {
+                if compare_expr(ctx, existing, candidate_log_expr) != Ordering::Equal {
+                    return None;
+                }
+            } else {
+                log_expr = Some(candidate_log_expr);
+            }
+
+            if let Some(existing) = &base_poly {
+                if existing != &candidate_base_poly {
+                    return None;
+                }
+            } else {
+                base_poly = Some(candidate_base_poly);
+            }
+
+            shifted_square_poly =
+                shifted_square_poly.add(&scaled_polynomial(&cofactor_poly, scale));
+            continue;
+        }
+
+        if let Some((candidate_log_expr, candidate_base_poly, power, cofactor_poly)) =
+            log_power_polynomial_term(ctx, term, var)
+        {
+            if let Some(existing) = log_expr {
+                if compare_expr(ctx, existing, candidate_log_expr) != Ordering::Equal {
+                    return None;
+                }
+            } else {
+                log_expr = Some(candidate_log_expr);
+            }
+
+            if let Some(existing) = &base_poly {
+                if existing != &candidate_base_poly {
+                    return None;
+                }
+            } else {
+                base_poly = Some(candidate_base_poly);
+            }
+
+            let scaled = scaled_polynomial(&cofactor_poly, scale);
+            match power {
+                1 => log_linear_poly = log_linear_poly.add(&scaled),
+                2 => log_square_poly = log_square_poly.add(&scaled),
+                3 => log_cube_poly = log_cube_poly.add(&scaled),
+                _ => return None,
+            }
+            continue;
+        }
+
+        let term_poly = Polynomial::from_expr(ctx, term, var).ok()?;
+        plain_poly = plain_poly.add(&scaled_polynomial(&term_poly, scale));
+    }
+
+    let log_expr = log_expr?;
+    let base_poly = base_poly?;
+    let (by_parts_poly, output_power) = if !shifted_square_poly.is_zero() {
+        if !log_cube_poly.is_zero() || !log_square_poly.is_zero() || !log_linear_poly.is_zero() {
+            return None;
+        }
+        if plain_poly.is_zero() || shifted_square_poly != plain_poly {
+            return None;
+        }
+        (shifted_square_poly, 2)
+    } else if !log_cube_poly.is_zero() {
+        let minus_three = -BigRational::from_integer(3.into());
+        let six = BigRational::from_integer(6.into());
+        let minus_six = -six.clone();
+        if log_square_poly != scaled_polynomial(&log_cube_poly, minus_three) {
+            return None;
+        }
+        if log_linear_poly != scaled_polynomial(&log_cube_poly, six) {
+            return None;
+        }
+        if plain_poly != scaled_polynomial(&log_cube_poly, minus_six) {
+            return None;
+        }
+        (log_cube_poly, 3)
+    } else {
+        if log_square_poly.is_zero() || plain_poly.is_zero() {
+            return None;
+        }
+        let minus_two = -BigRational::from_integer(2.into());
+        let two = BigRational::from_integer(2.into());
+        if log_linear_poly != scaled_polynomial(&log_square_poly, minus_two) {
+            return None;
+        }
+        if plain_poly != scaled_polynomial(&log_square_poly, two) {
+            return None;
+        }
+        (log_square_poly, 2)
+    };
+
+    let scale = constant_polynomial_ratio(&by_parts_poly, &base_poly)?;
+    if scale.is_zero() {
+        return Some(ctx.num(0));
+    }
+
+    let derivative_poly = scaled_polynomial(&base_poly.derivative(), scale);
+    let derivative = derivative_poly.to_expr(ctx);
+    let power = ctx.num(output_power);
+    let log_power = ctx.add(Expr::Pow(log_expr, power));
+    Some(mul_pruned(ctx, derivative, log_power))
+}
+
+fn arctan_reciprocal_affine_by_parts_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let mut terms = Vec::new();
+    collect_scaled_add_terms(ctx, expr, BigRational::one(), &mut terms);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut arctan_expr = None;
+    let mut base_poly = None;
+    let mut arctan_cofactor_poly = Polynomial::zero(var.to_string());
+    let mut ln_scale = BigRational::zero();
+    let mut ln_poly = None;
+
+    for (scale, term) in terms {
+        if let Some((atan, base, cofactor)) = arctan_reciprocal_affine_term(ctx, term, var) {
+            if let Some(existing) = arctan_expr {
+                if compare_expr(ctx, existing, atan) != Ordering::Equal {
+                    return None;
+                }
+            } else {
+                arctan_expr = Some(atan);
+            }
+
+            if let Some(existing) = &base_poly {
+                if existing != &base {
+                    return None;
+                }
+            } else {
+                base_poly = Some(base);
+            }
+
+            arctan_cofactor_poly = arctan_cofactor_poly.add(&scaled_polynomial(&cofactor, scale));
+            continue;
+        }
+
+        if let Some((term_scale, poly)) = ln_quadratic_term(ctx, term, var) {
+            ln_scale += scale * term_scale;
+            if let Some(existing) = &ln_poly {
+                if existing != &poly {
+                    return None;
+                }
+            } else {
+                ln_poly = Some(poly);
+            }
+            continue;
+        }
+
+        return None;
+    }
+
+    let arctan_expr = arctan_expr?;
+    let base_poly = base_poly?;
+    let ln_poly = ln_poly?;
+    let slope = base_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if slope.is_zero() {
+        return None;
+    }
+
+    let expected_arctan_cofactor = base_poly.div_scalar(&slope);
+    if arctan_cofactor_poly != expected_arctan_cofactor {
+        return None;
+    }
+
+    let two = BigRational::from_integer(2.into());
+    let expected_ln_scale = BigRational::one() / (two * slope);
+    if ln_scale != expected_ln_scale {
+        return None;
+    }
+
+    let one_poly = Polynomial::one(var.to_string());
+    let expected_ln_poly = base_poly.mul(&base_poly).add(&one_poly);
+    if ln_poly != expected_ln_poly {
+        return None;
+    }
+
+    Some(arctan_expr)
+}
+
+fn atanh_affine_by_parts_derivative(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    let mut terms = Vec::new();
+    collect_scaled_add_terms(ctx, expr, BigRational::one(), &mut terms);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut atanh_expr = None;
+    let mut arg_poly = None;
+    let mut atanh_cofactor_poly = Polynomial::zero(var.to_string());
+    let mut ln_scale = BigRational::zero();
+    let mut ln_poly = None;
+
+    for (scale, term) in terms {
+        if let Some((atanh, arg, cofactor)) = atanh_affine_term(ctx, term, var) {
+            if let Some(existing) = atanh_expr {
+                if compare_expr(ctx, existing, atanh) != Ordering::Equal {
+                    return None;
+                }
+            } else {
+                atanh_expr = Some(atanh);
+            }
+
+            if let Some(existing) = &arg_poly {
+                if existing != &arg {
+                    return None;
+                }
+            } else {
+                arg_poly = Some(arg);
+            }
+
+            atanh_cofactor_poly = atanh_cofactor_poly.add(&scaled_polynomial(&cofactor, scale));
+            continue;
+        }
+
+        if let Some((term_scale, poly)) = ln_quadratic_term(ctx, term, var) {
+            ln_scale += scale * term_scale;
+            if let Some(existing) = &ln_poly {
+                if existing != &poly {
+                    return None;
+                }
+            } else {
+                ln_poly = Some(poly);
+            }
+            continue;
+        }
+
+        return None;
+    }
+
+    let atanh_expr = atanh_expr?;
+    let arg_poly = arg_poly?;
+    let ln_poly = ln_poly?;
+    let slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if slope.is_zero() {
+        return None;
+    }
+
+    let expected_atanh_cofactor = arg_poly.div_scalar(&slope);
+    if atanh_cofactor_poly != expected_atanh_cofactor {
+        return None;
+    }
+
+    let two = BigRational::from_integer(2.into());
+    let expected_ln_scale = BigRational::one() / (two * slope);
+    if ln_scale != expected_ln_scale {
+        return None;
+    }
+
+    let one_poly = Polynomial::one(var.to_string());
+    let expected_ln_poly = one_poly.sub(&arg_poly.mul(&arg_poly));
+    if ln_poly != expected_ln_poly {
+        return None;
+    }
+
+    Some(atanh_expr)
+}
+
+fn asinh_affine_by_parts_derivative(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    let mut terms = Vec::new();
+    collect_scaled_add_terms(ctx, expr, BigRational::one(), &mut terms);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut asinh_expr = None;
+    let mut arg_poly = None;
+    let mut asinh_cofactor_poly = Polynomial::zero(var.to_string());
+    let mut sqrt_scale = BigRational::zero();
+    let mut sqrt_gap = None;
+
+    for (scale, term) in terms {
+        if let Some((asinh, arg, cofactor)) = asinh_affine_term(ctx, term, var) {
+            if let Some(existing) = asinh_expr {
+                if compare_expr(ctx, existing, asinh) != Ordering::Equal {
+                    return None;
+                }
+            } else {
+                asinh_expr = Some(asinh);
+            }
+
+            if let Some(existing) = &arg_poly {
+                if existing != &arg {
+                    return None;
+                }
+            } else {
+                arg_poly = Some(arg);
+            }
+
+            asinh_cofactor_poly = asinh_cofactor_poly.add(&scaled_polynomial(&cofactor, scale));
+            continue;
+        }
+
+        if let Some((term_scale, gap)) = sqrt_gap_term(ctx, term, var) {
+            sqrt_scale += scale * term_scale;
+            if sqrt_gap.replace(gap).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        return None;
+    }
+
+    let asinh_expr = asinh_expr?;
+    let arg_poly = arg_poly?;
+    let sqrt_gap = sqrt_gap?;
+    let slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if slope.is_zero() {
+        return None;
+    }
+
+    let expected_asinh_cofactor = arg_poly.div_scalar(&slope);
+    if asinh_cofactor_poly != expected_asinh_cofactor {
+        return None;
+    }
+
+    let expected_sqrt_scale = -BigRational::one() / slope;
+    if sqrt_scale != expected_sqrt_scale {
+        return None;
+    }
+
+    let one_poly = Polynomial::one(var.to_string());
+    let expected_gap = arg_poly.mul(&arg_poly).add(&one_poly);
+    if sqrt_gap != expected_gap {
+        return None;
+    }
+
+    Some(asinh_expr)
+}
+
+fn acosh_affine_by_parts_derivative(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    let mut terms = Vec::new();
+    collect_scaled_add_terms(ctx, expr, BigRational::one(), &mut terms);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut acosh_expr = None;
+    let mut arg_poly = None;
+    let mut acosh_cofactor_poly = Polynomial::zero(var.to_string());
+    let mut sqrt_scale = BigRational::zero();
+    let mut sqrt_pair = None;
+    let mut sqrt_gap = None;
+
+    for (scale, term) in terms {
+        if let Some((acosh, arg, cofactor)) = acosh_affine_term(ctx, term, var) {
+            if let Some(existing) = acosh_expr {
+                if compare_expr(ctx, existing, acosh) != Ordering::Equal {
+                    return None;
+                }
+            } else {
+                acosh_expr = Some(acosh);
+            }
+
+            if let Some(existing) = &arg_poly {
+                if existing != &arg {
+                    return None;
+                }
+            } else {
+                arg_poly = Some(arg);
+            }
+
+            acosh_cofactor_poly = acosh_cofactor_poly.add(&scaled_polynomial(&cofactor, scale));
+            continue;
+        }
+
+        if let Some((term_scale, left, right)) = sqrt_product_pair_term(ctx, term, var) {
+            sqrt_scale += scale * term_scale;
+            if sqrt_pair.replace((left, right)).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        if let Some((term_scale, gap)) = sqrt_gap_term(ctx, term, var) {
+            sqrt_scale += scale * term_scale;
+            if sqrt_gap.replace(gap).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        return None;
+    }
+
+    let acosh_expr = acosh_expr?;
+    let arg_poly = arg_poly?;
+    let slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if slope.is_zero() {
+        return None;
+    }
+
+    let expected_acosh_cofactor = arg_poly.div_scalar(&slope);
+    if acosh_cofactor_poly != expected_acosh_cofactor {
+        return None;
+    }
+
+    let expected_sqrt_scale = -BigRational::one() / slope.clone();
+    if sqrt_scale != expected_sqrt_scale {
+        return None;
+    }
+
+    let one_poly = Polynomial::one(var.to_string());
+    if let Some((sqrt_left, sqrt_right)) = sqrt_pair {
+        let expected_left = arg_poly.sub(&one_poly);
+        let expected_right = arg_poly.add(&one_poly);
+        let same_order = sqrt_left == expected_left && sqrt_right == expected_right;
+        let swapped_order = sqrt_left == expected_right && sqrt_right == expected_left;
+        if !same_order && !swapped_order {
+            return None;
+        }
+    } else if let Some(sqrt_gap) = sqrt_gap {
+        let expected_gap = arg_poly.mul(&arg_poly).sub(&one_poly);
+        if sqrt_gap != expected_gap {
+            return None;
+        }
+    } else {
+        return None;
+    }
+
+    Some(acosh_expr)
 }
 
 fn hyperbolic_linear_factor(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
@@ -189,6 +1227,71 @@ fn try_linear_times_cot_linear_derivative(
         let sin_sq = squared_builtin_call(ctx, BuiltinFn::Sin, arg);
         let numerator = scaled_cofactor.to_expr(ctx);
         let term_from_chain = div_pruned(ctx, numerator, sin_sq);
+
+        return Some(sub_pruned(ctx, term_from_cofactor, term_from_chain));
+    }
+
+    None
+}
+
+fn try_linear_times_arctan_reciprocal_linear_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for (arctan_index, factor) in factors.iter().copied().enumerate() {
+        let Some(arg) = unary_builtin_arg(ctx, factor, BuiltinFn::Arctan)
+            .or_else(|| unary_builtin_arg(ctx, factor, BuiltinFn::Atan))
+        else {
+            continue;
+        };
+        let Some(reciprocal_base) = unit_reciprocal_base(ctx, arg) else {
+            continue;
+        };
+
+        let base_poly = Polynomial::from_expr(ctx, reciprocal_base, var).ok()?;
+        if base_poly.degree() != 1 {
+            continue;
+        }
+        let base_slope = base_poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if base_slope.is_zero() {
+            continue;
+        }
+
+        let mut cofactor_poly = Polynomial::new(vec![BigRational::one()], var.to_string());
+        for factor in factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != arctan_index).then_some(factor))
+        {
+            let factor_poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+            cofactor_poly = cofactor_poly.mul(&factor_poly);
+        }
+        if cofactor_poly.degree() > 1 {
+            continue;
+        }
+
+        let cofactor_derivative = cofactor_poly.derivative();
+        let slope_poly = Polynomial::new(vec![base_slope], var.to_string());
+        let scaled_cofactor = cofactor_poly.mul(&slope_poly);
+
+        let term_from_cofactor = polynomial_times_builtin(ctx, &cofactor_derivative, factor);
+        let two = ctx.num(2);
+        let base_sq = ctx.add(Expr::Pow(reciprocal_base, two));
+        let one = ctx.num(1);
+        let denominator = add_pruned(ctx, base_sq, one);
+        let numerator = scaled_cofactor.to_expr(ctx);
+        let term_from_chain = div_pruned(ctx, numerator, denominator);
 
         return Some(sub_pruned(ctx, term_from_cofactor, term_from_chain));
     }
@@ -334,6 +1437,31 @@ fn one_minus_arg_square_sqrt(ctx: &mut Context, arg: ExprId) -> ExprId {
     let arg_sq = ctx.add(Expr::Pow(arg, two));
     let inner = ctx.add(Expr::Sub(one, arg_sq));
     ctx.call_builtin(BuiltinFn::Sqrt, vec![inner])
+}
+
+fn should_preserve_asinh_shifted_linear_radicand(ctx: &Context, arg: ExprId, var: &str) -> bool {
+    if !matches!(ctx.get(arg), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+
+    let Ok(poly) = Polynomial::from_expr(ctx, arg, var) else {
+        return false;
+    };
+    if poly.degree() != 1 {
+        return false;
+    }
+
+    let offset = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let slope = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    !offset.is_zero() && !slope.is_zero()
 }
 
 fn positive_scaled_arg(ctx: &Context, arg: ExprId) -> Option<(BigRational, ExprId)> {
@@ -1292,8 +2420,132 @@ fn reciprocal_trig_derivative(
     }
 }
 
+fn same_arg_unary_pair(
+    ctx: &Context,
+    left: ExprId,
+    left_builtin: BuiltinFn,
+    right: ExprId,
+    right_builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let left_arg = unary_builtin_arg(ctx, left, left_builtin)?;
+    let right_arg = unary_builtin_arg(ctx, right, right_builtin)?;
+    (compare_expr(ctx, left_arg, right_arg) == Ordering::Equal).then_some(left_arg)
+}
+
+fn unordered_same_arg_unary_sum(
+    ctx: &Context,
+    expr: ExprId,
+    first_builtin: BuiltinFn,
+    second_builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    same_arg_unary_pair(ctx, *left, first_builtin, *right, second_builtin)
+        .or_else(|| same_arg_unary_pair(ctx, *right, first_builtin, *left, second_builtin))
+}
+
+fn csc_minus_cot_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            same_arg_unary_pair(ctx, *left, BuiltinFn::Csc, *right, BuiltinFn::Cot)
+        }
+        Expr::Add(left, right) => {
+            let negated_right = match ctx.get(*right) {
+                Expr::Neg(inner) => *inner,
+                _ => return None,
+            };
+            same_arg_unary_pair(ctx, *left, BuiltinFn::Csc, negated_right, BuiltinFn::Cot)
+        }
+        _ => None,
+    }
+}
+
+fn add_one_sin_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    if is_one(ctx, *left) {
+        unary_builtin_arg(ctx, *right, BuiltinFn::Sin)
+    } else if is_one(ctx, *right) {
+        unary_builtin_arg(ctx, *left, BuiltinFn::Sin)
+    } else {
+        None
+    }
+}
+
+fn plus_or_minus_one_cos_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) if is_one(ctx, *left) => {
+            unary_builtin_arg(ctx, *right, BuiltinFn::Cos)
+        }
+        Expr::Sub(left, right) if is_one(ctx, *right) => {
+            unary_builtin_arg(ctx, *left, BuiltinFn::Cos)
+        }
+        _ => None,
+    }
+}
+
+fn same_arg_quotient_over_builtin_denominator(
+    ctx: &Context,
+    expr: ExprId,
+    numerator_arg: impl Fn(&Context, ExprId) -> Option<ExprId>,
+    denominator_builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let num_arg = numerator_arg(ctx, *num)?;
+    let den_arg = unary_builtin_arg(ctx, *den, denominator_builtin)?;
+    (compare_expr(ctx, num_arg, den_arg) == Ordering::Equal).then_some(num_arg)
+}
+
+fn log_abs_reciprocal_trig_primitive_derivative(
+    ctx: &mut Context,
+    inner_expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if let Some(arg) = unordered_same_arg_unary_sum(ctx, inner_expr, BuiltinFn::Sec, BuiltinFn::Tan)
+    {
+        let d_arg = differentiate_symbolic_expr(ctx, arg, var)?;
+        let sec_arg = ctx.call_builtin(BuiltinFn::Sec, vec![arg]);
+        return Some(mul_pruned(ctx, d_arg, sec_arg));
+    }
+
+    if let Some(arg) = csc_minus_cot_arg(ctx, inner_expr) {
+        let d_arg = differentiate_symbolic_expr(ctx, arg, var)?;
+        let csc_arg = ctx.call_builtin(BuiltinFn::Csc, vec![arg]);
+        return Some(mul_pruned(ctx, d_arg, csc_arg));
+    }
+
+    if let Some(arg) =
+        same_arg_quotient_over_builtin_denominator(ctx, inner_expr, add_one_sin_arg, BuiltinFn::Cos)
+    {
+        let d_arg = differentiate_symbolic_expr(ctx, arg, var)?;
+        let sec_arg = ctx.call_builtin(BuiltinFn::Sec, vec![arg]);
+        return Some(mul_pruned(ctx, d_arg, sec_arg));
+    }
+
+    if let Some(arg) = same_arg_quotient_over_builtin_denominator(
+        ctx,
+        inner_expr,
+        plus_or_minus_one_cos_arg,
+        BuiltinFn::Sin,
+    ) {
+        let d_arg = differentiate_symbolic_expr(ctx, arg, var)?;
+        let csc_arg = ctx.call_builtin(BuiltinFn::Csc, vec![arg]);
+        return Some(mul_pruned(ctx, d_arg, csc_arg));
+    }
+
+    None
+}
+
 fn log_abs_builtin_derivative(ctx: &mut Context, arg: ExprId, var: &str) -> Option<ExprId> {
     let inner_expr = unary_builtin_arg(ctx, arg, BuiltinFn::Abs)?;
+
+    if let Some(derivative) = log_abs_reciprocal_trig_primitive_derivative(ctx, inner_expr, var) {
+        return Some(derivative);
+    }
 
     if let Expr::Div(num, den) = ctx.get(inner_expr) {
         let (num, den) = (*num, *den);
@@ -1434,6 +2686,26 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         return Some(ctx.num(0));
     }
 
+    if let Some(derivative) = arctan_reciprocal_affine_by_parts_derivative(ctx, expr, var) {
+        return Some(derivative);
+    }
+
+    if let Some(derivative) = atanh_affine_by_parts_derivative(ctx, expr, var) {
+        return Some(derivative);
+    }
+
+    if let Some(derivative) = asinh_affine_by_parts_derivative(ctx, expr, var) {
+        return Some(derivative);
+    }
+
+    if let Some(derivative) = acosh_affine_by_parts_derivative(ctx, expr, var) {
+        return Some(derivative);
+    }
+
+    if let Some(derivative) = log_square_by_parts_derivative(ctx, expr, var) {
+        return Some(derivative);
+    }
+
     if let Some(derivative) = try_constant_scaled_atanh_polynomial_derivative(ctx, expr, var) {
         return Some(derivative);
     }
@@ -1471,6 +2743,11 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
             if let Some(derivative) = try_linear_times_cot_linear_derivative(ctx, expr, var) {
                 return Some(derivative);
             }
+            if let Some(derivative) =
+                try_linear_times_arctan_reciprocal_linear_derivative(ctx, expr, var)
+            {
+                return Some(derivative);
+            }
             if let Some(derivative) = try_linear_times_tanh_linear_derivative(ctx, expr, var) {
                 return Some(derivative);
             }
@@ -1486,6 +2763,10 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         }
         Expr::Div(l, r) => {
             let (l, r) = (*l, *r);
+            if !contains_named_var(ctx, r, var) {
+                let dl = differentiate_symbolic_expr(ctx, l, var)?;
+                return Some(div_pruned(ctx, dl, r));
+            }
             if let Some((kind, arg)) = canonical_reciprocal_trig_div_kind(ctx, l, r) {
                 let d_arg = differentiate_symbolic_expr(ctx, arg, var)?;
                 return Some(reciprocal_trig_derivative(ctx, kind, arg, d_arg));
@@ -1725,6 +3006,11 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
                     let two = ctx.num(2);
                     let arg_sq = ctx.add(Expr::Pow(arg, two));
                     let inner = ctx.add(Expr::Add(arg_sq, one));
+                    let inner = if should_preserve_asinh_shifted_linear_radicand(ctx, arg, var) {
+                        cas_ast::hold::wrap_hold(ctx, inner)
+                    } else {
+                        inner
+                    };
                     let den = ctx.call_builtin(BuiltinFn::Sqrt, vec![inner]);
                     Some(ctx.add(Expr::Div(da, den)))
                 }
@@ -1804,6 +3090,134 @@ mod tests {
     }
 
     #[test]
+    fn differentiates_constant_denominator_without_quotient_rule_noise() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x)/2", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "cos(x) / 2");
+    }
+
+    #[test]
+    fn differentiates_linear_times_arctan_reciprocal_linear_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse("x*arctan(1/(2*x+1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(
+            rendered(&ctx, out),
+            "arctan(1 / (2 * x + 1)) - 2 * x / ((2 * x + 1)^2 + 1)"
+        );
+
+        let expr = parse("(x+1/2)*arctan(1/(2*x+1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(
+            rendered(&ctx, out),
+            "arctan(1 / (2 * x + 1)) - (2 * x + 1) / ((2 * x + 1)^2 + 1)"
+        );
+
+        let expr = parse("((2*x+1)*arctan(1/(2*x+1)))/2", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(2 * arctan(1 / (2 * x + 1)) - (4 * x + 2) / ((2 * x + 1)^2 + 1)) / 2"
+        );
+
+        let expr = parse(
+            "ln(4*x^2+4*x+2)/4 + arctan(1/(2*x+1))/2 + x*arctan(1/(2*x+1))",
+            &mut ctx,
+        )
+        .expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "arctan(1 / (2 * x + 1))");
+    }
+
+    #[test]
+    fn differentiates_atanh_affine_by_parts_antiderivative_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse("1/2*ln(1-x^2) + x*atanh(x)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "atanh(x)");
+
+        let expr =
+            parse("1/2*(1/2*ln(1-(2*x+1)^2) + (2*x+1)*atanh(2*x+1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "atanh(2 * x + 1)");
+    }
+
+    #[test]
+    fn differentiates_asinh_affine_by_parts_antiderivative_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse("x*asinh(x) - sqrt(x^2+1)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "asinh(x)");
+
+        let expr =
+            parse("1/2*((2*x+1)*asinh(2*x+1) - sqrt((2*x+1)^2+1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "asinh(2 * x + 1)");
+
+        let expr =
+            parse("1/2*(sqrt((1-2*x)^2+1) - asinh(1-2*x)*(1-2*x))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "asinh(1 - 2 * x)");
+    }
+
+    #[test]
+    fn differentiates_acosh_affine_by_parts_antiderivative_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse("x*acosh(x) - sqrt(x-1)*sqrt(x+1)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "acosh(x)");
+
+        let expr = parse("x*acosh(x) - sqrt(x^2-1)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "acosh(x)");
+
+        let expr = parse(
+            "1/2*((2*x+1)*acosh(2*x+1) - sqrt(2*x)*sqrt(2*x+2))",
+            &mut ctx,
+        )
+        .expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "acosh(2 * x + 1)");
+    }
+
+    #[test]
+    fn differentiates_log_square_by_parts_antiderivative_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse("(x^2+x-1)*(ln(x^2+x-1)-1)^2 + (x^2+x-1)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "(2 * x + 1) * ln(x^2 + x - 1)^2");
+
+        let expr = parse("2*((x^2+x+1)*(ln(x^2+x+1)-1)^2 + (x^2+x+1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "(4 * x + 2) * ln(x^2 + x + 1)^2");
+
+        let expr = parse("(x^2+x+1)*(ln(x^2+x+1)^2 + 2 - 2*ln(x^2+x+1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "(2 * x + 1) * ln(x^2 + x + 1)^2");
+    }
+
+    #[test]
+    fn differentiates_log_cube_by_parts_antiderivative_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(x^2+1)*(ln(x^2+1)^3 - 3*ln(x^2+1)^2 + 6*ln(x^2+1) - 6)",
+            &mut ctx,
+        )
+        .expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "2 * x * ln(x^2 + 1)^3");
+
+        let expr = parse(
+            "(x^2+x+1)*(ln(x^2+x+1)^3 - 3*ln(x^2+x+1)^2 + 6*ln(x^2+x+1) - 6)",
+            &mut ctx,
+        )
+        .expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "(2 * x + 1) * ln(x^2 + x + 1)^3");
+    }
+
+    #[test]
     fn differentiates_reciprocal_trig_functions_directly() {
         let cases = [
             ("sec(x)", "sin(x) / cos(x)^2"),
@@ -1861,6 +3275,26 @@ mod tests {
             ("ln(abs(cos(x)))", "-sin(x) / cos(x)"),
             ("ln(abs(sinh(x)))", "1 / tanh(x)"),
             ("ln(abs(cosh(x)))", "tanh(x)"),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+
+            assert_eq!(rendered(&ctx, out), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn differentiates_reciprocal_trig_log_abs_primitives_directly() {
+        let cases = [
+            ("ln(abs(sec(x)+tan(x)))", "sec(x)"),
+            ("ln(abs(sec(2*x+1)+tan(2*x+1)))", "2 * sec(2 * x + 1)"),
+            ("ln(abs((1+sin(2*x+1))/cos(2*x+1)))", "2 * sec(2 * x + 1)"),
+            ("ln(abs(csc(x)-cot(x)))", "csc(x)"),
+            ("ln(abs(csc(2*x+1)-cot(2*x+1)))", "2 * csc(2 * x + 1)"),
+            ("ln(abs((cos(2*x+1)-1)/sin(2*x+1)))", "2 * csc(2 * x + 1)"),
         ];
 
         for (input, expected) in cases {

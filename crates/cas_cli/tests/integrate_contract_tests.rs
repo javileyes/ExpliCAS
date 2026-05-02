@@ -3,7 +3,7 @@ use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_session::SessionState;
 use cas_solver::api::render_conditions_normalized;
-use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult, Simplifier};
+use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult, Simplifier, StepsMode};
 
 fn render_expr(ctx: &Context, id: ExprId) -> String {
     format!("{}", DisplayExpr { context: ctx, id })
@@ -73,10 +73,52 @@ fn assert_antiderivative_verifies(input: &str) {
     );
 }
 
-fn evaluated_integral_with_required_conditions(input: &str) -> (String, Vec<String>) {
+fn assert_rendered_antiderivative_verifies(input: &str, rendered_antiderivative: &str) {
     let mut engine = Engine::new();
     let mut state = SessionState::new();
-    let parsed = parse(input, &mut engine.simplifier.context).expect("parse integration input");
+    let expr = parse(input, &mut engine.simplifier.context).expect("parse integration input");
+    let (integrand, var_name) = explicit_integrate_call_parts(&engine.simplifier.context, expr);
+
+    let antiderivative = parse(rendered_antiderivative, &mut engine.simplifier.context)
+        .expect("parse antiderivative");
+    let var = engine.simplifier.context.var(&var_name);
+    let diff_call = engine
+        .simplifier
+        .context
+        .call("diff", vec![antiderivative, var]);
+    let residual = engine
+        .simplifier
+        .context
+        .add(Expr::Sub(diff_call, integrand));
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: format!("diff({rendered_antiderivative}, {var_name}) - integrand"),
+                parsed: residual,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval derivative residual");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => render_expr(&engine.simplifier.context, expr),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(
+        result,
+        "0",
+        "antiderivative verification failed for {input}\nintegral result: {rendered_antiderivative}"
+    );
+}
+
+fn evaluated_expr_with_required_conditions(input: &str) -> (String, Vec<String>) {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse input");
 
     let req = EvalRequest {
         raw_input: input.to_string(),
@@ -100,6 +142,35 @@ fn evaluated_integral_with_required_conditions(input: &str) -> (String, Vec<Stri
         render_conditions_normalized(&mut engine.simplifier.context, &output.required_conditions);
 
     (result, required)
+}
+
+fn evaluated_integral_with_required_conditions(input: &str) -> (String, Vec<String>) {
+    evaluated_expr_with_required_conditions(input)
+}
+
+fn evaluated_integral_step_rules(input: &str) -> Vec<String> {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse integration input");
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval failed");
+
+    output
+        .steps
+        .iter()
+        .map(|step| step.rule_name.to_string())
+        .collect()
 }
 
 #[test]
@@ -166,6 +237,26 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
         "integrate(2*x/(1+x^4), x)",
         "integrate(2*x/(4+x^4), x)",
         "integrate(2*x/(4-x^4), x)",
+        "integrate(arcsin(x), x)",
+        "integrate(arccos(x), x)",
+        "integrate(arcsin(2*x+1), x)",
+        "integrate(arccos(2*x+1), x)",
+        "integrate(arcsin(1-2*x), x)",
+        "integrate(arccos(1-2*x), x)",
+        "integrate(arctan(x), x)",
+        "integrate(arctan(2*x), x)",
+        "integrate(arctan(1/x), x)",
+        "integrate(arctan(1/(2*x+1)), x)",
+        "integrate(arccot(x), x)",
+        "integrate(arccot(2*x), x)",
+        "integrate(arccot(2*x+1), x)",
+        "integrate(asinh(x), x)",
+        "integrate(asinh(2*x), x)",
+        "integrate(asinh(2*x+1), x)",
+        "integrate(asinh(1-2*x), x)",
+        "integrate(atanh(x), x)",
+        "integrate(atanh(2*x+1), x)",
+        "integrate(atanh(1-2*x), x)",
         "integrate(1/(x^2-1), x)",
         "integrate(2*x/(x^2-1)^2, x)",
         "integrate((2*x+1)/(x^2+x-1)^2, x)",
@@ -202,6 +293,8 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
         "integrate(csc(2*x + 1)^2, x)",
         "integrate(x/(cos(x^2)^2), x)",
         "integrate(x^2/(sin(x^3)^2), x)",
+        "integrate(sec(x), x)",
+        "integrate(csc(x), x)",
         "integrate(csc(x)*cot(x), x)",
         "integrate(tan(2*x + 1), x)",
         "integrate(cot(2*x + 1), x)",
@@ -823,14 +916,494 @@ fn integrate_contract_scaled_affine_arctan_kernel_survives_quadratic_normalizati
 }
 
 #[test]
+fn integrate_contract_arctan_scaled_variable_by_parts() {
+    let (result, required) = evaluated_integral_with_required_conditions("integrate(arctan(x), x)");
+    assert_eq!(result, "1/2 * (2 * x * arctan(x) - ln(x^2 + 1))");
+    assert!(
+        required.is_empty(),
+        "arctan integration should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(arctan(x), x)");
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arctan(2*x), x)");
+    assert_eq!(result, "1/4 * (4 * x * arctan(2 * x) - ln(4 * x^2 + 1))");
+    assert!(
+        required.is_empty(),
+        "scaled arctan integration should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(arctan(2*x), x)");
+}
+
+#[test]
+fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
+    let (result, required) = evaluated_integral_with_required_conditions("integrate(arcsin(x), x)");
+    assert_eq!(result, "sqrt(1 - x^2) + x * arcsin(x)");
+    assert_eq!(
+        required,
+        vec!["1 - x^2 > 0".to_string()],
+        "arcsin integration should publish its open-domain condition"
+    );
+    assert_antiderivative_verifies("integrate(arcsin(x), x)");
+    let (nested_residual, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(arcsin(x), x), x) - arcsin(x)");
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["1 - x^2 > 0".to_string()],
+        "nested arcsin verification should preserve the open-domain condition"
+    );
+
+    let (result, required) = evaluated_integral_with_required_conditions("integrate(arccos(x), x)");
+    assert_eq!(result, "x * arccos(x) - sqrt(1 - x^2)");
+    assert_eq!(
+        required,
+        vec!["1 - x^2 > 0".to_string()],
+        "arccos integration should publish its open-domain condition"
+    );
+    assert_antiderivative_verifies("integrate(arccos(x), x)");
+    let (nested_residual, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(arccos(x), x), x) - arccos(x)");
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["1 - x^2 > 0".to_string()],
+        "nested arccos verification should preserve the open-domain condition"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arcsin(2*x), x)");
+    assert_eq!(result, "sqrt(1/4 - x^2) + x * arcsin(2 * x)");
+    assert_eq!(
+        required,
+        vec!["1 - 4 * x^2 > 0".to_string()],
+        "scaled arcsin integration should publish its open-domain condition"
+    );
+    assert_rendered_antiderivative_verifies("integrate(arcsin(2*x), x)", &result);
+    let (nested_residual, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(arcsin(2*x), x), x) - arcsin(2*x)");
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["1 - 4 * x^2 > 0".to_string()],
+        "nested scaled arcsin verification should preserve the open-domain condition"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arccos(2*x), x)");
+    assert_eq!(result, "x * arccos(2 * x) - sqrt(1/4 - x^2)");
+    assert_eq!(
+        required,
+        vec!["1 - 4 * x^2 > 0".to_string()],
+        "scaled arccos integration should publish its open-domain condition"
+    );
+    assert_rendered_antiderivative_verifies("integrate(arccos(2*x), x)", &result);
+    let (nested_residual, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(arccos(2*x), x), x) - arccos(2*x)");
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["1 - 4 * x^2 > 0".to_string()],
+        "nested scaled arccos verification should preserve the open-domain condition"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arcsin(-2*x), x)");
+    assert_eq!(result, "x * arcsin(-2 * x) - 1/2 * sqrt(1 - (-2 * x)^2)");
+    assert_eq!(
+        required,
+        vec!["1 - 4 * x^2 > 0".to_string()],
+        "negative-scale arcsin integration should publish its open-domain condition"
+    );
+    assert_rendered_antiderivative_verifies("integrate(arcsin(-2*x), x)", &result);
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(arcsin(-2*x), x), x) - arcsin(-2*x)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["1 - 4 * x^2 > 0".to_string()],
+        "nested negative-scale arcsin verification should preserve the open-domain condition"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arcsin(2*x+1), x)");
+    assert_eq!(
+        result,
+        "1/2 * (sqrt(1 - (2 * x + 1)^2) + (2 * x + 1) * arcsin(2 * x + 1))"
+    );
+    assert_eq!(
+        required,
+        vec!["-x^2 - x > 0".to_string()],
+        "shifted positive-slope arcsin integration should publish its open-domain condition"
+    );
+    assert_antiderivative_verifies("integrate(arcsin(2*x+1), x)");
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(arcsin(2*x+1), x), x) - arcsin(2*x+1)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["-x^2 - x > 0".to_string()],
+        "nested shifted arcsin verification should preserve the open-domain condition"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arccos(2*x+1), x)");
+    assert_eq!(
+        result,
+        "1/2 * ((2 * x + 1) * arccos(2 * x + 1) - sqrt(1 - (2 * x + 1)^2))"
+    );
+    assert_eq!(
+        required,
+        vec!["-x^2 - x > 0".to_string()],
+        "shifted positive-slope arccos integration should publish its open-domain condition"
+    );
+    assert_antiderivative_verifies("integrate(arccos(2*x+1), x)");
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(arccos(2*x+1), x), x) - arccos(2*x+1)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["-x^2 - x > 0".to_string()],
+        "nested shifted arccos verification should preserve the open-domain condition"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arcsin(2*x-1), x)");
+    assert_eq!(
+        result,
+        "1/2 * (sqrt(1 - (2 * x - 1)^2) + (2 * x - 1) * arcsin(2 * x - 1))"
+    );
+    assert_eq!(
+        required,
+        vec!["x - x^2 > 0".to_string()],
+        "opposite-offset positive-slope arcsin integration should publish its open-domain condition"
+    );
+    assert_antiderivative_verifies("integrate(arcsin(2*x-1), x)");
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arcsin(1-2*x), x)");
+    assert_eq!(
+        result,
+        "-1/2 * ((4 * (x - x^2))^(1/2) + (1 - 2 * x) * arcsin(1 - 2 * x))"
+    );
+    assert_eq!(
+        required,
+        vec!["x - x^2 > 0".to_string()],
+        "negative-slope shifted arcsin integration should publish its open-domain condition"
+    );
+    assert_antiderivative_verifies("integrate(arcsin(1-2*x), x)");
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(arcsin(1-2*x), x), x) - arcsin(1-2*x)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["x - x^2 > 0".to_string()],
+        "nested negative-slope arcsin verification should preserve the open-domain condition"
+    );
+
+    assert_eq!(
+        simplified_integral("integrate(arcsin(a*x+1), x)"),
+        "integrate(arcsin(a * x + 1), x)",
+        "symbolic-scale bounded inverse-trig integration remains intentionally deferred"
+    );
+}
+
+#[test]
+fn integrate_contract_arccos_negative_slope_preserves_compact_by_parts_form() {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arccos(1-2*x), x)");
+    assert_eq!(
+        result,
+        "1/2 * ((4 * (x - x^2))^(1/2) - (1 - 2 * x) * arccos(1 - 2 * x))"
+    );
+    assert_eq!(
+        required,
+        vec!["x - x^2 > 0".to_string()],
+        "negative-slope shifted arccos integration should publish its open-domain condition"
+    );
+    assert_rendered_antiderivative_verifies("integrate(arccos(1-2*x), x)", &result);
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(arccos(1-2*x), x), x) - arccos(1-2*x)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["x - x^2 > 0".to_string()],
+        "nested negative-slope arccos verification should preserve the open-domain condition"
+    );
+}
+
+#[test]
+fn integrate_contract_arctan_reciprocal_scaled_variable_by_parts() {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arctan(1/x), x)");
+    assert_eq!(result, "1/2 * (ln(x^2 + 1) + 2 * x * arctan(1 / x))");
+    assert_eq!(
+        required,
+        vec!["x ≠ 0".to_string()],
+        "reciprocal arctan integration should preserve the reciprocal nonzero condition"
+    );
+    assert_antiderivative_verifies("integrate(arctan(1/x), x)");
+
+    let (result, required) = evaluated_integral_with_required_conditions("integrate(arccot(x), x)");
+    assert_eq!(result, "1/2 * (ln(x^2 + 1) + 2 * x * arctan(1 / x))");
+    assert_eq!(
+        required,
+        vec!["x ≠ 0".to_string()],
+        "arccot canonicalization should keep the explicit reciprocal condition"
+    );
+    assert_antiderivative_verifies("integrate(arccot(x), x)");
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arccot(2*x), x)");
+    assert_eq!(
+        result,
+        "1/4 * (ln(4 * x^2 + 1) + 4 * x * arctan(1 / (2 * x)))"
+    );
+    assert_eq!(
+        required,
+        vec!["x ≠ 0".to_string()],
+        "scaled arccot canonicalization should keep the explicit reciprocal condition"
+    );
+    assert_antiderivative_verifies("integrate(arccot(2*x), x)");
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arctan(1/(2*x+1)), x)");
+    assert_eq!(
+        result,
+        "1/4 * ln((2 * x + 1)^2 + 1) + 1/2 * (2 * x + 1) * arctan(1 / (2 * x + 1))"
+    );
+    assert_eq!(
+        required,
+        vec!["2 * x + 1 ≠ 0".to_string()],
+        "shifted reciprocal arctan integration should preserve the affine reciprocal condition"
+    );
+    assert_antiderivative_verifies("integrate(arctan(1/(2*x+1)), x)");
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(arctan(1/(2*x+1)), x), x) - arctan(1/(2*x+1))",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["2 * x + 1 ≠ 0".to_string()],
+        "nested integrate/diff verification should keep the affine reciprocal condition"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(arccot(2*x+1), x)");
+    assert_eq!(
+        result,
+        "1/4 * ln((2 * x + 1)^2 + 1) + 1/2 * (2 * x + 1) * arctan(1 / (2 * x + 1))"
+    );
+    assert_eq!(
+        required,
+        vec!["2 * x + 1 ≠ 0".to_string()],
+        "shifted arccot canonicalization should keep the explicit affine reciprocal condition"
+    );
+    assert_antiderivative_verifies("integrate(arccot(2*x+1), x)");
+}
+
+#[test]
+fn integrate_contract_asinh_affine_by_parts() {
+    let (result, required) = evaluated_integral_with_required_conditions("integrate(asinh(x), x)");
+    assert_eq!(result, "x * asinh(x) - sqrt(x^2 + 1)");
+    assert!(
+        required.is_empty(),
+        "asinh integration should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(asinh(x), x)");
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(asinh(2*x), x)");
+    assert_eq!(result, "1/2 * (2 * x * asinh(2 * x) - sqrt((2 * x)^2 + 1))");
+    assert!(
+        required.is_empty(),
+        "scaled asinh integration should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(asinh(2*x), x)");
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(asinh(2*x+1), x)");
+    assert_eq!(
+        result,
+        "1/2 * ((2 * x + 1) * asinh(2 * x + 1) - sqrt((2 * x + 1)^2 + 1))"
+    );
+    assert!(
+        required.is_empty(),
+        "affine asinh integration should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(asinh(2*x+1), x)");
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(asinh(2*x+1), x), x) - asinh(2*x+1)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert!(
+        nested_required.is_empty(),
+        "nested shifted asinh verification should not add required conditions: {nested_required:?}"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(asinh(1-2*x), x)");
+    assert_eq!(
+        result,
+        "1/2 * (sqrt((1 - 2 * x)^2 + 1) - asinh(1 - 2 * x) * (1 - 2 * x))"
+    );
+    assert!(
+        required.is_empty(),
+        "negative-slope affine asinh integration should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(asinh(1-2*x), x)");
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(asinh(1-2*x), x), x) - asinh(1-2*x)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert!(
+        nested_required.is_empty(),
+        "nested negative-slope asinh verification should not add required conditions: {nested_required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_atanh_affine_by_parts_preserves_open_interval_domain() {
+    let (result, required) = evaluated_integral_with_required_conditions("integrate(atanh(x), x)");
+    assert_eq!(result, "1/2 * ln(1 - x^2) + x * atanh(x)");
+    assert_eq!(
+        required,
+        vec!["1 - x^2 > 0".to_string()],
+        "atanh integration should publish its open-interval condition"
+    );
+    assert_antiderivative_verifies("integrate(atanh(x), x)");
+    let (nested_residual, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(atanh(x), x), x) - atanh(x)");
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["1 - x^2 > 0".to_string()],
+        "nested atanh verification should preserve the open-interval condition"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(atanh(2*x+1), x)");
+    assert_eq!(
+        result,
+        "1/2 * (1/2 * ln(1 - (2 * x + 1)^2) + (2 * x + 1) * atanh(2 * x + 1))"
+    );
+    assert_eq!(
+        required,
+        vec!["-x^2 - x > 0".to_string()],
+        "shifted atanh integration should publish its normalized open-interval condition"
+    );
+    assert_antiderivative_verifies("integrate(atanh(2*x+1), x)");
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(atanh(2*x+1), x), x) - atanh(2*x+1)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["-x^2 - x > 0".to_string()],
+        "nested shifted atanh verification should preserve the normalized condition"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(atanh(1-2*x), x)");
+    assert_eq!(
+        result,
+        "-1/2 * (1/2 * ln(1 - (1 - 2 * x)^2) + (1 - 2 * x) * atanh(1 - 2 * x))"
+    );
+    assert_eq!(
+        required,
+        vec!["x - x^2 > 0".to_string()],
+        "negative-slope atanh integration should publish its normalized open-interval condition"
+    );
+    assert_antiderivative_verifies("integrate(atanh(1-2*x), x)");
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(atanh(1-2*x), x), x) - atanh(1-2*x)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["x - x^2 > 0".to_string()],
+        "nested negative-slope atanh verification should preserve the normalized condition"
+    );
+}
+
+#[test]
+fn integrate_contract_acosh_affine_by_parts_preserves_real_radical_domain() {
+    let (result, required) = evaluated_integral_with_required_conditions("integrate(acosh(x), x)");
+    assert_eq!(result, "x * acosh(x) - sqrt(x - 1) * sqrt(x + 1)");
+    assert_eq!(
+        required,
+        vec!["x + 1 > 0".to_string(), "x - 1 > 0".to_string()],
+        "acosh integration should publish the real radical conditions"
+    );
+    assert_rendered_antiderivative_verifies("integrate(acosh(x), x)", &result);
+    let (nested_residual, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(acosh(x), x), x) - acosh(x)");
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["x + 1 > 0".to_string(), "x - 1 > 0".to_string()],
+        "nested acosh verification should preserve the real radical conditions"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(acosh(2*x+1), x)");
+    assert_eq!(
+        result,
+        "1/2 * ((2 * x + 1) * acosh(2 * x + 1) - sqrt(2 * x + 1 - 1) * sqrt(2 * x + 1 + 1))"
+    );
+    assert_eq!(
+        required,
+        vec!["x > 0".to_string()],
+        "shifted acosh integration should publish its normalized real-domain condition"
+    );
+    assert_rendered_antiderivative_verifies("integrate(acosh(2*x+1), x)", &result);
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(acosh(2*x+1), x), x) - acosh(2*x+1)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["x > 0".to_string()],
+        "nested shifted acosh verification should preserve the normalized condition"
+    );
+}
+
+#[test]
+fn integrate_contract_acosh_negative_slope_preserves_compact_by_parts_form() {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(acosh(1-2*x), x)");
+    assert_eq!(
+        result,
+        "1/2 * (sqrt(-2 * x) * sqrt(2 - 2 * x) - (1 - 2 * x) * acosh(1 - 2 * x))"
+    );
+    assert_eq!(
+        required,
+        vec!["-x > 0".to_string()],
+        "negative-slope acosh integration should publish its normalized real-domain condition"
+    );
+    assert_rendered_antiderivative_verifies("integrate(acosh(1-2*x), x)", &result);
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(acosh(1-2*x), x), x) - acosh(1-2*x)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["-x > 0".to_string()],
+        "nested negative-slope acosh verification should preserve the normalized condition"
+    );
+}
+
+#[test]
 fn integrate_contract_arctan_positive_quadratic_with_surd_width() {
     let input = "integrate(1/(2*x^2+4*x+5), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(
-        result,
-        "1/6 * arctan(1/12 * 6^(1/2) * (4 * x + 4)) * 6^(1/2)"
-    );
+    assert_eq!(result, "arctan((2 * x + 2) / sqrt(6)) / sqrt(6)");
     assert!(
         required.is_empty(),
         "positive quadratic arctan kernel should not add required conditions: {required:?}"
@@ -843,7 +1416,7 @@ fn integrate_contract_scaled_polynomial_derivative_atanh_substitution() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(2*x/(4-x^4), x)");
 
-    assert_eq!(result, "1/2 * atanh(1/2 * x^2)");
+    assert_eq!(result, "1/2 * atanh(x^2 / 2)");
     assert_eq!(
         required,
         vec!["4 - x^4 > 0".to_string()],
@@ -856,7 +1429,21 @@ fn integrate_contract_atanh_quadratic_kernel_with_surd_width_preserves_positive_
     let input = "integrate(1/(3-x^2), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "1/3 * atanh(1/3 * x * 3^(1/2)) * 3^(1/2)");
+    assert_eq!(result, "atanh(x / sqrt(3)) / sqrt(3)");
+    assert_eq!(
+        required,
+        vec!["3 - x^2 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_scaled_atanh_quadratic_kernel_reduces_surd_width() {
+    let input = "integrate(1/(12-4*x^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "1/4 * atanh(x / sqrt(3)) / sqrt(3)");
     assert_eq!(
         required,
         vec!["3 - x^2 > 0".to_string()],
@@ -870,13 +1457,21 @@ fn integrate_contract_polynomial_atanh_surd_width_uses_compact_positive_domain()
     let input = "integrate(2*x/(3-x^4), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "1/3 * atanh(1/3 * 3^(1/2) * x^2) * 3^(1/2)");
+    assert_eq!(result, "atanh(x^2 / sqrt(3)) / sqrt(3)");
     assert_eq!(
         required,
         vec!["3 - x^4 > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
+    let (nested_residual, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(2*x/(3-x^4), x), x) - 2*x/(3-x^4)");
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["3 - x^4 > 0".to_string()],
+        "nested atanh substitution should preserve its positive open-interval condition"
+    );
 }
 
 #[test]
@@ -884,10 +1479,7 @@ fn integrate_contract_shifted_polynomial_atanh_surd_width_uses_compact_positive_
     let input = "integrate((2*x+2)/(3-(x+1)^4), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(
-        result,
-        "1/3 * atanh(1/3 * 3^(1/2) * (x^2 + 2 * x + 1)) * 3^(1/2)"
-    );
+    assert_eq!(result, "atanh((x^2 + 2 * x + 1) / sqrt(3)) / sqrt(3)");
     assert_eq!(
         required,
         vec!["3 - (x + 1)^4 > 0".to_string()],
@@ -901,10 +1493,7 @@ fn integrate_contract_expanded_square_atanh_surd_width_uses_compact_positive_dom
     let input = "integrate((2*x+2)/(5-(x^2+2*x+1)^2), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(
-        result,
-        "1/5 * atanh(1/5 * 5^(1/2) * (x^2 + 2 * x + 1)) * 5^(1/2)"
-    );
+    assert_eq!(result, "atanh((x^2 + 2 * x + 1) / sqrt(5)) / sqrt(5)");
     assert_eq!(
         required,
         vec!["5 - (x + 1)^4 > 0".to_string()],
@@ -944,7 +1533,7 @@ fn integrate_contract_shifted_polynomial_derivative_over_expanded_denominator_sq
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate((2*x+1)/(x^4+2*x^3-x^2-2*x+1), x)");
 
-    assert_eq!(result, "-(1 / (x^2 + x - 1))");
+    assert_eq!(result, "-1 / (x^2 + x - 1)");
     assert_eq!(
         required,
         vec!["x^2 + x - 1 ≠ 0".to_string()],
@@ -958,7 +1547,7 @@ fn integrate_contract_shifted_polynomial_derivative_over_syntactic_denominator_s
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate((2*x+1)/(x^2+x-1)^2, x)");
 
-    assert_eq!(result, "-(1 / (x^2 + x - 1))");
+    assert_eq!(result, "-1 / (x^2 + x - 1)");
     assert_eq!(
         required,
         vec!["x^2 + x - 1 ≠ 0".to_string()],
@@ -970,14 +1559,97 @@ fn integrate_contract_shifted_polynomial_derivative_over_syntactic_denominator_s
 fn integrate_contract_scaled_syntactic_denominator_square_preserves_nonzero_domain() {
     let input = "integrate((2*x+1)/(3*(x^2+x-1)^2), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
+    let step_rules = evaluated_integral_step_rules(input);
 
-    assert_eq!(result, "-1 / (3 * x^2 + 3 * x - 3)");
+    assert_eq!(result, "-1 / (3 * (x^2 + x - 1))");
     assert_eq!(
         required,
         vec!["x^2 + x - 1 ≠ 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+    assert_eq!(
+        step_rules,
+        vec!["Symbolic Integration".to_string()],
+        "scaled denominator power integration should render as a direct compact reciprocal: {step_rules:?}"
+    );
     assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_negative_power_denominator_displays_base_nonzero_domain() {
+    let input = "integrate((2*x+1)/(3*(x^2+x-1)^(-2)), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    let step_rules = evaluated_integral_step_rules(input);
+
+    assert_eq!(result, "1/9 * (x^2 + x - 1)^3");
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert!(
+        step_rules
+            .iter()
+            .any(|rule_name| rule_name == "Symbolic Integration"),
+        "expected symbolic integration step, got {step_rules:?}"
+    );
+    assert!(
+        !step_rules
+            .iter()
+            .any(|rule_name| rule_name == "Simplify Complex Fraction"
+                || rule_name == "Extract Common Multiplicative Factor"),
+        "negative-power denominator integration should not expand then refactor before integrating: {step_rules:?}"
+    );
+    assert_rendered_antiderivative_verifies(input, &result);
+}
+
+#[test]
+fn integrate_contract_reciprocal_power_denominator_quotient_integrates_directly_with_domain() {
+    let input = "integrate((2*x+1)/(3/(x^2+x-1)^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    let step_rules = evaluated_integral_step_rules(input);
+
+    assert_eq!(result, "1/9 * (x^2 + x - 1)^3");
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert!(
+        step_rules
+            .iter()
+            .any(|rule_name| rule_name == "Symbolic Integration"),
+        "expected symbolic integration step, got {step_rules:?}"
+    );
+    assert!(
+        !step_rules
+            .iter()
+            .any(|rule_name| rule_name == "Simplify Complex Fraction"
+                || rule_name == "Extract Common Multiplicative Factor"),
+        "reciprocal quotient denominator integration should not expand then refactor before integrating: {step_rules:?}"
+    );
+    assert_rendered_antiderivative_verifies(input, &result);
+}
+
+#[test]
+fn integrate_contract_reciprocal_negative_power_denominator_quotient_integrates_directly_with_domain(
+) {
+    let input = "integrate((2*x+1)/(3/((x^2+x-1)^(-2))), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    let step_rules = evaluated_integral_step_rules(input);
+
+    assert_eq!(result, "-1 / (3 * (x^2 + x - 1))");
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_eq!(
+        step_rules,
+        vec!["Symbolic Integration".to_string()],
+        "reciprocal negative-power denominator integration should not need a nested-fraction pre-step: {step_rules:?}"
+    );
+    assert_rendered_antiderivative_verifies(input, &result);
 }
 
 #[test]
@@ -1151,6 +1823,218 @@ fn integrate_contract_scaled_polynomial_log_derivative() {
 }
 
 #[test]
+fn integrate_contract_positive_log_derivative_power_substitution() {
+    let input = "integrate((2*x)/(x^2+1)*ln(x^2+1)^2, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "1/3 * ln(x^2 + 1)^3");
+    assert!(
+        required.is_empty(),
+        "positive log-power substitution should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_abs_log_derivative_power_substitution_preserves_nonzero_domain() {
+    let input = "integrate((2*x+1)/(x^2+x-1)*ln(abs(x^2+x-1))^2, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "1/3 * ln(|x^2 + x - 1|)^3");
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_positive_log_square_product_by_parts() {
+    let input = "integrate(2*x*ln(x^2+1)^2, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "(x^2 + 1) * (ln(x^2 + 1)^2 + 2 - 2 * ln(x^2 + 1))");
+    assert!(
+        required.is_empty(),
+        "positive log-square product integration should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_positive_log_cube_product_by_parts_verifies() {
+    let input = "integrate(2*x*ln(x^2+1)^3, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "(ln(x^2 + 1)^3 - 3 * ln(x^2 + 1)^2 + 6 * ln(x^2 + 1) - 6) * (x^2 + 1)"
+    );
+    assert!(
+        required.is_empty(),
+        "positive log-cube product integration should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(2*x*ln(x^2+1)^3, x), x) - 2*x*ln(x^2+1)^3",
+    );
+    assert_eq!(nested_residual, "0");
+    assert!(
+        nested_required.is_empty(),
+        "nested log-cube verification should not add required conditions: {nested_required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_shifted_quadratic_log_cube_product_by_parts_verifies() {
+    let input = "integrate((2*x+1)*ln(x^2+x+1)^3, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "(ln(x^2 + x + 1)^3 - 3 * ln(x^2 + x + 1)^2 + 6 * ln(x^2 + x + 1) - 6) * (x^2 + x + 1)"
+    );
+    assert!(
+        required.is_empty(),
+        "shifted quadratic log-cube product integration should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate((2*x+1)*ln(x^2+x+1)^3, x), x) - (2*x+1)*ln(x^2+x+1)^3",
+    );
+    assert_eq!(nested_residual, "0");
+    assert!(
+        nested_required.is_empty(),
+        "nested shifted quadratic log-cube verification should not add required conditions: {nested_required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_conditional_log_cube_product_by_parts_verifies() {
+    let input = "integrate(2*x*ln(x^2-1)^3, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "(ln(x^2 - 1)^3 - 3 * ln(x^2 - 1)^2 + 6 * ln(x^2 - 1) - 6) * (x^2 - 1)"
+    );
+    assert_eq!(
+        required,
+        vec!["x^2 - 1 > 0".to_string()],
+        "conditional log-cube product integration should publish its positive-domain condition"
+    );
+    assert_antiderivative_verifies(input);
+
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(2*x*ln(x^2-1)^3, x), x) - 2*x*ln(x^2-1)^3",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["x^2 - 1 > 0".to_string()],
+        "nested conditional log-cube verification should preserve the positive-domain condition"
+    );
+}
+
+#[test]
+fn integrate_contract_linear_log_square_product_by_parts_preserves_positive_domain() {
+    let input = "integrate(ln(2*x+1)^2, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "1/2 * (2 * x + 1) * (ln(2 * x + 1)^2 + 2 - 2 * ln(2 * x + 1))"
+    );
+    assert_eq!(
+        required,
+        vec!["2 * x + 1 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_quadratic_log_square_product_by_parts() {
+    let input = "integrate((2*x+1)*ln(x^2+x+1)^2, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "(x^2 + x + 1) * (ln(x^2 + x + 1)^2 + 2 - 2 * ln(x^2 + x + 1))"
+    );
+    assert!(
+        required.is_empty(),
+        "positive quadratic log-square integration should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_conditional_monomial_log_square_product_by_parts_verifies() {
+    let input = "integrate(2*x*ln(x^2-1)^2, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "(x^2 - 1) * (ln(x^2 - 1)^2 + 2 - 2 * ln(x^2 - 1))");
+    assert_eq!(
+        required,
+        vec!["x^2 - 1 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_conditional_quadratic_log_square_product_by_parts_verifies() {
+    let input = "integrate((2*x+1)*ln(x^2+x-1)^2, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "(ln(x^2 + x - 1)^2 + 2 - 2 * ln(x^2 + x - 1)) * (x^2 + x - 1)"
+    );
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_conditional_cubic_log_square_product_by_parts_verifies() {
+    let input = "integrate((3*x^2-1)*ln(x^3-x)^2, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "(x^3 - x) * (ln(x^3 - x)^2 + 2 - 2 * ln(x^3 - x))");
+    assert_eq!(
+        required,
+        vec!["x^3 - x > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_conditional_quartic_log_square_product_by_parts_verifies() {
+    let input = "integrate((4*x^3-2*x)*ln(x^4-x^2-1)^2, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "(ln(x^4 - x^2 - 1)^2 + 2 - 2 * ln(x^4 - x^2 - 1)) * (x^4 - x^2 - 1)"
+    );
+    assert_eq!(
+        required,
+        vec!["x^4 - x^2 - 1 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
 fn integrate_contract_scaled_polynomial_derivative_arcsin_substitution() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(2*x/sqrt(4-x^4), x)");
@@ -1168,13 +2052,22 @@ fn integrate_contract_polynomial_derivative_arcsin_surd_width_preserves_positive
     let input = "integrate(2*x/sqrt(3-x^4), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "arcsin(1/3 * 3^(1/2) * x^2)");
+    assert_eq!(result, "arcsin(x^2 / sqrt(3))");
     assert_eq!(
         required,
         vec!["3 - x^4 > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(2*x/sqrt(3-x^4), x), x) - 2*x/sqrt(3-x^4)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["3 - x^4 > 0".to_string()],
+        "nested surd-width arcsin substitution should preserve its positive radicand condition"
+    );
 }
 
 #[test]
@@ -1182,7 +2075,7 @@ fn integrate_contract_expanded_shifted_polynomial_arcsin_surd_width_dedupes_posi
     let input = "integrate((2*x+2)/sqrt(2 - x^4 - 4*x^3 - 6*x^2 - 4*x), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "arcsin(1/3 * 3^(1/2) * (x + 1)^2)");
+    assert_eq!(result, "arcsin((x + 1)^2 / sqrt(3))");
     assert_eq!(
         required,
         vec!["3 - (x + 1)^4 > 0".to_string()],
@@ -1196,7 +2089,7 @@ fn integrate_contract_factored_shifted_polynomial_arcsin_surd_width_verifies_pos
     let input = "integrate((2*x+2)/sqrt(3-(x^2+2*x+1)^2), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "arcsin(1/3 * 3^(1/2) * (x + 1)^2)");
+    assert_eq!(result, "arcsin((x + 1)^2 / sqrt(3))");
     assert_eq!(
         required,
         vec!["3 - (x + 1)^4 > 0".to_string()],
@@ -1239,7 +2132,7 @@ fn integrate_contract_polynomial_derivative_asinh_surd_width_remains_uncondition
     let input = "integrate(2*x/sqrt(3+x^4), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "asinh(1/3 * 3^(1/2) * x^2)");
+    assert_eq!(result, "asinh(x^2 / sqrt(3))");
     assert!(
         required.is_empty(),
         "unexpected required_conditions: {required:?}"
@@ -1405,6 +2298,80 @@ fn integrate_contract_polynomial_cosecant_squared_substitution_preserves_nonzero
     assert_eq!(
         required,
         vec!["sin(x^3) ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_polynomial_trig_derivative_substitution_preserves_compact_arg() {
+    let input = "integrate((4*x^3-2*x)*sin(x^4-x^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "-cos(x^4 - x^2)");
+    assert!(
+        required.is_empty(),
+        "polynomial sine substitution should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
+    let input = "integrate((4*x^3-2*x)*cos(x^4-x^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "sin(x^4 - x^2)");
+    assert!(
+        required.is_empty(),
+        "polynomial cosine substitution should not add required conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_expanded_polynomial_tangent_cotangent_preserves_domain() {
+    let input = "integrate((4*x^3-2*x)*tan(x^4-x^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "-ln(|cos(x^4 - x^2)|)");
+    assert_eq!(
+        required,
+        vec!["cos(x^4 - x^2) ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
+    let input = "integrate((4*x^3-2*x)*cot(x^4-x^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "ln(|sin(x^4 - x^2)|)");
+    assert_eq!(
+        required,
+        vec!["sin(x^4 - x^2) ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_linear_secant_uses_abs_log_and_nonzero_domain() {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(sec(2*x + 1), x)");
+
+    assert_eq!(result, "1/2 * ln(|(sin(2 * x + 1) + 1) / cos(2 * x + 1)|)");
+    assert_eq!(
+        required,
+        vec!["cos(2 * x + 1) ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_linear_cosecant_uses_abs_log_and_nonzero_domain() {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(csc(2*x + 1), x)");
+
+    assert_eq!(result, "1/2 * ln(|(cos(2 * x + 1) - 1) / sin(2 * x + 1)|)");
+    assert_eq!(
+        required,
+        vec!["sin(2 * x + 1) ≠ 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }

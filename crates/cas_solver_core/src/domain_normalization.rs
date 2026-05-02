@@ -322,7 +322,7 @@ fn compact_positive_power_gap_for_display(ctx: &mut Context, expr: ExprId) -> Op
 }
 
 fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId) -> ExprId {
-    if let Some((base, _)) = positive_integer_power_parts(ctx, expr) {
+    if let Some(base) = nonzero_integer_power_base_for_display(ctx, expr) {
         return normalize_nonzero_condition_expr_for_display(ctx, base);
     }
 
@@ -333,7 +333,7 @@ fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId)
     let normalized = normalize_condition_expr(ctx, expr);
     let normalized =
         primitive_nonzero_polynomial_for_display(ctx, normalized).unwrap_or(normalized);
-    if let Some((base, _)) = positive_integer_power_parts(ctx, normalized) {
+    if let Some(base) = nonzero_integer_power_base_for_display(ctx, normalized) {
         return normalize_nonzero_condition_expr_for_display(ctx, base);
     }
 
@@ -344,6 +344,17 @@ fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId)
     compact_nonzero_power_gap_for_display(ctx, expr)
         .or_else(|| compact_nonzero_power_gap_for_display(ctx, normalized))
         .unwrap_or(normalized)
+}
+
+fn nonzero_integer_power_base_for_display(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let Expr::Number(exp_num) = ctx.get(*exp) else {
+        return None;
+    };
+
+    (exp_num.is_integer() && !exp_num.is_zero()).then_some(*base)
 }
 
 fn primitive_nonzero_polynomial_for_display(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
@@ -2081,6 +2092,80 @@ fn reciprocal_sum_nonzero_is_dominated(
     has_left && has_right && has_sum
 }
 
+fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+    let expr = extract_abs_argument_view(ctx, expr).unwrap_or(expr);
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.builtin_of(*fn_id) == Some(builtin) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        _ => None,
+    }
+}
+
+fn trig_unit_offset_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    fn trig_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+        unary_builtin_arg(ctx, expr, BuiltinFn::Sin)
+            .map(|arg| (BuiltinFn::Sin, arg))
+            .or_else(|| {
+                unary_builtin_arg(ctx, expr, BuiltinFn::Cos).map(|arg| (BuiltinFn::Cos, arg))
+            })
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right) if is_unit_constant(ctx, *left) => trig_arg(ctx, *right),
+        Expr::Add(left, right) if is_unit_constant(ctx, *right) => trig_arg(ctx, *left),
+        Expr::Sub(left, right) if is_one_constant(ctx, *left) => trig_arg(ctx, *right),
+        Expr::Sub(left, right) if is_one_constant(ctx, *right) => trig_arg(ctx, *left),
+        _ => None,
+    }
+}
+
+fn is_unit_constant(ctx: &Context, expr: ExprId) -> bool {
+    as_rational_const(ctx, expr).is_some_and(|constant| constant.abs().is_one())
+}
+
+fn trig_perpendicular_nonzero_is_present(
+    ctx: &Context,
+    conditions: &[ImplicitCondition],
+    skip_index: usize,
+    offset_builtin: BuiltinFn,
+    arg: ExprId,
+) -> bool {
+    let perpendicular_builtin = match offset_builtin {
+        BuiltinFn::Sin => BuiltinFn::Cos,
+        BuiltinFn::Cos => BuiltinFn::Sin,
+        _ => return false,
+    };
+
+    conditions.iter().enumerate().any(|(idx, condition)| {
+        if idx == skip_index {
+            return false;
+        }
+        let ImplicitCondition::NonZero(other_expr) = condition else {
+            return false;
+        };
+        let Some(other_arg) = unary_builtin_arg(ctx, *other_expr, perpendicular_builtin) else {
+            return false;
+        };
+        positive_ordered_exprs_equivalent(ctx, arg, other_arg)
+    })
+}
+
+fn trig_unit_offset_nonzero_is_dominated(
+    ctx: &Context,
+    conditions: &[ImplicitCondition],
+    skip_index: usize,
+    expr: ExprId,
+) -> bool {
+    let Some((offset_builtin, arg)) = trig_unit_offset_arg(ctx, expr) else {
+        return false;
+    };
+
+    trig_perpendicular_nonzero_is_present(ctx, conditions, skip_index, offset_builtin, arg)
+}
+
 fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitCondition>) {
     let mut to_remove: Vec<usize> = Vec::new();
 
@@ -2190,6 +2275,11 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                 }
 
                 if reciprocal_sum_nonzero_is_dominated(ctx, conditions, i, *nz_expr) {
+                    to_remove.push(i);
+                    continue;
+                }
+
+                if trig_unit_offset_nonzero_is_dominated(ctx, conditions, i, *nz_expr) {
                     to_remove.push(i);
                     continue;
                 }
@@ -3149,6 +3239,65 @@ mod tests {
         assert!(normalized.iter().any(|cond| {
             conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_plus_1))
         }));
+    }
+
+    #[test]
+    fn trig_unit_offset_nonzero_is_dominated_by_perpendicular_nonzero_condition() {
+        let mut ctx = Context::new();
+        let sec_log_arg =
+            parse("abs((sin(2*x+1)+1)/cos(2*x+1))", &mut ctx).expect("parse sec log arg");
+        let cos_arg = parse("cos(2*x+1)", &mut ctx).expect("parse cos arg");
+        let csc_log_arg =
+            parse("abs((cos(2*x+1)-1)/sin(2*x+1))", &mut ctx).expect("parse csc log arg");
+        let sin_arg = parse("sin(2*x+1)", &mut ctx).expect("parse sin arg");
+
+        let sec_normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(sec_log_arg),
+                ImplicitCondition::NonZero(cos_arg),
+            ],
+        );
+        assert_eq!(sec_normalized, vec![ImplicitCondition::NonZero(cos_arg)]);
+
+        let csc_normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(csc_log_arg),
+                ImplicitCondition::NonZero(sin_arg),
+            ],
+        );
+        assert_eq!(csc_normalized, vec![ImplicitCondition::NonZero(sin_arg)]);
+
+        let cos_offset = parse("cos(1+2*x)-1", &mut ctx).expect("parse reordered cos offset");
+        let abs_sin_arg = parse("abs(sin(2*x+1))", &mut ctx).expect("parse abs sin");
+        let direct_csc_normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(cos_offset),
+                ImplicitCondition::NonZero(abs_sin_arg),
+            ],
+        );
+        assert_eq!(
+            direct_csc_normalized,
+            vec![ImplicitCondition::NonZero(sin_arg)]
+        );
+    }
+
+    #[test]
+    fn trig_unit_offset_nonzero_stays_when_perpendicular_condition_is_absent() {
+        let mut ctx = Context::new();
+        let sin_unit_offset = parse("sin(2*x+1)+1", &mut ctx).expect("parse sin offset");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[ImplicitCondition::NonZero(sin_unit_offset)],
+        );
+
+        assert_eq!(
+            normalized,
+            vec![ImplicitCondition::NonZero(sin_unit_offset)]
+        );
     }
 
     #[test]

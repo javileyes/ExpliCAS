@@ -14,7 +14,7 @@ use cas_math::polynomial::Polynomial;
 use cas_math::pow_preorder_support::{try_plan_sqrt_square_pow_rewrite, SqrtSquarePowRewriteKind};
 use cas_math::root_forms::extract_square_root_base;
 use num_rational::BigRational;
-use num_traits::{Signed, Zero};
+use num_traits::{One, Signed, Zero};
 use smallvec::SmallVec;
 
 fn diff_call_should_preserve_raw_target_for_direct_derivative(
@@ -26,6 +26,32 @@ fn diff_call_should_preserve_raw_target_for_direct_derivative(
         return false;
     }
     diff_target_should_preserve_raw_derivative_route(ctx, args[0], args[1])
+}
+
+fn integrate_call_should_preserve_raw_target_for_direct_integration(
+    ctx: &cas_ast::Context,
+    name: &str,
+    args: &[ExprId],
+) -> bool {
+    if name != "integrate" {
+        return false;
+    }
+
+    let var_name = match args.len() {
+        1 => "x",
+        2 => {
+            let Some(var_name) = diff_variable_name(ctx, args[1]) else {
+                return false;
+            };
+            var_name
+        }
+        _ => return false,
+    };
+
+    integrate_target_is_negative_denominator_polynomial_power_substitution(ctx, args[0], var_name)
+        || integrate_target_is_reciprocal_quotient_denominator_polynomial_power_substitution(
+            ctx, args[0], var_name,
+        )
 }
 
 fn diff_target_should_preserve_raw_derivative_route(
@@ -41,8 +67,11 @@ fn diff_target_should_preserve_raw_derivative_route(
         return false;
     };
     diff_target_is_affine_polynomial_times_direct_builtin_derivative_target(ctx, target, var_name)
+        || diff_target_is_affine_times_arctan_reciprocal_affine(ctx, target, var_name)
+        || diff_target_is_arctan_reciprocal_affine_by_parts_sum(ctx, target, var_name)
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || expr_is_positive_integer_power_of_low_degree_polynomial(ctx, target, var_name)
+        || diff_target_is_constant_scaled_positive_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_reciprocal_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_atanh_surd_polynomial(ctx, target, var_name)
 }
@@ -115,6 +144,173 @@ fn expr_is_direct_supported_builtin_derivative_call(ctx: &cas_ast::Context, expr
         )
 }
 
+fn peel_constant_divisor_for_diff_target(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> ExprId {
+    match ctx.get(target) {
+        Expr::Neg(inner) => peel_constant_divisor_for_diff_target(ctx, *inner, var_name),
+        Expr::Div(num, den) if !contains_named_var(ctx, *den, var_name) => {
+            peel_constant_divisor_for_diff_target(ctx, *num, var_name)
+        }
+        _ => target,
+    }
+}
+
+fn unit_reciprocal_base_for_diff_target(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Div(num, den) if matches!(ctx.get(*num), Expr::Number(n) if n.is_one()) => Some(*den),
+        Expr::Pow(base, exp)
+            if matches!(
+                ctx.get(*exp),
+                Expr::Number(n) if n.is_integer() && n.to_integer() == (-1).into()
+            ) =>
+        {
+            Some(*base)
+        }
+        _ => None,
+    }
+}
+
+fn expr_is_arctan_reciprocal_affine_call(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return false;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(cas_ast::BuiltinFn::Arctan | cas_ast::BuiltinFn::Atan)
+        )
+    {
+        return false;
+    }
+
+    let Some(base) = unit_reciprocal_base_for_diff_target(ctx, args[0]) else {
+        return false;
+    };
+    expr_is_affine_polynomial_in_named_variable(ctx, base, var_name)
+}
+
+fn diff_target_is_affine_times_arctan_reciprocal_affine(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let target = peel_constant_divisor_for_diff_target(ctx, target, var_name);
+    let factors = cas_math::expr_nary::mul_leaves(ctx, target);
+    if factors.is_empty() {
+        return false;
+    }
+
+    for (arctan_index, factor) in factors.iter().copied().enumerate() {
+        if !expr_is_arctan_reciprocal_affine_call(ctx, factor, var_name) {
+            continue;
+        }
+
+        let mut cofactor_poly = Polynomial::one(var_name.to_string());
+        for cofactor in factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != arctan_index).then_some(factor))
+        {
+            let Ok(poly) = Polynomial::from_expr(ctx, cofactor, var_name) else {
+                return false;
+            };
+            cofactor_poly = cofactor_poly.mul(&poly);
+            if cofactor_poly.degree() > 1 {
+                return false;
+            }
+        }
+
+        return !cofactor_poly.is_zero();
+    }
+
+    false
+}
+
+fn collect_additive_terms_for_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    terms: &mut Vec<ExprId>,
+) {
+    match ctx.get(expr) {
+        Expr::Add(left, right) | Expr::Sub(left, right) => {
+            collect_additive_terms_for_diff_target(ctx, *left, terms);
+            collect_additive_terms_for_diff_target(ctx, *right, terms);
+        }
+        Expr::Neg(inner) => collect_additive_terms_for_diff_target(ctx, *inner, terms),
+        _ => terms.push(expr),
+    }
+}
+
+fn constant_scaled_single_factor_for_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let expr = peel_constant_divisor_for_diff_target(ctx, expr, var_name);
+    let factors = cas_math::expr_nary::mul_leaves(ctx, expr);
+    let mut nonconstant = None;
+
+    for factor in factors {
+        if cas_ast::views::as_rational_const(ctx, factor, 4).is_some() {
+            continue;
+        }
+        if nonconstant.replace(factor).is_some() {
+            return None;
+        }
+    }
+
+    nonconstant
+}
+
+fn diff_target_term_is_quadratic_ln(ctx: &cas_ast::Context, term: ExprId, var_name: &str) -> bool {
+    let Some(term) = constant_scaled_single_factor_for_diff_target(ctx, term, var_name) else {
+        return false;
+    };
+    let Expr::Function(fn_id, args) = ctx.get(term) else {
+        return false;
+    };
+    if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(cas_ast::BuiltinFn::Ln) {
+        return false;
+    }
+
+    let Ok(poly) = Polynomial::from_expr(ctx, args[0], var_name) else {
+        return false;
+    };
+    !poly.is_zero() && poly.degree() <= 2
+}
+
+fn diff_target_is_arctan_reciprocal_affine_by_parts_sum(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let target = peel_constant_divisor_for_diff_target(ctx, target, var_name);
+    let mut terms = Vec::new();
+    collect_additive_terms_for_diff_target(ctx, target, &mut terms);
+    if terms.len() < 2 {
+        return false;
+    }
+
+    let has_ln_term = terms
+        .iter()
+        .copied()
+        .any(|term| diff_target_term_is_quadratic_ln(ctx, term, var_name));
+    let has_arctan_term = terms
+        .iter()
+        .copied()
+        .any(|term| diff_target_is_affine_times_arctan_reciprocal_affine(ctx, term, var_name));
+
+    has_ln_term && has_arctan_term
+}
+
 fn diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(
     ctx: &cas_ast::Context,
     target: ExprId,
@@ -176,6 +372,45 @@ fn diff_target_is_constant_scaled_reciprocal_polynomial_power(
     }
 
     matched_power
+}
+
+fn diff_target_is_constant_scaled_positive_polynomial_power(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let target = match ctx.get(target) {
+        Expr::Neg(inner) => *inner,
+        _ => target,
+    };
+
+    match ctx.get(target) {
+        Expr::Mul(_, _) => {
+            let mut matched_power = false;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, target) {
+                if expr_is_positive_integer_power_of_low_degree_polynomial(ctx, factor, var_name) {
+                    if matched_power {
+                        return false;
+                    }
+                    matched_power = true;
+                    continue;
+                }
+
+                let Some(scale) = cas_ast::views::as_rational_const(ctx, factor, 4) else {
+                    return false;
+                };
+                if scale.is_zero() {
+                    return false;
+                }
+            }
+            matched_power
+        }
+        Expr::Div(num, den) => {
+            cas_ast::views::as_rational_const(ctx, *den, 4).is_some_and(|scale| !scale.is_zero())
+                && expr_is_positive_integer_power_of_low_degree_polynomial(ctx, *num, var_name)
+        }
+        _ => false,
+    }
 }
 
 fn diff_target_is_constant_scaled_atanh_surd_polynomial(
@@ -325,6 +560,32 @@ fn expr_is_positive_integer_power_of_low_degree_polynomial(
         return false;
     };
     (1..=2).contains(&poly.degree())
+}
+
+fn integrate_target_is_negative_denominator_polynomial_power_substitution(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    cas_math::symbolic_integration_support::integrate_symbolic_is_bounded_negative_syntactic_denominator_power_substitution_target(
+        ctx,
+        target,
+        var_name,
+        8,
+    )
+}
+
+fn integrate_target_is_reciprocal_quotient_denominator_polynomial_power_substitution(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    cas_math::symbolic_integration_support::integrate_symbolic_is_bounded_reciprocal_quotient_denominator_power_substitution_target(
+        ctx,
+        target,
+        var_name,
+        8,
+    )
 }
 
 fn expr_is_positive_surd_times_positive_quadratic(
@@ -892,6 +1153,22 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 return self
                     .context
                     .add(Expr::Function(fn_id, vec![args[0], new_var]));
+            }
+            return id;
+        }
+
+        if integrate_call_should_preserve_raw_target_for_direct_integration(
+            self.context,
+            name,
+            &args,
+        ) {
+            if args.len() == 2 {
+                let new_var = self.transform_child_at(id, crate::step::PathStep::Arg(1), args[1]);
+                if new_var != args[1] {
+                    return self
+                        .context
+                        .add(Expr::Function(fn_id, vec![args[0], new_var]));
+                }
             }
             return id;
         }

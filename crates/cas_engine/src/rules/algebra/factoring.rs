@@ -13,6 +13,8 @@ use cas_math::factoring_support::{
 };
 use cas_math::polynomial::Polynomial;
 use num_bigint::BigInt;
+use num_rational::BigRational;
+use num_traits::{One, Signed, Zero};
 
 fn format_factor_common_integer_from_add_desc(gcd_int: &BigInt) -> String {
     format!("Factor out {}", gcd_int)
@@ -121,24 +123,131 @@ define_rule!(
     None,
     PhaseMask::POST,
     |ctx, expr, parent_ctx| {
-        let rewrite = try_rewrite_factor_common_integer_from_add_expr(ctx, expr).or_else(|| {
-            should_factor_variable_common_integer_in_compact_power_product(ctx, expr, parent_ctx)
-                .then(|| {
-                    try_rewrite_factor_common_integer_from_add_expr_with_policy(
-                        ctx,
-                        expr,
-                        FactorCommonIntegerFromAddPolicy {
-                            allow_variable_terms: true,
-                        },
-                    )
-                })
-                .flatten()
-        })?;
-        let rewritten = rewrite.rewritten;
-        let desc = format_factor_common_integer_from_add_desc(&rewrite.gcd_int);
-        Some(Rewrite::new(rewritten).desc(desc).local(expr, rewritten))
+        if let Some(rewrite) = try_rewrite_factor_common_integer_from_add_expr(ctx, expr) {
+            let rewritten = rewrite.rewritten;
+            let desc = format_factor_common_integer_from_add_desc(&rewrite.gcd_int);
+            return Some(Rewrite::new(rewritten).desc(desc).local(expr, rewritten));
+        }
+
+        if should_factor_variable_common_integer_in_compact_power_product(ctx, expr, parent_ctx) {
+            if let Some(rewrite) = try_rewrite_factor_common_integer_from_add_expr_with_policy(
+                ctx,
+                expr,
+                FactorCommonIntegerFromAddPolicy {
+                    allow_variable_terms: true,
+                },
+            ) {
+                let rewritten = rewrite.rewritten;
+                let desc = format_factor_common_integer_from_add_desc(&rewrite.gcd_int);
+                return Some(Rewrite::new(rewritten).desc(desc).local(expr, rewritten));
+            }
+        }
+
+        if should_factor_variable_common_integer_in_constant_reciprocal_denominator(
+            ctx, expr, parent_ctx,
+        ) {
+            if let Some((rewritten, gcd_int)) =
+                try_factor_low_degree_polynomial_integer_content(ctx, expr)
+            {
+                let desc = format_factor_common_integer_from_add_desc(&gcd_int);
+                return Some(Rewrite::new(rewritten).desc(desc).local(expr, rewritten));
+            }
+        }
+
+        None
     }
 );
+
+fn try_factor_low_degree_polynomial_integer_content(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, BigInt)> {
+    let variables = cas_ast::collect_variables(ctx, expr);
+    let var = variables.iter().next()?;
+    if variables.len() != 1 {
+        return None;
+    }
+
+    let poly = Polynomial::from_expr(ctx, expr, var.as_str()).ok()?;
+    if !(1..=2).contains(&poly.degree()) {
+        return None;
+    }
+
+    let gcd_int = polynomial_integer_content_gcd(&poly)?;
+    let divisor = BigRational::from_integer(gcd_int.clone());
+    let inner_poly = poly.div_scalar(&divisor);
+    let inner = inner_poly.to_expr(ctx);
+    let gcd_expr = ctx.add(cas_ast::Expr::Number(divisor));
+    let rewritten = ctx.add(cas_ast::Expr::Mul(gcd_expr, inner));
+    Some((rewritten, gcd_int))
+}
+
+fn polynomial_integer_content_gcd(poly: &Polynomial) -> Option<BigInt> {
+    let mut gcd = None;
+
+    for coeff in &poly.coeffs {
+        if coeff.is_zero() {
+            continue;
+        }
+        if !coeff.is_integer() {
+            return None;
+        }
+
+        let coeff_abs = coeff.to_integer().abs();
+        gcd = Some(match gcd {
+            Some(existing) => gcd_bigint(existing, coeff_abs),
+            None => coeff_abs,
+        });
+    }
+
+    gcd.filter(|value| *value > BigInt::one())
+}
+
+fn gcd_bigint(mut left: BigInt, mut right: BigInt) -> BigInt {
+    left = left.abs();
+    right = right.abs();
+    while !right.is_zero() {
+        let next = (&left % &right).abs();
+        left = right;
+        right = next;
+    }
+    left
+}
+
+fn should_factor_variable_common_integer_in_constant_reciprocal_denominator(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    if parent_ctx.is_expand_mode() || parent_ctx.is_auto_expand() || parent_ctx.is_solve_context() {
+        return false;
+    }
+
+    if !is_low_degree_univariate_polynomial(ctx, expr) {
+        return false;
+    }
+
+    parent_ctx.has_ancestor_matching(ctx, |c, ancestor| {
+        matches!(
+            c.get(ancestor),
+            cas_ast::Expr::Div(num, den)
+                if *den == expr && cas_ast::views::as_rational_const(c, *num, 8).is_some()
+        )
+    })
+}
+
+fn is_low_degree_univariate_polynomial(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    let variables = cas_ast::collect_variables(ctx, expr);
+    let Some(var) = variables.iter().next() else {
+        return false;
+    };
+
+    variables.len() == 1
+        && matches!(
+            Polynomial::from_expr(ctx, expr, var.as_str()),
+            Ok(poly) if (1..=2).contains(&poly.degree())
+        )
+}
 
 fn should_factor_variable_common_integer_in_compact_power_product(
     ctx: &cas_ast::Context,

@@ -976,7 +976,7 @@ mod tests {
             options.steps_mode = crate::options::StepsMode::Off;
             options.shared.context_mode = crate::options::ContextMode::Standard;
             options.shared.semantics.domain_mode = crate::DomainMode::Generic;
-            options.time_budget_ms = Some(200);
+            options.time_budget_ms = Some(500);
 
             let output = engine
                 .eval_stateless(

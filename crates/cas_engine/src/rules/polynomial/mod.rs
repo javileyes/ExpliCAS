@@ -22,7 +22,7 @@ pub use factoring::{ExtractCommonMulFactorRule, HeuristicExtractCommonFactorAddR
 use crate::define_rule;
 use crate::phase::PhaseMask;
 use crate::rule::Rewrite;
-use cas_ast::Expr;
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::annihilation_support::{
     should_rewrite_annihilation_to_zero_with_mode_flags, AnnihilationRewriteKind,
 };
@@ -30,6 +30,7 @@ use cas_math::cube_identity_support::try_rewrite_sum_diff_cubes_product_expr;
 use cas_math::distribution_division_support::try_rewrite_div_distribution_simplifying_expr;
 use cas_math::distribution_rule_support::try_rewrite_mul_distribution_legacy_expr;
 use cas_math::expr_destructure::as_mul;
+use std::cmp::Ordering;
 
 // ── Sum/Difference of Cubes Contraction Rule ────────────────────────────
 //
@@ -130,6 +131,10 @@ define_rule!(
             return None;
         }
 
+        if should_preserve_compact_asinh_self_product(ctx, l, r) {
+            return None;
+        }
+
         // Multiplicative distribution uses cas_math helper that preserves
         // historical guard ordering and semantics.
         let parent_mul_terms =
@@ -173,6 +178,26 @@ fn should_preserve_compact_power_product_with_factorable_integer_add(
         && binary_add_has_variable_common_integer_factor(ctx, right))
         || (side_has_compact_low_degree_polynomial_power(ctx, right)
             && binary_add_has_variable_common_integer_factor(ctx, left))
+}
+
+fn should_preserve_compact_asinh_self_product(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    asinh_arg(ctx, left).is_some_and(|arg| structurally_same(ctx, arg, right))
+        || asinh_arg(ctx, right).is_some_and(|arg| structurally_same(ctx, arg, left))
+}
+
+fn asinh_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(BuiltinFn::Asinh) {
+        Some(args[0])
+    } else {
+        None
+    }
+}
+
+fn structurally_same(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    cas_ast::ordering::compare_expr(ctx, left, right) == Ordering::Equal
 }
 
 fn side_has_compact_low_degree_polynomial_power(

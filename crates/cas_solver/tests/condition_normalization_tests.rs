@@ -773,3 +773,15 @@ fn test_positive_base_dominates_powered_nonzero_condition() {
 
     assert_eq!(rendered, vec!["y > 0"]);
 }
+
+#[test]
+fn test_nonzero_negative_integer_power_condition_displays_base() {
+    let mut ctx = Context::new();
+    let inverse_square =
+        cas_parser::parse("(x^2 + x - 1)^(-2)", &mut ctx).expect("parse inverse polynomial square");
+
+    let rendered =
+        render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(inverse_square)]);
+
+    assert_eq!(rendered, vec!["x^2 + x - 1 ≠ 0"]);
+}

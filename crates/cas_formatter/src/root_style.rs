@@ -54,7 +54,11 @@ pub fn detect_root_style(ctx: &Context, id: ExprId) -> RootStyle {
             Expr::Pow(base, exp) => {
                 // Check if exponent is fractional 1/n or k/n
                 if is_fractional_exponent(ctx, *exp) {
-                    exponent_score += 1;
+                    if is_internal_hold_wrapped(ctx, *base) {
+                        radical_score += 1;
+                    } else {
+                        exponent_score += 1;
+                    }
                 }
                 worklist.push(*base);
                 worklist.push(*exp);
@@ -119,6 +123,15 @@ fn is_fractional_exponent(ctx: &Context, exp: ExprId) -> bool {
 
         _ => false,
     }
+}
+
+fn is_internal_hold_wrapped(ctx: &Context, id: ExprId) -> bool {
+    matches!(ctx.get(id), Expr::Hold(_))
+        || matches!(
+            ctx.get(id),
+            Expr::Function(fn_id, args)
+                if args.len() == 1 && crate::hold::is_internal_hold_name(ctx.sym_name(*fn_id))
+        )
 }
 
 // ============================================================================
@@ -287,6 +300,19 @@ mod tests {
         let pow_half = ctx.add(Expr::Pow(two, half));
 
         assert_eq!(detect_root_style(&ctx, pow_half), RootStyle::Exponential);
+    }
+
+    #[test]
+    fn test_detect_internal_hold_pow_half_as_radical() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let radicand = ctx.add(Expr::Add(x, one));
+        let held_radicand = crate::hold::wrap_hold(&mut ctx, radicand);
+        let half = ctx.rational(1, 2);
+        let pow_half = ctx.add(Expr::Pow(held_radicand, half));
+
+        assert_eq!(detect_root_style(&ctx, pow_half), RootStyle::Radical);
     }
 
     #[test]

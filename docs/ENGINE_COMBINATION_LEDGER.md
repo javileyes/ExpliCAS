@@ -95,6 +95,42 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-02: Affine Reciprocal Arctan Antiderivative Verification Probe
+
+- area:
+  - calculus / integration verification / inverse-trig reciprocal residuals
+- status:
+  - `superseded`
+- attempted case:
+  - promote the shifted reciprocal inverse-trig family behind
+    `integrate(arccot(2*x+1), x)` / `integrate(arctan(1/(2*x+1)), x)`
+- local lane:
+  - CLI residual probe:
+    `cargo run -q -p cas_cli -- eval 'diff((2*x+1)*arctan(1/(2*x+1))/2 + 1/4*ln((2*x+1)^2+1), x) - arctan(1/(2*x+1))' --format json`
+  - companion public residual probe:
+    `cargo run -q -p cas_cli -- eval 'diff((2*x+1)*arccot(2*x+1)/2 + 1/4*ln((2*x+1)^2+1), x) - arccot(2*x+1)' --format json`
+- local result:
+  - the original probes preserved the expected `2*x + 1 ≠ 0` condition, but the
+    residual did not reduce to `0`
+  - the failed version emitted repeated `depth_overflow` warnings and took
+    about 4.7s before returning a nonzero residual expression
+  - superseded on 2026-05-02 by preserving the raw shifted reciprocal
+    `arctan` by-parts derivative target and recognizing the compact
+    `u/a*arctan(1/u) + ln(u^2+1)/(2a)` derivative form
+- global result:
+  - promoted as public integration coverage for
+    `integrate(arctan(1/(2*x+1)), x)` and `integrate(arccot(2*x+1), x)`
+  - antiderivative verification now reduces to `0` while preserving
+    `2*x + 1 ≠ 0`
+- best current explanation:
+  - the shifted reciprocal residual expands into polynomial rational forms
+    before recognizing the compact cancellation between the inverse-trig term
+    and the log derivative
+- plausible follow-up:
+  - no longer an open observe-only discovery; future work should generalize
+    additional affine orientations only through the same verified by-parts
+    path and public contract discipline
+
 ### 2026-05-01: Shifted Quadratic Arcsin Antiderivative Verification Probe
 
 - area:
@@ -8875,3 +8911,89 @@ The burden of proof stays the same:
   - the public product spelling now returns the same compact derivative as the
     quotient spelling, with no `depth_overflow` warnings and empty required
     conditions for the promoted representative
+
+## 2026-05-02 - Discovery observe-only: shifted bounded inverse-trig integration by parts needs public residual closure
+
+- area:
+  - calculus / integration / inverse trig / affine-shifted by-parts
+- status:
+  - `observe-only`
+- attempted case:
+  - broaden the retained scaled-variable rule from `integrate(arcsin(2*x), x)`
+    to shifted affine arguments such as `integrate(arcsin(2*x+1), x)`
+- local lane:
+  - `cargo run -q -p cas_cli -- --no-pretty eval 'diff(1/2*(2*x+1)*arcsin(2*x+1)+sqrt(-x^2-x), x) - arcsin(2*x+1)'`
+  - `cargo run -q -p cas_cli -- --no-pretty eval 'diff(integrate(arcsin(2*x+1), x), x) - arcsin(2*x+1)'`
+- local result:
+  - the manually parsed antiderivative simplifies to residual `0`
+  - the public nested `diff(integrate(...), x)` path leaves a nonzero residual
+    shape involving `(-x^2-x)^(-1/2)`, so the shifted affine case is not yet a
+    safe public promotion
+- reusable signature:
+  - shifted inverse-trig by-parts needs a bounded presentation/residual
+    normalization path for the exact result shape emitted by `integrate`
+- decision:
+  - retain only zero-offset rational scaling in this cycle
+  - defer shifted affine bounded inverse-trig integration until the public
+    nested verification closes without relying on a manually re-parsed formula
+- retained follow-up:
+  - a later cycle promoted the positive-slope shifted affine subset for
+    `arcsin/arccos(2*x+1)` using the scaled by-parts form
+    `1/a * (u*F(u) +/- sqrt(1-u^2))`
+  - the public nested residual now closes to `0` and carries the explicit
+    positive condition for the promoted representative
+  - negative-slope shifted affine inputs remain deferred because the local
+    probe can close mathematically while still emitting a depth-overflow signal
+  - a later cycle promoted the negative-slope shifted subset for
+    `integrate(arcsin/arccos(1-2*x), x)` using a factored by-parts radicand
+    `(4*(x-x^2))^(1/2)` and the explicit condition `x - x^2 > 0`
+  - `arccos(1-2*x)` also closes the public nested residual
+    `diff(integrate(...), x) - arccos(1-2*x)` to `0`
+  - a later cycle closed the remaining `arcsin(1-2*x)` public nested residual
+    by extracting additive square content from reciprocal square-root powers,
+    so `diff(integrate(arcsin(1-2*x), x), x) - arcsin(1-2*x)` now reduces to
+    `0` while preserving `x - x^2 > 0`
+
+## 2026-05-02 - Discovery observe-only: log-cube by-parts factored form still stresses residual closure
+
+- area:
+  - calculus / integration / logarithmic by-parts / post-diff simplification
+- status:
+  - `observe-only`
+- attempted case:
+  - promote `integrate(2*x*ln(x^2+1)^3, x)` using the compact factored
+    antiderivative `(x^2+1)*(ln(x^2+1)^3 - 3*ln(x^2+1)^2 + 6*ln(x^2+1) - 6)`
+- local lane:
+  - `cargo run -q -p cas_cli -- eval 'diff((x^2+1)*(ln(x^2+1)^3-3*ln(x^2+1)^2+6*ln(x^2+1)-6), x) - 2*x*ln(x^2+1)^3' --no-pretty`
+  - `cargo run -q -p cas_cli -- eval 'diff(integrate(2*x*ln(x^2+1)^3, x), x) - 2*x*ln(x^2+1)^3' --no-pretty`
+- local result:
+  - the factored antiderivative leaves a nonzero quotient/log-power residual
+    on the direct simplification path
+  - the retained implementation emits the same antiderivative as a bounded
+    sum of terms, which the staged contract verifier differentiates back to
+    the integrand
+- reusable signature:
+  - products shaped as `u * P(ln(u))` with degree-three log polynomials still
+    need a bounded quotient/log-power cancellation path if we want compact
+    factored antiderivatives and nested `diff(integrate(...), x)` residuals to
+    close directly
+- decision:
+  - retain the public `integrate` capability for the expanded by-parts form
+  - defer compact factored presentation and direct nested residual closure to
+    a future pre-calculus/simplification iteration
+- retained follow-up:
+  - a later cycle extended the bounded symbolic differentiator for
+    `u * P(ln(u))` from the degree-two by-parts pattern to the degree-three
+    pattern `ln(u)^3 - 3*ln(u)^2 + 6*ln(u) - 6`
+  - direct public `diff` now maps the compact factored antiderivative back to
+    `u' * ln(u)^3`, and `diff(integrate(2*x*ln(x^2+1)^3, x), x) -
+    2*x*ln(x^2+1)^3` reduces to `0`
+  - guardrails retained the change with `calculus_diff_contract` increasing
+    to `79` cases and global failed/timeouts remaining `0`
+- compact presentation follow-up:
+  - a later cycle changed the retained `integrate(2*x*ln(x^2+1)^3, x)`
+    presentation from the expanded by-parts sum to the factored form
+    `(ln(x^2+1)^3 - 3*ln(x^2+1)^2 + 6*ln(x^2+1) - 6) * (x^2 + 1)`
+  - the public nested residual still closes to `0`, so compact presentation is
+    now backed by the same differentiation verification instead of being an
+    answer-only shortcut

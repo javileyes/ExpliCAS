@@ -206,6 +206,52 @@ fn try_rewrite_extract_additive_common_square_factor_expr(
     Some(ctx.add(Expr::Mul(coeff_expr, sqrt_inner)))
 }
 
+fn try_rewrite_extract_additive_common_square_factor_reciprocal_root_expr(
+    ctx: &mut Context,
+    arg: ExprId,
+    exp_id: ExprId,
+) -> Option<ExprId> {
+    use crate::expr_nary::AddView;
+
+    let terms = AddView::from_expr(ctx, arg).terms;
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut gcd: Option<BigRational> = None;
+    for (term, _) in &terms {
+        let coef = get_integer_coefficient_for_root_add(ctx, *term)?;
+        let coef_abs = coef.abs();
+        if coef_abs.is_zero() {
+            continue;
+        }
+        gcd = Some(match gcd {
+            None => coef_abs,
+            Some(current) => gcd_rational(current, coef_abs),
+        });
+    }
+
+    let gcd = gcd?;
+    if !gcd.is_integer() || gcd <= BigRational::from_integer(1.into()) {
+        return None;
+    }
+    let sqrt_gcd = rational_sqrt(&gcd)?;
+    if !sqrt_gcd.is_integer() || sqrt_gcd <= BigRational::from_integer(1.into()) {
+        return None;
+    }
+
+    let mut new_terms = Vec::with_capacity(terms.len());
+    for (term, sign) in terms {
+        let divided = divide_root_add_term_by_rational(ctx, term, &gcd);
+        new_terms.push((divided, sign));
+    }
+    let inner = rebuild_add_from_signed_terms(ctx, &new_terms)?;
+    let reciprocal_coeff = BigRational::one() / sqrt_gcd;
+    let coeff_expr = ctx.add(Expr::Number(reciprocal_coeff));
+    let inner_root = ctx.add(Expr::Pow(inner, exp_id));
+    Some(ctx.add(Expr::Mul(coeff_expr, inner_root)))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DenestCubeQuadraticRewrite {
     pub rewritten: ExprId,
@@ -485,6 +531,16 @@ pub fn try_rewrite_extract_perfect_power_from_radicand_expr(
         }
         if let Some(rewritten) =
             try_rewrite_scaled_square_plus_unit_reciprocal_root(ctx, base, exp_id)
+        {
+            return Some(ExtractPerfectPowerFromRadicandRewrite {
+                rewritten,
+                kind: ExtractPerfectPowerFromRadicandKind::ExtractPerfectSquare,
+            });
+        }
+        if let Some(rewritten) =
+            try_rewrite_extract_additive_common_square_factor_reciprocal_root_expr(
+                ctx, base, exp_id,
+            )
         {
             return Some(ExtractPerfectPowerFromRadicandRewrite {
                 rewritten,
@@ -2855,6 +2911,32 @@ mod tests {
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
             std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn extract_perfect_power_from_radicand_rewrite_reciprocal_additive_square_factor_case() {
+        let mut ctx = Context::new();
+        let expr = parse("(4*x - 4*x^2)^(-1/2)", &mut ctx).expect("expr");
+        let rewrite =
+            try_rewrite_extract_perfect_power_from_radicand_expr(&mut ctx, expr).expect("rewrite");
+        let Expr::Mul(coeff, root) = ctx.get(rewrite.rewritten) else {
+            panic!("rewrite should extract a reciprocal square-root coefficient");
+        };
+        let (coeff, root) = (*coeff, *root);
+        assert_eq!(
+            eval_small_rat(&ctx, coeff),
+            Some(BigRational::new(1.into(), 2.into()))
+        );
+        let Expr::Pow(base, exp) = ctx.get(root) else {
+            panic!("rewrite should retain a reciprocal square-root factor");
+        };
+        let (base, exp) = (*base, *exp);
+        let expected_base = parse("x - x^2", &mut ctx).expect("expected base");
+        assert!(poly_eq(&ctx, base, expected_base));
+        assert_eq!(
+            eval_small_rat(&ctx, exp),
+            Some(BigRational::new((-1).into(), 2.into()))
         );
     }
 

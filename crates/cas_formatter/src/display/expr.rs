@@ -292,6 +292,19 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                     }
                 }
 
+                if is_internal_hold_wrapped(self.context, *b)
+                    && is_one_half_exponent(self.context, *e)
+                {
+                    return write!(
+                        f,
+                        "sqrt({})",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *b
+                        }
+                    );
+                }
+
                 // If base is 1, just display "1" (1^n = 1)
                 if let Expr::Number(n) = self.context.get(*b) {
                     if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
@@ -621,6 +634,22 @@ fn unwrap_internal_hold_for_display(ctx: &Context, id: ExprId) -> ExprId {
             _ => return current,
         }
     }
+}
+
+fn is_internal_hold_wrapped(ctx: &Context, id: ExprId) -> bool {
+    matches!(ctx.get(id), Expr::Hold(_))
+        || matches!(
+            ctx.get(id),
+            Expr::Function(fn_id, args)
+                if args.len() == 1 && crate::hold::is_internal_hold_name(ctx.sym_name(*fn_id))
+        )
+}
+
+fn is_one_half_exponent(ctx: &Context, id: ExprId) -> bool {
+    matches!(
+        ctx.get(id),
+        Expr::Number(n) if *n == BigRational::new(1.into(), 2.into())
+    )
 }
 
 #[derive(Clone, Copy)]

@@ -158,6 +158,17 @@ fn match_sqrt_one_plus_square_expr(ctx: &Context, expr: ExprId) -> Option<ExprId
     match_one_plus_square_expr(ctx, radicand)
 }
 
+fn match_reciprocal_sqrt_one_plus_square_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let exp_value = as_rational_const(ctx, *exp)?;
+    if *exp_value.numer() != (-1).into() || *exp_value.denom() != 2.into() {
+        return None;
+    }
+    match_one_plus_square_expr(ctx, *base)
+}
+
 fn collect_mul_factors(ctx: &Context, expr: ExprId, factors: &mut Vec<ExprId>) {
     match ctx.get(expr) {
         Expr::Mul(left, right) => {
@@ -196,6 +207,27 @@ fn match_var_times_sqrt_one_plus_square_expr(ctx: &Context, expr: ExprId, var: E
     saw_var && saw_sqrt
 }
 
+fn match_var_times_reciprocal_sqrt_one_plus_square_expr(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let mut factors = Vec::new();
+    collect_mul_factors(ctx, expr, &mut factors);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    for (candidate_var, candidate_root) in [(factors[0], factors[1]), (factors[1], factors[0])] {
+        if let Some(root_var) = match_reciprocal_sqrt_one_plus_square_expr(ctx, candidate_root) {
+            if compare_expr(ctx, candidate_var, root_var) == std::cmp::Ordering::Equal {
+                return Some(candidate_var);
+            }
+        }
+    }
+
+    None
+}
+
 fn build_sqrt_one_plus_square(ctx: &mut Context, x: ExprId) -> ExprId {
     let two = ctx.num(2);
     let x_squared = ctx.add(Expr::Pow(x, two));
@@ -229,6 +261,10 @@ fn build_tan_arcsin_projection(ctx: &mut Context, x: ExprId) -> ExprId {
 }
 
 fn try_match_safe_arcsin_sin_arctan_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(var) = match_var_times_reciprocal_sqrt_one_plus_square_expr(ctx, expr) {
+        return Some(var);
+    }
+
     if let Expr::Function(sin_name, sin_args) = ctx.get(expr) {
         let is_sin = ctx.is_builtin(*sin_name, BuiltinFn::Sin);
         if is_sin && sin_args.len() == 1 {
@@ -1443,6 +1479,20 @@ mod tests {
     fn inverse_trig_composition_plan_detects_normalized_safe_arcsin_sin_arctan_expansion() {
         let mut ctx = Context::new();
         let expr = parse("arcsin(x*sqrt(x^2 + 1)/(x^2 + 1))", &mut ctx).expect("parse");
+        let plan =
+            try_plan_inverse_trig_composition_expr(&mut ctx, expr, false, true).expect("plan");
+        let expected = parse("arctan(x)", &mut ctx).expect("expected");
+        assert_eq!(plan.kind, InverseTrigCompositionKind::ArcsinSinArctan);
+        assert_eq!(
+            cas_ast::ordering::compare_expr(&ctx, plan.rewritten, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn inverse_trig_composition_plan_detects_canonical_reciprocal_root_projection() {
+        let mut ctx = Context::new();
+        let expr = parse("arcsin(x*(x^2 + 1)^(-1/2))", &mut ctx).expect("parse");
         let plan =
             try_plan_inverse_trig_composition_expr(&mut ctx, expr, false, true).expect("plan");
         let expected = parse("arctan(x)", &mut ctx).expect("expected");

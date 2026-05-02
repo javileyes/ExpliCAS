@@ -61,6 +61,9 @@ Do not create entries for:
   - before fix: failed under the test's internal `50 ms` simplification budget
     (`finished in 0.13s`)
   - after fix: `0.19s` test time
+  - 2026-05-02 follow-up: focused repro still passed at `0.19s`, but full
+    `make ci` failed once under the `200 ms` internal debug budget after prior
+    suite load
 - classification:
   - `test verification pathology`
 - root cause hypothesis:
@@ -69,8 +72,8 @@ Do not create entries for:
     normal debug overhead into a false timeout warning
 - retained action:
   - raised only this sec/csc smoke test's internal time budget from `50 ms` to
-    `200 ms`; the test still asserts the exact result and required pole
-    condition
+    `200 ms`, then to `500 ms` after a full-suite debug CI false timeout; the
+    test still asserts the exact result and required pole condition
 - embedded corpus guardrail:
   - unchanged engine runtime path
 - status:

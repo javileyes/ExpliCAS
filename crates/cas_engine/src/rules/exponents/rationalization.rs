@@ -348,8 +348,9 @@ impl crate::rule::Rule for PowPowCancelReciprocalRule {
 // Ensures all representations of "1/√x" converge to a single canonical AST:
 //
 //   Pattern 1: 1/√x      = Div(1, Pow(x, 1/2))     → Pow(x, -1/2)
-//   Pattern 2: √x/x      = Div(Pow(x, 1/2), x)     → Pow(x, -1/2)
-//   Pattern 3: √(x^(-1)) = Pow(Pow(x,-1), 1/2)     → already handled by PowerPowerRule
+//   Pattern 2: f/√x      = Div(f, Pow(x, 1/2))     → f*Pow(x, -1/2)
+//   Pattern 3: √x/x      = Div(Pow(x, 1/2), x)     → Pow(x, -1/2)
+//   Pattern 4: √(x^(-1)) = Pow(Pow(x,-1), 1/2)     → already handled by PowerPowerRule
 //
 // GUARD: Only applied when the base contains symbols (variables).
 // Pure numeric bases (e.g., 1/√2) are left as-is to avoid creating Pow(2, -1/2)
@@ -381,8 +382,16 @@ impl crate::rule::Rule for ReciprocalSqrtCanonRule {
             Expr::Div(num, _) => {
                 if matches!(ctx.get(*num), Expr::Number(n) if n.is_one()) {
                     "1/√x = x^(-1/2)"
+                } else if let Expr::Div(num, den) = ctx.get(expr) {
+                    if cas_math::root_forms::extract_square_root_base(ctx, *num).is_some_and(
+                        |base| cas_ast::ordering::compare_expr(ctx, base, *den).is_eq(),
+                    ) {
+                        "√x/x = x^(-1/2)"
+                    } else {
+                        "f/√x = f·x^(-1/2)"
+                    }
                 } else {
-                    "√x/x = x^(-1/2)"
+                    "Canonicalize reciprocal sqrt"
                 }
             }
             _ => "Canonicalize reciprocal sqrt",
