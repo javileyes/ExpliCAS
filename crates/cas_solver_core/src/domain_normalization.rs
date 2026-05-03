@@ -1109,7 +1109,11 @@ fn nonzero_is_dominated_by_positive_condition(
                 normalized_positive,
                 normalized_expr,
             )
-            || positive_condition_contains_nonzero_factor(ctx, normalized_positive, normalized_expr)
+            || positive_polynomial_condition_contains_nonzero_factor(
+                ctx,
+                normalized_positive,
+                normalized_expr,
+            )
     })
 }
 
@@ -1222,24 +1226,70 @@ fn exprs_equivalent_up_to_nonzero_scalar(ctx: &Context, left: ExprId, right: Exp
     left_primitive == right_primitive || left_primitive == right_primitive.neg()
 }
 
-fn positive_condition_contains_nonzero_factor(
-    ctx: &mut Context,
+fn positive_polynomial_condition_contains_nonzero_factor(
+    ctx: &Context,
     positive_expr: ExprId,
     nonzero_expr: ExprId,
 ) -> bool {
-    let positive_factored = factor(ctx, positive_expr);
-    let nonzero_factored = factor(ctx, nonzero_expr);
-    let mut positive_factors = Vec::new();
-    let mut nonzero_factors = Vec::new();
-    collect_nonzero_atomic_factors(ctx, positive_factored, &mut positive_factors);
-    collect_nonzero_atomic_factors(ctx, nonzero_factored, &mut nonzero_factors);
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
 
-    !nonzero_factors.is_empty()
-        && nonzero_factors.iter().all(|nonzero_factor| {
-            positive_factors.iter().any(|positive_factor| {
-                exprs_equivalent_up_to_nonzero_scalar(ctx, *nonzero_factor, *positive_factor)
-            })
-        })
+    if !is_polynomial_condition_syntax(ctx, positive_expr)
+        || !is_polynomial_condition_syntax(ctx, nonzero_expr)
+    {
+        return false;
+    }
+
+    let budget = PolyBudget {
+        max_terms: 50,
+        max_total_degree: 20,
+        max_pow_exp: 10,
+    };
+    let (Ok(positive_poly), Ok(nonzero_poly)) = (
+        multipoly_from_expr(ctx, positive_expr, &budget),
+        multipoly_from_expr(ctx, nonzero_expr, &budget),
+    ) else {
+        return false;
+    };
+
+    if positive_poly.is_zero()
+        || positive_poly.is_constant()
+        || nonzero_poly.is_zero()
+        || nonzero_poly.is_constant()
+        || positive_poly.vars.len() != 1
+    {
+        return false;
+    }
+
+    let mut vars = positive_poly.vars.clone();
+    vars.extend(nonzero_poly.vars.iter().cloned());
+    vars.sort();
+    vars.dedup();
+
+    let positive_poly = positive_poly.align_vars(&vars);
+    let nonzero_poly = nonzero_poly.align_vars(&vars);
+    positive_poly.div_exact(&nonzero_poly).is_some()
+}
+
+fn is_polynomial_condition_syntax(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) => true,
+        Expr::Neg(inner) => is_polynomial_condition_syntax(ctx, *inner),
+        Expr::Add(left, right) | Expr::Sub(left, right) | Expr::Mul(left, right) => {
+            is_polynomial_condition_syntax(ctx, *left)
+                && is_polynomial_condition_syntax(ctx, *right)
+        }
+        Expr::Pow(base, exp) => {
+            let Expr::Number(power) = ctx.get(*exp) else {
+                return false;
+            };
+            power.is_integer() && !power.is_negative() && is_polynomial_condition_syntax(ctx, *base)
+        }
+        Expr::Div(_, _)
+        | Expr::Function(_, _)
+        | Expr::Matrix { .. }
+        | Expr::SessionRef(_)
+        | Expr::Hold(_) => false,
+    }
 }
 
 fn nonzero_is_dominated_by_nonzero_factors(
@@ -2271,6 +2321,9 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                         || positive_condition_dominates_affine_nonzero_offset(
                             ctx, *pos_expr, *nz_expr,
                         )
+                        || positive_polynomial_condition_contains_nonzero_factor(
+                            ctx, *pos_expr, *nz_expr,
+                        )
                     {
                         to_remove.push(i);
                         break;
@@ -3172,6 +3225,30 @@ mod tests {
             .collect();
 
         assert_eq!(rendered, vec!["-x^2 - x > 0".to_string()]);
+    }
+
+    #[test]
+    fn positive_factorable_gap_dominates_boundary_nonzeros() {
+        let mut ctx = Context::new();
+        let positive_base = parse("1 - x^2", &mut ctx).expect("parse positive base");
+        let left_boundary = parse("x - 1", &mut ctx).expect("parse left boundary");
+        let right_boundary = parse("x + 1", &mut ctx).expect("parse right boundary");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(left_boundary),
+                ImplicitCondition::NonZero(right_boundary),
+                ImplicitCondition::Positive(positive_base),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 1);
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(positive_base)
+        ));
     }
 
     #[test]

@@ -95,6 +95,37 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-03: Broad Positive-Factor Nonzero Dominance For Post-Calculus Sqrt Denominators
+
+- area:
+  - calculus / domain normalization / post-diff presentation
+- status:
+  - `rejected`
+- attempted case:
+  - allow `diff(arccos(x), x)` and `diff(arccos(2*x+1), x)` to render as
+    `-1 / sqrt(1 - x^2)` and `-1 / sqrt(-x^2 - x)` by dropping denominator
+    boundary guards dominated by the strict positive radicand
+- local lane:
+  - `cargo test -p cas_solver bounded_inverse_trig_diff_evaluates_with_strict_required_domain_conditions --test diff_step_contract_tests`
+  - `cargo test -p cas_solver affine_arcsin_diff_drops_scaled_nonnegative_domain_shadow --test diff_step_contract_tests`
+- local win:
+  - the broad factor-containment dominance removed the redundant `x - 1 != 0`,
+    `x + 1 != 0`, `x != 0`, and `x + 1 != 0` guards for the targeted
+    `arccos` presentation probes
+- global result:
+  - rejected after
+    `cargo test -p cas_solver_core domain_normalization --lib` failed
+    `atomic_positive_factors_dominate_composite_log_argument_positive_condition`
+  - the retained version is narrower: only one-variable polynomial positive
+    conditions may dominate nonzero polynomial factors
+- why it regressed globally:
+  - a positive composite quotient can be removed later as redundant under
+    separate positive factors; using that transient condition to remove an
+    atomic `NonZero` guard loses a required displayed assumption
+- what could make it combinable later:
+  - dependency-aware dominance ordering, or a proof tag that the dominating
+    positive condition is retained in the final displayed condition set
+
 ### 2026-05-02: Affine Reciprocal Arctan Antiderivative Verification Probe
 
 - area:

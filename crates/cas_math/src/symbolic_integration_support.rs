@@ -1373,11 +1373,8 @@ fn acosh_affine_antiderivative(ctx: &mut Context, arg: ExprId, var: &str) -> Opt
     let acosh_arg = ctx.call_builtin(BuiltinFn::Acosh, vec![arg]);
     let leading_term = mul2_raw(ctx, arg, acosh_arg);
 
-    let (left, right) = if coeff.is_negative() {
-        acosh_polynomial_radicands(ctx, arg, var).unwrap_or_else(|| acosh_radicands(ctx, arg))
-    } else {
-        acosh_radicands(ctx, arg)
-    };
+    let (left, right) =
+        acosh_polynomial_radicands(ctx, arg, var).unwrap_or_else(|| acosh_radicands(ctx, arg));
     let sqrt_left = ctx.call_builtin(BuiltinFn::Sqrt, vec![left]);
     let sqrt_right = ctx.call_builtin(BuiltinFn::Sqrt, vec![right]);
     let sqrt_product = mul2_raw(ctx, sqrt_left, sqrt_right);
@@ -5686,7 +5683,7 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "1/2 * ((2 * x + 1) * acosh(2 * x + 1) - sqrt(2 * x + 1 - 1) * sqrt(2 * x + 1 + 1))"
+            "1/2 * ((2 * x + 1) * acosh(2 * x + 1) - sqrt(2 * x) * sqrt(2 * x + 2))"
         );
 
         let expr = parse("acosh(1 - 2*x)", &mut ctx).expect("parse");

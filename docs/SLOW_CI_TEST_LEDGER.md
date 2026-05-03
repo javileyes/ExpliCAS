@@ -57,8 +57,14 @@ Do not create entries for:
   - integration contract antiderivative verification
 - repro:
   - `cargo test -p cas_cli --test integrate_contract_tests integrate_contract_supported_antiderivatives_verify_by_differentiation -- --exact --nocapture`
+  - exhaustive manual sweep:
+    `cargo test -p cas_cli --test integrate_contract_tests integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive -- --exact --ignored --nocapture`
 - latest measured time:
-  - `65.24s` test time (`real 65.34s`)
+  - before harness split: `68.44s` test time (`real 72.34s`)
+  - after harness split: default representative smoke `2.00s` test time
+    (`real 2.85s`)
+  - exhaustive manual sweep remains available and passed at `68.73s` test
+    time (`real 68.82s`)
 - classification:
   - `test verification pathology`
 - root cause hypothesis:
@@ -67,15 +73,15 @@ Do not create entries for:
     the single test remains broad and debug-slow even when the individual
     public integration cases are passing
 - retained action:
-  - none for the slow path in this CI repair; the functional CI failure was a
-    duplicate required-condition assertion and was fixed in the integration
-    condition publisher
-  - pending follow-up: split this broad verification table into smaller
-    representative debug shards or move heavyweight rows to a slower profile
+  - split the broad debug-CI verification into a representative default smoke
+    across the supported integration families and an explicit ignored
+    exhaustive sweep for manual/deeper validation
+  - kept the verification mechanism unchanged: every retained smoke row still
+    verifies the primitive by differentiating it and simplifying the residual
 - embedded corpus guardrail:
   - unchanged engine runtime path for the slow-test classification
 - status:
-  - `open`
+  - `fixed in test`
 
 ### 2026-05-01: `eval_simplify_steps_off_diff_shifted_linear_times_sec_csc_avoids_timeout`
 

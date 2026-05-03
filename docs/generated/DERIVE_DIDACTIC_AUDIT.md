@@ -2524,6 +2524,7 @@ Steps (Aggressive Mode):
 Result: ln(x / y)
 ℹ️ Requires:
   • x / y > 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2621,6 +2622,7 @@ Steps (Aggressive Mode):
 Result: log(2, x / y)
 ℹ️ Requires:
   • x / y > 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2718,7 +2720,9 @@ Steps (Aggressive Mode):
 Result: log(b, x^(2) * y^(3) / (t * z^(2)))
 ℹ️ Requires:
   • b > 0
+  • t ≠ 0
   • x^2 * y^3 / (t * z^2) > 0
+  • z ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2816,7 +2820,9 @@ Steps (Aggressive Mode):
    After: ln(y * x^2 / (t * z))
 Result: ln(y * x^(2) / (t * z))
 ℹ️ Requires:
+  • t ≠ 0
   • y * x^2 / (t * z) > 0
+  • z ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2849,6 +2855,7 @@ Steps (Aggressive Mode):
 Result: ln(x * y / z)
 ℹ️ Requires:
   • x * y / z > 0
+  • z ≠ 0
 ```
 
 ### Web / JSON Steps

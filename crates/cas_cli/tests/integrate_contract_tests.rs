@@ -177,6 +177,31 @@ fn evaluated_integral_step_rules(input: &str) -> Vec<String> {
 fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
     for input in [
         "integrate(2*x + 3, x)",
+        "integrate(sin(2*x), x)",
+        "integrate((2*x+3)*exp(2*x+1), x)",
+        "integrate(2*x*exp(x^2), x)",
+        "integrate(sinh(2*x + 1)/cosh(2*x + 1), x)",
+        "integrate(1/cosh(2*x + 1)^2, x)",
+        "integrate(ln(2*x+1), x)",
+        "integrate(1/(2*x + 1), x)",
+        "integrate(1/(x^2+1), x)",
+        "integrate(arcsin(2*x+1), x)",
+        "integrate(asinh(2*x+1), x)",
+        "integrate(1/(x^2-1), x)",
+        "integrate((2*x+1)/(x^2+x-1)^3, x)",
+        "integrate(2*x/sqrt(4-x^4), x)",
+        "integrate(sec(2*x + 1)^2, x)",
+        "integrate(sec(2*x + 1)*tan(2*x + 1), x)",
+    ] {
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+#[ignore = "exhaustive debug verification is intentionally slower; CI runs the representative smoke test"]
+fn integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive() {
+    for input in [
+        "integrate(2*x + 3, x)",
         "integrate((3*x)^2, x)",
         "integrate(sin(2*x), x)",
         "integrate(-(sin(x)), x)",
@@ -1356,7 +1381,7 @@ fn integrate_contract_acosh_affine_by_parts_preserves_real_radical_domain() {
         evaluated_integral_with_required_conditions("integrate(acosh(2*x+1), x)");
     assert_eq!(
         result,
-        "1/2 * ((2 * x + 1) * acosh(2 * x + 1) - sqrt(2 * x + 1 - 1) * sqrt(2 * x + 1 + 1))"
+        "1/2 * ((2 * x + 1) * acosh(2 * x + 1) - sqrt(2 * x) * sqrt(2 * x + 2))"
     );
     assert_eq!(
         required,
