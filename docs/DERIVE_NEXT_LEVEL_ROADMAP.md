@@ -163,6 +163,10 @@ Even so, calculus work should inherit the same didactic standards:
   mathematical reason the result changes
 - simplification after a calculus rule should reuse engine steps where possible
   instead of inventing calculus-only presentation shortcuts
+- post-calculus presentation may improve the final public form of a correct
+  derivative, limit, or integral, but it should be treated as display-facing
+  calculus cleanup, not as a hidden derive route or a substitute for explaining
+  the mathematical transformation
 - broken highlights or magical substeps in calculus output should be treated as
   real didactic defects, not cosmetic noise
 
@@ -170,6 +174,9 @@ The bridge also works the other way:
 
 - calculus output often exposes algebraic target forms that `derive` should
   eventually explain
+- post-calculus presentation output can create a derive shadow case only when
+  the displayed form reveals a reusable algebraic transition, not merely because
+  two strings look different
 - unsupported `derive` cases can expose simplification gaps that block clean
   derivative or integral results
 - a calculus family should add a derive shadow case only when it reveals a

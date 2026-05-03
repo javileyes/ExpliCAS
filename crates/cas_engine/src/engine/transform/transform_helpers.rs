@@ -70,6 +70,7 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_affine_times_arctan_reciprocal_affine(ctx, target, var_name)
         || diff_target_is_arctan_reciprocal_affine_by_parts_sum(ctx, target, var_name)
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
+        || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
         || expr_is_positive_integer_power_of_low_degree_polynomial(ctx, target, var_name)
         || diff_target_is_constant_scaled_positive_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_reciprocal_polynomial_power(ctx, target, var_name)
@@ -142,6 +143,43 @@ fn expr_is_direct_supported_builtin_derivative_call(ctx: &cas_ast::Context, expr
                     | cas_ast::BuiltinFn::Tanh
             )
         )
+}
+
+fn diff_target_is_reciprocal_positive_shifted_sqrt(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Div(num, den) = ctx.get(target) else {
+        return false;
+    };
+    if cas_ast::views::as_rational_const(ctx, *num, 8).is_none_or(|value| value.is_zero()) {
+        return false;
+    }
+
+    let Some((radicand, shift)) = shifted_sqrt_positive_constant_parts(ctx, *den) else {
+        return false;
+    };
+    shift.is_positive() && contains_named_var(ctx, radicand, var_name)
+}
+
+fn shifted_sqrt_positive_constant_parts(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, BigRational)> {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return None;
+    };
+
+    let left_sqrt_base = extract_square_root_base(ctx, *left);
+    let right_sqrt_base = extract_square_root_base(ctx, *right);
+    let (radicand, shift_expr) = match (left_sqrt_base, right_sqrt_base) {
+        (Some(radicand), None) => (radicand, *right),
+        (None, Some(radicand)) => (radicand, *left),
+        _ => return None,
+    };
+
+    cas_ast::views::as_rational_const(ctx, shift_expr, 8).map(|shift| (radicand, shift))
 }
 
 fn peel_constant_divisor_for_diff_target(

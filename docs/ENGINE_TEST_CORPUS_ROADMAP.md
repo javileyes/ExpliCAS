@@ -719,6 +719,8 @@ Calculus corpus work should test two things at once:
 - the calculus command returns the right result or residual
 - the pre-calculus core can simplify, explain, and validate the intermediate
   and final expressions
+- the final public calculus form is readable when the mathematical capability
+  already exists, without forcing a global canonical simplification preference
 
 ### Generation Pattern
 
@@ -730,6 +732,9 @@ Differentiation examples:
 - product, quotient, and chain rule cases
 - `exp`, `ln`, trig, and inverse-trig derivatives where policy is clear
 - derivative results that require simplification but should not become magical
+- post-diff presentation rows where the internal result is correct but awkward,
+  such as `diff(arctan(sqrt(x)), x)` preferring a final reciprocal-root form
+  over `x^(-1/2)/(2*x + 2)`
 
 Limit examples:
 
@@ -745,6 +750,8 @@ Integration examples:
 - simple linear substitution only when the substitution trace is explicit
 - antiderivatives that can be checked by differentiating within supported
   families
+- post-integral presentation rows where a verified antiderivative should keep a
+  compact reciprocal denominator instead of expanding it for display
 
 ### Why It Matters
 
@@ -756,6 +763,8 @@ It also exposes gaps that ordinary simplification corpora can miss:
 - cancellation and factoring needed after product or quotient rules
 - domain assumptions around `ln`, `sqrt`, inverse trig, and division
 - integration constants and unsupported residual behavior
+- presentation-only defects where the result is correct but less product-ready
+  than a domain-equivalent compact form
 - step traces that are correct but too magical for educational use
 
 ### Promotion Policy
@@ -764,6 +773,8 @@ Promote calculus cases conservatively:
 
 - use unit tests for a narrow calculus rule or family
 - use CLI/API contract tests when public command behavior changes
+- use presentation contract tests when the retained value is only the final
+  calculus display form
 - use didactic/highlight tests when the visible trace is the retained value
 - use pressure or generated discovery for large composed calculus expressions
 - promote to live guardrails only when the family is stable, representative,
@@ -771,6 +782,11 @@ Promote calculus cases conservatively:
 
 Do not promote a large calculus expression just because it found a bug.
 Promote the smallest representative that preserves the lesson.
+
+Presentation cases should remain especially small. They are valuable when they
+establish a reusable preference such as reciprocal-root display, compact
+denominator factoring, or avoiding post-integration denominator expansion. They
+are not valuable when they only encode one string-shaped anecdote.
 
 ### Why This Has High ROI
 
@@ -889,6 +905,8 @@ A corpus is worth keeping only if it improves at least one of:
 - semantic soundness
 - convergence stability
 - didactic path quality
+- post-calculus presentation quality for supported `diff`, `limit`, or
+  `integrate` results
 - performance predictability
 - derive bridgeability when the same identity has a meaningful target form
 - calculus bridgeability when a pre-calculus family can become a bounded

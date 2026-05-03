@@ -39,7 +39,7 @@ It is a pressure generator for the pre-calculus core:
 - integration stresses pattern recognition, substitution traces, constant
   factors, inverse differentiation, and conservative non-goal handling
 
-Every calculus improvement should answer four questions before promotion:
+Every calculus improvement should answer five questions before promotion:
 
 1. What user-visible calculus capability improves?
 2. What pre-calculus capability does it reuse, expose, or harden?
@@ -47,6 +47,8 @@ Every calculus improvement should answer four questions before promotion:
    deliberately avoided?
 4. What didactic trace should the user see, and where must the engine avoid a
    magical jump?
+5. What final presentation form should the user see, and is that form distinct
+   from the internal canonical form used for matching, equivalence, and runtime?
 
 If a calculus candidate does not improve a real calculus surface or produce
 useful pressure on the pre-calculus core, it is probably not high ROI.
@@ -59,6 +61,9 @@ when the retained value is public calculus capability:
 - `diff` / symbolic differentiation
 - `limit` / conservative limit solving
 - `integrate` / conservative table or substitution integration
+- post-calculus presentation for a `diff`, `limit`, or `integrate` result when
+  the mathematical capability already exists but the public form is needlessly
+  awkward
 - later: series, asymptotics, and related calculus commands
 
 Use another class when the retained value is not calculus itself:
@@ -143,7 +148,7 @@ Non-goals:
 - no fake antiderivatives without verification or clear unsupported fallback
 - no hiding the integration constant policy
 
-### Phase 4. Calculus And Didactic Quality
+### Phase 4. Post-Calculus Presentation And Didactic Quality
 
 Calculus commands must not become "answer-only" shortcuts when the rest of the
 engine is becoming increasingly explainable.
@@ -160,6 +165,46 @@ For nontrivial calculus results, prefer visible steps such as:
 Avoid noisy traces, but also avoid magical one-step transformations when the
 user would naturally expect substeps.
 
+Post-calculus presentation is a separate concern from canonical simplification.
+
+The internal canonical form should remain optimized for:
+
+- matching
+- equivalence
+- deterministic normal-form convergence
+- runtime and budget behavior
+
+The public post-calculus form should be optimized for:
+
+- mathematical readability
+- compactness that preserves meaningful structure
+- domain-safe notation choices
+- compatibility with didactic steps and highlights
+
+Do not make global simplification rules just to make one calculus answer look
+prettier. A presentation improvement is valid only when it is local to a
+calculus result, preserves semantic conditions, and can be verified by
+equivalence or by differentiating an antiderivative when the source command is
+`integrate`.
+
+Good early presentation targets:
+
+- reciprocal fractional powers after differentiation:
+  - internal acceptable form: `x^(-1/2)/(2*x + 2)`
+  - preferred post-diff form: `1/(2*sqrt(x)*(x + 1))`
+- denominator content that should remain factored when it improves readability:
+  - prefer `2*(x + 1)` over `2*x + 2` in a final reciprocal denominator when
+    the factored form is compact and domain-equivalent
+- square-root notation for simple real-domain half powers when the required
+  conditions are explicit
+- preservation of compact antiderivative denominators after verification by
+  differentiation
+
+Presentation work must still keep required conditions visible. For example,
+`diff(arctan(sqrt(x)), x)` may prefer
+`1/(2*sqrt(x)*(x + 1))`, but the derivative path must keep the real-domain
+condition needed for the square-root derivative, such as `x > 0`.
+
 ### Phase 5. Series And Asymptotics Later
 
 Series and asymptotics should wait until differentiation, limits, and the
@@ -175,6 +220,7 @@ calculus_roi ~= calculus_value
               + precalculus_reuse_value
               + domain_safety_value
               + didactic_value
+              + presentation_value
               + corpus_reuse_value
               - runtime_risk
               - unsoundness_risk
@@ -192,6 +238,10 @@ Interpretation:
     them
 - `didactic_value`
   - the trace becomes more teachable, less magical, or easier to audit
+- `presentation_value`
+  - the final public calculus result becomes materially easier to read without
+    changing the internal canonical route, hiding domain conditions, or adding
+    broad simplifier cost
 - `corpus_reuse_value`
   - the retained case can feed both calculus and pre-calculus guardrails
 - `runtime_risk`
@@ -218,6 +268,8 @@ Good calculus corpus rows are small but structurally informative:
 
 - `diff((x^2+1)^3, x)` exercises chain rule and power simplification
 - `diff(x*ln(x), x)` exercises product rule and log domain awareness
+- `diff(arctan(sqrt(x)), x)` exercises post-diff reciprocal-root
+  presentation and domain retention
 - `limit((x^2-1)/(x-1), x, 1)` exercises cancellation and finite point policy
 - `integrate(2*x*exp(x^2), x)` exercises substitution only if that route is
   explicitly supported
@@ -234,6 +286,7 @@ Typical calculus validation:
 - touched unit tests for differentiation, limits, or integration
 - CLI/API contract tests when command behavior changes
 - didactic audit or snapshot tests when steps/highlights change
+- presentation contract tests when only the final calculus display form changes
 - `make engine-fast` when the change interacts with simplification
 - `make engine-scorecard` when a public calculus change depends on broad
   pre-calculus behavior
@@ -252,10 +305,13 @@ Reject or defer a calculus candidate when it:
 - returns a result by assuming a hidden domain condition
 - broadens the simplifier in a way that slows embedded traffic without a clear
   retained win
+- changes the internal canonical form only to satisfy final display taste
 - implements a one-off calculus shortcut that cannot be explained or tested as
   a family
 - hides unsupported integration or limit work behind a generic simplify result
 - produces a correct answer with misleading steps or broken highlights
+- produces a prettier answer by expanding, cancelling, or refactoring across a
+  domain boundary that is not represented in required conditions
 - requires unbounded search, broad pattern matching, or non-deterministic route
   choice
 

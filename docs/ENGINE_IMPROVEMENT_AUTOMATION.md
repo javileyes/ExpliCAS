@@ -148,7 +148,7 @@ At minimum, each candidate should be evaluated across these lenses:
 - `calculus ROI`
   - whether a calculus slice turns existing pre-calculus strength into public
     capability and exposes reusable pressure back onto simplification,
-    equivalence, domains, or didactic traces
+    equivalence, domains, didactic traces, or final result presentation
 - `promotion ROI`
   - whether the result is stable enough to become a lasting guardrail or corpus
     promotion
@@ -172,11 +172,20 @@ The strategy is to start calculus now, but only as disciplined vertical slices:
 - series/asymptotics later, after limits and differentiation have stronger
   domain and trace support
 
+Post-calculus presentation is part of this strategy, but it is not a license to
+make the global simplifier prettier. The selector should treat presentation as a
+calculus concern only when a supported `diff`, `limit`, or `integrate` result is
+already mathematically correct and the retained value is a safer, clearer public
+form. Internal canonical forms may remain optimized for matching, equivalence,
+and runtime.
+
 This does not reduce the importance of pre-calculus. It gives pre-calculus a
 new source of useful pressure:
 
 - derivative outputs expose missing simplification, factoring, cancellation, and
   step-quality gaps
+- derivative outputs expose awkward but correct final forms that may deserve a
+  post-calculus presentation pass instead of a broad canonical rewrite
 - limit cases expose safe pre-simplification and domain assumptions
 - integration cases expose inverse-differentiation, substitution, and constant
   policy gaps
@@ -187,6 +196,8 @@ The selector should prefer calculus candidates when all of these are true:
 - the implementation reuses the existing symbolic engine rather than bypassing
   it with an isolated shortcut
 - the domain/branch/constant assumptions are explicit
+- any presentation-only change is local to calculus output, preserves required
+  conditions, and does not alter the internal canonical route
 - the case can be validated with a narrow unit or contract test plus the needed
   pre-calculus guardrails
 
@@ -196,6 +207,8 @@ The selector should defer calculus candidates when they require:
 - hidden domain assumptions
 - broad simplifier changes with unclear embedded runtime cost
 - answer-only behavior that would be a magical step in the UI
+- pretty-printing that changes semantics, hides conditions, or turns into a
+  global simplification preference without a calculus contract
 - speculative branch behavior not covered by policy
 
 If a calculus probe reveals that the real blocker is a reusable algebraic,
@@ -354,6 +367,7 @@ engine_feedback_check:
 calculus_scope:
 precalculus_dependency:
 domain_safety_check:
+presentation_check:
 retain_if:
 reject_if:
 retain_or_reject_reason:
@@ -385,6 +399,10 @@ Minimum expectations:
 - `domain_safety_check`
   - for calculus work: how domain, branch, infinity, or integration-constant
     assumptions are represented or explicitly avoided
+- `presentation_check`
+  - for calculus work: whether the final public form is unchanged, improved by
+    a local post-calculus presentation pass, or deliberately deferred because
+    the internal canonical form is preferable for now
 - `retain_or_reject_reason`
   - the shortest defensible explanation after validation
 
@@ -585,6 +603,8 @@ be diagnostic rather than gating:
 - unsupported/residual counts by calculus family
 - calculus cases whose final result is correct but depends on a weak
   pre-calculus simplification route
+- calculus cases whose final result is correct but presentation-poor, especially
+  reciprocal fractional powers, avoidable denominator expansion, and root forms
 - didactic or highlight defects in calculus traces
 - which calculus probes were reclassified as pre-calculus coverage,
   robustness, or observability work

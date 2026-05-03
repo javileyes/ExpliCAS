@@ -785,7 +785,7 @@ fn positive_target_from_nonzero_and_nonnegative(
     }
 
     if let Some(nonzero_base) = extract_sqrt_like_base(ctx, nonzero_core) {
-        if exprs_equivalent(ctx, nonzero_base, nonnegative_expr) {
+        if positive_ordered_exprs_equivalent(ctx, nonzero_base, nonnegative_expr) {
             return Some(nonnegative_expr);
         }
     }
@@ -1104,8 +1104,93 @@ fn nonzero_is_dominated_by_positive_condition(
         };
         let normalized_positive = normalize_condition_expr_preserve_sign(ctx, *pos_expr);
         exprs_equivalent_up_to_nonzero_scalar(ctx, normalized_expr, normalized_positive)
+            || positive_condition_dominates_affine_nonzero_offset(
+                ctx,
+                normalized_positive,
+                normalized_expr,
+            )
             || positive_condition_contains_nonzero_factor(ctx, normalized_positive, normalized_expr)
     })
+}
+
+fn positive_condition_dominates_affine_nonzero_offset(
+    ctx: &Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
+
+    let budget = PolyBudget {
+        max_terms: 16,
+        max_total_degree: 1,
+        max_pow_exp: 1,
+    };
+    let (Ok(positive_poly), Ok(nonzero_poly)) = (
+        multipoly_from_expr(ctx, positive_expr, &budget),
+        multipoly_from_expr(ctx, nonzero_expr, &budget),
+    ) else {
+        return false;
+    };
+    if positive_poly.vars != nonzero_poly.vars {
+        return false;
+    }
+
+    let Some(scale) = nonzero_nonconstant_scale(&positive_poly, &nonzero_poly) else {
+        return false;
+    };
+    let scaled_positive = positive_poly.mul_scalar(&scale);
+    let Ok(offset_poly) = nonzero_poly.sub(&scaled_positive) else {
+        return false;
+    };
+
+    offset_poly.constant_value().is_some_and(|offset| {
+        (scale.is_positive() && offset >= BigRational::zero())
+            || (scale.is_negative() && offset <= BigRational::zero())
+    })
+}
+
+fn nonzero_nonconstant_scale(source: &MultiPoly, target: &MultiPoly) -> Option<BigRational> {
+    let mut scale: Option<BigRational> = None;
+    let mut saw_nonconstant = false;
+
+    for (source_coeff, source_mono) in &source.terms {
+        if source_mono.iter().all(|exp| *exp == 0) {
+            continue;
+        }
+        saw_nonconstant = true;
+        let (target_coeff, _) = target
+            .terms
+            .iter()
+            .find(|(_, target_mono)| target_mono == source_mono)?;
+        let term_scale = target_coeff / source_coeff;
+        if term_scale.is_zero() {
+            return None;
+        }
+        match &scale {
+            Some(existing) if existing != &term_scale => return None,
+            Some(_) => {}
+            None => scale = Some(term_scale),
+        }
+    }
+
+    if !saw_nonconstant {
+        return None;
+    }
+
+    for (_, target_mono) in &target.terms {
+        if target_mono.iter().all(|exp| *exp == 0) {
+            continue;
+        }
+        if !source
+            .terms
+            .iter()
+            .any(|(_, source_mono)| source_mono == target_mono)
+        {
+            return None;
+        }
+    }
+
+    scale
 }
 
 fn exprs_equivalent_up_to_nonzero_scalar(ctx: &Context, left: ExprId, right: ExprId) -> bool {
@@ -2183,6 +2268,9 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                         || is_abs_of(ctx, *pos_expr, *nz_expr)
                         || is_positive_power_of_base(ctx, *nz_expr, *pos_expr)
                         || positive_even_power_gap_forces_nonzero(ctx, *pos_expr, *nz_expr)
+                        || positive_condition_dominates_affine_nonzero_offset(
+                            ctx, *pos_expr, *nz_expr,
+                        )
                     {
                         to_remove.push(i);
                         break;
@@ -2790,6 +2878,119 @@ mod tests {
         );
 
         assert_eq!(normalized, vec![ImplicitCondition::Positive(u)]);
+    }
+
+    #[test]
+    fn nonzero_scaled_sqrt_and_nonnegative_base_combine_into_positive_base() {
+        let mut ctx = Context::new();
+        let sqrt_scaled = parse("sqrt(3*x)", &mut ctx).expect("parse sqrt(3*x)");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(sqrt_scaled),
+                ImplicitCondition::NonNegative(x),
+            ],
+        );
+
+        assert_eq!(normalized, vec![ImplicitCondition::Positive(x)]);
+    }
+
+    #[test]
+    fn positive_shifted_affine_dominates_later_nonzero_shift() {
+        let mut ctx = Context::new();
+        let positive = parse("x + 1", &mut ctx).expect("parse positive");
+        let nonzero = parse("x + 2", &mut ctx).expect("parse nonzero");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(nonzero),
+                ImplicitCondition::Positive(positive),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 1);
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(positive)
+        ));
+    }
+
+    #[test]
+    fn positive_shifted_affine_keeps_earlier_nonzero_shift() {
+        let mut ctx = Context::new();
+        let positive = parse("x + 1", &mut ctx).expect("parse positive");
+        let nonzero = parse("x", &mut ctx).expect("parse nonzero");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(nonzero),
+                ImplicitCondition::Positive(positive),
+            ],
+        );
+
+        assert!(normalized.iter().any(|condition| conditions_equivalent(
+            &ctx,
+            condition,
+            &ImplicitCondition::NonZero(nonzero)
+        )));
+        assert!(normalized.iter().any(|condition| conditions_equivalent(
+            &ctx,
+            condition,
+            &ImplicitCondition::Positive(positive)
+        )));
+    }
+
+    #[test]
+    fn positive_shifted_affine_dominates_opposite_oriented_nonzero_shift() {
+        let mut ctx = Context::new();
+        let positive = parse("3 - 2*x", &mut ctx).expect("parse positive");
+        let nonzero = parse("x - 2", &mut ctx).expect("parse nonzero");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(nonzero),
+                ImplicitCondition::Positive(positive),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 1);
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(positive)
+        ));
+    }
+
+    #[test]
+    fn positive_shifted_affine_keeps_crossing_opposite_oriented_nonzero_shift() {
+        let mut ctx = Context::new();
+        let positive = parse("3 - 2*x", &mut ctx).expect("parse positive");
+        let nonzero = parse("x - 1", &mut ctx).expect("parse nonzero");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(nonzero),
+                ImplicitCondition::Positive(positive),
+            ],
+        );
+
+        assert!(normalized.iter().any(|condition| conditions_equivalent(
+            &ctx,
+            condition,
+            &ImplicitCondition::NonZero(nonzero)
+        )));
+        assert!(normalized.iter().any(|condition| conditions_equivalent(
+            &ctx,
+            condition,
+            &ImplicitCondition::Positive(positive)
+        )));
     }
 
     #[test]

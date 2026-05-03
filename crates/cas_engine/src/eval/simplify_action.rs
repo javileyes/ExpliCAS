@@ -191,6 +191,24 @@ impl Engine {
             }
         }
 
+        if let Some(presented) = crate::rules::calculus::try_post_calculus_presentation(
+            &mut ctx_simplifier.context,
+            resolved,
+            res,
+        ) {
+            if effective_opts.steps_mode != crate::options::StepsMode::Off && presented != res {
+                steps.push(crate::Step::new(
+                    "Post-calculus presentation",
+                    "Present derivative in reciprocal-root form",
+                    res,
+                    presented,
+                    Vec::new(),
+                    Some(&ctx_simplifier.context),
+                ));
+            }
+            res = presented;
+        }
+
         if effective_opts.const_fold == crate::const_fold::ConstFoldMode::Safe {
             let mut budget = crate::budget::Budget::preset_cli();
             let cfg = crate::semantics::EvalConfig {
