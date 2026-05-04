@@ -185,11 +185,14 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
         "integrate(ln(2*x+1), x)",
         "integrate(1/(2*x + 1), x)",
         "integrate(1/(x^2+1), x)",
+        "integrate(1/(2*sqrt(x)*(x+1)), x)",
         "integrate(arcsin(2*x+1), x)",
         "integrate(asinh(2*x+1), x)",
         "integrate(1/(x^2-1), x)",
         "integrate((2*x+1)/(x^2+x-1)^3, x)",
         "integrate(2*x/sqrt(4-x^4), x)",
+        "integrate(1/sqrt(4-(x+1)^2), x)",
+        "integrate(1/sqrt(4+(x+1)^2), x)",
         "integrate(sec(2*x + 1)^2, x)",
         "integrate(sec(2*x + 1)*tan(2*x + 1), x)",
     ] {
@@ -917,6 +920,68 @@ fn integrate_contract_linear_power_substitution() {
 #[test]
 fn integrate_contract_arctan_kernel() {
     assert_eq!(simplified_integral("integrate(1/(x^2+1), x)"), "arctan(x)");
+}
+
+#[test]
+fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
+    let input = "integrate(1/(2*sqrt(x)*(x+1)), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "arctan(x^(1/2))");
+    assert_eq!(
+        required,
+        vec!["x > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(1/(2*sqrt(x)*(x+1)), x), x) - 1/(2*sqrt(x)*(x+1))",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["x > 0".to_string()],
+        "nested arctan sqrt verification should preserve the positive radicand condition"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(1/(sqrt(x)*(x+1)), x)");
+    assert_eq!(result, "2 * arctan(x^(1/2))");
+    assert_eq!(
+        required,
+        vec!["x > 0".to_string()],
+        "unexpected scaled required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(1/(sqrt(x)*(x+1)), x)");
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(1/(sqrt(x)*(4*x+1)), x)");
+    assert_eq!(result, "arctan(2 * x^(1/2))");
+    assert_eq!(
+        required,
+        vec!["x > 0".to_string()],
+        "unexpected scaled linear required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(1/(sqrt(x)*(4*x+1)), x)");
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(1/(sqrt(x)*(4*x+1)), x), x) - 1/(sqrt(x)*(4*x+1))",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["x > 0".to_string()],
+        "scaled linear verification should preserve the positive radicand condition"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(1/(sqrt(x)*(x+4)), x)");
+    assert_eq!(result, "arctan(1/2 * x^(1/2))");
+    assert_eq!(
+        required,
+        vec!["x > 0".to_string()],
+        "unexpected offset linear required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(1/(sqrt(x)*(x+4)), x)");
 }
 
 #[test]
@@ -2136,6 +2201,16 @@ fn integrate_contract_shifted_linear_scaled_arcsin_substitution() {
         vec!["3 - x^2 - 2 * x > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+    assert_antiderivative_verifies("integrate(1/sqrt(4-(x+1)^2), x)");
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(1/sqrt(4-(x+1)^2), x), x) - 1/sqrt(4-(x+1)^2)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["3 - x^2 - 2 * x > 0".to_string()],
+        "nested shifted arcsin verification should preserve its positive radicand condition"
+    );
 }
 
 #[test]
@@ -2176,6 +2251,15 @@ fn integrate_contract_shifted_linear_scaled_asinh_substitution() {
     assert!(
         required.is_empty(),
         "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(1/sqrt(4+(x+1)^2), x)");
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(1/sqrt(4+(x+1)^2), x), x) - 1/sqrt(4+(x+1)^2)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert!(
+        nested_required.is_empty(),
+        "nested shifted asinh verification should remain unconditional: {nested_required:?}"
     );
 }
 

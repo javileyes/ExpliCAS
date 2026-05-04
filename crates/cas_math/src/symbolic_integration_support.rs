@@ -82,6 +82,246 @@ fn reciprocal_sqrt_like_radicand(ctx: &Context, expr: ExprId) -> Option<ExprId> 
     }
 }
 
+fn var_power(ctx: &Context, expr: ExprId, var: &str) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var => Some(BigRational::one()),
+        Expr::Pow(base, exp) if is_var(ctx, *base, var) => rational_constant_value(ctx, *exp),
+        _ => None,
+    }
+}
+
+fn scaled_var_power_term(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(BigRational, BigRational)> {
+    let factors = mul_leaves(ctx, expr);
+    let mut scale = BigRational::one();
+    let mut power = None;
+
+    for factor in factors {
+        if let Some(factor_power) = var_power(ctx, factor, var) {
+            if power.is_some() {
+                return None;
+            }
+            power = Some(factor_power);
+        } else {
+            scale *= rational_constant_value(ctx, factor)?;
+        }
+    }
+
+    Some((scale, power?))
+}
+
+#[derive(Clone)]
+struct SqrtLinearDenominator {
+    scale: BigRational,
+    slope: BigRational,
+    offset: BigRational,
+}
+
+fn positive_linear_polynomial_coeffs(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(BigRational, BigRational)> {
+    let poly = Polynomial::from_expr(ctx, expr, var).ok()?;
+    if poly.degree() != 1 {
+        return None;
+    }
+
+    let offset = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let slope = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    (slope.is_positive() && offset.is_positive()).then_some((slope, offset))
+}
+
+fn sqrt_var_times_positive_linear_denominator(
+    ctx: &Context,
+    den: ExprId,
+    var: &str,
+) -> Option<SqrtLinearDenominator> {
+    let factors = mul_leaves(ctx, den);
+    let mut scale = BigRational::one();
+    let mut saw_sqrt_var = false;
+    let mut linear_coeffs = None;
+
+    for factor in factors {
+        if sqrt_like_radicand(ctx, factor).is_some_and(|radicand| is_var(ctx, radicand, var)) {
+            if saw_sqrt_var {
+                return None;
+            }
+            saw_sqrt_var = true;
+        } else if let Some(coeffs) = positive_linear_polynomial_coeffs(ctx, factor, var) {
+            if linear_coeffs.is_some() {
+                return None;
+            }
+            linear_coeffs = Some(coeffs);
+        } else {
+            scale *= rational_constant_value(ctx, factor)?;
+        }
+    }
+
+    let (slope, offset) = linear_coeffs?;
+    saw_sqrt_var.then_some(SqrtLinearDenominator {
+        scale,
+        slope,
+        offset,
+    })
+}
+
+fn expanded_sqrt_var_times_positive_linear_denominator(
+    ctx: &Context,
+    den: ExprId,
+    var: &str,
+) -> Option<SqrtLinearDenominator> {
+    let (left, right) = match ctx.get(den) {
+        Expr::Add(left, right) => (*left, *right),
+        _ => return None,
+    };
+    let (left_scale, left_power) = scaled_var_power_term(ctx, left, var)?;
+    let (right_scale, right_power) = scaled_var_power_term(ctx, right, var)?;
+
+    let half = BigRational::new(1.into(), 2.into());
+    let three_halves = BigRational::new(3.into(), 2.into());
+    let (offset, slope) = if left_power == half && right_power == three_halves {
+        (left_scale, right_scale)
+    } else if left_power == three_halves && right_power == half {
+        (right_scale, left_scale)
+    } else {
+        return None;
+    };
+
+    (slope.is_positive() && offset.is_positive()).then_some(SqrtLinearDenominator {
+        scale: BigRational::one(),
+        slope,
+        offset,
+    })
+}
+
+fn sqrt_var_times_positive_linear_parts(
+    ctx: &Context,
+    den: ExprId,
+    var: &str,
+) -> Option<SqrtLinearDenominator> {
+    sqrt_var_times_positive_linear_denominator(ctx, den, var)
+        .or_else(|| expanded_sqrt_var_times_positive_linear_denominator(ctx, den, var))
+}
+
+fn reciprocal_sqrt_var_over_positive_linear_parts(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<SqrtLinearDenominator> {
+    let (slope, offset) = positive_linear_polynomial_coeffs(ctx, den, var)?;
+
+    let factors = mul_leaves(ctx, num);
+    let mut scale = BigRational::one();
+    let mut saw_reciprocal_sqrt_var = false;
+
+    for factor in factors {
+        if reciprocal_sqrt_like_radicand(ctx, factor)
+            .is_some_and(|radicand| is_var(ctx, radicand, var))
+        {
+            if saw_reciprocal_sqrt_var {
+                return None;
+            }
+            saw_reciprocal_sqrt_var = true;
+        } else {
+            scale *= rational_constant_value(ctx, factor)?;
+        }
+    }
+
+    saw_reciprocal_sqrt_var.then_some(SqrtLinearDenominator {
+        scale,
+        slope,
+        offset,
+    })
+}
+
+fn arctan_sqrt_var_reciprocal_antiderivative_from_parts(
+    ctx: &mut Context,
+    scale: BigRational,
+    slope: BigRational,
+    offset: BigRational,
+    var: &str,
+) -> Option<ExprId> {
+    if scale.is_zero() {
+        return None;
+    }
+    if !slope.is_positive() || !offset.is_positive() {
+        return None;
+    }
+
+    let product = slope.clone() * offset.clone();
+    let product_root = exact_rational_sqrt(&product)?;
+    let ratio = slope / offset;
+    let ratio_root = exact_rational_sqrt(&ratio)?;
+
+    let var_expr = ctx.var(var);
+    let sqrt_var = ctx.call_builtin(BuiltinFn::Sqrt, vec![var_expr]);
+    let arctan_arg = scale_factor(ctx, ratio_root, sqrt_var);
+    let arctan = ctx.call_builtin(BuiltinFn::Arctan, vec![arctan_arg]);
+    Some(scale_factor(
+        ctx,
+        scale * BigRational::from_integer(2.into()) / product_root,
+        arctan,
+    ))
+}
+
+fn arctan_sqrt_var_reciprocal_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if let Some(parts) = sqrt_var_times_positive_linear_parts(ctx, den, var) {
+        let num_scale = rational_constant_value(ctx, num)?;
+        return arctan_sqrt_var_reciprocal_antiderivative_from_parts(
+            ctx,
+            num_scale / parts.scale,
+            parts.slope,
+            parts.offset,
+            var,
+        );
+    }
+
+    let parts = reciprocal_sqrt_var_over_positive_linear_parts(ctx, num, den, var)?;
+    arctan_sqrt_var_reciprocal_antiderivative_from_parts(
+        ctx,
+        parts.scale,
+        parts.slope,
+        parts.offset,
+        var,
+    )
+}
+
+fn arctan_sqrt_var_reciprocal_required_positive_radicand(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let matches_denominator_form = sqrt_var_times_positive_linear_parts(ctx, *den, var).is_some()
+        && rational_constant_value(ctx, *num).is_some();
+    let matches_numerator_form =
+        reciprocal_sqrt_var_over_positive_linear_parts(ctx, *num, *den, var).is_some();
+    if matches_denominator_form || matches_numerator_form {
+        return Some(ctx.var(var));
+    }
+    None
+}
+
 fn is_var_square(ctx: &Context, expr: ExprId, var: &str) -> bool {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => is_var(ctx, *base, var) && is_number(ctx, *exp, 2),
@@ -4386,6 +4626,9 @@ pub fn integrate_symbolic_required_positive_conditions(
     let mut conditions: Vec<ExprId> = bounded_inverse_trig_linear_radicand(ctx, expr, var)
         .into_iter()
         .collect();
+    conditions.extend(arctan_sqrt_var_reciprocal_required_positive_radicand(
+        ctx, expr, var,
+    ));
     conditions.extend(arcsin_polynomial_substitution_radicand(ctx, expr, var));
     conditions.extend(sqrt_derivative_substitution_radicand(ctx, expr, var));
     conditions.extend(atanh_polynomial_substitution_denominator(ctx, expr, var));
@@ -4626,6 +4869,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let IntKind::Div(num, den) = kind {
+        if let Some(integral) = arctan_sqrt_var_reciprocal_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = reciprocal_trig_log_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
@@ -5493,6 +5740,34 @@ mod tests {
         let expr = parse("1/(x^2+1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "arctan(x)");
+    }
+
+    #[test]
+    fn integrates_arctan_sqrt_reciprocal_kernel() {
+        let mut ctx = Context::new();
+        let expr = parse("1/(2*sqrt(x)*(x+1))", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan(sqrt(x))");
+
+        let expr = parse("1/(sqrt(x)*(x+1))", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "2 * arctan(sqrt(x))");
+
+        let expr = parse("x^(-1/2)/(x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "2 * arctan(sqrt(x))");
+
+        let expr = parse("1/(sqrt(x)*(4*x+1))", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan(2 * sqrt(x))");
+
+        let expr = parse("1/(sqrt(x)*(x+4))", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan(1/2 * sqrt(x))");
+
+        let expr = parse("1/(2*sqrt(x)*(4*x+1))", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "1/2 * arctan(2 * sqrt(x))");
     }
 
     #[test]
