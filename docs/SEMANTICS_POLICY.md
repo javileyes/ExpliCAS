@@ -181,7 +181,7 @@ Conditions required by transformations are classified into two types:
 | Mode | Definability | Analytic | Use Case |
 |------|--------------|----------|----------|
 | `Strict` | Only if proven | Only if proven | Formal proofs |
-| `Generic` | ✅ Accept (with warning) | ❌ Block | Educational default |
+| `Generic` | ✅ Accept (with warning) | ✅ if inherited from an intrinsic input witness; otherwise ❌ Block | Educational default |
 | `Assume` | ✅ Accept (with warning) | ✅ Accept (with warning) | Research, exploration |
 
 ### Canonical Examples
@@ -190,9 +190,9 @@ Conditions required by transformations are classified into two types:
 |------------|-----------|-------|--------|---------|--------|
 | `x/x → 1` | NonZero(x) | Definability | ❌ | ✅ | ✅ |
 | `0/x → 0` | NonZero(x) | Definability | ❌ | ✅ | ✅ |
-| `ln(x*y) → ln(x)+ln(y)` | Positive(x), Positive(y) | Analytic | ❌ | ❌ | ✅ |
-| `exp(ln(x)) → x` | Positive(x) | Analytic | ❌ | ❌ | ✅ |
-| `sqrt(x)² → x` | NonNegative(x) | Analytic | ❌ | ❌ | ✅ |
+| `ln(x*y) → ln(x)+ln(y)` | Positive(x), Positive(y) | Analytic introduced by rewrite | ❌ | ❌ | ✅ |
+| `exp(ln(x)) → x` | Positive(x) inherited from `ln(x)` | Analytic inherited from input | ❌ | ✅ with `Requires: x > 0` | ✅ |
+| `sqrt(x)² → x` | NonNegative(x) inherited from `sqrt(x)` | Analytic inherited from input | ❌ | ✅ with `Requires: x ≥ 0` | ✅ |
 | `2/2 → 1` | — (proven) | Definability | ✅ | ✅ | ✅ |
 
 ### Implementation Details
@@ -208,17 +208,21 @@ Conditions required by transformations are classified into two types:
 - `SimplifyFractionRule` — uses `can_cancel_factor()`
 - `DivZeroRule`, `MulZeroRule` — Definability gate
 - `LogExpansionRule` — uses `can_apply_analytic()`
-- `ExponentialLogRule` — uses `can_apply_analytic_with_hint()` (V1.3.1)
+- `ExponentialLogRule` — preserves inherited intrinsic log-domain requirements
 - `IdentityPowerRule`, `CancelCommonFactorsRule`, `QuotientOfPowersRule`
 
 ### Blocked Hints (V1.3.1)
 
-When Generic mode blocks a transformation due to an unproven Analytic condition, the engine emits **pedagogical hints** to guide the user:
+When Generic mode blocks a transformation because it would introduce a new
+unproven Analytic condition, the engine emits **pedagogical hints** to guide the
+user. Intrinsic conditions already present in the input AST, such as the
+`x > 0` requirement carried by `ln(x)` in `exp(ln(x))`, are inherited and
+preserved instead of being treated as newly introduced assumptions.
 
 ```
-> exp(ln(x))
-Result: e^(ln(x))
-ℹ️  Blocked in Generic: requires x > 0 [Exponential-Log Inverse]
+> ln(x*y)
+Result: ln(x*y)
+ℹ️  Blocked in Generic: requires x > 0 and y > 0 [Log Expansion]
    use `semantics set domain assume` to allow analytic assumptions
 ```
 
@@ -226,7 +230,8 @@ Result: e^(ln(x))
 
 | Scenario | Hint Emitted? |
 |----------|---------------|
-| Generic + unproven Analytic | ✅ Yes |
+| Generic + introduced unproven Analytic | ✅ Yes |
+| Generic + inherited intrinsic Analytic | ❌ No (simplification proceeds and Requires are preserved) |
 | Strict + unproven Analytic | ❌ No (expected behavior) |
 | Assume + unproven Analytic | ❌ No (allowed with warning) |
 | Any mode + proven condition | ❌ No (simplification proceeds) |
@@ -331,9 +336,12 @@ Defines the **field of default values for symbols**.
 | Expression | RealOnly+Strict | RealOnly+Generic | ComplexEnabled |
 |------------|-----------------|------------------|----------------|
 | `ln(e^x)` | ✅ `x` | ✅ `x` | ❌ unchanged |
-| `e^(ln(x))` | ❌ unchanged | ✅ `x` + warning | ✅ `x` + warning |
+| `e^(ln(x))` | ❌ unchanged | ✅ `x` + inherited `Requires` | ✅ `x` + inherited `Requires` |
 
-**Rationale**: In RealOnly, x ∈ ℝ by contract, so e^x > 0 always. In ComplexEnabled, ln is multivalued.
+**Rationale**: In RealOnly, x ∈ ℝ by contract, so e^x > 0 always. `e^(ln(x))`
+can consume the visible `ln(x)` witness only if its intrinsic domain requirement
+is preserved on the result. In ComplexEnabled, `ln(e^x)` remains branch-sensitive
+because `ln` is principal/multivalued around the exponential image.
 
 #### Log Power Rule
 
