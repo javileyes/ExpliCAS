@@ -150,6 +150,23 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_text_simplify_with_session_accepts_expand_log_function_name() {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+
+        let out = evaluate_eval_text_simplify_with_session(
+            &mut engine,
+            &mut session,
+            "expand_log(ln(x*y))",
+            false,
+        )
+        .expect("expand_log succeeds");
+
+        assert!(out.contains("ln(x"));
+        assert!(out.contains("y"));
+    }
+
+    #[test]
     fn evaluate_eval_text_simplify_with_session_accepts_derive_special_command() {
         let mut engine = cas_solver::runtime::Engine::new();
         let mut session = SessionState::new();

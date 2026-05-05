@@ -91,19 +91,39 @@ impl crate::rule::Rule for LogExpansionRule {
 /// - log(x*y) → log(x) + log(y)
 /// - log(x/y) → log(x) - log(y)
 ///
-/// Returns the expanded expression and any assumption events generated.
+/// Returns the expanded expression and any assumption events generated. If the
+/// current domain policy rejects a required analytic condition, returns `None`.
 /// Used by the `expand_log()` meta-function.
 pub(crate) fn expand_logs_with_assumptions(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
-) -> (cas_ast::ExprId, Vec<crate::AssumptionEvent>) {
+    mode: crate::DomainMode,
+    value_domain: crate::semantics::ValueDomain,
+) -> Option<(cas_ast::ExprId, Vec<crate::AssumptionEvent>)> {
+    if value_domain == crate::semantics::ValueDomain::ComplexEnabled {
+        return None;
+    }
+
     let plan = expand_logs_collect_positive_assumptions(ctx, expr);
-    let events = plan
-        .assumed_positive
-        .into_iter()
-        .map(|subject| crate::AssumptionEvent::positive(ctx, subject))
-        .collect();
-    (plan.rewritten, events)
+    let mut events = Vec::new();
+
+    for subject in plan.assumed_positive {
+        let decision = crate::oracle_allows_with_hint(
+            ctx,
+            mode,
+            value_domain,
+            &crate::Predicate::Positive(subject),
+            "Log Expansion",
+        );
+        if !decision.allow {
+            return None;
+        }
+        if decision.assumption.is_some() {
+            events.push(crate::AssumptionEvent::positive_assumed(ctx, subject));
+        }
+    }
+
+    Some((plan.rewritten, events))
 }
 
 /// Domain-aware:

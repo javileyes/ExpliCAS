@@ -89,6 +89,62 @@ fn semantics_block_present_in_json() {
 }
 
 #[test]
+fn expand_log_function_blocks_symbolic_product_expansion_in_generic() {
+    let (output, code) = run_cli(&["eval", "expand_log(ln(x*y))", "--format", "json"]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "ln(x·y)");
+    assert_eq!(wire["domain"]["mode"], "generic");
+    assert_eq!(wire["required_display"], json!(["x·y > 0"]));
+}
+
+#[test]
+fn expand_log_function_allows_symbolic_product_expansion_in_assume() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "expand_log(ln(x*y))",
+        "--domain",
+        "assume",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "ln(x) + ln(y)");
+    assert_eq!(wire["domain"]["mode"], "assume");
+    assert_eq!(wire["required_display"], json!(["x > 0", "y > 0"]));
+}
+
+#[test]
+fn expand_log_function_surfaces_assumptions_in_assume_envelope() {
+    let (output, code) = run_cli(&["envelope", "expand_log(ln(x*y))", "--domain", "assume"]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    let assumptions = wire["transparency"]["assumptions_used"]
+        .as_array()
+        .expect("assumptions_used array");
+    assert!(assumptions
+        .iter()
+        .any(|item| item["display"] == "x > 0" && item["rule"] == "expand_log"));
+    assert!(assumptions
+        .iter()
+        .any(|item| item["display"] == "y > 0" && item["rule"] == "expand_log"));
+}
+
+#[test]
+fn equiv_log_product_requires_both_sides_domain() {
+    let (output, code) = run_cli(&["eval", "equiv(ln(x*y),ln(x)+ln(y))", "--format", "json"]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "true");
+    assert_eq!(wire["required_display"], json!(["x > 0", "y > 0"]));
+}
+
+#[test]
 fn semantics_defaults_reflected() {
     let (output, _code) = run_cli(&["eval", "1+1", "--format", "json"]);
     let wire = parse_wire(&output);

@@ -89,6 +89,12 @@ impl Engine {
         resolved_other: ExprId,
     ) -> Result<ActionResult, anyhow::Error> {
         let are_eq = self.simplifier.are_equivalent(resolved, resolved_other);
+        let rhs_domain = crate::infer_implicit_domain(
+            &self.simplifier.context,
+            resolved_other,
+            crate::semantics::ValueDomain::RealOnly,
+        );
+        let solver_required = rhs_domain.conditions().iter().cloned().collect();
         Ok((
             EvalResult::Bool(are_eq),
             vec![],
@@ -96,7 +102,7 @@ impl Engine {
             vec![],
             vec![],
             vec![],
-            vec![],
+            solver_required,
             vec![],
         ))
     }

@@ -72,7 +72,7 @@ pub fn is_known_eval_engine_function(name: &str, arity: usize) -> bool {
 
     match name {
         // Meta helper calls handled by the simplify engine.
-        "simplify" | "factor" | "expand" => arity == 1,
+        "simplify" | "factor" | "expand" | "expand_log" => arity == 1,
         "collect" => arity == 2,
         // Symbolic calculus calls handled by engine calculus rules.
         "diff" => arity == 2,
@@ -143,6 +143,7 @@ mod unknown_function_tests {
     #[test]
     fn known_engine_function_names_cover_nonbuiltin_dispatchables() {
         assert!(is_known_eval_engine_function("factor", 1));
+        assert!(is_known_eval_engine_function("expand_log", 1));
         assert!(is_known_eval_engine_function("collect", 2));
         assert!(is_known_eval_engine_function("diff", 2));
         assert!(is_known_eval_engine_function("integrate", 1));
@@ -173,6 +174,12 @@ mod unknown_function_tests {
         let collect_expr = parse("collect(a*x + b*x + c, x)", &mut ctx).expect("parse collect");
         assert_eq!(
             first_unknown_function_name(&session, &ctx, collect_expr),
+            None
+        );
+
+        let expand_log_expr = parse("expand_log(ln(x*y))", &mut ctx).expect("parse expand_log");
+        assert_eq!(
+            first_unknown_function_name(&session, &ctx, expand_log_expr),
             None
         );
 

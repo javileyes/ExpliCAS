@@ -129,7 +129,10 @@ impl Engine {
                         crate::rules::logarithms::expand_logs_with_assumptions(
                             &mut ctx_simplifier.context,
                             args[0],
+                            effective_opts.shared.semantics.domain_mode,
+                            effective_opts.shared.semantics.value_domain,
                         )
+                        .unwrap_or((args[0], Vec::new()))
                     }
                     _ => (resolved, Vec::new()),
                 }
