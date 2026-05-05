@@ -69,6 +69,7 @@ fn diff_target_should_preserve_raw_derivative_route(
     diff_target_is_affine_polynomial_times_direct_builtin_derivative_target(ctx, target, var_name)
         || diff_target_is_affine_times_arctan_reciprocal_affine(ctx, target, var_name)
         || diff_target_is_arctan_reciprocal_affine_by_parts_sum(ctx, target, var_name)
+        || diff_target_is_arctan_affine_by_parts_sum(ctx, target, var_name)
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
         || expr_is_positive_integer_power_of_low_degree_polynomial(ctx, target, var_name)
@@ -345,6 +346,84 @@ fn diff_target_is_arctan_reciprocal_affine_by_parts_sum(
         .iter()
         .copied()
         .any(|term| diff_target_is_affine_times_arctan_reciprocal_affine(ctx, term, var_name));
+
+    has_ln_term && has_arctan_term
+}
+
+fn expr_is_arctan_affine_call(ctx: &cas_ast::Context, expr: ExprId, var_name: &str) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return false;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(cas_ast::BuiltinFn::Arctan | cas_ast::BuiltinFn::Atan)
+        )
+    {
+        return false;
+    }
+
+    expr_is_affine_polynomial_in_named_variable(ctx, args[0], var_name)
+}
+
+fn diff_target_is_affine_times_arctan_affine(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let target = peel_constant_divisor_for_diff_target(ctx, target, var_name);
+    let factors = cas_math::expr_nary::mul_leaves(ctx, target);
+    if factors.is_empty() {
+        return false;
+    }
+
+    for (arctan_index, factor) in factors.iter().copied().enumerate() {
+        if !expr_is_arctan_affine_call(ctx, factor, var_name) {
+            continue;
+        }
+
+        let mut cofactor_poly = Polynomial::one(var_name.to_string());
+        for cofactor in factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != arctan_index).then_some(factor))
+        {
+            let Ok(poly) = Polynomial::from_expr(ctx, cofactor, var_name) else {
+                return false;
+            };
+            cofactor_poly = cofactor_poly.mul(&poly);
+            if cofactor_poly.degree() > 1 {
+                return false;
+            }
+        }
+
+        return !cofactor_poly.is_zero();
+    }
+
+    false
+}
+
+fn diff_target_is_arctan_affine_by_parts_sum(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let target = peel_constant_divisor_for_diff_target(ctx, target, var_name);
+    let mut terms = Vec::new();
+    collect_additive_terms_for_diff_target(ctx, target, &mut terms);
+    if terms.len() < 2 {
+        return false;
+    }
+
+    let has_ln_term = terms
+        .iter()
+        .copied()
+        .any(|term| diff_target_term_is_quadratic_ln(ctx, term, var_name));
+    let has_arctan_term = terms
+        .iter()
+        .copied()
+        .any(|term| diff_target_is_affine_times_arctan_affine(ctx, term, var_name));
 
     has_ln_term && has_arctan_term
 }

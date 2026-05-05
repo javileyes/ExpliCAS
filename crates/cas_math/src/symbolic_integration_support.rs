@@ -42,6 +42,17 @@ fn is_number(ctx: &Context, expr: ExprId, value: i64) -> bool {
     matches!(ctx.get(expr), Expr::Number(n) if *n == BigRational::from_integer(value.into()))
 }
 
+fn scale_rational_term(ctx: &mut Context, scale: BigRational, term: ExprId) -> ExprId {
+    if scale.is_one() {
+        term
+    } else if scale == BigRational::from_integer((-1).into()) {
+        ctx.add(Expr::Neg(term))
+    } else {
+        let scale = ctx.add(Expr::Number(scale));
+        mul2_raw(ctx, scale, term)
+    }
+}
+
 fn is_negative_half(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(n) => *n == BigRational::new((-1).into(), 2.into()),
@@ -1401,35 +1412,38 @@ fn arctan_scaled_variable_antiderivative(
     var: &str,
 ) -> Option<ExprId> {
     let (coeff, offset) = get_linear_coeffs(ctx, arg, var)?;
-    if !is_number(ctx, offset, 0) {
-        return None;
-    }
-
     let coeff = rational_constant_value(ctx, coeff)?;
     if coeff.is_zero() {
         return None;
     }
 
+    let zero_offset = is_number(ctx, offset, 0);
+    let presentation_arg = if zero_offset && coeff.is_one() {
+        arg
+    } else {
+        cas_ast::hold::wrap_hold(ctx, arg)
+    };
     let arctan_arg = ctx.call_builtin(BuiltinFn::Arctan, vec![arg]);
-    let var_expr = ctx.var(var);
-    let leading_term = mul2_raw(ctx, var_expr, arctan_arg);
+    let leading_linear = if zero_offset {
+        ctx.var(var)
+    } else {
+        let scale = BigRational::one() / coeff.clone();
+        scale_rational_term(ctx, scale, presentation_arg)
+    };
+    let leading_term = mul2_raw(ctx, leading_linear, arctan_arg);
 
     let two = ctx.num(2);
-    let arg_sq = ctx.add(Expr::Pow(arg, two));
+    let arg_sq = ctx.add(Expr::Pow(presentation_arg, two));
     let one = ctx.num(1);
     let log_arg = ctx.add(Expr::Add(arg_sq, one));
     let log_term = ctx.call_builtin(BuiltinFn::Ln, vec![log_arg]);
 
     let two_coeff = coeff * BigRational::from_integer(2.into());
     let log_scale = BigRational::one() / two_coeff;
-    let scaled_log_term = if log_scale.is_one() {
-        log_term
-    } else {
-        let scale = ctx.add(Expr::Number(log_scale));
-        mul2_raw(ctx, scale, log_term)
-    };
-
-    Some(ctx.add(Expr::Sub(leading_term, scaled_log_term)))
+    let signed_log_term = scale_rational_term(ctx, -log_scale, log_term);
+    let leading_term = cas_ast::hold::wrap_hold(ctx, leading_term);
+    let signed_log_term = cas_ast::hold::wrap_hold(ctx, signed_log_term);
+    Some(ctx.add(Expr::Add(leading_term, signed_log_term)))
 }
 
 fn reciprocal_affine_variable_denominator(
@@ -1547,8 +1561,15 @@ fn asinh_affine_antiderivative(ctx: &mut Context, arg: ExprId, var: &str) -> Opt
     if scale.is_one() {
         Some(primitive)
     } else {
-        let scale = ctx.add(Expr::Number(scale));
-        Some(mul2_raw(ctx, scale, primitive))
+        let scaled_leading = if is_number(ctx, offset, 0) {
+            let var_expr = ctx.var(var);
+            mul2_raw(ctx, var_expr, asinh_arg)
+        } else {
+            scale_rational_term(ctx, scale.clone(), leading_term)
+        };
+        let sqrt_scale = -scale;
+        let scaled_sqrt = scale_rational_term(ctx, sqrt_scale, sqrt_term);
+        Some(ctx.add(Expr::Add(scaled_leading, scaled_sqrt)))
     }
 }
 
@@ -1560,7 +1581,7 @@ fn unit_minus_square(ctx: &mut Context, arg: ExprId) -> ExprId {
 }
 
 fn atanh_affine_antiderivative(ctx: &mut Context, arg: ExprId, var: &str) -> Option<ExprId> {
-    let (coeff, _) = get_linear_coeffs(ctx, arg, var)?;
+    let (coeff, offset) = get_linear_coeffs(ctx, arg, var)?;
     let coeff = rational_constant_value(ctx, coeff)?;
     if coeff.is_zero() {
         return None;
@@ -1579,8 +1600,15 @@ fn atanh_affine_antiderivative(ctx: &mut Context, arg: ExprId, var: &str) -> Opt
     if scale.is_one() {
         Some(primitive)
     } else {
-        let scale = ctx.add(Expr::Number(scale));
-        Some(mul2_raw(ctx, scale, primitive))
+        let scaled_leading = if is_number(ctx, offset, 0) {
+            let var_expr = ctx.var(var);
+            mul2_raw(ctx, var_expr, atanh_arg)
+        } else {
+            scale_rational_term(ctx, scale.clone(), leading_term)
+        };
+        let half_scale = scale / BigRational::from_integer(2.into());
+        let scaled_log = scale_rational_term(ctx, half_scale, log_term);
+        Some(ctx.add(Expr::Add(scaled_log, scaled_leading)))
     }
 }
 
@@ -1604,7 +1632,7 @@ fn acosh_polynomial_radicands(
 }
 
 fn acosh_affine_antiderivative(ctx: &mut Context, arg: ExprId, var: &str) -> Option<ExprId> {
-    let (coeff, _) = get_linear_coeffs(ctx, arg, var)?;
+    let (coeff, offset) = get_linear_coeffs(ctx, arg, var)?;
     let coeff = rational_constant_value(ctx, coeff)?;
     if coeff.is_zero() {
         return None;
@@ -1620,15 +1648,22 @@ fn acosh_affine_antiderivative(ctx: &mut Context, arg: ExprId, var: &str) -> Opt
     let sqrt_product = mul2_raw(ctx, sqrt_left, sqrt_right);
 
     if coeff.is_negative() {
-        let sqrt_product = cas_ast::hold::wrap_hold(ctx, sqrt_product);
-        let leading_term = cas_ast::hold::wrap_hold(ctx, leading_term);
-        let primitive = ctx.add(Expr::Sub(sqrt_product, leading_term));
+        let held_sqrt_product = cas_ast::hold::wrap_hold(ctx, sqrt_product);
+        let held_leading_term = cas_ast::hold::wrap_hold(ctx, leading_term);
+        let primitive = ctx.add(Expr::Sub(held_sqrt_product, held_leading_term));
         let scale = -BigRational::one() / coeff;
         if scale.is_one() {
             return Some(primitive);
         }
-        let scale = ctx.add(Expr::Number(scale));
-        return Some(mul2_raw(ctx, scale, primitive));
+        let scaled_sqrt = scale_rational_term(ctx, scale.clone(), held_sqrt_product);
+        let leading_scale = -scale;
+        let scaled_leading = if is_number(ctx, offset, 0) {
+            let var_expr = ctx.var(var);
+            mul2_raw(ctx, var_expr, acosh_arg)
+        } else {
+            scale_rational_term(ctx, leading_scale, held_leading_term)
+        };
+        return Some(ctx.add(Expr::Add(scaled_sqrt, scaled_leading)));
     }
 
     let primitive = ctx.add(Expr::Sub(leading_term, sqrt_product));
@@ -1637,8 +1672,15 @@ fn acosh_affine_antiderivative(ctx: &mut Context, arg: ExprId, var: &str) -> Opt
     if scale.is_one() {
         Some(primitive)
     } else {
-        let scale = ctx.add(Expr::Number(scale));
-        Some(mul2_raw(ctx, scale, primitive))
+        let scaled_leading = if is_number(ctx, offset, 0) {
+            let var_expr = ctx.var(var);
+            mul2_raw(ctx, var_expr, acosh_arg)
+        } else {
+            scale_rational_term(ctx, scale.clone(), leading_term)
+        };
+        let sqrt_scale = -scale;
+        let scaled_sqrt = scale_rational_term(ctx, sqrt_scale, sqrt_product);
+        Some(ctx.add(Expr::Add(scaled_leading, scaled_sqrt)))
     }
 }
 
@@ -1720,16 +1762,18 @@ fn bounded_inverse_trig_linear_antiderivative(
             if scale.is_one() {
                 return Some(primitive);
             }
-            let scale = ctx.add(Expr::Number(scale));
-            return Some(mul2_raw(ctx, scale, primitive));
+            let scaled_sqrt = scale_rational_term(ctx, scale.clone(), sqrt_term);
+            let scaled_product = scale_rational_term(ctx, -scale, product);
+            return Some(ctx.add(Expr::Add(scaled_sqrt, scaled_product)));
         }
 
-        let primitive = match builtin {
-            BuiltinFn::Arcsin | BuiltinFn::Asin => Some(ctx.add(Expr::Add(product, sqrt_term))),
-            _ => None,
-        }?;
-        let scale = ctx.add(Expr::Number(BigRational::one() / coeff));
-        return Some(mul2_raw(ctx, scale, primitive));
+        if !matches!(builtin, BuiltinFn::Arcsin | BuiltinFn::Asin) {
+            return None;
+        }
+        let scale = BigRational::one() / coeff;
+        let scaled_product = scale_rational_term(ctx, scale.clone(), product);
+        let scaled_sqrt = scale_rational_term(ctx, scale, sqrt_term);
+        return Some(ctx.add(Expr::Add(scaled_product, scaled_sqrt)));
     }
 
     let (product, sqrt_term) = if zero_offset {
@@ -1762,8 +1806,15 @@ fn bounded_inverse_trig_linear_antiderivative(
     if zero_offset || coeff.is_one() {
         Some(primitive)
     } else {
-        let scale = ctx.add(Expr::Number(BigRational::one() / coeff));
-        Some(mul2_raw(ctx, scale, primitive))
+        let scale = BigRational::one() / coeff;
+        let scaled_product = scale_rational_term(ctx, scale.clone(), product);
+        let sqrt_scale = match builtin {
+            BuiltinFn::Arcsin | BuiltinFn::Asin => scale,
+            BuiltinFn::Arccos | BuiltinFn::Acos => -scale,
+            _ => return None,
+        };
+        let scaled_sqrt = scale_rational_term(ctx, sqrt_scale, sqrt_term);
+        Some(ctx.add(Expr::Add(scaled_product, scaled_sqrt)))
     }
 }
 
@@ -5078,8 +5129,14 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
                         return Some(ctx.add(Expr::Div(expr, a)));
                     }
                     Some(BuiltinFn::Ln) => {
-                        let product = mul2_raw(ctx, arg, expr);
-                        let integral = ctx.add(Expr::Sub(product, arg));
+                        if is_a_one && is_var(ctx, arg, var) {
+                            let product = mul2_raw(ctx, arg, expr);
+                            return Some(ctx.add(Expr::Sub(product, arg)));
+                        }
+
+                        let one = ctx.num(1);
+                        let log_minus_one = ctx.add(Expr::Sub(expr, one));
+                        let integral = mul2_raw(ctx, arg, log_minus_one);
                         if is_a_one {
                             return Some(integral);
                         }
@@ -5257,7 +5314,7 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "((2 * x + 1) * ln(2 * x + 1) - (2 * x + 1)) / (0 + 2)"
+            "(2 * x + 1) * (ln(2 * x + 1) - 1) / (0 + 2)"
         );
     }
 
@@ -5775,17 +5832,28 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("arctan(x)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
-        assert_eq!(rendered(&ctx, out), "x * arctan(x) - 1/2 * ln(x^2 + 1)");
+        assert_eq!(rendered(&ctx, out), "-1/2 * ln(x^2 + 1) + x * arctan(x)");
 
         let expr = parse("arctan(2*x)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "x * arctan(2 * x) - 1/4 * ln((2 * x)^2 + 1)"
+            "-1/4 * ln((2 * x)^2 + 1) + x * arctan(2 * x)"
         );
 
         let expr = parse("arctan(2*x + 1)", &mut ctx).expect("parse");
-        assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "-1/4 * ln((2 * x + 1)^2 + 1) + 1/2 * (2 * x + 1) * arctan(2 * x + 1)"
+        );
+
+        let expr = parse("arctan(1 - 2*x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/4 * ln((1 - 2 * x)^2 + 1) + -1/2 * (1 - 2 * x) * arctan(1 - 2 * x)"
+        );
     }
 
     #[test]
@@ -5860,7 +5928,7 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "1/2 * (sqrt(1 - (2 * x + 1)^2) + (2 * x + 1) * arcsin(2 * x + 1))"
+            "1/2 * sqrt(1 - (2 * x + 1)^2) + 1/2 * (2 * x + 1) * arcsin(2 * x + 1)"
         );
 
         let conditions =
@@ -5872,14 +5940,14 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "1/2 * ((2 * x + 1) * arccos(2 * x + 1) - sqrt(1 - (2 * x + 1)^2))"
+            "1/2 * (2 * x + 1) * arccos(2 * x + 1) - 1/2 * sqrt(1 - (2 * x + 1)^2)"
         );
 
         let expr = parse("arcsin(1 - 2*x)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "-1/2 * ((4 * (x - x^2))^(1/2) + (1 - 2 * x) * arcsin(1 - 2 * x))"
+            "-1/2 * (4 * (x - x^2))^(1/2) - 1/2 * (1 - 2 * x) * arcsin(1 - 2 * x)"
         );
         let conditions =
             super::integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x");
@@ -5890,7 +5958,7 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "1/2 * ((4 * (x - x^2))^(1/2) - (1 - 2 * x) * arccos(1 - 2 * x))"
+            "1/2 * (4 * (x - x^2))^(1/2) - 1/2 * (1 - 2 * x) * arccos(1 - 2 * x)"
         );
 
         let expr = parse("arcsin(a*x)", &mut ctx).expect("parse");
@@ -5911,14 +5979,14 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "1/2 * (2 * x * asinh(2 * x) - sqrt((2 * x)^2 + 1))"
+            "x * asinh(2 * x) - 1/2 * sqrt((2 * x)^2 + 1)"
         );
 
         let expr = parse("asinh(2*x + 1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "1/2 * ((2 * x + 1) * asinh(2 * x + 1) - sqrt((2 * x + 1)^2 + 1))"
+            "1/2 * (2 * x + 1) * asinh(2 * x + 1) - 1/2 * sqrt((2 * x + 1)^2 + 1)"
         );
     }
 
@@ -5933,14 +6001,14 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "1/2 * (1/2 * ln(1 - (2 * x)^2) + 2 * x * atanh(2 * x))"
+            "1/4 * ln(1 - (2 * x)^2) + x * atanh(2 * x)"
         );
 
         let expr = parse("atanh(2*x + 1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "1/2 * (1/2 * ln(1 - (2 * x + 1)^2) + (2 * x + 1) * atanh(2 * x + 1))"
+            "1/4 * ln(1 - (2 * x + 1)^2) + 1/2 * (2 * x + 1) * atanh(2 * x + 1)"
         );
     }
 
@@ -5954,18 +6022,25 @@ mod tests {
             "x * acosh(x) - sqrt(x - 1) * sqrt(x + 1)"
         );
 
+        let expr = parse("acosh(2*x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "x * acosh(2 * x) - 1/2 * sqrt(2 * x - 1) * sqrt(2 * x + 1)"
+        );
+
         let expr = parse("acosh(2*x + 1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "1/2 * ((2 * x + 1) * acosh(2 * x + 1) - sqrt(2 * x) * sqrt(2 * x + 2))"
+            "1/2 * (2 * x + 1) * acosh(2 * x + 1) - 1/2 * sqrt(2 * x) * sqrt(2 * x + 2)"
         );
 
         let expr = parse("acosh(1 - 2*x)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "1/2 * (sqrt(-2 * x) * sqrt(2 - 2 * x) - (1 - 2 * x) * acosh(1 - 2 * x))"
+            "1/2 * sqrt(-2 * x) * sqrt(2 - 2 * x) - 1/2 * (1 - 2 * x) * acosh(1 - 2 * x)"
         );
     }
 

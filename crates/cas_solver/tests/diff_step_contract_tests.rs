@@ -2426,6 +2426,143 @@ fn variable_base_constant_argument_log_diff_evaluates_with_base_domain_condition
 }
 
 #[test]
+fn variable_base_polynomial_constant_argument_log_diff_keeps_factored_presentation() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let input = "diff(log(x^2+1, 2), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert_eq!(result, "-2 * ln(2) * x / ((x^2 + 1) * ln(x^2 + 1)^2)");
+    assert!(
+        !result.contains("ln(x^2 + 1)^2 + x^2 * ln(x^2 + 1)^2"),
+        "post-calculus presentation should keep the denominator factored: {result}"
+    );
+    assert!(!result.contains("diff("), "got: {result}");
+
+    let expected = parse(
+        "-2*x*ln(2)/((x^2+1)*ln(x^2+1)^2)",
+        &mut engine.simplifier.context,
+    )
+    .expect("parse expected");
+    assert!(
+        engine.simplifier.are_equivalent(result_expr, expected),
+        "post-calculus presentation must stay equivalent, got: {result}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["x ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert!(
+        output
+            .steps
+            .iter()
+            .any(|step| step.rule_name == "Symbolic Differentiation"),
+        "expected the derivative to keep the ordinary symbolic differentiation trace"
+    );
+}
+
+#[test]
+fn variable_base_polynomial_constant_argument_log_diff_avoids_negative_unit_factor_noise() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let input = "diff(log(x^2+x+1, 2), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert_eq!(
+        result,
+        "-(ln(2) * (2 * x + 1)) / ((x^2 + x + 1) * ln(x^2 + x + 1)^2)"
+    );
+    assert!(
+        !result.contains("-1 *") && !result.contains("-1·"),
+        "post-calculus presentation should not expose a negative unit factor: {result}"
+    );
+    assert!(!result.contains("diff("), "got: {result}");
+
+    let expected = parse(
+        "-ln(2)*(2*x+1)/((x^2+x+1)*ln(x^2+x+1)^2)",
+        &mut engine.simplifier.context,
+    )
+    .expect("parse expected");
+    assert!(
+        engine.simplifier.are_equivalent(result_expr, expected),
+        "post-calculus presentation must stay equivalent, got: {result}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["x ≠ 0".to_string(), "x + 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert!(
+        output
+            .steps
+            .iter()
+            .any(|step| step.rule_name == "Symbolic Differentiation"),
+        "expected the derivative to keep the ordinary symbolic differentiation trace"
+    );
+}
+
+#[test]
 fn variable_base_variable_argument_log_diff_evaluates_with_domain_conditions() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();

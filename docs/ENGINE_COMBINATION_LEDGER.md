@@ -95,6 +95,42 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-05: Shifted Arctan Affine Antiderivative Verification Probe
+
+- area:
+  - calculus / integration verification / inverse-trig affine by-parts residuals
+- status:
+  - `observe-only`
+- attempted case:
+  - generalize the retained `integrate(arctan(a*x), x)` by-parts rule to
+    shifted affine arguments such as `integrate(arctan(2*x+1), x)` and
+    `integrate(arctan(1-2*x), x)`
+- local lane:
+  - CLI residual probes:
+    `cargo run -q -p cas_cli -- eval 'diff(integrate(arctan(2*x+1), x), x)-arctan(2*x+1)' --no-pretty`
+    and
+    `cargo run -q -p cas_cli -- eval 'diff(integrate(arctan(1-2*x), x), x)-arctan(1-2*x)' --no-pretty`
+- local result:
+  - the direct primitive is mathematically standard and can be made to reduce
+    to `0` when internal hold barriers preserve the compact affine square
+  - the rendered antiderivative reparsed as plain input still expands into a
+    deep rational residual and emits `depth_overflow` warnings before failing
+    to reliably reduce to `0`
+- global result:
+  - not promoted as public integration coverage in this iteration
+  - retained only the safer post-integration presentation cleanup for the
+    existing zero-offset `integrate(arctan(a*x), x)` family
+- best current explanation:
+  - shifted affine `arctan` by-parts verification lacks the compact derivative
+    recognition already added for shifted reciprocal `arctan`; without that
+    recognition, the residual expands through polynomial rational forms before
+    cancellation
+- plausible follow-up:
+  - add a narrow derivative/residual recognizer for the compact
+    `u/a*arctan(u) - ln(1+u^2)/(2a)` by-parts form, then promote shifted
+    affine `arctan` only if both internal and rendered antiderivative
+    verification are quiet and reduce to `0`
+
 ### 2026-05-03: Broad Positive-Factor Nonzero Dominance For Post-Calculus Sqrt Denominators
 
 - area:
