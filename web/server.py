@@ -207,6 +207,17 @@ def _coerce_time_budget_ms(raw_value):
 
     return value
 
+def _coerce_domain_mode(raw_value):
+    """Parse the web domain selector. The public UI currently exposes generic/assume."""
+    if raw_value is None or raw_value == "":
+        return "generic"
+
+    value = str(raw_value).strip().lower()
+    if value not in {"generic", "assume"}:
+        raise ValueError("domain must be 'generic' or 'assume'")
+
+    return value
+
 
 def _compute_subprocess_timeout_seconds(expr_len: int, time_budget_ms: int | None) -> int:
     legacy_timeout = 120 if expr_len > 10000 else 60
@@ -448,6 +459,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             expression = data.get('expression', '').strip()
             session_id = data.get('session_id', 'default')
             time_budget_ms = _coerce_time_budget_ms(data.get("time_budget_ms"))
+            domain_mode = _coerce_domain_mode(data.get("domain"))
             session = get_session(session_id)
             
             if not expression:
@@ -460,7 +472,12 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             if assignment_match:
                 var_name = assignment_match.group(1)
                 expr_part = assignment_match.group(2)
-                result, cli_id = self.eval_and_store(expr_part, session, time_budget_ms)
+                result, cli_id = self.eval_and_store(
+                    expr_part,
+                    session,
+                    time_budget_ms,
+                    domain_mode,
+                )
                 
                 if result.get('ok', False):
                     # Store the result for this variable (but NOT in results list)
@@ -473,7 +490,12 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     result['ref'] = None
                     
             else:
-                result, cli_id = self.eval_and_store(expression, session, time_budget_ms)
+                result, cli_id = self.eval_and_store(
+                    expression,
+                    session,
+                    time_budget_ms,
+                    domain_mode,
+                )
                 # Only non-assignment evaluations get stored for UI references
                 session["results"].append(result)
                 result['ref'] = len(session["results"])
@@ -482,6 +504,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             # Include current variables and session_id in response
             result['variables'] = list(session["variables"].keys())
             result['session_id'] = session_id
+            result['domain'] = domain_mode
             
             self.send_json(result)
             
@@ -492,13 +515,18 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_json_error(str(e))
 
-    def eval_and_store(self, expression, session, time_budget_ms):
+    def eval_and_store(self, expression, session, time_budget_ms, domain_mode):
         """Evaluate via cas_cli using the per-session snapshot, tracking real stored ids."""
         session_file = session.get("session_file")
         lock_path = (session_file + ".lock") if session_file else None
 
         with (_file_lock(lock_path) if lock_path else nullcontext()):
-            result = self.eval_with_substitution(expression, session, time_budget_ms)
+            result = self.eval_with_substitution(
+                expression,
+                session,
+                time_budget_ms,
+                domain_mode,
+            )
 
             cli_id = None
             if result.get("ok", False) and result.get("stored_id") is not None:
@@ -507,7 +535,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
 
             return result, cli_id
 
-    def eval_with_substitution(self, expression, session, time_budget_ms):
+    def eval_with_substitution(self, expression, session, time_budget_ms, domain_mode):
         """Evaluate expression, substituting variables and mapping UI #N refs to CLI session refs."""
         expr = expression
         session_results = session.get("results", [])
@@ -569,6 +597,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 session.get("session_file"),
                 steps_on=False,
                 time_budget_ms=time_budget_ms,
+                domain_mode=domain_mode,
             )
             if _equiv_result_is_true(equiv_result):
                 derive_result = self.call_cas_cli(
@@ -576,6 +605,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                     session.get("session_file"),
                     steps_on=True,
                     time_budget_ms=time_budget_ms,
+                    domain_mode=domain_mode,
                 )
                 return _merge_equiv_with_derive_steps(equiv_result, derive_result)
             return _merge_equiv_with_derive_steps(equiv_result, None)
@@ -584,6 +614,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             expr,
             session.get("session_file"),
             time_budget_ms=time_budget_ms,
+            domain_mode=domain_mode,
         )
 
     def call_cas_cli(
@@ -592,6 +623,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         session_file=None,
         steps_on=True,
         time_budget_ms=None,
+        domain_mode="generic",
     ):
         """Call cas_cli eval-json and return parsed result"""
         result = None  # Initialize to handle exception cases
@@ -612,6 +644,8 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 "500000",
                 "--steps",
                 "on" if steps_on else "off",
+                "--domain",
+                domain_mode,
             ]
             if time_budget_ms is not None:
                 cmd += ["--time-budget-ms", str(time_budget_ms)]

@@ -42,6 +42,7 @@ That build refreshes `web/build-config.js` from `.env`, and the Python server al
 - **Cell References**: Use `%1`, `%2`, etc. to reference previous results
 - **Session Isolation**: Each browser tab has its own isolated session
 - **Step-by-step Display**: Expandable derivation steps for each simplification
+- **Domain Mode Selector**: Switch per tab between `generic` and `assume` semantics
 
 ## Session Management
 
@@ -103,9 +104,12 @@ Evaluate a mathematical expression.
 ```json
 {
   "expression": "x^2 + 2*x + 1",
-  "session_id": "session-abc123..."
+  "session_id": "session-abc123...",
+  "domain": "generic"
 }
 ```
+
+`domain` is optional and currently accepts `generic` or `assume`; omitted requests use `generic`.
 
 **Response**:
 ```json
@@ -116,10 +120,15 @@ Evaluate a mathematical expression.
   "result_latex": "x^{2} + 2 \\cdot x + 1",
   "steps": [...],
   "session_id": "session-abc123...",
+  "domain": "generic",
+  "assumptions_used": [],
   "ref": 1,
   "variables": ["a", "b"]
 }
 ```
+
+When a rule is applied under `domain: "assume"`, conditions accepted by that rule appear in
+`assumptions_used` and are not duplicated in `required_display`.
 
 ### POST `/api/clear`
 

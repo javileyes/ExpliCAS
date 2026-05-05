@@ -1,4 +1,6 @@
-use cas_api_models::{RequiredConditionWire, SolveStepWire, StepWire, TimingsWire, WarningWire};
+use cas_api_models::{
+    AssumptionDto, RequiredConditionWire, SolveStepWire, StepWire, TimingsWire, WarningWire,
+};
 use cas_ast::Context;
 use cas_formatter::ParseStyleSignals;
 
@@ -17,6 +19,7 @@ pub(crate) struct EvalOutputFinalizeInput<'a> {
     pub(crate) warnings: Vec<WarningWire>,
     pub(crate) required_conditions: Vec<RequiredConditionWire>,
     pub(crate) required_display: Vec<String>,
+    pub(crate) assumptions_used: Vec<AssumptionDto>,
     pub(crate) budget_preset: &'a str,
     pub(crate) strict: bool,
     pub(crate) domain: &'a str,

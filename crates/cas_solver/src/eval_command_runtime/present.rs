@@ -20,6 +20,7 @@ where
         &mut engine.simplifier.context,
         config.expr,
         config.steps_mode.as_str(),
+        config.domain.as_str(),
         &prepared,
         total_us,
         collect_steps,

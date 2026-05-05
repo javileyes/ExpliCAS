@@ -114,7 +114,31 @@ fn expand_log_function_allows_symbolic_product_expansion_in_assume() {
 
     assert_eq!(wire["result"], "ln(x) + ln(y)");
     assert_eq!(wire["domain"]["mode"], "assume");
-    assert_eq!(wire["required_display"], json!(["x > 0", "y > 0"]));
+    assert_eq!(wire["required_display"], json!([]));
+    assert_eq!(
+        wire["assumptions_used"],
+        json!([
+            {
+                "kind": "positive",
+                "display": "x > 0",
+                "expr_canonical": "x",
+                "rule": "expand_log"
+            },
+            {
+                "kind": "positive",
+                "display": "y > 0",
+                "expr_canonical": "y",
+                "rule": "expand_log"
+            }
+        ])
+    );
+    let wire_messages = wire["wire"]["messages"].as_array().expect("wire messages");
+    assert!(wire_messages
+        .iter()
+        .any(|message| message["text"] == "ℹ️ Assume:"));
+    assert!(!wire_messages
+        .iter()
+        .any(|message| message["text"] == "ℹ️ Requires:"));
 }
 
 #[test]

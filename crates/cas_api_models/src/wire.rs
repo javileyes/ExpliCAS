@@ -6,7 +6,7 @@
 use cas_ast::Span;
 use serde::{Deserialize, Serialize};
 
-use crate::WarningWire;
+use crate::{AssumptionDto, WarningWire};
 
 /// Current schema version for the wire format.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -158,22 +158,37 @@ impl WireMsg {
 }
 
 /// Build a wire envelope for eval-style wire outputs.
+pub struct EvalWireReplyParts<'a> {
+    pub warnings: &'a [WarningWire],
+    pub assumptions_used: &'a [AssumptionDto],
+    pub required_display: &'a [String],
+    pub strategy: Option<&'a str>,
+    pub result: &'a str,
+    pub result_latex: Option<&'a str>,
+    pub steps_count: usize,
+    pub steps_mode: &'a str,
+}
+
+/// Build a wire envelope for eval-style wire outputs.
 ///
 /// Message order:
 /// 1. warnings
-/// 2. required conditions
-/// 3. strategy (optional)
-/// 4. result
-/// 5. steps summary (optional)
-pub fn build_eval_wire_reply(
-    warnings: &[WarningWire],
-    required_display: &[String],
-    strategy: Option<&str>,
-    result: &str,
-    result_latex: Option<&str>,
-    steps_count: usize,
-    steps_mode: &str,
-) -> WireReply {
+/// 2. assumptions used
+/// 3. required conditions
+/// 4. strategy (optional)
+/// 5. result
+/// 6. steps summary (optional)
+pub fn build_eval_wire_reply(parts: EvalWireReplyParts<'_>) -> WireReply {
+    let EvalWireReplyParts {
+        warnings,
+        assumptions_used,
+        required_display,
+        strategy,
+        result,
+        result_latex,
+        steps_count,
+        steps_mode,
+    } = parts;
     let mut messages = Vec::new();
 
     for w in warnings {
@@ -181,6 +196,16 @@ pub fn build_eval_wire_reply(
             WireKind::Warn,
             format!("\u{26A0} {} ({})", w.assumption, w.rule),
         ));
+    }
+
+    if !assumptions_used.is_empty() {
+        messages.push(WireMsg::new(WireKind::Info, "\u{2139}\u{FE0F} Assume:"));
+        for assumption in assumptions_used {
+            messages.push(WireMsg::new(
+                WireKind::Info,
+                format!("  \u{2022} {}", assumption.display),
+            ));
+        }
     }
 
     if !required_display.is_empty() {
@@ -251,15 +276,16 @@ mod tests {
             assumption: "a != 0".to_string(),
         }];
         let required = vec!["x > 0".to_string()];
-        let reply = build_eval_wire_reply(
-            &warnings,
-            &required,
-            Some("expand"),
-            "42",
-            Some("42"),
-            3,
-            "on",
-        );
+        let reply = build_eval_wire_reply(EvalWireReplyParts {
+            warnings: &warnings,
+            assumptions_used: &[],
+            required_display: &required,
+            strategy: Some("expand"),
+            result: "42",
+            result_latex: Some("42"),
+            steps_count: 3,
+            steps_mode: "on",
+        });
 
         assert_eq!(reply.schema_version, SCHEMA_VERSION);
         assert_eq!(reply.messages.len(), 6);
@@ -275,7 +301,16 @@ mod tests {
 
     #[test]
     fn build_eval_wire_reply_omits_steps_when_disabled() {
-        let reply = build_eval_wire_reply(&[], &[], None, "ok", None, 10, "off");
+        let reply = build_eval_wire_reply(EvalWireReplyParts {
+            warnings: &[],
+            assumptions_used: &[],
+            required_display: &[],
+            strategy: None,
+            result: "ok",
+            result_latex: None,
+            steps_count: 10,
+            steps_mode: "off",
+        });
         assert_eq!(reply.messages.len(), 1);
         assert_eq!(reply.messages[0].kind, WireKind::Output);
         assert_eq!(reply.messages[0].text, "Result: ok");
@@ -283,7 +318,16 @@ mod tests {
 
     #[test]
     fn build_eval_wire_reply_falls_back_to_simplification_steps_without_strategy() {
-        let reply = build_eval_wire_reply(&[], &[], None, "ok", None, 2, "on");
+        let reply = build_eval_wire_reply(EvalWireReplyParts {
+            warnings: &[],
+            assumptions_used: &[],
+            required_display: &[],
+            strategy: None,
+            result: "ok",
+            result_latex: None,
+            steps_count: 2,
+            steps_mode: "on",
+        });
         assert_eq!(reply.messages.len(), 2);
         assert_eq!(reply.messages[1].kind, WireKind::Steps);
         assert_eq!(reply.messages[1].text, "2 simplification step(s)");

@@ -637,6 +637,38 @@
             content: "⚠️ ";
         }
 
+        .assume-section {
+            background: linear-gradient(135deg, rgba(59, 130, 246, 0.12), rgba(59, 130, 246, 0.06));
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #3b82f6;
+        }
+
+        .assume-label {
+            color: #60a5fa;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+
+        .assume-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .assume-list li {
+            padding: 4px 0;
+            font-family: 'Fira Code', monospace;
+            font-size: 0.9em;
+            color: var(--text-secondary);
+        }
+
+        .assume-list li::before {
+            content: "ℹ️ ";
+        }
+
         .warning-section {
             background: linear-gradient(135deg, rgba(249, 115, 22, 0.12), rgba(249, 115, 22, 0.06));
             padding: 12px 16px;
@@ -791,10 +823,46 @@
         }
 
         .input-wrapper {
-            max-width: 900px;
+            max-width: 1040px;
             margin: 0 auto;
             display: flex;
             gap: 12px;
+            align-items: stretch;
+        }
+
+        .mode-control {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--input-bg);
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            padding: 0 12px;
+            min-width: 168px;
+        }
+
+        .mode-label {
+            color: var(--text-secondary);
+            font-size: 0.78em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .mode-select {
+            flex: 1;
+            min-width: 0;
+            background: transparent;
+            border: 0;
+            color: var(--text-primary);
+            font-size: 0.95em;
+            font-weight: 600;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .mode-select option {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
         }
 
         .input-field {
@@ -837,6 +905,30 @@
 
         .submit-btn:active {
             transform: translateY(0);
+        }
+
+        @media (max-width: 720px) {
+            body {
+                padding-bottom: 155px;
+            }
+
+            .input-wrapper {
+                flex-wrap: wrap;
+            }
+
+            .mode-control {
+                flex: 1 1 150px;
+                height: 48px;
+            }
+
+            .input-field {
+                flex: 1 1 100%;
+                order: -1;
+            }
+
+            .submit-btn {
+                flex: 1 1 130px;
+            }
         }
 
         /* Loading state */
@@ -1158,6 +1250,13 @@
 
     <div class="input-bar">
         <div class="input-wrapper">
+            <label class="mode-control" for="domain-mode-select" title="Domain mode">
+                <span class="mode-label">Mode</span>
+                <select class="mode-select" id="domain-mode-select">
+                    <option value="generic" selected>generic</option>
+                    <option value="assume">assume</option>
+                </select>
+            </label>
             <input type="text" class="input-field" id="expression-input"
                 placeholder="Enter expression... (e.g., expand((1+x)^5), solve(x^2=4, x))" autocomplete="off" autofocus>
             <button class="submit-btn" id="submit-btn" onclick="evaluateExpression()">
@@ -1211,10 +1310,21 @@
         // API endpoint (adjust based on your server)
         const API_URL = '/api/eval';
         const DEFAULT_TIME_BUDGET_MS = window.EXPLICAS_BUILD_CONFIG?.defaultTimeBudgetMs ?? 1700;
+        const DOMAIN_MODE_STORAGE_KEY = 'expliCAS_domain_mode';
 
         // Input handling
         const input = document.getElementById('expression-input');
         const submitBtn = document.getElementById('submit-btn');
+        const domainModeSelect = document.getElementById('domain-mode-select');
+
+        const savedDomainMode = sessionStorage.getItem(DOMAIN_MODE_STORAGE_KEY);
+        if (savedDomainMode === 'generic' || savedDomainMode === 'assume') {
+            domainModeSelect.value = savedDomainMode;
+        }
+
+        domainModeSelect.addEventListener('change', () => {
+            sessionStorage.setItem(DOMAIN_MODE_STORAGE_KEY, domainModeSelect.value);
+        });
 
         input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.shiftKey) {
@@ -1269,6 +1379,7 @@
                     body: JSON.stringify({
                         expression: expr,
                         session_id: SESSION_ID,
+                        domain: domainModeSelect.value,
                         time_budget_ms: DEFAULT_TIME_BUDGET_MS
                     })
                 });
@@ -1298,6 +1409,7 @@
                     time_ms: data.time_ms || 0,
                     warnings: data.warnings || [],
                     required_display: data.required_display || [],
+                    assumptions_used: data.assumptions_used || [],
                     error: data.error,
                     // Variable assignment fields from server
                     assignment: data.assignment || null,
@@ -1352,6 +1464,38 @@
             `;
         }
 
+        function normalizeAssumptions(assumptions) {
+            if (!Array.isArray(assumptions)) return [];
+            return assumptions.map((assumption) => {
+                if (!assumption) return '';
+                if (typeof assumption === 'string') return assumption;
+
+                const display = typeof assumption.display === 'string'
+                    ? assumption.display.trim()
+                    : '';
+                const rule = typeof assumption.rule === 'string'
+                    ? assumption.rule.trim()
+                    : '';
+
+                if (display && rule) return `${display} (${rule})`;
+                return display || rule || '';
+            }).filter(Boolean);
+        }
+
+        function renderAssumptionsSection(assumptions) {
+            const messages = normalizeAssumptions(assumptions);
+            if (messages.length === 0) return '';
+
+            return `
+                <div class="assume-section">
+                    <div class="assume-label">ℹ️ Assume</div>
+                    <ul class="assume-list">
+                        ${messages.map(message => `<li>${escapeHtml(message)}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
         function addExpressionCard(expr, result) {
             const isAssignment = result.assignment;
 
@@ -1385,6 +1529,7 @@
             const timeMs = result.timings_us ? Math.round(result.timings_us.total_us / 1000) : (result.time_ms || 0);
             const hasWarnings = normalizeWarnings(result.warnings).length > 0;
             const hasRequirements = result.required_display && result.required_display.length > 0;
+            const hasAssumptions = normalizeAssumptions(result.assumptions_used).length > 0;
 
             if (isAssignment) {
                 // Special card for variable assignments - no #ref
@@ -1477,6 +1622,7 @@
                                 </ul>
                             </div>
                         ` : ''}
+                        ${hasAssumptions ? renderAssumptionsSection(result.assumptions_used) : ''}
                         ${hasWarnings ? renderWarningsSection(result.warnings) : ''}
                     </div>
                 `;
@@ -1904,7 +2050,8 @@
                     stats: storedResult?.stats || null,
                     timings_us: storedResult?.timings_us || null,
                     warnings: storedResult?.warnings || [],
-                    required_display: storedResult?.required_display || []
+                    required_display: storedResult?.required_display || [],
+                    assumptions_used: storedResult?.assumptions_used || []
                 };
 
                 notebook.expressions.push(entry);
@@ -2110,6 +2257,7 @@
                                         </ul>
                                     </div>
                                 ` : ''}
+                                ${renderAssumptionsSection(entry.assumptions_used)}
                                 ${renderWarningsSection(entry.warnings)}
                             </div>
                         `;
@@ -2134,6 +2282,7 @@
                             timings_us: entry.timings_us || null,
                             warnings: entry.warnings || [],
                             required_display: entry.required_display || [],
+                            assumptions_used: entry.assumptions_used || [],
                             poly_output: entry.poly_output || null
                         };
                     } else if (isAssignment && entry.assignment_name) {

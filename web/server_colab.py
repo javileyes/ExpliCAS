@@ -72,6 +72,16 @@ def _coerce_time_budget_ms(raw_value):
 
     return value
 
+def _coerce_domain_mode(raw_value):
+    if raw_value is None or raw_value == "":
+        return "generic"
+
+    value = str(raw_value).strip().lower()
+    if value not in {"generic", "assume"}:
+        raise ValueError("domain must be 'generic' or 'assume'")
+
+    return value
+
 
 def _compute_subprocess_timeout_seconds(legacy_timeout: int, time_budget_ms: int | None) -> int:
     if time_budget_ms is None:
@@ -216,6 +226,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             data = json.loads(body)
             expression = (data.get("expression") or "").strip()
             time_budget_ms = _coerce_time_budget_ms(data.get("time_budget_ms"))
+            domain_mode = _coerce_domain_mode(data.get("domain"))
             if not expression:
                 self.send_json_error("No expression provided")
                 return
@@ -225,17 +236,26 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
             if assignment_match:
                 var_name = assignment_match.group(1)
                 expr_part = assignment_match.group(2)
-                result = self.eval_with_substitution(expr_part, time_budget_ms)
+                result = self.eval_with_substitution(
+                    expr_part,
+                    time_budget_ms,
+                    domain_mode,
+                )
                 if result.get("ok", False):
                     session_variables[var_name] = result.get("result", "")
                     result["assignment"] = var_name
                     result["input"] = expression
             else:
-                result = self.eval_with_substitution(expression, time_budget_ms)
+                result = self.eval_with_substitution(
+                    expression,
+                    time_budget_ms,
+                    domain_mode,
+                )
 
             session_results.append(result)
             result["ref"] = len(session_results)
             result["variables"] = list(session_variables.keys())
+            result["domain"] = domain_mode
             self.send_json(result)
 
         except json.JSONDecodeError:
@@ -245,7 +265,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
         except Exception as e:
             self.send_json_error(f"Server error: {e}")
 
-    def eval_with_substitution(self, expression: str, time_budget_ms):
+    def eval_with_substitution(self, expression: str, time_budget_ms, domain_mode):
         expr = expression
 
         # Substitute refs: %n or #n
@@ -269,19 +289,31 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 expr,
                 steps_on=False,
                 time_budget_ms=time_budget_ms,
+                domain_mode=domain_mode,
             )
             if _equiv_result_is_true(equiv_result):
                 derive_result = self.call_cas_cli(
                     derive_expr,
                     steps_on=True,
                     time_budget_ms=time_budget_ms,
+                    domain_mode=domain_mode,
                 )
                 return _merge_equiv_with_derive_steps(equiv_result, derive_result)
             return _merge_equiv_with_derive_steps(equiv_result, None)
 
-        return self.call_cas_cli(expr, time_budget_ms=time_budget_ms)
+        return self.call_cas_cli(
+            expr,
+            time_budget_ms=time_budget_ms,
+            domain_mode=domain_mode,
+        )
 
-    def call_cas_cli(self, expression: str, steps_on=True, time_budget_ms=None):
+    def call_cas_cli(
+        self,
+        expression: str,
+        steps_on=True,
+        time_budget_ms=None,
+        domain_mode="generic",
+    ):
         try:
             # Use absolute path if available
             cas_cli = self.server.cas_cli_path
@@ -291,6 +323,7 @@ class CASHandler(http.server.SimpleHTTPRequestHandler):
                 "--format", "json",
                 "--max-chars", "500000",
                 "--steps", "on" if steps_on else "off",
+                "--domain", domain_mode,
             ]
             if time_budget_ms is not None:
                 cmd += ["--time-budget-ms", str(time_budget_ms)]

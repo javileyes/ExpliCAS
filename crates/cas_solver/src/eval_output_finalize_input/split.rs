@@ -20,6 +20,7 @@ impl<'a> EvalOutputFinalizeInput<'a> {
                 warnings: self.warnings,
                 required_conditions: self.required_conditions,
                 required_display: self.required_display,
+                assumptions_used: self.assumptions_used,
                 budget_preset: self.budget_preset,
                 strict: self.strict,
                 domain: self.domain,

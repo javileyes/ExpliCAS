@@ -1,7 +1,10 @@
-use cas_api_models::{RequiredConditionWire, SolveStepWire, StepWire, TimingsWire, WarningWire};
+use cas_api_models::{
+    AssumptionDto, RequiredConditionWire, SolveStepWire, StepWire, TimingsWire, WarningWire,
+};
 use cas_solver_core::engine_events::EngineEvent;
 
 use crate::eval_output_presentation::{
+    collect_output_assumption_display_set, collect_output_assumptions_used,
     collect_output_required_conditions, collect_output_required_display,
     collect_output_solve_steps, collect_output_warnings, format_output_input_latex,
 };
@@ -15,6 +18,7 @@ pub(super) struct CollectedEvalArtifacts {
     pub(super) warnings: Vec<WarningWire>,
     pub(super) required_conditions: Vec<RequiredConditionWire>,
     pub(super) required_display: Vec<String>,
+    pub(super) assumptions_used: Vec<AssumptionDto>,
     pub(super) timings_us: TimingsWire,
 }
 
@@ -22,6 +26,7 @@ pub(super) fn collect_eval_artifacts<F>(
     ctx: &mut cas_ast::Context,
     raw_input: &str,
     steps_mode: &str,
+    domain_mode: &str,
     prepared: &PreparedEvalRun,
     total_us: u64,
     collect_steps: F,
@@ -77,9 +82,17 @@ where
         steps_mode,
     );
     let warnings = collect_output_warnings(&prepared.output_view.domain_warnings);
+    let assumptions_used = if domain_mode == "assume" {
+        collect_output_assumptions_used(steps_raw)
+    } else {
+        Vec::new()
+    };
+    let assumed_display = collect_output_assumption_display_set(&assumptions_used);
     let required_conditions_raw = prepared.output_view.required_conditions.as_slice();
-    let required_conditions = collect_output_required_conditions(required_conditions_raw, ctx);
-    let required_display = collect_output_required_display(required_conditions_raw, ctx);
+    let required_conditions =
+        collect_output_required_conditions(required_conditions_raw, ctx, &assumed_display);
+    let required_display =
+        collect_output_required_display(required_conditions_raw, ctx, &assumed_display);
     let timings_us = TimingsWire {
         parse_us: prepared.parse_us,
         simplify_us: prepared.simplify_us,
@@ -92,6 +105,7 @@ where
         warnings,
         required_conditions,
         required_display,
+        assumptions_used,
         timings_us,
     }
 }
