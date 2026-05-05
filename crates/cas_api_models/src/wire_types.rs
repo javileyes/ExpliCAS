@@ -211,6 +211,14 @@ pub struct WarningWire {
     pub assumption: String,
 }
 
+/// Diagnostic payload for equivalence checks that do not prove equality.
+#[derive(Serialize, Debug, Clone)]
+pub struct EquivalenceDiagnosticsWire {
+    pub residual: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub residual_latex: Option<String>,
+}
+
 /// Warning payload used by engine-style response envelopes.
 #[derive(Serialize, Debug, Clone)]
 pub struct EngineWireWarning {
@@ -349,6 +357,8 @@ pub struct EvalWireOutput {
     pub required_display: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub assumptions_used: Vec<AssumptionDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub equivalence_diagnostics: Option<EquivalenceDiagnosticsWire>,
     pub budget: BudgetWireInfo,
     pub domain: DomainWire,
     pub stats: ExprStatsWire,
@@ -379,6 +389,7 @@ pub struct EvalOutputBuild<'a> {
     pub required_conditions: Vec<RequiredConditionWire>,
     pub required_display: Vec<String>,
     pub assumptions_used: Vec<AssumptionDto>,
+    pub equivalence_diagnostics: Option<EquivalenceDiagnosticsWire>,
     pub budget_preset: &'a str,
     pub strict: bool,
     pub domain: &'a str,
@@ -418,6 +429,7 @@ impl EvalWireOutput {
             required_conditions: parts.required_conditions,
             required_display: parts.required_display,
             assumptions_used: parts.assumptions_used,
+            equivalence_diagnostics: parts.equivalence_diagnostics,
             budget: BudgetWireInfo::new(parts.budget_preset, parts.strict),
             domain: DomainWire::from_mode(parts.domain),
             stats: parts.stats,
@@ -1912,6 +1924,7 @@ mod tests {
             required_conditions: vec![],
             required_display: vec![],
             assumptions_used: vec![],
+            equivalence_diagnostics: None,
             budget_preset: "cli",
             strict: true,
             domain: "generic",

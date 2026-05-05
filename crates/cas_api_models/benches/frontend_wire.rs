@@ -85,6 +85,7 @@ fn build_eval_wire(light: bool) -> EvalWireOutput {
             vec!["4*x + 4*y != 0".into()]
         },
         assumptions_used: Vec::new(),
+        equivalence_diagnostics: None,
         budget_preset: "standard",
         strict: false,
         domain: "generic",

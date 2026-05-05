@@ -322,6 +322,52 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_command_pretty_with_session_false_equiv_includes_residual_diagnostics() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("equiv(x^2, x)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "false");
+
+        let diagnostics = payload["equivalence_diagnostics"]
+            .as_object()
+            .expect("equivalence diagnostics");
+        let residual = diagnostics
+            .get("residual")
+            .and_then(|value| value.as_str())
+            .expect("residual");
+        assert!(
+            residual.contains('x'),
+            "expected residual to mention x, got: {residual}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_false_equiv_simplifies_residual_diagnostics() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("equiv((1+x)^5, x^5+5*x^4+10*x^3+10*x^2+5*x)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "false");
+
+        let diagnostics = payload["equivalence_diagnostics"]
+            .as_object()
+            .expect("equivalence diagnostics");
+        assert_eq!(
+            diagnostics.get("residual").and_then(|value| value.as_str()),
+            Some("1")
+        );
+    }
+
+    #[test]
     fn evaluate_eval_command_pretty_with_session_surfaces_requires_for_conditional_derive_target() {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,

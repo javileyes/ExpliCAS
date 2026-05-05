@@ -1,5 +1,6 @@
 use cas_api_models::{
-    AssumptionDto, RequiredConditionWire, SolveStepWire, StepWire, TimingsWire, WarningWire,
+    AssumptionDto, EquivalenceDiagnosticsWire, RequiredConditionWire, SolveStepWire, StepWire,
+    TimingsWire, WarningWire,
 };
 use cas_solver_core::engine_events::EngineEvent;
 
@@ -19,6 +20,7 @@ pub(super) struct CollectedEvalArtifacts {
     pub(super) required_conditions: Vec<RequiredConditionWire>,
     pub(super) required_display: Vec<String>,
     pub(super) assumptions_used: Vec<AssumptionDto>,
+    pub(super) equivalence_diagnostics: Option<EquivalenceDiagnosticsWire>,
     pub(super) timings_us: TimingsWire,
 }
 
@@ -106,6 +108,7 @@ where
         required_conditions,
         required_display,
         assumptions_used,
+        equivalence_diagnostics: prepared.equivalence_diagnostics.clone(),
         timings_us,
     }
 }

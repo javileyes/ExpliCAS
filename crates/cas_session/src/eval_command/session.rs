@@ -63,6 +63,7 @@ fn build_assignment_wire_output(
         required_conditions: Vec::new(),
         required_display: Vec::new(),
         assumptions_used: Vec::new(),
+        equivalence_diagnostics: None,
         budget_preset: config.budget_preset.as_str(),
         strict: config.strict,
         domain: config.domain.as_str(),

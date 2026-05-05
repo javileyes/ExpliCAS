@@ -18,6 +18,7 @@ struct PreparedEvalRun {
     style_signals: cas_formatter::ParseStyleSignals,
     parse_us: u64,
     simplify_us: u64,
+    equivalence_diagnostics: Option<cas_api_models::EquivalenceDiagnosticsWire>,
     output_view: crate::EvalOutputView,
     events: Vec<EngineEvent>,
 }

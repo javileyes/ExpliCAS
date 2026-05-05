@@ -93,6 +93,35 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_equiv_command_lines_false_includes_residual() {
+        let mut simplifier = crate::Simplifier::new();
+        let lines =
+            evaluate_equiv_command_lines(&mut simplifier, "x^2, x").expect("equiv should evaluate");
+
+        assert_eq!(lines.first().map(String::as_str), Some("False"));
+        assert!(lines.iter().any(|line| line == "Residual:"));
+        assert!(
+            lines.iter().any(|line| line.contains('x')),
+            "expected residual with x, got: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_equiv_command_lines_false_simplifies_residual() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let lines =
+            evaluate_equiv_command_lines(&mut simplifier, "(1+x)^5, x^5+5*x^4+10*x^3+10*x^2+5*x")
+                .expect("equiv should evaluate");
+
+        assert_eq!(lines.first().map(String::as_str), Some("False"));
+        assert!(lines.iter().any(|line| line == "Residual:"));
+        assert!(
+            lines.iter().any(|line| line == "1"),
+            "expected simplified residual 1, got: {lines:?}"
+        );
+    }
+
+    #[test]
     fn evaluate_equiv_invocation_message_formats_parse_error() {
         let mut simplifier = crate::Simplifier::new();
         let message =

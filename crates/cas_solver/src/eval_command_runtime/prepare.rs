@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use cas_api_models::EvalStepsMode;
-use cas_formatter::ParseStyleSignals;
+use cas_formatter::{DisplayExpr, LaTeXExpr, ParseStyleSignals};
 use cas_solver_core::engine_event_collector::EngineEventCollector;
 
 use super::{EvalCommandRunConfig, PreparedEvalRun};
@@ -89,6 +89,39 @@ where
     Ok(Some(output_view))
 }
 
+fn collect_equivalence_diagnostics(
+    engine: &mut crate::Engine,
+    output_view: &crate::EvalOutputView,
+    equiv_target: Option<cas_ast::ExprId>,
+) -> Option<cas_api_models::EquivalenceDiagnosticsWire> {
+    if !matches!(output_view.result, crate::EvalResult::Bool(false)) {
+        return None;
+    }
+
+    let rhs = equiv_target?;
+    let residual = crate::equiv_command::simplified_equivalence_residual_expr(
+        &mut engine.simplifier,
+        output_view.resolved,
+        rhs,
+    );
+    let ctx = &engine.simplifier.context;
+
+    Some(cas_api_models::EquivalenceDiagnosticsWire {
+        residual: DisplayExpr {
+            context: ctx,
+            id: residual,
+        }
+        .to_string(),
+        residual_latex: Some(
+            LaTeXExpr {
+                context: ctx,
+                id: residual,
+            }
+            .to_latex(),
+        ),
+    })
+}
+
 pub(super) fn prepare_eval_run<S>(
     engine: &mut crate::Engine,
     session: &mut S,
@@ -146,6 +179,11 @@ where
             style_signals,
             parse_us,
             simplify_us: simplify_start.elapsed().as_micros() as u64,
+            equivalence_diagnostics: collect_equivalence_diagnostics(
+                engine,
+                &output_view,
+                equiv_target,
+            ),
             output_view,
             events: Vec::new(),
         });
@@ -168,6 +206,8 @@ where
     }
     let output_view = output_view_result?;
     let simplify_us = simplify_start.elapsed().as_micros() as u64;
+    let equivalence_diagnostics =
+        collect_equivalence_diagnostics(engine, &output_view, equiv_target);
 
     Ok(PreparedEvalRun {
         parsed_input,
@@ -176,6 +216,7 @@ where
         style_signals,
         parse_us,
         simplify_us,
+        equivalence_diagnostics,
         output_view,
         events: collector
             .map(EngineEventCollector::into_events)

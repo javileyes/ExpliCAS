@@ -425,7 +425,8 @@ pub(crate) use crate::equiv_command::{
 };
 #[allow(unused_imports)]
 pub(crate) use crate::equiv_format::{
-    format_equivalence_result_lines, format_expr_pair_parse_error_message,
+    format_equiv_command_output_lines, format_equivalence_result_lines,
+    format_expr_pair_parse_error_message,
 };
 #[allow(unused_imports)]
 pub(crate) use crate::eval_output_adapters::{

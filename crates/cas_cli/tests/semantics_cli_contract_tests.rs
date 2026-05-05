@@ -169,6 +169,43 @@ fn equiv_log_product_requires_both_sides_domain() {
 }
 
 #[test]
+fn false_equiv_surfaces_residual_diagnostics_without_changing_result() {
+    let (output, code) = run_cli(&["eval", "equiv(x^2,x)", "--format", "json"]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "false");
+    let diagnostics = wire["equivalence_diagnostics"]
+        .as_object()
+        .expect("equivalence diagnostics");
+    assert_eq!(
+        diagnostics.get("residual").and_then(Value::as_str),
+        Some("x^2 - x")
+    );
+}
+
+#[test]
+fn false_equiv_surfaces_simplified_residual_diagnostics() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "equiv((1+x)^5, x^5+5*x^4+10*x^3+10*x^2+5*x)",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "false");
+    let diagnostics = wire["equivalence_diagnostics"]
+        .as_object()
+        .expect("equivalence diagnostics");
+    assert_eq!(
+        diagnostics.get("residual").and_then(Value::as_str),
+        Some("1")
+    );
+}
+
+#[test]
 fn semantics_defaults_reflected() {
     let (output, _code) = run_cli(&["eval", "1+1", "--format", "json"]);
     let wire = parse_wire(&output);

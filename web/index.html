@@ -700,6 +700,27 @@
             content: "⚠️ ";
         }
 
+        .equiv-diagnostic-section {
+            background: linear-gradient(135deg, rgba(148, 163, 184, 0.12), rgba(148, 163, 184, 0.06));
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-top: 15px;
+            border-left: 4px solid #94a3b8;
+        }
+
+        .equiv-diagnostic-label {
+            color: #cbd5e1;
+            font-weight: bold;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+
+        .equiv-diagnostic-math {
+            font-size: 1.05em;
+            color: var(--text-primary);
+            overflow-x: auto;
+        }
+
         /* Solve steps section (for equation solving) */
         .solve-step-item {
             background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(59, 130, 246, 0.05));
@@ -1410,6 +1431,7 @@
                     warnings: data.warnings || [],
                     required_display: data.required_display || [],
                     assumptions_used: data.assumptions_used || [],
+                    equivalence_diagnostics: data.equivalence_diagnostics || null,
                     error: data.error,
                     // Variable assignment fields from server
                     assignment: data.assignment || null,
@@ -1496,6 +1518,21 @@
             `;
         }
 
+        function renderEquivalenceDiagnosticsSection(diagnostics) {
+            if (!diagnostics || !diagnostics.residual) return '';
+            const residual = diagnostics.residual;
+            const renderedResidual = diagnostics.residual_latex || escapeHtml(residual);
+
+            return `
+                <div class="equiv-diagnostic-section">
+                    <div class="equiv-diagnostic-label">Residual</div>
+                    <div class="equiv-diagnostic-math" data-result="${escapeHtml(residual)}">
+                        $${renderedResidual}$
+                    </div>
+                </div>
+            `;
+        }
+
         function addExpressionCard(expr, result) {
             const isAssignment = result.assignment;
 
@@ -1530,6 +1567,7 @@
             const hasWarnings = normalizeWarnings(result.warnings).length > 0;
             const hasRequirements = result.required_display && result.required_display.length > 0;
             const hasAssumptions = normalizeAssumptions(result.assumptions_used).length > 0;
+            const hasEquivDiagnostics = result.equivalence_diagnostics && result.equivalence_diagnostics.residual;
 
             if (isAssignment) {
                 // Special card for variable assignments - no #ref
@@ -1623,6 +1661,7 @@
                             </div>
                         ` : ''}
                         ${hasAssumptions ? renderAssumptionsSection(result.assumptions_used) : ''}
+                        ${hasEquivDiagnostics ? renderEquivalenceDiagnosticsSection(result.equivalence_diagnostics) : ''}
                         ${hasWarnings ? renderWarningsSection(result.warnings) : ''}
                     </div>
                 `;
@@ -2051,7 +2090,8 @@
                     timings_us: storedResult?.timings_us || null,
                     warnings: storedResult?.warnings || [],
                     required_display: storedResult?.required_display || [],
-                    assumptions_used: storedResult?.assumptions_used || []
+                    assumptions_used: storedResult?.assumptions_used || [],
+                    equivalence_diagnostics: storedResult?.equivalence_diagnostics || null
                 };
 
                 notebook.expressions.push(entry);
@@ -2258,6 +2298,7 @@
                                     </div>
                                 ` : ''}
                                 ${renderAssumptionsSection(entry.assumptions_used)}
+                                ${renderEquivalenceDiagnosticsSection(entry.equivalence_diagnostics)}
                                 ${renderWarningsSection(entry.warnings)}
                             </div>
                         `;
@@ -2283,6 +2324,7 @@
                             warnings: entry.warnings || [],
                             required_display: entry.required_display || [],
                             assumptions_used: entry.assumptions_used || [],
+                            equivalence_diagnostics: entry.equivalence_diagnostics || null,
                             poly_output: entry.poly_output || null
                         };
                     } else if (isAssignment && entry.assignment_name) {

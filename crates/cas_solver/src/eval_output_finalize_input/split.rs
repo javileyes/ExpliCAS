@@ -21,6 +21,7 @@ impl<'a> EvalOutputFinalizeInput<'a> {
                 required_conditions: self.required_conditions,
                 required_display: self.required_display,
                 assumptions_used: self.assumptions_used,
+                equivalence_diagnostics: self.equivalence_diagnostics,
                 budget_preset: self.budget_preset,
                 strict: self.strict,
                 domain: self.domain,

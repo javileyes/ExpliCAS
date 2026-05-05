@@ -14,6 +14,18 @@ pub fn format_equivalence_result_lines(result: &crate::EquivalenceResult) -> Vec
     }
 }
 
+/// Format `equiv` command output, including diagnostics when non-equivalence is proven.
+pub(crate) fn format_equiv_command_output_lines(
+    output: &crate::equiv_command::EquivCommandOutput,
+) -> Vec<String> {
+    let mut lines = format_equivalence_result_lines(&output.result);
+    if let Some(residual) = &output.residual {
+        lines.push("Residual:".to_string());
+        lines.push(residual.clone());
+    }
+    lines
+}
+
 /// Format parse errors for commands that expect `<expr1>, <expr2>` input.
 pub fn format_expr_pair_parse_error_message(
     error: &crate::ParseExprPairError,

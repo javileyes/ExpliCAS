@@ -122,6 +122,7 @@ Evaluate a mathematical expression.
   "session_id": "session-abc123...",
   "domain": "generic",
   "assumptions_used": [],
+  "equivalence_diagnostics": null,
   "ref": 1,
   "variables": ["a", "b"]
 }
@@ -129,6 +130,9 @@ Evaluate a mathematical expression.
 
 When a rule is applied under `domain: "assume"`, conditions accepted by that rule appear in
 `assumptions_used` and are not duplicated in `required_display`.
+
+For `equiv(...)` calls that return `false`, `equivalence_diagnostics` may include a `residual`
+and `residual_latex` while leaving `result` as `"false"`.
 
 ### POST `/api/clear`
 

@@ -26,6 +26,7 @@ pub(super) fn finalize_eval_collected(
         required_conditions: collected.required_conditions,
         required_display: collected.required_display,
         assumptions_used: collected.assumptions_used,
+        equivalence_diagnostics: collected.equivalence_diagnostics,
         budget_preset: config.budget_preset.as_str(),
         strict: config.strict,
         domain: config.domain.as_str(),
