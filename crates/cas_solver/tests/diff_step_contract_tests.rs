@@ -1726,6 +1726,484 @@ fn arccot_polynomial_sqrt_diff_uses_negative_post_calculus_reciprocal_root_prese
 }
 
 #[test]
+fn inverse_tangent_reciprocal_sqrt_polynomial_diff_uses_post_calculus_presentation() {
+    for (input, expected_render, canonical_equivalent) in [
+        (
+            "diff(arctan(1/sqrt(x^2+x+1)), x)",
+            "-(2 * x + 1) / (2 * sqrt(x^2 + x + 1) * (x^2 + x + 2))",
+            "-(x^2+x+1)^(-1/2)*(2*x+1)/(2*x^2+2*x+4)",
+        ),
+        (
+            "diff(arctan((x^2+x+1)^(-1/2)), x)",
+            "-(2 * x + 1) / (2 * sqrt(x^2 + x + 1) * (x^2 + x + 2))",
+            "-(x^2+x+1)^(-1/2)*(2*x+1)/(2*x^2+2*x+4)",
+        ),
+        (
+            "diff(arccot(1/sqrt(x^2+x+1)), x)",
+            "(2 * x + 1) / (2 * sqrt(x^2 + x + 1) * (x^2 + x + 2))",
+            "(x^2+x+1)^(-1/2)*(2*x+1)/(2*x^2+2*x+4)",
+        ),
+        (
+            "diff(arccot((x^2+x+1)^(-1/2)), x)",
+            "(2 * x + 1) / (2 * sqrt(x^2 + x + 1) * (x^2 + x + 2))",
+            "(x^2+x+1)^(-1/2)*(2*x+1)/(2*x^2+2*x+4)",
+        ),
+        (
+            "diff(arctan(1/sqrt((x^2+x+1)/2)), x)",
+            "-(2 * x + 1) / (2 * sqrt((x^2 + x + 1) / 2) * (x^2 + x + 3))",
+            "-(2*x+1)/(4*sqrt((x^2+x+1)/2)*(1/2*x^2+1/2*x+3/2))",
+        ),
+        (
+            "diff(arccot(1/sqrt((x^2+x+1)/2)), x)",
+            "(2 * x + 1) / (2 * sqrt((x^2 + x + 1) / 2) * (x^2 + x + 3))",
+            "(2*x+1)/(4*sqrt((x^2+x+1)/2)*(1/2*x^2+1/2*x+3/2))",
+        ),
+        (
+            "diff(arctan(2/sqrt(x^2+x+1)), x)",
+            "-(2 * x + 1) / (sqrt(x^2 + x + 1) * (x^2 + x + 5))",
+            "-(x^2+x+1)^(-1/2)*(2*x+1)/(x^2+x+5)",
+        ),
+        (
+            "diff(arccot(2/sqrt(x^2+x+1)), x)",
+            "(2 * x + 1) / (sqrt(x^2 + x + 1) * (x^2 + x + 5))",
+            "(x^2+x+1)^(-1/2)*(2*x+1)/(x^2+x+5)",
+        ),
+        (
+            "diff(arctan(3/sqrt((x^2+x+1)/2)), x)",
+            "-3 * (2 * x + 1) / (2 * sqrt((x^2 + x + 1) / 2) * (x^2 + x + 19))",
+            "-3*(2*x+1)*((x^2+x+1)/2)^(-1/2)/(2*(x^2+x+19))",
+        ),
+        (
+            "diff(arccot(3/sqrt((x^2+x+1)/2)), x)",
+            "3 * (2 * x + 1) / (2 * sqrt((x^2 + x + 1) / 2) * (x^2 + x + 19))",
+            "3*(2*x+1)*((x^2+x+1)/2)^(-1/2)/(2*(x^2+x+19))",
+        ),
+        (
+            "diff(arctan(2*(x^2+x+1)^(-1/2)), x)",
+            "-(2 * x + 1) / (sqrt(x^2 + x + 1) * (x^2 + x + 5))",
+            "-(x^2+x+1)^(-1/2)*(2*x+1)/(x^2+x+5)",
+        ),
+        (
+            "diff(arccot(2*(x^2+x+1)^(-1/2)), x)",
+            "(2 * x + 1) / (sqrt(x^2 + x + 1) * (x^2 + x + 5))",
+            "(x^2+x+1)^(-1/2)*(2*x+1)/(x^2+x+5)",
+        ),
+        (
+            "diff(arctan(-2*(x^2+x+1)^(-1/2)), x)",
+            "(2 * x + 1) / (sqrt(x^2 + x + 1) * (x^2 + x + 5))",
+            "(x^2+x+1)^(-1/2)*(2*x+1)/(x^2+x+5)",
+        ),
+        (
+            "diff(arctan(3*((x^2+x+1)/2)^(-1/2)), x)",
+            "-3 * (2 * x + 1) / (2 * sqrt((x^2 + x + 1) / 2) * (x^2 + x + 19))",
+            "-3*(2*x+1)*((x^2+x+1)/2)^(-1/2)/(2*(x^2+x+19))",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_render, "input: {input}");
+        assert!(
+            !result.contains("^(-1/2)"),
+            "presentation should use a sqrt denominator, got: {result}"
+        );
+        assert!(
+            !result.contains("2 * x^2 + 2 * x + 4"),
+            "presentation should keep denominator content factored, got: {result}"
+        );
+
+        let expected =
+            parse(canonical_equivalent, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "post-calculus presentation must stay equivalent to the canonical derivative, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert!(
+            required.is_empty(),
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name == "Symbolic Differentiation"),
+            "expected the derivative to keep the ordinary symbolic differentiation trace"
+        );
+    }
+}
+
+#[test]
+fn inverse_tangent_reciprocal_sqrt_linear_diff_keeps_domain_conditions() {
+    for (input, expected_render, canonical_equivalent) in [
+        (
+            "diff(arctan(2/sqrt(x)), x)",
+            "-1 / (sqrt(x) * (x + 4))",
+            "-x^(-1/2)/(x+4)",
+        ),
+        (
+            "diff(arctan(2*x^(-1/2)), x)",
+            "-1 / (sqrt(x) * (x + 4))",
+            "-x^(-1/2)/(x+4)",
+        ),
+        (
+            "diff(arccot(2/sqrt(x)), x)",
+            "1 / (sqrt(x) * (x + 4))",
+            "x^(-1/2)/(x+4)",
+        ),
+        (
+            "diff(arccot(2*x^(-1/2)), x)",
+            "1 / (sqrt(x) * (x + 4))",
+            "x^(-1/2)/(x+4)",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_render, "input: {input}");
+        assert!(
+            !result.contains("^(-1/2)"),
+            "presentation should use a sqrt denominator, got: {result}"
+        );
+
+        let expected =
+            parse(canonical_equivalent, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "post-calculus presentation must stay equivalent to the canonical derivative, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec!["x > 0".to_string()],
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name == "Symbolic Differentiation"),
+            "expected the derivative to keep the ordinary symbolic differentiation trace"
+        );
+    }
+}
+
+#[test]
+fn inverse_tangent_reciprocal_sqrt_shifted_affine_diff_keeps_domain_conditions() {
+    for (input, expected_render, canonical_equivalent) in [
+        (
+            "diff(arctan(2/sqrt(x+1)), x)",
+            "-1 / (sqrt(x + 1) * (x + 5))",
+            "-(x+1)^(-1/2)/(x+5)",
+        ),
+        (
+            "diff(arctan(2*(x+1)^(-1/2)), x)",
+            "-1 / (sqrt(x + 1) * (x + 5))",
+            "-(x+1)^(-1/2)/(x+5)",
+        ),
+        (
+            "diff(arccot(2/sqrt(x+1)), x)",
+            "1 / (sqrt(x + 1) * (x + 5))",
+            "(x+1)^(-1/2)/(x+5)",
+        ),
+        (
+            "diff(arccot(2*(x+1)^(-1/2)), x)",
+            "1 / (sqrt(x + 1) * (x + 5))",
+            "(x+1)^(-1/2)/(x+5)",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_render, "input: {input}");
+        assert!(
+            !result.contains("^(-1/2)"),
+            "presentation should use a sqrt denominator, got: {result}"
+        );
+
+        let expected =
+            parse(canonical_equivalent, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "post-calculus presentation must stay equivalent to the canonical derivative, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec!["x + 1 > 0".to_string()],
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name == "Symbolic Differentiation"),
+            "expected the derivative to keep the ordinary symbolic differentiation trace"
+        );
+    }
+}
+
+#[test]
+fn inverse_tangent_reciprocal_sqrt_scaled_affine_diff_keeps_domain_conditions() {
+    for (input, expected_render, canonical_equivalent) in [
+        (
+            "diff(arctan(2/sqrt(2*x+3)), x)",
+            "-2 / (sqrt(2 * x + 3) * (2 * x + 7))",
+            "-2*(2*x+3)^(-1/2)/(2*x+7)",
+        ),
+        (
+            "diff(arctan(2*(2*x+3)^(-1/2)), x)",
+            "-2 / (sqrt(2 * x + 3) * (2 * x + 7))",
+            "-2*(2*x+3)^(-1/2)/(2*x+7)",
+        ),
+        (
+            "diff(arccot(2/sqrt(2*x+3)), x)",
+            "2 / (sqrt(2 * x + 3) * (2 * x + 7))",
+            "2*(2*x+3)^(-1/2)/(2*x+7)",
+        ),
+        (
+            "diff(arccot(2*(2*x+3)^(-1/2)), x)",
+            "2 / (sqrt(2 * x + 3) * (2 * x + 7))",
+            "2*(2*x+3)^(-1/2)/(2*x+7)",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_render, "input: {input}");
+        assert!(
+            !result.contains("^(-1/2)"),
+            "presentation should use a sqrt denominator, got: {result}"
+        );
+
+        let expected =
+            parse(canonical_equivalent, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "post-calculus presentation must stay equivalent to the canonical derivative, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec!["2 * x + 3 > 0".to_string()],
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name == "Symbolic Differentiation"),
+            "expected the derivative to keep the ordinary symbolic differentiation trace"
+        );
+    }
+}
+
+#[test]
+fn inverse_tangent_reciprocal_sqrt_negative_affine_diff_keeps_domain_conditions() {
+    for (input, expected_render, canonical_equivalent) in [
+        (
+            "diff(arctan(2/sqrt(3-2*x)), x)",
+            "2 / (sqrt(3 - 2 * x) * (7 - 2 * x))",
+            "2*(3-2*x)^(-1/2)/(7-2*x)",
+        ),
+        (
+            "diff(arctan(2*(3-2*x)^(-1/2)), x)",
+            "2 / (sqrt(3 - 2 * x) * (7 - 2 * x))",
+            "2*(3-2*x)^(-1/2)/(7-2*x)",
+        ),
+        (
+            "diff(arccot(2/sqrt(3-2*x)), x)",
+            "-2 / (sqrt(3 - 2 * x) * (7 - 2 * x))",
+            "-2*(3-2*x)^(-1/2)/(7-2*x)",
+        ),
+        (
+            "diff(arccot(2*(3-2*x)^(-1/2)), x)",
+            "-2 / (sqrt(3 - 2 * x) * (7 - 2 * x))",
+            "-2*(3-2*x)^(-1/2)/(7-2*x)",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_render, "input: {input}");
+        assert!(
+            !result.contains("^(-1/2)"),
+            "presentation should use a sqrt denominator, got: {result}"
+        );
+
+        let expected =
+            parse(canonical_equivalent, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "post-calculus presentation must stay equivalent to the canonical derivative, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec!["3 - 2 * x > 0".to_string()],
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name == "Symbolic Differentiation"),
+            "expected the derivative to keep the ordinary symbolic differentiation trace"
+        );
+    }
+}
+
+#[test]
 fn arctan_reciprocal_scaled_polynomial_sqrt_diff_compacts_gap_presentation() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();

@@ -3262,6 +3262,12 @@ fn integrate_contract_sqrt_chain_secant_cosecant_products_verify() {
             vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
         ),
         (
+            "integrate(-sec(sqrt(3-2*x))*tan(sqrt(3-2*x))/sqrt(3-2*x), x)",
+            "sec(sqrt(3 - 2 * x))",
+            "-tan(sqrt(3 - 2 * x)) * sec(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
+            vec!["3 - 2 * x > 0", "cos(sqrt(3 - 2 * x)) ≠ 0"],
+        ),
+        (
             "integrate(csc(sqrt(3*x+1))*cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
             "-csc(sqrt(3 * x + 1))",
             "3 * csc(sqrt(3 * x + 1)) * cot(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
@@ -3371,6 +3377,13 @@ fn integrate_contract_sqrt_chain_tangent_cotangent_logs_verify() {
             "-3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
             vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
             vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
+        ),
+        (
+            "integrate(-tan(sqrt(3-2*x))/sqrt(3-2*x), x)",
+            "-ln(|cos(sqrt(3 - 2 * x))|)",
+            "-tan(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
+            vec!["3 - 2 * x > 0", "cos(sqrt(3 - 2 * x)) ≠ 0"],
+            vec!["3 - 2 * x > 0", "cos(sqrt(3 - 2 * x)) ≠ 0"],
         ),
         (
             "integrate(-cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
