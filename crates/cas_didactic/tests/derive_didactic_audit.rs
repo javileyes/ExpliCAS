@@ -3950,6 +3950,10 @@ fn derive_didactic_nested_radical_denesting_explains_square_then_abs_cleanup() {
             "La raíz de un cuadrado da un valor absoluto",
         ],
     );
+    assert_case_step_has_no_substeps(
+        "nested_radical_denesting",
+        "Quitar valor absoluto de una expresión no negativa",
+    );
     assert_case_has_no_no_web_substeps_flag("nested_radical_denesting");
 }
 

@@ -336,7 +336,7 @@ fn test_integrate_cosecant_squared_kernel() {
                 id: rewrite.new_expr
             }
         ),
-        "-(cos(x) / sin(x))"
+        "-cos(x) / sin(x)"
     );
     assert_eq!(rewrite.required_conditions.len(), 1);
     assert_eq!(rewrite.required_conditions[0].display(&ctx), "sin(x) ≠ 0");

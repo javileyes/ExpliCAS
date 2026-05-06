@@ -82,6 +82,7 @@ mod eval_option_axes;
 #[cfg(test)]
 mod eval_option_axes_tests;
 mod eval_output_adapters;
+mod eval_output_condition_filter;
 mod eval_output_finalize;
 mod eval_output_finalize_expr;
 mod eval_output_finalize_input;

@@ -1,7 +1,7 @@
 //! Term ordering and fraction display view for expression display.
 
 use crate::{Context, Expr, ExprId};
-use num_traits::ToPrimitive;
+use num_traits::{One, Signed, ToPrimitive};
 use std::fmt;
 
 use super::expr::{check_negative, precedence, DisplayExpr};
@@ -128,15 +128,15 @@ impl FractionDisplayView {
         let mut sign: i8 = 1;
         let mut num = Vec::new();
         let mut den = Vec::new();
-        let mut worklist = vec![id];
+        let mut worklist = vec![(id, false)];
 
-        while let Some(curr) = worklist.pop() {
+        while let Some((curr, in_denominator)) = worklist.pop() {
             match ctx.get(curr) {
                 Expr::Matrix { .. } => return None, // Matrix blocks fraction display
 
                 Expr::Neg(inner) => {
                     sign *= -1;
-                    worklist.push(*inner);
+                    worklist.push((*inner, in_denominator));
                 }
 
                 Expr::Mul(l, r) => {
@@ -146,8 +146,8 @@ impl FractionDisplayView {
                     {
                         return None;
                     }
-                    worklist.push(*l);
-                    worklist.push(*r);
+                    worklist.push((*l, in_denominator));
+                    worklist.push((*r, in_denominator));
                 }
 
                 Expr::Pow(base, exp_id) => {
@@ -157,15 +157,21 @@ impl FractionDisplayView {
 
                     // Check if exponent is integer
                     if let Some(exp) = Self::as_int(ctx, *exp_id) {
-                        if exp < 0 {
+                        let effective_exp = if in_denominator { -exp } else { exp };
+                        if effective_exp < 0 {
                             den.push(DisplayFactor {
                                 base: *base,
-                                exp: -exp,
+                                exp: -effective_exp,
                             });
-                        } else if exp > 0 {
-                            num.push(DisplayFactor { base: *base, exp });
+                        } else if effective_exp > 0 {
+                            num.push(DisplayFactor {
+                                base: *base,
+                                exp: effective_exp,
+                            });
                         }
                         // exp == 0 means factor is 1, skip
+                    } else if in_denominator {
+                        den.push(DisplayFactor { base: curr, exp: 1 });
                     } else {
                         // Non-integer exponent: treat as single num factor
                         num.push(DisplayFactor { base: curr, exp: 1 });
@@ -174,17 +180,50 @@ impl FractionDisplayView {
 
                 Expr::Div(n, d) => {
                     // Add numerator factors, denominator factors
-                    worklist.push(*n);
-                    // Denominator goes to den with exp=1
                     if matches!(ctx.get(*d), Expr::Matrix { .. }) {
                         return None;
                     }
-                    den.push(DisplayFactor { base: *d, exp: 1 });
+                    worklist.push((*n, in_denominator));
+                    if in_denominator {
+                        worklist.push((*d, false));
+                    } else {
+                        match ctx.get(*d) {
+                            Expr::Neg(inner) => {
+                                sign *= -1;
+                                den.push(DisplayFactor {
+                                    base: *inner,
+                                    exp: 1,
+                                });
+                            }
+                            Expr::Number(n) if n.is_negative() => {
+                                sign *= -1;
+                                if !(-n.clone()).is_one() {
+                                    den.push(DisplayFactor { base: *d, exp: 1 });
+                                }
+                            }
+                            _ => den.push(DisplayFactor { base: *d, exp: 1 }),
+                        }
+                    }
+                }
+
+                Expr::Number(n) if n.is_negative() => {
+                    sign *= -1;
+                    if !(-n.clone()).is_one() {
+                        if in_denominator {
+                            den.push(DisplayFactor { base: curr, exp: 1 });
+                        } else {
+                            num.push(DisplayFactor { base: curr, exp: 1 });
+                        }
+                    }
                 }
 
                 // Atoms: add as numerator factor
                 _ => {
-                    num.push(DisplayFactor { base: curr, exp: 1 });
+                    if in_denominator {
+                        den.push(DisplayFactor { base: curr, exp: 1 });
+                    } else {
+                        num.push(DisplayFactor { base: curr, exp: 1 });
+                    }
                 }
             }
         }
@@ -225,6 +264,16 @@ pub(super) fn format_factors(
 
         let base_prec = precedence(ctx, factor.base);
         let needs_parens = base_prec < 2; // Mul precedence
+
+        if let Expr::Number(n) = ctx.get(factor.base) {
+            if n.is_negative() {
+                write!(f, "{}", -n.clone())?;
+                if factor.exp != 1 {
+                    write!(f, "^{}", factor.exp)?;
+                }
+                continue;
+            }
+        }
 
         if needs_parens {
             write!(

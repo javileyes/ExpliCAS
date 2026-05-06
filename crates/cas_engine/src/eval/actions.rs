@@ -5,6 +5,95 @@
 
 use super::*;
 
+fn is_simple_negative_var_affine_witness(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var: ExprId,
+    var_name: &str,
+) -> bool {
+    match ctx.get(expr) {
+        cas_ast::Expr::Neg(inner) => *inner == var,
+        cas_ast::Expr::Sub(left, right) => {
+            *right == var && !cas_math::expr_predicates::contains_named_var(ctx, *left, var_name)
+        }
+        cas_ast::Expr::Add(left, right) => {
+            (is_simple_negative_var_affine_witness(ctx, *left, var, var_name)
+                && !cas_math::expr_predicates::contains_named_var(ctx, *right, var_name))
+                || (is_simple_negative_var_affine_witness(ctx, *right, var, var_name)
+                    && !cas_math::expr_predicates::contains_named_var(ctx, *left, var_name))
+        }
+        _ => false,
+    }
+}
+
+fn is_simple_positive_var_affine_witness(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var: ExprId,
+    var_name: &str,
+) -> bool {
+    match ctx.get(expr) {
+        _ if expr == var => true,
+        cas_ast::Expr::Add(left, right) => {
+            (*left == var && !cas_math::expr_predicates::contains_named_var(ctx, *right, var_name))
+                || (*right == var
+                    && !cas_math::expr_predicates::contains_named_var(ctx, *left, var_name))
+        }
+        cas_ast::Expr::Sub(left, right) => {
+            *left == var && !cas_math::expr_predicates::contains_named_var(ctx, *right, var_name)
+        }
+        _ => false,
+    }
+}
+
+fn limit_domain_path_warning(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var: ExprId,
+    var_name: &str,
+    approach: crate::limits::Approach,
+) -> Option<DomainWarning> {
+    let input_domain =
+        crate::infer_implicit_domain(ctx, expr, crate::semantics::ValueDomain::RealOnly);
+
+    let required = match approach {
+        crate::limits::Approach::NegInfinity => input_domain.conditions().iter().find_map(|cond| {
+            let witness = match cond {
+                crate::ImplicitCondition::Positive(witness)
+                | crate::ImplicitCondition::NonNegative(witness) => *witness,
+                crate::ImplicitCondition::NonZero(_) => return None,
+            };
+
+            is_simple_positive_var_affine_witness(ctx, witness, var, var_name)
+                .then(|| cond.display(ctx))
+        }),
+        crate::limits::Approach::PosInfinity => input_domain.conditions().iter().find_map(|cond| {
+            let witness = match cond {
+                crate::ImplicitCondition::Positive(witness)
+                | crate::ImplicitCondition::NonNegative(witness) => *witness,
+                crate::ImplicitCondition::NonZero(_) => return None,
+            };
+
+            is_simple_negative_var_affine_witness(ctx, witness, var, var_name)
+                .then(|| cond.display(ctx))
+        }),
+        crate::limits::Approach::Finite(_) => return None,
+    }?;
+
+    let approach_display = match approach {
+        crate::limits::Approach::NegInfinity => "-infinity",
+        crate::limits::Approach::PosInfinity => "infinity",
+        crate::limits::Approach::Finite(_) => return None,
+    };
+
+    Some(DomainWarning {
+        message: format!(
+            "Limit path conflicts with the input domain: {var_name} -> {approach_display} while the expression requires {required}"
+        ),
+        rule_name: "Limit Domain Path".to_string(),
+    })
+}
+
 impl Engine {
     /// Route one already-resolved action to its concrete handler.
     pub(super) fn dispatch_eval_action(
@@ -128,16 +217,37 @@ impl Engine {
             &opts,
             &mut budget,
         ) {
-            Ok(result) => Ok((
-                EvalResult::Expr(result.expr),
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-                vec![],
-            )),
+            Ok(result) => {
+                let mut warnings: Vec<DomainWarning> = result
+                    .warning
+                    .into_iter()
+                    .map(|message| DomainWarning {
+                        message,
+                        rule_name: "Limit Evaluation".to_string(),
+                    })
+                    .collect();
+                if !warnings.is_empty() {
+                    if let Some(warning) = limit_domain_path_warning(
+                        &self.simplifier.context,
+                        resolved,
+                        var_id,
+                        var,
+                        approach,
+                    ) {
+                        warnings.push(warning);
+                    }
+                }
+                Ok((
+                    EvalResult::Expr(result.expr),
+                    warnings,
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                    vec![],
+                ))
+            }
             Err(e) => Err(anyhow::anyhow!("Limit error: {}", e)),
         }
     }

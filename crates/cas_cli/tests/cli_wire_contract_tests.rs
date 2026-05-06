@@ -554,17 +554,15 @@ fn test_envelope_wire_assume_log_exp_surfaces_warning_and_guard() {
     let assumed = transparency["assumptions_used"].as_array().unwrap();
 
     assert_eq!(wire["result"]["value"]["display"], "x");
-    assert_eq!(required.len(), 3);
+    assert_eq!(required.len(), 1);
     assert!(required
         .iter()
         .any(|item| item["kind"] == "NonZero" && item["expr_canonical"] == "b - 1"));
-    assert!(required
-        .iter()
-        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b"));
-    assert!(required
-        .iter()
-        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b^x"));
-    assert!(assumed.is_empty());
+    assert_eq!(assumed.len(), 1);
+    assert_eq!(assumed[0]["kind"], "positive");
+    assert_eq!(assumed[0]["rule"], "Log-Exp Inverse");
+    assert_eq!(assumed[0]["display"], "b > 0");
+    assert_eq!(assumed[0]["expr_canonical"], "b");
 }
 
 /// Validates strict envelope preserves blocked educational hints
@@ -615,10 +613,16 @@ fn test_envelope_wire_generic_vs_assume_log_exp_split() {
     let generic_wire = parse_wire(&generic_output);
 
     assert_eq!(generic_wire["result"]["value"]["display"], "log(b, b^x)");
-    assert!(generic_wire["transparency"]["required_conditions"]
+    let generic_required = generic_wire["transparency"]["required_conditions"]
         .as_array()
-        .unwrap()
-        .is_empty());
+        .unwrap();
+    assert_eq!(generic_required.len(), 2);
+    assert!(generic_required
+        .iter()
+        .any(|item| item["kind"] == "NonZero" && item["expr_canonical"] == "b - 1"));
+    assert!(generic_required
+        .iter()
+        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b"));
     assert!(generic_wire["transparency"]["assumptions_used"]
         .as_array()
         .unwrap()
@@ -641,17 +645,15 @@ fn test_envelope_wire_generic_vs_assume_log_exp_split() {
     let assumed = assume_wire["transparency"]["assumptions_used"]
         .as_array()
         .unwrap();
-    assert_eq!(required.len(), 3);
+    assert_eq!(required.len(), 1);
     assert!(required
         .iter()
         .any(|item| item["kind"] == "NonZero" && item["expr_canonical"] == "b - 1"));
-    assert!(required
-        .iter()
-        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b"));
-    assert!(required
-        .iter()
-        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b^x"));
-    assert!(assumed.is_empty());
+    assert_eq!(assumed.len(), 1);
+    assert_eq!(assumed[0]["kind"], "positive");
+    assert_eq!(assumed[0]["rule"], "Log-Exp Inverse");
+    assert_eq!(assumed[0]["display"], "b > 0");
+    assert_eq!(assumed[0]["expr_canonical"], "b");
 }
 
 /// Validates intrinsic-domain split for exp(ln(x)) in envelope format

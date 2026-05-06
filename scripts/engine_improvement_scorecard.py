@@ -1621,8 +1621,16 @@ def parse_derive_shadow(output: str) -> dict[str, Any]:
         r"derive shadow pressure strategy specificity: generic_simplify_strategy_successes=(\d+) distinct_actual_strategies=(\d+)",
         output,
     )
+    embedded_family_coverage = re.search(
+        r"derive shadow pressure embedded-family coverage: sampled_families=(\d+) total_families=(\d+) missing=([^\n]*)",
+        output,
+    )
     generic_ids = re.search(
         r"derive shadow pressure generic-simplify-ids: ([^\n]*)",
+        output,
+    )
+    multi_step_ids = re.search(
+        r"derive shadow pressure multi-step-ids: ([^\n]*)",
         output,
     )
     actual_strategy_counts = parse_debug_count_map(
@@ -1650,6 +1658,20 @@ def parse_derive_shadow(output: str) -> dict[str, Any]:
             generic_simplify_ids = [
                 item.strip() for item in raw_ids.split(",") if item.strip()
             ]
+    multi_step_success_ids = []
+    if multi_step_ids:
+        raw_ids = multi_step_ids.group(1).strip()
+        if raw_ids and raw_ids != "none":
+            multi_step_success_ids = [
+                item.strip() for item in raw_ids.split(",") if item.strip()
+            ]
+    embedded_missing_families = []
+    if embedded_family_coverage:
+        raw_missing = embedded_family_coverage.group(3).strip()
+        if raw_missing and raw_missing != "none":
+            embedded_missing_families = [
+                item.strip() for item in raw_missing.split(",") if item.strip()
+            ]
 
     return {
         "sampled": sampled,
@@ -1662,6 +1684,7 @@ def parse_derive_shadow(output: str) -> dict[str, Any]:
         "mean_step_count": float(stats.group(2)),
         "single_step_successes": int(stats.group(3)),
         "multi_step_successes": int(stats.group(4)),
+        "multi_step_success_ids": multi_step_success_ids,
         "generic_simplify_strategy_successes": int(specificity.group(1))
         if specificity
         else 0,
@@ -1669,6 +1692,13 @@ def parse_derive_shadow(output: str) -> dict[str, Any]:
         "distinct_actual_strategies": int(specificity.group(2))
         if specificity
         else None,
+        "embedded_family_sampled_count": int(embedded_family_coverage.group(1))
+        if embedded_family_coverage
+        else None,
+        "embedded_family_total_count": int(embedded_family_coverage.group(2))
+        if embedded_family_coverage
+        else None,
+        "embedded_family_missing": embedded_missing_families,
         "actual_strategy_counts": actual_strategy_counts,
         "derived_by_family": derived_by_family,
         "unsupported_by_family": unsupported_by_family,
@@ -2853,6 +2883,32 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"{derive_shadow_metrics.get('distinct_actual_strategies', 'n/a')}"
                     ),
                     (
+                        f"- Embedded family coverage: sampled_families="
+                        f"{derive_shadow_metrics.get('embedded_family_sampled_count', 'n/a')} "
+                        f"total_families="
+                        f"{derive_shadow_metrics.get('embedded_family_total_count', 'n/a')} "
+                        f"missing="
+                        + (
+                            ", ".join(
+                                derive_shadow_metrics.get(
+                                    "embedded_family_missing", []
+                                )
+                            )
+                            or "none"
+                        )
+                    ),
+                    (
+                        "- Multi-step shadow IDs: "
+                        + (
+                            ", ".join(
+                                derive_shadow_metrics.get(
+                                    "multi_step_success_ids", []
+                                )
+                            )
+                            or "none"
+                        )
+                    ),
+                    (
                         "- Generic simplify shadow IDs: "
                         + (
                             ", ".join(
@@ -3233,6 +3289,14 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 )
             if "single_step_successes" in metrics:
                 pieces.append(f"single_step={metrics['single_step_successes']}")
+            if "multi_step_success_ids" in metrics:
+                pieces.append(f"multi_step_ids={len(metrics['multi_step_success_ids'])}")
+            if metrics.get("embedded_family_sampled_count") is not None:
+                pieces.append(
+                    "embedded_families="
+                    f"{metrics['embedded_family_sampled_count']}/"
+                    f"{metrics['embedded_family_total_count']}"
+                )
             summary = " ".join(pieces)
         elif "cargo_status" in metrics:
             pieces = [

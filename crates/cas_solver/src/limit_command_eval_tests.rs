@@ -35,7 +35,8 @@ mod tests {
     fn parse_limit_command_input_rejects_unsupported_finite_direction() {
         let err = parse_limit_command_input("x, x, 0").expect_err("finite point unsupported");
         assert!(err.contains("Unsupported limit direction `0`"));
-        assert!(err.contains("Only infinity and -infinity"));
+        assert!(err.contains("Finite point limits are not supported yet"));
+        assert!(err.contains("use infinity or -infinity"));
     }
 
     #[test]
@@ -50,6 +51,7 @@ mod tests {
         match err {
             LimitCommandEvalError::Parse(message) => {
                 assert!(message.contains("Unsupported limit direction `0`"));
+                assert!(message.contains("Finite point limits are not supported yet"));
             }
             other => panic!("expected parse error, got {other:?}"),
         }

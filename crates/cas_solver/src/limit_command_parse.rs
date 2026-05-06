@@ -40,7 +40,7 @@ fn parse_limit_approach(raw: &str) -> Result<Approach, String> {
     }
 
     Err(format!(
-        "Unsupported limit direction `{dir}`. Only infinity and -infinity are currently supported."
+        "Unsupported limit direction `{dir}`. Finite point limits are not supported yet; use infinity or -infinity."
     ))
 }
 

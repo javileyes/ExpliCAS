@@ -160,6 +160,34 @@ Candidates for similar treatment:
 - Rationalization layer
 - Algebraic cancellation (`x/x`, `(x²-1)/(x-1)`)
 
+### 5.2 Finite-Point Residual Boundary
+
+Inline eval syntax may accept finite-point notation such as
+`limit(ln(x), x, -1)`, but this is only a residual contract until Limits V2 is
+defined and tested.
+
+Current contract:
+
+- accepted finite points render as `limit(expr, var, point)` when unresolved
+- expressions that do not depend on the limit variable may evaluate directly,
+  preserving their own implicit domain requirements
+- the identity variable limit may evaluate directly to the finite point when
+  that point does not depend on the limit variable
+- unresolved finite-point limits carry a warning that finite point limits are
+  not supported safely yet
+- no finite-point answer is invented
+- no side, path, continuity, branch, or domain assumption is inferred
+- the CLI subcommand `limit --to` remains scoped to `infinity` and `-infinity`
+  until it has a dedicated finite-point API contract
+
+This boundary is intentional. A future Limits V2 implementation must still
+define:
+
+- point representation and side policy
+- domain/path conditions at the approach point
+- residual rendering for unresolved finite limits
+- contract tests before any evaluation rule is promoted
+
 ---
 
 ## 6. PR Checklist

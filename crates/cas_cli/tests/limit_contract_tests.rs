@@ -5,6 +5,8 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use serde_json::{json, Value};
+
 /// Get path to the cas_cli binary
 fn cas_cli_binary() -> PathBuf {
     PathBuf::from(env!("CARGO_BIN_EXE_cas_cli"))
@@ -20,6 +22,34 @@ fn run_limit(expr: &str, var: &str, to: &str, format: &str) -> (bool, String) {
 
     let output = Command::new(&binary)
         .args(["limit", expr, "--var", var, &to_arg, &format_arg])
+        .output()
+        .unwrap_or_else(|e| panic!("Failed to run {:?}: {}", binary, e));
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    (output.status.success(), stdout)
+}
+
+fn run_limit_with_stderr(expr: &str, var: &str, to: &str, format: &str) -> (bool, String, String) {
+    let binary = cas_cli_binary();
+    let to_arg = format!("--to={}", to);
+    let format_arg = format!("--format={}", format);
+
+    let output = Command::new(&binary)
+        .args(["limit", expr, "--var", var, &to_arg, &format_arg])
+        .output()
+        .unwrap_or_else(|e| panic!("Failed to run {:?}: {}", binary, e));
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    (output.status.success(), stdout, stderr)
+}
+
+fn run_eval(expr: &str, format: &str) -> (bool, String) {
+    let binary = cas_cli_binary();
+    let format_arg = format!("--format={}", format);
+
+    let output = Command::new(&binary)
+        .args(["eval", expr, &format_arg])
         .output()
         .unwrap_or_else(|e| panic!("Failed to run {:?}: {}", binary, e));
 
@@ -73,6 +103,173 @@ fn test_limit_residual_with_warning_json() {
     assert!(
         stdout.contains("limit("),
         "Result should contain residual limit(...)"
+    );
+}
+
+#[test]
+fn test_limit_subcommand_rejects_finite_to_value_before_eval_json() {
+    let (success, stdout, stderr) = run_limit_with_stderr("x", "x", "0", "json");
+    assert!(!success, "Finite --to should be rejected by the CLI");
+    assert!(
+        stdout.trim().is_empty(),
+        "Rejected CLI invocation should not emit a JSON result, got: {stdout}"
+    );
+    assert!(
+        stderr.contains("invalid value '0'") && stderr.contains("infinity"),
+        "Finite --to should advertise the infinity-only contract, got: {stderr}"
+    );
+}
+
+#[test]
+fn test_eval_finite_dependent_limit_stays_residual_with_warning_json() {
+    let (success, stdout) = run_eval("limit(x + 1, x, 0)", "json");
+    assert!(success, "Command should succeed even for finite residual");
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "limit(x + 1, x, 0)");
+    assert!(
+        wire["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("Finite point limits are not supported safely yet")
+                    })
+            })
+        }),
+        "Dependent finite limit should keep explicit finite-limit warning, got: {wire:?}"
+    );
+}
+
+#[test]
+fn test_eval_finite_identity_limit_returns_point_json() {
+    let (success, stdout) = run_eval("limit(x, x, 0)", "json");
+    assert!(success, "Command should succeed for finite identity limit");
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["warnings"], json!([]));
+}
+
+#[test]
+fn test_eval_finite_identity_limit_returns_independent_symbolic_point_json() {
+    let (success, stdout) = run_eval("limit(x, x, y + 1)", "json");
+    assert!(
+        success,
+        "Command should succeed for independent finite identity point"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "y + 1");
+    assert_eq!(wire["warnings"], json!([]));
+}
+
+#[test]
+fn test_eval_finite_independent_limit_preserves_domain_requirements_json() {
+    let (success, stdout) = run_eval("limit(ln(y), x, -1)", "json");
+    assert!(
+        success,
+        "Command should succeed for independent finite limit expression"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "ln(y)");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!(["y > 0"]));
+}
+
+#[test]
+fn test_eval_finite_independent_sqrt_limit_preserves_domain_requirements_json() {
+    let (success, stdout) = run_eval("limit(sqrt(y), x, -1)", "json");
+    assert!(
+        success,
+        "Command should succeed for independent finite sqrt limit expression"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "sqrt(y)");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_conditions"][0]["kind"], "NonNegative");
+    assert_eq!(wire["required_conditions"][0]["expr_display"], "y");
+}
+
+#[test]
+fn test_eval_finite_independent_reciprocal_limit_preserves_domain_requirements_json() {
+    let (success, stdout) = run_eval("limit(1/y, x, -1)", "json");
+    assert!(
+        success,
+        "Command should succeed for independent finite reciprocal limit expression"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "1 / y");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_conditions"][0]["kind"], "NonZero");
+    assert_eq!(wire["required_conditions"][0]["expr_display"], "y");
+}
+
+#[test]
+fn test_eval_finite_independent_composite_reciprocal_limit_preserves_domain_requirements_json() {
+    let (success, stdout) = run_eval("limit(1/(y+1), x, -1)", "json");
+    assert!(
+        success,
+        "Command should succeed for independent finite composite reciprocal limit expression"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "1 / (y + 1)");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_conditions"][0]["kind"], "NonZero");
+    assert_eq!(wire["required_conditions"][0]["expr_display"], "y + 1");
+}
+
+#[test]
+fn test_eval_finite_independent_limit_preserves_multiple_domain_requirements_json() {
+    let (success, stdout) = run_eval("limit(ln(y)/(z+1), x, -1)", "json");
+    assert!(
+        success,
+        "Command should succeed for independent finite limit with multiple domain requirements"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "ln(y) / (z + 1)");
+    assert_eq!(wire["warnings"], json!([]));
+    let required = wire["required_conditions"]
+        .as_array()
+        .expect("required conditions");
+    assert!(
+        required
+            .iter()
+            .any(|cond| cond["kind"] == "Positive" && cond["expr_display"] == "y"),
+        "Expected Positive(y), got: {required:?}"
+    );
+    assert!(
+        required
+            .iter()
+            .any(|cond| cond["kind"] == "NonZero" && cond["expr_display"] == "z + 1"),
+        "Expected NonZero(z + 1), got: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_finite_identity_limit_rejects_dependent_point_json() {
+    let (success, stdout) = run_eval("limit(x, x, x + 1)", "json");
+    assert!(
+        success,
+        "Command should succeed with residual for dependent finite point"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "limit(x, x, x + 1)");
+    assert!(
+        wire["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("Finite point limits are not supported safely yet")
+                    })
+            })
+        }),
+        "Dependent finite identity point should keep finite-limit warning, got: {wire:?}"
     );
 }
 

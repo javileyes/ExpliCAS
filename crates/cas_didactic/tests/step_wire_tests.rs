@@ -367,7 +367,7 @@ fn step_wire_pull_constant_from_fraction_highlights_the_rewritten_fraction() {
 
     let pull_steps: Vec<_> = steps
         .iter()
-        .filter(|step| step.rule == "Pull Constant From Fraction")
+        .filter(|step| step.rule == "Sacar constante de una fracción")
         .collect();
 
     assert_eq!(pull_steps.len(), 2, "expected the two pull-constant steps");
@@ -392,6 +392,52 @@ fn step_wire_pull_constant_from_fraction_highlights_the_rewritten_fraction() {
             .starts_with("{\\color{green}{2\\cdot \\frac{\\sqrt{y}}{y - 1}}}"),
         "expected the second pull-constant step to highlight the rewritten fraction, got: {}",
         pull_steps[1].after_latex
+    );
+}
+
+#[test]
+fn step_wire_post_diff_fraction_cleanup_uses_human_visible_rule_titles() {
+    let (engine, output) = eval_output_for("diff(arctan(sqrt(x)), x)");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let rule_titles: Vec<&str> = steps.iter().map(|step| step.rule.as_str()).collect();
+
+    assert!(
+        rule_titles.contains(&"Calcular la derivada"),
+        "expected the main diff step to use a human title, got {rule_titles:?}"
+    );
+    assert!(
+        rule_titles.contains(&"Sacar constante de una fracción"),
+        "expected post-diff fraction cleanup to use a human title, got {rule_titles:?}"
+    );
+    assert!(
+        rule_titles.contains(&"Combinar fracciones en una multiplicación"),
+        "expected post-diff multiplication/division cleanup to use a human title, got {rule_titles:?}"
+    );
+    assert!(
+        !rule_titles.contains(&"Symbolic Differentiation")
+            && !rule_titles.contains(&"Pull Constant From Fraction")
+            && !rule_titles.contains(&"Simplify Multiplication with Division"),
+        "post-calculus visible trace should not leak internal rule names: {rule_titles:?}"
+    );
+}
+
+#[test]
+fn step_wire_integration_uses_human_visible_rule_title() {
+    let (engine, output) = eval_output_for("integrate(1/(2*x+1), x)");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    let rule_titles: Vec<&str> = steps.iter().map(|step| step.rule.as_str()).collect();
+
+    assert!(
+        rule_titles.contains(&"Calcular la integral"),
+        "expected the integration step to use a human title, got {rule_titles:?}"
+    );
+    assert!(
+        !rule_titles.contains(&"Symbolic Integration"),
+        "integration visible trace should not leak internal rule names: {rule_titles:?}"
     );
 }
 

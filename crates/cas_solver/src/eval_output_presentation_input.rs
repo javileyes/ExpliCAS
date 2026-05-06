@@ -112,8 +112,9 @@ pub(crate) fn format_output_input_latex(
             EvalSpecialCommand::Limit { var, approach, .. } => {
                 let expr_latex = style_latex_for_input(ctx, parsed, signals);
                 let approach_latex = match approach {
-                    EvalLimitApproach::PosInfinity => "\\infty",
-                    EvalLimitApproach::NegInfinity => "-\\infty",
+                    EvalLimitApproach::PosInfinity => "\\infty".to_string(),
+                    EvalLimitApproach::NegInfinity => "-\\infty".to_string(),
+                    EvalLimitApproach::Finite(point) => latex_escape(&point),
                 };
                 return format!("\\lim_{{{var} \\to {approach_latex}}} {expr_latex}");
             }

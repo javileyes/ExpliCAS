@@ -528,10 +528,241 @@ mod tests {
 
         let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
         assert_eq!(payload["ok"], true);
+        assert_eq!(payload["warnings"], serde_json::json!([]));
         let input_latex = payload["input_latex"].as_str().expect("input_latex string");
         assert!(
             input_latex.contains("\\lim_{x \\to \\infty}"),
             "expected input_latex to preserve the limit operator, got: {input_latex}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_returns_finite_limit_residual() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("limit(ln(x), x, -1)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["input"], "limit(ln(x), x, -1)");
+        assert_eq!(payload["result"], "limit(ln(x), x, -1)");
+        let input_latex = payload["input_latex"].as_str().expect("input_latex string");
+        assert!(
+            input_latex.contains("\\lim_{x \\to -1}"),
+            "expected input_latex to preserve finite limit point, got: {input_latex}"
+        );
+
+        let warnings = payload["warnings"].as_array().expect("warnings array");
+        assert!(
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("Finite point limits are not supported safely yet")
+                    })
+            }),
+            "expected finite limit residual warning, got: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_computes_finite_limit_of_independent_expr() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("limit(ln(y), x, -1)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "ln(y)");
+        assert_eq!(payload["warnings"], serde_json::json!([]));
+
+        let required = payload["required_display"]
+            .as_array()
+            .expect("required_display array");
+        assert!(
+            required.iter().any(|condition| condition == "y > 0"),
+            "expected independent expression domain condition to remain visible, got: {required:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_surfaces_unresolved_limit_warning() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("limit(ln(x), x, -infinity)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "limit(ln(x), x, -infinity)");
+
+        let warnings = payload["warnings"].as_array().expect("warnings array");
+        assert!(
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"]
+                        .as_str()
+                        .is_some_and(|message| message.contains("Could not determine limit safely"))
+            }),
+            "expected unresolved limit warning in eval wire output, got: {warnings:?}"
+        );
+        assert!(
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Domain Path"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("x -> -infinity")
+                            && message.contains("expression requires x > 0")
+                    })
+            }),
+            "expected negative-infinity path/domain warning in eval wire output, got: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_does_not_warn_for_resolved_negative_infinity_log_path(
+    ) {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("limit(ln(-x + 1), x, -infinity)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "infinity");
+        assert_eq!(payload["warnings"], serde_json::json!([]));
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_surfaces_nonnegative_path_conflict_for_limit() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("limit(sqrt(x), x, -infinity)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "limit(sqrt(x), x, -infinity)");
+
+        let warnings = payload["warnings"].as_array().expect("warnings array");
+        assert!(
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Domain Path"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("x -> -infinity")
+                            && message.contains("expression requires x ≥ 0")
+                    })
+            }),
+            "expected nonnegative negative-infinity path/domain warning, got: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_surfaces_negative_infinity_lower_affine_domain_path_conflict_for_limit(
+    ) {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("limit(ln(x + 1), x, -infinity)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "limit(ln(x + 1), x, -infinity)");
+
+        let warnings = payload["warnings"].as_array().expect("warnings array");
+        assert!(
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Domain Path"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("x -> -infinity")
+                            && message.contains("expression requires x + 1 > 0")
+                    })
+            }),
+            "expected negative-infinity lower affine path/domain warning, got: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_surfaces_negative_infinity_lower_nonnegative_affine_domain_path_conflict_for_limit(
+    ) {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("limit(sqrt(x - 2), x, -infinity)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "limit(sqrt(x - 2), x, -infinity)");
+
+        let warnings = payload["warnings"].as_array().expect("warnings array");
+        assert!(
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Domain Path"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("x -> -infinity")
+                            && message.contains("expression requires x - 2 ≥ 0")
+                    })
+            }),
+            "expected negative-infinity lower affine nonnegative path/domain warning, got: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_surfaces_positive_infinity_upper_domain_path_conflict_for_limit(
+    ) {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("limit(ln(1 - x), x, infinity)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "limit(ln(1 - x), x, infinity)");
+
+        let warnings = payload["warnings"].as_array().expect("warnings array");
+        assert!(
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Domain Path"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("x -> infinity")
+                            && message.contains("expression requires 1 - x > 0")
+                    })
+            }),
+            "expected positive-infinity upper-domain path warning, got: {warnings:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_surfaces_positive_infinity_upper_nonnegative_path_conflict_for_limit(
+    ) {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("limit(sqrt(1 - x), x, infinity)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "limit(sqrt(1 - x), x, infinity)");
+
+        let warnings = payload["warnings"].as_array().expect("warnings array");
+        assert!(
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Domain Path"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("x -> infinity")
+                            && message.contains("expression requires 1 - x ≥ 0")
+                    })
+            }),
+            "expected positive-infinity upper nonnegative path warning, got: {warnings:?}"
         );
     }
 

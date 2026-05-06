@@ -149,6 +149,149 @@ fn test_unary_neg_internal_hold_add_has_parentheses() {
     );
 }
 
+#[test]
+fn test_negative_unit_times_function_omits_unit_factor() {
+    let mut ctx = Context::new();
+
+    let neg_one = ctx.num(-1);
+    let x = ctx.var("x");
+    let two = ctx.num(2);
+    let x_squared = ctx.add(Expr::Pow(x, two));
+    let atanh = ctx.call("atanh", vec![x_squared]);
+    let expr = ctx.add(Expr::Mul(neg_one, atanh));
+
+    let display = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: expr
+        }
+    );
+
+    assert_eq!(display, "-atanh(x^2)");
+}
+
+#[test]
+fn test_fraction_display_extracts_negative_numeric_factor_from_numerator() {
+    let mut ctx = Context::new();
+
+    let x = ctx.var("x");
+    let neg_two = ctx.num(-2);
+    let one = ctx.num(1);
+    let four = ctx.num(4);
+    let x_fourth = ctx.add(Expr::Pow(x, four));
+    let numerator = ctx.add(Expr::Mul(x, neg_two));
+    let denominator = ctx.add(Expr::Sub(one, x_fourth));
+    let expr = ctx.add(Expr::Div(numerator, denominator));
+
+    let display = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: expr
+        }
+    );
+
+    assert_eq!(display, "-2 * x / (1 - x^4)");
+}
+
+#[test]
+fn test_negative_division_display_avoids_outer_parentheses() {
+    let mut ctx = Context::new();
+
+    let x = ctx.var("x");
+    let two = ctx.num(2);
+    let one = ctx.num(1);
+    let four = ctx.num(4);
+    let x_fourth = ctx.add(Expr::Pow(x, four));
+    let numerator = ctx.add(Expr::Mul(x, two));
+    let denominator = ctx.add(Expr::Sub(one, x_fourth));
+    let fraction = ctx.add(Expr::Div(numerator, denominator));
+    let expr = ctx.add(Expr::Neg(fraction));
+
+    let display = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: expr
+        }
+    );
+
+    assert_eq!(display, "-2 * x / (1 - x^4)");
+}
+
+#[test]
+fn test_negative_reciprocal_product_display_avoids_outer_parentheses() {
+    let mut ctx = Context::new();
+
+    let x = ctx.var("x");
+    let two = ctx.num(2);
+    let one = ctx.num(1);
+    let neg_one = ctx.num(-1);
+    let four = ctx.num(4);
+    let x_fourth = ctx.add(Expr::Pow(x, four));
+    let positive_numerator = ctx.add(Expr::Mul(x, two));
+    let numerator = ctx.add(Expr::Neg(positive_numerator));
+    let denominator = ctx.add(Expr::Sub(one, x_fourth));
+    let reciprocal_denominator = ctx.add(Expr::Pow(denominator, neg_one));
+    let expr = ctx.add(Expr::Mul(numerator, reciprocal_denominator));
+
+    let display = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: expr
+        }
+    );
+
+    assert_eq!(display, "-2 * x/(1 - x^4)");
+}
+
+#[test]
+fn test_fraction_display_avoids_double_parens_for_single_additive_denominator() {
+    let mut ctx = Context::new();
+
+    let x = ctx.var("x");
+    let two = ctx.num(2);
+    let one = ctx.num(1);
+    let neg_one = ctx.num(-1);
+    let four = ctx.num(4);
+    let x_fourth = ctx.add(Expr::Pow(x, four));
+    let numerator = ctx.add(Expr::Mul(x, two));
+    let denominator = ctx.add(Expr::Sub(one, x_fourth));
+    let reciprocal_denominator = ctx.add(Expr::Pow(denominator, neg_one));
+    let expr = ctx.add(Expr::Mul(numerator, reciprocal_denominator));
+
+    let display = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: expr
+        }
+    );
+
+    assert_eq!(display, "(x * 2)/(1 - x^4)");
+}
+
+#[test]
+fn test_fraction_display_extracts_negative_numeric_denominator_sign() {
+    let mut ctx = Context::new();
+
+    let x = ctx.var("x");
+    let neg_two = ctx.num(-2);
+    let expr = ctx.add(Expr::Div(x, neg_two));
+
+    let display = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: expr
+        }
+    );
+
+    assert_eq!(display, "-x / 2");
+}
+
 /// Internal hold barriers on the RHS of subtraction still need parentheses.
 #[test]
 fn test_sub_internal_hold_add_has_parentheses() {

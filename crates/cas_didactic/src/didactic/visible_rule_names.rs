@@ -126,6 +126,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Sqrt Perfect Square" | "Simplify Square Root" | "Simplify perfect square root" => {
             "Reconocer un cuadrado perfecto bajo la raíz"
         }
+        "Abs Of Sum Of Squares" => "Quitar valor absoluto de una expresión no negativa",
         "Combine Like Terms" => "Agrupar términos semejantes",
         "Combine Same Denominator Fractions" => "Sumar fracciones con mismo denominador",
         "Combine Same Denominator Sub" => "Restar fracciones con mismo denominador",
@@ -133,6 +134,10 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Common Denominator" => "Llevar a denominador común",
         "Add Fractions" => "Sumar fracciones",
         "Subtract Fractions" => "Restar fracciones",
+        "Symbolic Differentiation" => "Calcular la derivada",
+        "Symbolic Integration" => "Calcular la integral",
+        "Pull Constant From Fraction" => "Sacar constante de una fracción",
+        "Simplify Multiplication with Division" => "Combinar fracciones en una multiplicación",
         "Simplify Nested Fraction" => "Cancelar factores en una fracción",
         "Simplify Complex Fraction" => "Simplificar fracción anidada",
         "Auto Expand Power Sum" => "Expandir binomio",

@@ -8,6 +8,21 @@ fn expr_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
 }
 
+fn exprs_match(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    if expr_eq(ctx, left, right) || exprs_equivalent(ctx, left, right) {
+        return true;
+    }
+
+    let Some(left_base) = reciprocal_sqrt_like_base(ctx, left) else {
+        return false;
+    };
+    let Some(right_base) = reciprocal_sqrt_like_base(ctx, right) else {
+        return false;
+    };
+
+    expr_eq(ctx, left_base, right_base) || exprs_equivalent(ctx, left_base, right_base)
+}
+
 fn one_expr(ctx: &mut Context) -> ExprId {
     ctx.num(1)
 }
@@ -22,6 +37,133 @@ fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<
         return None;
     };
     (ctx.builtin_of(*fn_id) == Some(builtin) && args.len() == 1).then_some(args[0])
+}
+
+fn is_positive_half(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(value) => *value == BigRational::new(1.into(), 2.into()),
+        _ => false,
+    }
+}
+
+fn is_negative_half(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Number(value) => *value == BigRational::new((-1).into(), 2.into()),
+        Expr::Neg(inner) => is_positive_half(ctx, *inner),
+        _ => false,
+    }
+}
+
+fn sqrt_like_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(BuiltinFn::Sqrt) =>
+        {
+            Some(args[0])
+        }
+        Expr::Pow(base, exp) if is_positive_half(ctx, *exp) => Some(*base),
+        _ => None,
+    }
+}
+
+fn reciprocal_sqrt_like_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) if is_negative_half(ctx, *exp) => Some(*base),
+        Expr::Div(num, den) if is_one_constant(ctx, *num) => sqrt_like_base(ctx, *den),
+        _ => None,
+    }
+}
+
+fn scaled_reciprocal_sqrt_coeff(
+    ctx: &mut Context,
+    expr: ExprId,
+    expected_base: ExprId,
+) -> Option<BigRational> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    if let Some(base) = reciprocal_sqrt_like_base(ctx, expr) {
+        return exprs_match(ctx, base, expected_base).then_some(BigRational::one());
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            scaled_reciprocal_sqrt_coeff(ctx, inner, expected_base).map(|coeff| -coeff)
+        }
+        Expr::Div(num, den) => {
+            let den = cas_ast::hold::strip_all_holds(ctx, den);
+            if let Some(base) = sqrt_like_base(ctx, den) {
+                if exprs_match(ctx, base, expected_base) {
+                    return cas_math::numeric_eval::as_rational_const(ctx, num);
+                }
+            }
+
+            let numerator_coeff = cas_math::numeric_eval::as_rational_const(ctx, num)?;
+            let mut denominator_coeff = BigRational::one();
+            let mut matched_sqrt = false;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, den) {
+                if let Some(factor_coeff) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+                    denominator_coeff *= factor_coeff;
+                    continue;
+                }
+
+                if !matched_sqrt {
+                    if let Some(base) = sqrt_like_base(ctx, factor) {
+                        if exprs_match(ctx, base, expected_base) {
+                            matched_sqrt = true;
+                            continue;
+                        }
+                    }
+                }
+
+                return None;
+            }
+
+            (matched_sqrt && !denominator_coeff.is_zero())
+                .then_some(numerator_coeff / denominator_coeff)
+        }
+        Expr::Mul(_, _) => {
+            let mut coeff = BigRational::one();
+            let mut matched_reciprocal = false;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if let Some(factor_coeff) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+                    coeff *= factor_coeff;
+                    continue;
+                }
+
+                if !matched_reciprocal {
+                    if let Some(base) = reciprocal_sqrt_like_base(ctx, factor) {
+                        if exprs_match(ctx, base, expected_base) {
+                            matched_reciprocal = true;
+                            continue;
+                        }
+                    }
+                }
+
+                return None;
+            }
+
+            matched_reciprocal.then_some(coeff)
+        }
+        _ => None,
+    }
+}
+
+fn sqrt_chain_derivative_scale_matches(
+    ctx: &mut Context,
+    actual_scale: ExprId,
+    sqrt_arg: ExprId,
+    var_name: &str,
+) -> Option<bool> {
+    let sqrt_arg = cas_ast::hold::strip_all_holds(ctx, sqrt_arg);
+    let base = sqrt_like_base(ctx, sqrt_arg)?;
+    let base_poly = Polynomial::from_expr(ctx, base, var_name).ok()?;
+    let derivative = base_poly.derivative();
+    if derivative.is_zero() || derivative.coeffs.len() != 1 {
+        return None;
+    }
+
+    let expected_coeff = derivative.coeffs[0].clone() / BigRational::from_integer(2.into());
+    let actual_coeff = scaled_reciprocal_sqrt_coeff(ctx, actual_scale, base)?;
+    Some(actual_coeff == expected_coeff)
 }
 
 fn same_arg_unary_pair(
@@ -748,6 +890,18 @@ fn scaled_expected_matches(
             expr_eq(ctx, tanh_quotient, right)
         }
         BuiltinFn::Cosh => {
+            if let Some((target_arg, target_scale)) = tanh_scaled_target(ctx, right) {
+                let target_arg = cas_ast::hold::strip_all_holds(ctx, target_arg);
+                let target_scale = cas_ast::hold::strip_all_holds(ctx, target_scale);
+                let hyperbolic_arg = cas_ast::hold::strip_all_holds(ctx, hyperbolic_arg);
+                let scale = cas_ast::hold::strip_all_holds(ctx, scale);
+                if exprs_match(ctx, target_arg, hyperbolic_arg)
+                    && exprs_match(ctx, target_scale, scale)
+                {
+                    return true;
+                }
+            }
+
             let expected = ctx.add(Expr::Mul(scale, tanh));
             expr_eq(ctx, expected, right)
         }
@@ -763,17 +917,39 @@ fn log_abs_hyperbolic_diff_matches(
 ) -> Option<bool> {
     let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
     let ln_arg = unary_builtin_arg(ctx, call.target, BuiltinFn::Ln)?;
-    let abs_arg = unary_builtin_arg(ctx, ln_arg, BuiltinFn::Abs)?;
 
     let (builtin, hyperbolic_arg) =
-        if let Some(arg) = unary_builtin_arg(ctx, abs_arg, BuiltinFn::Sinh) {
-            (BuiltinFn::Sinh, arg)
+        if let Some(abs_arg) = unary_builtin_arg(ctx, ln_arg, BuiltinFn::Abs) {
+            if let Some(arg) = unary_builtin_arg(ctx, abs_arg, BuiltinFn::Sinh) {
+                (BuiltinFn::Sinh, arg)
+            } else {
+                (
+                    BuiltinFn::Cosh,
+                    unary_builtin_arg(ctx, abs_arg, BuiltinFn::Cosh)?,
+                )
+            }
         } else {
             (
                 BuiltinFn::Cosh,
-                unary_builtin_arg(ctx, abs_arg, BuiltinFn::Cosh)?,
+                unary_builtin_arg(ctx, ln_arg, BuiltinFn::Cosh)?,
             )
         };
+
+    if builtin == BuiltinFn::Cosh {
+        if let Some((target_arg, target_scale)) = tanh_scaled_target(ctx, right) {
+            if exprs_match(ctx, target_arg, hyperbolic_arg)
+                && sqrt_chain_derivative_scale_matches(
+                    ctx,
+                    target_scale,
+                    hyperbolic_arg,
+                    &call.var_name,
+                )
+                .is_some_and(|matched| matched)
+            {
+                return Some(true);
+            }
+        }
+    }
 
     let derivative = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
         ctx,
@@ -804,6 +980,142 @@ pub(crate) fn try_diff_log_abs_hyperbolic_residual_zero_preorder(
 ) -> Option<ExprId> {
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
     log_abs_hyperbolic_diff_matches(ctx, diff_expr, divisor, right)
+        .filter(|matched| *matched)
+        .map(|_| ctx.num(0))
+}
+
+fn sinh_over_cosh_scaled_target(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+
+    if let Expr::Mul(_, _) = ctx.get(expr) {
+        let mut matched = None;
+        let mut scale_factors = Vec::new();
+        for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+            let factor = cas_ast::hold::strip_all_holds(ctx, factor);
+            if matched.is_none() {
+                if let Some((arg, scale)) = sinh_over_cosh_scaled_target(ctx, factor) {
+                    matched = Some(arg);
+                    if !expr_is_one(ctx, scale) {
+                        scale_factors.push(scale);
+                    }
+                    continue;
+                }
+            }
+
+            scale_factors.push(factor);
+        }
+
+        let arg = matched?;
+        let scale = if scale_factors.is_empty() {
+            ctx.num(1)
+        } else {
+            cas_math::expr_nary::build_balanced_mul(ctx, &scale_factors)
+        };
+        return Some((arg, scale));
+    }
+
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let den = cas_ast::hold::strip_all_holds(ctx, den);
+    let hyperbolic_arg = unary_builtin_arg(ctx, den, BuiltinFn::Cosh)?;
+
+    let mut matched_sinh = false;
+    let mut scale_factors = Vec::new();
+    for factor in cas_math::expr_nary::mul_leaves(ctx, num) {
+        let factor = cas_ast::hold::strip_all_holds(ctx, factor);
+        if !matched_sinh {
+            if let Some(sinh_arg) = unary_builtin_arg(ctx, factor, BuiltinFn::Sinh) {
+                if exprs_match(ctx, sinh_arg, hyperbolic_arg) {
+                    matched_sinh = true;
+                    continue;
+                }
+            }
+        }
+
+        scale_factors.push(factor);
+    }
+
+    if !matched_sinh {
+        return None;
+    }
+
+    let scale = if scale_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        cas_math::expr_nary::build_balanced_mul(ctx, &scale_factors)
+    };
+    Some((hyperbolic_arg, scale))
+}
+
+fn tanh_scaled_target(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    if let Some(arg) = unary_builtin_arg(ctx, expr, BuiltinFn::Tanh) {
+        return Some((arg, ctx.num(1)));
+    }
+
+    if let Expr::Div(num, den) = ctx.get(expr).clone() {
+        let (arg, num_scale) = tanh_scaled_target(ctx, num)?;
+        let den = cas_ast::hold::strip_all_holds(ctx, den);
+        if expr_is_one(ctx, den) {
+            return Some((arg, num_scale));
+        }
+        let scale = if expr_is_one(ctx, num_scale) {
+            let one = ctx.num(1);
+            ctx.add(Expr::Div(one, den))
+        } else {
+            ctx.add(Expr::Div(num_scale, den))
+        };
+        return Some((arg, scale));
+    }
+
+    let mut matched_arg = None;
+    let mut scale_factors = Vec::new();
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        let factor = cas_ast::hold::strip_all_holds(ctx, factor);
+        if matched_arg.is_none() {
+            if let Some(arg) = unary_builtin_arg(ctx, factor, BuiltinFn::Tanh) {
+                matched_arg = Some(arg);
+                continue;
+            }
+        }
+
+        scale_factors.push(factor);
+    }
+
+    let arg = matched_arg?;
+    let scale = if scale_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        cas_math::expr_nary::build_balanced_mul(ctx, &scale_factors)
+    };
+    Some((arg, scale))
+}
+
+fn hyperbolic_tanh_common_factor_residual_matches(
+    ctx: &mut Context,
+    quotient_expr: ExprId,
+    target_expr: ExprId,
+) -> Option<bool> {
+    let (quotient_arg, quotient_scale) = sinh_over_cosh_scaled_target(ctx, quotient_expr)?;
+    let (target_arg, target_scale) = tanh_scaled_target(ctx, target_expr)?;
+    let quotient_arg = cas_ast::hold::strip_all_holds(ctx, quotient_arg);
+    let quotient_scale = cas_ast::hold::strip_all_holds(ctx, quotient_scale);
+    let target_arg = cas_ast::hold::strip_all_holds(ctx, target_arg);
+    let target_scale = cas_ast::hold::strip_all_holds(ctx, target_scale);
+
+    Some(
+        exprs_match(ctx, quotient_arg, target_arg)
+            && exprs_match(ctx, quotient_scale, target_scale),
+    )
+}
+
+fn try_hyperbolic_tanh_common_factor_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<ExprId> {
+    hyperbolic_tanh_common_factor_residual_matches(ctx, left, right)
         .filter(|matched| *matched)
         .map(|_| ctx.num(0))
 }
@@ -1138,6 +1450,7 @@ pub(crate) fn try_diff_hyperbolic_residual_zero_preorder(
 ) -> Option<ExprId> {
     try_diff_log_abs_hyperbolic_residual_zero_preorder(ctx, left, right)
         .or_else(|| try_diff_hyperbolic_reciprocal_residual_zero_preorder(ctx, left, right))
+        .or_else(|| try_hyperbolic_tanh_common_factor_residual_zero_preorder(ctx, left, right))
 }
 
 pub(crate) fn try_diff_hyperbolic_residual_root_zero(
@@ -1345,6 +1658,15 @@ mod tests {
         render(&simplifier.context, result)
     }
 
+    fn simplify_text_with_default_rules(input: &str) -> String {
+        let mut simplifier = crate::engine::Simplifier::with_default_rules();
+        simplifier.disable_rule("Double Angle Identity");
+        let expr = parse(input, &mut simplifier.context)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        let (result, _steps) = simplifier.simplify(expr);
+        render(&simplifier.context, result)
+    }
+
     #[test]
     fn diff_log_abs_hyperbolic_residual_root_cancels_compact_forms() {
         let cases = [
@@ -1352,6 +1674,25 @@ mod tests {
             "diff(ln(abs(sinh(2*x+1))), x)/2 - cosh(2*x+1)/sinh(2*x+1)",
             "diff(ln(abs(cosh(2*x+1))), x)/2 - tanh(2*x+1)",
             "diff(ln(abs(cosh(2*x+1))), x)/2 - sinh(2*x+1)/cosh(2*x+1)",
+            "diff(ln(cosh(sqrt(2*x))), x) - tanh(sqrt(2*x))/sqrt(2*x)",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+            assert_eq!(simplify_text_with_default_rules(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn hyperbolic_tanh_common_factor_residual_root_cancels_scaled_sqrt_forms() {
+        let cases = [
+            "sinh((2*x)^(1/2)) * (2*x)^(-1/2) / cosh((2*x)^(1/2)) - tanh((2*x)^(1/2)) * (2*x)^(-1/2)",
+            "tanh((2*x)^(1/2)) * (2*x)^(-1/2) - sinh((2*x)^(1/2)) * (2*x)^(-1/2) / cosh((2*x)^(1/2))",
         ];
 
         for input in cases {

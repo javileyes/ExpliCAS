@@ -303,6 +303,10 @@ pub fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
         return true; // Zero at all probe points (exact)
     }
 
+    if contains_variable_dependent_abs(ctx, expr) {
+        return false;
+    }
+
     // Fallback: f64 evaluation for expressions with surds/fractional exponents
     let f64_probes: Vec<Vec<f64>> = vec![
         vec![2.0 / 3.0, 5.0 / 7.0, 3.0 / 11.0, 7.0 / 13.0, 11.0 / 17.0],
@@ -323,6 +327,22 @@ pub fn numeric_poly_zero_check(ctx: &Context, expr: ExprId) -> bool {
     }
 
     true // Near-zero at all probe points
+}
+
+fn contains_variable_dependent_abs(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, cas_ast::BuiltinFn::Abs) => args
+            .iter()
+            .any(|arg| !cas_ast::collect_variables(ctx, *arg).is_empty()),
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| contains_variable_dependent_abs(ctx, *arg)),
+        Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) | Expr::Div(l, r) | Expr::Pow(l, r) => {
+            contains_variable_dependent_abs(ctx, *l) || contains_variable_dependent_abs(ctx, *r)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => contains_variable_dependent_abs(ctx, *inner),
+        _ => false,
+    }
 }
 
 /// Evaluate an expression by substituting rational values for variables.
@@ -679,5 +699,20 @@ pub fn eval_f64_with_substitution(
 
         // Matrix, SessionRef: bail out
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::numeric_poly_zero_check;
+    use cas_ast::Context;
+    use cas_parser::parse;
+
+    #[test]
+    fn numeric_poly_zero_check_rejects_variable_abs_piecewise_identity() {
+        let mut ctx = Context::new();
+        let expr = parse("a + 1 - abs(a + 1)", &mut ctx).expect("parse");
+
+        assert!(!numeric_poly_zero_check(&ctx, expr));
     }
 }

@@ -339,6 +339,11 @@ where
             }
         }
         Expr::Function(fn_id, args)
+            if real_only && ctx.is_builtin(*fn_id, BuiltinFn::Cosh) && args.len() == 1 =>
+        {
+            TriProof::Proven
+        }
+        Expr::Function(fn_id, args)
             if ctx.is_builtin(*fn_id, BuiltinFn::Exp) && args.len() == 1 =>
         {
             if real_only {
@@ -463,6 +468,11 @@ where
                 return TriProof::Unknown;
             };
             prove_nonnegative_depth_inner(ctx, arg, depth - 1, real_only, prove_nonzero)
+        }
+        Expr::Function(fn_id, args)
+            if real_only && ctx.is_builtin(*fn_id, BuiltinFn::Cosh) && args.len() == 1 =>
+        {
+            TriProof::Proven
         }
         Expr::Function(fn_id, args)
             if ctx.is_builtin(*fn_id, BuiltinFn::Exp) && args.len() == 1 =>
@@ -701,6 +711,24 @@ mod tests {
             TriProof::Unknown
         });
         assert_eq!(out, TriProof::Unknown);
+    }
+
+    #[test]
+    fn real_cosh_is_strictly_positive() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("cosh(sqrt(x))", &mut ctx).expect("parse");
+
+        let real_positive =
+            prove_positive_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+        let complex_positive =
+            prove_positive_depth_with(&ctx, expr, 20, false, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+
+        assert_eq!(real_positive, TriProof::Proven);
+        assert_eq!(complex_positive, TriProof::Unknown);
     }
 
     #[test]

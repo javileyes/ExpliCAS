@@ -88,6 +88,34 @@ fn build_prepared_eval_request_parses_limit_as_non_solve_action() {
 }
 
 #[test]
+fn build_prepared_eval_request_parses_finite_limit_point_as_residual_action() {
+    let mut ctx = cas_ast::Context::new();
+    let prepared = crate::eval_input::build_prepared_eval_request_for_input(
+        "limit(ln(x), x, -1)",
+        &mut ctx,
+        true,
+    )
+    .expect("request");
+
+    match prepared {
+        crate::eval_input::PreparedEvalRequest::Eval { action, .. } => match action {
+            crate::eval_input::EvalNonSolveAction::Limit { var, approach } => {
+                assert_eq!(var, "x");
+                match approach {
+                    cas_math::limit_types::Approach::Finite(point) => match ctx.get(point) {
+                        cas_ast::Expr::Number(value) => assert_eq!(value.to_string(), "-1"),
+                        other => panic!("expected numeric point, got {other:?}"),
+                    },
+                    other => panic!("expected finite limit approach, got {other:?}"),
+                }
+            }
+            _ => panic!("expected limit action"),
+        },
+        _ => panic!("expected eval variant"),
+    }
+}
+
+#[test]
 fn build_prepared_eval_request_parses_derive_as_special_command() {
     let mut ctx = cas_ast::Context::new();
     let prepared = crate::eval_input::build_prepared_eval_request_for_input(

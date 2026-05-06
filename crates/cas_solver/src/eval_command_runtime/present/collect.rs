@@ -5,9 +5,9 @@ use cas_api_models::{
 use cas_solver_core::engine_events::EngineEvent;
 
 use crate::eval_output_presentation::{
-    collect_output_assumption_display_set, collect_output_assumptions_used,
-    collect_output_required_conditions, collect_output_required_display,
-    collect_output_solve_steps, collect_output_warnings, format_output_input_latex,
+    collect_output_assumptions_used, collect_output_required_conditions,
+    collect_output_required_display, collect_output_solve_steps, collect_output_warnings,
+    format_output_input_latex,
 };
 
 use super::PreparedEvalRun;
@@ -83,18 +83,18 @@ where
         ctx,
         steps_mode,
     );
-    let warnings = collect_output_warnings(&prepared.output_view.domain_warnings);
     let assumptions_used = if domain_mode == "assume" {
         collect_output_assumptions_used(steps_raw)
     } else {
         Vec::new()
     };
-    let assumed_display = collect_output_assumption_display_set(&assumptions_used);
+    let warnings =
+        collect_output_warnings(&prepared.output_view.domain_warnings, &assumptions_used);
     let required_conditions_raw = prepared.output_view.required_conditions.as_slice();
     let required_conditions =
-        collect_output_required_conditions(required_conditions_raw, ctx, &assumed_display);
+        collect_output_required_conditions(required_conditions_raw, ctx, &assumptions_used);
     let required_display =
-        collect_output_required_display(required_conditions_raw, ctx, &assumed_display);
+        collect_output_required_display(required_conditions_raw, ctx, &assumptions_used);
     let timings_us = TimingsWire {
         parse_us: prepared.parse_us,
         simplify_us: prepared.simplify_us,

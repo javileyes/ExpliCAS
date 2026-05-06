@@ -1556,7 +1556,7 @@ Result: 1 / ((2 * n + 1) * (2 * n + 3))
 ### CLI
 
 ```text
-Parsed: ((1 / (a * n + b) - 1 / (a * n + c)) * 1)/((c - b))
+Parsed: ((1 / (a * n + b) - 1 / (a * n + c)) * 1)/(c - b)
 Target: 1 / ((a * n + b) * (a * n + c))
 Strategy: combine fraction
 Steps (Aggressive Mode):
@@ -12508,8 +12508,6 @@ Steps (Aggressive Mode):
    Cambio local: 1 - tanh(x)^(2) -> 1 / cosh(x)^(2)
    After: 1 / cosh(x)^2
 Result: 1 / cosh(x)^(2)
-ℹ️ Requires:
-  • cosh(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -14124,7 +14122,7 @@ Result: sqrt(5) + 1
    - substeps:
      1. `Reescribir el radicando como un cuadrado perfecto`
      2. `La raíz de un cuadrado da un valor absoluto`
-2. `Abs Of Sum Of Squares`
+2. `Quitar valor absoluto de una expresión no negativa`
    - before: `|sqrt(5) + 1|`
    - after: `sqrt(5) + 1`
    - substeps: none
@@ -15454,7 +15452,7 @@ Result: 1 / 2 * (1 / (2 * n + 1) - 1 / (2 * n + 3))
 
 - Source: `1/((a*n+b)*(a*n+c))`
 - Target: `1/(c-b)*(1/(a*n+b) - 1/(a*n+c))`
-- Result: `((1 / (a * n + b) - 1 / (a * n + c)) * 1)/((c - b))`
+- Result: `((1 / (a * n + b) - 1 / (a * n + c)) * 1)/(c - b)`
 - Web step count: `1`
 - Web substep count: `2`
 - Flags: none
@@ -15463,13 +15461,13 @@ Result: 1 / 2 * (1 / (2 * n + 1) - 1 / (2 * n + 3))
 
 ```text
 Parsed: 1 / ((a * n + b) * (a * n + c))
-Target: ((1 / (a * n + b) - 1 / (a * n + c)))/((c - b))
+Target: ((1 / (a * n + b) - 1 / (a * n + c)))/(c - b)
 Strategy: expand fraction
 Steps (Aggressive Mode):
 1. Split into telescoping partial fractions  [Telescoping Fraction Split]
    Before: 1 / ((a * n + b) * (a * n + c))
    Cambio local: 1 / ((a * n + b) * (a * n + c)) -> 1 / (c - b) * (1 / (a * n + b) - 1 / (a * n + c))
-   After: ((1 / (a * n + b) - 1 / (a * n + c)))/((c - b))
+   After: ((1 / (a * n + b) - 1 / (a * n + c)))/(c - b)
 Result: 1 / (c - b) * (1 / (a * n + b) - 1 / (a * n + c))
 ℹ️ Requires:
   • a * n + b ≠ 0

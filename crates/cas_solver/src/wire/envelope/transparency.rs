@@ -13,13 +13,15 @@ pub fn build_transparency(
     blocked_hints: &[BlockedHint],
     ctx: &cas_ast::Context,
 ) -> TransparencyDto {
+    let assumptions_used =
+        assumptions::map_assumptions_used(solver_assumptions, domain_warnings, steps);
     TransparencyDto {
-        required_conditions: conditions::map_required_conditions(required_conditions, ctx),
-        assumptions_used: assumptions::map_assumptions_used(
-            solver_assumptions,
-            domain_warnings,
-            steps,
+        required_conditions: conditions::map_required_conditions(
+            required_conditions,
+            ctx,
+            &assumptions_used,
         ),
+        assumptions_used,
         blocked_hints: hints::map_blocked_hints(blocked_hints),
     }
 }

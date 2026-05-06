@@ -10,15 +10,17 @@ pub enum Approach {
     PosInfinity,
     /// x -> -inf
     NegInfinity,
-    // V3 future: Point(ExprId) for x -> a
+    /// x -> finite point.
+    Finite(ExprId),
 }
 
 impl Approach {
     /// Convert an approach direction to the corresponding infinity sign.
-    pub fn inf_sign(self) -> InfSign {
+    pub fn inf_sign(self) -> Option<InfSign> {
         match self {
-            Approach::PosInfinity => InfSign::Pos,
-            Approach::NegInfinity => InfSign::Neg,
+            Approach::PosInfinity => Some(InfSign::Pos),
+            Approach::NegInfinity => Some(InfSign::Neg),
+            Approach::Finite(_) => None,
         }
     }
 }

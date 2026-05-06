@@ -71,7 +71,7 @@ pub(super) fn build_special_command_request(
                 parsed,
                 action: EvalNonSolveAction::Limit {
                     var,
-                    approach: map_limit_approach(approach),
+                    approach: map_limit_approach(ctx, approach)?,
                 },
                 auto_store,
             })

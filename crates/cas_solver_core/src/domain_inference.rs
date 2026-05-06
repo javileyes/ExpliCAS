@@ -384,7 +384,13 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
             }
             Expr::Pow(base, exp) => {
                 if let Some(n) = as_rational_const(ctx, *exp) {
-                    if is_even_root_exponent(&n) && !matches!(ctx.get(*base), Expr::Number(_)) {
+                    let base_is_number = matches!(ctx.get(*base), Expr::Number(_));
+                    let even_root = is_even_root_exponent(&n);
+                    if n.is_negative() && !even_root && !base_is_number {
+                        domain.add_nonzero(*base);
+                        add_denominator_nonzero_implications(ctx, *base, domain);
+                    }
+                    if even_root && !base_is_number {
                         if n.is_negative() {
                             domain.add_positive(*base);
                         } else {
@@ -539,6 +545,20 @@ mod tests {
         assert!(domain.contains_positive(x));
         assert!(!domain.contains_nonnegative(x));
         assert!(!domain.contains_nonzero(x));
+    }
+
+    #[test]
+    fn infer_negative_integer_power_adds_base_nonzero() {
+        let mut ctx = Context::new();
+        let y = ctx.var("y");
+        let one = ctx.num(1);
+        let denominator = ctx.add(Expr::Add(y, one));
+        let minus_one = ctx.num(-1);
+        let expr = ctx.add(Expr::Pow(denominator, minus_one));
+
+        let domain = infer_implicit_domain(&ctx, expr, true);
+
+        assert!(domain.contains_nonzero(denominator));
     }
 
     #[test]

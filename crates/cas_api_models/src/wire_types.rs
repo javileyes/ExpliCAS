@@ -465,10 +465,11 @@ impl EvalWireOutput {
 }
 
 /// Limit approach used by parsed eval special commands.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EvalLimitApproach {
     PosInfinity,
     NegInfinity,
+    Finite(String),
 }
 
 /// Parsed special command forms accepted by eval input.
@@ -525,6 +526,49 @@ pub fn parse_eval_special_command(input: &str) -> Option<EvalSpecialCommand> {
         });
     }
     None
+}
+
+pub fn parse_eval_limit_command_error(input: &str) -> Option<String> {
+    let trimmed = input.trim();
+    let lower = trimmed.to_lowercase();
+    let prefix_len = if lower.starts_with("limit(") {
+        6
+    } else if lower.starts_with("lim(") {
+        4
+    } else {
+        return None;
+    };
+
+    if !trimmed.ends_with(')') {
+        return Some("Invalid limit command. Expected limit(expr, var, infinity).".to_string());
+    }
+
+    let content = &trimmed[prefix_len..trimmed.len() - 1];
+    let parts = split_by_comma_at_depth_0(content);
+    if parts.len() < 2 || parts.len() > 3 {
+        return Some("Invalid limit command. Expected limit(expr, var, infinity).".to_string());
+    }
+
+    let var_str = parts[1].trim();
+    if var_str.is_empty()
+        || !var_str.chars().next().is_some_and(|ch| ch.is_alphabetic())
+        || !var_str.chars().all(|c| c.is_alphanumeric() || c == '_')
+    {
+        return Some("Invalid limit variable. Expected a variable name.".to_string());
+    }
+
+    if parts.len() == 3 {
+        let dir = parts[2].trim();
+        match dir.to_lowercase().as_str() {
+            "inf" | "infinity" | "+inf" | "+infinity" | "-inf" | "-infinity" => None,
+            _ if looks_like_finite_limit_point(dir) => None,
+            _ => Some(format!(
+                "Unsupported limit direction `{dir}`. Use infinity, -infinity, or a finite point."
+            )),
+        }
+    } else {
+        None
+    }
 }
 
 fn parse_solve_command(input: &str) -> Option<(String, String)> {
@@ -650,9 +694,11 @@ fn parse_limit_command(input: &str) -> Option<(String, String, EvalLimitApproach
     }
 
     let approach = if parts.len() == 3 {
-        match parts[2].trim().to_lowercase().as_str() {
+        let dir = parts[2].trim();
+        match dir.to_lowercase().as_str() {
             "inf" | "infinity" | "+inf" | "+infinity" => EvalLimitApproach::PosInfinity,
             "-inf" | "-infinity" => EvalLimitApproach::NegInfinity,
+            _ if looks_like_finite_limit_point(dir) => EvalLimitApproach::Finite(dir.to_string()),
             _ => return None,
         }
     } else {
@@ -660,6 +706,11 @@ fn parse_limit_command(input: &str) -> Option<(String, String, EvalLimitApproach
     };
 
     Some((expr_str.to_string(), var_str.to_string(), approach))
+}
+
+fn looks_like_finite_limit_point(dir: &str) -> bool {
+    let trimmed = dir.trim();
+    !trimmed.is_empty() && trimmed.chars().any(|ch| ch.is_ascii_digit())
 }
 
 fn split_by_comma_at_depth_0(s: &str) -> Vec<&str> {
@@ -1795,10 +1846,10 @@ impl OutputEnvelope {
 #[cfg(test)]
 mod tests {
     use super::{
-        parse_eval_special_command, DomainWire, EngineWireError, EngineWireResponse,
-        ErrorWireOutput, EvalLimitApproach, EvalOutputBuild, EvalRunOptions, EvalWireOutput,
-        ExprStatsWire, LimitWireResponse, OptionsWire, SemanticsWire, SubstituteRunOptions,
-        TimingsWire,
+        parse_eval_limit_command_error, parse_eval_special_command, DomainWire, EngineWireError,
+        EngineWireResponse, ErrorWireOutput, EvalLimitApproach, EvalOutputBuild, EvalRunOptions,
+        EvalWireOutput, ExprStatsWire, LimitWireResponse, OptionsWire, SemanticsWire,
+        SubstituteRunOptions, TimingsWire,
     };
 
     #[test]
@@ -2062,6 +2113,16 @@ mod tests {
                 approach: EvalLimitApproach::NegInfinity,
             }
         );
+
+        let finite_limit = parse_eval_special_command("limit(ln(x), x, -1)").expect("limit");
+        assert_eq!(
+            finite_limit,
+            super::EvalSpecialCommand::Limit {
+                expr: "ln(x)".to_string(),
+                var: "x".to_string(),
+                approach: EvalLimitApproach::Finite("-1".to_string()),
+            }
+        );
     }
 
     #[test]
@@ -2069,5 +2130,16 @@ mod tests {
         assert!(parse_eval_special_command("solve(x+1=0)").is_none());
         assert!(parse_eval_special_command("limit(x, x, sideways)").is_none());
         assert!(parse_eval_special_command("x + 1").is_none());
+    }
+
+    #[test]
+    fn parse_eval_limit_command_error_allows_finite_points_and_reports_bad_directions() {
+        assert!(parse_eval_limit_command_error("limit(ln(x), x, -1)").is_none());
+        assert_eq!(
+            parse_eval_limit_command_error("limit(ln(x), x, sideways)").as_deref(),
+            Some("Unsupported limit direction `sideways`. Use infinity, -infinity, or a finite point.")
+        );
+        assert!(parse_eval_limit_command_error("limit(ln(x), x, -infinity)").is_none());
+        assert!(parse_eval_limit_command_error("x + 1").is_none());
     }
 }

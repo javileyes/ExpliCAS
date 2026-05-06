@@ -177,6 +177,23 @@ fn assert_shadow_cases_exist_in_embedded_equivalence_corpus(cases: &[IdentitySha
     }
 }
 
+fn embedded_shadow_family_coverage(cases: &[IdentityShadowCase]) -> (usize, usize, Vec<String>) {
+    let all_families = load_embedded_equivalence_shadow_seeds()
+        .into_iter()
+        .map(|seed| seed.family)
+        .collect::<BTreeSet<_>>();
+    let sampled_families = cases
+        .iter()
+        .map(|case| case.family.to_string())
+        .collect::<BTreeSet<_>>();
+    let missing = all_families
+        .difference(&sampled_families)
+        .cloned()
+        .collect::<Vec<_>>();
+
+    (sampled_families.len(), all_families.len(), missing)
+}
+
 fn run_case(case: &DeriveCase) -> Vec<String> {
     let mut simplifier = Simplifier::with_default_rules();
     let input = format!("derive {}, {}", case.source, case.target);
@@ -277,6 +294,7 @@ struct DeriveShadowPressureStats {
     derived_step_total: usize,
     single_step_successes: usize,
     multi_step_successes: usize,
+    multi_step_success_ids: Vec<String>,
     generic_simplify_strategy_successes: usize,
     generic_simplify_strategy_ids: Vec<String>,
     actual_strategy_counts: BTreeMap<String, usize>,
@@ -532,6 +550,48 @@ const EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
         target: "(a + b)*x + c",
     },
     IdentityShadowCase {
+        id: "embedded_expand_common_factor_sum",
+        family: "expand",
+        source: "a*(b+c)",
+        target: "a*b + a*c",
+    },
+    IdentityShadowCase {
+        id: "embedded_factor_difference_squares",
+        family: "factor",
+        source: "a^2 - b^2",
+        target: "(a - b)*(a + b)",
+    },
+    IdentityShadowCase {
+        id: "embedded_finite_aggregate_sum_first_integers_symbolic",
+        family: "finite_aggregate",
+        source: "sum(k, k, 1, n)",
+        target: "n*(n+1)/2",
+    },
+    IdentityShadowCase {
+        id: "embedded_finite_telescoping_product_basic",
+        family: "finite_telescoping",
+        source: "product((k+1)/k, k, 1, n)",
+        target: "n+1",
+    },
+    IdentityShadowCase {
+        id: "embedded_fraction_combine_same_denominator_sum",
+        family: "fraction_combine",
+        source: "a/d + b/d",
+        target: "(a+b)/d",
+    },
+    IdentityShadowCase {
+        id: "embedded_fraction_decompose_symbolic_over_shift",
+        family: "fraction_decompose",
+        source: "(a*x+b)/(x+c)",
+        target: "a + (b-a*c)/(x+c)",
+    },
+    IdentityShadowCase {
+        id: "embedded_fraction_expand_simple",
+        family: "fraction_expand",
+        source: "(a+b)/d",
+        target: "a/d + b/d",
+    },
+    IdentityShadowCase {
         id: "embedded_consecutive_factorial_ratio",
         family: "simplify",
         source: "(n+1)!/n!",
@@ -554,6 +614,12 @@ const EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
         family: "log_contract",
         source: "ln(x^3)+ln(y^2)",
         target: "ln(x^3*y^2)",
+    },
+    IdentityShadowCase {
+        id: "embedded_log_expand_product",
+        family: "log_expand",
+        source: "ln(x*y)",
+        target: "ln(x) + ln(y)",
     },
     IdentityShadowCase {
         id: "embedded_log_exp_inverse_power_alias",
@@ -586,10 +652,52 @@ const EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
         target: "(a*b)/(a+b)",
     },
     IdentityShadowCase {
+        id: "embedded_number_theory_choose_pascal",
+        family: "number_theory",
+        source: "choose(4,1)+choose(4,2)",
+        target: "choose(5,2)",
+    },
+    IdentityShadowCase {
+        id: "embedded_polynomial_product_difference_of_squares_quadratic",
+        family: "polynomial_product",
+        source: "(x^2+a^2)*(x^2-a^2)",
+        target: "x^4-a^4",
+    },
+    IdentityShadowCase {
+        id: "embedded_radical_power_odd_half",
+        family: "radical_power",
+        source: "x^(3/2)",
+        target: "abs(x)*sqrt(x)",
+    },
+    IdentityShadowCase {
+        id: "embedded_rationalize_linear_root",
+        family: "rationalize",
+        source: "1/(sqrt(x)-1)",
+        target: "(sqrt(x)+1)/(x-1)",
+    },
+    IdentityShadowCase {
+        id: "embedded_solve_prep_complete_square_symbolic_leading_coeff",
+        family: "solve_prep",
+        source: "a*x^2 + b*x + c",
+        target: "a*(x + b/(2*a))^2 + c - b^2/(4*a)",
+    },
+    IdentityShadowCase {
+        id: "embedded_telescoping_fraction_affine_symbolic_shift_gap",
+        family: "telescoping_fraction",
+        source: "1/((a*n+b)*(a*n+c))",
+        target: "1/(c-b)*(1/(a*n+b) - 1/(a*n+c))",
+    },
+    IdentityShadowCase {
         id: "embedded_trig_tangent_ratio_expand",
         family: "trig_contract",
         source: "tan(x)",
         target: "sin(x)/cos(x)",
+    },
+    IdentityShadowCase {
+        id: "embedded_trig_expand_double_sin",
+        family: "trig_expand",
+        source: "sin(2*x)",
+        target: "2*sin(x)*cos(x)",
     },
 ];
 
@@ -693,6 +801,9 @@ fn evaluate_identity_shadow_pressure(cases: &[IdentityShadowCase]) -> DeriveShad
                 stats.single_step_successes += 1;
             } else {
                 stats.multi_step_successes += 1;
+                stats
+                    .multi_step_success_ids
+                    .push(format!("{}:{step_count}", case.id));
             }
             *stats
                 .derived_by_family
@@ -1089,6 +1200,13 @@ fn derive_engine_identity_shadow_pressure_reports_reachability() {
     assert_shadow_cases_exist_in_embedded_equivalence_corpus(
         EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES,
     );
+    let (embedded_sampled_families, embedded_total_families, embedded_missing_families) =
+        embedded_shadow_family_coverage(EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES);
+    assert!(
+        embedded_missing_families.is_empty(),
+        "derive shadow pressure must sample every embedded equivalence family; missing={:?}",
+        embedded_missing_families
+    );
 
     let mut shadow_cases = Vec::with_capacity(
         IDENTITY_SHADOW_PRESSURE_CASES.len() + EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES.len(),
@@ -1130,6 +1248,24 @@ fn derive_engine_identity_shadow_pressure_reports_reachability() {
         "derive shadow pressure strategy specificity: generic_simplify_strategy_successes={} distinct_actual_strategies={}",
         stats.generic_simplify_strategy_successes,
         stats.actual_strategy_counts.len()
+    );
+    eprintln!(
+        "derive shadow pressure embedded-family coverage: sampled_families={} total_families={} missing={}",
+        embedded_sampled_families,
+        embedded_total_families,
+        if embedded_missing_families.is_empty() {
+            "none".to_string()
+        } else {
+            embedded_missing_families.join(",")
+        }
+    );
+    eprintln!(
+        "derive shadow pressure multi-step-ids: {}",
+        if stats.multi_step_success_ids.is_empty() {
+            "none".to_string()
+        } else {
+            stats.multi_step_success_ids.join(",")
+        }
     );
     eprintln!(
         "derive shadow pressure generic-simplify-ids: {}",

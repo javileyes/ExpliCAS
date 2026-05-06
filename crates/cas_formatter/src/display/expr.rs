@@ -2,11 +2,11 @@
 
 use crate::{Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use std::fmt;
 
 use super::mul_symbol;
-use super::ordering::{cmp_term_for_display, format_factors, FractionDisplayView};
+use super::ordering::{cmp_term_for_display, format_factors, DisplayFactor, FractionDisplayView};
 
 // ============================================================================
 // DisplayExpr
@@ -122,16 +122,16 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                     }
 
                     // Format numerator
-                    let needs_num_parens =
-                        frac.num.len() > 1 || frac.num.iter().any(|f| f.exp != 1);
+                    let needs_num_parens = frac.sign >= 0
+                        && (frac.num.len() > 1 || frac.num.iter().any(|f| f.exp != 1));
                     if frac.num.is_empty() {
                         write!(f, "1")?;
                     } else if needs_num_parens && frac.num.len() > 1 {
                         write!(f, "(")?;
-                        format_factors(f, self.context, &frac.num)?;
+                        format_fraction_numerator(f, self.context, &frac.num, frac.sign < 0)?;
                         write!(f, ")")?;
                     } else {
-                        format_factors(f, self.context, &frac.num)?;
+                        format_fraction_numerator(f, self.context, &frac.num, frac.sign < 0)?;
                     }
 
                     write!(f, "/")?;
@@ -146,7 +146,18 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                         let den_base_prec = precedence(self.context, frac.den[0].base);
                         if den_base_prec <= 2 {
                             write!(f, "(")?;
-                            format_factors(f, self.context, &frac.den)?;
+                            if frac.den[0].exp == 1 && den_base_prec < 2 {
+                                write!(
+                                    f,
+                                    "{}",
+                                    DisplayExpr {
+                                        context: self.context,
+                                        id: frac.den[0].base
+                                    }
+                                )?;
+                            } else {
+                                format_factors(f, self.context, &frac.den)?;
+                            }
                             return write!(f, ")");
                         } else {
                             return format_factors(f, self.context, &frac.den);
@@ -230,16 +241,32 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 let lhs_prec = precedence(self.context, *l);
                 let rhs_prec = precedence(self.context, *r);
                 let op_prec = 2; // Div precedence (same as Mul)
+                let (lhs_is_neg, lhs_neg_inner, _) = check_negative(self.context, *l);
+                let (rhs_is_neg, _, _) = check_negative(self.context, *r);
 
-                if lhs_prec < op_prec {
-                    write!(
-                        f,
-                        "({})",
-                        DisplayExpr {
-                            context: self.context,
-                            id: *l
-                        }
-                    )?
+                if lhs_is_neg ^ rhs_is_neg {
+                    write!(f, "-")?;
+                }
+
+                if lhs_prec < op_prec
+                    || (lhs_is_neg && lhs_neg_inner.is_some() && lhs_prec <= op_prec)
+                {
+                    write!(f, "(")?;
+                    if lhs_is_neg {
+                        format_term_absolute(f, self.context, *l)?;
+                    } else {
+                        write!(
+                            f,
+                            "{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: *l
+                            }
+                        )?;
+                    }
+                    write!(f, ")")?;
+                } else if lhs_is_neg {
+                    format_term_absolute(f, self.context, *l)?
                 } else {
                     write!(
                         f,
@@ -258,14 +285,22 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 // a / (b * c).
                 // If RHS is Mul/Div, we need parens: a / (b * c) vs a / b * c.
                 if rhs_prec <= op_prec {
-                    write!(
-                        f,
-                        "({})",
-                        DisplayExpr {
-                            context: self.context,
-                            id: *r
-                        }
-                    )
+                    write!(f, "(")?;
+                    if rhs_is_neg {
+                        format_term_absolute(f, self.context, *r)?;
+                    } else {
+                        write!(
+                            f,
+                            "{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: *r
+                            }
+                        )?;
+                    }
+                    write!(f, ")")
+                } else if rhs_is_neg {
+                    format_term_absolute(f, self.context, *r)
                 } else {
                     write!(
                         f,
@@ -375,6 +410,22 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 }
             }
             Expr::Neg(e) => {
+                if let Expr::Div(l, r) = self.context.get(*e) {
+                    let (lhs_is_neg, _, _) = check_negative(self.context, *l);
+                    let (rhs_is_neg, _, _) = check_negative(self.context, *r);
+                    if !(lhs_is_neg ^ rhs_is_neg) {
+                        write!(f, "-")?;
+                        return write!(
+                            f,
+                            "{}",
+                            DisplayExpr {
+                                context: self.context,
+                                id: *e
+                            }
+                        );
+                    }
+                }
+
                 let inner_prec = precedence(self.context, *e);
                 // Check if inner is Neg to wrap in parens: -(-x)
                 let inner_is_neg = matches!(self.context.get(*e), Expr::Neg(_));
@@ -773,6 +824,34 @@ pub(super) fn format_term_absolute(
     }
 }
 
+fn format_fraction_numerator(
+    f: &mut fmt::Formatter<'_>,
+    ctx: &Context,
+    factors: &[DisplayFactor],
+    prefer_numeric_first: bool,
+) -> fmt::Result {
+    if !prefer_numeric_first || factors.len() < 2 {
+        return format_factors(f, ctx, factors);
+    }
+
+    let Some(numeric_idx) = factors
+        .iter()
+        .position(|factor| factor.exp == 1 && matches!(ctx.get(factor.base), Expr::Number(_)))
+    else {
+        return format_factors(f, ctx, factors);
+    };
+
+    if numeric_idx == 0 {
+        return format_factors(f, ctx, factors);
+    }
+
+    let mut ordered = Vec::with_capacity(factors.len());
+    ordered.push(factors[numeric_idx]);
+    ordered.extend(factors[..numeric_idx].iter().copied());
+    ordered.extend(factors[numeric_idx + 1..].iter().copied());
+    format_factors(f, ctx, &ordered)
+}
+
 enum RenderFactor {
     Expr(ExprId),
     Direct(ExprId, Option<BigRational>),
@@ -784,9 +863,20 @@ fn format_mul_absolute(
     left: RenderFactor,
     right: RenderFactor,
 ) -> fmt::Result {
+    if render_factor_is_unit_direct(&left) {
+        return format_abs_factor(f, ctx, right);
+    }
+    if render_factor_is_unit_direct(&right) {
+        return format_abs_factor(f, ctx, left);
+    }
+
     format_abs_factor(f, ctx, left)?;
     write!(f, "{}", mul_symbol())?;
     format_abs_factor(f, ctx, right)
+}
+
+fn render_factor_is_unit_direct(factor: &RenderFactor) -> bool {
+    matches!(factor, RenderFactor::Direct(_, Some(coeff)) if coeff.is_one())
 }
 
 fn format_abs_factor(

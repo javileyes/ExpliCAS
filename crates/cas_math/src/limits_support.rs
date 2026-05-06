@@ -65,6 +65,20 @@ pub fn mk_limit(ctx: &mut Context, expr: ExprId, var: ExprId, approach: InfSign)
     ctx.call("limit", vec![expr, var, approach_sym])
 }
 
+/// Create a residual limit expression from a typed approach.
+pub fn mk_limit_for_approach(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: Approach,
+) -> ExprId {
+    match approach {
+        Approach::PosInfinity => mk_limit(ctx, expr, var, InfSign::Pos),
+        Approach::NegInfinity => mk_limit(ctx, expr, var, InfSign::Neg),
+        Approach::Finite(point) => ctx.call("limit", vec![expr, var, point]),
+    }
+}
+
 /// Determine resulting infinity sign from approach sign and exponent parity.
 pub fn limit_sign(approach: InfSign, power: i64) -> InfSign {
     match approach {
@@ -1216,19 +1230,40 @@ pub fn eval_limit_at_infinity(
         PreSimplifyMode::Safe => presimplify_safe_for_limit(ctx, expr),
     };
 
-    if let Some(result_expr) =
-        try_limit_rules_at_infinity(ctx, simplified_expr, var, approach.inf_sign())
-    {
-        return LimitEvalOutcome {
-            expr: result_expr,
-            warning: None,
-        };
+    if let Approach::Finite(point) = approach {
+        if let Some(result_expr) = apply_constant_rule(ctx, simplified_expr, var) {
+            return LimitEvalOutcome {
+                expr: result_expr,
+                warning: None,
+            };
+        }
+        if simplified_expr == var && !depends_on(ctx, point, var) {
+            return LimitEvalOutcome {
+                expr: point,
+                warning: None,
+            };
+        }
     }
 
-    let residual = mk_limit(ctx, simplified_expr, var, approach.inf_sign());
+    if let Some(sign) = approach.inf_sign() {
+        if let Some(result_expr) = try_limit_rules_at_infinity(ctx, simplified_expr, var, sign) {
+            return LimitEvalOutcome {
+                expr: result_expr,
+                warning: None,
+            };
+        }
+    }
+
+    let residual = mk_limit_for_approach(ctx, simplified_expr, var, approach);
+    let warning = match approach {
+        Approach::Finite(_) => "Finite point limits are not supported safely yet".to_string(),
+        Approach::PosInfinity | Approach::NegInfinity => {
+            "Could not determine limit safely".to_string()
+        }
+    };
     LimitEvalOutcome {
         expr: residual,
-        warning: Some("Could not determine limit safely".to_string()),
+        warning: Some(warning),
     }
 }
 

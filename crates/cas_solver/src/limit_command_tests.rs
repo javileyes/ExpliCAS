@@ -21,10 +21,11 @@ mod tests {
     }
 
     #[test]
-    fn evaluate_limit_command_lines_rejects_finite_point_until_supported() {
+    fn evaluate_limit_command_lines_rejects_finite_point_subcommand_until_supported() {
         let err = crate::command_api::limit::evaluate_limit_command_lines("limit x, x, 0")
             .expect_err("finite point limits are not supported yet");
         assert!(err.contains("Unsupported limit direction `0`"));
-        assert!(err.contains("Only infinity and -infinity"));
+        assert!(err.contains("Finite point limits are not supported yet"));
+        assert!(err.contains("use infinity or -infinity"));
     }
 }

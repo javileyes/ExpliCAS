@@ -86,6 +86,34 @@ fn test_positive_condition_preserves_polynomial_sign() {
 }
 
 #[test]
+fn positive_affine_condition_dominates_positive_shifted_offset() {
+    for (known, derived, expected) in [
+        ("x + 1", "x + 2", vec!["x + 1 > 0"]),
+        ("2*x + 1", "2*x + 2", vec!["2 * x + 1 > 0"]),
+        ("1 - 2*x", "2 - 2*x", vec!["1 - 2 * x > 0"]),
+        ("x + 1", "1 - x", vec!["1 - x > 0", "x + 1 > 0"]),
+    ] {
+        let mut ctx = Context::new();
+        let known_expr = cas_parser::parse(known, &mut ctx).expect("parse known");
+        let derived_expr = cas_parser::parse(derived, &mut ctx).expect("parse derived");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(derived_expr),
+                ImplicitCondition::Positive(known_expr),
+            ],
+        );
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, expected, "known: {known}, derived: {derived}");
+    }
+}
+
+#[test]
 fn test_positive_condition_dedupes_positive_scalar_multiple() {
     let mut ctx = Context::new();
     let unscaled = cas_parser::parse("3 - x^2 - 2*x", &mut ctx).expect("parse unscaled");
@@ -145,6 +173,128 @@ fn test_positive_condition_dominates_product_nonnegative_condition() {
     );
 
     assert_eq!(rendered, vec!["x > 0"]);
+}
+
+#[test]
+fn positive_sqrt_unit_lower_bound_normalizes_to_algebraic_boundary() {
+    for (input, expected) in [
+        ("sqrt(x) - 1", vec!["x - 1 > 0"]),
+        ("sqrt(x + 1) - 1", vec!["x > 0"]),
+        ("sqrt(x^2 + 1) - 1", vec!["x ≠ 0"]),
+        ("sqrt((x + 1)^2 + 1) - 1", vec!["x + 1 ≠ 0"]),
+    ] {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse(input, &mut ctx).expect("parse condition");
+
+        let rendered = render_conditions_normalized(&mut ctx, &[ImplicitCondition::Positive(expr)]);
+
+        assert_eq!(rendered, expected, "input: {input}");
+    }
+}
+
+#[test]
+fn nonzero_sqrt_condition_normalizes_to_positive_base() {
+    for (input, expected) in [
+        ("sqrt(x^4 + 2*x^2)", vec!["x ≠ 0"]),
+        ("sqrt(x^4 + x^2 - 3/4)", vec!["4 * x^4 + 4 * x^2 - 3 > 0"]),
+    ] {
+        let mut ctx = Context::new();
+        let expr = cas_parser::parse(input, &mut ctx).expect("parse sqrt nonzero");
+
+        let rendered = render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(expr)]);
+
+        assert_eq!(rendered, expected, "input: {input}");
+    }
+}
+
+#[test]
+fn positive_sqrt_lower_bound_dominates_nonnegative_lower_bound() {
+    let mut ctx = Context::new();
+    let weak = cas_parser::parse("sqrt(x) - 1", &mut ctx).expect("parse weak");
+    let strong = cas_parser::parse("sqrt(x) - 1", &mut ctx).expect("parse strong");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::NonNegative(weak),
+            ImplicitCondition::Positive(strong),
+        ],
+    );
+
+    assert_eq!(rendered, vec!["x - 1 > 0"]);
+}
+
+#[test]
+fn positive_quadratic_fourth_gap_is_dropped_when_base_exceeds_one() {
+    let mut ctx = Context::new();
+    let intrinsic =
+        cas_parser::parse("(x^2 + x + 3)^4 - 1", &mut ctx).expect("parse intrinsic gap");
+    let scaled_intrinsic =
+        cas_parser::parse("(2*x^2 + 2*x + 6)^4 - 1", &mut ctx).expect("parse scaled intrinsic gap");
+    let rational_scaled_intrinsic = cas_parser::parse("(x^2 + x + 3)^4 - 16", &mut ctx)
+        .expect("parse rational-scaled intrinsic gap");
+    let expanded_intrinsic = cas_parser::parse(
+        "x^8 + 4*x^7 + 18*x^6 + 40*x^5 + 91*x^4 + 120*x^3 + 162*x^2 + 108*x + 80",
+        &mut ctx,
+    )
+    .expect("parse expanded intrinsic gap");
+    let boundary = cas_parser::parse("(x^2 + 1)^4 - 1", &mut ctx).expect("parse boundary gap");
+    let scaled_boundary =
+        cas_parser::parse("(x^2 + 1)^4 - 16", &mut ctx).expect("parse scaled boundary gap");
+
+    let rendered =
+        render_conditions_normalized(&mut ctx, &[ImplicitCondition::Positive(intrinsic)]);
+    assert!(
+        rendered.is_empty(),
+        "strictly-above-one quadratic fourth gap should be intrinsic: {rendered:?}"
+    );
+
+    let rendered =
+        render_conditions_normalized(&mut ctx, &[ImplicitCondition::Positive(scaled_intrinsic)]);
+    assert!(
+        rendered.is_empty(),
+        "scaled strictly-above-one quadratic fourth gap should be intrinsic: {rendered:?}"
+    );
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[ImplicitCondition::Positive(rational_scaled_intrinsic)],
+    );
+    assert!(
+        rendered.is_empty(),
+        "rational-scaled strictly-above-threshold quadratic fourth gap should be intrinsic: {rendered:?}"
+    );
+
+    let rendered =
+        render_conditions_normalized(&mut ctx, &[ImplicitCondition::Positive(expanded_intrinsic)]);
+    assert!(
+        rendered.is_empty(),
+        "expanded strictly-above-one quadratic fourth gap should be intrinsic: {rendered:?}"
+    );
+
+    let rendered = render_conditions_normalized(&mut ctx, &[ImplicitCondition::Positive(boundary)]);
+    assert_eq!(rendered, vec!["x ≠ 0"]);
+
+    let rendered =
+        render_conditions_normalized(&mut ctx, &[ImplicitCondition::Positive(scaled_boundary)]);
+    assert!(
+        !rendered.is_empty(),
+        "scaled boundary gap must keep an explicit condition"
+    );
+}
+
+#[test]
+fn positive_expanded_quadratic_fourth_gap_preserves_compact_display() {
+    let mut ctx = Context::new();
+    let gap = cas_parser::parse(
+        "x^8 + 4*x^7 + 18*x^6 + 40*x^5 + 91*x^4 + 120*x^3 + 162*x^2 + 108*x",
+        &mut ctx,
+    )
+    .expect("parse expanded quadratic fourth gap");
+
+    let rendered = render_conditions_normalized(&mut ctx, &[ImplicitCondition::Positive(gap)]);
+
+    assert_eq!(rendered, vec!["(x^2 + x + 3)^4 - 81 > 0"]);
 }
 
 #[test]

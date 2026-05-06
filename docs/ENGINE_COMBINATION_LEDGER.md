@@ -95,6 +95,76 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-06: Sqrt-Scaled Cosh Log Presentation Exposes Common-Factor Residual Gap
+
+- area:
+  - calculus / post-integration presentation / residual simplification
+- status:
+  - `superseded`
+- attempted case:
+  - compact the public result for `integrate(tanh(sqrt(2*x))/sqrt(2*x), x)`
+    from `ln(|cosh(sqrt(2 * x))|)` to `ln(cosh(sqrt(2 * x)))`, relying on
+    real positivity of `cosh`
+- local lane:
+  - `cargo test -q -p cas_cli --test integrate_contract_tests integrate_contract_sqrt_chain_hyperbolic_tangent_logs_verify -- --exact --nocapture`
+  - CLI probes for the residual forms:
+    `sinh(sqrt(2*x))/cosh(sqrt(2*x)) - tanh(sqrt(2*x))` and
+    `sinh((2*x)^(1/2)) * (2*x)^(-1/2) / cosh((2*x)^(1/2)) - tanh((2*x)^(1/2)) * (2*x)^(-1/2)`
+- local result:
+  - the direct quotient identity reduces to `0`
+  - the differentiated-antiderivative residual with a shared
+    `(2*x)^(-1/2)` multiplier remains unsimplified, while an explicitly
+    factored equivalent reduces to `0`
+- global result:
+  - superseded on 2026-05-06 by adding a narrow residual verifier for
+    `sinh(u)*k/cosh(u) - tanh(u)*k` and a direct
+    `diff(ln(cosh(sqrt(p(x)))), x)` verification path for constant-derivative
+    radicands
+  - promoted `integrate(tanh(sqrt(2*x))/sqrt(2*x), x)` to render as
+    `ln(cosh(sqrt(2 * x)))` with the original `x > 0` condition
+- best current explanation:
+  - residual simplification does not currently factor a common multiplier
+    across `A*B/C - D*B` before applying the existing `sinh(u)/cosh(u) =
+    tanh(u)` identity
+- plausible follow-up:
+  - extend only after another verified representative requires it; avoid
+    broad post-order factorization unless embedded runtime remains stable
+
+### 2026-05-06: Trig `u'/(1+u^2)` Integration Probe Hit Slow Pre-Simplification
+
+- area:
+  - calculus / integration / trig substitution pre-simplification
+- status:
+  - `superseded`
+- attempted case:
+  - probe the same conservative `u'/(1+u^2) -> arctan(u)` shape for
+    trigonometric arguments, for example
+    `integrate(cos(x)/(1+sin(x)^2), x)` and
+    `integrate(2*cos(2*x+1)/(1+sin(2*x+1)^2), x)`
+- local lane:
+  - CLI probes:
+    `cargo run -q -p cas_cli -- eval "integrate(cos(x)/(1+sin(x)^2), x)" --format text`
+    and
+    `cargo run -q -p cas_cli -- eval "integrate(2*cos(2*x+1)/(1+sin(2*x+1)^2), x)" --format text`
+- local result:
+  - the first probe emitted `depth_overflow` warnings and returned an
+    unsolved `integrate(...)` residual after the denominator was rewritten into
+    a double-angle-shaped form
+  - the affine trig probe exceeded one minute and was manually terminated
+- global result:
+  - superseded on 2026-05-06 by promoting the minimal trig representatives to
+    the public integration contract after the current integration route
+    resolved them quickly and verified the antiderivatives by differentiation
+  - retained both the hyperbolic and trig `u'/(1+u^2)` representatives whose
+    denominators remain structurally stable under the current route
+- best current explanation:
+  - generic pre-simplification rewrites `1+sin(arg)^2` into a cos/double-angle
+    equivalent before the integration matcher can see the substitution shape
+- plausible follow-up:
+  - keep this as a regression signal rather than an active combination
+    candidate; any broader trig substitution family still needs the same
+    antiderivative verification and failed=0 guardrails before promotion
+
 ### 2026-05-05: Shifted Arctan Affine Antiderivative Verification Probe
 
 - area:

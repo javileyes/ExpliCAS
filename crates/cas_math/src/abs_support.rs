@@ -1,5 +1,6 @@
 use crate::numeric::gcd_rational;
 use crate::numeric_eval::as_rational_const;
+use crate::polynomial::Polynomial;
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use num_integer::Integer;
@@ -504,11 +505,41 @@ pub fn try_rewrite_abs_sub_normalize_expr(
     }
 
     let swapped = ctx.add(Expr::Sub(b, a));
+    if preserves_positive_leading_polynomial_abs_arg(ctx, abs_arg, swapped) {
+        return None;
+    }
+
     let rewritten = ctx.call_builtin(BuiltinFn::Abs, vec![swapped]);
     Some(AbsFixedRewrite {
         rewritten,
         kind: AbsFixedRewriteKind::SubNormalize,
     })
+}
+
+fn preserves_positive_leading_polynomial_abs_arg(
+    ctx: &Context,
+    current: ExprId,
+    swapped: ExprId,
+) -> bool {
+    let vars = cas_ast::collect_variables(ctx, current);
+    if vars.len() != 1 || vars != cas_ast::collect_variables(ctx, swapped) {
+        return false;
+    }
+
+    let Some(var) = vars.iter().next() else {
+        return false;
+    };
+    let Ok(current_poly) = Polynomial::from_expr(ctx, current, var) else {
+        return false;
+    };
+    if current_poly.degree() < 2 || current_poly.leading_coeff().is_negative() {
+        return false;
+    }
+
+    let Ok(swapped_poly) = Polynomial::from_expr(ctx, swapped, var) else {
+        return false;
+    };
+    swapped_poly.degree() == current_poly.degree() && swapped_poly.leading_coeff().is_negative()
 }
 
 fn try_normalize_sub_like_sign(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
@@ -1409,6 +1440,24 @@ mod tests {
         };
         assert!(ctx.is_builtin(*fn_id, BuiltinFn::Abs));
         assert_eq!(args.len(), 1);
+
+        let compact_poly =
+            cas_parser::parse("abs(x^2 - x - 1)", &mut ctx).expect("compact polynomial parse");
+        assert!(
+            try_rewrite_abs_sub_normalize_expr(&mut ctx, compact_poly).is_none(),
+            "positive-leading polynomial abs arguments should not be flipped into grouped form"
+        );
+
+        let negative_leading_poly =
+            cas_parser::parse("abs(1 + x - x^2)", &mut ctx).expect("negative-leading parse");
+        let negative_rewrite = try_rewrite_abs_sub_normalize_expr(&mut ctx, negative_leading_poly)
+            .expect("negative-leading polynomial should flip to positive-leading form");
+        let expected_positive =
+            cas_parser::parse("abs(x^2 - (x + 1))", &mut ctx).expect("positive-leading expected");
+        assert_eq!(
+            compare_expr(&ctx, negative_rewrite.rewritten, expected_positive),
+            std::cmp::Ordering::Equal
+        );
 
         let parsed = cas_parser::parse("abs(1 - x/(x+1))", &mut ctx).expect("fractional parse");
         let rewrite3 =

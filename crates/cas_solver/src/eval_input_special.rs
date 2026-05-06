@@ -2,10 +2,18 @@ use cas_api_models::EvalLimitApproach;
 use cas_ast::{Equation, ExprId};
 use cas_math::limit_types::Approach;
 
-pub(crate) fn map_limit_approach(approach: EvalLimitApproach) -> Approach {
+pub(crate) fn map_limit_approach(
+    ctx: &mut cas_ast::Context,
+    approach: EvalLimitApproach,
+) -> Result<Approach, String> {
     match approach {
-        EvalLimitApproach::PosInfinity => Approach::PosInfinity,
-        EvalLimitApproach::NegInfinity => Approach::NegInfinity,
+        EvalLimitApproach::PosInfinity => Ok(Approach::PosInfinity),
+        EvalLimitApproach::NegInfinity => Ok(Approach::NegInfinity),
+        EvalLimitApproach::Finite(point) => {
+            let parsed = cas_parser::parse(&point, ctx)
+                .map_err(|e| format!("Parse error in limit approach: {e}"))?;
+            Ok(Approach::Finite(parsed))
+        }
     }
 }
 

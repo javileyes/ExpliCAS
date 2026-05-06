@@ -109,9 +109,10 @@ fn evaluate_envelope_wire_command_value_domain_splits_log_exp_variable_case_only
     let real_required = real_wire["transparency"]["required_conditions"]
         .as_array()
         .expect("required_conditions array");
-    assert_eq!(real_required.len(), 1);
-    assert_eq!(real_required[0]["kind"], "Positive");
-    assert_eq!(real_required[0]["expr_canonical"], "e^x");
+    assert!(
+        real_required.is_empty(),
+        "envelope should share eval's normalized required-condition view"
+    );
 
     let complex_payload = evaluate_envelope_wire_command(
         "ln(exp(x))",
@@ -123,9 +124,10 @@ fn evaluate_envelope_wire_command_value_domain_splits_log_exp_variable_case_only
     let complex_required = complex_wire["transparency"]["required_conditions"]
         .as_array()
         .expect("required_conditions array");
-    assert_eq!(complex_required.len(), 1);
-    assert_eq!(complex_required[0]["kind"], "Positive");
-    assert_eq!(complex_required[0]["expr_canonical"], "e^x");
+    assert!(
+        complex_required.is_empty(),
+        "envelope should share eval's normalized required-condition view"
+    );
     assert!(complex_wire["transparency"]["assumptions_used"]
         .as_array()
         .expect("assumptions_used array")
@@ -299,13 +301,9 @@ fn evaluate_envelope_wire_command_strict_keeps_abs_radical_family_safe_without_a
     let ln_required = ln_wire["transparency"]["required_conditions"]
         .as_array()
         .expect("required_conditions array");
-    assert_eq!(ln_required.len(), 2);
-    assert!(ln_required
-        .iter()
-        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "a^2"));
-    assert!(ln_required
-        .iter()
-        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "|a|"));
+    assert_eq!(ln_required.len(), 1);
+    assert_eq!(ln_required[0]["kind"], "NonZero");
+    assert_eq!(ln_required[0]["expr_canonical"], "a");
     assert!(ln_wire["transparency"]["assumptions_used"]
         .as_array()
         .expect("assumptions_used array")
@@ -361,16 +359,13 @@ fn evaluate_envelope_wire_command_generic_preserves_log_exp_inverse_without_assu
     let required = wire["transparency"]["required_conditions"]
         .as_array()
         .expect("required_conditions array");
-    assert_eq!(required.len(), 3);
+    assert_eq!(required.len(), 2);
     assert!(required
         .iter()
         .any(|item| item["kind"] == "NonZero" && item["expr_canonical"] == "b - 1"));
     assert!(required
         .iter()
         .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b"));
-    assert!(required
-        .iter()
-        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b^x"));
     assert_eq!(
         wire["transparency"]["assumptions_used"]
             .as_array()
@@ -397,13 +392,9 @@ fn evaluate_envelope_wire_command_generic_keeps_safe_forms_for_even_power_and_ab
     let ln_required = ln_wire["transparency"]["required_conditions"]
         .as_array()
         .expect("required_conditions array");
-    assert_eq!(ln_required.len(), 2);
-    assert!(ln_required
-        .iter()
-        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "a^2"));
-    assert!(ln_required
-        .iter()
-        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "|a|"));
+    assert_eq!(ln_required.len(), 1);
+    assert_eq!(ln_required[0]["kind"], "NonZero");
+    assert_eq!(ln_required[0]["expr_canonical"], "a");
     assert!(ln_wire["transparency"]["assumptions_used"]
         .as_array()
         .expect("assumptions_used array")
@@ -437,14 +428,18 @@ fn evaluate_envelope_wire_command_assume_collapses_even_power_and_abs_with_warni
     let ln_required = ln_wire["transparency"]["required_conditions"]
         .as_array()
         .expect("required_conditions array");
-    assert_eq!(ln_required.len(), 2);
-    assert_eq!(ln_required[0]["expr_canonical"], "a");
+    assert!(
+        ln_required.is_empty(),
+        "accepted assume-mode condition should not also be required: {ln_required:?}"
+    );
     let ln_assumed = ln_wire["transparency"]["assumptions_used"]
         .as_array()
         .expect("assumptions_used array");
     assert_eq!(ln_assumed.len(), 1);
+    assert_eq!(ln_assumed[0]["kind"], "positive");
     assert_eq!(ln_assumed[0]["rule"], "Log Even Power");
     assert_eq!(ln_assumed[0]["display"], "a > 0");
+    assert_eq!(ln_assumed[0]["expr_canonical"], "a");
 
     let sqrt_payload =
         evaluate_envelope_wire_command("sqrt(x^2)", EvalDomainMode::Assume, EvalValueDomain::Real);
@@ -472,22 +467,44 @@ fn evaluate_envelope_wire_command_assume_surfaces_log_exp_warning_and_guard() {
     let required = wire["transparency"]["required_conditions"]
         .as_array()
         .expect("required_conditions array");
-    assert_eq!(required.len(), 3);
+    assert_eq!(required.len(), 1);
     assert!(required
         .iter()
         .any(|item| item["kind"] == "NonZero" && item["expr_canonical"] == "b - 1"));
-    assert!(required
-        .iter()
-        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b"));
-    assert!(required
-        .iter()
-        .any(|item| item["kind"] == "Positive" && item["expr_canonical"] == "b^x"));
 
     let assumptions_used = wire["transparency"]["assumptions_used"]
         .as_array()
         .expect("assumptions_used array");
     assert_eq!(assumptions_used.len(), 1);
-    assert_eq!(assumptions_used[0]["kind"], "domain_warning");
+    assert_eq!(assumptions_used[0]["kind"], "positive");
     assert_eq!(assumptions_used[0]["rule"], "Log-Exp Inverse");
     assert_eq!(assumptions_used[0]["display"], "b > 0");
+    assert_eq!(assumptions_used[0]["expr_canonical"], "b");
+}
+
+#[test]
+fn evaluate_envelope_wire_command_assume_filters_reciprocal_radical_required_conditions() {
+    let payload = evaluate_envelope_wire_command(
+        "integrate(1/sqrt((a+1)^2), x)",
+        EvalDomainMode::Assume,
+        EvalValueDomain::Real,
+    );
+    let wire = parse_envelope(&payload);
+
+    assert_eq!(wire["result"]["value"]["display"], "x / (a + 1)");
+    let required = wire["transparency"]["required_conditions"]
+        .as_array()
+        .expect("required_conditions array");
+    assert!(
+        required.is_empty(),
+        "positive assumption should cover reciprocal radical nonzero guards: {required:?}"
+    );
+    let assumptions_used = wire["transparency"]["assumptions_used"]
+        .as_array()
+        .expect("assumptions_used array");
+    assert_eq!(assumptions_used.len(), 1);
+    assert_eq!(assumptions_used[0]["kind"], "positive");
+    assert_eq!(assumptions_used[0]["rule"], "Abs Under Positivity");
+    assert_eq!(assumptions_used[0]["display"], "a + 1 > 0");
+    assert_eq!(assumptions_used[0]["expr_canonical"], "a + 1");
 }

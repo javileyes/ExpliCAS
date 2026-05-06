@@ -180,6 +180,8 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
         "integrate(sin(2*x), x)",
         "integrate((2*x+3)*exp(2*x+1), x)",
         "integrate(2*x*exp(x^2), x)",
+        "integrate(cosh(x)/(1+sinh(x)^2), x)",
+        "integrate(2*cosh(2*x+1)/(1+sinh(2*x+1)^2), x)",
         "integrate(sinh(2*x + 1)/cosh(2*x + 1), x)",
         "integrate(1/cosh(2*x + 1)^2, x)",
         "integrate(ln(2*x+1), x)",
@@ -198,6 +200,29 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
     ] {
         assert_antiderivative_verifies(input);
     }
+}
+
+#[test]
+fn integrate_contract_symbolic_constant_verification_preserves_independent_domain_conditions() {
+    let input = "integrate(ln(y)*(z+1)^(-2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "x * ln(y) / (z + 1)^2");
+    assert_eq!(
+        required,
+        vec!["z + 1 ≠ 0".to_string(), "y > 0".to_string()],
+        "symbolic constant integration should publish independent domain conditions"
+    );
+
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(ln(y)*(z+1)^(-2), x), x) - ln(y)*(z+1)^(-2)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["z + 1 ≠ 0".to_string(), "y > 0".to_string()],
+        "nested antiderivative verification should preserve independent domain conditions"
+    );
 }
 
 #[test]
@@ -239,6 +264,9 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaus
         "integrate(2*x*sinh(x^2), x)",
         "integrate(2*x*cosh(x^2), x)",
         "integrate(2*x*tanh(x^2), x)",
+        "integrate(cosh(x)/(1+sinh(x)^2), x)",
+        "integrate(2*cosh(2*x+1)/(1+sinh(2*x+1)^2), x)",
+        "integrate(sinh(x)/(1+cosh(x)^2), x)",
         "integrate(sinh(2*x + 1)/cosh(2*x + 1), x)",
         "integrate(cosh(2*x + 1)/sinh(2*x + 1), x)",
         "integrate(1/tanh(2*x + 1), x)",
@@ -284,6 +312,7 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaus
         "integrate(asinh(2*x+1), x)",
         "integrate(asinh(1-2*x), x)",
         "integrate(atanh(x), x)",
+        "integrate(atanh(2*x), x)",
         "integrate(atanh(2*x+1), x)",
         "integrate(atanh(1-2*x), x)",
         "integrate(1/(x^2-1), x)",
@@ -608,10 +637,10 @@ fn integrate_contract_linear_tanh_uses_abs_log_cosh_and_nonzero_domain() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(tanh(2*x + 1), x)");
 
-    assert_eq!(result, "1/2 * ln(|cosh(2 * x + 1)|)");
+    assert_eq!(result, "1/2 * ln(cosh(2 * x + 1))");
     assert_eq!(
         required,
-        vec!["cosh(2 * x + 1) ≠ 0".to_string()],
+        Vec::<String>::new(),
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -628,8 +657,158 @@ fn integrate_contract_polynomial_derivative_hyperbolic_substitution() {
     );
     assert_eq!(
         simplified_integral("integrate(2*x*tanh(x^2), x)"),
-        "ln(|cosh(x^2)|)"
+        "ln(cosh(x^2))"
     );
+}
+
+#[test]
+fn integrate_contract_hyperbolic_arctan_derivative_substitution() {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(cosh(x)/(1+sinh(x)^2), x)");
+
+    assert_eq!(result, "arctan(sinh(x))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(cosh(x)/(1+sinh(x)^2), x)");
+
+    let (result, required) = evaluated_integral_with_required_conditions(
+        "integrate(2*cosh(2*x+1)/(1+sinh(2*x+1)^2), x)",
+    );
+
+    assert_eq!(result, "arctan(sinh(2 * x + 1))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(2*cosh(2*x+1)/(1+sinh(2*x+1)^2), x)");
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(2*x*cosh(x^2)/(1+sinh(x^2)^2), x)");
+
+    assert_eq!(result, "arctan(sinh(x^2))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(2*x*cosh(x^2)/(1+sinh(x^2)^2), x)");
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(2*x*cosh(x^2)/(sinh(x^2)^2+1), x)");
+
+    assert_eq!(result, "arctan(sinh(x^2))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(2*x*cosh(x^2)/(sinh(x^2)^2+1), x)");
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(sinh(x)/(1+cosh(x)^2), x)");
+
+    assert_eq!(result, "arctan(cosh(x))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(sinh(x)/(1+cosh(x)^2), x)");
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(-2*x*sinh(x^2)/(1+cosh(x^2)^2), x)");
+
+    assert_eq!(result, "-arctan(cosh(x^2))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_antiderivative_verifies("integrate(-2*x*sinh(x^2)/(1+cosh(x^2)^2), x)");
+}
+
+#[test]
+fn integrate_contract_trig_arctan_derivative_substitution() {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(cos(x)/(1+sin(x)^2), x)");
+
+    assert_eq!(result, "arctan(sin(x))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_rendered_antiderivative_verifies("integrate(cos(x)/(1+sin(x)^2), x)", &result);
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(2*cos(2*x+1)/(1+sin(2*x+1)^2), x)");
+
+    assert_eq!(result, "arctan(sin(2 * x + 1))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_rendered_antiderivative_verifies("integrate(2*cos(2*x+1)/(1+sin(2*x+1)^2), x)", &result);
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(2*cos(2*x+1)/(sin(2*x+1)^2+1), x)");
+
+    assert_eq!(result, "arctan(sin(2 * x + 1))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_rendered_antiderivative_verifies("integrate(2*cos(2*x+1)/(sin(2*x+1)^2+1), x)", &result);
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(2*x*cos(x^2)/(1+sin(x^2)^2), x)");
+
+    assert_eq!(result, "arctan(sin(x^2))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_rendered_antiderivative_verifies("integrate(2*x*cos(x^2)/(1+sin(x^2)^2), x)", &result);
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(2*x*cos(x^2)/(sin(x^2)^2+1), x)");
+
+    assert_eq!(result, "arctan(sin(x^2))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_rendered_antiderivative_verifies("integrate(2*x*cos(x^2)/(sin(x^2)^2+1), x)", &result);
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(-sin(x)/(1+cos(x)^2), x)");
+
+    assert_eq!(result, "arctan(cos(x))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_rendered_antiderivative_verifies("integrate(-sin(x)/(1+cos(x)^2), x)", &result);
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(-2*sin(2*x+1)/(cos(2*x+1)^2+1), x)");
+
+    assert_eq!(result, "arctan(cos(2 * x + 1))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_rendered_antiderivative_verifies(
+        "integrate(-2*sin(2*x+1)/(cos(2*x+1)^2+1), x)",
+        &result,
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(-2*x*sin(x^2)/(cos(x^2)^2+1), x)");
+
+    assert_eq!(result, "arctan(cos(x^2))");
+    assert!(
+        required.is_empty(),
+        "positive one-plus-square denominator should not require source conditions: {required:?}"
+    );
+    assert_rendered_antiderivative_verifies("integrate(-2*x*sin(x^2)/(cos(x^2)^2+1), x)", &result);
 }
 
 #[test]
@@ -656,10 +835,10 @@ fn integrate_contract_hyperbolic_ratio_uses_tanh_kernel_and_preserves_source_dom
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(sinh(2*x + 1)/cosh(2*x + 1), x)");
 
-    assert_eq!(result, "1/2 * ln(|cosh(2 * x + 1)|)");
+    assert_eq!(result, "1/2 * ln(cosh(2 * x + 1))");
     assert_eq!(
         required,
-        vec!["cosh(2 * x + 1) ≠ 0".to_string()],
+        Vec::<String>::new(),
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -724,7 +903,7 @@ fn integrate_contract_linear_hyperbolic_tanh_derivative_square_substitution() {
     assert_eq!(result, "1/2 * tanh(2 * x + 1)");
     assert_eq!(
         required,
-        vec!["cosh(2 * x + 1) ≠ 0".to_string()],
+        Vec::<String>::new(),
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -737,7 +916,7 @@ fn integrate_contract_polynomial_hyperbolic_tanh_derivative_square_substitution(
     assert_eq!(result, "tanh(x^2)");
     assert_eq!(
         required,
-        vec!["cosh(x^2) ≠ 0".to_string()],
+        Vec::<String>::new(),
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -760,7 +939,7 @@ fn integrate_contract_polynomial_hyperbolic_coth_derivative_square_substitution(
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(2*x/sinh(x^2)^2, x)");
 
-    assert_eq!(result, "-(1 / tanh(x^2))");
+    assert_eq!(result, "-1 / tanh(x^2)");
     assert_eq!(
         required,
         vec!["sinh(x^2) ≠ 0".to_string()],
@@ -776,7 +955,7 @@ fn integrate_contract_linear_hyperbolic_cosh_reciprocal_derivative_substitution(
     assert_eq!(result, "-1 / (2 * cosh(2 * x + 1))");
     assert_eq!(
         required,
-        vec!["cosh(2 * x + 1) ≠ 0".to_string()],
+        Vec::<String>::new(),
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -786,10 +965,10 @@ fn integrate_contract_polynomial_hyperbolic_cosh_reciprocal_derivative_substitut
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(2*x*sinh(x^2)/cosh(x^2)^2, x)");
 
-    assert_eq!(result, "-(1 / cosh(x^2))");
+    assert_eq!(result, "-1 / cosh(x^2)");
     assert_eq!(
         required,
-        vec!["cosh(x^2) ≠ 0".to_string()],
+        Vec::<String>::new(),
         "unexpected required_conditions: {required:?}"
     );
 
@@ -799,7 +978,7 @@ fn integrate_contract_polynomial_hyperbolic_cosh_reciprocal_derivative_substitut
     assert_eq!(result, "1 / (2 * cosh(x^2))");
     assert_eq!(
         required,
-        vec!["cosh(x^2) ≠ 0".to_string()],
+        Vec::<String>::new(),
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -822,7 +1001,7 @@ fn integrate_contract_polynomial_hyperbolic_sinh_reciprocal_derivative_substitut
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(2*x*cosh(x^2)/sinh(x^2)^2, x)");
 
-    assert_eq!(result, "-(1 / sinh(x^2))");
+    assert_eq!(result, "-1 / sinh(x^2)");
     assert_eq!(
         required,
         vec!["sinh(x^2) ≠ 0".to_string()],
@@ -860,6 +1039,7 @@ fn integrate_contract_linear_log_table_preserves_positive_domain() {
         vec!["x > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+    assert_rendered_antiderivative_verifies("integrate(ln(x), x)", &result);
 
     let (result, required) = evaluated_integral_with_required_conditions("integrate(ln(2*x+1), x)");
 
@@ -870,6 +1050,7 @@ fn integrate_contract_linear_log_table_preserves_positive_domain() {
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies("integrate(ln(2*x+1), x)");
+    assert_rendered_antiderivative_verifies("integrate(ln(2*x+1), x)", &result);
 }
 
 #[test]
@@ -896,10 +1077,16 @@ fn integrate_contract_polynomial_log_product_preserves_source_domain() {
 
 #[test]
 fn integrate_contract_reciprocal_linear_uses_abs_log() {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(1/(2*x + 1), x)");
+
+    assert_eq!(result, "1/2 * ln(|2 * x + 1|)");
     assert_eq!(
-        simplified_integral("integrate(1/(2*x + 1), x)"),
-        "1/2 * ln(|2 * x + 1|)"
+        required,
+        vec!["2 * x + 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
     );
+    assert_rendered_antiderivative_verifies("integrate(1/(2*x + 1), x)", &result);
 }
 
 #[test]
@@ -1027,6 +1214,7 @@ fn integrate_contract_arctan_scaled_variable_by_parts() {
         "scaled arctan integration should not add required conditions: {required:?}"
     );
     assert_antiderivative_verifies("integrate(arctan(2*x), x)");
+    assert_rendered_antiderivative_verifies("integrate(arctan(2*x), x)", &result);
 
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(arctan(2*x+1), x)");
@@ -1272,6 +1460,7 @@ fn integrate_contract_arctan_reciprocal_scaled_variable_by_parts() {
         "reciprocal arctan integration should preserve the reciprocal nonzero condition"
     );
     assert_antiderivative_verifies("integrate(arctan(1/x), x)");
+    assert_rendered_antiderivative_verifies("integrate(arctan(1/x), x)", &result);
 
     let (result, required) = evaluated_integral_with_required_conditions("integrate(arccot(x), x)");
     assert_eq!(result, "1/2 * (ln(x^2 + 1) + 2 * x * arctan(1 / x))");
@@ -1281,6 +1470,7 @@ fn integrate_contract_arctan_reciprocal_scaled_variable_by_parts() {
         "arccot canonicalization should keep the explicit reciprocal condition"
     );
     assert_antiderivative_verifies("integrate(arccot(x), x)");
+    assert_rendered_antiderivative_verifies("integrate(arccot(x), x)", &result);
 
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(arccot(2*x), x)");
@@ -1294,6 +1484,7 @@ fn integrate_contract_arctan_reciprocal_scaled_variable_by_parts() {
         "scaled arccot canonicalization should keep the explicit reciprocal condition"
     );
     assert_antiderivative_verifies("integrate(arccot(2*x), x)");
+    assert_rendered_antiderivative_verifies("integrate(arccot(2*x), x)", &result);
 
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(arctan(1/(2*x+1)), x)");
@@ -1307,6 +1498,7 @@ fn integrate_contract_arctan_reciprocal_scaled_variable_by_parts() {
         "shifted reciprocal arctan integration should preserve the affine reciprocal condition"
     );
     assert_antiderivative_verifies("integrate(arctan(1/(2*x+1)), x)");
+    assert_rendered_antiderivative_verifies("integrate(arctan(1/(2*x+1)), x)", &result);
     let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
         "diff(integrate(arctan(1/(2*x+1)), x), x) - arctan(1/(2*x+1))",
     );
@@ -1355,6 +1547,7 @@ fn integrate_contract_asinh_affine_by_parts() {
         "asinh integration should not add required conditions: {required:?}"
     );
     assert_antiderivative_verifies("integrate(asinh(x), x)");
+    assert_rendered_antiderivative_verifies("integrate(asinh(x), x)", &result);
 
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(asinh(2*x), x)");
@@ -1364,6 +1557,7 @@ fn integrate_contract_asinh_affine_by_parts() {
         "scaled asinh integration should not add required conditions: {required:?}"
     );
     assert_antiderivative_verifies("integrate(asinh(2*x), x)");
+    assert_rendered_antiderivative_verifies("integrate(asinh(2*x), x)", &result);
 
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(asinh(2*x+1), x)");
@@ -1418,6 +1612,7 @@ fn integrate_contract_atanh_affine_by_parts_preserves_open_interval_domain() {
         "atanh integration should publish its open-interval condition"
     );
     assert_antiderivative_verifies("integrate(atanh(x), x)");
+    assert_rendered_antiderivative_verifies("integrate(atanh(x), x)", &result);
     let (nested_residual, nested_required) =
         evaluated_expr_with_required_conditions("diff(integrate(atanh(x), x), x) - atanh(x)");
     assert_eq!(nested_residual, "0");
@@ -1436,6 +1631,7 @@ fn integrate_contract_atanh_affine_by_parts_preserves_open_interval_domain() {
         "scaled atanh integration should publish its normalized open-interval condition"
     );
     assert_antiderivative_verifies("integrate(atanh(2*x), x)");
+    assert_rendered_antiderivative_verifies("integrate(atanh(2*x), x)", &result);
 
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(atanh(2*x+1), x)");
@@ -1490,7 +1686,7 @@ fn integrate_contract_acosh_affine_by_parts_preserves_real_radical_domain() {
     assert_eq!(result, "x * acosh(x) - sqrt(x - 1) * sqrt(x + 1)");
     assert_eq!(
         required,
-        vec!["x + 1 > 0".to_string(), "x - 1 > 0".to_string()],
+        vec!["x - 1 > 0".to_string()],
         "acosh integration should publish the real radical conditions"
     );
     assert_rendered_antiderivative_verifies("integrate(acosh(x), x)", &result);
@@ -1499,7 +1695,7 @@ fn integrate_contract_acosh_affine_by_parts_preserves_real_radical_domain() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["x + 1 > 0".to_string(), "x - 1 > 0".to_string()],
+        vec!["x - 1 > 0".to_string()],
         "nested acosh verification should preserve the real radical conditions"
     );
 
@@ -1511,7 +1707,7 @@ fn integrate_contract_acosh_affine_by_parts_preserves_real_radical_domain() {
     );
     assert_eq!(
         required,
-        vec!["2 * x + 1 > 0".to_string(), "2 * x - 1 > 0".to_string()],
+        vec!["2 * x - 1 > 0".to_string()],
         "scaled acosh integration should publish the real radical conditions"
     );
     assert_rendered_antiderivative_verifies("integrate(acosh(2*x), x)", &result);
@@ -1588,6 +1784,17 @@ fn integrate_contract_scaled_polynomial_derivative_atanh_substitution() {
         vec!["4 - x^4 > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+
+    let input = "integrate(-2*x/(1-x^4), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "-atanh(x^2)");
+    assert_eq!(
+        required,
+        vec!["1 - x^4 > 0".to_string()],
+        "negative atanh substitution should preserve its open-interval domain"
+    );
+    assert_antiderivative_verifies(input);
 }
 
 #[test]
@@ -1833,6 +2040,30 @@ fn integrate_contract_shifted_polynomial_derivative_over_syntactic_denominator_c
 }
 
 #[test]
+fn integrate_contract_positive_quadratic_denominator_cube_preserves_compact_antiderivative() {
+    let input = "integrate(2*x/(x^2+1)^3, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    let step_rules = evaluated_integral_step_rules(input);
+
+    assert_eq!(result, "-1 / (2 * (x^2 + 1)^2)");
+    assert!(
+        required.is_empty(),
+        "positive quadratic denominator should not add required conditions: {required:?}"
+    );
+    assert!(
+        !result.contains("x^4"),
+        "post-calculus presentation should keep the denominator factored: {result}"
+    );
+    assert!(
+        !step_rules
+            .iter()
+            .any(|rule_name| rule_name == "Cancelar factores en una fracción"),
+        "scaled denominator-power integration should not expand through cancellation: {step_rules:?}"
+    );
+    assert_rendered_antiderivative_verifies(input, &result);
+}
+
+#[test]
 fn integrate_contract_scaled_polynomial_derivative_over_higher_denominator_power_preserves_compact_form_and_nonzero_domain(
 ) {
     let (result, required) =
@@ -1981,6 +2212,21 @@ fn integrate_contract_polynomial_log_derivative_uses_abs_log_and_nonzero_domain(
 }
 
 #[test]
+fn integrate_contract_abs_log_preserves_compact_positive_leading_polynomial_base() {
+    let input = "integrate((2*x-1)/(x^2-x-1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "ln(|x^2 - x - 1|)");
+    assert_eq!(
+        required,
+        vec!["x^2 - x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    assert_rendered_antiderivative_verifies(input, &result);
+}
+
+#[test]
 fn integrate_contract_scaled_polynomial_log_derivative() {
     assert_eq!(
         simplified_integral("integrate((4*x + 2)/(x^2 + x + 1), x)"),
@@ -2013,6 +2259,21 @@ fn integrate_contract_abs_log_derivative_power_substitution_preserves_nonzero_do
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_negative_scaled_abs_log_derivative_power_preserves_sign_and_domain() {
+    let input = "integrate(-2*((2*x+1)/(x^2+x-1)*ln(abs(x^2+x-1))^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "-2/3 * ln(|x^2 + x - 1|)^3");
+    assert_eq!(
+        required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    assert_rendered_antiderivative_verifies(input, &result);
 }
 
 #[test]
@@ -2293,6 +2554,16 @@ fn integrate_contract_polynomial_derivative_asinh_substitution() {
         simplified_integral("integrate(2*x/sqrt(1+x^4), x)"),
         "asinh(x^2)"
     );
+
+    let input = "integrate(-2*x/sqrt(1+x^4), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "-asinh(x^2)");
+    assert!(
+        required.is_empty(),
+        "negative asinh substitution should remain unconditional: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
 }
 
 #[test]
@@ -2453,7 +2724,7 @@ fn integrate_contract_linear_cosecant_squared_substitution_preserves_nonzero_dom
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(csc(2*x + 1)^2, x)");
 
-    assert_eq!(result, "-(cos(2 * x + 1) / (2 * sin(2 * x + 1)))");
+    assert_eq!(result, "-cos(2 * x + 1) / (2 * sin(2 * x + 1))");
     assert_eq!(
         required,
         vec!["sin(2 * x + 1) ≠ 0".to_string()],
@@ -2479,7 +2750,7 @@ fn integrate_contract_polynomial_cosecant_squared_substitution_preserves_nonzero
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(x^2/(sin(x^3)^2), x)");
 
-    assert_eq!(result, "-(cos(x^3) / (3 * sin(x^3)))");
+    assert_eq!(result, "-cos(x^3) / (3 * sin(x^3))");
     assert_eq!(
         required,
         vec!["sin(x^3) ≠ 0".to_string()],
@@ -2824,7 +3095,7 @@ fn integrate_contract_linear_cosecant_cotangent_product_preserves_nonzero_domain
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(csc(2*x + 1)*cot(2*x + 1), x)");
 
-    assert_eq!(result, "-(1 / (2 * sin(2 * x + 1)))");
+    assert_eq!(result, "-1 / (2 * sin(2 * x + 1))");
     assert_eq!(
         required,
         vec!["sin(2 * x + 1) ≠ 0".to_string()],
@@ -2850,7 +3121,7 @@ fn integrate_contract_polynomial_cosecant_cotangent_product_preserves_nonzero_do
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(x^2*csc(x^3)*cot(x^3), x)");
 
-    assert_eq!(result, "-(1 / (3 * sin(x^3)))");
+    assert_eq!(result, "-1 / (3 * sin(x^3))");
     assert_eq!(
         required,
         vec!["sin(x^3) ≠ 0".to_string()],
@@ -2885,11 +3156,172 @@ fn integrate_contract_exact_polynomial_cosecant_cotangent_product_uses_clean_ant
 }
 
 #[test]
+fn integrate_contract_sqrt_chain_secant_cosecant_products_verify() {
+    let cases = [
+        (
+            "integrate(sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)",
+            "sec(sqrt(x))",
+            vec!["x > 0", "cos(sqrt(x)) ≠ 0"],
+        ),
+        (
+            "integrate(csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x)",
+            "-csc(sqrt(x))",
+            vec!["x > 0", "sin(sqrt(x)) ≠ 0"],
+        ),
+        (
+            "integrate(sec(sqrt(2*x))*tan(sqrt(2*x))/sqrt(2*x), x)",
+            "sec(sqrt(2 * x))",
+            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+        ),
+    ];
+
+    for (input, expected_result, expected_conditions) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected_result, "unexpected result for {input}");
+        assert_eq!(
+            required, expected_conditions,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_sqrt_chain_tangent_cotangent_logs_verify() {
+    let cases = [
+        (
+            "integrate(tan(sqrt(x))/(2*sqrt(x)), x)",
+            "-ln(|cos(sqrt(x))|)",
+            vec!["x > 0", "cos(sqrt(x)) ≠ 0"],
+        ),
+        (
+            "integrate(cot(sqrt(x))/(2*sqrt(x)), x)",
+            "ln(|sin(sqrt(x))|)",
+            vec!["x > 0", "sin(sqrt(x)) ≠ 0"],
+        ),
+        (
+            "integrate(tan(sqrt(2*x))/sqrt(2*x), x)",
+            "-ln(|cos(sqrt(2 * x))|)",
+            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+        ),
+    ];
+
+    for (input, expected_result, expected_conditions) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected_result, "unexpected result for {input}");
+        assert_eq!(
+            required, expected_conditions,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_sqrt_chain_hyperbolic_tangent_logs_verify() {
+    let cases = [
+        (
+            "integrate(tanh(sqrt(x))/(2*sqrt(x)), x)",
+            "ln(cosh(sqrt(x)))",
+            vec!["x > 0"],
+        ),
+        (
+            "integrate(1/(2*sqrt(x)*tanh(sqrt(x))), x)",
+            "ln(|sinh(sqrt(x))|)",
+            vec!["sinh(sqrt(x)) ≠ 0", "x > 0"],
+        ),
+        (
+            "integrate(tanh(sqrt(2*x))/sqrt(2*x), x)",
+            "ln(cosh(sqrt(2 * x)))",
+            vec!["x > 0"],
+        ),
+    ];
+
+    for (input, expected_result, expected_conditions) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected_result, "unexpected result for {input}");
+        assert_eq!(
+            required, expected_conditions,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+        assert_rendered_antiderivative_verifies(input, &result);
+    }
+}
+
+#[test]
+fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_squares_verify() {
+    let cases = [
+        (
+            "integrate(1/(2*sqrt(x)*cosh(sqrt(x))^2), x)",
+            "tanh(sqrt(x))",
+            vec!["x > 0"],
+        ),
+        (
+            "integrate(1/(2*sqrt(x)*sinh(sqrt(x))^2), x)",
+            "-1 / tanh(sqrt(x))",
+            vec!["x > 0", "sinh(sqrt(x)) ≠ 0"],
+        ),
+        (
+            "integrate((2*x)^(-1/2)/cosh(sqrt(2*x))^2, x)",
+            "tanh(sqrt(2 * x))",
+            vec!["x > 0"],
+        ),
+    ];
+
+    for (input, expected_result, expected_conditions) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected_result, "unexpected result for {input}");
+        assert_eq!(
+            required, expected_conditions,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_derivatives_verify() {
+    let cases = [
+        (
+            "integrate(sinh(sqrt(x))/(2*sqrt(x)*cosh(sqrt(x))^2), x)",
+            "-1 / cosh(sqrt(x))",
+            vec!["x > 0"],
+        ),
+        (
+            "integrate(cosh(sqrt(x))/(2*sqrt(x)*sinh(sqrt(x))^2), x)",
+            "-1 / sinh(sqrt(x))",
+            vec!["x > 0", "sinh(sqrt(x)) ≠ 0"],
+        ),
+        (
+            "integrate(sinh(sqrt(2*x))/(sqrt(2*x)*cosh(sqrt(2*x))^2), x)",
+            "-1 / cosh(sqrt(2 * x))",
+            vec!["x > 0"],
+        ),
+    ];
+
+    for (input, expected_result, expected_conditions) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected_result, "unexpected result for {input}");
+        assert_eq!(
+            required, expected_conditions,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
 fn integrate_contract_negated_polynomial_secant_tangent_product_preserves_nonzero_domain() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(-x*sec(x^2)*tan(x^2), x)");
 
-    assert_eq!(result, "-(1 / (2 * cos(x^2)))");
+    assert_eq!(result, "-1 / (2 * cos(x^2))");
     assert_eq!(
         required,
         vec!["cos(x^2) ≠ 0".to_string()],
