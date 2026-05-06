@@ -117,6 +117,83 @@ fn assert_rendered_antiderivative_verifies(input: &str, rendered_antiderivative:
     );
 }
 
+fn assert_antiderivative_equiv_verifies(input: &str) {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let expr = parse(input, &mut engine.simplifier.context).expect("parse integration input");
+    let (integrand, var_name) = explicit_integrate_call_parts(&engine.simplifier.context, expr);
+
+    let integral_output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed: expr,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval integral");
+    let antiderivative = match integral_output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    let var = engine.simplifier.context.var(&var_name);
+    let diff_call = engine
+        .simplifier
+        .context
+        .call("diff", vec![antiderivative, var]);
+    let verify_output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: format!("diff(integrate(...), {var_name}) equiv integrand"),
+                parsed: diff_call,
+                action: EvalAction::Equiv { other: integrand },
+                auto_store: false,
+            },
+        )
+        .expect("eval derivative equivalence");
+    let result = match verify_output.result {
+        EvalResult::Bool(value) => value,
+        other => panic!("expected bool result, got {other:?}"),
+    };
+
+    assert!(
+        result,
+        "antiderivative equivalence verification failed for {input}\nintegral result: {}",
+        render_expr(&engine.simplifier.context, antiderivative)
+    );
+}
+
+fn evaluated_equiv_with_required_conditions(lhs: &str, rhs: &str) -> (bool, Vec<String>) {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let parsed = parse(lhs, &mut engine.simplifier.context).expect("parse lhs");
+    let other = parse(rhs, &mut engine.simplifier.context).expect("parse rhs");
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: format!("{lhs} equiv {rhs}"),
+                parsed,
+                action: EvalAction::Equiv { other },
+                auto_store: false,
+            },
+        )
+        .expect("eval equivalence");
+    let result = match output.result {
+        EvalResult::Bool(value) => value,
+        other => panic!("expected bool result, got {other:?}"),
+    };
+    let required =
+        render_conditions_normalized(&mut engine.simplifier.context, &output.required_conditions);
+
+    (result, required)
+}
+
 fn evaluated_expr_with_required_conditions(input: &str) -> (String, Vec<String>) {
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -1220,6 +1297,66 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
         "unexpected offset linear required_conditions: {required:?}"
     );
     assert_antiderivative_verifies("integrate(1/(sqrt(x)*(x+4)), x)");
+
+    let input = "integrate(1/(sqrt(4*x+1)*(2*x+1)), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, "arctan((4 * x + 1)^(1/2))");
+    assert_eq!(
+        required,
+        vec!["4 * x + 1 > 0".to_string()],
+        "unexpected affine required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    let (nested_derivative, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(1/(sqrt(4*x+1)*(2*x+1)), x), x)");
+    assert!(
+        !nested_derivative.contains("integrate("),
+        "nested derivative should not leave an integration residual: {nested_derivative}"
+    );
+    assert_eq!(
+        nested_required,
+        vec!["4 * x + 1 > 0".to_string()],
+        "affine nested derivative should preserve the positive radicand condition"
+    );
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(1/(sqrt(4*x+1)*(2*x+1)), x), x) - 1/(sqrt(4*x+1)*(2*x+1))",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["4 * x + 1 > 0".to_string()],
+        "affine verification should preserve the positive radicand condition"
+    );
+
+    let input = "integrate(-1/(2*sqrt(5-3*x)*(2-x)), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, "arctan((5 - 3 * x)^(1/2))");
+    assert_eq!(
+        required,
+        vec!["5 - 3 * x > 0".to_string()],
+        "unexpected negative-slope affine required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    assert_antiderivative_equiv_verifies(input);
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(-1/(2*sqrt(5-3*x)*(2-x)), x), x) - (-1/(2*sqrt(5-3*x)*(2-x)))",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["5 - 3 * x > 0".to_string()],
+        "negative-slope affine residual verification should preserve the positive radicand condition"
+    );
+    let (nested_equiv, nested_required) = evaluated_equiv_with_required_conditions(
+        "diff(integrate(-1/(2*sqrt(5-3*x)*(2-x)), x), x)",
+        "-1/(2*sqrt(5-3*x)*(2-x))",
+    );
+    assert!(nested_equiv);
+    assert_eq!(
+        nested_required,
+        vec!["5 - 3 * x > 0".to_string()],
+        "negative-slope affine derivative equivalence should preserve the positive radicand condition"
+    );
 }
 
 #[test]
@@ -3268,10 +3405,28 @@ fn integrate_contract_sqrt_chain_secant_cosecant_products_verify() {
             vec!["3 - 2 * x > 0", "cos(sqrt(3 - 2 * x)) ≠ 0"],
         ),
         (
+            "integrate(sec(sqrt(3-2*x))*tan(sqrt(3-2*x))/sqrt(3-2*x), x)",
+            "-sec(sqrt(3 - 2 * x))",
+            "tan(sqrt(3 - 2 * x)) * sec(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
+            vec!["3 - 2 * x > 0", "cos(sqrt(3 - 2 * x)) ≠ 0"],
+        ),
+        (
             "integrate(csc(sqrt(3*x+1))*cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
             "-csc(sqrt(3 * x + 1))",
             "3 * csc(sqrt(3 * x + 1)) * cot(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
             vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
+        ),
+        (
+            "integrate(-csc(sqrt(3-2*x))*cot(sqrt(3-2*x))/sqrt(3-2*x), x)",
+            "-csc(sqrt(3 - 2 * x))",
+            "-cot(sqrt(3 - 2 * x)) * csc(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
+            vec!["3 - 2 * x > 0", "sin(sqrt(3 - 2 * x)) ≠ 0"],
+        ),
+        (
+            "integrate(csc(sqrt(3-2*x))*cot(sqrt(3-2*x))/sqrt(3-2*x), x)",
+            "csc(sqrt(3 - 2 * x))",
+            "csc(sqrt(3 - 2 * x)) * cot(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
+            vec!["3 - 2 * x > 0", "sin(sqrt(3 - 2 * x)) ≠ 0"],
         ),
         (
             "integrate(-csc(sqrt(3*x+1))*cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",

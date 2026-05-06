@@ -6,9 +6,9 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 ## Summary
 
-- Derived cases audited: `471`
+- Derived cases audited: `472`
 - Mean top-level step count: `1.06`
-- Total web substeps: `483`
+- Total web substeps: `482`
 
 ## Flag Summary
 
@@ -39,7 +39,7 @@ No audit flags emitted.
 | `power_merge` | 10 | 0 | 0 | 2 |
 | `radical_power` | 6 | 0 | 0 | 12 |
 | `rationalize` | 9 | 0 | 0 | 25 |
-| `simplify` | 89 | 0 | 0 | 83 |
+| `simplify` | 90 | 0 | 0 | 82 |
 | `solve_prep` | 8 | 0 | 0 | 21 |
 | `telescoping_fraction` | 15 | 0 | 0 | 30 |
 | `trig_contract` | 49 | 0 | 0 | 25 |
@@ -456,6 +456,7 @@ No audit flags emitted.
 | `merge_same_base_integer_and_symbolic_power` | `power_merge` | 1 | 0 | none |
 | `merge_same_base_symbolic_powers` | `power_merge` | 1 | 0 | none |
 | `merge_same_base_symbolic_quotient_powers` | `power_merge` | 1 | 2 | none |
+| `merge_sqrt_product_requires_nonnegative` | `simplify` | 1 | 0 | none |
 | `nested_fraction_fraction_over_sum_with_fraction_general` | `nested_fraction` | 1 | 2 | none |
 | `nested_fraction_fraction_over_sum_with_fraction_general_reverse` | `nested_fraction` | 1 | 1 | none |
 | `nested_fraction_one_over_sum` | `nested_fraction` | 1 | 2 | none |
@@ -491,7 +492,7 @@ No audit flags emitted.
 | `reciprocal_trig_special_value_sec_pi_fourth` | `simplify` | 1 | 0 | none |
 | `sec_tan_pythagorean_to_one` | `simplify` | 1 | 0 | none |
 | `simplify_sqrt_arithmetic_difference` | `simplify` | 1 | 1 | none |
-| `simplify_sqrt_arithmetic_sum` | `simplify` | 1 | 2 | none |
+| `simplify_sqrt_arithmetic_sum` | `simplify` | 1 | 1 | none |
 | `sin_arccos_complement_projection` | `simplify` | 1 | 2 | none |
 | `sin_arctan_right_triangle_projection` | `simplify` | 1 | 2 | none |
 | `solve_prep_complete_square_alt_variable_symbolic_leading_coeff` | `solve_prep` | 1 | 3 | none |
@@ -580,6 +581,8 @@ Steps (Aggressive Mode):
    Cambio local: 2 * x / (4 * x) -> 1 / 2
    After: 1 / 2
 Result: 1 / 2
+ℹ️ Requires:
+  • x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -612,6 +615,8 @@ Steps (Aggressive Mode):
    Cambio local: (a^(3) - b^(3)) / (a - b) -> a^(2) + b^(2) + a * b
    After: a^2 + b^2 + a * b
 Result: a^(2) + b^(2) + a * b
+ℹ️ Requires:
+  • a - b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -645,6 +650,8 @@ Steps (Aggressive Mode):
    Cambio local: (a^(3) - b^(3)) / (a - b) -> a^(2) + b^(2) + a * b
    After: a^2 + b^2 + a * b + c
 Result: a^(2) + b^(2) + a * b + c
+ℹ️ Requires:
+  • a - b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -678,6 +685,8 @@ Steps (Aggressive Mode):
    Cambio local: (a^(2) - b^(2)) / (a - b) -> a + b
    After: a + b
 Result: a + b
+ℹ️ Requires:
+  • a - b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -710,6 +719,8 @@ Steps (Aggressive Mode):
    Cambio local: (a^(2) - b^(2)) / (a - b) -> a + b
    After: a + b + c
 Result: a + b + c
+ℹ️ Requires:
+  • a - b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -744,6 +755,7 @@ Steps (Aggressive Mode):
 Result: a * x / b
 ℹ️ Requires:
   • b ≠ 0
+  • x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -776,6 +788,8 @@ Steps (Aggressive Mode):
    Cambio local: (a^(2) + b^(2) - 2 * a * b) / (a - b) -> (a - b)^(2) / (a - b)
    After: a - b
 Result: a - b
+ℹ️ Requires:
+  • a - b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -808,6 +822,8 @@ Steps (Aggressive Mode):
    Cambio local: (a^(3) + b^(3)) / (a + b) -> a^(2) + b^(2) - a * b
    After: a^2 + b^2 - a * b
 Result: a^(2) + b^(2) - a * b
+ℹ️ Requires:
+  • a + b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -936,6 +952,9 @@ Steps (Aggressive Mode):
    Cambio local: e^(ln(x) + ln(y)) -> x * y
    After: x * y
 Result: x * y
+ℹ️ Requires:
+  • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -968,6 +987,9 @@ Steps (Aggressive Mode):
    Cambio local: e^(2 * ln(x) + 3 * ln(y)) -> x^(2) * y^(3)
    After: x^2 * y^3
 Result: x^(2) * y^(3)
+ℹ️ Requires:
+  • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -1180,8 +1202,6 @@ Steps (Aggressive Mode):
    Cambio local: a / d + b / d -> (a + b) / d
    After: (a + b) / d + 1
 Result: (a + b) / d + 1
-ℹ️ Requires:
-  • d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1212,8 +1232,6 @@ Steps (Aggressive Mode):
    Cambio local: a / d + b / d + c / d -> (a + b + c) / d
    After: (a + b + c) / d + 1
 Result: (a + b + c) / d + 1
-ℹ️ Requires:
-  • d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1341,7 +1359,7 @@ Steps (Aggressive Mode):
    After: (a * x + b) / (d - c * x)
 Result: (a * x + b) / (d - c * x)
 ℹ️ Requires:
-  • c * x - d ≠ 0
+  • c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1372,8 +1390,6 @@ Steps (Aggressive Mode):
    Cambio local: a / d - b / d -> (a - b) / d
    After: (a - b) / d
 Result: (a - b) / d
-ℹ️ Requires:
-  • d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1404,8 +1420,6 @@ Steps (Aggressive Mode):
    Cambio local: a / d + b / d -> (a + b) / d
    After: (a + b) / d
 Result: (a + b) / d
-ℹ️ Requires:
-  • d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1436,7 +1450,7 @@ Steps (Aggressive Mode):
    After: (a * x + b) / (c * x + d)
 Result: (a * x + b) / (c * x + d)
 ℹ️ Requires:
-  • c * x + d ≠ 0
+  • c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1467,8 +1481,6 @@ Steps (Aggressive Mode):
    Cambio local: a / (x + y) + b / (x + y) -> (a + b) / (x + y)
    After: (a + b) / (x + y) + c
 Result: (a + b) / (x + y) + c
-ℹ️ Requires:
-  • x + y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1498,8 +1510,6 @@ Steps (Aggressive Mode):
    Before: (b - a * c) / (c + x) + a
    After: (a * x + b) / (c + x)
 Result: (a * x + b) / (c + x)
-ℹ️ Requires:
-  • c + x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1566,7 +1576,9 @@ Steps (Aggressive Mode):
    After: 1 / ((a * n + b) * (a * n + c))
 Result: 1 / ((a * n + b) * (a * n + c))
 ℹ️ Requires:
-  • a^2 * n^2 + a * b * n + a * c * n + b * c ≠ 0
+  • a * n + b ≠ 0
+  • a * n + c ≠ 0
+  • b - c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1745,7 +1757,8 @@ Steps (Aggressive Mode):
    After: (c - b) / (x * (b + c) + x^2 + b * c)
 Result: (c - b) / (x * (b + c) + x^(2) + b * c)
 ℹ️ Requires:
-  • x^2 + b * c + b * x + c * x ≠ 0
+  • b + x ≠ 0
+  • c + x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1779,6 +1792,7 @@ Steps (Aggressive Mode):
    After: 1 / (x^2 - a^2)
 Result: 1 / (x^(2) - a^(2))
 ℹ️ Requires:
+  • a ≠ 0
   • a + x ≠ 0
   • a - x ≠ 0
 ```
@@ -1813,8 +1827,6 @@ Steps (Aggressive Mode):
    Cambio local: a - b / a -> (a^(2) - b) / a
    After: (a^2 - b) / a
 Result: (a^(2) - b) / a
-ℹ️ Requires:
-  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1845,8 +1857,6 @@ Steps (Aggressive Mode):
    Cambio local: a / d + b / d + c / d -> (a + b + c) / d
    After: (a + b + c) / d
 Result: (a + b + c) / d
-ℹ️ Requires:
-  • d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1876,8 +1886,6 @@ Steps (Aggressive Mode):
    Before: 2 / (x - 1) + 1
    After: (x + 1) / (x - 1)
 Result: (x + 1) / (x - 1)
-ℹ️ Requires:
-  • x - 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1908,6 +1916,8 @@ Steps (Aggressive Mode):
    Cambio local: (n + 1)! / n! -> n + 1
    After: n + 1
 Result: n + 1
+ℹ️ Requires:
+  • n! ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1940,6 +1950,8 @@ Steps (Aggressive Mode):
    Cambio local: (n + 1)! / (n - 1)! -> n * (n + 1)
    After: n * (n + 1)
 Result: n * (n + 1)
+ℹ️ Requires:
+  • (n - 1)! ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -1972,6 +1984,8 @@ Steps (Aggressive Mode):
    Cambio local: (n + 1)! / n! + a -> a + n + 1
    After: a + n + 1
 Result: a + n + 1
+ℹ️ Requires:
+  • n! ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2196,8 +2210,8 @@ Steps (Aggressive Mode):
 Result: log(b, (x * y)^(2))
 ℹ️ Requires:
   • b > 0
-  • x ≠ 0
-  • y ≠ 0
+  • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -2230,8 +2244,8 @@ Steps (Aggressive Mode):
 Result: log(b, (x * y)^(2)) + a
 ℹ️ Requires:
   • b > 0
-  • x ≠ 0
-  • y ≠ 0
+  • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -2386,6 +2400,8 @@ Steps (Aggressive Mode):
    Cambio local: (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y)) -> tanh(x - y)
    After: tanh(x - y)
 Result: tanh(x - y)
+ℹ️ Requires:
+  • 1 - tanh(x) * tanh(y) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2417,6 +2433,8 @@ Steps (Aggressive Mode):
    Cambio local: (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1) -> tanh(x + y)
    After: tanh(x + y)
 Result: tanh(x + y)
+ℹ️ Requires:
+  • tanh(x) * tanh(y) + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -2449,6 +2467,7 @@ Steps (Aggressive Mode):
    After: log(b, c)
 Result: log(b, c)
 ℹ️ Requires:
+  • a > 0
   • b > 0
   • c > 0
 ```
@@ -2488,8 +2507,6 @@ Steps (Aggressive Mode):
    Cambio local: ln(x) / ln(2) -> log(2, x)
    After: log(2, x)
 Result: log(2, x)
-ℹ️ Requires:
-  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -2523,8 +2540,8 @@ Steps (Aggressive Mode):
    After: ln(x / y)
 Result: ln(x / y)
 ℹ️ Requires:
-  • x / y > 0
-  • y ≠ 0
+  • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -2557,7 +2574,7 @@ Steps (Aggressive Mode):
 Result: ln(x^(3) / y^(2))
 ℹ️ Requires:
   • x > 0
-  • y ≠ 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -2621,8 +2638,8 @@ Steps (Aggressive Mode):
    After: log(2, x / y)
 Result: log(2, x / y)
 ℹ️ Requires:
-  • x / y > 0
-  • y ≠ 0
+  • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -2655,7 +2672,7 @@ Steps (Aggressive Mode):
 Result: log(2, x^(3) / y^(2))
 ℹ️ Requires:
   • x > 0
-  • y ≠ 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -2720,9 +2737,10 @@ Steps (Aggressive Mode):
 Result: log(b, x^(2) * y^(3) / (t * z^(2)))
 ℹ️ Requires:
   • b > 0
-  • t ≠ 0
-  • x^2 * y^3 / (t * z^2) > 0
-  • z ≠ 0
+  • t > 0
+  • x > 0
+  • y > 0
+  • z > 0
 ```
 
 ### Web / JSON Steps
@@ -2820,9 +2838,10 @@ Steps (Aggressive Mode):
    After: ln(y * x^2 / (t * z))
 Result: ln(y * x^(2) / (t * z))
 ℹ️ Requires:
-  • t ≠ 0
-  • y * x^2 / (t * z) > 0
-  • z ≠ 0
+  • t > 0
+  • x ≠ 0
+  • y > 0
+  • z > 0
 ```
 
 ### Web / JSON Steps
@@ -2854,8 +2873,9 @@ Steps (Aggressive Mode):
    After: ln(x * y / z)
 Result: ln(x * y / z)
 ℹ️ Requires:
-  • x * y / z > 0
-  • z ≠ 0
+  • x > 0
+  • y > 0
+  • z > 0
 ```
 
 ### Web / JSON Steps
@@ -2887,7 +2907,8 @@ Steps (Aggressive Mode):
    After: ln(x * y)
 Result: ln(x * y)
 ℹ️ Requires:
-  • x * y > 0
+  • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -2919,7 +2940,9 @@ Steps (Aggressive Mode):
    After: ln(x^3 * y^2)
 Result: ln(x^(3) * y^(2))
 ℹ️ Requires:
+  • x > 0
   • x^3 * y^2 > 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -3074,6 +3097,8 @@ Steps (Aggressive Mode):
    Cambio local: (cos(x) - cos(3 * x)) / (sin(3 * x) - sin(x)) -> tan(2 * x)
    After: tan(2 * x)
 Result: tan(2 * x)
+ℹ️ Requires:
+  • sin(3 * x) - sin(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -3104,6 +3129,8 @@ Steps (Aggressive Mode):
    Cambio local: cos(x) / sin(x) -> cot(x)
    After: cot(x)
 Result: cot(x)
+ℹ️ Requires:
+  • sin(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -3134,6 +3161,8 @@ Steps (Aggressive Mode):
    Cambio local: 1 / sin(x) -> csc(x)
    After: csc(x)
 Result: csc(x)
+ℹ️ Requires:
+  • sin(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -3284,6 +3313,9 @@ Steps (Aggressive Mode):
    Cambio local: 2 * tan(x) / (1 - tan(x)^(2)) -> tan(2 * x)
    After: tan(2 * x)
 Result: tan(2 * x)
+ℹ️ Requires:
+  • 1 - tan(x) ≠ 0
+  • tan(x) + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -3374,6 +3406,8 @@ Steps (Aggressive Mode):
    Cambio local: (1 - cos(2 * x)) / sin(2 * x) -> tan(x)
    After: tan(x)
 Result: tan(x)
+ℹ️ Requires:
+  • sin(2 * x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -3404,6 +3438,8 @@ Steps (Aggressive Mode):
    Cambio local: sin(2 * x) / (cos(2 * x) + 1) -> tan(x)
    After: tan(x)
 Result: tan(x)
+ℹ️ Requires:
+  • cos(2 * x) + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4051,6 +4087,8 @@ Steps (Aggressive Mode):
    Cambio local: 1 / cos(x) -> sec(x)
    After: sec(x)
 Result: sec(x)
+ℹ️ Requires:
+  • cos(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4172,6 +4210,8 @@ Steps (Aggressive Mode):
    Cambio local: sin(2 * x) / cos(2 * x) -> tan(2 * x)
    After: tan(2 * x)
 Result: tan(2 * x)
+ℹ️ Requires:
+  • cos(2 * x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4202,6 +4242,8 @@ Steps (Aggressive Mode):
    Cambio local: sin(2 * x) / cos(x + x) -> tan(2 * x)
    After: tan(2 * x)
 Result: tan(2 * x)
+ℹ️ Requires:
+  • cos(x + x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4232,6 +4274,8 @@ Steps (Aggressive Mode):
    Cambio local: x * sin(x^(2)) / cos(x^(2)) + 1 -> x * tan(x^(2)) + 1
    After: x * tan(x^2) + 1
 Result: x * tan(x^(2)) + 1
+ℹ️ Requires:
+  • cos(x^2) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4262,6 +4306,8 @@ Steps (Aggressive Mode):
    Cambio local: x * sin(x^(2)) / cos(x^(2)) -> x * tan(x^(2))
    After: x * tan(x^2)
 Result: x * tan(x^(2))
+ℹ️ Requires:
+  • cos(x^2) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4292,6 +4338,8 @@ Steps (Aggressive Mode):
    Cambio local: (tan(x) - tan(y)) / (tan(x) * tan(y) + 1) -> tan(x - y)
    After: tan(x - y)
 Result: tan(x - y)
+ℹ️ Requires:
+  • tan(x) * tan(y) + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4322,6 +4370,8 @@ Steps (Aggressive Mode):
    Cambio local: (tan(x) + tan(y)) / (1 - tan(x) * tan(y)) -> tan(x + y)
    After: tan(x + y)
 Result: tan(x + y)
+ℹ️ Requires:
+  • 1 - tan(x) * tan(y) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4414,6 +4464,8 @@ Steps (Aggressive Mode):
    Cambio local: (3 * tan(x) - tan(x)^(3)) / (1 - 3 * tan(x)^(2)) -> tan(3 * x)
    After: tan(3 * x)
 Result: tan(3 * x)
+ℹ️ Requires:
+  • 1 - 3 * tan(x)^2 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -4445,8 +4497,6 @@ Steps (Aggressive Mode):
    Cambio local: cos(arcsin(x)) -> sqrt(1 - x^(2))
    After: sqrt(1 - x^2)
 Result: sqrt(1 - x^(2))
-ℹ️ Requires:
-  • 1 - x^2 ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -4715,7 +4765,7 @@ Target: x^3 - 1
 Strategy: expand
 Steps (Aggressive Mode):
 1. Sum/Difference of cubes  [Sum/Difference of Cubes Contraction]
-   Before: (x^(2) + x + 1) * (x - 1)
+   Before: (x - 1) * (x^(2) + x + 1)
    Cambio local: (x - 1) * (x^(2) + x + 1) -> x^(3) - 1
    After: x^3 - 1
 Result: x^(3) - 1
@@ -4724,7 +4774,7 @@ Result: x^(3) - 1
 ### Web / JSON Steps
 
 1. `Expandir la expresión`
-   - before: `(x^2 + x + 1) · (x - 1)`
+   - before: `(x - 1) · (x^2 + x + 1)`
    - after: `x^3 - 1`
    - substeps:
      1. `Reconocer el patrón (a - b)(a^2 + ab + b^2)`
@@ -4747,7 +4797,7 @@ Target: x^3 + 1
 Strategy: expand
 Steps (Aggressive Mode):
 1. Sum/Difference of cubes  [Sum/Difference of Cubes Contraction]
-   Before: (x + 1) * (x^(2) - x + 1)
+   Before: (x + 1) * (x^(2) + 1 - x)
    Cambio local: (x + 1) * (x^(2) + 1 - x) -> x^(3) + 1
    After: x^3 + 1
 Result: x^(3) + 1
@@ -4756,7 +4806,7 @@ Result: x^(3) + 1
 ### Web / JSON Steps
 
 1. `Expandir la expresión`
-   - before: `(x + 1) · (x^2 - x + 1)`
+   - before: `(x + 1) · (x^2 + 1 - x)`
    - after: `x^3 + 1`
    - substeps:
      1. `Reconocer el patrón (a + b)(a^2 - ab + b^2)`
@@ -4967,8 +5017,6 @@ Steps (Aggressive Mode):
    Before: (a * d + b) / d
    After: b / d + a
 Result: b / d + a
-ℹ️ Requires:
-  • d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5032,8 +5080,6 @@ Steps (Aggressive Mode):
    Before: (a + b + c) / d + 1
    After: a / d + b / d + c / d + 1
 Result: a / d + b / d + c / d + 1
-ℹ️ Requires:
-  • d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5063,8 +5109,6 @@ Steps (Aggressive Mode):
    Before: (a + b) / d
    After: a / d + b / d
 Result: a / d + b / d
-ℹ️ Requires:
-  • d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5094,10 +5138,6 @@ Steps (Aggressive Mode):
    Before: (a * x * y + b * y * z + c * x * z + d) / (x * y * z)
    After: a / z + b / x + c / y + d / (x * y * z)
 Result: a / z + b / x + c / y + d / (x * y * z)
-ℹ️ Requires:
-  • x ≠ 0
-  • y ≠ 0
-  • z ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5196,9 +5236,6 @@ Steps (Aggressive Mode):
    Before: (a * x + b * y + c) / (x * y)
    After: a / y + b / x + c / (x * y)
 Result: a / y + b / x + c / (x * y)
-ℹ️ Requires:
-  • x ≠ 0
-  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5229,9 +5266,6 @@ Steps (Aggressive Mode):
    Before: (a * x + b) / (c * x)
    After: a / c + b / (c * x)
 Result: a / c + b / (c * x)
-ℹ️ Requires:
-  • c ≠ 0
-  • x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5292,7 +5326,7 @@ Target: 1 / 4 + x^2 + x
 Strategy: expand
 Steps (Aggressive Mode):
 1. Expand binomial power ^2  [Binomial Expansion]
-   Before: (1 / 2 + x)^(2)
+   Before: (x + 1/2)^(2)
    Cambio local: (x + 1/2)^(2) -> 1/2^(2) + x^(2) + 2 * x/2
    After: 1 / 4 + x^2 + x
 Result: 1 / 4 + x^(2) + x
@@ -5301,7 +5335,7 @@ Result: 1 / 4 + x^(2) + x
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((1/2 + x))^2`
+   - before: `((x + 1/2))^2`
    - after: `(1/2)^2 + x^2 + 2/2 · x`
    - substeps: none
 
@@ -5325,8 +5359,6 @@ Steps (Aggressive Mode):
    Before: x^(5 / 2)
    After: sqrt(x) * |x|^2
 Result: sqrt(x) * |x|^(2)
-ℹ️ Requires:
-  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -5359,7 +5391,7 @@ Steps (Aggressive Mode):
    After: sqrt(x) * |x|^2
 Result: sqrt(x) * |x|^(2)
 ℹ️ Requires:
-  • x ≥ 0
+  • x^5 ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -5391,8 +5423,6 @@ Steps (Aggressive Mode):
    Before: y^(7 / 2)
    After: sqrt(y) * |y|^3
 Result: sqrt(y) * |y|^(3)
-ℹ️ Requires:
-  • y ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -5753,8 +5783,6 @@ Steps (Aggressive Mode):
    Cambio local: tanh(x - y) -> (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
    After: (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
 Result: (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
-ℹ️ Requires:
-  • 1 - tanh(x) * tanh(y) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5786,8 +5814,6 @@ Steps (Aggressive Mode):
    Cambio local: tanh(x + y) -> (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1)
    After: (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1)
 Result: (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1)
-ℹ️ Requires:
-  • tanh(x) * tanh(y) + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -5890,8 +5916,6 @@ Steps (Aggressive Mode):
    Cambio local: log(2, x) -> ln(x) / ln(2)
    After: ln(x) / ln(2)
 Result: ln(x) / ln(2)
-ℹ️ Requires:
-  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -6509,8 +6533,6 @@ Steps (Aggressive Mode):
    Before: x^(3 / 2)
    After: sqrt(x) * |x|
 Result: sqrt(x) * |x|
-ℹ️ Requires:
-  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -6543,7 +6565,7 @@ Steps (Aggressive Mode):
    After: sqrt(x) * |x|
 Result: sqrt(x) * |x|
 ℹ️ Requires:
-  • x ≥ 0
+  • x^3 ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -6576,7 +6598,7 @@ Steps (Aggressive Mode):
    After: sqrt(x) * |x| + a
 Result: sqrt(x) * |x| + a
 ℹ️ Requires:
-  • x ≥ 0
+  • x^3 ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -6667,7 +6689,7 @@ Target: x^6 - 1
 Strategy: expand
 Steps (Aggressive Mode):
 1. Expand and combine polynomial product  [Polynomial Product Normalize]
-   Before: (x^(4) + x^(2) + 1) * (x^(2) - 1)
+   Before: (x^(2) - 1) * (x^(4) + x^(2) + 1)
    After: x^6 - 1
 Result: x^(6) - 1
 ```
@@ -6675,7 +6697,7 @@ Result: x^(6) - 1
 ### Web / JSON Steps
 
 1. `Expandir y reagrupar un producto polinómico`
-   - before: `(x^4 + x^2 + 1) · (x^2 - 1)`
+   - before: `(x^2 - 1) · (x^4 + x^2 + 1)`
    - after: `x^6 - 1`
    - substeps:
      1. `Distribuir cada término del producto`
@@ -6699,7 +6721,7 @@ Target: x^6 + 1
 Strategy: expand
 Steps (Aggressive Mode):
 1. Expand and combine polynomial product  [Polynomial Product Normalize]
-   Before: (x^(2) + 1) * (x^(4) - x^(2) + 1)
+   Before: (x^(2) + 1) * (x^(4) + 1 - x^(2))
    After: x^6 + 1
 Result: x^(6) + 1
 ```
@@ -6707,7 +6729,7 @@ Result: x^(6) + 1
 ### Web / JSON Steps
 
 1. `Expandir y reagrupar un producto polinómico`
-   - before: `(x^2 + 1) · (x^4 - x^2 + 1)`
+   - before: `(x^2 + 1) · (x^4 + 1 - x^2)`
    - after: `x^6 + 1`
    - substeps:
      1. `Distribuir cada término del producto`
@@ -7003,7 +7025,7 @@ Target: a^2 + b^2 + c^2 - 2 * a * b + 2 * a * c - 2 * b * c
 Strategy: expand
 Steps (Aggressive Mode):
 1. Expand (3-term sum)^2  [Small Multinomial Expansion]
-   Before: (a - b + c)^(2)
+   Before: (a + c - b)^(2)
    Cambio local: (a + c - b)^(2) -> a^(2) + b^(2) + c^(2) - 2 * a * b - 2 * b * c + 2 * a * c
    After: a^2 + b^2 + c^2 - 2 * a * b + 2 * a * c - 2 * b * c
 Result: a^(2) + b^(2) + c^(2) - 2 * a * b + 2 * a * c - 2 * b * c
@@ -7012,7 +7034,7 @@ Result: a^(2) + b^(2) + c^(2) - 2 * a * b + 2 * a * c - 2 * b * c
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((a - b + c))^2`
+   - before: `((a + c - b))^2`
    - after: `a^2 + b^2 + c^2 - 2 · a · b + 2 · a · c - 2 · b · c`
    - substeps: none
 
@@ -7764,8 +7786,6 @@ Steps (Aggressive Mode):
    Cambio local: cot(x) -> cos(x) / sin(x)
    After: cos(x) / sin(x)
 Result: cos(x) / sin(x)
-ℹ️ Requires:
-  • sin(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -7796,8 +7816,6 @@ Steps (Aggressive Mode):
    Cambio local: csc(x) -> 1 / sin(x)
    After: 1 / sin(x)
 Result: 1 / sin(x)
-ℹ️ Requires:
-  • sin(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -8044,8 +8062,6 @@ Steps (Aggressive Mode):
    Cambio local: sin(2 * arccos(x)) -> 2 * x * sqrt(1 - x^(2))
    After: 2 * x * sqrt(1 - x^2)
 Result: 2 * x * sqrt(1 - x^(2))
-ℹ️ Requires:
-  • 1 - x^2 ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -8078,8 +8094,6 @@ Steps (Aggressive Mode):
    Cambio local: sin(2 * arcsin(x)) -> 2 * x * sqrt(1 - x^(2))
    After: 2 * x * sqrt(1 - x^2)
 Result: 2 * x * sqrt(1 - x^(2))
-ℹ️ Requires:
-  • 1 - x^2 ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -8112,9 +8126,6 @@ Steps (Aggressive Mode):
    Cambio local: tan(2 * x) -> 2 * tan(x) / (1 - tan(x)^(2))
    After: 2 * tan(x) / (1 - tan(x)^2)
 Result: 2 * tan(x) / (1 - tan(x)^(2))
-ℹ️ Requires:
-  • 1 - tan(x) ≠ 0
-  • tan(x) + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -8205,8 +8216,6 @@ Steps (Aggressive Mode):
    Cambio local: tan(x) -> (1 - cos(2 * x)) / sin(2 * x)
    After: (1 - cos(2 * x)) / sin(2 * x)
 Result: (1 - cos(2 * x)) / sin(2 * x)
-ℹ️ Requires:
-  • sin(2 * x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -8237,8 +8246,6 @@ Steps (Aggressive Mode):
    Cambio local: tan(x) -> sin(2 * x) / (cos(2 * x) + 1)
    After: sin(2 * x) / (cos(2 * x) + 1)
 Result: sin(2 * x) / (cos(2 * x) + 1)
-ℹ️ Requires:
-  • cos(2 * x) + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -8269,8 +8276,6 @@ Steps (Aggressive Mode):
    Cambio local: tan(x / 2) -> (1 - cos(x)) / sin(x)
    After: (1 - cos(x)) / sin(x)
 Result: (1 - cos(x)) / sin(x)
-ℹ️ Requires:
-  • sin(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -8301,8 +8306,6 @@ Steps (Aggressive Mode):
    Cambio local: tan(x / 2) -> sin(x) / (cos(x) + 1)
    After: sin(x) / (cos(x) + 1)
 Result: sin(x) / (cos(x) + 1)
-ℹ️ Requires:
-  • cos(x) + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -9291,8 +9294,6 @@ Steps (Aggressive Mode):
    Cambio local: sec(x) -> 1 / cos(x)
    After: 1 / cos(x)
 Result: 1 / cos(x)
-ℹ️ Requires:
-  • cos(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -9995,8 +9996,6 @@ Steps (Aggressive Mode):
    Cambio local: tan(x) -> sin(x) / cos(x)
    After: sin(x) / cos(x)
 Result: sin(x) / cos(x)
-ℹ️ Requires:
-  • cos(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -10027,8 +10026,6 @@ Steps (Aggressive Mode):
    Cambio local: tan(x - y) -> (tan(x) - tan(y)) / (tan(x) * tan(y) + 1)
    After: (tan(x) - tan(y)) / (tan(x) * tan(y) + 1)
 Result: (tan(x) - tan(y)) / (tan(x) * tan(y) + 1)
-ℹ️ Requires:
-  • tan(x) * tan(y) + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -10059,8 +10056,6 @@ Steps (Aggressive Mode):
    Cambio local: tan(x + y) -> (tan(x) + tan(y)) / (1 - tan(x) * tan(y))
    After: (tan(x) + tan(y)) / (1 - tan(x) * tan(y))
 Result: (tan(x) + tan(y)) / (1 - tan(x) * tan(y))
-ℹ️ Requires:
-  • 1 - tan(x) * tan(y) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -10183,8 +10178,6 @@ Steps (Aggressive Mode):
    Cambio local: tan(3 * x) -> (3 * tan(x) - tan(x)^(3)) / (1 - 3 * tan(x)^(2))
    After: (3 * tan(x) - tan(x)^3) / (1 - 3 * tan(x)^2)
 Result: (3 * tan(x) - tan(x)^(3)) / (1 - 3 * tan(x)^(2))
-ℹ️ Requires:
-  • 1 - 3 * tan(x)^2 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -10535,8 +10528,6 @@ Steps (Aggressive Mode):
    Cambio local: a * x + b * x + c -> x * (c / x + a + b)
    After: x * (c / x + a + b)
 Result: x * (c / x + a + b)
-ℹ️ Requires:
-  • x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -10569,8 +10560,6 @@ Steps (Aggressive Mode):
    Cambio local: a * x^(7) + b * x^(5) + c * x^(2) + d -> x * (d / x + a * x^(6) + b * x^(4) + c * x)
    After: x * (d / x + a * x^6 + b * x^4 + c * x)
 Result: x * (d / x + a * x^(6) + b * x^(4) + c * x)
-ℹ️ Requires:
-  • x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -10603,8 +10592,6 @@ Steps (Aggressive Mode):
    Cambio local: a * x^(2) + b * x + c -> x * (c / x + a * x + b)
    After: x * (c / x + a * x + b)
 Result: x * (c / x + a * x + b)
-ℹ️ Requires:
-  • x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -10637,8 +10624,6 @@ Steps (Aggressive Mode):
    Cambio local: a * x^(5) + b * x^(3) + c * x + d -> x * (d / x + a * x^(4) + b * x^(2) + c)
    After: x * (d / x + a * x^4 + b * x^2 + c)
 Result: x * (d / x + a * x^(4) + b * x^(2) + c)
-ℹ️ Requires:
-  • x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11047,8 +11032,6 @@ Steps (Aggressive Mode):
    Cambio local: product(k, k, m, n) -> n! / (m - 1)!
    After: n! / (m - 1)!
 Result: n! / (m - 1)!
-ℹ️ Requires:
-  • (m - 1)! ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11081,8 +11064,6 @@ Steps (Aggressive Mode):
    Cambio local: product(k^(3), k, m, n) -> (n! / (m - 1)!)^(3)
    After: (n! / (m - 1)!)^3
 Result: (n! / (m - 1)!)^(3)
-ℹ️ Requires:
-  • (m - 1)! ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11147,8 +11128,6 @@ Steps (Aggressive Mode):
    Cambio local: product(k^(2), k, m, n) -> (n! / (m - 1)!)^(2)
    After: (n! / (m - 1)!)^2
 Result: (n! / (m - 1)!)^(2)
-ℹ️ Requires:
-  • (m - 1)! ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11502,7 +11481,7 @@ Steps (Aggressive Mode):
    After: (a * n + a + b) / (a * m + b)
 Result: (a * n + a + b) / (a * m + b)
 ℹ️ Requires:
-  • a * m + b ≠ 0
+  • a * k + b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11535,6 +11514,8 @@ Steps (Aggressive Mode):
    Cambio local: product((k + 1) / k, k, 1, n) -> n + 1
    After: n + 1
 Result: n + 1
+ℹ️ Requires:
+  • k ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11569,7 +11550,7 @@ Steps (Aggressive Mode):
    After: (m + 1) * (n + 3) / ((m + 2) * (n + 2))
 Result: (m + 1) * (n + 3) / ((m + 2) * (n + 2))
 ℹ️ Requires:
-  • m * n + 2 * m + 2 * n + 4 ≠ 0
+  • k + 2 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11604,7 +11585,7 @@ Steps (Aggressive Mode):
    After: (a + n + 1) * (a + m - 1) / ((a + m) * (a + n))
 Result: (a + n + 1) * (a + m - 1) / ((a + m) * (a + n))
 ℹ️ Requires:
-  • a^2 + a * m + a * n + m * n ≠ 0
+  • a + k ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11639,7 +11620,7 @@ Steps (Aggressive Mode):
    After: (a + n + 1) / (a + m)
 Result: (a + n + 1) / (a + m)
 ℹ️ Requires:
-  • a + m ≠ 0
+  • a + k ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11673,9 +11654,7 @@ Steps (Aggressive Mode):
    After: ((1 / (a * m + b + c) - 1 / (a * n + a + b + c)))/a
 Result: 1 / a * (1 / (a * m + b + c) - 1 / (a * n + a + b + c))
 ℹ️ Requires:
-  • a * m + b + c ≠ 0
-  • a * n + a + b + c ≠ 0
-  • a ≠ 0
+  • a^2 * k^2 + 2 * a * b * k + 2 * a * c * k + a^2 * k + b^2 + c^2 + 2 * b * c + a * b + a * c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11709,9 +11688,7 @@ Steps (Aggressive Mode):
    After: ((1 / (a * m + b) - 1 / (a * n + a + b)))/a
 Result: 1 / a * (1 / (a * m + b) - 1 / (a * n + a + b))
 ℹ️ Requires:
-  • a * m + b ≠ 0
-  • a * n + a + b ≠ 0
-  • a ≠ 0
+  • a^2 * k^2 + 2 * a * b * k + a^2 * k + b^2 + a * b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11745,7 +11722,8 @@ Steps (Aggressive Mode):
    After: 1 - 1 / (n + 1)
 Result: 1 - 1 / (n + 1)
 ℹ️ Requires:
-  • n + 1 ≠ 0
+  • k ≠ 0
+  • k + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11779,8 +11757,7 @@ Steps (Aggressive Mode):
    After: 1 / (a + m) - 1 / (a + n + 1)
 Result: 1 / (a + m) - 1 / (a + n + 1)
 ℹ️ Requires:
-  • a + m ≠ 0
-  • a + n + 1 ≠ 0
+  • a^2 + k^2 + 2 * a * k + a + k ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12568,8 +12545,6 @@ Steps (Aggressive Mode):
    Cambio local: 2 * cos(x) + 2 * cos(2 * x) + 1 -> sin(5 * x / 2) / sin(x / 2)
    After: sin(5 * x / 2) / sin(x / 2)
 Result: sin(5 * x / 2) / sin(x / 2)
-ℹ️ Requires:
-  • sin(x / 2) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12601,8 +12576,6 @@ Steps (Aggressive Mode):
    Cambio local: 2 * cos(x) + 2 * cos(2 * x) + 2 * cos(3 * x) + 1 -> sin(7 * x / 2) / sin(x / 2)
    After: sin(7 * x / 2) / sin(x / 2)
 Result: sin(7 * x / 2) / sin(x / 2)
-ℹ️ Requires:
-  • sin(x / 2) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12634,6 +12607,8 @@ Steps (Aggressive Mode):
    Cambio local: sin(5 * x / 2) / sin(x / 2) -> 2 * cos(x) + 2 * cos(2 * x) + 1
    After: 2 * cos(x) + 2 * cos(2 * x) + 1
 Result: 2 * cos(x) + 2 * cos(2 * x) + 1
+ℹ️ Requires:
+  • sin(x / 2) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12665,6 +12640,8 @@ Steps (Aggressive Mode):
    Cambio local: sin(7 * a * x / 2) / sin(a * x / 2) -> 2 * cos(a * x) + 2 * cos(2 * a * x) + 2 * cos(3 * a * x) + 1
    After: 2 * cos(a * x) + 2 * cos(2 * a * x) + 2 * cos(3 * a * x) + 1
 Result: 2 * cos(a * x) + 2 * cos(2 * a * x) + 2 * cos(3 * a * x) + 1
+ℹ️ Requires:
+  • sin(a * x / 2) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12696,8 +12673,6 @@ Steps (Aggressive Mode):
    Cambio local: 2 * cos(u) + 2 * cos(2 * u) + 2 * cos(3 * u) + 2 * cos(4 * u) + 1 -> sin(9 * u / 2) / sin(u / 2)
    After: sin(9 * u / 2) / sin(u / 2)
 Result: sin(9 * u / 2) / sin(u / 2)
-ℹ️ Requires:
-  • sin(u / 2) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12729,8 +12704,6 @@ Steps (Aggressive Mode):
    Cambio local: 2 * cos(a * x) + 2 * cos(2 * a * x) + 1 -> sin(5 * a * x / 2) / sin(a * x / 2)
    After: sin(5 * a * x / 2) / sin(a * x / 2)
 Result: sin(5 * a * x / 2) / sin(a * x / 2)
-ℹ️ Requires:
-  • sin(a * x / 2) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12762,8 +12735,6 @@ Steps (Aggressive Mode):
    Cambio local: 2 * cos(a * x) + 2 * cos(2 * a * x) + 2 * cos(3 * a * x) + 1 -> sin(7 * a * x / 2) / sin(a * x / 2)
    After: sin(7 * a * x / 2) / sin(a * x / 2)
 Result: sin(7 * a * x / 2) / sin(a * x / 2)
-ℹ️ Requires:
-  • sin(a * x / 2) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12795,8 +12766,6 @@ Steps (Aggressive Mode):
    Cambio local: cos(x) * cos(2 * x) * cos(4 * x) -> sin(8 * x) / (8 * sin(x))
    After: sin(8 * x) / (8 * sin(x))
 Result: sin(8 * x) / (8 * sin(x))
-ℹ️ Requires:
-  • sin(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12828,6 +12797,8 @@ Steps (Aggressive Mode):
    Cambio local: sin(8 * x) / (8 * sin(x)) -> cos(x) * cos(2 * x) * cos(4 * x)
    After: cos(x) * cos(2 * x) * cos(4 * x)
 Result: cos(x) * cos(2 * x) * cos(4 * x)
+ℹ️ Requires:
+  • sin(x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12859,6 +12830,8 @@ Steps (Aggressive Mode):
    Cambio local: sin(8 * a * x) / (8 * sin(a * x)) -> cos(a * x) * cos(2 * a * x) * cos(4 * a * x)
    After: cos(a * x) * cos(2 * a * x) * cos(4 * a * x)
 Result: cos(a * x) * cos(2 * a * x) * cos(4 * a * x)
+ℹ️ Requires:
+  • sin(a * x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12890,8 +12863,6 @@ Steps (Aggressive Mode):
    Cambio local: cos(u) * cos(2 * u) * cos(4 * u) * cos(8 * u) -> sin(16 * u) / (16 * sin(u))
    After: sin(16 * u) / (16 * sin(u))
 Result: sin(16 * u) / (16 * sin(u))
-ℹ️ Requires:
-  • sin(u) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12923,8 +12894,6 @@ Steps (Aggressive Mode):
    Cambio local: cos(a * x) * cos(2 * a * x) -> sin(4 * a * x) / (4 * sin(a * x))
    After: sin(4 * a * x) / (4 * sin(a * x))
 Result: sin(4 * a * x) / (4 * sin(a * x))
-ℹ️ Requires:
-  • sin(a * x) ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -12956,8 +12925,6 @@ Steps (Aggressive Mode):
    Cambio local: atanh((x^(2) - 1) / (x^(2) + 1)) -> ln(x)
    After: ln(x)
 Result: ln(x)
-ℹ️ Requires:
-  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -12989,6 +12956,8 @@ Steps (Aggressive Mode):
    Cambio local: arctan(a) + arctan(1 / a) -> pi / 2
    After: pi / 2
 Result: pi / 2
+ℹ️ Requires:
+  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13215,6 +13184,8 @@ Steps (Aggressive Mode):
    After: x^y
    ℹ️ Requires: x > 0
 Result: x^(y)
+ℹ️ Requires:
+  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -13248,6 +13219,8 @@ Steps (Aggressive Mode):
    After: x^y
    ℹ️ Requires: x > 0
 Result: x^(y)
+ℹ️ Requires:
+  • x > 0
 ```
 
 ### Web / JSON Steps
@@ -13284,6 +13257,10 @@ Steps (Aggressive Mode):
    Cambio local: e^(ln(y)) -> y
    After: y
 Result: y
+ℹ️ Requires:
+  • x - 1 ≠ 0
+  • x > 0
+  • y > 0
 ```
 
 ### Web / JSON Steps
@@ -13325,6 +13302,7 @@ Steps (Aggressive Mode):
    After: ln(x)
 Result: ln(x)
 ℹ️ Requires:
+  • ln(x) > 0
   • x > 0
 ```
 
@@ -13364,6 +13342,10 @@ Steps (Aggressive Mode):
    ℹ️ Requires: x^3 > 0
    ℹ️ Requires: y^2 > 0
 Result: 0
+ℹ️ Requires:
+  • x^3 * y^2 > 0
+  • x > 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13456,6 +13438,8 @@ Steps (Aggressive Mode):
    Cambio local: sqrt(x) * sqrt(x^3) + a -> x^(2) + a
    After: x^2 + a
 Result: x^(2) + a
+ℹ️ Requires:
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -13486,6 +13470,8 @@ Steps (Aggressive Mode):
    Cambio local: sqrt(x) * x^(a) -> x^(1 / 2 + a)
    After: x^(1 / 2 + a)
 Result: x^(1 / 2 + a)
+ℹ️ Requires:
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -13548,6 +13534,8 @@ Steps (Aggressive Mode):
    Cambio local: x^(1 / 4) * x^(3 / 4) -> x
    After: x
 Result: x
+ℹ️ Requires:
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -13668,6 +13656,8 @@ Steps (Aggressive Mode):
    Cambio local: x^(a) / x^(b) -> x^(a - b)
    After: x^(a - b)
 Result: x^(a - b)
+ℹ️ Requires:
+  • x^b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13678,6 +13668,39 @@ Result: x^(a - b)
    - substeps:
      1. `Reescribir la división como potencia negativa`
      2. `Sumar los exponentes de la misma base`
+
+## merge_sqrt_product_requires_nonnegative (simplify)
+
+- Source: `sqrt(x)*sqrt(y)`
+- Target: `sqrt(x*y)`
+- Result: `sqrt(x * y)`
+- Web step count: `1`
+- Web substep count: `0`
+- Flags: none
+
+### CLI
+
+```text
+Parsed: sqrt(x) * sqrt(y)
+Target: sqrt(x * y)
+Strategy: rewrite radicals
+Steps (Aggressive Mode):
+1. √a · √b = √(a·b)  [Merge Sqrt Product]
+   Before: sqrt(x) * sqrt(y)
+   Cambio local: sqrt(x) * sqrt(y) -> sqrt(x * y)
+   After: sqrt(x * y)
+Result: sqrt(x * y)
+ℹ️ Requires:
+  • x ≥ 0
+  • y ≥ 0
+```
+
+### Web / JSON Steps
+
+1. `Merge Sqrt Product`
+   - before: `sqrt(x) · sqrt(y)`
+   - after: `sqrt(x · y)`
+   - substeps: none
 
 ## nested_fraction_fraction_over_sum_with_fraction_general (nested_fraction)
 
@@ -13701,7 +13724,8 @@ Steps (Aggressive Mode):
    After: a * d / (b * d + c)
 Result: a * d / (b * d + c)
 ℹ️ Requires:
-  • b * d + c ≠ 0
+  • c / d + b ≠ 0
+  • d ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13735,8 +13759,7 @@ Steps (Aggressive Mode):
    After: a / (c / d + b)
 Result: a / (c / d + b)
 ℹ️ Requires:
-  • c / d + b ≠ 0
-  • d ≠ 0
+  • b * d + c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13769,7 +13792,9 @@ Steps (Aggressive Mode):
    After: a * b / (a + b)
 Result: a * b / (a + b)
 ℹ️ Requires:
-  • a + b ≠ 0
+  • 1 / a + 1 / b ≠ 0
+  • a ≠ 0
+  • b ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13803,7 +13828,8 @@ Steps (Aggressive Mode):
    After: z / (x * z + y)
 Result: z / (x * z + y)
 ℹ️ Requires:
-  • x * z + y ≠ 0
+  • y / z + x ≠ 0
+  • z ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13837,8 +13863,7 @@ Steps (Aggressive Mode):
    After: 1 / (y / z + x)
 Result: 1 / (y / z + x)
 ℹ️ Requires:
-  • y / z + x ≠ 0
-  • z ≠ 0
+  • x * z + y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13871,7 +13896,9 @@ Steps (Aggressive Mode):
    After: x * y / (x + y) + a
 Result: x * y / (x + y) + a
 ℹ️ Requires:
-  • x + y ≠ 0
+  • 1 / x + 1 / y ≠ 0
+  • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13905,7 +13932,9 @@ Steps (Aggressive Mode):
    After: a - x * y / (x + y)
 Result: a - x * y / (x + y)
 ℹ️ Requires:
-  • x + y ≠ 0
+  • 1 / x + 1 / y ≠ 0
+  • x ≠ 0
+  • y ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13939,7 +13968,10 @@ Steps (Aggressive Mode):
    After: a * b * c / (a * b + a * c + b * c)
 Result: a * b * c / (a * b + a * c + b * c)
 ℹ️ Requires:
-  • a * b + a * c + b * c ≠ 0
+  • 1 / a + 1 / b + 1 / c ≠ 0
+  • a ≠ 0
+  • b ≠ 0
+  • c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13972,6 +14004,8 @@ Steps (Aggressive Mode):
    Cambio local: 1 / (1 / x) -> x
    After: x
 Result: x
+ℹ️ Requires:
+  • x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -14005,6 +14039,7 @@ Steps (Aggressive Mode):
    After: z * (x + y) / (x * y)
 Result: z * (x + y) / (x * y)
 ℹ️ Requires:
+  • z ≠ 0
   • x ≠ 0
   • y ≠ 0
 ```
@@ -14335,7 +14370,7 @@ Steps (Aggressive Mode):
    After: sqrt(x) + x + 1
 Result: sqrt(x) + x + 1
 ℹ️ Requires:
-  • x ≥ 0
+  • sqrt(x) - 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -14362,12 +14397,12 @@ Target: (-x^(1 / 3) + x^(2 / 3) + 1) / (x + 1)
 Strategy: rationalize
 Steps (Aggressive Mode):
 1. Rationalize: cube root denominator via sum of cubes  [Rationalize Cube Root Denominator]
-   Before: 1 / (x^(1 / 3) + 1)
+   Before: 1 / (x^(1/3) + 1)
    Cambio local: 1 / (x^(1/3) + 1) -> (-x^(1 / 3) + x^(2 / 3) + 1) / (x + 1)
    After: (-x^(1 / 3) + x^(2 / 3) + 1) / (x + 1)
 Result: (-x^(1 / 3) + x^(2 / 3) + 1) / (x + 1)
 ℹ️ Requires:
-  • x + 1 ≠ 0
+  • x^(1 / 3) + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -14400,8 +14435,7 @@ Steps (Aggressive Mode):
    After: (sqrt(x) + 1) / (x - 1)
 Result: (sqrt(x) + 1) / (x - 1)
 ℹ️ Requires:
-  • x - 1 ≠ 0
-  • x ≥ 0
+  • sqrt(x) - 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -14435,8 +14469,7 @@ Steps (Aggressive Mode):
    After: (sqrt(x) - 1) / (x - 1)
 Result: (sqrt(x) - 1) / (x - 1)
 ℹ️ Requires:
-  • x - 1 ≠ 0
-  • x ≥ 0
+  • sqrt(x) + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -14470,8 +14503,7 @@ Steps (Aggressive Mode):
    After: (sqrt(x) + 2) / (x - 4)
 Result: (sqrt(x) + 2) / (x - 4)
 ℹ️ Requires:
-  • x - 4 ≠ 0
-  • x ≥ 0
+  • sqrt(x) - 2 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -14511,8 +14543,7 @@ Steps (Aggressive Mode):
    ℹ️ Requires: x > 0
 Result: (sqrt(x) + a) / (x - a^(2))
 ℹ️ Requires:
-  • a^2 - x ≠ 0
-  • x ≥ 0
+  • sqrt(x) - a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -14557,8 +14588,7 @@ Steps (Aggressive Mode):
    ℹ️ Requires: y > 0
 Result: (sqrt(y) + a) / (y - a^(2))
 ℹ️ Requires:
-  • a^2 - y ≠ 0
-  • y ≥ 0
+  • sqrt(y) - a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -14597,8 +14627,7 @@ Steps (Aggressive Mode):
    After: (sqrt(x) - a) / (x - a^2)
 Result: (sqrt(x) - a) / (x - a^(2))
 ℹ️ Requires:
-  • a^2 - x ≠ 0
-  • x ≥ 0
+  • sqrt(x) + a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -14635,6 +14664,9 @@ Steps (Aggressive Mode):
    Cambio local: (sqrt(x) + 1) / (x - 1) - (sqrt(x) + 1) / (x - 1) -> 0
    After: 0
 Result: 0
+ℹ️ Requires:
+  • x - 1 ≠ 0
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -14868,7 +14900,7 @@ Result: 2 * sqrt(2)
 - Target: `3*sqrt(2)`
 - Result: `3 * sqrt(2)`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -14879,7 +14911,7 @@ Target: 3 * sqrt(2)
 Strategy: combine like terms
 Steps (Aggressive Mode):
 1. Combine like terms  [Combine Like Terms]
-   Before: sqrt(8) + 2 * sqrt(2)
+   Before: sqrt(2) + 2 * sqrt(2)
    Cambio local: sqrt(2) + 2 * sqrt(2) -> 3 * sqrt(2)
    After: 3 * sqrt(2)
 Result: 3 * sqrt(2)
@@ -14888,11 +14920,10 @@ Result: 3 * sqrt(2)
 ### Web / JSON Steps
 
 1. `Agrupar términos semejantes`
-   - before: `sqrt(8) + 2 · sqrt(2)`
+   - before: `sqrt(2) + 2 · sqrt(2)`
    - after: `3 · sqrt(2)`
    - substeps:
-     1. `Extraer el cuadrado perfecto dentro de la raíz`
-     2. `Sumar los coeficientes que acompañan a 2^(1/2)`
+     1. `Sumar los coeficientes que acompañan a 2^(1/2)`
 
 ## sin_arccos_complement_projection (simplify)
 
@@ -14915,8 +14946,6 @@ Steps (Aggressive Mode):
    Cambio local: sin(arccos(x)) -> sqrt(1 - x^(2))
    After: sqrt(1 - x^2)
 Result: sqrt(1 - x^(2))
-ℹ️ Requires:
-  • 1 - x^2 ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -14981,8 +15010,6 @@ Steps (Aggressive Mode):
    Cambio local: a * y^(2) + b * y + c -> a * (b / (2 * a) + y)^(2) + c - b^(2) / (4 * a)
    After: a * (b / (2 * a) + y)^2 + c - b^2 / (4 * a)
 Result: a * (b / (2 * a) + y)^(2) + c - b^(2) / (4 * a)
-ℹ️ Requires:
-  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15053,8 +15080,6 @@ Steps (Aggressive Mode):
    Cambio local: x^(2) * a / 2 + b * x + c -> (b / a + x)^(2) * a / 2 + c - b^(2) / (2 * a)
    After: (a * (b / a + x)^2)/2 + c - b^2 / (2 * a)
 Result: (b / a + x)^(2) * a / 2 + c - b^(2) / (2 * a)
-ℹ️ Requires:
-  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15125,8 +15150,6 @@ Steps (Aggressive Mode):
    Cambio local: b * x + c - a * x^(2) -> b^(2) / (4 * a) + c - a * (x - b / (2 * a))^(2)
    After: b^2 / (4 * a) + c - a * (x - b / (2 * a))^2
 Result: b^(2) / (4 * a) + c - a * (x - b / (2 * a))^(2)
-ℹ️ Requires:
-  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15160,8 +15183,6 @@ Steps (Aggressive Mode):
    Cambio local: a * x^(2) + b * x + c -> a * (b / (2 * a) + x)^(2) + c - b^(2) / (4 * a)
    After: a * (b / (2 * a) + x)^2 + c - b^2 / (4 * a)
 Result: a * (b / (2 * a) + x)^(2) + c - b^(2) / (4 * a)
-ℹ️ Requires:
-  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15232,8 +15253,6 @@ Steps (Aggressive Mode):
    Cambio local: a * x^(2) - b * x + c -> a * (x - b / (2 * a))^(2) + c - b^(2) / (4 * a)
    After: a * (x - b / (2 * a))^2 + c - b^2 / (4 * a)
 Result: a * (x - b / (2 * a))^(2) + c - b^(2) / (4 * a)
-ℹ️ Requires:
-  • a ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15266,8 +15285,6 @@ Steps (Aggressive Mode):
    Before: (x + 1) / (x - 1)
    After: 2 / (x - 1) + 1
 Result: 2 / (x - 1) + 1
-ℹ️ Requires:
-  • x - 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15299,8 +15316,6 @@ Steps (Aggressive Mode):
    Before: (4 * x + 7) / (2 * x + 1)
    After: 5 / (2 * x + 1) + 2
 Result: 5 / (2 * x + 1) + 2
-ℹ️ Requires:
-  • 2 * x + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15332,8 +15347,6 @@ Steps (Aggressive Mode):
    Before: (a * x + b) / (c + x)
    After: (b - a * c) / (c + x) + a
 Result: (b - a * c) / (c + x) + a
-ℹ️ Requires:
-  • c + x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15365,9 +15378,6 @@ Steps (Aggressive Mode):
    Before: (a * x + b) / (d - c * x)
    After: -a / c + (a * d / c + b) / (d - c * x)
 Result: -a / c + (a * d / c + b) / (d - c * x)
-ℹ️ Requires:
-  • c * x - d ≠ 0
-  • c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15399,9 +15409,6 @@ Steps (Aggressive Mode):
    Before: (a * x + b) / (c * x + d)
    After: a / c + (b - a * d / c) / (c * x + d)
 Result: a / c + (b - a * d / c) / (c * x + d)
-ℹ️ Requires:
-  • c * x + d ≠ 0
-  • c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15470,9 +15477,7 @@ Steps (Aggressive Mode):
    After: ((1 / (a * n + b) - 1 / (a * n + c)))/(c - b)
 Result: 1 / (c - b) * (1 / (a * n + b) - 1 / (a * n + c))
 ℹ️ Requires:
-  • a * n + b ≠ 0
-  • a * n + c ≠ 0
-  • b - c ≠ 0
+  • a^2 * n^2 + a * b * n + a * c * n + b * c ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15511,8 +15516,8 @@ Steps (Aggressive Mode):
    After: 1 / n - 1 / (n + 1)
 Result: 1 / n - 1 / (n + 1)
 ℹ️ Requires:
-  • n + 1 ≠ 0
   • n ≠ 0
+  • n + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15546,8 +15551,8 @@ Steps (Aggressive Mode):
    After: ((1 / (x - 1) - 1 / (x + 1)))/2
 Result: 1 / 2 * (1 / (x - 1) - 1 / (x + 1))
 ℹ️ Requires:
-  • x + 1 ≠ 0
   • x - 1 ≠ 0
+  • x + 1 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15581,8 +15586,8 @@ Steps (Aggressive Mode):
    After: ((1 / n - 1 / (n + 2)))/2
 Result: 1 / 2 * (1 / n - 1 / (n + 2))
 ℹ️ Requires:
-  • n + 2 ≠ 0
   • n ≠ 0
+  • n + 2 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15616,8 +15621,8 @@ Steps (Aggressive Mode):
    After: ((1 / (n - 2) - 1 / n))/2
 Result: 1 / 2 * (1 / (n - 2) - 1 / n)
 ℹ️ Requires:
-  • n - 2 ≠ 0
   • n ≠ 0
+  • n - 2 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15651,9 +15656,8 @@ Steps (Aggressive Mode):
    After: ((1 / (x - a) - 1 / (a + x)))/(2 * a)
 Result: 1 / (2 * a) * (1 / (x - a) - 1 / (a + x))
 ℹ️ Requires:
-  • a + x ≠ 0
   • a - x ≠ 0
-  • a ≠ 0
+  • a + x ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -15686,6 +15690,8 @@ Steps (Aggressive Mode):
    Cambio local: sqrt(x)^(2) -> x
    After: x
 Result: x
+ℹ️ Requires:
+  • x ≥ 0
 ```
 
 ### Web / JSON Steps
@@ -15718,8 +15724,6 @@ Steps (Aggressive Mode):
    Cambio local: tan(arcsin(x)) -> x / sqrt(1 - x^(2))
    After: x / sqrt(1 - x^2)
 Result: x / sqrt(1 - x^(2))
-ℹ️ Requires:
-  • 1 - x^2 > 0
 ```
 
 ### Web / JSON Steps

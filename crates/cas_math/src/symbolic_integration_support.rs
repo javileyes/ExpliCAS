@@ -333,6 +333,195 @@ fn arctan_sqrt_var_reciprocal_required_positive_radicand(
     None
 }
 
+struct ArctanSqrtAffineDerivativeParts {
+    radicand: ExprId,
+    scale: BigRational,
+}
+
+fn arctan_sqrt_affine_derivative_parts(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ArctanSqrtAffineDerivativeParts> {
+    let mut num_scale = BigRational::one();
+    let mut numerator_sqrt_radicand = None;
+
+    for factor in mul_leaves(ctx, num) {
+        if let Some(radicand) = sqrt_like_radicand(ctx, factor) {
+            if numerator_sqrt_radicand.is_some() {
+                return None;
+            }
+            numerator_sqrt_radicand = Some(radicand);
+        } else {
+            num_scale *= rational_constant_value(ctx, factor)?;
+        }
+    }
+
+    let mut den_scale = BigRational::one();
+    let mut denominator_sqrt_radicand = None;
+    let mut polynomial_factors = Vec::new();
+
+    for factor in mul_leaves(ctx, den) {
+        if let Some(radicand) = sqrt_like_radicand(ctx, factor) {
+            if denominator_sqrt_radicand.is_some() {
+                return None;
+            }
+            denominator_sqrt_radicand = Some(radicand);
+        } else if let Some(scale) = rational_constant_value(ctx, factor) {
+            den_scale *= scale;
+        } else {
+            polynomial_factors.push(factor);
+        }
+    }
+
+    if den_scale.is_zero() {
+        return None;
+    }
+
+    if let Some(radicand) = numerator_sqrt_radicand {
+        if denominator_sqrt_radicand.is_some() || polynomial_factors.len() != 2 {
+            return None;
+        }
+        return arctan_sqrt_affine_derivative_parts_from_normalized_factors(
+            ctx,
+            radicand,
+            &polynomial_factors,
+            num_scale,
+            den_scale,
+            var,
+        );
+    }
+
+    let radicand = denominator_sqrt_radicand?;
+    if polynomial_factors.len() != 1 {
+        return None;
+    }
+    arctan_sqrt_affine_derivative_parts_from_direct_factors(
+        ctx,
+        radicand,
+        polynomial_factors[0],
+        num_scale,
+        den_scale,
+        var,
+    )
+}
+
+fn arctan_sqrt_affine_derivative_parts_from_direct_factors(
+    ctx: &Context,
+    radicand: ExprId,
+    gap_factor: ExprId,
+    num_scale: BigRational,
+    den_scale: BigRational,
+    var: &str,
+) -> Option<ArctanSqrtAffineDerivativeParts> {
+    let radicand_poly = affine_radicand_polynomial(ctx, radicand, var)?;
+    let gap_poly = radicand_plus_one_polynomial(&radicand_poly);
+    let gap_ratio = polynomial_ratio_to_expr_factor(ctx, &gap_poly, gap_factor, var)?;
+    let kernel_scale = num_scale * gap_ratio / den_scale;
+    let scale = arctan_sqrt_affine_output_scale(&radicand_poly, kernel_scale)?;
+    Some(ArctanSqrtAffineDerivativeParts { radicand, scale })
+}
+
+fn arctan_sqrt_affine_derivative_parts_from_normalized_factors(
+    ctx: &Context,
+    radicand: ExprId,
+    factors: &[ExprId],
+    num_scale: BigRational,
+    den_scale: BigRational,
+    var: &str,
+) -> Option<ArctanSqrtAffineDerivativeParts> {
+    let radicand_poly = affine_radicand_polynomial(ctx, radicand, var)?;
+    let gap_poly = radicand_plus_one_polynomial(&radicand_poly);
+    let (radicand_ratio, gap_ratio) =
+        normalized_affine_radicand_and_gap_ratios(ctx, &radicand_poly, &gap_poly, factors, var)?;
+    let kernel_scale = num_scale * radicand_ratio * gap_ratio / den_scale;
+    let scale = arctan_sqrt_affine_output_scale(&radicand_poly, kernel_scale)?;
+    Some(ArctanSqrtAffineDerivativeParts { radicand, scale })
+}
+
+fn affine_radicand_polynomial(ctx: &Context, radicand: ExprId, var: &str) -> Option<Polynomial> {
+    let poly = Polynomial::from_expr(ctx, radicand, var).ok()?;
+    (poly.degree() == 1).then_some(poly)
+}
+
+fn radicand_plus_one_polynomial(radicand: &Polynomial) -> Polynomial {
+    radicand.add(&Polynomial::one(radicand.var.clone()))
+}
+
+fn polynomial_ratio_to_expr_factor(
+    ctx: &Context,
+    target: &Polynomial,
+    factor: ExprId,
+    var: &str,
+) -> Option<BigRational> {
+    let factor_poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+    constant_polynomial_ratio(target, &factor_poly)
+}
+
+fn normalized_affine_radicand_and_gap_ratios(
+    ctx: &Context,
+    radicand: &Polynomial,
+    gap: &Polynomial,
+    factors: &[ExprId],
+    var: &str,
+) -> Option<(BigRational, BigRational)> {
+    if factors.len() != 2 {
+        return None;
+    }
+
+    polynomial_ratio_to_expr_factor(ctx, radicand, factors[0], var)
+        .and_then(|radicand_ratio| {
+            polynomial_ratio_to_expr_factor(ctx, gap, factors[1], var)
+                .map(|gap_ratio| (radicand_ratio, gap_ratio))
+        })
+        .or_else(|| {
+            polynomial_ratio_to_expr_factor(ctx, radicand, factors[1], var).and_then(
+                |radicand_ratio| {
+                    polynomial_ratio_to_expr_factor(ctx, gap, factors[0], var)
+                        .map(|gap_ratio| (radicand_ratio, gap_ratio))
+                },
+            )
+        })
+}
+
+fn arctan_sqrt_affine_output_scale(
+    radicand: &Polynomial,
+    kernel_scale: BigRational,
+) -> Option<BigRational> {
+    if kernel_scale.is_zero() {
+        return None;
+    }
+    let slope = radicand.coeffs.get(1).cloned()?;
+    if slope.is_zero() {
+        return None;
+    }
+    Some(kernel_scale * BigRational::from_integer(2.into()) / slope)
+}
+
+fn arctan_sqrt_affine_derivative_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let parts = arctan_sqrt_affine_derivative_parts(ctx, num, den, var)?;
+    let sqrt = ctx.call_builtin(BuiltinFn::Sqrt, vec![parts.radicand]);
+    let arctan = ctx.call_builtin(BuiltinFn::Arctan, vec![sqrt]);
+    Some(scale_factor(ctx, parts.scale, arctan))
+}
+
+fn arctan_sqrt_affine_derivative_required_positive_radicand(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    arctan_sqrt_affine_derivative_parts(ctx, *num, *den, var).map(|parts| parts.radicand)
+}
+
 pub fn integrate_symbolic_is_arctan_sqrt_var_reciprocal_target(
     ctx: &Context,
     expr: ExprId,
@@ -5516,6 +5705,9 @@ pub fn integrate_symbolic_required_positive_conditions(
     conditions.extend(arctan_sqrt_var_reciprocal_required_positive_radicand(
         ctx, expr, var,
     ));
+    conditions.extend(arctan_sqrt_affine_derivative_required_positive_radicand(
+        ctx, expr, var,
+    ));
     conditions.extend(arcsin_polynomial_substitution_radicand(ctx, expr, var));
     conditions.extend(sqrt_derivative_substitution_radicand(ctx, expr, var));
     conditions.extend(sqrt_trig_reciprocal_derivative_radicand(ctx, expr, var));
@@ -5794,6 +5986,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
 
     if let IntKind::Div(num, den) = kind {
         if let Some(integral) = arctan_sqrt_var_reciprocal_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = arctan_sqrt_affine_derivative_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
 
@@ -6724,6 +6920,22 @@ mod tests {
         let expr = parse("1/(2*sqrt(x)*(4*x+1))", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "1/2 * arctan(2 * sqrt(x))");
+    }
+
+    #[test]
+    fn integrates_arctan_sqrt_affine_derivative_kernel() {
+        let mut ctx = Context::new();
+        let expr = parse("1/(sqrt(4*x+1)*(2*x+1))", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan(sqrt(4 * x + 1))");
+
+        let expr = parse("(4*x+1)^(1/2)/((2*x+1)*(4*x+1))", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan(sqrt(4 * x + 1))");
+
+        let expr = parse("-1/(2*sqrt(5-3*x)*(2-x))", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arctan(sqrt(5 - 3 * x))");
     }
 
     #[test]

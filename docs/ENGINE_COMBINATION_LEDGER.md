@@ -95,6 +95,49 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-06: Real-Domain Sqrt Product Equivalence Needs Condition-Aware Proof
+
+- area:
+  - equivalence / real-domain radicals / calculus feedback
+- status:
+  - `partially-superseded`
+- discovered case:
+  - `equiv(sqrt(1/2)/(sqrt(2*x+3)*sqrt(-x-1)), 1/(sqrt(2*x+3)*sqrt(-2*x-2)))`
+- local lane:
+  - CLI probes while hardening `diff(arcsin/arccos(sqrt(2*x+3)), x)` post-calculus presentation
+- local result:
+  - numeric evaluation and chain-rule reasoning show the forms agree under the
+    shared real-domain conditions `2*x+3 > 0` and `-2*x-2 > 0`
+  - symbolic `equiv(...)` originally returned `false`
+- why it was not promoted:
+  - the tempting general identity `sqrt(a*b) = sqrt(a)*sqrt(b)` is not valid
+    over all real inputs without sign/domain conditions, so a global
+    simplifier/equivalence shortcut would be unsound
+- retained action:
+  - keep non-square gap content inside the post-calculus `sqrt(gap)` for the
+    affected `diff` presentation, avoiding reliance on this unimplemented
+    equivalence
+  - follow-up retained a narrow residual-cancellation matcher for `a - a` and
+    `a + (-a)` forms by comparing squared products of affine radical factors;
+    this closes the concrete verifier gap without adding a global
+    `sqrt(a*b)` simplification rule
+  - safety probes also showed that a separate pre-existing public
+    simplification route can still collapse split root products such as
+    `sqrt((x+1)*(x+2)) - sqrt(x+1)*sqrt(x+2)`; follow-up inspection showed
+    that route is the public `RootMergeMulRule`, and it carries explicit
+    non-negative `Requires` conditions in generic mode while staying disabled
+    in strict mode
+  - CLI semantic contracts now pin the `sqrt(a)*sqrt(b)` and
+    `sqrt(a)/sqrt(b)` root-merge behavior to those required conditions
+  - follow-up assume-mode contracts keep the same intrinsic root-domain facts
+    under `Requires`, not `Assume`, because these conditions come from the
+    source `sqrt` definedness rather than a heuristic assumption introduced by
+    the rewrite
+- what could make it combinable later:
+  - a condition-aware radical product proof that carries explicit positive
+    radicand assumptions through `equiv`/residual verification
+
+
 ### 2026-05-06: Sqrt-Scaled Cosh Log Presentation Exposes Common-Factor Residual Gap
 
 - area:
@@ -9296,3 +9339,57 @@ The burden of proof stays the same:
   - reject the broad denominator-scale fold
   - retain the integer-only scale cancellation plus the compact hyperbolic
     reciprocal derivative presentation
+
+## 2026-05-06 - Discovery / observe-only: negative-slope affine arctan-sqrt integration verifies poorly
+
+- area:
+  - calculus / integrate-by-diff verification / sign-orientation robustness
+- status:
+  - `discovery-observe-only`
+- observed case:
+  - `integrate(-1/(2*sqrt(5-3*x)*(2-x)), x)` structurally matches the same
+    affine inverse-derivative family as `arctan(sqrt(q))` with `q = 5 - 3*x`
+- local probes:
+  - `cargo +1.91.1 run -q -p cas_cli -- eval 'integrate(-1/(2*sqrt(5-3*x)*(2-x)), x)' --format json`
+  - `cargo +1.91.1 run -q -p cas_cli -- eval 'diff(integrate(-1/(2*sqrt(5-3*x)*(2-x)), x), x) - (-1/(2*sqrt(5-3*x)*(2-x)))' --format json`
+- local result:
+  - the candidate antiderivative renders as `arctan((5 - 3*x)^(1/2))`
+  - the derivative is mathematically equivalent to the input, but the current
+    residual simplifier does not reduce the sign-oriented affine denominator
+    expression to `0`
+- reusable signature:
+  - negative-slope affine radicands can create equivalent denominators such as
+    `12 - 6*x`, `10 - 6*x`, and `x - 2` whose sign/content relationship is not
+    normalized strongly enough for antiderivative verification
+- decision:
+  - promote only the positive-slope affine arctan-sqrt inverse kernel in this
+    cycle, where `diff` verification reaches residual `0`
+  - leave negative-slope support for a later sign/orientation robustness cycle
+
+## 2026-05-06 - Promotion note: negative-slope affine arctan-sqrt integrated via equivalence verification
+
+- area:
+  - calculus / integrate-by-diff verification / sign-orientation robustness
+- status:
+  - `superseded`
+- promoted case:
+  - `integrate(-1/(2*sqrt(5-3*x)*(2-x)), x)` now returns
+    `arctan((5 - 3*x)^(1/2))` with required condition `5 - 3*x > 0`
+- verification:
+  - `equiv(diff(arctan(sqrt(5-3*x)), x), -1/(2*sqrt(5-3*x)*(2-x)))`
+    returns `true`
+- previous retained limitation:
+  - the raw residual form did not simplify to `0` because affine
+    denominator sign/content normalization is not strong enough across
+    expressions such as `12 - 6*x`, `10 - 6*x`, and `x - 2`
+- decision:
+  - retain the public integration capability because the derivative equivalence
+    verifier proves the antiderivative under explicit real-domain conditions
+  - keep a future non-calculus candidate open for residual/NF convergence of
+    sign-oriented affine denominator fractions
+- superseded by:
+  - the follow-up coverage cycle that normalizes sign-oriented affine
+    denominator fractions with matching reciprocal square-root powers, allowing
+    the raw residual
+    `diff(arctan(sqrt(5-3*x)), x) - (-1/(2*sqrt(5-3*x)*(2-x)))` to simplify
+    to `0`

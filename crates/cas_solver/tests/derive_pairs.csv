@@ -66,6 +66,7 @@ cancel_fraction_perfect_square_minus_symbolic,simplify,(a^2-2*a*b+b^2)/(a-b),a-b
 perfect_square_root_to_abs,simplify,sqrt(a^2 + 2*a*b + b^2),abs(a+b),derived,rewrite radicals
 perfect_square_root_direct_power_to_abs,simplify,sqrt(x^2),abs(x),derived,rewrite radicals
 square_of_square_root_requires_nonnegative,simplify,sqrt(x)^2,x,derived,rewrite radicals
+merge_sqrt_product_requires_nonnegative,simplify,sqrt(x)*sqrt(y),sqrt(x*y),derived,rewrite radicals
 perfect_square_root_to_abs_with_passthrough,simplify,sqrt(a^2 + 2*a*b + b^2)+c,abs(a+b)+c,derived,rewrite radicals
 nested_radical_denesting,simplify,sqrt(6 + 2*sqrt(5)),sqrt(5)+1,derived,rewrite radicals
 simplify_sqrt_arithmetic_sum,simplify,sqrt(8)+sqrt(2),3*sqrt(2),derived,combine like terms

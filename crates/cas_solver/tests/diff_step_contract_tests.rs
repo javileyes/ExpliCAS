@@ -1457,7 +1457,7 @@ fn arctan_positive_affine_sqrt_diff_cancels_external_post_calculus_coefficient()
         }
     );
 
-    assert_eq!(result, "1 / (sqrt(2 * x + 3) * (2 * x + 4))");
+    assert_eq!(result, "1 / (2 * sqrt(2 * x + 3) * (x + 2))");
     assert!(
         !result.contains("(2 * x + 3)^(-1/2)"),
         "presentation regressed: {result}"
@@ -1465,6 +1465,10 @@ fn arctan_positive_affine_sqrt_diff_cancels_external_post_calculus_coefficient()
     assert!(
         !result.contains("2 / (2 * sqrt"),
         "external derivative coefficient should be cancelled safely: {result}"
+    );
+    assert!(
+        !result.contains("2 * x + 4"),
+        "post-calculus presentation should keep denominator content factored: {result}"
     );
 
     let expected =
@@ -1498,6 +1502,103 @@ fn arctan_positive_affine_sqrt_diff_cancels_external_post_calculus_coefficient()
 }
 
 #[test]
+fn arctan_affine_sqrt_diff_cancels_gap_content_in_post_calculus_presentation() {
+    for (
+        input,
+        expected_render,
+        canonical_equivalent,
+        forbidden_denominator_content,
+        expected_condition,
+    ) in [
+        (
+            "diff(arctan(sqrt(4*x+1)), x)",
+            "1 / (sqrt(4 * x + 1) * (2 * x + 1))",
+            "2*(4*x+1)^(-1/2)/(4*x+2)",
+            "4 * x + 2",
+            "4 * x + 1 > 0",
+        ),
+        (
+            "diff(arctan(sqrt(5-3*x)), x)",
+            "-1 / (2 * sqrt(5 - 3 * x) * (2 - x))",
+            "-3*(5-3*x)^(-1/2)/(2*(6-3*x))",
+            "6 - 3 * x",
+            "5 - 3 * x > 0",
+        ),
+        (
+            "diff(arccot(sqrt(4*x+1)), x)",
+            "-1 / (sqrt(4 * x + 1) * (2 * x + 1))",
+            "-2*(4*x+1)^(-1/2)/(4*x+2)",
+            "4 * x + 2",
+            "4 * x + 1 > 0",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_render, "input: {input}");
+        assert!(
+            !result.contains("^(-1/2)"),
+            "presentation regressed for {input}: {result}"
+        );
+        assert!(
+            !result.contains(forbidden_denominator_content),
+            "post-calculus presentation should cancel common denominator content for {input}: {result}"
+        );
+
+        let expected =
+            parse(canonical_equivalent, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "post-calculus presentation must stay equivalent to the canonical derivative, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec![expected_condition.to_string()],
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name == "Symbolic Differentiation"),
+            "expected the derivative to keep the ordinary symbolic differentiation trace for {input}"
+        );
+    }
+}
+
+#[test]
 fn arctan_negative_affine_sqrt_diff_keeps_sign_and_minimal_domain() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -1525,7 +1626,7 @@ fn arctan_negative_affine_sqrt_diff_keeps_sign_and_minimal_domain() {
         }
     );
 
-    assert_eq!(result, "-1 / (sqrt(3 - 2 * x) * (4 - 2 * x))");
+    assert_eq!(result, "-1 / (2 * sqrt(3 - 2 * x) * (2 - x))");
     assert!(
         !result.contains("(3 - 2 * x)^(-1/2)"),
         "presentation regressed: {result}"
@@ -6675,8 +6776,13 @@ fn atanh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
         ),
         (
             "diff(atanh(sqrt(1-2*x)), x)",
-            "-1 / (sqrt(1 - 2 * x) * 2 * x)",
+            "-1 / (2 * sqrt(1 - 2 * x) * x)",
             vec!["1 - 2 * x > 0".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "diff(atanh(sqrt(3-2*x)), x)",
+            "-1 / (2 * sqrt(3 - 2 * x) * (x - 1))",
+            vec!["3 - 2 * x > 0".to_string(), "x - 1 > 0".to_string()],
         ),
     ] {
         let mut engine = Engine::new();
@@ -7179,26 +7285,42 @@ fn bounded_inverse_trig_diff_evaluates_with_strict_required_domain_conditions() 
 
 #[test]
 fn bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
-    for (input, expected_render, expected_required) in [
+    for (input, expected_render, expected_required, expected_chain_rule) in [
         (
             "diff(arcsin(sqrt(x)), x)",
             "1 / (2 * sqrt(x) * sqrt(1 - x))",
             vec!["x > 0".to_string(), "1 - x > 0".to_string()],
+            None,
         ),
         (
             "diff(arccos(sqrt(x)), x)",
             "-1 / (2 * sqrt(x) * sqrt(1 - x))",
             vec!["x > 0".to_string(), "1 - x > 0".to_string()],
+            None,
         ),
         (
             "diff(arcsin(sqrt(2*x)), x)",
             "1 / (sqrt(2 * x) * sqrt(1 - 2 * x))",
             vec!["1 - 2 * x > 0".to_string(), "x > 0".to_string()],
+            None,
         ),
         (
             "diff(arcsin(sqrt(x+1)), x)",
             "1 / (2 * sqrt(x + 1) * sqrt(-x))",
             vec!["x + 1 > 0".to_string(), "-x > 0".to_string()],
+            None,
+        ),
+        (
+            "diff(arcsin(sqrt(2*x+3)), x)",
+            "1 / (sqrt(2 * x + 3) * sqrt(-2 * x - 2))",
+            vec!["2 * x + 3 > 0".to_string(), "-x - 1 > 0".to_string()],
+            Some("1/(sqrt(2*x+3)*sqrt(-2*x-2))"),
+        ),
+        (
+            "diff(arccos(sqrt(2*x+3)), x)",
+            "-1 / (sqrt(2 * x + 3) * sqrt(-2 * x - 2))",
+            vec!["2 * x + 3 > 0".to_string(), "-x - 1 > 0".to_string()],
+            Some("-1/(sqrt(2*x+3)*sqrt(-2*x-2))"),
         ),
     ] {
         let mut engine = Engine::new();
@@ -7235,6 +7357,20 @@ fn bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentati
             assert!(
                 result.starts_with('-'),
                 "arccos sqrt derivative should keep negative orientation, got: {result}"
+            );
+        }
+        if let Some(expected_chain_rule) = expected_chain_rule {
+            let expected =
+                parse(expected_chain_rule, &mut engine.simplifier.context).expect("parse expected");
+            let mut vars = HashMap::new();
+            vars.insert("x".to_string(), -1.25);
+            let actual_value = eval_f64(&engine.simplifier.context, result_expr, &vars)
+                .unwrap_or_else(|| panic!("input: {input}, could not eval result"));
+            let expected_value = eval_f64(&engine.simplifier.context, expected, &vars)
+                .unwrap_or_else(|| panic!("input: {input}, could not eval chain-rule form"));
+            assert!(
+                (actual_value - expected_value).abs() < 1e-10,
+                "input: {input}, expected numeric chain-rule value {expected_value}, got {actual_value}"
             );
         }
 

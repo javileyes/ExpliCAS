@@ -95,6 +95,8 @@ fn derive_stage_contains_rationalize_step(stage: &DeriveStageOutput) -> bool {
 fn derive_stage_contains_radical_rewrite_step(stage: &DeriveStageOutput) -> bool {
     stage.steps.iter().any(|step| {
         step.rule_name == "Sqrt Perfect Square"
+            || step.rule_name == "Merge Sqrt Product"
+            || step.rule_name == "Merge Sqrt Quotient"
             || step.rule_name == "Root Denesting"
             || step.rule_name.to_ascii_lowercase().contains("radical")
             || step.description.to_ascii_lowercase().contains("radical")
@@ -6944,9 +6946,21 @@ fn populate_derive_global_snapshots(
     let mut current_root = original_expr;
 
     for step in steps {
-        step.global_before = Some(current_root);
-        let reconstructed_after =
-            reconstruct_global_expr(ctx, current_root, step.path(), step.after);
+        let preserve_previous_snapshot_for_hidden_like_term_setup = step.path().is_empty()
+            && step.rule_name == "Combine Like Terms"
+            && current_root != step.before;
+        let global_before =
+            if step.path().is_empty() && !preserve_previous_snapshot_for_hidden_like_term_setup {
+                step.before
+            } else {
+                current_root
+            };
+        step.global_before = Some(global_before);
+        let reconstructed_after = if step.path().is_empty() {
+            step.after
+        } else {
+            reconstruct_global_expr(ctx, global_before, step.path(), step.after)
+        };
         step.global_after = Some(reconstructed_after);
         current_root = reconstructed_after;
     }
@@ -7208,7 +7222,12 @@ fn format_derive_eval_lines(
             retarget_final_after_line(&mut lines, &target);
             lines.insert(1, format!("Target: {target}"));
             lines.insert(2, format!("Strategy: {}", strategy.label()));
-            append_derive_requires_lines(&mut lines, ctx, output.derived_expr);
+            append_derive_requires_lines(
+                &mut lines,
+                ctx,
+                output.resolved_expr,
+                output.derived_expr,
+            );
             lines
         }
         DeriveStatus::AlreadyAtTarget => vec![
@@ -7505,21 +7524,38 @@ fn append_equivalence_summary(lines: &mut Vec<String>, equivalence: &crate::Equi
 fn append_derive_requires_lines(
     lines: &mut Vec<String>,
     ctx: &mut cas_ast::Context,
+    source_expr: ExprId,
     derived_expr: ExprId,
 ) {
-    let domain = crate::infer_implicit_domain(ctx, derived_expr, crate::ValueDomain::RealOnly);
-    let conditions: Vec<_> = domain.conditions().iter().cloned().collect();
-    if conditions.is_empty() {
-        return;
-    }
-    let mut rendered =
-        cas_solver_core::domain_normalization::render_conditions_normalized(ctx, &conditions);
-    rendered.sort();
+    let mut diagnostics = crate::Diagnostics::new();
+    diagnostics.extend_required(
+        crate::infer_implicit_domain(ctx, source_expr, crate::ValueDomain::RealOnly)
+            .conditions()
+            .iter()
+            .cloned(),
+        crate::RequireOrigin::InputImplicit,
+    );
+    diagnostics.extend_required(
+        crate::infer_implicit_domain(ctx, derived_expr, crate::ValueDomain::RealOnly)
+            .conditions()
+            .iter()
+            .cloned(),
+        crate::RequireOrigin::OutputImplicit,
+    );
+    diagnostics.dedup_and_sort(ctx);
+
+    let rendered = cas_solver_core::assumption_render::format_diagnostics_requires_lines(
+        ctx,
+        &diagnostics,
+        Some(derived_expr),
+        cas_solver_core::domain_condition::RequiresDisplayLevel::All,
+        false,
+    );
     if rendered.is_empty() {
         return;
     }
     lines.push("ℹ️ Requires:".to_string());
-    lines.extend(rendered.into_iter().map(|line| format!("  • {line}")));
+    lines.extend(rendered);
 }
 
 #[cfg(test)]

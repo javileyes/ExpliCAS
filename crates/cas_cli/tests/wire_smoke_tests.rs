@@ -172,9 +172,9 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
         ),
         (
             "diff(arctan(sqrt(3-2*x)), x)",
-            "-1 / (sqrt(3 - 2·x)·(4 - 2·x))",
+            "-1 / (2·sqrt(3 - 2·x)·(2 - x))",
             "((3 - 2 · x))^(-1/2)",
-            ["sqrt(3 - 2 · x)", "4 - 2 · x"],
+            ["sqrt(3 - 2 · x)", "2 - x"],
             Some("3 - 2·x"),
         ),
         (

@@ -638,6 +638,30 @@ fn scale_expr_for_calculus_presentation(
     cas_math::expr_nary::build_balanced_mul(ctx, &[coeff, expr])
 }
 
+fn cancel_denominator_content_with_numerator_for_calculus_presentation(
+    ctx: &mut Context,
+    numerator_coeff: BigRational,
+    denominator_coeff: BigRational,
+    denominator_factor: ExprId,
+) -> (BigRational, BigRational, ExprId) {
+    let (primitive_factor, factor_content) =
+        split_polynomial_content_for_calculus_presentation(ctx, denominator_factor);
+    if factor_content.is_zero() || factor_content.is_one() {
+        return (numerator_coeff, denominator_coeff, denominator_factor);
+    }
+
+    let adjusted_numerator = numerator_coeff.clone() / factor_content.clone();
+    if !adjusted_numerator.is_integer() {
+        return (
+            numerator_coeff,
+            denominator_coeff * factor_content,
+            primitive_factor,
+        );
+    }
+
+    (adjusted_numerator, denominator_coeff, primitive_factor)
+}
+
 fn signed_numerator_for_calculus_presentation(
     ctx: &mut Context,
     coeff: BigRational,
@@ -719,10 +743,17 @@ fn arctan_sqrt_polynomial_derivative_presentation(
         split_polynomial_content_for_calculus_presentation(ctx, derivative);
     let coefficient = derivative_sign * derivative_content * BigRational::new(1.into(), 2.into());
     let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
-    let numerator = scale_expr_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
 
     let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
     let radicand_plus_one = add_one_for_calculus_presentation(ctx, radicand);
+    let (numerator_coeff, denominator_coeff, radicand_plus_one) =
+        cancel_denominator_content_with_numerator_for_calculus_presentation(
+            ctx,
+            numerator_coeff,
+            denominator_coeff,
+            radicand_plus_one,
+        );
+    let numerator = scale_expr_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
     let core_denominator =
         cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, radicand_plus_one]);
     let denominator = if denominator_coeff == BigRational::one() {
@@ -760,11 +791,18 @@ fn arccot_sqrt_polynomial_derivative_presentation(
         split_polynomial_content_for_calculus_presentation(ctx, derivative);
     let coefficient = -derivative_content * BigRational::new(1.into(), 2.into());
     let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
-    let numerator =
-        signed_numerator_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
 
     let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
     let radicand_plus_one = add_one_for_calculus_presentation(ctx, radicand);
+    let (numerator_coeff, denominator_coeff, radicand_plus_one) =
+        cancel_denominator_content_with_numerator_for_calculus_presentation(
+            ctx,
+            numerator_coeff,
+            denominator_coeff,
+            radicand_plus_one,
+        );
+    let numerator =
+        signed_numerator_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
     let core_denominator =
         cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, radicand_plus_one]);
     let denominator = if denominator_coeff == BigRational::one() {
@@ -1131,11 +1169,23 @@ fn bounded_inverse_trig_sqrt_polynomial_derivative_presentation(
         signed_numerator_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
 
     let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
-    let one = ctx.num(1);
-    let raw_gap = ctx.add(Expr::Sub(one, radicand));
+    let raw_gap = Polynomial::one(radicand_poly.var.clone())
+        .sub(&radicand_poly)
+        .to_expr(ctx);
     let (gap, gap_content) = primitive_positive_gap(ctx, raw_gap);
+    let (gap, numerator) = if gap_content.is_one()
+        || exact_positive_rational_sqrt_for_calculus_presentation(&gap_content).is_some()
+    {
+        let numerator = scale_expr_by_sqrt_positive_rational_for_calculus_presentation(
+            ctx,
+            reciprocal_positive_rational(&gap_content),
+            numerator,
+        );
+        (gap, numerator)
+    } else {
+        (raw_gap, numerator)
+    };
     let sqrt_gap = ctx.call_builtin(BuiltinFn::Sqrt, vec![gap]);
-    let denominator_coeff = denominator_coeff * gap_content;
     let core_denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, sqrt_gap]);
     let denominator = if denominator_coeff == BigRational::one() {
         core_denominator
@@ -1369,11 +1419,18 @@ fn atanh_sqrt_polynomial_derivative_presentation(
         split_polynomial_content_for_calculus_presentation(ctx, derivative);
     let coefficient = numerator_sign * derivative_content * BigRational::new(1.into(), 2.into());
     let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
-    let numerator =
-        signed_numerator_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
 
     let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
     let gap = gap_poly.to_expr(ctx);
+    let (numerator_coeff, denominator_coeff, gap) =
+        cancel_denominator_content_with_numerator_for_calculus_presentation(
+            ctx,
+            numerator_coeff,
+            denominator_coeff,
+            gap,
+        );
+    let numerator =
+        signed_numerator_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
     let core_denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, gap]);
     let denominator = if denominator_coeff == BigRational::one() {
         core_denominator

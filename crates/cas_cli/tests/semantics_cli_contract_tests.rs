@@ -169,6 +169,129 @@ fn equiv_log_product_requires_both_sides_domain() {
 }
 
 #[test]
+fn root_product_merge_in_generic_carries_nonnegative_requires() {
+    let (output, code) = run_cli(&["eval", "sqrt(x)*sqrt(y)", "--format", "json"]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "(x·y)^(1/2)");
+    assert_eq!(wire["domain"]["mode"], "generic");
+    assert_eq!(wire["required_display"], json!(["x ≥ 0", "y ≥ 0"]));
+}
+
+#[test]
+fn root_quotient_merge_in_generic_carries_positive_denominator_requires() {
+    let (output, code) = run_cli(&["eval", "sqrt(x)/sqrt(y)", "--format", "json"]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "(x / y)^(1/2)");
+    assert_eq!(wire["domain"]["mode"], "generic");
+    assert_eq!(wire["required_display"], json!(["y > 0", "x ≥ 0"]));
+}
+
+#[test]
+fn root_product_merge_in_assume_preserves_intrinsic_requires_not_assumes() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "sqrt(x)*sqrt(y)",
+        "--domain",
+        "assume",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "(x·y)^(1/2)");
+    assert_eq!(wire["domain"]["mode"], "assume");
+    assert_eq!(wire["required_display"], json!(["x ≥ 0", "y ≥ 0"]));
+    assert!(
+        wire["assumptions_used"].is_null()
+            || wire["assumptions_used"]
+                .as_array()
+                .is_some_and(Vec::is_empty),
+        "expected no assumptions_used, got {:?}",
+        wire["assumptions_used"]
+    );
+
+    let wire_messages = wire["wire"]["messages"].as_array().expect("wire messages");
+    assert!(wire_messages
+        .iter()
+        .any(|message| message["text"] == "ℹ️ Requires:"));
+    assert!(!wire_messages
+        .iter()
+        .any(|message| message["text"] == "ℹ️ Assume:"));
+}
+
+#[test]
+fn root_quotient_merge_in_assume_preserves_intrinsic_requires_not_assumes() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "sqrt(x)/sqrt(y)",
+        "--domain",
+        "assume",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "(x / y)^(1/2)");
+    assert_eq!(wire["domain"]["mode"], "assume");
+    assert_eq!(wire["required_display"], json!(["y > 0", "x ≥ 0"]));
+    assert!(
+        wire["assumptions_used"].is_null()
+            || wire["assumptions_used"]
+                .as_array()
+                .is_some_and(Vec::is_empty),
+        "expected no assumptions_used, got {:?}",
+        wire["assumptions_used"]
+    );
+
+    let wire_messages = wire["wire"]["messages"].as_array().expect("wire messages");
+    assert!(wire_messages
+        .iter()
+        .any(|message| message["text"] == "ℹ️ Requires:"));
+    assert!(!wire_messages
+        .iter()
+        .any(|message| message["text"] == "ℹ️ Assume:"));
+}
+
+#[test]
+fn root_product_merge_is_disabled_in_strict_but_definedness_requires_remain() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "sqrt(x)*sqrt(y)",
+        "--domain",
+        "strict",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "x^(1/2)·y^(1/2)");
+    assert_eq!(wire["domain"]["mode"], "strict");
+    assert_eq!(wire["required_display"], json!(["x ≥ 0", "y ≥ 0"]));
+}
+
+#[test]
+fn root_product_equiv_carries_intersection_domain_requires() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "equiv(sqrt(x*y),sqrt(x)*sqrt(y))",
+        "--format",
+        "json",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "true");
+    assert_eq!(wire["required_display"], json!(["x ≥ 0", "y ≥ 0"]));
+}
+
+#[test]
 fn false_equiv_surfaces_residual_diagnostics_without_changing_result() {
     let (output, code) = run_cli(&["eval", "equiv(x^2,x)", "--format", "json"]);
     assert_eq!(code, 0);

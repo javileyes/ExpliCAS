@@ -2,6 +2,9 @@
 
 use crate::semantic_equality::SemanticEqualityChecker;
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use num_rational::BigRational;
+use num_traits::{One, Signed, Zero};
+use std::collections::BTreeMap;
 
 fn extract_abs_sub_like_pair(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
@@ -80,6 +83,14 @@ pub fn match_sub_self_semantic_expr(ctx: &Context, expr: ExprId) -> Option<ExprI
         return None;
     }
 
+    if affine_sqrt_fraction_terms_equal(ctx, *lhs, *rhs) {
+        return Some(*lhs);
+    }
+
+    if sqrt_product_terms_equal(ctx, *lhs, *rhs) {
+        return Some(*lhs);
+    }
+
     let checker = SemanticEqualityChecker::new(ctx);
     if checker.are_equal(*lhs, *rhs) {
         Some(*lhs)
@@ -127,7 +138,519 @@ pub fn match_add_inverse_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         }
     }
 
+    if affine_sqrt_fraction_terms_cancel(ctx, *l, *r) {
+        return Some(*l);
+    }
+
+    if sqrt_product_terms_cancel(ctx, *l, *r) {
+        return Some(*l);
+    }
+
     None
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedAffineSqrtFractionTerm {
+    coeff: BigRational,
+    radicand_poly: crate::polynomial::Polynomial,
+    radicand_power: BigRational,
+    denominator_factors: Vec<crate::polynomial::Polynomial>,
+}
+
+fn affine_sqrt_fraction_terms_cancel(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let Some(left) = normalize_affine_sqrt_fraction_term(ctx, left) else {
+        return false;
+    };
+    let Some(right) = normalize_affine_sqrt_fraction_term(ctx, right) else {
+        return false;
+    };
+
+    left.radicand_poly == right.radicand_poly
+        && left.radicand_power == right.radicand_power
+        && polynomial_factor_multisets_match(&left.denominator_factors, &right.denominator_factors)
+        && (left.coeff + right.coeff).is_zero()
+}
+
+fn affine_sqrt_fraction_terms_equal(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let Some(left) = normalize_affine_sqrt_fraction_term(ctx, left) else {
+        return false;
+    };
+    let Some(right) = normalize_affine_sqrt_fraction_term(ctx, right) else {
+        return false;
+    };
+
+    left.radicand_poly == right.radicand_poly
+        && left.radicand_power == right.radicand_power
+        && polynomial_factor_multisets_match(&left.denominator_factors, &right.denominator_factors)
+        && left.coeff == right.coeff
+}
+
+fn normalize_affine_sqrt_fraction_term(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<NormalizedAffineSqrtFractionTerm> {
+    let (sign, expr) = strip_negated_term(ctx, expr);
+    let mut coeff = sign;
+    let (numerator_factors, den) = match ctx.get(expr) {
+        Expr::Div(num, den) => (
+            crate::expr_nary::mul_leaves(ctx, *num)
+                .into_iter()
+                .collect::<Vec<_>>(),
+            *den,
+        ),
+        Expr::Mul(_, _) => {
+            let mut numerator_factors = Vec::new();
+            let mut denominator = None;
+            for raw_factor in crate::expr_nary::mul_leaves(ctx, expr) {
+                let (factor_sign, factor) = strip_negated_term(ctx, raw_factor);
+                coeff *= factor_sign;
+
+                if let Some(value) = crate::numeric_eval::as_rational_const(ctx, factor) {
+                    coeff *= value.clone();
+                    continue;
+                }
+
+                match ctx.get(factor) {
+                    Expr::Div(num, den) if denominator.is_none() => {
+                        denominator = Some(*den);
+                        numerator_factors.extend(crate::expr_nary::mul_leaves(ctx, *num));
+                    }
+                    Expr::Div(_, _) => return None,
+                    _ => numerator_factors.push(factor),
+                }
+            }
+            (numerator_factors, denominator?)
+        }
+        _ => return None,
+    };
+
+    let mut radicand = None;
+    let mut radicand_poly = None;
+    let mut radicand_power = BigRational::zero();
+
+    for raw_factor in numerator_factors {
+        let (factor_sign, factor) = strip_negated_term(ctx, raw_factor);
+        coeff *= factor_sign;
+
+        if let Some(value) = crate::numeric_eval::as_rational_const(ctx, factor) {
+            coeff *= value.clone();
+            continue;
+        }
+
+        let (candidate_radicand, power) = affine_sqrt_power_factor(ctx, factor)?;
+        let candidate_poly = affine_polynomial_for_single_var(ctx, candidate_radicand)?;
+        match &radicand_poly {
+            Some(existing) if existing != &candidate_poly => return None,
+            Some(_) => {}
+            None => {
+                radicand = Some(candidate_radicand);
+                radicand_poly = Some(candidate_poly);
+            }
+        }
+        radicand_power += power;
+    }
+
+    let _radicand = radicand?;
+    let radicand_poly = radicand_poly?;
+    let var = radicand_poly.var.clone();
+    let mut denominator_factors = Vec::new();
+
+    for factor in crate::expr_nary::mul_leaves(ctx, den) {
+        if let Some(value) = crate::numeric_eval::as_rational_const(ctx, factor) {
+            if value.is_zero() {
+                return None;
+            }
+            coeff /= value.clone();
+            continue;
+        }
+
+        let factor_poly = crate::polynomial::Polynomial::from_expr(ctx, factor, &var).ok()?;
+        if let Some(ratio) = constant_polynomial_ratio_local(&radicand_poly, &factor_poly) {
+            coeff *= ratio;
+            radicand_power -= BigRational::one();
+            continue;
+        }
+
+        let (scale, normalized) = normalize_affine_denominator_factor(factor_poly)?;
+        if scale.is_zero() {
+            return None;
+        }
+        coeff /= scale;
+        denominator_factors.push(normalized);
+    }
+
+    if radicand_power.is_zero() {
+        return None;
+    }
+
+    Some(NormalizedAffineSqrtFractionTerm {
+        coeff,
+        radicand_poly,
+        radicand_power,
+        denominator_factors,
+    })
+}
+
+fn strip_negated_term(ctx: &Context, expr: ExprId) -> (BigRational, ExprId) {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => (BigRational::from_integer((-1).into()), *inner),
+        _ => (BigRational::one(), expr),
+    }
+}
+
+fn affine_sqrt_power_factor(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) =>
+        {
+            Some((args[0], BigRational::new(1.into(), 2.into())))
+        }
+        Expr::Pow(base, exp) => {
+            let power = crate::numeric_eval::as_rational_const(ctx, *exp)?.clone();
+            if power == BigRational::new(1.into(), 2.into())
+                || power == BigRational::new((-1).into(), 2.into())
+            {
+                Some((*base, power))
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn affine_polynomial_for_single_var(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<crate::polynomial::Polynomial> {
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.iter().next()?;
+    let poly = crate::polynomial::Polynomial::from_expr(ctx, expr, var).ok()?;
+    (poly.degree() == 1).then_some(poly)
+}
+
+fn normalize_affine_denominator_factor(
+    poly: crate::polynomial::Polynomial,
+) -> Option<(BigRational, crate::polynomial::Polynomial)> {
+    if poly.degree() != 1 {
+        return None;
+    }
+    let scale = poly.coeffs.get(1).cloned()?;
+    if scale.is_zero() {
+        return None;
+    }
+    let normalized = poly.div_scalar(&scale);
+    Some((scale, normalized))
+}
+
+fn constant_polynomial_ratio_local(
+    numerator: &crate::polynomial::Polynomial,
+    denominator: &crate::polynomial::Polynomial,
+) -> Option<BigRational> {
+    if denominator.is_zero() {
+        return None;
+    }
+
+    let pivot = denominator
+        .coeffs
+        .iter()
+        .position(|coeff| !coeff.is_zero())?;
+    let numerator_pivot = numerator
+        .coeffs
+        .get(pivot)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let scale = numerator_pivot / denominator.coeffs[pivot].clone();
+    let len = numerator.coeffs.len().max(denominator.coeffs.len());
+
+    for idx in 0..len {
+        let left = numerator
+            .coeffs
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        let right = denominator
+            .coeffs
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+            * scale.clone();
+        if left != right {
+            return None;
+        }
+    }
+
+    Some(scale)
+}
+
+fn polynomial_factor_multisets_match(
+    left: &[crate::polynomial::Polynomial],
+    right: &[crate::polynomial::Polynomial],
+) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    let mut used = vec![false; right.len()];
+    'outer: for left_factor in left {
+        for (idx, right_factor) in right.iter().enumerate() {
+            if !used[idx] && left_factor == right_factor {
+                used[idx] = true;
+                continue 'outer;
+            }
+        }
+        return false;
+    }
+    true
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+struct AffinePolyKey {
+    var: String,
+    coeffs: Vec<BigRational>,
+}
+
+#[derive(Debug, Clone)]
+struct NormalizedSqrtProductTerm {
+    sign: i8,
+    squared_scale: BigRational,
+    affine_powers: BTreeMap<AffinePolyKey, i32>,
+    saw_root_like: bool,
+}
+
+impl Default for NormalizedSqrtProductTerm {
+    fn default() -> Self {
+        Self {
+            sign: 1,
+            squared_scale: BigRational::one(),
+            affine_powers: BTreeMap::new(),
+            saw_root_like: false,
+        }
+    }
+}
+
+fn sqrt_product_terms_equal(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let Some(left) = normalize_sqrt_product_term(ctx, left) else {
+        return false;
+    };
+    let Some(right) = normalize_sqrt_product_term(ctx, right) else {
+        return false;
+    };
+
+    left.sign == right.sign
+        && left.squared_scale == right.squared_scale
+        && left.affine_powers == right.affine_powers
+}
+
+fn sqrt_product_terms_cancel(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let Some(left) = normalize_sqrt_product_term(ctx, left) else {
+        return false;
+    };
+    let Some(right) = normalize_sqrt_product_term(ctx, right) else {
+        return false;
+    };
+
+    left.sign == -right.sign
+        && left.squared_scale == right.squared_scale
+        && left.affine_powers == right.affine_powers
+}
+
+fn normalize_sqrt_product_term(ctx: &Context, expr: ExprId) -> Option<NormalizedSqrtProductTerm> {
+    let mut normalized = NormalizedSqrtProductTerm::default();
+    accumulate_sqrt_product_factor(ctx, expr, BigRational::one(), &mut normalized)?;
+    normalized.affine_powers.retain(|_, power| *power != 0);
+    normalized.saw_root_like.then_some(normalized)
+}
+
+fn accumulate_sqrt_product_factor(
+    ctx: &Context,
+    expr: ExprId,
+    power: BigRational,
+    normalized: &mut NormalizedSqrtProductTerm,
+) -> Option<()> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            let integer_power = rational_to_i32(&power)?;
+            if integer_power % 2 != 0 {
+                normalized.sign = -normalized.sign;
+            }
+            accumulate_sqrt_product_factor(ctx, *inner, power, normalized)
+        }
+        Expr::Number(value) => accumulate_rational_sqrt_product_factor(value, power, normalized),
+        Expr::Mul(left, right) => {
+            if !power.is_integer() {
+                return accumulate_polynomial_sqrt_product_factor(ctx, expr, power, normalized);
+            }
+            accumulate_sqrt_product_factor(ctx, *left, power.clone(), normalized)?;
+            accumulate_sqrt_product_factor(ctx, *right, power, normalized)
+        }
+        Expr::Div(num, den) => {
+            if !power.is_integer() {
+                return accumulate_polynomial_div_sqrt_product_factor(
+                    ctx, *num, *den, power, normalized,
+                );
+            }
+            accumulate_sqrt_product_factor(ctx, *num, power.clone(), normalized)?;
+            accumulate_sqrt_product_factor(ctx, *den, -power, normalized)
+        }
+        Expr::Pow(base, exp) => {
+            let exp_value = crate::numeric_eval::as_rational_const(ctx, *exp)?.clone();
+            if exp_value == BigRational::new(1.into(), 2.into())
+                || exp_value == BigRational::new((-1).into(), 2.into())
+            {
+                normalized.saw_root_like = true;
+            }
+            accumulate_sqrt_product_factor(ctx, *base, power * exp_value, normalized)
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) =>
+        {
+            normalized.saw_root_like = true;
+            accumulate_sqrt_product_factor(
+                ctx,
+                args[0],
+                power * BigRational::new(1.into(), 2.into()),
+                normalized,
+            )
+        }
+        _ => accumulate_affine_sqrt_product_factor(ctx, expr, power, normalized),
+    }
+}
+
+fn accumulate_rational_sqrt_product_factor(
+    value: &BigRational,
+    power: BigRational,
+    normalized: &mut NormalizedSqrtProductTerm,
+) -> Option<()> {
+    if value.is_zero() {
+        return None;
+    }
+
+    let mut value = value.clone();
+    if value.is_negative() {
+        let integer_power = rational_to_i32(&power)?;
+        if integer_power % 2 != 0 {
+            normalized.sign = -normalized.sign;
+        }
+        value = value.abs();
+    }
+
+    let squared_power = rational_to_i32(&(power * BigRational::from_integer(2.into())))?;
+    multiply_squared_scale(&mut normalized.squared_scale, &value, squared_power);
+    Some(())
+}
+
+fn accumulate_affine_sqrt_product_factor(
+    ctx: &Context,
+    expr: ExprId,
+    power: BigRational,
+    normalized: &mut NormalizedSqrtProductTerm,
+) -> Option<()> {
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.iter().next()?;
+    let poly = crate::polynomial::Polynomial::from_expr(ctx, expr, var).ok()?;
+    if poly.degree() != 1 {
+        return None;
+    }
+
+    accumulate_sqrt_product_polynomial(poly, power, normalized)
+}
+
+fn accumulate_polynomial_div_sqrt_product_factor(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+    power: BigRational,
+    normalized: &mut NormalizedSqrtProductTerm,
+) -> Option<()> {
+    if let Some(value) = crate::numeric_eval::as_rational_const(ctx, num) {
+        accumulate_rational_sqrt_product_factor(&value, power.clone(), normalized)?;
+        return accumulate_polynomial_sqrt_product_factor(ctx, den, -power, normalized);
+    }
+
+    if let Some(value) = crate::numeric_eval::as_rational_const(ctx, den) {
+        accumulate_polynomial_sqrt_product_factor(ctx, num, power.clone(), normalized)?;
+        return accumulate_rational_sqrt_product_factor(&value, -power, normalized);
+    }
+
+    None
+}
+
+fn accumulate_polynomial_sqrt_product_factor(
+    ctx: &Context,
+    expr: ExprId,
+    power: BigRational,
+    normalized: &mut NormalizedSqrtProductTerm,
+) -> Option<()> {
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.iter().next()?;
+    let poly = crate::polynomial::Polynomial::from_expr(ctx, expr, var).ok()?;
+    if poly.degree() < 1 {
+        return None;
+    }
+
+    accumulate_sqrt_product_polynomial(poly, power, normalized)
+}
+
+fn accumulate_sqrt_product_polynomial(
+    mut poly: crate::polynomial::Polynomial,
+    power: BigRational,
+    normalized: &mut NormalizedSqrtProductTerm,
+) -> Option<()> {
+    let squared_power = rational_to_i32(&(power * BigRational::from_integer(2.into())))?;
+    let content = poly.content();
+    if content.is_zero() {
+        return None;
+    }
+    if !content.is_one() {
+        multiply_squared_scale(&mut normalized.squared_scale, &content, squared_power);
+        poly = poly.div_scalar(&content);
+    }
+
+    let key = AffinePolyKey {
+        var: poly.var,
+        coeffs: poly.coeffs,
+    };
+    let entry = normalized.affine_powers.entry(key).or_insert(0);
+    *entry += squared_power;
+    Some(())
+}
+
+fn rational_to_i32(value: &BigRational) -> Option<i32> {
+    if !value.is_integer() {
+        return None;
+    }
+    value.to_integer().try_into().ok()
+}
+
+fn multiply_squared_scale(scale: &mut BigRational, base: &BigRational, exponent: i32) {
+    let factor = rational_pow_i32(base, exponent);
+    *scale *= factor;
+}
+
+fn rational_pow_i32(base: &BigRational, exponent: i32) -> BigRational {
+    if exponent == 0 {
+        return BigRational::one();
+    }
+
+    let mut result = BigRational::one();
+    for _ in 0..exponent.unsigned_abs() {
+        result *= base.clone();
+    }
+    if exponent < 0 {
+        BigRational::one() / result
+    } else {
+        result
+    }
 }
 
 /// Rewrite `a - a` to `0`, returning the cancelled inner expression.
@@ -226,6 +749,75 @@ mod tests {
     }
 
     #[test]
+    fn detects_affine_sqrt_fraction_sign_oriented_sub_self() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "-(5-3*x)^(1/2)/((10-6*x)*(x-2)) - 3*(5-3*x)^(-1/2)/(12-6*x)",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_affine_sqrt_fraction_sign_oriented_add_inverse() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "-(5-3*x)^(1/2)/((10-6*x)*(x-2)) + (-3*(5-3*x)^(-1/2)/(12-6*x))",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(match_add_inverse_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_affine_sqrt_fraction_with_external_div_coefficient() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "-(5-3*x)^(1/2)/((10-6*x)*(x-2)) + (-3*((5-3*x)^(-1/2)/(12-6*x)))",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(match_add_inverse_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_sqrt_product_fraction_with_non_square_rational_content() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(1/2 / ((-x-1)*(2*x+3)))^(1/2) - ((-2*x-2)*(2*x+3))^(-1/2)",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_sqrt_product_fraction_add_inverse_with_non_square_rational_content() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(1/2 / ((-x-1)*(2*x+3)))^(1/2) + (-(((-2*x-2)*(2*x+3))^(-1/2)))",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(match_add_inverse_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn rejects_sqrt_product_split_without_shared_domain_proof() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt(x*y) - sqrt(x)*sqrt(y)", &mut ctx).expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_none());
+    }
+
+    #[test]
+    fn rejects_split_of_polynomial_product_under_root() {
+        let mut ctx = Context::new();
+        let expr = parse("sqrt((x+1)*(x+2)) - sqrt(x+1)*sqrt(x+2)", &mut ctx).expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_none());
+    }
+
+    #[test]
     fn rewrites_sub_self_to_zero() {
         let mut ctx = Context::new();
         let expr = parse("x-x", &mut ctx).expect("parse");
@@ -247,6 +839,27 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("x+(-x)", &mut ctx).expect("parse");
         let rewrite = try_rewrite_add_inverse_zero_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.rewritten
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn rewrites_affine_sqrt_fraction_sign_oriented_sub_self_to_zero() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "-(5-3*x)^(1/2)/((10-6*x)*(x-2)) - 3*(5-3*x)^(-1/2)/(12-6*x)",
+            &mut ctx,
+        )
+        .expect("parse");
+        let rewrite = try_rewrite_sub_self_zero_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(
             format!(
                 "{}",

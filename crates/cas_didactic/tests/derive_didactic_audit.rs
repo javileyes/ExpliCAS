@@ -486,6 +486,7 @@ fn is_self_explanatory_identity_rule(rule: &str) -> bool {
             | "Reescribir la raíz como potencia fraccionaria"
             | "Sumar exponentes de la misma base"
             | "Reconocer un cociente notable"
+            | "Merge Sqrt Product"
     )
 }
 
@@ -3966,6 +3967,40 @@ fn derive_didactic_square_of_square_root_explains_domain_condition() {
             "Identificar el radicando de la raíz principal",
             "El cuadrado deshace la raíz bajo la condición u ≥ 0",
         ],
+    );
+}
+
+#[test]
+fn derive_didactic_sqrt_product_merge_shows_both_source_factors() {
+    let artifact = audit_case(&derive_case_by_id(
+        "merge_sqrt_product_requires_nonnegative",
+    ));
+    let step = step_by_rule(&artifact, "Merge Sqrt Product");
+
+    assert_eq!(
+        step.get("before").and_then(Value::as_str),
+        Some("sqrt(x) · sqrt(y)")
+    );
+    assert_eq!(
+        step.get("after").and_then(Value::as_str),
+        Some("sqrt(x · y)")
+    );
+    assert_case_has_no_no_web_substeps_flag("merge_sqrt_product_requires_nonnegative");
+
+    let cli_lines = run_cli_lines(&derive_case_by_id(
+        "merge_sqrt_product_requires_nonnegative",
+    ));
+    assert!(
+        cli_lines.iter().any(|line| line == "  • x ≥ 0"),
+        "CLI derive report should preserve source sqrt domain for x: {cli_lines:?}"
+    );
+    assert!(
+        cli_lines.iter().any(|line| line == "  • y ≥ 0"),
+        "CLI derive report should preserve source sqrt domain for y: {cli_lines:?}"
+    );
+    assert!(
+        !cli_lines.iter().any(|line| line == "  • x * y ≥ 0"),
+        "CLI derive report should not replace source sqrt domains with only target-domain witness: {cli_lines:?}"
     );
 }
 
