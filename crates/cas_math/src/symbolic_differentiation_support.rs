@@ -69,6 +69,20 @@ fn div_pruned(ctx: &mut Context, num: ExprId, den: ExprId) -> ExprId {
     }
 }
 
+fn neg_pruned(ctx: &mut Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr) {
+        Expr::Number(value) => ctx.add(Expr::Number(-value.clone())),
+        Expr::Neg(inner) => *inner,
+        Expr::Div(num, den) => {
+            if let Expr::Neg(inner_num) = ctx.get(*num) {
+                return ctx.add(Expr::Div(*inner_num, *den));
+            }
+            ctx.add(Expr::Neg(expr))
+        }
+        _ => ctx.add(Expr::Neg(expr)),
+    }
+}
+
 fn rational_constant_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     match ctx.get(expr) {
         Expr::Number(n) => Some(n.clone()),
@@ -1868,6 +1882,136 @@ fn negative_half_power(ctx: &mut Context, base: ExprId) -> ExprId {
     ctx.add(Expr::Pow(base, neg_half))
 }
 
+fn is_positive_half_exponent(ctx: &Context, expr: ExprId) -> bool {
+    cas_ast::views::as_rational_const(ctx, expr, 8)
+        .is_some_and(|value| value == BigRational::new(1.into(), 2.into()))
+}
+
+fn sqrt_like_radicand(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    extract_square_root_base(ctx, expr).or_else(|| match ctx.get(expr) {
+        Expr::Pow(base, exp) if is_positive_half_exponent(ctx, *exp) => Some(*base),
+        _ => None,
+    })
+}
+
+fn sqrt_linear_chain_coeff(ctx: &Context, radicand: ExprId, var: &str) -> Option<BigRational> {
+    let radicand_poly = Polynomial::from_expr(ctx, radicand, var).ok()?;
+    let derivative = radicand_poly.derivative();
+    if derivative.is_zero() || derivative.degree() != 0 {
+        return None;
+    }
+    let derivative_coeff = derivative
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    Some(derivative_coeff / BigRational::new(2.into(), 1.into()))
+}
+
+fn rational_numerator_denominator(value: &BigRational) -> Option<(BigRational, BigRational)> {
+    if value.is_zero() {
+        return None;
+    }
+    Some((
+        BigRational::from_integer(value.numer().clone()),
+        BigRational::from_integer(value.denom().clone()),
+    ))
+}
+
+fn compact_sqrt_log_abs_trig_derivative(
+    ctx: &mut Context,
+    inner_expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (derivative_builtin, sign, trig_arg) =
+        if let Some(arg) = unary_builtin_arg(ctx, inner_expr, BuiltinFn::Sin) {
+            (BuiltinFn::Cot, BigRational::one(), arg)
+        } else if let Some(arg) = unary_builtin_arg(ctx, inner_expr, BuiltinFn::Cos) {
+            (BuiltinFn::Tan, -BigRational::one(), arg)
+        } else {
+            return None;
+        };
+
+    let radicand = sqrt_like_radicand(ctx, trig_arg)?;
+    let chain_coeff = sign * sqrt_linear_chain_coeff(ctx, radicand, var)?;
+    let negative = chain_coeff.is_negative();
+    let (numerator_coeff, denominator_coeff) = rational_numerator_denominator(&chain_coeff.abs())?;
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let trig = ctx.call_builtin(derivative_builtin, vec![sqrt_radicand]);
+    let numerator = scale_expr_by_rational(ctx, numerator_coeff, trig);
+    let denominator = if denominator_coeff.is_one() {
+        sqrt_radicand
+    } else {
+        let denominator_coeff = ctx.add(Expr::Number(denominator_coeff));
+        mul_pruned(ctx, denominator_coeff, sqrt_radicand)
+    };
+
+    let quotient = div_pruned(ctx, numerator, denominator);
+    Some(if negative {
+        ctx.add(Expr::Neg(quotient))
+    } else {
+        quotient
+    })
+}
+
+fn compact_sqrt_log_hyperbolic_derivative(
+    ctx: &mut Context,
+    inner_expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    enum HyperbolicLogShape {
+        TanhNumerator,
+        TanhDenominator,
+    }
+
+    let (shape, hyperbolic_arg) =
+        if let Some(arg) = unary_builtin_arg(ctx, inner_expr, BuiltinFn::Cosh) {
+            (HyperbolicLogShape::TanhNumerator, arg)
+        } else if let Some(arg) = unary_builtin_arg(ctx, inner_expr, BuiltinFn::Sinh) {
+            (HyperbolicLogShape::TanhDenominator, arg)
+        } else {
+            return None;
+        };
+
+    let radicand = sqrt_like_radicand(ctx, hyperbolic_arg)?;
+    let chain_coeff = sqrt_linear_chain_coeff(ctx, radicand, var)?;
+    let negative = chain_coeff.is_negative();
+    let (numerator_coeff, denominator_coeff) = rational_numerator_denominator(&chain_coeff.abs())?;
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let tanh = ctx.call_builtin(BuiltinFn::Tanh, vec![sqrt_radicand]);
+    let one = ctx.num(1);
+
+    let quotient = match shape {
+        HyperbolicLogShape::TanhNumerator => {
+            let numerator = scale_expr_by_rational(ctx, numerator_coeff, tanh);
+            let denominator = if denominator_coeff.is_one() {
+                sqrt_radicand
+            } else {
+                let denominator_coeff = ctx.add(Expr::Number(denominator_coeff));
+                mul_pruned(ctx, denominator_coeff, sqrt_radicand)
+            };
+            div_pruned(ctx, numerator, denominator)
+        }
+        HyperbolicLogShape::TanhDenominator => {
+            let numerator = scale_expr_by_rational(ctx, numerator_coeff, one);
+            let denominator_core = build_balanced_mul(ctx, &[tanh, sqrt_radicand]);
+            let denominator = if denominator_coeff.is_one() {
+                denominator_core
+            } else {
+                let denominator_coeff = ctx.add(Expr::Number(denominator_coeff));
+                build_balanced_mul(ctx, &[denominator_coeff, denominator_core])
+            };
+            div_pruned(ctx, numerator, denominator)
+        }
+    };
+
+    Some(if negative {
+        ctx.add(Expr::Neg(quotient))
+    } else {
+        quotient
+    })
+}
+
 fn value_preserving_primitive_gap(
     ctx: &mut Context,
     gap: ExprId,
@@ -2403,18 +2547,18 @@ fn squared_builtin_call(ctx: &mut Context, builtin: BuiltinFn, arg: ExprId) -> E
 }
 
 fn secant_derivative(ctx: &mut Context, arg: ExprId, d_arg: ExprId) -> ExprId {
-    let sin_u = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
-    let cos_sq = squared_builtin_call(ctx, BuiltinFn::Cos, arg);
-    let numerator = mul_pruned(ctx, sin_u, d_arg);
-    ctx.add(Expr::Div(numerator, cos_sq))
+    let sec_u = ctx.call_builtin(BuiltinFn::Sec, vec![arg]);
+    let tan_u = ctx.call_builtin(BuiltinFn::Tan, vec![arg]);
+    let table_rule = mul_pruned(ctx, sec_u, tan_u);
+    mul_pruned(ctx, d_arg, table_rule)
 }
 
 fn cosecant_derivative(ctx: &mut Context, arg: ExprId, d_arg: ExprId) -> ExprId {
-    let cos_u = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
-    let neg_cos = ctx.add(Expr::Neg(cos_u));
-    let sin_sq = squared_builtin_call(ctx, BuiltinFn::Sin, arg);
-    let numerator = mul_pruned(ctx, neg_cos, d_arg);
-    ctx.add(Expr::Div(numerator, sin_sq))
+    let csc_u = ctx.call_builtin(BuiltinFn::Csc, vec![arg]);
+    let cot_u = ctx.call_builtin(BuiltinFn::Cot, vec![arg]);
+    let table_rule = mul_pruned(ctx, csc_u, cot_u);
+    let negative_table_rule = ctx.add(Expr::Neg(table_rule));
+    mul_pruned(ctx, d_arg, negative_table_rule)
 }
 
 fn cotangent_derivative(ctx: &mut Context, arg: ExprId, d_arg: ExprId) -> ExprId {
@@ -2570,6 +2714,12 @@ fn log_abs_builtin_derivative(ctx: &mut Context, arg: ExprId, var: &str) -> Opti
     let inner_expr = unary_builtin_arg(ctx, arg, BuiltinFn::Abs)?;
 
     if let Some(derivative) = log_abs_reciprocal_trig_primitive_derivative(ctx, inner_expr, var) {
+        return Some(derivative);
+    }
+    if let Some(derivative) = compact_sqrt_log_abs_trig_derivative(ctx, inner_expr, var) {
+        return Some(derivative);
+    }
+    if let Some(derivative) = compact_sqrt_log_hyperbolic_derivative(ctx, inner_expr, var) {
         return Some(derivative);
     }
 
@@ -2759,7 +2909,7 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         Expr::Neg(inner) => {
             let inner = *inner;
             let d_inner = differentiate_symbolic_expr(ctx, inner, var)?;
-            Some(ctx.add(Expr::Neg(d_inner)))
+            Some(neg_pruned(ctx, d_inner))
         }
         Expr::Mul(l, r) => {
             let (l, r) = (*l, *r);
@@ -2906,6 +3056,9 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
 
             if ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln) {
                 if let Some(derivative) = log_abs_builtin_derivative(ctx, arg, var) {
+                    return Some(derivative);
+                }
+                if let Some(derivative) = compact_sqrt_log_hyperbolic_derivative(ctx, arg, var) {
                     return Some(derivative);
                 }
             }
@@ -3120,6 +3273,38 @@ mod tests {
     }
 
     #[test]
+    fn differentiates_sqrt_log_abs_trig_chain_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse("-ln(abs(cos(sqrt(3*x+1))))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+
+        assert_eq!(
+            rendered(&ctx, out),
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
+        );
+    }
+
+    #[test]
+    fn differentiates_sqrt_log_hyperbolic_chain_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(cosh((3*x+1)^(1/2)))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+
+        assert_eq!(
+            rendered(&ctx, out),
+            "3 * tanh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
+        );
+
+        let expr = parse("ln(abs(sinh((3*x+1)^(1/2))))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+
+        assert_eq!(
+            rendered(&ctx, out),
+            "3 / (2 * tanh(sqrt(3 * x + 1)) * sqrt(3 * x + 1))"
+        );
+    }
+
+    #[test]
     fn differentiates_constant_denominator_without_quotient_rule_noise() {
         let mut ctx = Context::new();
         let expr = parse("sin(x)/2", &mut ctx).expect("parse");
@@ -3250,11 +3435,11 @@ mod tests {
     #[test]
     fn differentiates_reciprocal_trig_functions_directly() {
         let cases = [
-            ("sec(x)", "sin(x) / cos(x)^2"),
-            ("csc(x)", "-cos(x) / sin(x)^2"),
+            ("sec(x)", "sec(x) * tan(x)"),
+            ("csc(x)", "-(csc(x) * cot(x))"),
             ("cot(x)", "-1 / sin(x)^2"),
-            ("1/cos(x)", "sin(x) / cos(x)^2"),
-            ("1/sin(x)", "-cos(x) / sin(x)^2"),
+            ("1/cos(x)", "sec(x) * tan(x)"),
+            ("1/sin(x)", "-(csc(x) * cot(x))"),
             ("cos(x)/sin(x)", "-1 / sin(x)^2"),
         ];
 
@@ -3284,8 +3469,8 @@ mod tests {
     #[test]
     fn differentiates_reciprocal_trig_chain_rule_directly() {
         let cases = [
-            ("sec(2*x + 1)", "sin(2 * x + 1) * 2 / cos(2 * x + 1)^2"),
-            ("csc(2*x + 1)", "-cos(2 * x + 1) * 2 / sin(2 * x + 1)^2"),
+            ("sec(2*x + 1)", "2 * sec(2 * x + 1) * tan(2 * x + 1)"),
+            ("csc(2*x + 1)", "-2 * csc(2 * x + 1) * cot(2 * x + 1)"),
             ("cot(2*x + 1)", "-2 / sin(2 * x + 1)^2"),
             ("tan((3*x + 2)/2)", "3 / (2 * cos((3 * x + 2) / 2)^2)"),
             ("cot((2 - 3*x)/2)", "3 / (2 * sin((2 - 3 * x) / 2)^2)"),

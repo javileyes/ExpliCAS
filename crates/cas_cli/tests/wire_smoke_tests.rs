@@ -140,6 +140,92 @@ fn test_eval_calculus_residual_domain_modes_preserve_required_conditions() {
 }
 
 #[test]
+fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
+    let cases = [
+        (
+            "diff(integrate(3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x), x)",
+            "3 / (2·sqrt(3·x + 1)·cosh(sqrt(3·x + 1))^2)",
+            "((3 · x + 1))^(-1/2)",
+            ["sqrt(3 · x + 1)", "cosh(sqrt(3 · x + 1))"],
+            Some("3·x + 1"),
+        ),
+        (
+            "diff(arctan(sqrt(x)), x)",
+            "1 / (2·sqrt(x)·(x + 1))",
+            "x^(-1/2)",
+            ["sqrt(x)", "x + 1"],
+            Some("x"),
+        ),
+        (
+            "diff(arctan(sqrt(3*x)), x)",
+            "3 / (2·sqrt(3·x)·(3·x + 1))",
+            "((3 · x))^(-1/2)",
+            ["sqrt(3 · x)", "3 · x + 1"],
+            Some("x"),
+        ),
+        (
+            "diff(arctan(sqrt(x+1)), x)",
+            "1 / (2·sqrt(x + 1)·(x + 2))",
+            "((x + 1))^(-1/2)",
+            ["sqrt(x + 1)", "x + 2"],
+            Some("x + 1"),
+        ),
+        (
+            "diff(arctan(sqrt(3-2*x)), x)",
+            "-1 / (sqrt(3 - 2·x)·(4 - 2·x))",
+            "((3 - 2 · x))^(-1/2)",
+            ["sqrt(3 - 2 · x)", "4 - 2 · x"],
+            Some("3 - 2·x"),
+        ),
+        (
+            "diff(arctan(sqrt(x^2+1)), x)",
+            "x / (sqrt(x^2 + 1)·(x^2 + 2))",
+            "((x^2 + 1))^(-1/2)",
+            ["sqrt(x^2 + 1)", "x^2 + 2"],
+            None,
+        ),
+    ];
+
+    for (expr, expected_result, expected_before, expected_after, required_expr) in cases {
+        let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(json["result"], expected_result, "expr: {expr}");
+
+        let steps = json["steps"].as_array().expect("steps should be an array");
+        assert!(
+            steps.iter().any(|step| {
+                step["rule"] == "Present calculus result in compact form"
+                    && step["before"]
+                        .as_str()
+                        .is_some_and(|before| before.contains(expected_before))
+                    && step["after"].as_str().is_some_and(|after| {
+                        expected_after.iter().all(|needle| after.contains(needle))
+                    })
+            }),
+            "expected public JSON steps to include compact post-calculus presentation for {expr}: {steps:?}"
+        );
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        if let Some(required_expr) = required_expr {
+            assert!(
+                required.iter().any(|condition| {
+                    condition["kind"] == "Positive" && condition["expr_canonical"] == required_expr
+                }),
+                "post-calculus presentation should preserve the sqrt-domain guard for {expr}: {required:?}"
+            );
+        } else {
+            assert!(
+                required.is_empty(),
+                "post-calculus presentation should not add redundant sqrt-domain guards for {expr}: {required:?}"
+            );
+        }
+    }
+}
+
+#[test]
 fn test_eval_integral_assume_mode_separates_assumptions_from_requires() {
     let generic = eval_json_with_args("integrate(ln(a^2), x)", &["--domain", "generic"]);
 

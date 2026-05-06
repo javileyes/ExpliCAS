@@ -200,14 +200,16 @@ impl Engine {
             res,
         ) {
             if effective_opts.steps_mode != crate::options::StepsMode::Off && presented != res {
-                steps.push(crate::Step::new(
+                let mut presentation_step = crate::Step::new(
                     "Post-calculus presentation",
-                    "Present derivative in reciprocal-root form",
+                    "Present calculus result in compact form",
                     res,
                     presented,
                     Vec::new(),
                     Some(&ctx_simplifier.context),
-                ));
+                );
+                presentation_step.importance = crate::ImportanceLevel::Medium;
+                steps.push(presentation_step);
             }
             res = presented;
         }
@@ -228,6 +230,19 @@ impl Engine {
             ) {
                 res = fold_result.expr;
             }
+        }
+
+        if let Some(presented) = crate::rules::calculus::try_post_calculus_presentation(
+            &mut ctx_simplifier.context,
+            resolved,
+            res,
+        ) {
+            res = presented;
+        } else if let Some(presented) = crate::rules::calculus::try_calculus_result_presentation(
+            &mut ctx_simplifier.context,
+            res,
+        ) {
+            res = presented;
         }
 
         self.simplifier
@@ -403,6 +418,31 @@ mod tests {
             }
             .to_string(),
             "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_preserves_post_calculus_sqrt_tan_presentation() {
+        let mut engine = Engine::new();
+        let expr_text = "3*tan(sqrt(3*x+1))/(2*sqrt(3*x+1))";
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let options = crate::options::EvalOptions::default();
+
+        let (result, ..) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
         );
     }
 

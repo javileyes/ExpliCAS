@@ -69,6 +69,85 @@ fn acosh_sqrt_diff_required_conditions(
     vec![crate::ImplicitCondition::Positive(radicand)]
 }
 
+fn reciprocal_trig_diff_required_conditions(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Vec<crate::ImplicitCondition> {
+    let target = match ctx.get(target).clone() {
+        Expr::Neg(inner) => inner,
+        _ => target,
+    };
+    let (fn_id, args) = match ctx.get(target).clone() {
+        Expr::Function(fn_id, args) => (fn_id, args),
+        Expr::Div(numerator, denominator) => {
+            if cas_ast::views::as_rational_const(ctx, numerator, 8)
+                .is_none_or(|value| !value.is_one())
+            {
+                return vec![];
+            }
+            let Expr::Function(den_fn_id, den_args) = ctx.get(denominator).clone() else {
+                return vec![];
+            };
+            let den_builtin = match ctx.builtin_of(den_fn_id) {
+                Some(builtin @ (BuiltinFn::Cos | BuiltinFn::Sin)) => builtin,
+                _ => return vec![],
+            };
+            if den_args.len() == 1
+                && reciprocal_trig_diff_pole_arg_needs_explicit_condition(
+                    ctx,
+                    den_args[0],
+                    var_name,
+                )
+            {
+                let denominator_arg = reciprocal_trig_diff_pole_display_arg(ctx, den_args[0]);
+                let denominator = ctx.call_builtin(den_builtin, vec![denominator_arg]);
+                return vec![crate::ImplicitCondition::NonZero(denominator)];
+            }
+            return vec![];
+        }
+        _ => return vec![],
+    };
+    if args.len() != 1 {
+        return vec![];
+    }
+    if !reciprocal_trig_diff_pole_arg_needs_explicit_condition(ctx, args[0], var_name) {
+        return vec![];
+    }
+
+    let denominator_builtin = match ctx.builtin_of(fn_id) {
+        Some(BuiltinFn::Sec) => BuiltinFn::Cos,
+        Some(BuiltinFn::Csc) => BuiltinFn::Sin,
+        _ => return vec![],
+    };
+    let denominator_arg = reciprocal_trig_diff_pole_display_arg(ctx, args[0]);
+    let denominator = ctx.call_builtin(denominator_builtin, vec![denominator_arg]);
+    vec![crate::ImplicitCondition::NonZero(denominator)]
+}
+
+fn reciprocal_trig_diff_pole_display_arg(ctx: &mut Context, arg: ExprId) -> ExprId {
+    calculus_sqrt_like_radicand(ctx, arg)
+        .map(|radicand| ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]))
+        .unwrap_or(arg)
+}
+
+fn reciprocal_trig_diff_pole_arg_needs_explicit_condition(
+    ctx: &mut Context,
+    arg: ExprId,
+    var_name: &str,
+) -> bool {
+    if nonzero_affine_variable_derivative(ctx, arg, var_name).is_some() {
+        return true;
+    }
+
+    let Some(radicand) = calculus_sqrt_like_radicand(ctx, arg) else {
+        return false;
+    };
+    polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)
+        .map(|poly| !poly.derivative().is_zero())
+        .unwrap_or(false)
+}
+
 fn unwrap_internal_hold_for_calculus(ctx: &mut Context, target: ExprId) -> ExprId {
     cas_ast::hold::strip_all_holds(ctx, target)
 }
@@ -646,6 +725,10 @@ fn elementary_sqrt_polynomial_derivative_presentation(
             numerator_fn: BuiltinFn,
             denominator_fn: BuiltinFn,
         },
+        ReciprocalTrigProduct {
+            primary_fn: BuiltinFn,
+            companion_fn: BuiltinFn,
+        },
     }
 
     let (arg, shape, sign) = match ctx.get(target).clone() {
@@ -675,16 +758,16 @@ fn elementary_sqrt_polynomial_derivative_presentation(
                     -BigRational::one(),
                 ),
                 Some(BuiltinFn::Sec) => (
-                    SqrtChainShape::NumeratorOverDenominatorSquare {
-                        numerator_fn: BuiltinFn::Sin,
-                        denominator_fn: BuiltinFn::Cos,
+                    SqrtChainShape::ReciprocalTrigProduct {
+                        primary_fn: BuiltinFn::Sec,
+                        companion_fn: BuiltinFn::Tan,
                     },
                     BigRational::one(),
                 ),
                 Some(BuiltinFn::Csc) => (
-                    SqrtChainShape::NumeratorOverDenominatorSquare {
-                        numerator_fn: BuiltinFn::Cos,
-                        denominator_fn: BuiltinFn::Sin,
+                    SqrtChainShape::ReciprocalTrigProduct {
+                        primary_fn: BuiltinFn::Csc,
+                        companion_fn: BuiltinFn::Cot,
                     },
                     -BigRational::one(),
                 ),
@@ -704,13 +787,55 @@ fn elementary_sqrt_polynomial_derivative_presentation(
             };
             (args[0], shape, sign)
         }
+        Expr::Div(numerator, denominator) => {
+            let numerator_sign = cas_ast::views::as_rational_const(ctx, numerator, 8)
+                .filter(|value| value == &BigRational::one() || value == &-BigRational::one())?;
+            let Expr::Function(den_fn_id, den_args) = ctx.get(denominator).clone() else {
+                return None;
+            };
+            if den_args.len() != 1 {
+                return None;
+            }
+            let (shape, sign) = match ctx.builtin_of(den_fn_id) {
+                Some(BuiltinFn::Cos) => (
+                    SqrtChainShape::ReciprocalTrigProduct {
+                        primary_fn: BuiltinFn::Sec,
+                        companion_fn: BuiltinFn::Tan,
+                    },
+                    BigRational::one(),
+                ),
+                Some(BuiltinFn::Sin) => (
+                    SqrtChainShape::ReciprocalTrigProduct {
+                        primary_fn: BuiltinFn::Csc,
+                        companion_fn: BuiltinFn::Cot,
+                    },
+                    -BigRational::one(),
+                ),
+                Some(BuiltinFn::Cosh) => (
+                    SqrtChainShape::NumeratorOverDenominatorSquare {
+                        numerator_fn: BuiltinFn::Sinh,
+                        denominator_fn: BuiltinFn::Cosh,
+                    },
+                    -BigRational::one(),
+                ),
+                Some(BuiltinFn::Sinh) => (
+                    SqrtChainShape::NumeratorOverDenominatorSquare {
+                        numerator_fn: BuiltinFn::Cosh,
+                        denominator_fn: BuiltinFn::Sinh,
+                    },
+                    -BigRational::one(),
+                ),
+                _ => return None,
+            };
+            (den_args[0], shape, sign * numerator_sign)
+        }
         Expr::Pow(base, exp) if matches!(ctx.get(base), Expr::Constant(Constant::E)) => {
             (exp, SqrtChainShape::ExponentialPower, BigRational::one())
         }
         _ => return None,
     };
 
-    let radicand = extract_square_root_base(ctx, arg)?;
+    let radicand = calculus_sqrt_like_radicand(ctx, arg)?;
     let radicand_poly = polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
     let derivative_poly = radicand_poly.derivative();
     if derivative_poly.is_zero() {
@@ -734,6 +859,17 @@ fn elementary_sqrt_polynomial_derivative_presentation(
         SqrtChainShape::DenominatorSquare(_) => None,
         SqrtChainShape::NumeratorOverDenominatorSquare { numerator_fn, .. } => {
             Some(ctx.call_builtin(numerator_fn, vec![sqrt_radicand]))
+        }
+        SqrtChainShape::ReciprocalTrigProduct {
+            primary_fn,
+            companion_fn,
+        } => {
+            let primary = ctx.call_builtin(primary_fn, vec![sqrt_radicand]);
+            let companion = ctx.call_builtin(companion_fn, vec![sqrt_radicand]);
+            Some(cas_math::expr_nary::build_balanced_mul(
+                ctx,
+                &[primary, companion],
+            ))
         }
     };
     let derivative_core_is_one = cas_ast::views::as_rational_const(ctx, derivative_core, 8)
@@ -761,6 +897,7 @@ fn elementary_sqrt_polynomial_derivative_presentation(
             let denominator_square = ctx.add(Expr::Pow(denominator_arg, two));
             cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, denominator_square])
         }
+        SqrtChainShape::ReciprocalTrigProduct { .. } => sqrt_radicand,
         _ => sqrt_radicand,
     };
     let denominator = if denominator_coeff == BigRational::one() {
@@ -1560,10 +1697,30 @@ fn ln_sqrt_shift_derivative_presentation(
 pub(crate) fn try_post_calculus_presentation(
     ctx: &mut Context,
     source: ExprId,
-    _result: ExprId,
+    result: ExprId,
 ) -> Option<ExprId> {
     let call = try_extract_diff_call(ctx, source)?;
     let target = unwrap_internal_hold_for_calculus(ctx, call.target);
+    if try_extract_integrate_call(ctx, target).is_some() {
+        if let Some(compact) =
+            compact_sqrt_trig_log_derivative_integrand(ctx, result, &call.var_name)
+        {
+            return Some(compact);
+        }
+    }
+    if let Some((compact, _)) =
+        sqrt_trig_log_antiderivative_derivative_presentation(ctx, target, &call.var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) = supported_integral_derivative_presentation(ctx, target, &call.var_name) {
+        return Some(compact);
+    }
+    if let Some(compact) =
+        reciprocal_trig_affine_derivative_presentation(ctx, target, &call.var_name)
+    {
+        return Some(compact);
+    }
     if let Some(compact) = reciprocal_positive_shifted_sqrt_derivative(ctx, target, &call.var_name)
     {
         return Some(compact);
@@ -1572,7 +1729,7 @@ pub(crate) fn try_post_calculus_presentation(
         return Some(compact);
     }
     if let Some(compact) =
-        elementary_sqrt_polynomial_derivative_presentation(ctx, target, &call.var_name)
+        signed_elementary_sqrt_polynomial_derivative_presentation(ctx, target, &call.var_name)
     {
         return Some(compact);
     }
@@ -1684,6 +1841,91 @@ pub(crate) fn try_post_calculus_presentation(
     let denominator = ctx.add(Expr::Mul(denominator_head, radicand_plus_one));
     let compact = ctx.add(Expr::Div(numerator, denominator));
     Some(compact)
+}
+
+pub(crate) fn try_calculus_result_presentation(
+    ctx: &mut Context,
+    result: ExprId,
+) -> Option<ExprId> {
+    let result = unwrap_internal_hold_for_calculus(ctx, result);
+    compact_sqrt_trig_log_derivative_integrand(ctx, result, "x").or_else(|| {
+        has_compactable_ln_abs_cosh_sqrt(ctx, result, "x")
+            .then(|| compact_positive_cosh_log_abs_for_integration_presentation(ctx, result, "x"))
+    })
+}
+
+fn signed_elementary_sqrt_polynomial_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let Expr::Neg(inner) = ctx.get(target).clone() else {
+        return elementary_sqrt_polynomial_derivative_presentation(ctx, target, var_name);
+    };
+
+    let compact = elementary_sqrt_polynomial_derivative_presentation(ctx, inner, var_name)?;
+    Some(negate_calculus_presentation(ctx, compact))
+}
+
+fn negate_calculus_presentation(ctx: &mut Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => inner,
+        Expr::Div(numerator, denominator) => {
+            let numerator = match ctx.get(numerator).clone() {
+                Expr::Neg(inner) => inner,
+                _ => ctx.add(Expr::Neg(numerator)),
+            };
+            ctx.add(Expr::Div(numerator, denominator))
+        }
+        _ => ctx.add(Expr::Neg(expr)),
+    }
+}
+
+fn reciprocal_trig_affine_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let (arg, first, second, sign) = match ctx.get(target).clone() {
+        Expr::Function(fn_id, args) => {
+            if args.len() != 1 {
+                return None;
+            }
+            let (first, second, sign) = match ctx.builtin_of(fn_id) {
+                Some(BuiltinFn::Sec) => (BuiltinFn::Sec, BuiltinFn::Tan, BigRational::one()),
+                Some(BuiltinFn::Csc) => (BuiltinFn::Csc, BuiltinFn::Cot, -BigRational::one()),
+                _ => return None,
+            };
+            (args[0], first, second, sign)
+        }
+        Expr::Div(numerator, denominator)
+            if cas_ast::views::as_rational_const(ctx, numerator, 8)
+                .is_some_and(|value| value.is_one()) =>
+        {
+            let Expr::Function(den_fn_id, den_args) = ctx.get(denominator).clone() else {
+                return None;
+            };
+            if den_args.len() != 1 {
+                return None;
+            }
+            let (first, second, sign) = match ctx.builtin_of(den_fn_id) {
+                Some(BuiltinFn::Cos) => (BuiltinFn::Sec, BuiltinFn::Tan, BigRational::one()),
+                Some(BuiltinFn::Sin) => (BuiltinFn::Csc, BuiltinFn::Cot, -BigRational::one()),
+                _ => return None,
+            };
+            (den_args[0], first, second, sign)
+        }
+        _ => return None,
+    };
+    let slope = nonzero_affine_variable_derivative(ctx, arg, var_name)?;
+    let coeff = sign * slope;
+
+    let first_arg = ctx.call_builtin(first, vec![arg]);
+    let second_arg = ctx.call_builtin(second, vec![arg]);
+    let table_core = cas_math::expr_nary::build_balanced_mul(ctx, &[first_arg, second_arg]);
+    Some(signed_numerator_for_calculus_presentation(
+        ctx, coeff, table_core,
+    ))
 }
 
 fn squared_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
@@ -2245,6 +2487,11 @@ fn fold_numeric_mul_constants_for_hold(ctx: &mut Context, expr: ExprId) -> ExprI
                     let folded_num = fold_numeric_mul_constants_for_hold(ctx, scaled_num);
                     return ctx.add(Expr::Div(folded_num, den));
                 }
+                if scale == -BigRational::one() {
+                    if let Expr::Neg(inner) = ctx.get(non_numeric[0]).clone() {
+                        return inner;
+                    }
+                }
             }
 
             if !scale.is_one() || non_numeric.is_empty() {
@@ -2271,6 +2518,35 @@ fn fold_numeric_mul_constants_for_hold(ctx: &mut Context, expr: ExprId) -> ExprI
                 let scaled = ctx.add(Expr::Mul(reciprocal, num));
                 return fold_numeric_mul_constants_for_hold(ctx, scaled);
             }
+            if let Some(num_value) = rational_const_for_hold(ctx, num)
+                .filter(|_| matches!(ctx.get(den), Expr::Mul(_, _)))
+            {
+                let mut denominator_scale = BigRational::one();
+                let mut denominator_factors = Vec::new();
+                for factor in cas_math::expr_nary::mul_leaves(ctx, den) {
+                    if let Some(value) = rational_const_for_hold(ctx, factor) {
+                        denominator_scale *= value;
+                    } else {
+                        denominator_factors.push(factor);
+                    }
+                }
+                if !denominator_scale.is_zero()
+                    && !denominator_scale.is_one()
+                    && !denominator_factors.is_empty()
+                {
+                    let scaled_num_value = num_value / denominator_scale;
+                    if !scaled_num_value.is_integer() {
+                        return ctx.add(Expr::Div(num, den));
+                    }
+                    let num = ctx.add(Expr::Number(scaled_num_value));
+                    let den = if denominator_factors.len() == 1 {
+                        denominator_factors[0]
+                    } else {
+                        cas_math::expr_nary::build_balanced_mul(ctx, &denominator_factors)
+                    };
+                    return ctx.add(Expr::Div(num, den));
+                }
+            }
             ctx.add(Expr::Div(num, den))
         }
         Expr::Neg(inner) => {
@@ -2279,6 +2555,108 @@ fn fold_numeric_mul_constants_for_hold(ctx: &mut Context, expr: ExprId) -> ExprI
         }
         _ => expr,
     }
+}
+
+fn compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> ExprId {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            let left = compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(
+                ctx, left, var_name,
+            );
+            let right = compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(
+                ctx, right, var_name,
+            );
+            ctx.add(Expr::Add(left, right))
+        }
+        Expr::Sub(left, right) => {
+            let left = compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(
+                ctx, left, var_name,
+            );
+            let right = compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(
+                ctx, right, var_name,
+            );
+            ctx.add(Expr::Sub(left, right))
+        }
+        Expr::Mul(left, right) => {
+            let left = compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(
+                ctx, left, var_name,
+            );
+            let right = compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(
+                ctx, right, var_name,
+            );
+            ctx.add(Expr::Mul(left, right))
+        }
+        Expr::Div(num, den) => {
+            let num =
+                compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(ctx, num, var_name);
+            let den = compact_sqrt_hyperbolic_call_for_integration_presentation(ctx, den, var_name)
+                .unwrap_or_else(|| {
+                    compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(
+                        ctx, den, var_name,
+                    )
+                });
+            ctx.add(Expr::Div(num, den))
+        }
+        Expr::Neg(inner) => {
+            let inner = compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(
+                ctx, inner, var_name,
+            );
+            ctx.add(Expr::Neg(inner))
+        }
+        _ => compact_sqrt_hyperbolic_call_for_integration_presentation(ctx, expr, var_name)
+            .unwrap_or(expr),
+    }
+}
+
+fn has_compactable_sqrt_hyperbolic_reciprocal_result(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    if compact_sqrt_hyperbolic_call_for_integration_presentation(ctx, expr, var_name).is_some() {
+        return true;
+    }
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) | Expr::Sub(left, right) | Expr::Mul(left, right) => {
+            has_compactable_sqrt_hyperbolic_reciprocal_result(ctx, left, var_name)
+                || has_compactable_sqrt_hyperbolic_reciprocal_result(ctx, right, var_name)
+        }
+        Expr::Div(num, den) => {
+            has_compactable_sqrt_hyperbolic_reciprocal_result(ctx, num, var_name)
+                || has_compactable_sqrt_hyperbolic_reciprocal_result(ctx, den, var_name)
+        }
+        Expr::Neg(inner) => has_compactable_sqrt_hyperbolic_reciprocal_result(ctx, inner, var_name),
+        _ => false,
+    }
+}
+
+fn compact_sqrt_hyperbolic_call_for_integration_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !matches!(builtin, BuiltinFn::Sinh | BuiltinFn::Cosh) || args.len() != 1 {
+        return None;
+    }
+
+    let radicand = calculus_sqrt_like_radicand(ctx, args[0])?;
+    if !contains_named_var(ctx, radicand, var_name) {
+        return None;
+    }
+    polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
+
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    Some(ctx.call_builtin(builtin, vec![sqrt_radicand]))
 }
 
 fn compact_positive_cosh_log_abs_for_integration_presentation(
@@ -2337,6 +2715,107 @@ fn compact_ln_abs_cosh_sqrt(ctx: &mut Context, expr: ExprId, var_name: &str) -> 
         return None;
     }
 
+    let cosh_expr = match ctx.get(args[0]).clone() {
+        Expr::Function(abs_fn, abs_args)
+            if ctx.builtin_of(abs_fn) == Some(BuiltinFn::Abs) && abs_args.len() == 1 =>
+        {
+            abs_args[0]
+        }
+        Expr::Function(cosh_fn, cosh_args)
+            if ctx.builtin_of(cosh_fn) == Some(BuiltinFn::Cosh) && cosh_args.len() == 1 =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+    let Expr::Function(cosh_fn, cosh_args) = ctx.get(cosh_expr).clone() else {
+        return None;
+    };
+    if ctx.builtin_of(cosh_fn) != Some(BuiltinFn::Cosh) || cosh_args.len() != 1 {
+        return None;
+    }
+    let radicand = calculus_sqrt_like_radicand(ctx, cosh_args[0])?;
+    if !contains_named_var(ctx, radicand, var_name) {
+        return None;
+    }
+    polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
+
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let cosh_expr = ctx.call_builtin(BuiltinFn::Cosh, vec![sqrt_radicand]);
+    Some(ctx.call_builtin(BuiltinFn::Ln, vec![cosh_expr]))
+}
+
+fn has_compactable_ln_abs_cosh_sqrt(ctx: &mut Context, expr: ExprId, var_name: &str) -> bool {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    if compact_ln_abs_cosh_sqrt(ctx, expr, var_name).is_some() {
+        return true;
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) | Expr::Sub(left, right) | Expr::Mul(left, right) => {
+            has_compactable_ln_abs_cosh_sqrt(ctx, left, var_name)
+                || has_compactable_ln_abs_cosh_sqrt(ctx, right, var_name)
+        }
+        Expr::Div(num, den) => {
+            has_compactable_ln_abs_cosh_sqrt(ctx, num, var_name)
+                || has_compactable_ln_abs_cosh_sqrt(ctx, den, var_name)
+        }
+        Expr::Neg(inner) => has_compactable_ln_abs_cosh_sqrt(ctx, inner, var_name),
+        _ => false,
+    }
+}
+
+fn compact_sqrt_trig_log_abs_for_integration_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> ExprId {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    if let Some(compact) = compact_ln_abs_trig_sqrt(ctx, expr, var_name) {
+        return compact;
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            let left = compact_sqrt_trig_log_abs_for_integration_presentation(ctx, left, var_name);
+            let right =
+                compact_sqrt_trig_log_abs_for_integration_presentation(ctx, right, var_name);
+            ctx.add(Expr::Add(left, right))
+        }
+        Expr::Sub(left, right) => {
+            let left = compact_sqrt_trig_log_abs_for_integration_presentation(ctx, left, var_name);
+            let right =
+                compact_sqrt_trig_log_abs_for_integration_presentation(ctx, right, var_name);
+            ctx.add(Expr::Sub(left, right))
+        }
+        Expr::Mul(left, right) => {
+            let left = compact_sqrt_trig_log_abs_for_integration_presentation(ctx, left, var_name);
+            let right =
+                compact_sqrt_trig_log_abs_for_integration_presentation(ctx, right, var_name);
+            ctx.add(Expr::Mul(left, right))
+        }
+        Expr::Div(num, den) => {
+            let num = compact_sqrt_trig_log_abs_for_integration_presentation(ctx, num, var_name);
+            let den = compact_sqrt_trig_log_abs_for_integration_presentation(ctx, den, var_name);
+            ctx.add(Expr::Div(num, den))
+        }
+        Expr::Neg(inner) => {
+            let inner =
+                compact_sqrt_trig_log_abs_for_integration_presentation(ctx, inner, var_name);
+            ctx.add(Expr::Neg(inner))
+        }
+        _ => expr,
+    }
+}
+
+fn compact_ln_abs_trig_sqrt(ctx: &mut Context, expr: ExprId, var_name: &str) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if ctx.builtin_of(fn_id) != Some(BuiltinFn::Ln) || args.len() != 1 {
+        return None;
+    }
+
     let Expr::Function(abs_fn, abs_args) = ctx.get(args[0]).clone() else {
         return None;
     };
@@ -2344,19 +2823,118 @@ fn compact_ln_abs_cosh_sqrt(ctx: &mut Context, expr: ExprId, var_name: &str) -> 
         return None;
     }
 
-    let cosh_expr = abs_args[0];
-    let Expr::Function(cosh_fn, cosh_args) = ctx.get(cosh_expr).clone() else {
+    let Expr::Function(trig_fn, trig_args) = ctx.get(abs_args[0]).clone() else {
         return None;
     };
-    if ctx.builtin_of(cosh_fn) != Some(BuiltinFn::Cosh) || cosh_args.len() != 1 {
-        return None;
-    }
-    let radicand = extract_square_root_base(ctx, cosh_args[0])?;
-    if !contains_named_var(ctx, radicand, var_name) {
+    let trig_builtin = ctx.builtin_of(trig_fn)?;
+    if !matches!(trig_builtin, BuiltinFn::Sin | BuiltinFn::Cos) || trig_args.len() != 1 {
         return None;
     }
 
-    Some(ctx.call_builtin(BuiltinFn::Ln, vec![cosh_expr]))
+    let radicand = calculus_sqrt_like_radicand(ctx, trig_args[0])?;
+    if !contains_named_var(ctx, radicand, var_name) {
+        return None;
+    }
+    polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
+
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let trig_expr = ctx.call_builtin(trig_builtin, vec![sqrt_radicand]);
+    let abs_expr = ctx.call_builtin(BuiltinFn::Abs, vec![trig_expr]);
+    Some(ctx.call_builtin(BuiltinFn::Ln, vec![abs_expr]))
+}
+
+fn has_compactable_ln_abs_trig_sqrt(ctx: &mut Context, expr: ExprId, var_name: &str) -> bool {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    if compact_ln_abs_trig_sqrt(ctx, expr, var_name).is_some() {
+        return true;
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) | Expr::Sub(left, right) | Expr::Mul(left, right) => {
+            has_compactable_ln_abs_trig_sqrt(ctx, left, var_name)
+                || has_compactable_ln_abs_trig_sqrt(ctx, right, var_name)
+        }
+        Expr::Div(num, den) => {
+            has_compactable_ln_abs_trig_sqrt(ctx, num, var_name)
+                || has_compactable_ln_abs_trig_sqrt(ctx, den, var_name)
+        }
+        Expr::Neg(inner) => has_compactable_ln_abs_trig_sqrt(ctx, inner, var_name),
+        _ => false,
+    }
+}
+
+fn sqrt_trig_log_antiderivative_derivative_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let mut expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    let mut outer_sign = BigRational::one();
+    while let Expr::Neg(inner) = ctx.get(expr).clone() {
+        expr = inner;
+        outer_sign = -outer_sign;
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if ctx.builtin_of(fn_id) != Some(BuiltinFn::Ln) || args.len() != 1 {
+        return None;
+    }
+
+    let Expr::Function(abs_fn, abs_args) = ctx.get(args[0]).clone() else {
+        return None;
+    };
+    if ctx.builtin_of(abs_fn) != Some(BuiltinFn::Abs) || abs_args.len() != 1 {
+        return None;
+    }
+
+    let Expr::Function(trig_fn, trig_args) = ctx.get(abs_args[0]).clone() else {
+        return None;
+    };
+    if trig_args.len() != 1 {
+        return None;
+    }
+    let (trig_builtin, derivative_builtin, sign) = match ctx.builtin_of(trig_fn)? {
+        BuiltinFn::Cos => (BuiltinFn::Cos, BuiltinFn::Tan, -BigRational::one()),
+        BuiltinFn::Sin => (BuiltinFn::Sin, BuiltinFn::Cot, BigRational::one()),
+        _ => return None,
+    };
+
+    let radicand = calculus_sqrt_like_radicand(ctx, trig_args[0])?;
+    let chain_coeff =
+        outer_sign * sign * sqrt_chain_linear_derivative_coeff(ctx, radicand, var_name)?;
+    let compact =
+        build_compact_sqrt_trig_log_integrand(ctx, derivative_builtin, radicand, chain_coeff)?;
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let trig_display = ctx.call_builtin(trig_builtin, vec![sqrt_radicand]);
+    let conditions = vec![
+        crate::ImplicitCondition::Positive(radicand),
+        crate::ImplicitCondition::NonZero(trig_display),
+    ];
+
+    Some((compact, conditions))
+}
+
+fn calculus_sqrt_like_radicand(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    extract_square_root_base(ctx, expr).or_else(|| match ctx.get(expr) {
+        Expr::Pow(base, exp) if is_half_power_exponent(ctx, *exp) => Some(*base),
+        _ => None,
+    })
+}
+
+fn same_sqrt_like_argument(ctx: &mut Context, left: ExprId, right: ExprId) -> bool {
+    if compare_expr(ctx, left, right) == std::cmp::Ordering::Equal {
+        return true;
+    }
+    let Some(left_base) = calculus_sqrt_like_radicand(ctx, left) else {
+        return false;
+    };
+    let Some(right_base) = calculus_sqrt_like_radicand(ctx, right) else {
+        return false;
+    };
+    compare_expr(ctx, left_base, right_base) == std::cmp::Ordering::Equal
 }
 
 fn rational_const_for_hold(ctx: &Context, expr: ExprId) -> Option<BigRational> {
@@ -2370,6 +2948,43 @@ fn rational_const_for_hold(ctx: &Context, expr: ExprId) -> Option<BigRational> {
         }
         Expr::Neg(inner) => rational_const_for_hold(ctx, *inner).map(|value| -value),
         _ => None,
+    }
+}
+
+fn sqrt_reciprocal_trig_antiderivative_result(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Sec | BuiltinFn::Csc)) =>
+        {
+            let Some(radicand) = extract_square_root_base(ctx, args[0]) else {
+                return false;
+            };
+            polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name).is_some_and(
+                |poly| {
+                    let derivative = poly.derivative();
+                    !derivative.is_zero() && derivative.degree() == 0
+                },
+            )
+        }
+        Expr::Neg(inner) => sqrt_reciprocal_trig_antiderivative_result(ctx, inner, var_name),
+        Expr::Mul(_, _) => {
+            let factors = cas_math::expr_nary::mul_leaves(ctx, expr);
+            let mut non_numeric = Vec::new();
+            for factor in factors {
+                if rational_const_for_hold(ctx, factor).is_none() {
+                    non_numeric.push(factor);
+                }
+            }
+            non_numeric.len() == 1
+                && sqrt_reciprocal_trig_antiderivative_result(ctx, non_numeric[0], var_name)
+        }
+        _ => false,
     }
 }
 
@@ -2399,6 +3014,614 @@ fn inverse_sqrt_quotient_arg_result(ctx: &Context, expr: ExprId) -> bool {
     }
 }
 
+fn supported_integral_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let integrate_call = try_extract_integrate_call(ctx, target)?;
+    if integrate_call.var_name != var_name {
+        return None;
+    }
+    if cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_sqrt_var_reciprocal_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        integrate(ctx, integrate_call.target, &integrate_call.var_name)?;
+        return Some(integrate_call.target);
+    }
+
+    let supported_sqrt_chain_log_target =
+        cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_log_derivative_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        );
+    if supported_sqrt_chain_log_target {
+        integrate(ctx, integrate_call.target, &integrate_call.var_name)?;
+        return Some(integrate_call.target);
+    }
+
+    if cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_reciprocal_square_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        integrate(ctx, integrate_call.target, &integrate_call.var_name)?;
+        return Some(integrate_call.target);
+    }
+
+    if cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_reciprocal_derivative_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        integrate(ctx, integrate_call.target, &integrate_call.var_name)?;
+        return Some(integrate_call.target);
+    }
+
+    if let Some(compact) = compact_direct_sqrt_trig_log_derivative_integrand(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        integrate(ctx, integrate_call.target, &integrate_call.var_name)?;
+        return Some(compact);
+    }
+
+    if cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_log_derivative_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        integrate(ctx, integrate_call.target, &integrate_call.var_name)?;
+        if let Some(compact) = compact_sqrt_trig_log_derivative_integrand(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return Some(compact);
+        }
+    }
+
+    let supported_compact_target = sqrt_reciprocal_trig_product_integrand_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    );
+    if supported_compact_target {
+        return Some(integrate_call.target);
+    }
+
+    None
+}
+
+fn supported_integral_diff_shortcut_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let integrate_call = try_extract_integrate_call(ctx, target)?;
+    if integrate_call.var_name != var_name {
+        return None;
+    }
+
+    let compact = supported_integral_derivative_presentation(ctx, target, var_name)?;
+    let required_conditions =
+        integrate_required_nonzero_conditions(ctx, integrate_call.target, &integrate_call.var_name)
+            .into_iter()
+            .map(crate::ImplicitCondition::NonZero)
+            .chain(
+                integrate_required_positive_conditions(
+                    ctx,
+                    integrate_call.target,
+                    &integrate_call.var_name,
+                )
+                .into_iter()
+                .map(crate::ImplicitCondition::Positive),
+            )
+            .collect();
+
+    Some((cas_ast::hold::wrap_hold(ctx, compact), required_conditions))
+}
+
+fn compact_direct_sqrt_trig_log_derivative_integrand(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let (numerator_factors, denominator_factors) = match ctx.get(target).clone() {
+        Expr::Neg(inner) => {
+            let compact = compact_direct_sqrt_trig_log_derivative_integrand(ctx, inner, var_name)?;
+            return Some(negate_calculus_presentation(ctx, compact));
+        }
+        Expr::Div(numerator, denominator) => (
+            cas_math::expr_nary::mul_leaves(ctx, numerator)
+                .into_iter()
+                .collect(),
+            cas_math::expr_nary::mul_leaves(ctx, denominator)
+                .into_iter()
+                .collect(),
+        ),
+        Expr::Mul(_, _) => split_mul_div_factor_parts(ctx, target)?,
+        _ => return None,
+    };
+    let (trig_index, trig_builtin, arg) =
+        numerator_factors
+            .iter()
+            .enumerate()
+            .find_map(|(idx, factor)| match ctx.get(*factor) {
+                Expr::Function(fn_id, args)
+                    if args.len() == 1
+                        && matches!(
+                            ctx.builtin_of(*fn_id),
+                            Some(BuiltinFn::Tan | BuiltinFn::Cot)
+                        ) =>
+                {
+                    Some((idx, ctx.builtin_of(*fn_id)?, args[0]))
+                }
+                _ => None,
+            })?;
+    let radicand = calculus_sqrt_like_radicand(ctx, arg)?;
+    let chain_coeff = sqrt_chain_linear_derivative_coeff(ctx, radicand, var_name)?;
+    let remaining_numerator: Vec<_> = numerator_factors
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
+        .collect();
+    let observed_coeff = sqrt_chain_factor_coeff_over_sqrt(
+        ctx,
+        &remaining_numerator,
+        &denominator_factors,
+        radicand,
+        var_name,
+    )?;
+    if observed_coeff != chain_coeff && observed_coeff != -chain_coeff {
+        return None;
+    }
+
+    build_compact_sqrt_trig_log_integrand(ctx, trig_builtin, radicand, observed_coeff)
+}
+
+fn split_mul_div_factor_parts(ctx: &Context, expr: ExprId) -> Option<(Vec<ExprId>, Vec<ExprId>)> {
+    let factors = cas_math::expr_nary::mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut numerator_factors = Vec::new();
+    let mut denominator_factors = Vec::new();
+    for factor in factors {
+        match ctx.get(factor) {
+            Expr::Div(num, den) => {
+                numerator_factors.extend(cas_math::expr_nary::mul_leaves(ctx, *num));
+                denominator_factors.extend(cas_math::expr_nary::mul_leaves(ctx, *den));
+            }
+            _ => numerator_factors.push(factor),
+        }
+    }
+
+    (!denominator_factors.is_empty()).then_some((numerator_factors, denominator_factors))
+}
+
+fn compact_sqrt_trig_log_derivative_integrand(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let (numerator_factors, denominator_factors) = match ctx.get(target).clone() {
+        Expr::Neg(inner) => {
+            let compact = compact_sqrt_trig_log_derivative_integrand(ctx, inner, var_name)?;
+            return Some(negate_calculus_presentation(ctx, compact));
+        }
+        Expr::Div(numerator, denominator) => (
+            cas_math::expr_nary::mul_leaves(ctx, numerator)
+                .into_iter()
+                .collect(),
+            cas_math::expr_nary::mul_leaves(ctx, denominator)
+                .into_iter()
+                .collect(),
+        ),
+        Expr::Mul(_, _) => split_mul_div_factor_parts(ctx, target)?,
+        _ => return None,
+    };
+    let (den_index, den_builtin, arg) =
+        denominator_factors
+            .iter()
+            .enumerate()
+            .find_map(|(idx, factor)| match ctx.get(*factor) {
+                Expr::Function(fn_id, args)
+                    if args.len() == 1
+                        && matches!(
+                            ctx.builtin_of(*fn_id),
+                            Some(BuiltinFn::Cos | BuiltinFn::Sin)
+                        ) =>
+                {
+                    Some((idx, ctx.builtin_of(*fn_id)?, args[0]))
+                }
+                _ => None,
+            })?;
+    let numerator_builtin = match den_builtin {
+        BuiltinFn::Cos => BuiltinFn::Sin,
+        BuiltinFn::Sin => BuiltinFn::Cos,
+        _ => return None,
+    };
+    let trig_builtin = match den_builtin {
+        BuiltinFn::Cos => BuiltinFn::Tan,
+        BuiltinFn::Sin => BuiltinFn::Cot,
+        _ => return None,
+    };
+    let (num_index, _) = numerator_factors.iter().enumerate().find(|(_, factor)| {
+        let Expr::Function(fn_id, args) = ctx.get(**factor).clone() else {
+            return false;
+        };
+        args.len() == 1
+            && ctx.builtin_of(fn_id) == Some(numerator_builtin)
+            && same_sqrt_like_argument(ctx, args[0], arg)
+    })?;
+    let radicand = extract_square_root_base(ctx, arg)?;
+    let chain_coeff = sqrt_chain_linear_derivative_coeff(ctx, radicand, var_name)?;
+
+    let remaining_numerator: Vec<_> = numerator_factors
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, factor)| (idx != num_index).then_some(*factor))
+        .collect();
+    let remaining_denominator: Vec<_> = denominator_factors
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, factor)| (idx != den_index).then_some(*factor))
+        .collect();
+    let observed_coeff = sqrt_chain_factor_coeff_over_sqrt(
+        ctx,
+        &remaining_numerator,
+        &remaining_denominator,
+        radicand,
+        var_name,
+    )?;
+    if observed_coeff != chain_coeff && observed_coeff != -chain_coeff {
+        return None;
+    }
+
+    build_compact_sqrt_trig_log_integrand(ctx, trig_builtin, radicand, observed_coeff)
+}
+
+fn sqrt_chain_linear_derivative_coeff(
+    ctx: &mut Context,
+    radicand: ExprId,
+    var_name: &str,
+) -> Option<BigRational> {
+    let radicand_poly = polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
+    let derivative = radicand_poly.derivative();
+    if derivative.is_zero() || derivative.degree() != 0 {
+        return None;
+    }
+    let derivative_expr = derivative.to_expr(ctx);
+    let derivative_coeff = cas_ast::views::as_rational_const(ctx, derivative_expr, 8)?;
+    Some(derivative_coeff / BigRational::from_integer(2.into()))
+}
+
+fn build_compact_sqrt_trig_log_integrand(
+    ctx: &mut Context,
+    trig_builtin: BuiltinFn,
+    radicand: ExprId,
+    chain_coeff: BigRational,
+) -> Option<ExprId> {
+    if !matches!(trig_builtin, BuiltinFn::Tan | BuiltinFn::Cot) {
+        return None;
+    }
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let trig = ctx.call_builtin(trig_builtin, vec![sqrt_radicand]);
+    let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&chain_coeff)?;
+    let compact_numerator = scale_expr_for_calculus_presentation(ctx, numerator_coeff, trig);
+    let denominator = if denominator_coeff == BigRational::one() {
+        sqrt_radicand
+    } else {
+        let denominator_coeff = rational_const_for_calculus_presentation(ctx, denominator_coeff);
+        cas_math::expr_nary::build_balanced_mul(ctx, &[denominator_coeff, sqrt_radicand])
+    };
+    Some(ctx.add(Expr::Div(compact_numerator, denominator)))
+}
+
+fn sqrt_chain_factor_coeff_over_sqrt(
+    ctx: &mut Context,
+    numerator_factors: &[ExprId],
+    denominator_factors: &[ExprId],
+    radicand: ExprId,
+    var_name: &str,
+) -> Option<BigRational> {
+    if let Some((idx, _)) = numerator_factors
+        .iter()
+        .enumerate()
+        .find(|(_, factor)| reciprocal_sqrt_factor_matches(ctx, **factor, radicand))
+    {
+        let numerator_rest: Vec<_> = numerator_factors
+            .iter()
+            .enumerate()
+            .filter_map(|(factor_idx, factor)| (factor_idx != idx).then_some(*factor))
+            .collect();
+        return rational_factor_quotient(ctx, &numerator_rest, denominator_factors);
+    }
+
+    if let Some((idx, _)) = denominator_factors
+        .iter()
+        .enumerate()
+        .find(|(_, factor)| sqrt_factor_matches(ctx, **factor, radicand))
+    {
+        let denominator_rest: Vec<_> = denominator_factors
+            .iter()
+            .enumerate()
+            .filter_map(|(factor_idx, factor)| (factor_idx != idx).then_some(*factor))
+            .collect();
+        return rational_factor_quotient(ctx, numerator_factors, &denominator_rest);
+    }
+
+    let (sqrt_idx, _) = numerator_factors
+        .iter()
+        .enumerate()
+        .find(|(_, factor)| sqrt_factor_matches(ctx, **factor, radicand))?;
+    let (radicand_idx, denominator_radicand_scale) = denominator_factors
+        .iter()
+        .enumerate()
+        .find_map(|(idx, factor)| {
+            denominator_factor_radicand_scale(ctx, *factor, radicand, var_name)
+                .map(|scale| (idx, scale))
+        })?;
+    let numerator_rest: Vec<_> = numerator_factors
+        .iter()
+        .enumerate()
+        .filter_map(|(factor_idx, factor)| (factor_idx != sqrt_idx).then_some(*factor))
+        .collect();
+    let denominator_rest: Vec<_> = denominator_factors
+        .iter()
+        .enumerate()
+        .filter_map(|(factor_idx, factor)| (factor_idx != radicand_idx).then_some(*factor))
+        .collect();
+    rational_factor_quotient(ctx, &numerator_rest, &denominator_rest)
+        .map(|coeff| coeff / denominator_radicand_scale)
+}
+
+fn sqrt_factor_matches(ctx: &mut Context, factor: ExprId, radicand: ExprId) -> bool {
+    calculus_sqrt_like_radicand(ctx, factor)
+        .is_some_and(|base| compare_expr(ctx, base, radicand) == std::cmp::Ordering::Equal)
+}
+
+fn denominator_factor_radicand_scale(
+    ctx: &Context,
+    factor: ExprId,
+    radicand: ExprId,
+    var_name: &str,
+) -> Option<BigRational> {
+    if compare_expr(ctx, factor, radicand) == std::cmp::Ordering::Equal {
+        return Some(BigRational::one());
+    }
+
+    let factor_poly = Polynomial::from_expr(ctx, factor, var_name).ok()?;
+    let radicand_poly = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
+    polynomial_scale(&factor_poly, &radicand_poly)
+}
+
+fn polynomial_scale(factor: &Polynomial, base: &Polynomial) -> Option<BigRational> {
+    if base.is_zero() {
+        return None;
+    }
+
+    let len = factor.coeffs.len().max(base.coeffs.len());
+    let mut scale = None;
+    for idx in 0..len {
+        let factor_coeff = factor
+            .coeffs
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        let base_coeff = base
+            .coeffs
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if base_coeff.is_zero() {
+            if !factor_coeff.is_zero() {
+                return None;
+            }
+            continue;
+        }
+
+        let candidate = factor_coeff / base_coeff;
+        if candidate.is_zero() {
+            return None;
+        }
+        match &scale {
+            Some(existing) if *existing != candidate => return None,
+            Some(_) => {}
+            None => scale = Some(candidate),
+        }
+    }
+
+    scale
+}
+
+fn reciprocal_sqrt_factor_matches(ctx: &mut Context, factor: ExprId, radicand: ExprId) -> bool {
+    matches!(
+        ctx.get(factor),
+        Expr::Pow(base, exp)
+            if compare_expr(ctx, *base, radicand) == std::cmp::Ordering::Equal
+                && cas_ast::views::as_rational_const(ctx, *exp, 8)
+                    == Some(BigRational::new((-1).into(), 2.into()))
+    )
+}
+
+fn rational_factor_quotient(
+    ctx: &Context,
+    numerator_factors: &[ExprId],
+    denominator_factors: &[ExprId],
+) -> Option<BigRational> {
+    let numerator = rational_factor_product(ctx, numerator_factors)?;
+    let denominator = rational_factor_product(ctx, denominator_factors)?;
+    (!denominator.is_zero()).then_some(numerator / denominator)
+}
+
+fn rational_factor_product(ctx: &Context, factors: &[ExprId]) -> Option<BigRational> {
+    factors.iter().try_fold(BigRational::one(), |acc, factor| {
+        cas_ast::views::as_rational_const(ctx, *factor, 8).map(|value| acc * value)
+    })
+}
+
+fn sqrt_reciprocal_trig_product_integrand_target(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let mut primary_radicands = Vec::new();
+    let mut companion_radicands = Vec::new();
+    let mut denominator_radicands = Vec::new();
+    collect_sqrt_reciprocal_trig_product_signal(
+        ctx,
+        target,
+        false,
+        &mut primary_radicands,
+        &mut companion_radicands,
+        &mut denominator_radicands,
+    );
+
+    primary_radicands.iter().any(|primary| {
+        let same_companion = companion_radicands
+            .iter()
+            .any(|companion| compare_expr(ctx, *primary, *companion) == std::cmp::Ordering::Equal);
+        let same_denominator = denominator_radicands.iter().any(|denominator| {
+            compare_expr(ctx, *primary, *denominator) == std::cmp::Ordering::Equal
+        });
+        same_companion
+            && same_denominator
+            && polynomial_radicand_for_calculus_presentation(ctx, *primary, var_name).is_some_and(
+                |poly| {
+                    let derivative = poly.derivative();
+                    !derivative.is_zero() && derivative.degree() == 0
+                },
+            )
+    })
+}
+
+fn collect_sqrt_reciprocal_trig_product_signal(
+    ctx: &mut Context,
+    root: ExprId,
+    in_denominator: bool,
+    primary_radicands: &mut Vec<ExprId>,
+    companion_radicands: &mut Vec<ExprId>,
+    denominator_radicands: &mut Vec<ExprId>,
+) {
+    if in_denominator {
+        if let Some(radicand) = extract_square_root_base(ctx, root) {
+            denominator_radicands.push(radicand);
+        }
+    }
+
+    match ctx.get(root).clone() {
+        Expr::Function(fn_id, args) => {
+            if args.len() == 1 {
+                if let Some(radicand) = extract_square_root_base(ctx, args[0]) {
+                    match ctx.builtin_of(fn_id) {
+                        Some(BuiltinFn::Sec | BuiltinFn::Csc) => {
+                            primary_radicands.push(radicand);
+                        }
+                        Some(BuiltinFn::Tan | BuiltinFn::Cot) => {
+                            companion_radicands.push(radicand);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            for arg in args {
+                collect_sqrt_reciprocal_trig_product_signal(
+                    ctx,
+                    arg,
+                    in_denominator,
+                    primary_radicands,
+                    companion_radicands,
+                    denominator_radicands,
+                );
+            }
+        }
+        Expr::Div(numerator, denominator) => {
+            collect_sqrt_reciprocal_trig_product_signal(
+                ctx,
+                numerator,
+                in_denominator,
+                primary_radicands,
+                companion_radicands,
+                denominator_radicands,
+            );
+            collect_sqrt_reciprocal_trig_product_signal(
+                ctx,
+                denominator,
+                true,
+                primary_radicands,
+                companion_radicands,
+                denominator_radicands,
+            );
+        }
+        Expr::Add(left, right) | Expr::Sub(left, right) | Expr::Mul(left, right) => {
+            collect_sqrt_reciprocal_trig_product_signal(
+                ctx,
+                left,
+                in_denominator,
+                primary_radicands,
+                companion_radicands,
+                denominator_radicands,
+            );
+            collect_sqrt_reciprocal_trig_product_signal(
+                ctx,
+                right,
+                in_denominator,
+                primary_radicands,
+                companion_radicands,
+                denominator_radicands,
+            );
+        }
+        Expr::Pow(base, exp) => {
+            collect_sqrt_reciprocal_trig_product_signal(
+                ctx,
+                base,
+                in_denominator,
+                primary_radicands,
+                companion_radicands,
+                denominator_radicands,
+            );
+            collect_sqrt_reciprocal_trig_product_signal(
+                ctx,
+                exp,
+                in_denominator,
+                primary_radicands,
+                companion_radicands,
+                denominator_radicands,
+            );
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            collect_sqrt_reciprocal_trig_product_signal(
+                ctx,
+                inner,
+                in_denominator,
+                primary_radicands,
+                companion_radicands,
+                denominator_radicands,
+            );
+        }
+        Expr::Matrix { data, .. } => {
+            for item in data {
+                collect_sqrt_reciprocal_trig_product_signal(
+                    ctx,
+                    item,
+                    in_denominator,
+                    primary_radicands,
+                    companion_radicands,
+                    denominator_radicands,
+                );
+            }
+        }
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+    }
+}
+
 define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
     let call = try_extract_integrate_call(ctx, expr)?;
     let required_nonzero = integrate_required_nonzero_conditions(ctx, call.target, &call.var_name);
@@ -2410,6 +3633,11 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
         &call.var_name,
     );
     let preserve_compact_arctan_reciprocal_affine = cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_reciprocal_affine_variable_target(
+        ctx,
+        call.target,
+        &call.var_name,
+    );
+    let preserve_compact_arctan_sqrt_reciprocal = cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_sqrt_var_reciprocal_target(
         ctx,
         call.target,
         &call.var_name,
@@ -2447,6 +3675,8 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
         call.target,
         &call.var_name,
     );
+    let preserve_compact_sqrt_reciprocal_trig_product =
+        sqrt_reciprocal_trig_product_integrand_target(ctx, call.target, &call.var_name);
     let preserve_compact_sqrt_trig_reciprocal = cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_reciprocal_derivative_target(
         ctx,
         call.target,
@@ -2484,14 +3714,22 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
         required_positive.extend(collect_atanh_open_interval_conditions(ctx, result));
     }
     let preserve_compact_inverse_sqrt_arg = inverse_sqrt_quotient_arg_result(ctx, result);
+    let preserve_compact_sqrt_reciprocal_trig_result =
+        sqrt_reciprocal_trig_antiderivative_result(ctx, result, &call.var_name);
+    let preserve_compact_sqrt_trig_log_result =
+        has_compactable_ln_abs_trig_sqrt(ctx, result, &call.var_name);
+    let preserve_compact_sqrt_hyperbolic_reciprocal_result =
+        has_compactable_sqrt_hyperbolic_reciprocal_result(ctx, result, &call.var_name);
     if preserve_compact_reciprocal
         || preserve_compact_arctan_reciprocal_affine
+        || preserve_compact_arctan_sqrt_reciprocal
         || preserve_compact_atanh_polynomial
         || preserve_compact_asinh_affine
         || preserve_compact_atanh_affine
         || preserve_compact_acosh_affine
         || preserve_compact_bounded_inverse_trig
         || preserve_compact_trig_polynomial
+        || preserve_compact_sqrt_reciprocal_trig_product
         || preserve_compact_sqrt_trig_reciprocal
         || preserve_compact_sqrt_trig_log
         || preserve_compact_sqrt_hyperbolic_log
@@ -2499,9 +3737,25 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
         || preserve_compact_sqrt_hyperbolic_reciprocal_derivative
         || preserve_compact_log_cube_product
         || preserve_compact_inverse_sqrt_arg
+        || preserve_compact_sqrt_reciprocal_trig_result
+        || preserve_compact_sqrt_trig_log_result
+        || preserve_compact_sqrt_hyperbolic_reciprocal_result
     {
         if preserve_compact_sqrt_hyperbolic_log {
             result = compact_positive_cosh_log_abs_for_integration_presentation(
+                ctx,
+                result,
+                &call.var_name,
+            );
+        }
+        if preserve_compact_sqrt_trig_log || preserve_compact_sqrt_trig_log_result {
+            result =
+                compact_sqrt_trig_log_abs_for_integration_presentation(ctx, result, &call.var_name);
+        }
+        if preserve_compact_sqrt_hyperbolic_reciprocal_derivative
+            || preserve_compact_sqrt_hyperbolic_reciprocal_result
+        {
+            result = compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(
                 ctx,
                 result,
                 &call.var_name,
@@ -2532,7 +3786,12 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
     let call = try_extract_diff_call(ctx, expr)?;
     let target = unwrap_internal_hold_for_calculus(ctx, call.target);
     let mut shortcut_required_conditions = Vec::new();
-    let result = reciprocal_positive_shifted_sqrt_derivative(ctx, target, &call.var_name)
+    let result = supported_integral_diff_shortcut_presentation(ctx, target, &call.var_name)
+        .map(|(result, required_conditions)| {
+            shortcut_required_conditions.extend(required_conditions);
+            result
+        })
+        .or_else(|| reciprocal_positive_shifted_sqrt_derivative(ctx, target, &call.var_name))
         .or_else(|| {
             bounded_inverse_trig_surd_quotient_compact_derivative(ctx, target, &call.var_name)
         })
@@ -2540,6 +3799,12 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
         .or_else(|| arctan_surd_quotient_scaled_compact_derivative(ctx, target, &call.var_name))
         .or_else(|| arctan_affine_by_parts_compact_derivative(ctx, target, &call.var_name))
         .or_else(|| atanh_surd_quotient_compact_derivative(ctx, target, &call.var_name))
+        .or_else(|| {
+            let (result, required_conditions) =
+                sqrt_trig_log_antiderivative_derivative_presentation(ctx, target, &call.var_name)?;
+            shortcut_required_conditions.extend(required_conditions);
+            Some(result)
+        })
         .or_else(|| {
             arctan_sqrt_constant_over_polynomial_presentation(
                 ctx,
@@ -2557,6 +3822,11 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
         .or_else(|| differentiate(ctx, target, &call.var_name))?;
     let required_conditions = atanh_diff_required_conditions(ctx, target)
         .into_iter()
+        .chain(reciprocal_trig_diff_required_conditions(
+            ctx,
+            target,
+            &call.var_name,
+        ))
         .chain(shortcut_required_conditions);
     let desc = render_diff_desc_with(&call, |id| {
         format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
@@ -2604,6 +3874,26 @@ mod compact_hold_tests {
     }
 
     #[test]
+    fn fold_numeric_mul_constants_for_hold_cancels_denominator_scale() {
+        let mut ctx = Context::new();
+        let expr = parse("-1*3/(3*cosh((3*x+1)^(1/2)))", &mut ctx).unwrap();
+        let compact =
+            compact_sqrt_hyperbolic_reciprocal_for_integration_presentation(&mut ctx, expr, "x");
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(rendered(&ctx, folded), "-1 / cosh(sqrt(3 * x + 1))");
+    }
+
+    #[test]
+    fn fold_numeric_mul_constants_for_hold_keeps_fractional_denominator_scale() {
+        let mut ctx = Context::new();
+        let expr = parse("-1/(3*(x^2+x-1))", &mut ctx).unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, expr);
+
+        assert_eq!(rendered(&ctx, folded), "-1 / (3 * (x^2 + x - 1))");
+    }
+
+    #[test]
     fn inverse_sqrt_quotient_arg_result_detects_compact_inverse_sqrt_substitution() {
         let mut ctx = Context::new();
         let expr = parse("arcsin(x^2/sqrt(3))", &mut ctx).unwrap();
@@ -2627,5 +3917,130 @@ mod compact_hold_tests {
             arctan_surd_quotient_scaled_compact_derivative(&mut ctx, expr, "x").unwrap();
 
         assert_eq!(rendered(&ctx, derivative), "2 / ((2 * x + 2)^2 + 6)");
+    }
+
+    #[test]
+    fn compact_direct_sqrt_trig_log_derivative_integrand_preserves_tangent_form() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(sqrt(x))/(2*sqrt(x))", &mut ctx).unwrap();
+        let compact =
+            compact_direct_sqrt_trig_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "tan(sqrt(x)) / (2 * sqrt(x))");
+    }
+
+    #[test]
+    fn compact_direct_sqrt_trig_log_derivative_integrand_accepts_mul_div_chain() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1))", &mut ctx).unwrap();
+        let compact =
+            compact_direct_sqrt_trig_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
+        );
+    }
+
+    #[test]
+    fn compact_sqrt_trig_log_derivative_integrand_preserves_negative_tangent_form() {
+        let mut ctx = Context::new();
+        let inner = parse("sin(sqrt(x))*x^(-1/2)/(2*cos(sqrt(x)))", &mut ctx).unwrap();
+        let expr = ctx.add(Expr::Neg(inner));
+        let compact = compact_sqrt_trig_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact), "-tan(sqrt(x)) / (2 * sqrt(x))");
+    }
+
+    #[test]
+    fn compact_sqrt_trig_log_derivative_integrand_accepts_half_power_argument() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((3*x+1)^(-1/2) * sin((3*x+1)^(1/2)) * 3)/(2 * cos((3*x+1)^(1/2)))",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact = compact_sqrt_trig_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
+        );
+    }
+
+    #[test]
+    fn compact_sqrt_trig_log_derivative_integrand_accepts_scaled_radicand_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((3*x+1)^(1/2) * sin((3*x+1)^(1/2)) * 3)/(cos((3*x+1)^(1/2)) * (6*x+2))",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact = compact_sqrt_trig_log_derivative_integrand(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
+        );
+    }
+
+    #[test]
+    fn sqrt_trig_log_antiderivative_derivative_presentation_compacts_shifted_chain() {
+        let mut ctx = Context::new();
+        let expr = parse("-ln(abs(cos(sqrt(3*x+1))))", &mut ctx).unwrap();
+        let (compact, conditions) =
+            sqrt_trig_log_antiderivative_derivative_presentation(&mut ctx, expr, "x").unwrap();
+        let rendered_conditions: Vec<_> = conditions
+            .iter()
+            .map(|condition| match condition {
+                crate::ImplicitCondition::Positive(expr) => {
+                    format!("{} > 0", rendered(&ctx, *expr))
+                }
+                crate::ImplicitCondition::NonZero(expr) => {
+                    format!("{} != 0", rendered(&ctx, *expr))
+                }
+                other => format!("{other:?}"),
+            })
+            .collect();
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
+        );
+        assert_eq!(
+            rendered_conditions,
+            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) != 0"]
+        );
+    }
+
+    #[test]
+    fn compact_positive_cosh_log_presentation_accepts_half_power_argument() {
+        let mut ctx = Context::new();
+        let expr = parse("ln(cosh((3*x+1)^(1/2)))", &mut ctx).unwrap();
+        let compact =
+            compact_positive_cosh_log_abs_for_integration_presentation(&mut ctx, expr, "x");
+
+        assert_eq!(rendered(&ctx, compact), "ln(cosh(sqrt(3 * x + 1)))");
+    }
+
+    #[test]
+    fn post_calculus_presentation_compacts_nested_integral_source() {
+        let mut ctx = Context::new();
+        let source = parse(
+            "diff(integrate(tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x), x)",
+            &mut ctx,
+        )
+        .unwrap();
+        let result = parse(
+            "((3*x+1)^(1/2) * sin((3*x+1)^(1/2)) * 3)/(cos((3*x+1)^(1/2)) * (6*x+2))",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact = try_post_calculus_presentation(&mut ctx, source, result).unwrap();
+
+        assert_eq!(
+            rendered(&ctx, compact),
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))"
+        );
     }
 }

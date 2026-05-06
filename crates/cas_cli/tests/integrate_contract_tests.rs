@@ -3,7 +3,9 @@ use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use cas_session::SessionState;
 use cas_solver::api::render_conditions_normalized;
-use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult, Simplifier, StepsMode};
+use cas_solver::runtime::{
+    Engine, EvalAction, EvalRequest, EvalResult, ImportanceLevel, Simplifier, StepsMode,
+};
 
 fn render_expr(ctx: &Context, id: ExprId) -> String {
     format!("{}", DisplayExpr { context: ctx, id })
@@ -170,6 +172,37 @@ fn evaluated_integral_step_rules(input: &str) -> Vec<String> {
         .steps
         .iter()
         .map(|step| step.rule_name.to_string())
+        .collect()
+}
+
+fn evaluated_expr_step_summaries(input: &str) -> Vec<(String, String, ImportanceLevel)> {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse input");
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval failed");
+
+    output
+        .steps
+        .iter()
+        .map(|step| {
+            (
+                step.description.to_string(),
+                step.rule_name.to_string(),
+                step.get_importance(),
+            )
+        })
         .collect()
 }
 
@@ -1116,13 +1149,21 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
     let input = "integrate(1/(2*sqrt(x)*(x+1)), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "arctan(x^(1/2))");
+    assert_eq!(result, "arctan(sqrt(x))");
     assert_eq!(
         required,
         vec!["x > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
+    let (nested_derivative, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(1/(2*sqrt(x)*(x+1)), x), x)");
+    assert_eq!(nested_derivative, "1 / (2 * sqrt(x) * (x + 1))");
+    assert_eq!(
+        nested_required,
+        vec!["x > 0".to_string()],
+        "nested arctan sqrt derivative should preserve the positive radicand condition"
+    );
     let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
         "diff(integrate(1/(2*sqrt(x)*(x+1)), x), x) - 1/(2*sqrt(x)*(x+1))",
     );
@@ -1135,7 +1176,7 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
 
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(1/(sqrt(x)*(x+1)), x)");
-    assert_eq!(result, "2 * arctan(x^(1/2))");
+    assert_eq!(result, "2 * arctan(sqrt(x))");
     assert_eq!(
         required,
         vec!["x > 0".to_string()],
@@ -1145,13 +1186,21 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
 
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(1/(sqrt(x)*(4*x+1)), x)");
-    assert_eq!(result, "arctan(2 * x^(1/2))");
+    assert_eq!(result, "arctan(2 * sqrt(x))");
     assert_eq!(
         required,
         vec!["x > 0".to_string()],
         "unexpected scaled linear required_conditions: {required:?}"
     );
     assert_antiderivative_verifies("integrate(1/(sqrt(x)*(4*x+1)), x)");
+    let (nested_derivative, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(1/(sqrt(x)*(4*x+1)), x), x)");
+    assert_eq!(nested_derivative, "1 / (sqrt(x) * (4 * x + 1))");
+    assert_eq!(
+        nested_required,
+        vec!["x > 0".to_string()],
+        "scaled linear nested derivative should preserve the positive radicand condition"
+    );
     let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
         "diff(integrate(1/(sqrt(x)*(4*x+1)), x), x) - 1/(sqrt(x)*(4*x+1))",
     );
@@ -1164,7 +1213,7 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
 
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(1/(sqrt(x)*(x+4)), x)");
-    assert_eq!(result, "arctan(1/2 * x^(1/2))");
+    assert_eq!(result, "arctan(1/2 * sqrt(x))");
     assert_eq!(
         required,
         vec!["x > 0".to_string()],
@@ -3161,21 +3210,72 @@ fn integrate_contract_sqrt_chain_secant_cosecant_products_verify() {
         (
             "integrate(sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)",
             "sec(sqrt(x))",
+            "tan(sqrt(x)) * sec(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0", "cos(sqrt(x)) ≠ 0"],
+        ),
+        (
+            "integrate(-sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)",
+            "-sec(sqrt(x))",
+            "-tan(sqrt(x)) * sec(sqrt(x)) / (2 * sqrt(x))",
             vec!["x > 0", "cos(sqrt(x)) ≠ 0"],
         ),
         (
             "integrate(csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x)",
             "-csc(sqrt(x))",
+            "csc(sqrt(x)) * cot(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0", "sin(sqrt(x)) ≠ 0"],
+        ),
+        (
+            "integrate(-csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x)",
+            "csc(sqrt(x))",
+            "-cot(sqrt(x)) * csc(sqrt(x)) / (2 * sqrt(x))",
             vec!["x > 0", "sin(sqrt(x)) ≠ 0"],
         ),
         (
             "integrate(sec(sqrt(2*x))*tan(sqrt(2*x))/sqrt(2*x), x)",
             "sec(sqrt(2 * x))",
+            "tan(sqrt(2 * x)) * sec(sqrt(2 * x)) / sqrt(2 * x)",
             vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+        ),
+        (
+            "integrate(csc(sqrt(2*x))*cot(sqrt(2*x))/sqrt(2*x), x)",
+            "-csc(sqrt(2 * x))",
+            "csc(sqrt(2 * x)) * cot(sqrt(2 * x)) / sqrt(2 * x)",
+            vec!["x > 0", "sin(sqrt(2 * x)) ≠ 0"],
+        ),
+        (
+            "integrate(-sec(sqrt(2*x))*tan(sqrt(2*x))/sqrt(2*x), x)",
+            "-sec(sqrt(2 * x))",
+            "-tan(sqrt(2 * x)) * sec(sqrt(2 * x)) / sqrt(2 * x)",
+            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+        ),
+        (
+            "integrate(-csc(sqrt(2*x))*cot(sqrt(2*x))/sqrt(2*x), x)",
+            "csc(sqrt(2 * x))",
+            "-cot(sqrt(2 * x)) * csc(sqrt(2 * x)) / sqrt(2 * x)",
+            vec!["x > 0", "sin(sqrt(2 * x)) ≠ 0"],
+        ),
+        (
+            "integrate(sec(sqrt(3*x+1))*tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+            "sec(sqrt(3 * x + 1))",
+            "3 * tan(sqrt(3 * x + 1)) * sec(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
+        ),
+        (
+            "integrate(csc(sqrt(3*x+1))*cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+            "-csc(sqrt(3 * x + 1))",
+            "3 * csc(sqrt(3 * x + 1)) * cot(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
+        ),
+        (
+            "integrate(-csc(sqrt(3*x+1))*cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+            "csc(sqrt(3 * x + 1))",
+            "-3 * cot(sqrt(3 * x + 1)) * csc(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
         ),
     ];
 
-    for (input, expected_result, expected_conditions) in cases {
+    for (input, expected_result, expected_nested_result, expected_conditions) in cases {
         let (result, required) = evaluated_integral_with_required_conditions(input);
 
         assert_eq!(result, expected_result, "unexpected result for {input}");
@@ -3184,6 +3284,18 @@ fn integrate_contract_sqrt_chain_secant_cosecant_products_verify() {
             "unexpected required_conditions for {input}: {required:?}"
         );
         assert_antiderivative_verifies(input);
+
+        let nested_input = format!("diff({input}, x)");
+        let (nested_result, nested_required) =
+            evaluated_expr_with_required_conditions(&nested_input);
+        assert_eq!(
+            nested_result, expected_nested_result,
+            "unexpected nested diff/integrate result for {input}"
+        );
+        assert_eq!(
+            nested_required, expected_conditions,
+            "unexpected nested required_conditions for {input}: {nested_required:?}"
+        );
     }
 }
 
@@ -3193,21 +3305,90 @@ fn integrate_contract_sqrt_chain_tangent_cotangent_logs_verify() {
         (
             "integrate(tan(sqrt(x))/(2*sqrt(x)), x)",
             "-ln(|cos(sqrt(x))|)",
+            "tan(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0", "cos(sqrt(x)) ≠ 0"],
             vec!["x > 0", "cos(sqrt(x)) ≠ 0"],
         ),
         (
             "integrate(cot(sqrt(x))/(2*sqrt(x)), x)",
             "ln(|sin(sqrt(x))|)",
+            "cot(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0", "sin(sqrt(x)) ≠ 0"],
+            vec!["x > 0", "sin(sqrt(x)) ≠ 0"],
+        ),
+        (
+            "integrate(-tan(sqrt(x))/(2*sqrt(x)), x)",
+            "ln(|cos(sqrt(x))|)",
+            "-tan(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0", "cos(sqrt(x)) ≠ 0"],
+            vec!["x > 0", "cos(sqrt(x)) ≠ 0"],
+        ),
+        (
+            "integrate(-cot(sqrt(x))/(2*sqrt(x)), x)",
+            "-ln(|sin(sqrt(x))|)",
+            "-cot(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0", "sin(sqrt(x)) ≠ 0"],
             vec!["x > 0", "sin(sqrt(x)) ≠ 0"],
         ),
         (
             "integrate(tan(sqrt(2*x))/sqrt(2*x), x)",
             "-ln(|cos(sqrt(2 * x))|)",
+            "tan(sqrt(2 * x)) / sqrt(2 * x)",
             vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+        ),
+        (
+            "integrate(-tan(sqrt(2*x))/sqrt(2*x), x)",
+            "ln(|cos(sqrt(2 * x))|)",
+            "-tan(sqrt(2 * x)) / sqrt(2 * x)",
+            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+        ),
+        (
+            "integrate(-cot(sqrt(2*x))/sqrt(2*x), x)",
+            "-ln(|sin(sqrt(2 * x))|)",
+            "-cot(sqrt(2 * x)) / sqrt(2 * x)",
+            vec!["x > 0", "sin(sqrt(2 * x)) ≠ 0"],
+            vec!["x > 0", "sin(sqrt(2 * x)) ≠ 0"],
+        ),
+        (
+            "integrate(tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+            "-ln(|cos(sqrt(3 * x + 1))|)",
+            "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
+        ),
+        (
+            "integrate(cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+            "ln(|sin(sqrt(3 * x + 1))|)",
+            "3 * cot(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
+        ),
+        (
+            "integrate(-tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+            "ln(|cos(sqrt(3 * x + 1))|)",
+            "-3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
+        ),
+        (
+            "integrate(-cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+            "-ln(|sin(sqrt(3 * x + 1))|)",
+            "-3 * cot(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
         ),
     ];
 
-    for (input, expected_result, expected_conditions) in cases {
+    for (
+        input,
+        expected_result,
+        expected_nested_result,
+        expected_conditions,
+        expected_nested_conditions,
+    ) in cases
+    {
         let (result, required) = evaluated_integral_with_required_conditions(input);
 
         assert_eq!(result, expected_result, "unexpected result for {input}");
@@ -3216,6 +3397,18 @@ fn integrate_contract_sqrt_chain_tangent_cotangent_logs_verify() {
             "unexpected required_conditions for {input}: {required:?}"
         );
         assert_antiderivative_verifies(input);
+
+        let nested_input = format!("diff({input}, x)");
+        let (nested_result, nested_required) =
+            evaluated_expr_with_required_conditions(&nested_input);
+        assert_eq!(
+            nested_result, expected_nested_result,
+            "unexpected nested diff/integrate result for {input}"
+        );
+        assert_eq!(
+            nested_required, expected_nested_conditions,
+            "unexpected nested required_conditions for {input}: {nested_required:?}"
+        );
     }
 }
 
@@ -3225,21 +3418,36 @@ fn integrate_contract_sqrt_chain_hyperbolic_tangent_logs_verify() {
         (
             "integrate(tanh(sqrt(x))/(2*sqrt(x)), x)",
             "ln(cosh(sqrt(x)))",
+            "tanh(sqrt(x)) / (2 * sqrt(x))",
             vec!["x > 0"],
         ),
         (
             "integrate(1/(2*sqrt(x)*tanh(sqrt(x))), x)",
             "ln(|sinh(sqrt(x))|)",
+            "1 / (2 * tanh(sqrt(x)) * sqrt(x))",
             vec!["sinh(sqrt(x)) ≠ 0", "x > 0"],
         ),
         (
             "integrate(tanh(sqrt(2*x))/sqrt(2*x), x)",
             "ln(cosh(sqrt(2 * x)))",
+            "tanh(sqrt(2 * x)) / sqrt(2 * x)",
             vec!["x > 0"],
+        ),
+        (
+            "integrate(tanh(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+            "ln(cosh(sqrt(3 * x + 1)))",
+            "3 * tanh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0"],
+        ),
+        (
+            "integrate(3/(2*sqrt(3*x+1)*tanh(sqrt(3*x+1))), x)",
+            "ln(|sinh(sqrt(3 * x + 1))|)",
+            "3 / (2 * tanh(sqrt(3 * x + 1)) * sqrt(3 * x + 1))",
+            vec!["sinh(sqrt(3 * x + 1)) ≠ 0", "3 * x + 1 > 0"],
         ),
     ];
 
-    for (input, expected_result, expected_conditions) in cases {
+    for (input, expected_result, expected_nested_result, expected_conditions) in cases {
         let (result, required) = evaluated_integral_with_required_conditions(input);
 
         assert_eq!(result, expected_result, "unexpected result for {input}");
@@ -3249,6 +3457,18 @@ fn integrate_contract_sqrt_chain_hyperbolic_tangent_logs_verify() {
         );
         assert_antiderivative_verifies(input);
         assert_rendered_antiderivative_verifies(input, &result);
+
+        let nested_input = format!("diff({input}, x)");
+        let (nested_result, nested_required) =
+            evaluated_expr_with_required_conditions(&nested_input);
+        assert_eq!(
+            nested_result, expected_nested_result,
+            "unexpected nested diff/integrate result for {input}"
+        );
+        assert_eq!(
+            nested_required, expected_conditions,
+            "unexpected nested required_conditions for {input}: {nested_required:?}"
+        );
     }
 }
 
@@ -3270,6 +3490,16 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_squares_verify() {
             "tanh(sqrt(2 * x))",
             vec!["x > 0"],
         ),
+        (
+            "integrate(3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x)",
+            "tanh(sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0"],
+        ),
+        (
+            "integrate(3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x)",
+            "-1 / tanh(sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0", "sinh(sqrt(3 * x + 1)) ≠ 0"],
+        ),
     ];
 
     for (input, expected_result, expected_conditions) in cases {
@@ -3282,6 +3512,49 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_squares_verify() {
         );
         assert_antiderivative_verifies(input);
     }
+
+    let nested_cases = [
+        (
+            "diff(integrate(3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x), x)",
+            "3 / (2 * sqrt(3 * x + 1) * cosh(sqrt(3 * x + 1))^2)",
+            vec!["3 * x + 1 > 0"],
+        ),
+        (
+            "diff(integrate(3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x), x)",
+            "3 / (2 * sqrt(3 * x + 1) * sinh(sqrt(3 * x + 1))^2)",
+            vec!["3 * x + 1 > 0", "sinh(sqrt(3 * x + 1)) ≠ 0"],
+        ),
+    ];
+
+    for (input, expected_result, expected_conditions) in nested_cases {
+        let (result, required) = evaluated_expr_with_required_conditions(input);
+
+        assert_eq!(
+            result, expected_result,
+            "unexpected nested result for {input}"
+        );
+        assert!(
+            !result.contains("^(-1/2)") && !result.contains("^(1/2)"),
+            "nested diff/integrate presentation should keep explicit sqrt forms, got: {result}"
+        );
+        assert_eq!(
+            required, expected_conditions,
+            "unexpected nested required_conditions for {input}: {required:?}"
+        );
+    }
+
+    let step_summaries = evaluated_expr_step_summaries(
+        "diff(integrate(3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x), x)",
+    );
+    assert!(
+        step_summaries
+            .iter()
+            .any(|(description, rule_name, importance)| description
+                == "Post-calculus presentation"
+                && rule_name == "Present calculus result in compact form"
+                && *importance >= ImportanceLevel::Medium),
+        "post-calculus presentation should be visible in normal step output: {step_summaries:?}"
+    );
 }
 
 #[test]
@@ -3302,6 +3575,16 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_derivatives_verify() {
             "-1 / cosh(sqrt(2 * x))",
             vec!["x > 0"],
         ),
+        (
+            "integrate(3*sinh(sqrt(3*x+1))/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x)",
+            "-1 / cosh(sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0"],
+        ),
+        (
+            "integrate(3*cosh(sqrt(3*x+1))/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x)",
+            "-1 / sinh(sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0", "sinh(sqrt(3 * x + 1)) ≠ 0"],
+        ),
     ];
 
     for (input, expected_result, expected_conditions) in cases {
@@ -3313,6 +3596,36 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_derivatives_verify() {
             "unexpected required_conditions for {input}: {required:?}"
         );
         assert_antiderivative_verifies(input);
+    }
+
+    let nested_cases = [
+        (
+            "diff(integrate(3*sinh(sqrt(3*x+1))/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x), x)",
+            "3 * sinh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1) * cosh(sqrt(3 * x + 1))^2)",
+            vec!["3 * x + 1 > 0"],
+        ),
+        (
+            "diff(integrate(3*cosh(sqrt(3*x+1))/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x), x)",
+            "3 * cosh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1) * sinh(sqrt(3 * x + 1))^2)",
+            vec!["3 * x + 1 > 0", "sinh(sqrt(3 * x + 1)) ≠ 0"],
+        ),
+    ];
+
+    for (input, expected_result, expected_conditions) in nested_cases {
+        let (result, required) = evaluated_expr_with_required_conditions(input);
+
+        assert_eq!(
+            result, expected_result,
+            "unexpected nested result for {input}"
+        );
+        assert!(
+            !result.contains("^(-1/2)") && !result.contains("^(1/2)"),
+            "nested diff/integrate presentation should keep explicit sqrt forms, got: {result}"
+        );
+        assert_eq!(
+            required, expected_conditions,
+            "unexpected nested required_conditions for {input}: {required:?}"
+        );
     }
 }
 

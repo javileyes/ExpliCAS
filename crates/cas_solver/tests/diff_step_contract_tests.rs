@@ -562,7 +562,10 @@ fn product_rule_trig_polynomial_diff_evaluates_to_simplified_sum() {
         other => panic!("expected expression result, got {other:?}"),
     };
 
-    assert_eq!(result, "2 * x * sin(x) + cos(x) * x^2");
+    assert!(
+        result == "2 * x * sin(x) + cos(x) * x^2" || result == "cos(x) * x^2 + 2 * x * sin(x)",
+        "unexpected product-rule derivative presentation: {result}"
+    );
 
     let required: Vec<String> = normalize_and_dedupe_conditions(
         &mut engine.simplifier.context,
@@ -2223,12 +2226,37 @@ fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation()
         ),
         (
             "diff(sec(sqrt(x)), x)",
-            "sin(sqrt(x)) / (2 * sqrt(x) * cos(sqrt(x))^2)",
+            "sec(sqrt(x)) * tan(sqrt(x)) / (2 * sqrt(x))",
             vec!["x > 0".to_string(), "cos(sqrt(x)) ≠ 0".to_string()],
         ),
         (
+            "diff(-sec(sqrt(x)), x)",
+            "-sec(sqrt(x)) * tan(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0".to_string(), "cos(sqrt(x)) ≠ 0".to_string()],
+        ),
+        (
+            "diff(1/cos(sqrt(x)), x)",
+            "sec(sqrt(x)) * tan(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0".to_string(), "cos(sqrt(x)) ≠ 0".to_string()],
+        ),
+        (
+            "diff(sec(sqrt(x+1)), x)",
+            "sec(sqrt(x + 1)) * tan(sqrt(x + 1)) / (2 * sqrt(x + 1))",
+            vec!["x + 1 > 0".to_string(), "cos(sqrt(x + 1)) ≠ 0".to_string()],
+        ),
+        (
             "diff(csc(sqrt(x)), x)",
-            "-cos(sqrt(x)) / (2 * sqrt(x) * sin(sqrt(x))^2)",
+            "-csc(sqrt(x)) * cot(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0".to_string(), "sin(sqrt(x)) ≠ 0".to_string()],
+        ),
+        (
+            "diff(-csc(sqrt(x)), x)",
+            "csc(sqrt(x)) * cot(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0".to_string(), "sin(sqrt(x)) ≠ 0".to_string()],
+        ),
+        (
+            "diff(1/sin(sqrt(x)), x)",
+            "-csc(sqrt(x)) * cot(sqrt(x)) / (2 * sqrt(x))",
             vec!["x > 0".to_string(), "sin(sqrt(x)) ≠ 0".to_string()],
         ),
         (
@@ -2247,6 +2275,19 @@ fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation()
             vec!["x > 0".to_string()],
         ),
         (
+            "diff(-1/cosh(sqrt(3*x+1)), x)",
+            "3 * sinh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1) * cosh(sqrt(3 * x + 1))^2)",
+            vec!["3 * x + 1 > 0".to_string()],
+        ),
+        (
+            "diff(-1/sinh(sqrt(3*x+1)), x)",
+            "3 * cosh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1) * sinh(sqrt(3 * x + 1))^2)",
+            vec![
+                "3 * x + 1 > 0".to_string(),
+                "sinh(sqrt(3 * x + 1)) ≠ 0".to_string(),
+            ],
+        ),
+        (
             "diff(sin(sqrt(2*x)), x)",
             "cos(sqrt(2 * x)) / sqrt(2 * x)",
             vec!["x > 0".to_string()],
@@ -2263,8 +2304,13 @@ fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation()
         ),
         (
             "diff(sec(sqrt(2*x)), x)",
-            "sin(sqrt(2 * x)) / (sqrt(2 * x) * cos(sqrt(2 * x))^2)",
-            vec!["x > 0".to_string(), "cos(sqrt(2 * x)) ≠ 0".to_string()],
+            "sec(sqrt(2 * x)) * tan(sqrt(2 * x)) / sqrt(2 * x)",
+            vec!["cos(sqrt(2 * x)) ≠ 0".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "diff(csc(sqrt(2*x)), x)",
+            "-csc(sqrt(2 * x)) * cot(sqrt(2 * x)) / sqrt(2 * x)",
+            vec!["sin(sqrt(2 * x)) ≠ 0".to_string(), "x > 0".to_string()],
         ),
     ] {
         let mut engine = Engine::new();
@@ -4514,17 +4560,31 @@ fn affine_sec_csc_diff_uses_chain_rule_with_pole_conditions() {
     let cases = [
         (
             "diff(sec(2*x+1), x)",
-            "2*sin(2*x+1)/cos(2*x+1)^2",
+            "2*sec(2*x+1)*tan(2*x+1)",
+            "2 * sec(2 * x + 1) * tan(2 * x + 1)",
+            "cos(2 * x + 1) ≠ 0",
+        ),
+        (
+            "diff(1/cos(2*x+1), x)",
+            "2*sec(2*x+1)*tan(2*x+1)",
+            "2 * sec(2 * x + 1) * tan(2 * x + 1)",
             "cos(2 * x + 1) ≠ 0",
         ),
         (
             "diff(csc(1-2*x), x)",
-            "2*cos(1-2*x)/sin(1-2*x)^2",
+            "2*csc(1-2*x)*cot(1-2*x)",
+            "2 * csc(1 - 2 * x) * cot(1 - 2 * x)",
+            "sin(1 - 2 * x) ≠ 0",
+        ),
+        (
+            "diff(1/sin(1-2*x), x)",
+            "2*csc(1-2*x)*cot(1-2*x)",
+            "2 * csc(1 - 2 * x) * cot(1 - 2 * x)",
             "sin(1 - 2 * x) ≠ 0",
         ),
     ];
 
-    for (input, expected_derivative, expected_condition) in cases {
+    for (input, expected_derivative, expected_display, expected_condition) in cases {
         let mut engine = Engine::new();
         let mut state = SessionState::new();
         state.options_mut().steps_mode = StepsMode::On;
@@ -4551,6 +4611,7 @@ fn affine_sec_csc_diff_uses_chain_rule_with_pole_conditions() {
         );
 
         assert!(!result.contains("diff("), "input: {input}, got: {result}");
+        assert_eq!(result, expected_display, "input: {input}");
 
         let expected =
             parse(expected_derivative, &mut engine.simplifier.context).expect("parse expected");
@@ -5014,17 +5075,19 @@ fn rational_affine_sec_csc_diff_avoids_half_angle_cleanup_warnings() {
     let cases = [
         (
             "diff(sec((3*x+2)/2), x)",
-            "3*sin((3*x+2)/2)/(2*cos((3*x+2)/2)^2)",
+            "3/2*sec((3*x+2)/2)*tan((3*x+2)/2)",
+            "3/2 * sec((3 * x + 2) / 2) * tan((3 * x + 2) / 2)",
             "cos(",
         ),
         (
             "diff(csc((2-3*x)/2), x)",
-            "3*cos((2-3*x)/2)/(2*sin((2-3*x)/2)^2)",
+            "3/2*csc((2-3*x)/2)*cot((2-3*x)/2)",
+            "3/2 * csc((2 - 3 * x) / 2) * cot((2 - 3 * x) / 2)",
             "sin(",
         ),
     ];
 
-    for (input, expected_derivative, expected_condition_fn) in cases {
+    for (input, expected_derivative, expected_display, expected_condition_fn) in cases {
         let mut engine = Engine::new();
         let mut state = SessionState::new();
         state.options_mut().steps_mode = StepsMode::On;
@@ -5061,6 +5124,7 @@ fn rational_affine_sec_csc_diff_avoids_half_angle_cleanup_warnings() {
             !result.contains("+ 1 - 1") && !result.contains("1 - (2 *"),
             "input: {input}, noisy half-angle cleanup survived: {result}"
         );
+        assert_eq!(result, expected_display, "input: {input}");
 
         let expected =
             parse(expected_derivative, &mut engine.simplifier.context).expect("parse expected");

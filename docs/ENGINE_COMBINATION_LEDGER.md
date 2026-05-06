@@ -9165,3 +9165,134 @@ The burden of proof stays the same:
     construction changes in this cycle
   - retain only the `tan`/`cot` rational-affine denominator-square split that
     measurably removes warnings/nontermination in the public diff lane
+
+## 2026-05-06 - Discovery observe-only: positive sqrt-chain csc/cot presentation is not preserved through nested diff-integrate
+
+- area:
+  - calculus / integration verification / post-calculus presentation /
+    reciprocal trig sqrt chains
+- status:
+  - `observe-only`
+- attempted case:
+  - make `diff(integrate(csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x), x)`
+    render directly as `csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x))`
+  - related probe:
+    `diff(integrate(sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x), x)`
+- local lane:
+  - `cargo run -q -p cas_cli -- eval 'diff(integrate(csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x), x)'`
+  - `cargo run -q -p cas_cli -- eval 'diff(-csc(sqrt(x)), x)'`
+  - targeted contract probes in `integrate_contract_sqrt_chain_secant_cosecant_products_verify`
+    and `elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation`
+- local result:
+  - direct `diff(sec(sqrt(x)), x)` already preserves the compact
+    `sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x))` form
+  - the positive `csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x))` shape is reopened by
+    later simplification into `cos(x^(1/2))*x^(-1/2)/(2*sin(x^(1/2))^2)` or
+    equivalent quotient variants, even when built as a local presentation
+    result
+  - nested `diff(integrate(...), x)` also accumulates duplicate-looking
+    conditions across `x^(1/2)` and `sqrt(x)` renderings in the failing probe
+- reusable signature:
+  - positive reciprocal-trig products with sqrt-chain arguments need a bounded
+    post-calculus preservation or condition-normalization route; simply
+    returning the compact product from the calculus rule is not retained
+- decision:
+  - reject the implementation changes from this cycle
+  - keep this as a future calculus/pre-calculus presentation candidate, ideally
+    by addressing the product preservation and condition dedupe together rather
+    than adding another answer-only shortcut
+
+## 2026-05-06 - Discovery observe-only: sqrt-chain tan/cot log-derivative presentation needs reconstruction
+
+- area:
+  - calculus / integration verification / post-calculus presentation /
+    trig sqrt-chain log derivatives
+- status:
+  - `observe-only`
+- attempted case:
+  - preserve compact nested results for
+    `diff(integrate(tan(sqrt(x))/(2*sqrt(x)), x), x)` and
+    `diff(integrate(cot(sqrt(x))/(2*sqrt(x)), x), x)`
+  - related affine probe:
+    `diff(integrate(tan(sqrt(2*x))/sqrt(2*x), x), x)`
+- local lane:
+  - `cargo +1.91.1 run -q -p cas_cli -- eval 'diff(integrate(tan(sqrt(x))/(2*sqrt(x)), x), x)' --format json`
+  - `cargo +1.91.1 run -q -p cas_cli -- eval 'diff(integrate(cot(sqrt(x))/(2*sqrt(x)), x), x)' --format json`
+  - `cargo +1.91.1 run -q -p cas_cli -- eval 'tan(sqrt(x))/(2*sqrt(x))' --format json`
+- local result:
+  - direct simplification of the compact `tan/cot` integrand rewrites it to a
+    `sin/cos` quotient with `x^(-1/2)` or equivalent sqrt-power factors
+  - adding a narrow recognizer for the original `tan/cot(sqrt(p))/sqrt(p)`
+    shape was not retained because the post-calculus target often arrives
+    after this trig canonicalization has already happened
+  - the nested output therefore remains mathematically correct but less compact,
+    and can carry duplicate-looking conditions rendered across `x^(1/2)` and
+    `sqrt(x)`
+- reusable signature:
+  - preserving these public calculus results requires a bounded presentation
+    reconstructor from the canonical `sin/cos` quotient back to `tan/cot` with
+    the same sqrt-chain radicand, plus condition display dedupe
+- decision:
+  - do not retain the ineffective syntactic recognizer in this cycle
+  - keep the successfully retained hyperbolic `tanh`/`1/tanh` sqrt-chain log
+    presentation as the promoted change, because those targets are not reopened
+    by trig canonicalization
+
+## 2026-05-06 - Local win / global fail: broad post-calculus presentation pass rebuilt non-target integration results
+
+- area:
+  - calculus / post-calculus presentation / integration contract stability
+- status:
+  - `rejected-broad-variant`
+- attempted case:
+  - compact `integrate(tanh(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)` from
+    `ln(cosh((3*x+1)^(1/2)))` to `ln(cosh(sqrt(3*x+1)))`
+- local lane:
+  - `cargo +1.91.1 test -p cas_cli --test integrate_contract_tests integrate_contract_sqrt_chain_hyperbolic_tangent_logs_verify -- --exact --nocapture`
+- local result:
+  - adding the final presentation pass directly compacted the target case and
+    preserved the displayed domain condition
+- global failure signature:
+  - `make engine-scorecard` failed `calculus_integrate_contract` because the
+    broad pass recursively rebuilt unrelated integration results
+  - failures were text-order churn in already-correct expressions, such as
+    swapped product factors in by-parts antiderivatives and reordered additive
+    terms in linear trig integrals
+- retained correction:
+  - keep only a narrow `has_compactable_ln_abs_cosh_sqrt` detection before
+    rebuilding presentation output
+  - this preserves the promoted hyperbolic sqrt-chain result without changing
+    unrelated integration result ordering
+- decision:
+  - reject the broad no-op reconstruction variant
+  - retain the gated presentation pass plus the hyperbolic derivative verifier
+
+## 2026-05-06 - Local win / global fail: denominator-scale folding created fractional numerator presentation
+
+- area:
+  - calculus / post-calculus presentation / held integration results
+- status:
+  - `rejected-broad-variant`
+- attempted case:
+  - compact shifted sqrt-chain hyperbolic reciprocal derivative results from
+    `-1*3/(3*cosh((3*x+1)^(1/2)))` to
+    `-1 / cosh(sqrt(3*x+1))`
+- local lane:
+  - `cargo +1.91.1 test -p cas_cli --test integrate_contract_tests integrate_contract_sqrt_chain_hyperbolic_reciprocal_derivatives_verify -- --exact --nocapture`
+  - `cargo +1.91.1 test -p cas_engine rules::calculus::compact_hold_tests::fold_numeric_mul_constants_for_hold_cancels_denominator_scale -- --exact --nocapture`
+- local result:
+  - a denominator-scale fold successfully cancelled `3/(3*f)` after
+    reconstructing the half-power argument as `sqrt(...)`
+- global failure signature:
+  - `make engine-scorecard` failed `calculus_integrate_contract` because the
+    broad fold also rewrote stable results like `-1 / (3*q)` into
+    `-1/3 / q`
+- retained correction:
+  - only cancel denominator numeric factors when the quotient remains an
+    integer scale, so exact scale noise like `3/(3*f)` is removed without
+    creating new fractional numerators
+  - add a unit guard preserving `-1 / (3 * (x^2 + x - 1))`
+- decision:
+  - reject the broad denominator-scale fold
+  - retain the integer-only scale cancellation plus the compact hyperbolic
+    reciprocal derivative presentation

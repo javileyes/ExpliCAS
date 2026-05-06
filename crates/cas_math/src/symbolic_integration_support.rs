@@ -333,6 +333,19 @@ fn arctan_sqrt_var_reciprocal_required_positive_radicand(
     None
 }
 
+pub fn integrate_symbolic_is_arctan_sqrt_var_reciprocal_target(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return false;
+    };
+    (sqrt_var_times_positive_linear_parts(ctx, *den, var).is_some()
+        && rational_constant_value(ctx, *num).is_some())
+        || reciprocal_sqrt_var_over_positive_linear_parts(ctx, *num, *den, var).is_some()
+}
+
 fn is_var_square(ctx: &Context, expr: ExprId, var: &str) -> bool {
     match ctx.get(expr) {
         Expr::Pow(base, exp) => is_var(ctx, *base, var) && is_number(ctx, *exp, 2),
@@ -883,6 +896,19 @@ fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<
     }
 }
 
+fn signed_unary_builtin_arg(
+    ctx: &Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<(ExprId, BigRational)> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            unary_builtin_arg(ctx, *inner, builtin).map(|arg| (arg, -BigRational::one()))
+        }
+        _ => unary_builtin_arg(ctx, expr, builtin).map(|arg| (arg, BigRational::one())),
+    }
+}
+
 fn divide_by_coeff_unless_one(ctx: &mut Context, integral: ExprId, coeff: ExprId) -> ExprId {
     let is_coeff_one = if let Expr::Number(n) = ctx.get(coeff) {
         n.is_one()
@@ -926,6 +952,30 @@ fn trig_reciprocal_derivative_antiderivative(
     Some(divide_by_coeff_unless_one(ctx, integral, a))
 }
 
+fn sqrt_compact_reciprocal_trig_antiderivative(
+    ctx: &mut Context,
+    den_builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    let radicand = sqrt_like_radicand(ctx, arg)?;
+    let sqrt_arg = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    match den_builtin {
+        BuiltinFn::Cos => Some(ctx.call_builtin(BuiltinFn::Sec, vec![sqrt_arg])),
+        BuiltinFn::Sin => {
+            let csc_arg = ctx.call_builtin(BuiltinFn::Csc, vec![sqrt_arg]);
+            Some(ctx.add(Expr::Neg(csc_arg)))
+        }
+        _ => None,
+    }
+}
+
+fn negate_integration_result(ctx: &mut Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => inner,
+        _ => ctx.add(Expr::Neg(expr)),
+    }
+}
+
 fn polynomial_trig_reciprocal_derivative_antiderivative(
     ctx: &mut Context,
     num: ExprId,
@@ -967,25 +1017,30 @@ fn polynomial_trig_reciprocal_derivative_antiderivative(
         return None;
     }
 
-    let integral = match den_builtin {
-        BuiltinFn::Cos => {
-            let one = ctx.num(1);
-            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
-            ctx.add(Expr::Div(one, cos_arg))
-        }
-        BuiltinFn::Sin => {
-            let one = ctx.num(1);
-            let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
-            let reciprocal_sin = ctx.add(Expr::Div(one, sin_arg));
-            ctx.add(Expr::Neg(reciprocal_sin))
-        }
-        _ => return None,
-    };
+    let integral =
+        if let Some(compact) = sqrt_compact_reciprocal_trig_antiderivative(ctx, den_builtin, arg) {
+            compact
+        } else {
+            match den_builtin {
+                BuiltinFn::Cos => {
+                    let one = ctx.num(1);
+                    let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+                    ctx.add(Expr::Div(one, cos_arg))
+                }
+                BuiltinFn::Sin => {
+                    let one = ctx.num(1);
+                    let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+                    let reciprocal_sin = ctx.add(Expr::Div(one, sin_arg));
+                    ctx.add(Expr::Neg(reciprocal_sin))
+                }
+                _ => return None,
+            }
+        };
     if scale.is_one() {
         return Some(integral);
     }
     if scale == -BigRational::one() {
-        return Some(ctx.add(Expr::Neg(integral)));
+        return Some(negate_integration_result(ctx, integral));
     }
 
     let scale_expr = ctx.add(Expr::Number(scale));
@@ -1135,6 +1190,11 @@ fn sqrt_trig_reciprocal_derivative_parts(
     var: &str,
 ) -> Option<(BuiltinFn, ExprId, ExprId, BigRational)> {
     let (num, den) = match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let (den_builtin, arg, radicand, scale) =
+                sqrt_trig_reciprocal_derivative_parts(ctx, inner, var)?;
+            return Some((den_builtin, arg, radicand, -scale));
+        }
         Expr::Div(num, den) => (num, den),
         _ => return None,
     };
@@ -1154,10 +1214,15 @@ fn sqrt_trig_reciprocal_derivative_parts(
         _ => return None,
     };
 
-    let (numerator_index, _) = numerator_factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, numerator_builtin)
-            .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
-    })?;
+    let (numerator_index, numerator_sign) =
+        numerator_factors
+            .iter()
+            .enumerate()
+            .find_map(|(idx, factor)| {
+                let (numerator_arg, sign) =
+                    signed_unary_builtin_arg(ctx, *factor, numerator_builtin)?;
+                (compare_expr(ctx, numerator_arg, arg) == Ordering::Equal).then_some((idx, sign))
+            })?;
 
     let remaining_numerator: Vec<_> = numerator_factors
         .iter()
@@ -1175,7 +1240,7 @@ fn sqrt_trig_reciprocal_derivative_parts(
         &remaining_denominator,
         arg,
         var,
-    )?;
+    )? * numerator_sign;
     if scale.is_zero() {
         return None;
     }
@@ -1216,6 +1281,11 @@ fn sqrt_trig_log_derivative_parts(
     var: &str,
 ) -> Option<(BuiltinFn, ExprId, ExprId, BigRational)> {
     let (num, den) = match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let (den_builtin, arg, radicand, scale) =
+                sqrt_trig_log_derivative_parts(ctx, inner, var)?;
+            return Some((den_builtin, arg, radicand, -scale));
+        }
         Expr::Div(num, den) => (num, den),
         _ => return None,
     };
@@ -1582,25 +1652,30 @@ fn polynomial_trig_reciprocal_factor_antiderivative(
         return None;
     }
 
-    let integral = match den_builtin {
-        BuiltinFn::Cos => {
-            let one = ctx.num(1);
-            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
-            ctx.add(Expr::Div(one, cos_arg))
-        }
-        BuiltinFn::Sin => {
-            let one = ctx.num(1);
-            let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
-            let reciprocal_sin = ctx.add(Expr::Div(one, sin_arg));
-            ctx.add(Expr::Neg(reciprocal_sin))
-        }
-        _ => return None,
-    };
+    let integral =
+        if let Some(compact) = sqrt_compact_reciprocal_trig_antiderivative(ctx, den_builtin, arg) {
+            compact
+        } else {
+            match den_builtin {
+                BuiltinFn::Cos => {
+                    let one = ctx.num(1);
+                    let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+                    ctx.add(Expr::Div(one, cos_arg))
+                }
+                BuiltinFn::Sin => {
+                    let one = ctx.num(1);
+                    let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+                    let reciprocal_sin = ctx.add(Expr::Div(one, sin_arg));
+                    ctx.add(Expr::Neg(reciprocal_sin))
+                }
+                _ => return None,
+            }
+        };
     if scale.is_one() {
         return Some(integral);
     }
     if scale == -BigRational::one() {
-        return Some(ctx.add(Expr::Neg(integral)));
+        return Some(negate_integration_result(ctx, integral));
     }
 
     let scale_expr = ctx.add(Expr::Number(scale));
@@ -5526,7 +5601,7 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
 
     if let IntKind::Neg(inner) = kind {
         let inner_integral = integrate_symbolic_expr(ctx, inner, var)?;
-        return Some(ctx.add(Expr::Neg(inner_integral)));
+        return Some(negate_integration_result(ctx, inner_integral));
     }
 
     if let Some(integral) = polynomial_substitution_antiderivative(ctx, expr, var) {
