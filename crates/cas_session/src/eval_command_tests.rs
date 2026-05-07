@@ -132,6 +132,24 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_text_simplify_with_session_reports_diff_requires_explicit_variable() {
+        let mut engine = cas_solver::runtime::Engine::new();
+        let mut session = SessionState::new();
+
+        let err = evaluate_eval_text_simplify_with_session(
+            &mut engine,
+            &mut session,
+            "diff(sin(e^(x^2)))",
+            false,
+        )
+        .expect_err("invalid diff arity");
+        assert_eq!(
+            err,
+            "Error: diff requiere variable explícita: diff(expr, x)"
+        );
+    }
+
+    #[test]
     fn evaluate_eval_text_simplify_with_session_accepts_collect_function() {
         let mut engine = cas_solver::runtime::Engine::new();
         let mut session = SessionState::new();

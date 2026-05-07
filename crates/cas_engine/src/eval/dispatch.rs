@@ -135,6 +135,15 @@ impl Engine {
             cache_hit_step,
         } = prepared;
 
+        if let Some(message) = cas_session_core::eval::first_invalid_eval_engine_function_message(
+            session,
+            &self.simplifier.context,
+            resolved,
+        ) {
+            return Err(anyhow::Error::new(
+                crate::error::CasError::InvalidFunctionCall(message),
+            ));
+        }
         if let Some(name) = cas_session_core::eval::first_unknown_function_name(
             session,
             &self.simplifier.context,
@@ -145,6 +154,17 @@ impl Engine {
             )));
         }
         if let Some(other) = resolved_equiv_other {
+            if let Some(message) =
+                cas_session_core::eval::first_invalid_eval_engine_function_message(
+                    session,
+                    &self.simplifier.context,
+                    other,
+                )
+            {
+                return Err(anyhow::Error::new(
+                    crate::error::CasError::InvalidFunctionCall(message),
+                ));
+            }
             if let Some(name) = cas_session_core::eval::first_unknown_function_name(
                 session,
                 &self.simplifier.context,

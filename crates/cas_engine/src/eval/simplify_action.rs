@@ -708,11 +708,12 @@ mod tests {
             }
             .to_string();
             assert!(
-                matches!(
-                    displayed.as_str(),
-                    "(2 * x + 2) / (3 - (x + 1)^4)" | "2 * (x + 1) / (3 - (x^2 + 2 * x + 1)^2)"
-                ),
+                displayed.ends_with("/ (3 - (x + 1)^4)"),
                 "input {expr_text}: unexpected derivative presentation: {displayed}"
+            );
+            assert!(
+                !displayed.contains("(x^2 + 2 * x + 1)^2"),
+                "input {expr_text}: denominator should stay compact, got: {displayed}"
             );
             assert!(
                 output

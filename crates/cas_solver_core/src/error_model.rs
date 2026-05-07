@@ -39,6 +39,9 @@ pub enum CasError {
     /// Operation not supported in real-only value domain.
     #[error("not supported in real domain: {0}")]
     UnsupportedInRealDomain(String),
+    /// User-facing validation error where the message is already complete.
+    #[error("{0}")]
+    InvalidFunctionCall(String),
     /// Expression didn't match expected shape.
     #[error("expression error: {0}")]
     ExpressionError(String),
@@ -115,6 +118,7 @@ impl CasError {
             CasError::NotImplemented { .. } => "NotImplemented",
             CasError::InternalError(_) => "InternalError",
             CasError::UnsupportedInRealDomain(_) => "DomainError",
+            CasError::InvalidFunctionCall(_) => "DomainError",
             CasError::ExpressionError(_) => "DomainError",
             CasError::NumericOverflow(_) => "DomainError",
         }
@@ -136,6 +140,7 @@ impl CasError {
             CasError::NotImplemented { .. } => "E_NOT_IMPL",
             CasError::InternalError(_) => "E_INTERNAL",
             CasError::UnsupportedInRealDomain(_) => "E_REAL_ONLY",
+            CasError::InvalidFunctionCall(_) => "E_INVALID_FUNC_CALL",
             CasError::ExpressionError(_) => "E_EXPR",
             CasError::NumericOverflow(_) => "E_OVERFLOW",
         }

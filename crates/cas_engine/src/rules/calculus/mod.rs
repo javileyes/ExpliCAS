@@ -1068,6 +1068,82 @@ fn polynomial_derivative_expr_for_calculus_presentation(
     Some(poly.derivative().to_expr(ctx))
 }
 
+fn affine_square_root_for_calculus_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let poly = Polynomial::from_expr(ctx, expr, var_name).ok()?;
+    if poly.degree() != 2 {
+        return None;
+    }
+
+    let a = poly
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let b = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let c = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+
+    let linear_coeff = exact_positive_rational_sqrt_for_calculus_presentation(&a)?;
+    let constant_abs = if c.is_zero() {
+        BigRational::zero()
+    } else {
+        exact_positive_rational_sqrt_for_calculus_presentation(&c)?
+    };
+    let expected_cross =
+        BigRational::from_integer(2.into()) * linear_coeff.clone() * constant_abs.clone();
+    let constant = if b == expected_cross {
+        constant_abs
+    } else if b == -expected_cross {
+        -constant_abs
+    } else {
+        return None;
+    };
+
+    let affine = Polynomial::new(vec![constant, linear_coeff], var_name.to_string());
+    Some(affine.to_expr(ctx))
+}
+
+fn compact_squared_affine_gap_for_calculus_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> ExprId {
+    let Expr::Sub(left, right) = ctx.get(expr).clone() else {
+        return expr;
+    };
+    let Expr::Pow(base, exp) = ctx.get(right).clone() else {
+        return expr;
+    };
+    if cas_ast::views::as_rational_const(ctx, exp, 8) != Some(BigRational::from_integer(2.into())) {
+        return expr;
+    }
+    if let Expr::Pow(_, inner_exp) = ctx.get(base).clone() {
+        if cas_ast::views::as_rational_const(ctx, inner_exp, 8)
+            == Some(BigRational::from_integer(2.into()))
+        {
+            return expr;
+        }
+    }
+
+    let Some(affine) = affine_square_root_for_calculus_presentation(ctx, base, var_name) else {
+        return expr;
+    };
+    let four = ctx.num(4);
+    let compact_power = ctx.add(Expr::Pow(affine, four));
+    ctx.add(Expr::Sub(left, compact_power))
+}
+
 fn rational_polynomial_content_for_calculus_presentation(poly: &Polynomial) -> BigRational {
     let mut numer_gcd: Option<BigInt> = None;
     let mut denom_lcm = BigInt::one();
@@ -3968,6 +4044,7 @@ fn bounded_inverse_trig_surd_quotient_compact_derivative(
     };
     let compact_numer = rational_const_for_calculus_presentation(ctx, radicand_numer);
     let gap = ctx.add(Expr::Sub(compact_numer, scaled_num_square));
+    let gap = compact_squared_affine_gap_for_calculus_presentation(ctx, gap, var_name);
     let denominator = ctx.call_builtin(BuiltinFn::Sqrt, vec![gap]);
     let compact = ctx.add(Expr::Div(numerator, denominator));
     let compact = fold_numeric_mul_constants_for_hold(ctx, compact);
@@ -4687,6 +4764,8 @@ fn atanh_surd_quotient_compact_derivative(
     } else {
         primitive_positive_gap(ctx, raw_denominator)
     };
+    let compact_denominator =
+        compact_squared_affine_gap_for_calculus_presentation(ctx, compact_denominator, var_name);
     let d_num = signed_numerator_for_calculus_presentation(
         ctx,
         d_num_content / denominator_content,

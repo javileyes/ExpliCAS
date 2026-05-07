@@ -132,9 +132,53 @@ pub fn first_unknown_function_name<S: EvalSession>(
     None
 }
 
+/// Return the first known engine function call whose arity is invalid enough
+/// to deserve a targeted user-facing error instead of "function not defined".
+pub fn first_invalid_eval_engine_function_message<S: EvalSession>(
+    session: &S,
+    ctx: &Context,
+    root: ExprId,
+) -> Option<String> {
+    let mut stack = vec![root];
+    while let Some(id) = stack.pop() {
+        match ctx.get(id) {
+            cas_ast::Expr::Function(fn_id, args) => {
+                if ctx.builtin_of(*fn_id).is_none() {
+                    let name = ctx.sym_name(*fn_id);
+                    if name == "diff"
+                        && !is_known_eval_engine_function(name, args.len())
+                        && !session.is_known_function(name, args.len())
+                    {
+                        return Some("diff requiere variable explícita: diff(expr, x)".to_string());
+                    }
+                }
+                stack.extend(args.iter().copied());
+            }
+            cas_ast::Expr::Add(a, b)
+            | cas_ast::Expr::Sub(a, b)
+            | cas_ast::Expr::Mul(a, b)
+            | cas_ast::Expr::Div(a, b)
+            | cas_ast::Expr::Pow(a, b) => {
+                stack.push(*a);
+                stack.push(*b);
+            }
+            cas_ast::Expr::Neg(inner) | cas_ast::Expr::Hold(inner) => stack.push(*inner),
+            cas_ast::Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            cas_ast::Expr::Number(_)
+            | cas_ast::Expr::Constant(_)
+            | cas_ast::Expr::Variable(_)
+            | cas_ast::Expr::SessionRef(_) => {}
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod unknown_function_tests {
-    use super::{first_unknown_function_name, is_known_eval_engine_function, StatelessEvalSession};
+    use super::{
+        first_invalid_eval_engine_function_message, first_unknown_function_name,
+        is_known_eval_engine_function, StatelessEvalSession,
+    };
     use cas_ast::Context;
     use cas_parser::parse;
 
@@ -205,6 +249,18 @@ mod unknown_function_tests {
         assert_eq!(
             first_unknown_function_name(&session, &ctx, unknown_expr),
             Some("foo".to_string())
+        );
+    }
+
+    #[test]
+    fn invalid_diff_arity_reports_targeted_message() {
+        let mut ctx = Context::new();
+        let session = TestSession::new(());
+        let expr = parse("diff(sin(x))", &mut ctx).expect("parse diff");
+
+        assert_eq!(
+            first_invalid_eval_engine_function_message(&session, &ctx, expr),
+            Some("diff requiere variable explícita: diff(expr, x)".to_string())
         );
     }
 }

@@ -9395,6 +9395,18 @@ fn bounded_inverse_trig_surd_quotient_diff_compacts_open_interval_gap() {
             "7 - (x^2 + x + 1)^2 > 0",
         ),
         (
+            "diff(arcsin((x^2+2*x+1)/sqrt(7)), x)",
+            "2 * (x + 1) / sqrt(7 - (x + 1)^4)",
+            "(2*x+2)/(sqrt(7)*sqrt(1-((x^2+2*x+1)/sqrt(7))^2))",
+            "7 - (x + 1)^4 > 0",
+        ),
+        (
+            "diff(arccos((x^2+2*x+1)/sqrt(7)), x)",
+            "-2 * (x + 1) / sqrt(7 - (x + 1)^4)",
+            "-(2*x+2)/(sqrt(7)*sqrt(1-((x^2+2*x+1)/sqrt(7))^2))",
+            "7 - (x + 1)^4 > 0",
+        ),
+        (
             "diff(arcsin((x^2+x+1)/sqrt(2/3)), x)",
             "(2 * x + 1) * sqrt(3) / sqrt(2 - 3 * (x^2 + x + 1)^2)",
             "(2*x+1)/(sqrt(2/3)*sqrt(1-((x^2+x+1)/sqrt(2/3))^2))",
@@ -10099,6 +10111,7 @@ fn inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions() {
         "diff(arccsc(2*x), x)",
         "diff(arcsec(sqrt(x+1)), x)",
         "diff(arccsc(sqrt(3-2*x)), x)",
+        "diff(arcsec(sqrt(1-2*x)), x)",
         "diff(arcsec(sqrt(x^2+1)), x)",
         "diff(arccsc(sqrt(x^2+2)), x)",
         "diff(arcsec(x^2+1), x)",
