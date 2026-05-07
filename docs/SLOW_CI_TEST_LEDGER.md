@@ -60,6 +60,17 @@ Do not create entries for:
 - latest measured time:
   - observed in `make ci`: `66.72s` test time
   - focused repro: `65.51s` test time (`real 68.85s`)
+  - after harness split: default representative smoke `10.16s` test time
+    (`real 11.36s`)
+  - after representative pruning: default representative smoke `3.05s` test time
+    in focused debug repro
+  - row profiling showed the retained 11-row smoke was dominated by
+    `diff(arcsec((x^2+x+3)/sqrt(2)), x)` at `6.00s` and
+    `diff(arccsc(sqrt(3/2)*(x^2+x+3)), x)` at `2.57s`; the active smoke now
+    keeps one scaled-surd representative and leaves the slower quotient-surd
+    row in the ignored exhaustive sweep
+  - exhaustive manual sweep remains available and passed at `65.37s` test time
+    (`real 65.47s`)
 - classification:
   - `test verification pathology`
 - root cause hypothesis:
@@ -69,14 +80,18 @@ Do not create entries for:
   - the exact repro is stable-slow even outside the full suite, so this is not
     suite startup noise
 - retained action:
-  - pending: split the active debug-CI table into a minimal representative smoke
-    and an ignored/manual exhaustive sweep, or move duplicated equivalence-heavy
-    checks closer to the helper layer while keeping public smoke coverage for
-    each structurally distinct family
+  - split the active debug-CI table into a representative public smoke covering
+    affine, scaled/sign, sqrt-affine, sqrt-quadratic, positive quadratic,
+    scaled-surd, and `arccot` branches
+  - prune redundant hot representatives from the active smoke after per-row
+    profiling, while keeping the full table as the source of truth for release
+    or manual exhaustive validation
+  - keep the full table as an explicit ignored exhaustive sweep for manual or
+    release-style validation
 - embedded corpus guardrail:
   - unchanged engine runtime path so far
 - status:
-  - `open`
+  - `fixed in test`
 
 ### 2026-05-02: `integrate_contract_supported_antiderivatives_verify_by_differentiation`
 

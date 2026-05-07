@@ -81,6 +81,45 @@ impl ImplicitCondition {
             return true;
         }
 
+        if matches!(self, Self::NonZero(_))
+            && cas_math::prove_sign::prove_positive_depth_with(
+                ctx,
+                expr,
+                crate::predicate_proofs::DEFAULT_PROOF_DEPTH,
+                true,
+                |_ctx, _expr, _depth| cas_math::tri_proof::TriProof::Unknown,
+            )
+            .is_proven()
+        {
+            return true;
+        }
+
+        if matches!(self, Self::Positive(_))
+            && cas_math::prove_sign::prove_positive_depth_with(
+                ctx,
+                expr,
+                crate::predicate_proofs::DEFAULT_PROOF_DEPTH,
+                true,
+                |_ctx, _expr, _depth| cas_math::tri_proof::TriProof::Unknown,
+            )
+            .is_proven()
+        {
+            return true;
+        }
+
+        if matches!(self, Self::NonNegative(_))
+            && cas_math::prove_sign::prove_nonnegative_depth_with(
+                ctx,
+                expr,
+                crate::predicate_proofs::DEFAULT_PROOF_DEPTH,
+                true,
+                |_ctx, _expr, _depth| cas_math::tri_proof::TriProof::Unknown,
+            )
+            .is_proven()
+        {
+            return true;
+        }
+
         // Fully numeric expressions are trivial in this context.
         if !cas_math::expr_predicates::contains_variable(ctx, expr) {
             return true;
@@ -278,6 +317,30 @@ mod tests {
         let exp_x = parse("exp(x)", &mut ctx).expect("parse exp(x)");
 
         assert!(ImplicitCondition::NonZero(exp_x).is_trivial(&ctx));
+    }
+
+    #[test]
+    fn nonzero_strictly_positive_quadratic_condition_is_trivial() {
+        let mut ctx = Context::new();
+        let expr = parse("x^2+1", &mut ctx).expect("parse x^2+1");
+
+        assert!(ImplicitCondition::NonZero(expr).is_trivial(&ctx));
+    }
+
+    #[test]
+    fn positive_strictly_positive_quadratic_condition_is_trivial() {
+        let mut ctx = Context::new();
+        let expr = parse("x^2+1", &mut ctx).expect("parse x^2+1");
+
+        assert!(ImplicitCondition::Positive(expr).is_trivial(&ctx));
+    }
+
+    #[test]
+    fn nonnegative_shifted_square_plus_constant_condition_is_trivial() {
+        let mut ctx = Context::new();
+        let expr = parse("(2*x+1)^2+3", &mut ctx).expect("parse shifted square");
+
+        assert!(ImplicitCondition::NonNegative(expr).is_trivial(&ctx));
     }
 
     #[test]

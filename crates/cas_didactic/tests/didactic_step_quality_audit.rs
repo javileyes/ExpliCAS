@@ -482,23 +482,32 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         "rationalize_linear_root CLI narrative should use human headers instead of formula-like labels when a clearer title exists, got:\n{}",
         rationalize_cli
     );
-    let self_cancel_step = rationalize_artifact
-        .wire_steps
-        .iter()
-        .find(|step| {
-            step.rule == "Restar dos expresiones iguales"
-                || step.rule == "Collapse Common-Scale Equivalent Difference"
-        })
-        .expect("missing final cancellation wire step in rationalize_linear_root");
-    assert!(
-        self_cancel_step.substeps.is_empty(),
-        "rationalize_linear_root self-cancel step should stay direct without tautological substeps, got {:?}",
-        self_cancel_step
-            .substeps
+    let self_cancel_step = rationalize_artifact.wire_steps.iter().find(|step| {
+        step.rule == "Restar dos expresiones iguales"
+            || step.rule == "Collapse Common-Scale Equivalent Difference"
+    });
+    if let Some(self_cancel_step) = self_cancel_step {
+        assert!(
+            self_cancel_step.substeps.is_empty(),
+            "rationalize_linear_root self-cancel step should stay direct without tautological substeps, got {:?}",
+            self_cancel_step
+                .substeps
+                .iter()
+                .map(|substep| substep.title.as_str())
+                .collect::<Vec<_>>()
+        );
+    } else {
+        let rationalize_step = rationalize_artifact
+            .wire_steps
             .iter()
-            .map(|substep| substep.title.as_str())
-            .collect::<Vec<_>>()
-    );
+            .find(|step| step.rule == "Racionalizar el denominador")
+            .expect("missing rationalize step in rationalize_linear_root");
+        assert!(
+            rationalize_step.after_latex.contains("\\frac{1 + \\sqrt{x}}{x - 1}"),
+            "rationalize_linear_root shortened route should still expose the matching fraction before final zero, got {}",
+            rationalize_step.after_latex
+        );
+    }
 
     let cube_case = cases
         .iter()

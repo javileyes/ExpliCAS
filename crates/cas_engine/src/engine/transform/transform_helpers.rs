@@ -77,6 +77,7 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
         || diff_target_is_scaled_bounded_inverse_trig_surd_quotient(ctx, target, var_name)
+        || diff_target_is_bounded_inverse_trig_self_normalized_projection(ctx, target, var_name)
         || expr_is_positive_integer_power_of_low_degree_polynomial(ctx, target, var_name)
         || diff_target_is_constant_scaled_positive_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_reciprocal_polynomial_power(ctx, target, var_name)
@@ -631,6 +632,59 @@ fn diff_target_is_bounded_inverse_trig_surd_quotient(
     }
 
     saw_power && saw_surd_scale
+}
+
+fn diff_target_is_bounded_inverse_trig_self_normalized_projection(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(
+                cas_ast::BuiltinFn::Arcsin
+                    | cas_ast::BuiltinFn::Asin
+                    | cas_ast::BuiltinFn::Arccos
+                    | cas_ast::BuiltinFn::Acos
+            )
+        )
+    {
+        return false;
+    }
+
+    diff_arg_is_self_normalized_projection(ctx, args[0], var_name)
+}
+
+fn diff_arg_is_self_normalized_projection(
+    ctx: &cas_ast::Context,
+    arg: ExprId,
+    var_name: &str,
+) -> bool {
+    let arg = match ctx.get(arg) {
+        Expr::Neg(inner) => *inner,
+        _ => arg,
+    };
+
+    let Expr::Div(numerator, denominator) = ctx.get(arg) else {
+        return false;
+    };
+    let Some(denominator_radicand) = extract_square_root_base(ctx, *denominator) else {
+        return false;
+    };
+    let Ok(numerator_poly) = Polynomial::from_expr(ctx, *numerator, var_name) else {
+        return false;
+    };
+    let Ok(denominator_poly) = Polynomial::from_expr(ctx, denominator_radicand, var_name) else {
+        return false;
+    };
+
+    !numerator_poly.is_zero()
+        && (1..=2).contains(&numerator_poly.degree())
+        && denominator_poly.degree() <= 4
 }
 
 fn diff_target_is_single_low_degree_polynomial_power(
@@ -1303,6 +1357,23 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
         }
 
+        if matches!(op, BinaryOp::Add | BinaryOp::Sub) {
+            if let Some(zero) =
+                crate::fraction_residual_support::try_polynomial_denominator_fraction_residual_zero(
+                    self.context,
+                    id,
+                )
+            {
+                self.record_step(
+                    "Cancel fraction residual with equivalent polynomial denominators",
+                    "Polynomial-Denominator Fraction Residual",
+                    id,
+                    zero,
+                );
+                return zero;
+            }
+        }
+
         // PRE-ORDER: Collapse small exact-zero additive combinations before
         // simplifying children. This prevents recursive trig power rewrite loops
         // such as 8*sin(x)^4 - (3 - 4*cos(2*x) + cos(4*x)).
@@ -1333,7 +1404,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
         let new_l = self.transform_child_at(id, crate::step::PathStep::Left, l);
         let new_r = self.transform_child_at(id, crate::step::PathStep::Right, r);
 
-        if new_l != l || new_r != r {
+        let rebuilt = if new_l != l || new_r != r {
             let expr = match op {
                 BinaryOp::Add => Expr::Add(new_l, new_r),
                 BinaryOp::Sub => Expr::Sub(new_l, new_r),
@@ -1343,7 +1414,26 @@ impl<'a> LocalSimplificationTransformer<'a> {
             self.context.add(expr)
         } else {
             id
+        };
+
+        if matches!(op, BinaryOp::Add | BinaryOp::Sub) && rebuilt != id {
+            if let Some(zero) =
+                crate::fraction_residual_support::try_polynomial_denominator_fraction_residual_zero(
+                    self.context,
+                    rebuilt,
+                )
+            {
+                self.record_step(
+                    "Cancel fraction residual with equivalent polynomial denominators",
+                    "Polynomial-Denominator Fraction Residual",
+                    rebuilt,
+                    zero,
+                );
+                return zero;
+            }
         }
+
+        rebuilt
     }
 
     /// PRE-ORDER: Flatten a Mul chain and detect conjugate factor pairs.

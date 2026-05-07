@@ -351,22 +351,24 @@ fn integrate_contract_scaled_inverse_sqrt_polynomial_power_substitution() {
 #[test]
 fn integrate_contract_symbolic_constant_verification_preserves_independent_domain_conditions() {
     let input = "integrate(ln(y)*(z+1)^(-2), x)";
-    let (result, required) = evaluated_integral_with_required_conditions(input);
+    let (result, mut required) = evaluated_integral_with_required_conditions(input);
+    required.sort();
 
     assert_eq!(result, "x * ln(y) / (z + 1)^2");
     assert_eq!(
         required,
-        vec!["z + 1 ≠ 0".to_string(), "y > 0".to_string()],
+        vec!["y > 0".to_string(), "z + 1 ≠ 0".to_string()],
         "symbolic constant integration should publish independent domain conditions"
     );
 
-    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+    let (nested_residual, mut nested_required) = evaluated_expr_with_required_conditions(
         "diff(integrate(ln(y)*(z+1)^(-2), x), x) - ln(y)*(z+1)^(-2)",
     );
+    nested_required.sort();
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["z + 1 ≠ 0".to_string(), "y > 0".to_string()],
+        vec!["y > 0".to_string(), "z + 1 ≠ 0".to_string()],
         "nested antiderivative verification should preserve independent domain conditions"
     );
 }
@@ -2162,6 +2164,15 @@ fn integrate_contract_scaled_polynomial_derivative_atanh_substitution() {
         vec!["4 - x^4 > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+    assert_antiderivative_verifies("integrate(2*x/(4-x^4), x)");
+    let (nested_residual, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(2*x/(4-x^4), x), x) - 2*x/(4-x^4)");
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["4 - x^4 > 0".to_string()],
+        "atanh polynomial residual verification should preserve the open-interval condition"
+    );
 
     let input = "integrate(-2*x/(1-x^4), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
@@ -2368,6 +2379,16 @@ fn integrate_contract_shifted_polynomial_derivative_over_expanded_denominator_sq
         required,
         vec!["x^2 + x - 1 ≠ 0".to_string()],
         "unexpected required_conditions: {required:?}"
+    );
+
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate((2*x+1)/(x^4+2*x^3-x^2-2*x+1), x), x) - (2*x+1)/(x^4+2*x^3-x^2-2*x+1)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "expanded denominator antiderivative verification should preserve the compact nonzero domain"
     );
 }
 
@@ -2589,6 +2610,16 @@ fn integrate_contract_shifted_polynomial_derivative_over_negatively_scaled_expan
         required,
         vec!["x^2 + x - 1 ≠ 0".to_string()],
         "unexpected required_conditions: {required:?}"
+    );
+
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate((2*x+1)/(-4*x^6-12*x^5+20*x^3-12*x+4), x), x) - (2*x+1)/(-4*x^6-12*x^5+20*x^3-12*x+4)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["x^2 + x - 1 ≠ 0".to_string()],
+        "negative expanded denominator antiderivative verification should preserve the compact nonzero domain"
     );
 }
 
@@ -3393,6 +3424,15 @@ fn integrate_contract_linear_secant_uses_abs_log_and_nonzero_domain() {
         vec!["cos(2 * x + 1) ≠ 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+    assert_antiderivative_verifies("integrate(sec(2*x + 1), x)");
+    let (nested_residual, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(sec(2*x+1), x), x) - sec(2*x+1)");
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["cos(2 * x + 1) ≠ 0".to_string()],
+        "secant log primitive verification should preserve the trig pole condition"
+    );
 }
 
 #[test]
@@ -3405,6 +3445,14 @@ fn integrate_contract_linear_cosecant_uses_abs_log_and_nonzero_domain() {
         required,
         vec!["sin(2 * x + 1) ≠ 0".to_string()],
         "unexpected required_conditions: {required:?}"
+    );
+    let (nested_residual, nested_required) =
+        evaluated_expr_with_required_conditions("diff(integrate(csc(2*x+1), x), x) - csc(2*x+1)");
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["sin(2 * x + 1) ≠ 0".to_string()],
+        "cosecant log primitive verification should preserve the trig pole condition"
     );
 }
 

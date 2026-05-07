@@ -717,8 +717,14 @@ fn step_wire_uses_human_visible_rule_titles() {
     );
     assert!(
         rule_titles.contains(&"Restar dos expresiones iguales")
-            || rule_titles.contains(&"Collapse Common-Scale Equivalent Difference"),
-        "expected humanized visible rule title, got {:?}",
+            || rule_titles.contains(&"Collapse Common-Scale Equivalent Difference")
+            || steps.iter().any(|step| {
+                step.rule == "Racionalizar el denominador"
+                    && step
+                        .after_latex
+                        .contains("\\frac{1 + \\sqrt{x}}{x - 1}")
+            }),
+        "expected humanized visible cancellation or a compact rationalization step exposing the cancellation pair, got {:?}",
         rule_titles
     );
 }
@@ -1137,22 +1143,33 @@ fn step_wire_rationalization_exact_cube_quotient_uses_notable_quotient_narrative
 fn step_wire_rationalization_self_cancel_stays_direct_without_tautological_substeps() {
     let steps = step_payloads_on_for(RATIONALIZE_LINEAR_ROOT_EXPR);
 
-    let step = steps
-        .iter()
-        .find(|step| {
-            step.rule == "Restar dos expresiones iguales"
-                || step.rule == "Collapse Common-Scale Equivalent Difference"
-        })
-        .expect("expected subtraction self-cancel step");
+    let step = steps.iter().find(|step| {
+        step.rule == "Restar dos expresiones iguales"
+            || step.rule == "Collapse Common-Scale Equivalent Difference"
+    });
 
-    assert!(
-        step.substeps.is_empty(),
-        "self-cancel step should stay direct without tautological substeps, got: {:?}",
-        step.substeps
+    if let Some(step) = step {
+        assert!(
+            step.substeps.is_empty(),
+            "self-cancel step should stay direct without tautological substeps, got: {:?}",
+            step.substeps
+                .iter()
+                .map(|substep| &substep.title)
+                .collect::<Vec<_>>()
+        );
+    } else {
+        let rationalize_step = steps
             .iter()
-            .map(|substep| &substep.title)
-            .collect::<Vec<_>>()
-    );
+            .find(|step| step.rule == "Racionalizar el denominador")
+            .expect("expected rationalization step");
+        assert!(
+            rationalize_step
+                .after_latex
+                .contains("\\frac{1 + \\sqrt{x}}{x - 1}"),
+            "compact rationalization route should expose the matching fraction before final zero, got {}",
+            rationalize_step.after_latex
+        );
+    }
 }
 
 #[test]

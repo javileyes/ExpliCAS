@@ -57,6 +57,7 @@ mod events_tests;
 pub(crate) mod expand;
 #[cfg(test)]
 mod expand_tests;
+mod fraction_residual_support;
 pub(crate) mod helpers;
 pub(crate) mod implicit_domain;
 mod integration_prep_support;

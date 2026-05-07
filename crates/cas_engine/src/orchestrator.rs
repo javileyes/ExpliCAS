@@ -25942,6 +25942,28 @@ impl Orchestrator {
         }
 
         if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_diff_inverse_reciprocal_trig_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Cancel matching inverse reciprocal trig derivative residual",
+                    "Inverse Reciprocal Trig Diff Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) =
             crate::calculus_residual_support::try_diff_integral_reciprocal_trig_residual_root_zero(
                 &mut simplifier.context,
                 expr,

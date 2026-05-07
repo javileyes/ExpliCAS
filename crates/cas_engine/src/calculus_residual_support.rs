@@ -784,6 +784,11 @@ fn scale_expr_by_rational(ctx: &mut Context, expr: ExprId, scale: BigRational) -
     cas_math::expr_nary::build_balanced_mul(ctx, &[scale_expr, expr])
 }
 
+fn square_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
+    let two = ctx.num(2);
+    ctx.add(Expr::Pow(expr, two))
+}
+
 fn scale_polynomial(poly: &Polynomial, scale: &BigRational) -> Polynomial {
     Polynomial::new(
         poly.coeffs.iter().map(|coeff| coeff * scale).collect(),
@@ -817,6 +822,306 @@ fn diff_call_with_optional_divisor(ctx: &mut Context, expr: ExprId) -> Option<(E
     let den = *den;
     crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, num)?;
     Some((num, den))
+}
+
+fn scaled_inverse_reciprocal_trig_target(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, ExprId, BigRational)> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            let builtin = match ctx.builtin_of(*fn_id) {
+                Some(
+                    builtin @ (BuiltinFn::Arcsec
+                    | BuiltinFn::Asec
+                    | BuiltinFn::Arccsc
+                    | BuiltinFn::Acsc),
+                ) => builtin,
+                _ => return None,
+            };
+            (args.len() == 1).then_some((builtin, args[0], BigRational::one()))
+        }
+        Expr::Neg(inner) => {
+            let (builtin, arg, scale) = scaled_inverse_reciprocal_trig_target(ctx, *inner)?;
+            Some((builtin, arg, -scale))
+        }
+        Expr::Div(num, den) => {
+            let den_scale = cas_math::numeric_eval::as_rational_const(ctx, *den)?;
+            if den_scale.is_zero() {
+                return None;
+            }
+            let (builtin, arg, scale) = scaled_inverse_reciprocal_trig_target(ctx, *num)?;
+            Some((builtin, arg, scale / den_scale))
+        }
+        Expr::Mul(_, _) => {
+            let mut scale = BigRational::one();
+            let mut matched = None;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if let Some(value) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+                    scale *= value;
+                    continue;
+                }
+
+                let (builtin, arg, factor_scale) =
+                    scaled_inverse_reciprocal_trig_target(ctx, factor)?;
+                if matched.replace((builtin, arg)).is_some() {
+                    return None;
+                }
+                scale *= factor_scale;
+            }
+
+            let (builtin, arg) = matched?;
+            Some((builtin, arg, scale))
+        }
+        _ => None,
+    }
+}
+
+fn inverse_reciprocal_trig_derivative_sign(builtin: BuiltinFn) -> Option<BigRational> {
+    match builtin {
+        BuiltinFn::Arcsec | BuiltinFn::Asec => Some(BigRational::one()),
+        BuiltinFn::Arccsc | BuiltinFn::Acsc => Some(-BigRational::one()),
+        _ => None,
+    }
+}
+
+fn abs_arg_matches(ctx: &Context, expr: ExprId, arg: ExprId) -> bool {
+    unary_builtin_arg(ctx, expr, BuiltinFn::Abs)
+        .is_some_and(|abs_arg| exprs_equivalent(ctx, abs_arg, arg))
+}
+
+fn inverse_reciprocal_trig_abs_sqrt_coeff(
+    ctx: &mut Context,
+    expr: ExprId,
+    arg: ExprId,
+    gap: ExprId,
+) -> Option<BigRational> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            inverse_reciprocal_trig_abs_sqrt_coeff(ctx, inner, arg, gap).map(|coeff| -coeff)
+        }
+        Expr::Div(num, den) => {
+            let numerator_coeff = cas_math::numeric_eval::as_rational_const(ctx, num)?;
+            let mut denominator_coeff = BigRational::one();
+            let mut matched_abs = false;
+            let mut matched_sqrt = false;
+
+            for factor in cas_math::expr_nary::mul_leaves(ctx, den) {
+                if let Some(factor_coeff) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+                    denominator_coeff *= factor_coeff;
+                    continue;
+                }
+
+                if !matched_abs && abs_arg_matches(ctx, factor, arg) {
+                    matched_abs = true;
+                    continue;
+                }
+
+                if !matched_sqrt {
+                    if let Some(base) = sqrt_like_base(ctx, factor) {
+                        if exprs_match(ctx, base, gap) {
+                            matched_sqrt = true;
+                            continue;
+                        }
+                    }
+                }
+
+                return None;
+            }
+
+            (matched_abs && matched_sqrt && !denominator_coeff.is_zero())
+                .then_some(numerator_coeff / denominator_coeff)
+        }
+        _ => None,
+    }
+}
+
+fn inverse_reciprocal_trig_positive_arg_sqrt_coeff(
+    ctx: &mut Context,
+    expr: ExprId,
+    arg: ExprId,
+    gap: ExprId,
+    arg_derivative: &Polynomial,
+    var_name: &str,
+) -> Option<BigRational> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => inverse_reciprocal_trig_positive_arg_sqrt_coeff(
+            ctx,
+            inner,
+            arg,
+            gap,
+            arg_derivative,
+            var_name,
+        )
+        .map(|coeff| -coeff),
+        Expr::Div(num, den) => {
+            let actual_num_poly = Polynomial::from_expr(ctx, num, var_name).ok()?;
+            let mut denominator_coeff = BigRational::one();
+            let mut matched_arg = false;
+            let mut matched_sqrt = false;
+
+            for factor in cas_math::expr_nary::mul_leaves(ctx, den) {
+                if let Some(factor_coeff) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+                    denominator_coeff *= factor_coeff;
+                    continue;
+                }
+
+                if !matched_arg && exprs_equivalent(ctx, factor, arg) {
+                    matched_arg = true;
+                    continue;
+                }
+
+                if !matched_sqrt {
+                    if let Some(base) = sqrt_like_base(ctx, factor) {
+                        if exprs_match(ctx, base, gap) {
+                            matched_sqrt = true;
+                            continue;
+                        }
+                    }
+                }
+
+                return None;
+            }
+
+            if !matched_arg || !matched_sqrt || denominator_coeff.is_zero() {
+                return None;
+            }
+
+            let coeff = polynomial_scale_factor(arg_derivative, &actual_num_poly)?;
+            Some(coeff / denominator_coeff)
+        }
+        _ => None,
+    }
+}
+
+fn polynomial_scale_factor(expected: &Polynomial, actual: &Polynomial) -> Option<BigRational> {
+    if expected.is_zero() {
+        return actual.is_zero().then_some(BigRational::one());
+    }
+    if expected.degree() != actual.degree() {
+        return None;
+    }
+
+    let mut scale = None;
+    for (expected_coeff, actual_coeff) in expected.coeffs.iter().zip(actual.coeffs.iter()) {
+        if expected_coeff.is_zero() {
+            if !actual_coeff.is_zero() {
+                return None;
+            }
+            continue;
+        }
+        let candidate = actual_coeff / expected_coeff;
+        if scale.as_ref().is_some_and(|scale| scale != &candidate) {
+            return None;
+        }
+        scale = Some(candidate);
+    }
+
+    scale
+}
+
+fn quadratic_polynomial_is_strictly_greater_than_one(poly: &Polynomial) -> bool {
+    if poly.degree() != 2 {
+        return false;
+    }
+
+    let a = poly
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if a <= BigRational::zero() {
+        return false;
+    }
+    let b = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let c = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let four = BigRational::from_integer(4.into());
+    let minimum = c - (b.clone() * b) / (four * a);
+    minimum > BigRational::one()
+}
+
+fn inverse_reciprocal_trig_positive_quadratic_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (builtin, arg, target_scale) = scaled_inverse_reciprocal_trig_target(ctx, call.target)?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, &call.var_name).ok()?;
+    if !quadratic_polynomial_is_strictly_greater_than_one(&arg_poly) {
+        return None;
+    }
+
+    let derivative = arg_poly.derivative();
+    if derivative.is_zero() {
+        return None;
+    }
+
+    let divisor_scale = cas_math::numeric_eval::as_rational_const(ctx, divisor)?;
+    if divisor_scale.is_zero() {
+        return None;
+    }
+
+    let sign = inverse_reciprocal_trig_derivative_sign(builtin)?;
+    let expected_coeff = sign * target_scale / divisor_scale;
+    let one = ctx.num(1);
+    let arg_sq = square_expr(ctx, arg);
+    let raw_gap = ctx.add(Expr::Sub(arg_sq, one));
+    let gap = cas_math::expr_normalization::normalize_condition_expr(ctx, raw_gap);
+    let actual_coeff = inverse_reciprocal_trig_positive_arg_sqrt_coeff(
+        ctx,
+        right,
+        arg,
+        gap,
+        &derivative,
+        &call.var_name,
+    )?;
+    (actual_coeff == expected_coeff).then_some(Vec::new())
+}
+
+fn inverse_reciprocal_trig_affine_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (builtin, arg, target_scale) = scaled_inverse_reciprocal_trig_target(ctx, call.target)?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, &call.var_name).ok()?;
+    if arg_poly.degree() != 1 {
+        return None;
+    }
+
+    let derivative = arg_poly.derivative();
+    let derivative_scale = derivative.coeffs.first().cloned()?;
+    if derivative_scale.is_zero() {
+        return None;
+    }
+
+    let divisor_scale = cas_math::numeric_eval::as_rational_const(ctx, divisor)?;
+    if divisor_scale.is_zero() {
+        return None;
+    }
+
+    let sign = inverse_reciprocal_trig_derivative_sign(builtin)?;
+    let expected_coeff = sign * target_scale * derivative_scale / divisor_scale;
+    let one = ctx.num(1);
+    let arg_sq = square_expr(ctx, arg);
+    let raw_gap = ctx.add(Expr::Sub(arg_sq, one));
+    let gap = cas_math::expr_normalization::normalize_condition_expr(ctx, raw_gap);
+    let actual_coeff = inverse_reciprocal_trig_abs_sqrt_coeff(ctx, right, arg, gap)?;
+    (actual_coeff == expected_coeff).then_some(vec![crate::ImplicitCondition::Positive(gap)])
 }
 
 fn is_constant_scaled_hyperbolic_reciprocal_target(ctx: &Context, expr: ExprId) -> bool {
@@ -1383,6 +1688,21 @@ pub(crate) fn try_diff_reciprocal_trig_residual_zero_preorder(
         .map(|_| ctx.num(0))
 }
 
+pub(crate) fn try_diff_inverse_reciprocal_trig_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    let required_conditions = inverse_reciprocal_trig_affine_diff_matches(
+        ctx, diff_expr, divisor, right,
+    )
+    .or_else(|| {
+        inverse_reciprocal_trig_positive_quadratic_diff_matches(ctx, diff_expr, divisor, right)
+    })?;
+    Some((ctx.num(0), required_conditions))
+}
+
 pub(crate) fn try_diff_integral_reciprocal_trig_residual_zero_preorder(
     ctx: &mut Context,
     left: ExprId,
@@ -1475,6 +1795,31 @@ pub(crate) fn try_diff_reciprocal_trig_residual_root_zero(
     };
     try_diff_reciprocal_trig_residual_zero_preorder(ctx, left, right)
         .or_else(|| try_diff_reciprocal_trig_residual_zero_preorder(ctx, right, left))
+}
+
+pub(crate) fn try_diff_inverse_reciprocal_trig_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            let left = *left;
+            let right = *right;
+            try_diff_inverse_reciprocal_trig_residual_zero_preorder(ctx, left, right).or_else(
+                || try_diff_inverse_reciprocal_trig_residual_zero_preorder(ctx, right, left),
+            )
+        }
+        Expr::Add(left, right) => {
+            let left = *left;
+            let right = *right;
+            let neg_right = ctx.add(Expr::Neg(right));
+            let neg_left = ctx.add(Expr::Neg(left));
+            try_diff_inverse_reciprocal_trig_residual_zero_preorder(ctx, left, neg_right).or_else(
+                || try_diff_inverse_reciprocal_trig_residual_zero_preorder(ctx, right, neg_left),
+            )
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn try_diff_integral_reciprocal_trig_residual_root_zero(

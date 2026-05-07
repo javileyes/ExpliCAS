@@ -1,0 +1,273 @@
+use cas_ast::{Context, Expr, ExprId};
+use cas_math::expr_domain::exprs_equivalent;
+use cas_math::polynomial::Polynomial;
+use cas_math::root_forms::extract_square_root_base;
+
+const MAX_FRACTION_RESIDUAL_NODES: usize = 96;
+const MAX_EXTENDED_FRACTION_RESIDUAL_NODES: usize = 176;
+const MAX_EXTENDED_FRACTION_COMPONENT_NODES: usize = 72;
+const MAX_DENOMINATOR_POLY_DEGREE: usize = 6;
+
+fn expr_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
+}
+
+fn signed_fraction_term(
+    ctx: &mut Context,
+    expr: ExprId,
+    positive: bool,
+) -> Option<(ExprId, ExprId)> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => signed_fraction_term(ctx, inner, !positive),
+        Expr::Div(num, den) if positive => Some((num, den)),
+        Expr::Div(num, den) => {
+            let signed_num = ctx.add(Expr::Neg(num));
+            Some((signed_num, den))
+        }
+        _ => None,
+    }
+}
+
+fn signed_fraction_pair(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<((ExprId, ExprId), (ExprId, ExprId))> {
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => Some((
+            signed_fraction_term(ctx, left, true)?,
+            signed_fraction_term(ctx, right, true)?,
+        )),
+        Expr::Sub(left, right) => Some((
+            signed_fraction_term(ctx, left, true)?,
+            signed_fraction_term(ctx, right, false)?,
+        )),
+        _ => None,
+    }
+}
+
+fn fraction_pair_within_budget(
+    ctx: &Context,
+    expr: ExprId,
+    pair: &((ExprId, ExprId), (ExprId, ExprId)),
+) -> bool {
+    let total_nodes = cas_ast::count_nodes(ctx, expr);
+    if total_nodes <= MAX_FRACTION_RESIDUAL_NODES {
+        return true;
+    }
+    if total_nodes > MAX_EXTENDED_FRACTION_RESIDUAL_NODES {
+        return false;
+    }
+
+    let ((left_num, left_den), (right_num, right_den)) = *pair;
+    [left_num, left_den, right_num, right_den]
+        .into_iter()
+        .all(|part| cas_ast::count_nodes(ctx, part) <= MAX_EXTENDED_FRACTION_COMPONENT_NODES)
+}
+
+fn single_shared_variable(ctx: &Context, left: ExprId, right: ExprId) -> Option<String> {
+    let left_vars = cas_ast::collect_variables(ctx, left);
+    let right_vars = cas_ast::collect_variables(ctx, right);
+    if left_vars.len() != 1 || left_vars != right_vars {
+        return None;
+    }
+    left_vars.into_iter().next()
+}
+
+fn polynomial_denominators_match(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    if expr_eq(ctx, left, right) {
+        return true;
+    }
+
+    let Some(var) = single_shared_variable(ctx, left, right) else {
+        return false;
+    };
+    let Ok(left_poly) = Polynomial::from_expr(ctx, left, &var) else {
+        return false;
+    };
+    let Ok(right_poly) = Polynomial::from_expr(ctx, right, &var) else {
+        return false;
+    };
+
+    left_poly.degree() <= MAX_DENOMINATOR_POLY_DEGREE
+        && right_poly.degree() <= MAX_DENOMINATOR_POLY_DEGREE
+        && left_poly == right_poly
+}
+
+fn signed_numerators_cancel(ctx: &mut Context, left: ExprId, right: ExprId) -> bool {
+    let neg_right = ctx.add(Expr::Neg(right));
+    if expr_eq(ctx, left, neg_right) || exprs_equivalent(ctx, left, neg_right) {
+        return true;
+    }
+
+    let sum = ctx.add(Expr::Add(left, right));
+    if crate::polynomial_identity_support::try_prove_polynomial_identity_zero_expr(ctx, sum)
+        .is_some()
+    {
+        return true;
+    }
+
+    polynomial_sqrt_scaled_terms_equivalent(ctx, left, neg_right)
+}
+
+fn polynomial_sqrt_scaled_terms_equivalent(ctx: &mut Context, left: ExprId, right: ExprId) -> bool {
+    let (left_negated, left) = strip_outer_neg(ctx, left);
+    let (right_negated, right) = strip_outer_neg(ctx, right);
+    let left_factors = cas_math::expr_nary::mul_factors(ctx, left);
+    let right_factors = cas_math::expr_nary::mul_factors(ctx, right);
+    if left_factors.len() > 4 || right_factors.len() > 4 {
+        return false;
+    }
+
+    let Some((left_radicand, left_rest)) = split_single_sqrt_factor(ctx, left_factors.as_slice())
+    else {
+        return false;
+    };
+    let Some((right_radicand, right_rest)) =
+        split_single_sqrt_factor(ctx, right_factors.as_slice())
+    else {
+        return false;
+    };
+    if !polynomial_denominators_match(ctx, left_radicand, right_radicand) {
+        return false;
+    }
+
+    let left_rest_expr = build_signed_product_or_one(ctx, &left_rest, left_negated);
+    let right_rest_expr = build_signed_product_or_one(ctx, &right_rest, right_negated);
+    if expr_eq(ctx, left_rest_expr, right_rest_expr)
+        || exprs_equivalent(ctx, left_rest_expr, right_rest_expr)
+    {
+        return true;
+    }
+
+    let diff = ctx.add(Expr::Sub(left_rest_expr, right_rest_expr));
+    crate::polynomial_identity_support::try_prove_polynomial_identity_zero_expr(ctx, diff).is_some()
+}
+
+fn strip_outer_neg(ctx: &Context, expr: ExprId) -> (bool, ExprId) {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => (true, *inner),
+        _ => (false, expr),
+    }
+}
+
+fn split_single_sqrt_factor(ctx: &Context, factors: &[ExprId]) -> Option<(ExprId, Vec<ExprId>)> {
+    let mut sqrt_radicand = None;
+    let mut rest = Vec::with_capacity(factors.len().saturating_sub(1));
+    for &factor in factors {
+        if let Some(radicand) = extract_square_root_base(ctx, factor) {
+            if sqrt_radicand.is_some() {
+                return None;
+            }
+            sqrt_radicand = Some(radicand);
+        } else {
+            rest.push(factor);
+        }
+    }
+
+    Some((sqrt_radicand?, rest))
+}
+
+fn build_signed_product_or_one(ctx: &mut Context, factors: &[ExprId], negated: bool) -> ExprId {
+    let product = if factors.is_empty() {
+        ctx.num(1)
+    } else {
+        cas_math::expr_nary::build_balanced_mul(ctx, factors)
+    };
+    if negated {
+        ctx.add(Expr::Neg(product))
+    } else {
+        product
+    }
+}
+
+pub(crate) fn try_polynomial_denominator_fraction_residual_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let pair = signed_fraction_pair(ctx, expr)?;
+    if !fraction_pair_within_budget(ctx, expr, &pair) {
+        return None;
+    }
+
+    let ((left_num, left_den), (right_num, right_den)) = pair;
+    if !polynomial_denominators_match(ctx, left_den, right_den) {
+        return None;
+    }
+    if !signed_numerators_cancel(ctx, left_num, right_num) {
+        return None;
+    }
+
+    Some(ctx.num(0))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cas_formatter::DisplayExpr;
+    use cas_parser::parse;
+
+    fn residual_result(input: &str) -> Option<String> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_polynomial_denominator_fraction_residual_zero(&mut ctx, expr).map(|result| {
+            DisplayExpr {
+                context: &ctx,
+                id: result,
+            }
+            .to_string()
+        })
+    }
+
+    #[test]
+    fn polynomial_equivalent_denominator_fraction_residual_cancels() {
+        assert_eq!(
+            residual_result(
+                "sqrt(5)*(-2*x-1)/(x^4+2*x^3+3*x^2+2*x+6) + sqrt(5)*(2*x+1)/((x^2+x+1)^2+5)"
+            ),
+            Some("0".to_string())
+        );
+    }
+
+    #[test]
+    fn polynomial_equivalent_denominator_fraction_residual_rejects_nonzero_pair() {
+        assert_eq!(
+            residual_result(
+                "sqrt(5)*(-2*x-1)/(x^4+2*x^3+3*x^2+2*x+6) + sqrt(5)*(2*x+2)/((x^2+x+1)^2+5)"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn polynomial_equivalent_expanded_radical_denominator_fraction_residual_cancels() {
+        assert_eq!(
+            residual_result(
+                "sqrt(x^4+2*x*x^2+x^2+6*x^2+6*x+9-1)*(2*x+1)/((x^4+2*x*x^2+x^2+6*x^2+6*x+9-1)*(x^2+x+3)) - sqrt(x^4+2*x^3+7*x^2+6*x+8)*(2*x+1)/((x^2+x+3)*(x^4+2*x^3+7*x^2+6*x+8))"
+            ),
+            Some("0".to_string())
+        );
+    }
+
+    #[test]
+    fn polynomial_equivalent_expanded_radical_denominator_fraction_residual_cancels_negated_orientation(
+    ) {
+        assert_eq!(
+            residual_result(
+                "sqrt(x^4+2*x*x^2+x^2+6*x^2+6*x+9-1)*(-2*x-1)/((x^4+2*x*x^2+x^2+6*x^2+6*x+9-1)*(x^2+x+3)) + sqrt(x^4+2*x^3+7*x^2+6*x+8)*(2*x+1)/((x^2+x+3)*(x^4+2*x^3+7*x^2+6*x+8))"
+            ),
+            Some("0".to_string())
+        );
+    }
+
+    #[test]
+    fn polynomial_equivalent_expanded_radical_denominator_fraction_residual_rejects_nonzero_pair() {
+        assert_eq!(
+            residual_result(
+                "sqrt(x^4+2*x*x^2+x^2+6*x^2+6*x+9-1)*(2*x+1)/((x^4+2*x*x^2+x^2+6*x^2+6*x+9-1)*(x^2+x+3)) - sqrt(x^4+2*x^3+7*x^2+6*x+8)*(2*x+2)/((x^2+x+3)*(x^4+2*x^3+7*x^2+6*x+8))"
+            ),
+            None
+        );
+    }
+}

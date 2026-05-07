@@ -2556,7 +2556,7 @@ fn eval_complex_nested_fraction_pipeline_keeps_before_after_highlights_in_wire_l
     let wire = parse_wire(&output);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 5);
+    assert_eq!(steps.len(), 4);
 
     for (idx, step) in steps.iter().enumerate() {
         let before_latex = step["before_latex"].as_str().expect("before_latex");
@@ -2589,25 +2589,12 @@ fn eval_complex_nested_fraction_pipeline_keeps_before_after_highlights_in_wire_l
         "expected step 4 before_latex to leave the unchanged residual term uncolored, got: {step4_before}"
     );
 
-    let step5_before = steps[4]["before_latex"]
-        .as_str()
-        .expect("step5 before_latex");
-    assert_eq!(
-        step5_before.match_indices("\\color{red}").count(),
-        1,
-        "expected step 5 before_latex to use one full-scope red highlight, got: {step5_before}"
-    );
+    let step4_after = steps[3]["after_latex"].as_str().expect("step4 after_latex");
     assert!(
-        (step5_before.contains("{\\color{red}{\\frac{") && step5_before.contains(" - \\frac{"))
-            || step5_before.contains("{\\color{red}{3\\cdot x + 2 - (3\\cdot x + 2)}}")
-            || step5_before.contains("{\\color{red}{2 + 3\\cdot x - 2 - 3\\cdot x}}"),
-        "expected step 5 before_latex to highlight the whole cancellation pair, got: {step5_before}"
-    );
-
-    let step5_before_display = steps[4]["before"].as_str().expect("step5 before");
-    assert!(
-        !step5_before_display.contains("1 + x + 1 + 2 · x"),
-        "expected step 5 before display to use the canonical local form instead of the unsummed numerator, got: {step5_before_display}"
+        step4_after.contains("\\color{green}")
+            && step4_after.contains("\\frac{2 + 3\\cdot x}{1 + 2\\cdot x}")
+            && !step4_after.contains("{\\color{green}{\\frac{2 + 3\\cdot x}{1 + 2\\cdot x}}}"),
+        "expected step 4 after_latex to keep the unchanged residual term uncolored, got: {step4_after}"
     );
 }
 
@@ -3053,7 +3040,7 @@ fn eval_complex_nested_fraction_pipeline_shows_denominator_common_denominator_th
 
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 5);
+    assert_eq!(steps.len(), 4);
     assert_rule_eq(&steps[2]["rule"], "Simplificar fracción anidada");
     let substeps = steps[2]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
@@ -4768,7 +4755,7 @@ fn eval_fraction_difference_to_zero_shows_common_denominator_substeps() {
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["steps_count"], 3);
+    assert_eq!(wire["steps_count"], 2);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_rule_eq(&steps[0]["rule"], "Sumar fracciones");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
@@ -4780,7 +4767,11 @@ fn eval_fraction_difference_to_zero_shows_common_denominator_substeps() {
     );
     assert_rule_matches_any(
         &steps[1]["rule"],
-        &["Agrupar términos semejantes", "Cancel Exact Additive Pairs"],
+        &[
+            "Agrupar términos semejantes",
+            "Cancel Exact Additive Pairs",
+            "Cancelar términos opuestos",
+        ],
     );
     let before_latex = steps[1]["before_latex"]
         .as_str()

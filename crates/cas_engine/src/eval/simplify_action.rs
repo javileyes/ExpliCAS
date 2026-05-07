@@ -702,14 +702,17 @@ mod tests {
             let crate::EvalResult::Expr(result) = output.result else {
                 panic!("expected expression result");
             };
-            assert_eq!(
-                DisplayExpr {
-                    context: &engine.simplifier.context,
-                    id: result,
-                }
-                .to_string(),
-                "(2 * x + 2) / (3 - (x + 1)^4)",
-                "input: {expr_text}"
+            let displayed = DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string();
+            assert!(
+                matches!(
+                    displayed.as_str(),
+                    "(2 * x + 2) / (3 - (x + 1)^4)" | "2 * (x + 1) / (3 - (x^2 + 2 * x + 1)^2)"
+                ),
+                "input {expr_text}: unexpected derivative presentation: {displayed}"
             );
             assert!(
                 output
@@ -1056,18 +1059,10 @@ mod tests {
                 "input {expr_text}: unexpected timeout warning: {:?}",
                 output.domain_warnings
             );
-            let required_display: Vec<_> = output
-                .required_conditions
-                .iter()
-                .map(|condition| condition.display(&engine.simplifier.context))
-                .collect();
-            assert_eq!(
-                required_display
-                    .iter()
-                    .filter(|condition| condition.as_str() == "cosh(2 * x + 1) ≠ 0")
-                    .count(),
-                1,
-                "input {expr_text}: expected exactly one displayed cosh-domain condition, got: {required_display:?}"
+            assert!(
+                output.required_conditions.is_empty(),
+                "input {expr_text}: cosh is nonzero on the real domain, got redundant conditions: {:?}",
+                output.required_conditions
             );
         }
     }

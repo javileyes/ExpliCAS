@@ -95,6 +95,105 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-07: Quadratic `arcsec/arccsc` Residual Gap Expansion Promoted With Narrow Residual Gates
+
+- area:
+  - calculus / differentiation / residual simplification
+- status:
+  - `promoted`
+- discovered case:
+  - factored-gap residuals collapse but are slow enough to avoid promoting as a
+    hot contract row:
+    `diff(arcsec(x^2+x+3), x) - (2*x+1)/((x^2+x+3)*sqrt((x^2+x+3)^2-1))`
+    -> `0`
+  - the analogous `arccsc` factored-gap residual also collapses:
+    `diff(arccsc(x^2+x+3), x) + (2*x+1)/((x^2+x+3)*sqrt((x^2+x+3)^2-1))`
+    -> `0`
+  - expanded-gap residuals originally did not collapse:
+    `diff(arcsec(x^2+x+3), x) - (2*x+1)/((x^2+x+3)*sqrt(x^4+2*x^3+7*x^2+6*x+8))`
+- local lane:
+  - CLI probes while considering promotion of a shifted positive-quadratic
+    inverse reciprocal trig residual after direct `diff` coverage already
+    existed
+- local result:
+  - standalone derivative presentation succeeds:
+    `diff(arcsec(x^2+x+3), x)` ->
+    `(2*x+1)/((x^2+x+3)*sqrt(x^4+2*x^3+7*x^2+6*x+8))`
+  - standalone `arccsc` presentation succeeds with the opposite sign
+  - the factored-gap residual can prove the equality but takes multiple seconds
+    in the CLI timing path
+  - the expanded-gap residual leaves a difference of two equivalent radical
+    denominators instead of reusing the existing proof that the inner
+    polynomial gaps are equivalent
+  - minimal probes confirm the algebraic subproblem itself is solvable:
+    `sqrt(x^4+2*x*x^2+x^2+6*x^2+6*x+9-1) - sqrt(x^4+2*x^3+7*x^2+6*x+8)`
+    -> `0`
+- why it was not originally promoted:
+  - promoting the factored residual would add a slow row to the public `diff`
+    contract without adding a new calculus family
+  - promoting the expanded residual would encode a known failure rather than a
+    retained capability
+  - the reusable weakness is residual re-entry/cancellation across equivalent
+    polynomial radical denominators, not the derivative rule for `arcsec` or
+    `arccsc`
+- retained action:
+  - promoted on 2026-05-07 by extending polynomial-denominator fraction
+    residual cancellation with an extended component-gated budget and a
+    one-square-root numerator equivalence check
+  - added a positive-quadratic inverse-reciprocal-trig pre-order matcher for
+    arguments whose minimum is greater than `1`, so public expanded residuals
+    close before the expensive derivative route
+  - promoted minimal `diff` contract rows for `arcsec` and `arccsc` with no
+    required conditions on `x^2+x+3`
+- what could make it combinable later:
+  - a narrow residual-cancellation route for two fractions whose numerators are
+    opposite and whose denominator factors differ only by small univariate
+    polynomial-normalized radical arguments
+  - a cheap gate that avoids running polynomial/radical equivalence unless both
+    sides are already two-term calculus residuals with matching non-radical
+    factors
+
+### 2026-05-07: Quadratic Self-Normalized Inverse-Trig Residual Needs Polynomial-Denominator Normalization
+
+- area:
+  - calculus / differentiation / residual simplification
+- status:
+  - `superseded`
+- discovered case:
+  - public derivative presentation succeeds:
+    `diff(arccos((x^2+x+1)/sqrt((x^2+x+1)^2+5)), x)` ->
+    `-sqrt(5)*(2*x+1)/((x^2+x+1)^2+5)`
+  - nested residual probe does not currently collapse:
+    `diff(arccos((x^2+x+1)/sqrt((x^2+x+1)^2+5)), x)
+    + sqrt(5)*(2*x+1)/((x^2+x+1)^2+5)`
+- local lane:
+  - CLI probes during bounded `diff` post-calculus presentation coverage for
+    self-normalized inverse-trig projections
+- local result:
+  - the standalone derivative is correct and compact
+  - `equiv(x^4 + 2*x^3 + 3*x^2 + 2*x + 6, (x^2+x+1)^2+5)`
+    returns `true`
+  - the residual remains as a sum of fractions whose denominators are
+    equivalent but rendered through different polynomial expansion paths
+- why it was not promoted:
+  - promoting the residual as an active contract would exercise a broader
+    polynomial-denominator equivalence gap rather than the calculus
+    presentation capability itself
+  - the likely fix belongs in reusable residual/equivalence normalization for
+    denominators, not in an answer-only calculus shortcut
+- retained action:
+  - retained a cheap helper-level regression for the public quadratic
+    self-normalized projection presentation
+  - promoted the nested residual on 2026-05-07 with a bounded
+    polynomial-denominator fraction residual cancellation helper
+  - the promoted route is gated to two fractions, small expressions, opposite
+    numerators, and univariate polynomial-equivalent denominators
+- what could make it combinable later:
+  - a narrow denominator-normalization pass inside residual cancellation that
+    canonicalizes small univariate polynomial denominators before comparing or
+    combining matching fractions
+  - an equivalence-aware fraction residual route with a cheap polynomial gate
+
 ### 2026-05-07: Scaled Affine `asinh` Reciprocal-Root Integration Needs Radical-Scale Normalization
 
 - area:
