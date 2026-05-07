@@ -1,8 +1,8 @@
 //! Presentation helpers for session-backed eval output models.
 
 pub(crate) use crate::eval_output_presentation_conditions::{
-    collect_output_assumptions_used, collect_output_required_conditions,
-    collect_output_required_display, collect_output_warnings,
+    collect_output_assumptions_used, collect_output_blocked_hints,
+    collect_output_required_conditions, collect_output_required_display, collect_output_warnings,
 };
 pub(crate) use crate::eval_output_presentation_input::format_output_input_latex;
 pub(crate) use crate::eval_output_presentation_solution_display::format_output_solution_set;

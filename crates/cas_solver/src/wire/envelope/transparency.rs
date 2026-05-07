@@ -22,6 +22,6 @@ pub fn build_transparency(
             &assumptions_used,
         ),
         assumptions_used,
-        blocked_hints: hints::map_blocked_hints(blocked_hints),
+        blocked_hints: hints::map_blocked_hints(ctx, blocked_hints),
     }
 }

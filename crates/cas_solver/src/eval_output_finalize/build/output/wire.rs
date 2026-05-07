@@ -12,6 +12,7 @@ pub(super) fn build_eval_output_wire(
         warnings: &shared.warnings,
         assumptions_used: &shared.assumptions_used,
         required_display: &shared.required_display,
+        blocked_hints: &shared.blocked_hints,
         strategy: shared.strategy.as_deref(),
         result: &payload.result,
         result_latex: payload.result_latex.as_deref(),

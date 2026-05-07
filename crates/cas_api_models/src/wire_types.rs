@@ -357,6 +357,8 @@ pub struct EvalWireOutput {
     pub required_display: Vec<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub assumptions_used: Vec<AssumptionDto>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub blocked_hints: Vec<BlockedHintDto>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub equivalence_diagnostics: Option<EquivalenceDiagnosticsWire>,
     pub budget: BudgetWireInfo,
@@ -389,6 +391,7 @@ pub struct EvalOutputBuild<'a> {
     pub required_conditions: Vec<RequiredConditionWire>,
     pub required_display: Vec<String>,
     pub assumptions_used: Vec<AssumptionDto>,
+    pub blocked_hints: Vec<BlockedHintDto>,
     pub equivalence_diagnostics: Option<EquivalenceDiagnosticsWire>,
     pub budget_preset: &'a str,
     pub strict: bool,
@@ -429,6 +432,7 @@ impl EvalWireOutput {
             required_conditions: parts.required_conditions,
             required_display: parts.required_display,
             assumptions_used: parts.assumptions_used,
+            blocked_hints: parts.blocked_hints,
             equivalence_diagnostics: parts.equivalence_diagnostics,
             budget: BudgetWireInfo::new(parts.budget_preset, parts.strict),
             domain: DomainWire::from_mode(parts.domain),
@@ -1975,6 +1979,7 @@ mod tests {
             required_conditions: vec![],
             required_display: vec![],
             assumptions_used: vec![],
+            blocked_hints: vec![],
             equivalence_diagnostics: None,
             budget_preset: "cli",
             strict: true,

@@ -148,6 +148,38 @@ Non-goals:
 - no fake antiderivatives without verification or clear unsupported fallback
 - no hiding the integration constant policy
 
+#### Antiderivative Family Selection
+
+Integration contracts should remember that a real-domain antiderivative is not
+canonical in the same sense as a simplified expression. Two valid primitives can
+have identical derivatives while differing by a constant on the active domain
+component.
+
+This matters for inverse-hyperbolic reciprocal-root families. For example, a
+kernel may admit both an `atanh(sqrt(c/g))` shaped primitive and an
+`asinh(sqrt(c/(g-c)))` shaped primitive after a domain-preserving rewrite. Those
+forms can be equally correct even though they are not structurally identical.
+
+Policy:
+
+- verify supported antiderivatives by differentiating the chosen primitive back
+  to the integrand whenever the family is promoted
+- keep required real-domain conditions visible; do not erase the condition that
+  makes the selected primitive valid
+- prefer the family whose denominator or positivity condition is directly
+  witnessed by the integrand when the kernel is ambiguous
+- preserve an unambiguous inverse-differentiation target only when the input
+  syntactically carries enough evidence for that family
+- do not rewrite a valid primitive from `asinh` to `atanh`, or the reverse,
+  purely for aesthetics or string similarity
+- promote ambiguous cases only when the contract states whether the behavior
+  under test is derivative verification, domain retention, or deliberate family
+  selection
+
+This policy is intentionally narrower than a universal canonical primitive
+policy. It is a guardrail for bounded integration slices, not a promise that the
+engine will choose the same primitive family as another CAS.
+
 ### Phase 4. Post-Calculus Presentation And Didactic Quality
 
 Calculus commands must not become "answer-only" shortcuts when the rest of the

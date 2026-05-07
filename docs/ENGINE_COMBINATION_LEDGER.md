@@ -95,6 +95,61 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-07: Scaled Affine `asinh` Reciprocal-Root Integration Needs Radical-Scale Normalization
+
+- area:
+  - calculus / integration / inverse-hyperbolic reciprocal-root kernels
+- status:
+  - `partially-promoted`
+- discovered case:
+  - `integrate(1/((6-2*x)*sqrt(8-2*x)), x)`
+  - equivalent primitive shape:
+    `sqrt(2)/2 * asinh(sqrt(1/(3-x)))`
+- local lane:
+  - CLI probes while extending conservative `asinh(sqrt(c/base))`
+    inverse-differentiation coverage
+- original local result:
+  - direct supported normalized neighbor succeeds:
+    `integrate(1/((3-x)*sqrt(4-x)), x)` ->
+    `2*asinh(sqrt(1/(3-x)))` with `3-x > 0`
+  - scaled candidate originally remained unsolved and returned an `integrate(...)`
+    residual with `x-3 != 0` and `4-x > 0`
+  - explicit verification probe
+    `equiv(diff(sqrt(2)/2*asinh(sqrt(1/(3-x))), x),
+    1/((6-2*x)*sqrt(8-2*x)))` returns `true`
+  - that verification emits a `depth_overflow` warning and routes through a
+    high-depth radical/absolute-value residual, so it was not promotion-ready
+- promoted result:
+  - the scaled integral is now promoted through the existing reciprocal-root
+    family with an explicit radical scale:
+    `integrate(1/((6-2*x)*sqrt(8-2*x)), x)` ->
+    `1/2*asinh(sqrt(1/(3-x)))*sqrt(2)` with `3-x > 0`
+  - the contract verifies the antiderivative by differentiation and confirms
+    that nested `diff(integrate(...), x)` does not leave an integration
+    residual
+  - direct `diff(integrate(...), x)` now renders back to the compact input
+    kernel instead of exposing the intermediate radical/absolute-value route
+- why it was originally not promoted:
+  - historical:
+    - retaining it cleanly required representing an irrational outer scale
+      such as `sqrt(2)/2` in the antiderivative family and normalizing the
+      witnessed condition to `3-x > 0`
+    - adding a direct answer-only shortcut would have hidden a real
+      normalization and verification weakness behind a one-off integration
+      result
+- remaining gap:
+  - retaining it cleanly would require representing an irrational outer scale
+    in a prettier public order without relying on multiplication reordering
+  - the manual residual probe
+    `diff(integrate(...), x) - 1/((6-2*x)*sqrt(8-2*x))` can still emit
+    `depth_overflow` before reducing to `0`; this is residual-simplification
+    debt, not a reason to reject the promoted integration family
+- what could make it combinable later:
+  - post-calculus presentation that renders the outer factor compactly as
+    `sqrt(2)/2 * asinh(sqrt(1/(3-x)))`, while preserving `3-x > 0`
+  - residual simplification that avoids the transient `0 / (...)`
+    `depth_overflow` warning
+
 ### 2026-05-06: Real-Domain Sqrt Product Equivalence Needs Condition-Aware Proof
 
 - area:
@@ -9393,3 +9448,88 @@ The burden of proof stays the same:
     the raw residual
     `diff(arctan(sqrt(5-3*x)), x) - (-1/(2*sqrt(5-3*x)*(2-x)))` to simplify
     to `0`
+
+## 2026-05-07 - Discovery / observe-only: arccot shifted reciprocal sqrt misses the direct diff shortcut
+
+- area:
+  - calculus / diff runtime / inverse tangent reciprocal sqrt presentation
+- status:
+  - `discovery-observe-only`
+- observed case:
+  - `diff(arccot(sqrt(1/(x+1))), x)` returns the compact result
+    `1 / (2*sqrt(x+1)*(x+2))` with required condition `x + 1 > 0`, but still
+    routes through the generic `arccot(x) -> arctan(1/x)` rewrite and the
+    `abs((x+1)^(-1/2))` cleanup path
+- local probes:
+  - `cargo run -q -p cas_cli -- eval 'diff(arccot(sqrt(1/(x+1))), x)' --format json --steps on`
+- reusable signature:
+  - the direct reciprocal-sqrt inverse-tangent derivative shortcut now handles
+    the arctan form after `sqrt(1/p(x)) -> abs(p(x)^(-1/2))`, but arccot can be
+    rewritten to `arctan(1/abs(...))` before the calculus shortcut sees it
+- decision:
+  - retain only the arctan runtime shortcut in the current cycle
+  - leave arccot as a later bounded calculus-routing candidate rather than
+    broadening this iteration into another inverse-trig normalization path
+
+## 2026-05-07 - Promotion note: arccot shifted reciprocal sqrt uses the direct compact diff shortcut
+
+- area:
+  - calculus / diff runtime / inverse tangent reciprocal sqrt presentation
+- status:
+  - `superseded`
+- promoted case:
+  - `diff(arccot(sqrt(1/(x+1))), x)` now returns
+    `1 / (2*sqrt(x+1)*(x+2))` with required condition `x + 1 > 0`
+- retained correction:
+  - recognize the post-rewrite shape `arctan(1/abs((x+1)^(-1/2)))` as the
+    domain-guarded `arctan(sqrt(x+1))` derivative target
+  - keep the explicit positive radicand condition instead of relying on the
+    `abs` cleanup route
+- decision:
+  - promote the bounded arccot runtime shortcut because it removes the generic
+    `Abs Squared Identity` / polynomial-normalization cleanup path while
+    preserving the public result and real-domain condition
+
+## 2026-05-07 - Discovery / observe-only: compact diff presentation is not terminal across later phases
+
+- area:
+  - calculus / post-calculus presentation / didactic trace quality
+- status:
+  - `discovery-observe-only`
+- observed case:
+  - `diff(arcsin((x^2+x+1)^2/sqrt(2/3))*1/sqrt(3), x)` now starts with the
+    direct `Symbolic Differentiation` step and returns the compact result
+    `2*(2*x^3 + 3*x^2 + 3*x + 1)/sqrt(2 - 3*(x^2+x+1)^4)`, but later phases
+    can still expand numerator/gap fragments before the final
+    `Present calculus result in compact form` repair
+- local probes:
+  - `cargo run -q -p cas_cli --release -- eval "diff(arcsin((x^2+x+1)^2/sqrt(2/3))*1/sqrt(3), x)" --steps on --format json`
+- reusable signature:
+  - preserving the raw `diff` target is enough to avoid pre-derivative binomial
+    expansion, but compact calculus results are not yet treated as terminal
+    presentation forms across rationalize/expand phases
+- decision:
+  - retain the narrow raw-target preservation in this cycle
+  - leave terminal post-calculus presentation as a later bounded phase-policy
+    candidate, not as an ad hoc global simplifier prettification rule
+
+## 2026-05-07 - Promotion: compact direct diff presentation collapses redundant post-diff expansion trace
+
+- promoted case:
+  - `diff(arcsin((x^2+x+1)^2/sqrt(2/3))*1/sqrt(3), x)`
+- structural signature:
+  - the first `Symbolic Differentiation` step already contains enough
+    information to render the same compact post-calculus presentation as the
+    final public result
+  - later expansion and presentation-repair steps do not add mathematical
+    explanation when the rendered first-step presentation exactly matches the
+    final presentation
+- retained correction:
+  - collapse the public trace to the first derivative step at the eval
+    presentation boundary only when `try_post_calculus_presentation` renders
+    the first step exactly like the final result
+  - keep the final result and required conditions unchanged
+  - do not change global simplification, canonical algebra, or domain policy
+- decision:
+  - retained as a local calculus presentation improvement
+  - supersedes the observe-only row above for this bounded public trace case

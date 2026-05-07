@@ -252,6 +252,38 @@ fn evaluate_envelope_wire_command_strict_preserves_x_over_x_and_surfaces_blocked
 }
 
 #[test]
+fn evaluate_envelope_wire_diff_atanh_empty_real_domain_surfaces_specific_blocked_hint() {
+    let payload = evaluate_envelope_wire_command(
+        "diff(atanh(sqrt(x^2+2)), x)",
+        EvalDomainMode::Generic,
+        EvalValueDomain::Real,
+    );
+    let wire = parse_envelope(&payload);
+
+    assert_eq!(
+        wire["result"]["value"]["display"],
+        "diff(atanh((x^2 + 2)^(1/2)), x)"
+    );
+    let blocked = wire["transparency"]["blocked_hints"]
+        .as_array()
+        .expect("blocked_hints array");
+    assert_eq!(blocked.len(), 1);
+    assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
+    assert_eq!(
+        blocked[0]["tip"],
+        "real domain is empty; no real derivative is exposed"
+    );
+    let requires = blocked[0]["requires"]
+        .as_array()
+        .expect("blocked hint requires array");
+    let condition = requires[0].as_str().expect("blocked hint condition");
+    assert!(
+        condition.contains("> 0") && condition.contains("-x"),
+        "blocked hint should expose the concrete impossible positive gap, got: {condition}"
+    );
+}
+
+#[test]
 fn evaluate_envelope_wire_command_generic_simplifies_x_over_x_without_blocked_hints() {
     let payload =
         evaluate_envelope_wire_command("x/x", EvalDomainMode::Generic, EvalValueDomain::Real);

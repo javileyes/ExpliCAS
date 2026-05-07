@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-06T18:14:27.044180+00:00",
+  "generated_at": "2026-05-07T08:33:32.919471+00:00",
   "generated_discovery": {
     "families": {},
     "observe_only_discoveries": 0,
@@ -14,7 +14,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "7fb7db4cea2c87f4c55ffad18cb459fb0164c1c8"
+    "commit": "26f0098141860f357d236e8963b214144abe9497"
   },
   "orchestrator_profile_filter": null,
   "orchestrator_profile_limit": null,
@@ -36,7 +36,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 3.806,
+      "elapsed_seconds": 11.269,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -45,10 +45,10 @@
         "filtered_out": 0,
         "ignored": 0,
         "measured": 0,
-        "passed": 117,
+        "passed": 129,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 3.806,
+      "process_elapsed_seconds": 11.269,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -69,7 +69,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 7.658,
+      "elapsed_seconds": 8.368,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -78,10 +78,10 @@
         "filtered_out": 0,
         "ignored": 1,
         "measured": 0,
-        "passed": 142,
+        "passed": 152,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 7.658,
+      "process_elapsed_seconds": 8.368,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -102,7 +102,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 8.272,
+      "elapsed_seconds": 18.492,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -114,7 +114,7 @@
         "passed": 64,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 8.272,
+      "process_elapsed_seconds": 18.492,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -135,7 +135,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.594,
+      "elapsed_seconds": 0.645,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -147,7 +147,7 @@
         "passed": 8,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 0.594,
+      "process_elapsed_seconds": 0.645,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -170,7 +170,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 3.314,
+      "elapsed_seconds": 4.491,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -184,7 +184,7 @@
         "supported_equiv_rate": 1.0,
         "unsupported": 0
       },
-      "process_elapsed_seconds": 3.314,
+      "process_elapsed_seconds": 4.491,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -208,7 +208,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 16.931,
+      "elapsed_seconds": 28.177,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -218,9 +218,9 @@
         "mean_step_count": 1.06,
         "no_web_steps": 0,
         "no_web_substeps": 0,
-        "total_web_substeps": 482
+        "total_web_substeps": 483
       },
-      "process_elapsed_seconds": 16.931,
+      "process_elapsed_seconds": 28.177,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -243,7 +243,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.245,
+      "elapsed_seconds": 0.241,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -364,7 +364,7 @@
         "unsupported": 0,
         "unsupported_by_family": {}
       },
-      "process_elapsed_seconds": 0.245,
+      "process_elapsed_seconds": 0.241,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -384,7 +384,7 @@
         "--"
       ],
       "delta": {},
-      "elapsed_seconds": 4.49,
+      "elapsed_seconds": 4.67,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -511,9 +511,9 @@
         "max_expression_depth": 18,
         "max_shell_depth": 5,
         "passed": 1445,
-        "reported_elapsed": "4.49s",
-        "reported_elapsed_per_case_ms": 3.1073,
-        "reported_elapsed_seconds": 4.49,
+        "reported_elapsed": "4.67s",
+        "reported_elapsed_per_case_ms": 3.2318,
+        "reported_elapsed_seconds": 4.67,
         "shell_depth_count": 6,
         "shell_depth_rows": {
           "0": {
@@ -1564,7 +1564,7 @@
           }
         ]
       },
-      "process_elapsed_seconds": 5.691,
+      "process_elapsed_seconds": 5.939,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1588,7 +1588,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.918,
+      "elapsed_seconds": 0.972,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1601,7 +1601,7 @@
         "single_step_no_substeps": 0,
         "total_wire_substeps": 26
       },
-      "process_elapsed_seconds": 0.918,
+      "process_elapsed_seconds": 0.972,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1624,7 +1624,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 18.951,
+      "elapsed_seconds": 18.251,
       "env": {
         "METATEST_MAX_EXAMPLES": "20",
         "METATEST_PROGRESS_EVERY": "1000",
@@ -1883,7 +1883,7 @@
         "timeouts": 0,
         "total_combos": 16519
       },
-      "process_elapsed_seconds": 18.951,
+      "process_elapsed_seconds": 18.251,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,

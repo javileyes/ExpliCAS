@@ -23,7 +23,7 @@ pub fn format_eval_blocked_hints_lines(
                 crate::format_blocked_hint_condition(ctx, hint),
                 hint.rule
             ),
-            format!("   {suggestion}"),
+            format!("   {}", hint.suggestion),
         ];
     }
 

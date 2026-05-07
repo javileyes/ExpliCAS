@@ -20,6 +20,11 @@ pub(crate) fn render(args: &EvalArgs) -> Result<CommandOutput, String> {
             for warning in result_wire.warnings {
                 output.push_stderr_line(format!("⚠ {} ({})", warning.assumption, warning.rule));
             }
+            for line in
+                cas_api_models::wire::format_blocked_hint_message_lines(&result_wire.blocked_hints)
+            {
+                output.push_stderr_line(line);
+            }
             output.stdout = result_wire.result;
         }
         Err(message) => return Err(message),

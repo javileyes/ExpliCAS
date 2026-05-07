@@ -368,6 +368,87 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_command_pretty_with_session_surfaces_blocked_diff_domain_hint() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            standard_eval_config("diff(atanh(sqrt(x^2+2)), x)"),
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "diff(atanh((x^2 + 2)^(1/2)), x)");
+
+        let blocked = payload["blocked_hints"]
+            .as_array()
+            .expect("blocked_hints array");
+        assert_eq!(blocked.len(), 1);
+        assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
+        assert_eq!(
+            blocked[0]["tip"],
+            "real domain is empty; no real derivative is exposed"
+        );
+        let condition = blocked[0]["requires"][0]
+            .as_str()
+            .expect("blocked hint condition");
+        assert!(
+            condition.contains("-x") && condition.contains("> 0"),
+            "expected concrete impossible positive gap, got: {condition}"
+        );
+
+        let wire_messages = payload["wire"]["messages"]
+            .as_array()
+            .expect("wire messages");
+        assert!(
+            wire_messages.iter().any(|message| message["text"]
+                .as_str()
+                .is_some_and(|text| text.contains("Blocked: requires -x"))),
+            "wire reply should include the blocked hint, got: {wire_messages:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_eval_command_pretty_with_session_groups_repeated_blocked_hint_messages() {
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            crate::eval::EvalCommandConfig {
+                domain: cas_api_models::EvalDomainMode::Strict,
+                ..standard_eval_config("x/x")
+            },
+            |_steps, _events, _context, _steps_mode| Vec::new(),
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "x / x");
+        assert_eq!(
+            payload["blocked_hints"]
+                .as_array()
+                .expect("blocked_hints array")
+                .len(),
+            3,
+            "structured hints should remain ungrouped for API consumers"
+        );
+
+        let wire_messages = payload["wire"]["messages"]
+            .as_array()
+            .expect("wire messages");
+        let blocked_messages: Vec<&str> = wire_messages
+            .iter()
+            .filter_map(|message| message["text"].as_str())
+            .filter(|text| text.contains("Blocked: requires x"))
+            .collect();
+        assert_eq!(
+            blocked_messages.len(),
+            1,
+            "wire display should group repeated blocked hints: {wire_messages:?}"
+        );
+        assert!(blocked_messages[0].contains("Cancel Identical Numerator/Denominator"));
+        assert!(blocked_messages[0].contains("Simplify Nested Fraction"));
+        assert!(blocked_messages[0].contains("Cancel Common Factors"));
+    }
+
+    #[test]
     fn evaluate_eval_command_pretty_with_session_surfaces_requires_for_conditional_derive_target() {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,

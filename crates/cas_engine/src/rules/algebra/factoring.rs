@@ -172,6 +172,9 @@ fn try_factor_low_degree_polynomial_integer_content(
     if !(1..=2).contains(&poly.degree()) {
         return None;
     }
+    if is_integer_scaled_primitive_low_degree_polynomial(ctx, expr, var.as_str()) {
+        return None;
+    }
 
     let gcd_int = polynomial_integer_content_gcd(&poly)?;
     let divisor = BigRational::from_integer(gcd_int.clone());
@@ -180,6 +183,37 @@ fn try_factor_low_degree_polynomial_integer_content(
     let gcd_expr = ctx.add(cas_ast::Expr::Number(divisor));
     let rewritten = ctx.add(cas_ast::Expr::Mul(gcd_expr, inner));
     Some((rewritten, gcd_int))
+}
+
+fn is_integer_scaled_primitive_low_degree_polynomial(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+    var: &str,
+) -> bool {
+    let cas_ast::Expr::Mul(left, right) = ctx.get(expr) else {
+        return false;
+    };
+
+    for (scale, body) in [(*left, *right), (*right, *left)] {
+        let Some(scale_value) = cas_ast::views::as_rational_const(ctx, scale, 4) else {
+            continue;
+        };
+        if !scale_value.is_integer() || scale_value.abs() <= BigRational::one() {
+            continue;
+        }
+
+        let Ok(body_poly) = Polynomial::from_expr(ctx, body, var) else {
+            continue;
+        };
+        if !(1..=2).contains(&body_poly.degree()) {
+            continue;
+        }
+        if polynomial_integer_content_gcd(&body_poly).is_none() {
+            return true;
+        }
+    }
+
+    false
 }
 
 fn polynomial_integer_content_gcd(poly: &Polynomial) -> Option<BigInt> {

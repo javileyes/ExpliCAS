@@ -51,6 +51,51 @@ fn expr_contains_hyperbolic_builtin_local(ctx: &cas_ast::Context, expr: ExprId) 
     )
 }
 
+fn collapse_redundant_post_calculus_trace_if_direct_step_is_compact(
+    ctx: &mut cas_ast::Context,
+    resolved: ExprId,
+    presented: ExprId,
+    steps: &mut Vec<crate::Step>,
+) -> bool {
+    let Some(first) = steps.first() else {
+        return false;
+    };
+    if first.rule_name.as_str() != "Symbolic Differentiation" {
+        return false;
+    }
+
+    let Some(first_presented) =
+        crate::rules::calculus::try_post_calculus_presentation(ctx, resolved, first.after)
+    else {
+        return false;
+    };
+
+    let first_presented_display = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: first_presented,
+        }
+    );
+    let final_presented_display = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: presented,
+        }
+    );
+    if first_presented_display != final_presented_display {
+        return false;
+    }
+
+    steps.truncate(1);
+    if let Some(first) = steps.first_mut() {
+        first.after = presented;
+        first.global_after = Some(presented);
+    }
+    true
+}
+
 impl Engine {
     /// Handle `EvalAction::Expand`.
     ///
@@ -199,7 +244,15 @@ impl Engine {
             resolved,
             res,
         ) {
-            if effective_opts.steps_mode != crate::options::StepsMode::Off && presented != res {
+            if effective_opts.steps_mode != crate::options::StepsMode::Off
+                && presented != res
+                && !collapse_redundant_post_calculus_trace_if_direct_step_is_compact(
+                    &mut ctx_simplifier.context,
+                    resolved,
+                    presented,
+                    &mut steps,
+                )
+            {
                 let mut presentation_step = crate::Step::new(
                     "Post-calculus presentation",
                     "Present calculus result in compact form",

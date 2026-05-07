@@ -1749,6 +1749,119 @@ fn try_constant_scaled_atanh_polynomial_derivative(
     Some(div_pruned(ctx, numerator, denominator))
 }
 
+fn constant_scaled_bounded_inverse_trig_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(SqrtRationalScale, i32, ExprId)> {
+    if let Some((sign, arg)) = unary_bounded_inverse_trig_arg(ctx, expr) {
+        return Some((SqrtRationalScale::one(), sign, arg));
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let (mut scale, sign, arg) =
+                constant_scaled_bounded_inverse_trig_parts(ctx, inner, var)?;
+            scale.mul_rational(-BigRational::one());
+            Some((scale, sign, arg))
+        }
+        Expr::Div(num, den) => {
+            if contains_named_var(ctx, den, var) {
+                return None;
+            }
+            let (mut scale, sign, arg) = constant_scaled_bounded_inverse_trig_parts(ctx, num, var)?;
+            let den_scale = sqrt_rational_scale_factor(ctx, den)?;
+            scale.mul(&den_scale.reciprocal()?);
+            Some((scale, sign, arg))
+        }
+        Expr::Mul(_, _) => {
+            let factors = mul_leaves(ctx, expr);
+            let mut outer_scale = SqrtRationalScale::one();
+            let mut inverse_trig = None;
+
+            for factor in factors {
+                if let Some((sign, arg)) = unary_bounded_inverse_trig_arg(ctx, factor) {
+                    if inverse_trig.replace((sign, arg)).is_some() {
+                        return None;
+                    }
+                    continue;
+                }
+
+                if contains_named_var(ctx, factor, var) {
+                    return None;
+                }
+                let factor_scale = sqrt_rational_scale_factor(ctx, factor)?;
+                outer_scale.mul(&factor_scale);
+            }
+
+            let (sign, arg) = inverse_trig?;
+            Some((outer_scale, sign, arg))
+        }
+        _ => None,
+    }
+}
+
+fn unary_bounded_inverse_trig_arg(ctx: &Context, expr: ExprId) -> Option<(i32, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    match ctx.builtin_of(*fn_id) {
+        Some(BuiltinFn::Arcsin | BuiltinFn::Asin) => Some((1, args[0])),
+        Some(BuiltinFn::Arccos | BuiltinFn::Acos) => Some((-1, args[0])),
+        _ => None,
+    }
+}
+
+fn try_constant_scaled_bounded_inverse_trig_polynomial_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (outer_scale, sign, arg) = constant_scaled_bounded_inverse_trig_parts(ctx, expr, var)?;
+    let (arg_scale, poly_expr, poly) = scaled_sqrt_polynomial_arg(ctx, arg, var)?;
+    if arg_scale.sqrt_radicand.is_one() && outer_scale.sqrt_radicand.is_one() {
+        return None;
+    }
+
+    let derivative_poly = poly.derivative();
+    if derivative_poly.is_zero() {
+        return Some(ctx.num(0));
+    }
+
+    let arg_scale_squared = arg_scale.square_rational();
+    if arg_scale_squared.is_zero() {
+        return None;
+    }
+
+    let denominator_scale = BigRational::from_integer(arg_scale_squared.denom().clone());
+    let scaled_square_coeff = BigRational::from_integer(arg_scale_squared.numer().clone());
+
+    let mut numerator_scale = outer_scale;
+    numerator_scale.mul(&arg_scale);
+    numerator_scale.mul(&SqrtRationalScale {
+        rational: BigRational::one(),
+        sqrt_radicand: denominator_scale.clone(),
+    });
+    if sign < 0 {
+        numerator_scale.mul_rational(-BigRational::one());
+    }
+
+    let derivative_expr = derivative_poly.to_expr(ctx);
+    let numerator = scale_expr_by_sqrt_rational(ctx, numerator_scale, derivative_expr);
+
+    let denominator_constant = ctx.add(Expr::Number(denominator_scale));
+    let poly_square = compact_polynomial_square_expr(ctx, poly_expr);
+    let scaled_poly_square = scale_expr_by_rational(ctx, scaled_square_coeff, poly_square);
+    let denominator_radicand = sub_pruned(ctx, denominator_constant, scaled_poly_square);
+    let denominator = ctx.call_builtin(BuiltinFn::Sqrt, vec![denominator_radicand]);
+
+    Some(div_pruned(ctx, numerator, denominator))
+}
+
 fn scaled_one_minus_arg_square_derivative(
     ctx: &mut Context,
     arg: ExprId,
@@ -2886,6 +2999,12 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         return Some(derivative);
     }
 
+    if let Some(derivative) =
+        try_constant_scaled_bounded_inverse_trig_polynomial_derivative(ctx, expr, var)
+    {
+        return Some(derivative);
+    }
+
     match ctx.get(expr) {
         Expr::Variable(sym_id) => {
             if ctx.sym_name(*sym_id) == var {
@@ -3981,6 +4100,22 @@ mod tests {
                 "unexpected expanded chain factor in {text}"
             );
         }
+    }
+
+    #[test]
+    fn differentiates_constant_scaled_bounded_inverse_trig_surd_quotient_with_scaled_gap() {
+        let mut ctx = Context::new();
+        let expr = parse("arcsin((x^2+x+1)^2/sqrt(2/3))/sqrt(3)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        let text = rendered(&ctx, out);
+
+        assert!(text.contains("2 - 3 *"), "got: {text}");
+        assert!(
+            text.contains("4 * x^3 + 6 * x^2 + 6 * x + 2"),
+            "got: {text}"
+        );
+        assert!(!text.contains("1 - 3/2"), "got: {text}");
+        assert!(!text.contains("sqrt(3)"), "got: {text}");
     }
 
     #[test]

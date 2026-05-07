@@ -408,17 +408,14 @@ fn step_wire_post_diff_fraction_cleanup_uses_human_visible_rule_titles() {
         "expected the main diff step to use a human title, got {rule_titles:?}"
     );
     assert!(
-        rule_titles.contains(&"Sacar constante de una fracción"),
-        "expected post-diff fraction cleanup to use a human title, got {rule_titles:?}"
-    );
-    assert!(
-        rule_titles.contains(&"Combinar fracciones en una multiplicación"),
-        "expected post-diff multiplication/division cleanup to use a human title, got {rule_titles:?}"
+        rule_titles.contains(&"Presentar resultado de cálculo en forma compacta"),
+        "expected post-diff compact presentation to use a human title, got {rule_titles:?}"
     );
     assert!(
         !rule_titles.contains(&"Symbolic Differentiation")
             && !rule_titles.contains(&"Pull Constant From Fraction")
-            && !rule_titles.contains(&"Simplify Multiplication with Division"),
+            && !rule_titles.contains(&"Simplify Multiplication with Division")
+            && !rule_titles.contains(&"Present calculus result in compact form"),
         "post-calculus visible trace should not leak internal rule names: {rule_titles:?}"
     );
 }

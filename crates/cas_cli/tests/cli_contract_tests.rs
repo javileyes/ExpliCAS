@@ -80,6 +80,81 @@ fn test_eval_emits_wire_output() {
     assert_eq!(wire["result"], "4");
 }
 
+#[test]
+fn test_eval_wire_surfaces_blocked_diff_domain_hint() {
+    let output = cli()
+        .args(["eval", "diff(atanh(sqrt(x^2+2)), x)", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
+    let blocked = wire["blocked_hints"]
+        .as_array()
+        .expect("blocked_hints array");
+
+    assert_eq!(blocked.len(), 1);
+    assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
+    assert_eq!(
+        blocked[0]["tip"],
+        "real domain is empty; no real derivative is exposed"
+    );
+    assert!(
+        blocked[0]["requires"][0]
+            .as_str()
+            .is_some_and(|condition| condition.contains("-x") && condition.contains("> 0")),
+        "expected concrete impossible positive gap, got: {blocked:?}"
+    );
+}
+
+#[test]
+fn test_eval_text_surfaces_blocked_diff_domain_hint_on_stderr() {
+    cli()
+        .args(["eval", "diff(atanh(sqrt(x^2+2)), x)"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("diff(atanh((x^2 + 2)^(1/2)), x)"))
+        .stderr(predicate::str::contains("Blocked: requires -x"))
+        .stderr(predicate::str::contains(
+            "real domain is empty; no real derivative is exposed",
+        ));
+}
+
+#[test]
+fn test_eval_text_groups_repeated_strict_blocked_hints_on_stderr() {
+    let output = cli()
+        .args(["eval", "x/x", "--domain", "strict"])
+        .output()
+        .expect("Failed to run CLI");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+
+    assert!(
+        stdout.contains("x / x"),
+        "expected strict result to remain residual, got stdout: {stdout}"
+    );
+    assert_eq!(
+        stderr.matches("Blocked: requires x").count(),
+        1,
+        "repeated blocked hints should be grouped in stderr: {stderr}"
+    );
+    assert!(stderr.contains("Cancel Identical Numerator/Denominator"));
+    assert!(stderr.contains("Simplify Nested Fraction"));
+    assert!(stderr.contains("Cancel Common Factors"));
+    assert_eq!(
+        stderr
+            .matches("use `domain generic` to allow definability assumptions")
+            .count(),
+        1,
+        "repeated tips should be shown once in stderr: {stderr}"
+    );
+}
+
 /// Test that budget presets can be selected.
 #[test]
 fn test_eval_with_budget_preset() {

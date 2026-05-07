@@ -52,6 +52,10 @@ fn integrate_call_should_preserve_raw_target_for_direct_integration(
         || integrate_target_is_reciprocal_quotient_denominator_polynomial_power_substitution(
             ctx, args[0], var_name,
         )
+        || integrate_target_is_arctan_sqrt_var_reciprocal(ctx, args[0], var_name)
+        || integrate_target_is_inverse_hyperbolic_sqrt_reciprocal(ctx, args[0], var_name)
+        || integrate_target_is_sqrt_trig_reciprocal_derivative(ctx, args[0], var_name)
+        || integrate_target_is_sqrt_trig_log_derivative(ctx, args[0], var_name)
 }
 
 fn diff_target_should_preserve_raw_derivative_route(
@@ -72,6 +76,7 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_arctan_affine_by_parts_sum(ctx, target, var_name)
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
+        || diff_target_is_scaled_bounded_inverse_trig_surd_quotient(ctx, target, var_name)
         || expr_is_positive_integer_power_of_low_degree_polynomial(ctx, target, var_name)
         || diff_target_is_constant_scaled_positive_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_reciprocal_polynomial_power(ctx, target, var_name)
@@ -541,6 +546,141 @@ fn diff_target_is_constant_scaled_atanh_surd_polynomial(
     expr_is_surd_scaled_polynomial_arg(ctx, arg, var_name)
 }
 
+fn diff_target_is_scaled_bounded_inverse_trig_surd_quotient(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    if diff_target_is_bounded_inverse_trig_surd_quotient(ctx, target, var_name) {
+        return true;
+    }
+
+    match ctx.get(target) {
+        Expr::Neg(inner) => {
+            diff_target_is_scaled_bounded_inverse_trig_surd_quotient(ctx, *inner, var_name)
+        }
+        Expr::Div(num, den) if diff_preserve_factor_is_constant_scale(ctx, *den, var_name) => {
+            diff_target_is_scaled_bounded_inverse_trig_surd_quotient(ctx, *num, var_name)
+        }
+        Expr::Mul(_, _) => {
+            let mut matched_target = false;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, target) {
+                if diff_target_is_bounded_inverse_trig_surd_quotient(ctx, factor, var_name) {
+                    if matched_target {
+                        return false;
+                    }
+                    matched_target = true;
+                    continue;
+                }
+
+                if !diff_preserve_factor_is_constant_scale(ctx, factor, var_name) {
+                    return false;
+                }
+            }
+            matched_target
+        }
+        _ => false,
+    }
+}
+
+fn diff_target_is_bounded_inverse_trig_surd_quotient(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(
+                cas_ast::BuiltinFn::Arcsin
+                    | cas_ast::BuiltinFn::Asin
+                    | cas_ast::BuiltinFn::Arccos
+                    | cas_ast::BuiltinFn::Acos
+            )
+        )
+    {
+        return false;
+    }
+
+    let arg = args[0];
+    if let Expr::Div(num, den) = ctx.get(arg) {
+        return diff_target_is_single_low_degree_polynomial_power(ctx, *num, var_name)
+            && expr_is_constant_sqrt_scale(ctx, *den);
+    }
+
+    let mut saw_power = false;
+    let mut saw_surd_scale = false;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, arg) {
+        if contains_named_var(ctx, factor, var_name) {
+            if saw_power
+                || !diff_target_is_single_low_degree_polynomial_power(ctx, factor, var_name)
+            {
+                return false;
+            }
+            saw_power = true;
+            continue;
+        }
+
+        if !expr_is_constant_sqrt_scale(ctx, factor) {
+            return false;
+        }
+        saw_surd_scale = true;
+    }
+
+    saw_power && saw_surd_scale
+}
+
+fn diff_target_is_single_low_degree_polynomial_power(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return false;
+    };
+    let Some(power) = as_i64(ctx, *exp) else {
+        return false;
+    };
+    if !(2..=8).contains(&power) {
+        return false;
+    }
+
+    let Ok(poly) = Polynomial::from_expr(ctx, *base, var_name) else {
+        return false;
+    };
+    (1..=2).contains(&poly.degree())
+}
+
+fn diff_preserve_factor_is_constant_scale(
+    ctx: &cas_ast::Context,
+    factor: ExprId,
+    var_name: &str,
+) -> bool {
+    if contains_named_var(ctx, factor, var_name) {
+        return false;
+    }
+    if expr_is_constant_sqrt_scale(ctx, factor) {
+        return true;
+    }
+
+    match ctx.get(factor) {
+        Expr::Div(num, den) => {
+            cas_ast::views::as_rational_const(ctx, *num, 8).is_some_and(|value| !value.is_zero())
+                && expr_is_constant_sqrt_scale(ctx, *den)
+        }
+        Expr::Pow(base, exp)
+            if cas_ast::views::as_rational_const(ctx, *exp, 8)
+                == Some(BigRational::new((-1).into(), 1.into())) =>
+        {
+            expr_is_constant_sqrt_scale(ctx, *base)
+        }
+        _ => false,
+    }
+}
+
 fn constant_scaled_atanh_arg(
     ctx: &cas_ast::Context,
     expr: ExprId,
@@ -702,6 +842,52 @@ fn integrate_target_is_reciprocal_quotient_denominator_polynomial_power_substitu
         target,
         var_name,
         8,
+    )
+}
+
+fn integrate_target_is_arctan_sqrt_var_reciprocal(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_sqrt_var_reciprocal_target(
+        ctx, target, var_name,
+    )
+}
+
+fn integrate_target_is_inverse_hyperbolic_sqrt_reciprocal(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    cas_math::symbolic_integration_support::integrate_symbolic_is_inverse_hyperbolic_sqrt_reciprocal_target(
+        ctx, target, var_name,
+    )
+}
+
+fn integrate_target_is_sqrt_trig_reciprocal_derivative(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let mut probe_ctx = ctx.clone();
+    cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_reciprocal_derivative_target(
+        &mut probe_ctx,
+        target,
+        var_name,
+    )
+}
+
+fn integrate_target_is_sqrt_trig_log_derivative(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let mut probe_ctx = ctx.clone();
+    cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_log_derivative_target(
+        &mut probe_ctx,
+        target,
+        var_name,
     )
 }
 
@@ -1506,7 +1692,18 @@ impl<'a> LocalSimplificationTransformer<'a> {
 
         // Simplify children
         let new_l = self.transform_child_at(id, crate::step::PathStep::Left, l);
-        let new_r = self.transform_child_at(id, crate::step::PathStep::Right, r);
+        let numerator_is_literal_zero =
+            matches!(self.context.get(l), Expr::Number(n) if n.is_zero());
+        let new_r =
+            if numerator_is_literal_zero && !self.initial_parent_ctx.domain_mode().is_strict() {
+                let previous = self.suppress_depth_overflow_warnings;
+                self.suppress_depth_overflow_warnings = true;
+                let transformed = self.transform_child_at(id, crate::step::PathStep::Right, r);
+                self.suppress_depth_overflow_warnings = previous;
+                transformed
+            } else {
+                self.transform_child_at(id, crate::step::PathStep::Right, r)
+            };
 
         if new_l != l || new_r != r {
             self.context.add(Expr::Div(new_l, new_r))

@@ -1,16 +1,16 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-05-06T18:14:27.044180+00:00
+- Generated: 2026-05-07T08:33:32.919471+00:00
 - Git branch: main
-- Git commit: `7fb7db4cea2c87f4c55ffad18cb459fb0164c1c8`
+- Git commit: `26f0098141860f357d236e8963b214144abe9497`
 - Profile: `guardrail`
 
 ## Embedded Runtime Guardrail
 
 - Dimension: contextual simplify/equivalence under real wrappers.
 - Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 4.49s
-- Per-case runtime: 3.107ms/case
+- Elapsed: 4.67s
+- Per-case runtime: 3.232ms/case
 - Coverage axes: 7 wrappers across 25 families
 - Context axes: 4 complexity levels across 6 shell depths
 - Largest wrapper share: 20.1%
@@ -65,7 +65,7 @@
 - Dimension: educational quality of derive target-driven traces and web substeps.
 - Interpretation: diagnostic trace-quality lane; not a semantic correctness or runtime metric.
 - Outcomes: cases=472 flagged=0 flagged_rate=0.0%
-- Substeps: total_web_substeps=482 mean_step_count=1.06
+- Substeps: total_web_substeps=483 mean_step_count=1.06
 - Flags: no_web_substeps=0 no_web_steps=0
 
 ## Simplify Didactic Trace Audit
@@ -80,10 +80,10 @@
 
 - Dimension: public calculus behavior, result simplification, domain conditions, and step noise.
 - Interpretation: small executable calculus vertical slices; failures should be classified before broadening pre-calculus rules.
-- `diff`: passed=117 failed=0 ignored=0 filtered_out=0
+- `diff`: passed=129 failed=0 ignored=0 filtered_out=0
 - `limit`: passed=64 failed=0 ignored=0 filtered_out=0
 - `limit_presimplify_safe`: passed=8 failed=0 ignored=0 filtered_out=0
-- `integrate`: passed=142 failed=0 ignored=1 filtered_out=0
+- `integrate`: passed=152 failed=0 ignored=1 filtered_out=0
 
 ## Simplify Closure Signal
 
@@ -101,13 +101,13 @@
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 4.49s | passed=1445 failed=0 total=1445 wrappers=7 families=25 avg_case=3.107ms |
-| `derive_contract` | `pass` | 3.31s | derived=390 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
+| `embedded_equivalence_context` | `pass` | 4.67s | passed=1445 failed=0 total=1445 wrappers=7 families=25 avg_case=3.232ms |
+| `derive_contract` | `pass` | 4.49s | derived=390 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
 | `derive_shadow_pressure` | `pass` | 0.24s | sampled=65 derived=65 unsupported=0 not_equivalent=0 mean_step_count=1.05 generic_simplify_strategy_successes=0 single_step=61 multi_step_ids=4 embedded_families=25/25 |
-| `derive_didactic_audit` | `pass` | 16.93s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 |
-| `simplify_didactic_audit` | `pass` | 0.92s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
-| `simplify_strict` | `pass` | 18.95s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
-| `calculus_diff_contract` | `pass` | 3.81s | passed=117 failed=0 |
-| `calculus_limit_contract` | `pass` | 8.27s | passed=64 failed=0 |
-| `calculus_limit_presimplify_contract` | `pass` | 0.59s | passed=8 failed=0 |
-| `calculus_integrate_contract` | `pass` | 7.66s | passed=142 failed=0 |
+| `derive_didactic_audit` | `pass` | 28.18s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 |
+| `simplify_didactic_audit` | `pass` | 0.97s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
+| `simplify_strict` | `pass` | 18.25s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
+| `calculus_diff_contract` | `pass` | 11.27s | passed=129 failed=0 |
+| `calculus_limit_contract` | `pass` | 18.49s | passed=64 failed=0 |
+| `calculus_limit_presimplify_contract` | `pass` | 0.65s | passed=8 failed=0 |
+| `calculus_integrate_contract` | `pass` | 8.37s | passed=152 failed=0 |

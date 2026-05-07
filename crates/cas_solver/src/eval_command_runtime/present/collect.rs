@@ -5,9 +5,9 @@ use cas_api_models::{
 use cas_solver_core::engine_events::EngineEvent;
 
 use crate::eval_output_presentation::{
-    collect_output_assumptions_used, collect_output_required_conditions,
-    collect_output_required_display, collect_output_solve_steps, collect_output_warnings,
-    format_output_input_latex,
+    collect_output_assumptions_used, collect_output_blocked_hints,
+    collect_output_required_conditions, collect_output_required_display,
+    collect_output_solve_steps, collect_output_warnings, format_output_input_latex,
 };
 
 use super::PreparedEvalRun;
@@ -20,6 +20,7 @@ pub(super) struct CollectedEvalArtifacts {
     pub(super) required_conditions: Vec<RequiredConditionWire>,
     pub(super) required_display: Vec<String>,
     pub(super) assumptions_used: Vec<AssumptionDto>,
+    pub(super) blocked_hints: Vec<cas_api_models::BlockedHintDto>,
     pub(super) equivalence_diagnostics: Option<EquivalenceDiagnosticsWire>,
     pub(super) timings_us: TimingsWire,
 }
@@ -95,6 +96,11 @@ where
         collect_output_required_conditions(required_conditions_raw, ctx, &assumptions_used);
     let required_display =
         collect_output_required_display(required_conditions_raw, ctx, &assumptions_used);
+    let blocked_hints = collect_output_blocked_hints(
+        ctx,
+        prepared.output_view.resolved,
+        &prepared.output_view.blocked_hints,
+    );
     let timings_us = TimingsWire {
         parse_us: prepared.parse_us,
         simplify_us: prepared.simplify_us,
@@ -108,6 +114,7 @@ where
         required_conditions,
         required_display,
         assumptions_used,
+        blocked_hints,
         equivalence_diagnostics: prepared.equivalence_diagnostics.clone(),
         timings_us,
     }

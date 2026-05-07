@@ -6,9 +6,29 @@ use cas_solver::api::render_conditions_normalized;
 use cas_solver::runtime::{
     Engine, EvalAction, EvalRequest, EvalResult, ImportanceLevel, Simplifier, StepsMode,
 };
+use serde_json::Value;
+use std::process::Command;
 
 fn render_expr(ctx: &Context, id: ExprId) -> String {
     format!("{}", DisplayExpr { context: ctx, id })
+}
+
+fn cli_eval_json_with_stderr(input: &str) -> (Value, String) {
+    let output = Command::new(env!("CARGO_BIN_EXE_cas_cli"))
+        .args(["eval", input, "--format", "json"])
+        .output()
+        .expect("execute cas_cli");
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    assert!(
+        output.status.success(),
+        "cas_cli failed for {input}\nstdout:\n{stdout}\nstderr:\n{stderr}"
+    );
+
+    let wire = serde_json::from_str(stdout.trim())
+        .unwrap_or_else(|err| panic!("parse CLI JSON for {input}: {err}\nstdout:\n{stdout}"));
+    (wire, stderr)
 }
 
 fn simplified_integral(input: &str) -> String {
@@ -313,6 +333,22 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
 }
 
 #[test]
+fn integrate_contract_scaled_inverse_sqrt_polynomial_power_substitution() {
+    let input = "integrate((4*x^3+6*x^2+6*x+2)/sqrt(2-3*(x^2+x+1)^4), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "arcsin((x^2 + x + 1)^2 / sqrt(2/3)) / sqrt(3)");
+    assert_eq!(required, vec!["2 - 3 * (x^2 + x + 1)^4 > 0".to_string()]);
+    assert_antiderivative_equiv_verifies(input);
+
+    let scaled = "integrate(2*(2*x^3+3*x^2+3*x+1)*sqrt(3)/sqrt(2-3*(x^2+x+1)^4), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(scaled);
+    assert_eq!(result, "arcsin((x^2 + x + 1)^2 / sqrt(2/3))");
+    assert_eq!(required, vec!["2 - 3 * (x^2 + x + 1)^4 > 0".to_string()]);
+    assert_antiderivative_equiv_verifies(scaled);
+}
+
+#[test]
 fn integrate_contract_symbolic_constant_verification_preserves_independent_domain_conditions() {
     let input = "integrate(ln(y)*(z+1)^(-2), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
@@ -448,7 +484,9 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaus
         "integrate(2*x/sqrt(4+x^4), x)",
         "integrate(2*x/sqrt(3+x^4), x)",
         "integrate(1/sqrt(4+(x+1)^2), x)",
+        "integrate(3/(sqrt(5-3*x)*(1-3*x)), x)",
         "integrate(x/sqrt(x^2+1), x)",
+        "integrate((3*x+5)/(2*sqrt(x+2)), x)",
         "integrate(2*x/sqrt(x^2-1), x)",
         "integrate(x*sqrt(x^2+1), x)",
         "integrate(2*x*sqrt(x^2-1), x)",
@@ -1232,6 +1270,12 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
         vec!["x > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+    let step_rules = evaluated_integral_step_rules(input);
+    assert_eq!(
+        step_rules,
+        vec!["Symbolic Integration".to_string()],
+        "arctan sqrt reciprocal kernel should integrate directly without pre-expanding the denominator: {step_rules:?}"
+    );
     assert_antiderivative_verifies(input);
     let (nested_derivative, nested_required) =
         evaluated_expr_with_required_conditions("diff(integrate(1/(2*sqrt(x)*(x+1)), x), x)");
@@ -1258,6 +1302,12 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
         required,
         vec!["x > 0".to_string()],
         "unexpected scaled required_conditions: {required:?}"
+    );
+    let step_rules = evaluated_integral_step_rules("integrate(1/(sqrt(x)*(x+1)), x)");
+    assert_eq!(
+        step_rules,
+        vec!["Symbolic Integration".to_string()],
+        "scaled arctan sqrt reciprocal kernel should integrate directly without pre-expanding the denominator: {step_rules:?}"
     );
     assert_antiderivative_verifies("integrate(1/(sqrt(x)*(x+1)), x)");
 
@@ -1356,6 +1406,148 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
         nested_required,
         vec!["5 - 3 * x > 0".to_string()],
         "negative-slope affine derivative equivalence should preserve the positive radicand condition"
+    );
+}
+
+#[test]
+fn integrate_contract_inverse_hyperbolic_sqrt_reciprocal_kernels_invert_diff_output() {
+    for (input, expected, expected_required) in [
+        (
+            "integrate(-1/(2*x*sqrt(x+1)), x)",
+            "asinh(sqrt(1 / x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "integrate(-1/(x*sqrt(x+4)), x)",
+            "asinh(sqrt(4 / x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "integrate(-1/(2*(x+1)*sqrt(x+2)), x)",
+            "asinh(sqrt(1 / (x + 1)))",
+            vec!["x + 1 > 0".to_string()],
+        ),
+        (
+            "integrate(-1/(2*sqrt(x)*(x-1)), x)",
+            "atanh(sqrt(1 / x))",
+            vec!["x - 1 > 0".to_string()],
+        ),
+        (
+            "integrate(-1/(sqrt(x)*(x-4)), x)",
+            "atanh(sqrt(4 / x))",
+            vec!["x - 4 > 0".to_string()],
+        ),
+        (
+            "integrate(-3/(2*sqrt(3*x+1)*(3*x)), x)",
+            "atanh(sqrt(1 / (3 * x + 1)))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "integrate(-2/((2*x+1)*sqrt(2*x+5)), x)",
+            "asinh(sqrt(4 / (2 * x + 1)))",
+            vec!["2 * x + 1 > 0".to_string()],
+        ),
+        (
+            "integrate(-1/(sqrt(2)*(x+3)*sqrt(x+5)), x)",
+            "asinh(sqrt(2 / (x + 3)))",
+            vec!["x + 3 > 0".to_string()],
+        ),
+        (
+            "integrate(-2/(sqrt(2)*(2*x+1)*sqrt(2*x+3)), x)",
+            "asinh(sqrt(2 / (2 * x + 1)))",
+            vec!["2 * x + 1 > 0".to_string()],
+        ),
+        (
+            "integrate(1/((6-2*x)*sqrt(8-2*x)), x)",
+            "1/2 * asinh(sqrt(1 / (3 - x))) * sqrt(2)",
+            vec!["3 - x > 0".to_string()],
+        ),
+        (
+            "integrate(-1/(x*sqrt(2*x+4)), x)",
+            "atanh(sqrt(4 / (2 * x + 4)))",
+            vec!["x > 0".to_string()],
+        ),
+    ] {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert_eq!(
+            required, expected_required,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+
+        let nested = format!("diff({input}, x)");
+        let (nested_derivative, nested_required) = evaluated_expr_with_required_conditions(&nested);
+        assert!(
+            !nested_derivative.contains("integrate("),
+            "nested derivative should not leave an integration residual for {input}: {nested_derivative}"
+        );
+        assert_eq!(
+            nested_required, expected_required,
+            "nested derivative should preserve domain conditions for {input}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_inverse_hyperbolic_sqrt_reciprocal_kernels_integrate_directly_without_denominator_expansion(
+) {
+    for input in [
+        "integrate(-1/(2*sqrt(x)*(x-1)), x)",
+        "integrate(-1/(sqrt(x)*(x-4)), x)",
+    ] {
+        let step_rules = evaluated_integral_step_rules(input);
+        assert_eq!(
+            step_rules,
+            vec!["Symbolic Integration".to_string()],
+            "inverse-hyperbolic sqrt reciprocal kernel should integrate directly without pre-expanding the denominator: {step_rules:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_scaled_asinh_residual_stays_quiet_on_stderr() {
+    let input = concat!(
+        "diff(integrate(1/((6-2*x)*sqrt(8-2*x)), x), x) ",
+        "- 1/((6-2*x)*sqrt(8-2*x))"
+    );
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!(["3 - x > 0"]),
+        "scaled asinh residual should preserve the antiderivative domain condition"
+    );
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "scaled asinh residual should not emit depth_overflow to stderr, got: {stderr}"
+    );
+}
+
+#[test]
+fn integrate_contract_ambiguous_inverse_hyperbolic_family_selection_verifies_by_diff() {
+    let input = "integrate(3/(sqrt(5-3*x)*(1-3*x)), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "asinh(sqrt(4 / (1 - 3 * x)))");
+    assert_eq!(
+        required,
+        vec!["1 - 3 * x > 0".to_string()],
+        "ambiguous inverse-hyperbolic primitive should keep the witnessed positive denominator"
+    );
+    assert_antiderivative_verifies(input);
+    assert_antiderivative_equiv_verifies(input);
+
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(3/(sqrt(5-3*x)*(1-3*x)), x), x) - 3/(sqrt(5-3*x)*(1-3*x))",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["1 - 3 * x > 0".to_string()],
+        "nested ambiguous primitive verification should preserve the selected-domain condition"
     );
 }
 
@@ -2062,6 +2254,85 @@ fn integrate_contract_expanded_square_atanh_surd_width_uses_compact_positive_dom
 }
 
 #[test]
+fn integrate_contract_polynomial_derivative_acosh_substitution_preserves_real_domain() {
+    let input = "integrate(2*x/sqrt(x^4-4), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "acosh(1/2 * x^2)");
+    assert_eq!(
+        required,
+        vec!["x^4 - 4 > 0".to_string(), "x^2 - 2 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
+    let input = "integrate((2*x+1)/sqrt((x^2+x)^2-4), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "acosh(1/2 * (x^2 + x))");
+    assert_eq!(
+        required,
+        vec![
+            "x^4 + 2 * x^3 + x^2 - 4 > 0".to_string(),
+            "x^2 + x - 2 > 0".to_string(),
+        ],
+        "unexpected shifted acosh required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate((2*x+1)/sqrt((x^2+x)^2-4), x), x) - (2*x+1)/sqrt((x^2+x)^2-4)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec![
+            "x^4 + 2 * x^3 + x^2 - 4 > 0".to_string(),
+            "x^2 + x - 2 > 0".to_string(),
+        ],
+        "nested acosh verification should preserve the real-domain conditions"
+    );
+
+    let input = "integrate((2*x+1)/sqrt((x^2+x)^2-5), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "acosh(1/5 * 5^(1/2) * (x^2 + x))");
+    assert_eq!(
+        required,
+        vec![
+            "x^4 + 2 * x^3 + x^2 - 5 > 0".to_string(),
+            "x^2 + x - sqrt(5) > 0".to_string(),
+        ],
+        "unexpected shifted surd-width acosh required_conditions: {required:?}"
+    );
+    assert_antiderivative_equiv_verifies(input);
+
+    let (nested_equiv, nested_required) = evaluated_equiv_with_required_conditions(
+        "diff(integrate((2*x+1)/sqrt((x^2+x)^2-5), x), x)",
+        "(2*x+1)/sqrt((x^2+x)^2-5)",
+    );
+    assert!(nested_equiv);
+    assert_eq!(
+        nested_required,
+        vec!["x^4 + 2 * x^3 + x^2 - 5 > 0".to_string()],
+        "surd-width acosh equivalence verification should retain the direct radicand domain"
+    );
+
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate((2*x+1)/sqrt((x^2+x)^2-5), x), x) - (2*x+1)/sqrt((x^2+x)^2-5)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec![
+            "x^4 + 2 * x^3 + x^2 - 5 > 0".to_string(),
+            "x^2 + x - sqrt(5) > 0".to_string(),
+        ],
+        "nested surd-width acosh residual should keep the compact real-domain conditions"
+    );
+}
+
+#[test]
 fn integrate_contract_square_minus_constant_uses_abs_log_ratio_and_nonzero_domain() {
     let (result, required) = evaluated_integral_with_required_conditions("integrate(1/(x^2-1), x)");
 
@@ -2735,6 +3006,44 @@ fn integrate_contract_shifted_linear_scaled_arcsin_substitution() {
 }
 
 #[test]
+fn integrate_contract_beta_sqrt_product_kernel_preserves_open_domain_and_verifies() {
+    for (input, expected_result, expected_derivative) in [
+        (
+            "integrate(1/(sqrt(x)*sqrt(1-x)), x)",
+            "arcsin(2 * x - 1)",
+            "1 / (sqrt(x) * sqrt(1 - x))",
+        ),
+        (
+            "integrate(1/(2*sqrt(x)*sqrt(1-x)), x)",
+            "1/2 * arcsin(2 * x - 1)",
+            "1 / (2 * sqrt(x) * sqrt(1 - x))",
+        ),
+    ] {
+        let (result, mut required) = evaluated_integral_with_required_conditions(input);
+        let mut expected_required = vec!["1 - x > 0".to_string(), "x > 0".to_string()];
+        required.sort();
+        expected_required.sort();
+
+        assert_eq!(result, expected_result, "input: {input}");
+        assert_eq!(
+            required, expected_required,
+            "sqrt-product beta kernel should preserve both open denominator conditions"
+        );
+        assert_antiderivative_verifies(input);
+
+        let rendered_derivative = format!("diff({result}, x)");
+        let (derivative_result, mut nested_required) =
+            evaluated_expr_with_required_conditions(&rendered_derivative);
+        nested_required.sort();
+        assert_eq!(derivative_result, expected_derivative, "input: {input}");
+        assert_eq!(
+            nested_required, expected_required,
+            "rendered beta-kernel derivative should preserve both open denominator conditions"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_polynomial_derivative_asinh_substitution() {
     assert_eq!(
         simplified_integral("integrate(2*x/sqrt(1+x^4), x)"),
@@ -2814,6 +3123,75 @@ fn integrate_contract_polynomial_derivative_over_square_root_substitution() {
         vec!["x^2 - 1 > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+
+    let input = "integrate((3*x^2+2*x+1)/sqrt(x^3+x^2+x+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "2 * (x^3 + x^2 + x + 1)^(1/2)");
+    assert_eq!(
+        required,
+        vec!["x^3 + x^2 + x + 1 > 0".to_string()],
+        "unexpected cubic radicand required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
+    let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate((3*x^2+2*x+1)/sqrt(x^3+x^2+x+1), x), x) - (3*x^2+2*x+1)/sqrt(x^3+x^2+x+1)",
+    );
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required,
+        vec!["x^3 + x^2 + x + 1 > 0".to_string()],
+        "cubic radicand residual verification should preserve positive-domain conditions"
+    );
+}
+
+#[test]
+fn integrate_contract_affine_sqrt_product_derivative_inverse() {
+    let input = "integrate((3*x+5)/(2*sqrt(x+2)), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "sqrt(x + 2) * (x + 1)");
+    assert_eq!(
+        required,
+        vec!["x + 2 > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    assert_antiderivative_equiv_verifies(input);
+
+    let input = "integrate((3*x+1)/(2*sqrt(x)), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "sqrt(x) * (x + 1)");
+    assert_eq!(
+        required,
+        vec!["x > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert_antiderivative_equiv_verifies(input);
+
+    let input = "integrate((1/2)*(3*x+1)*x^(-1/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "sqrt(x) * (x + 1)");
+    assert_eq!(
+        required,
+        vec!["x > 0".to_string()],
+        "unexpected product-form required_conditions: {required:?}"
+    );
+    assert_antiderivative_equiv_verifies(input);
+
+    let input = "integrate((2-3*x)*(3-2*x)^(-1/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "sqrt(3 - 2 * x) * (x + 1)");
+    assert_eq!(
+        required,
+        vec!["3 - 2 * x > 0".to_string()],
+        "unexpected negative-slope product-form required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
 }
 
 #[test]
@@ -3461,6 +3839,45 @@ fn integrate_contract_sqrt_chain_secant_cosecant_products_verify() {
 }
 
 #[test]
+fn integrate_contract_sqrt_chain_secant_cosecant_products_integrate_directly() {
+    let cases = [
+        "integrate(sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)",
+        "integrate(csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x)",
+    ];
+
+    for input in cases {
+        let step_rules = evaluated_integral_step_rules(input);
+        assert_eq!(
+            step_rules,
+            vec!["Symbolic Integration".to_string()],
+            "sqrt-chain reciprocal trig products should integrate directly: {step_rules:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_sqrt_chain_tangent_cotangent_logs_integrate_directly() {
+    let cases = [
+        "integrate(tan(sqrt(x))/(2*sqrt(x)), x)",
+        "integrate(cot(sqrt(x))/(2*sqrt(x)), x)",
+        "integrate(tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+        "integrate(cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+        "integrate(-tan(sqrt(3-2*x))/sqrt(3-2*x), x)",
+    ];
+
+    for input in cases {
+        let step_rules = evaluated_integral_step_rules(input);
+        assert_eq!(
+            step_rules,
+            vec!["Symbolic Integration".to_string()],
+            "sqrt-chain trig log derivatives should integrate directly: {step_rules:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
 fn integrate_contract_sqrt_chain_tangent_cotangent_logs_verify() {
     let cases = [
         (
@@ -3722,6 +4139,13 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_squares_verify() {
                 && rule_name == "Present calculus result in compact form"
                 && *importance >= ImportanceLevel::Medium),
         "post-calculus presentation should be visible in normal step output: {step_summaries:?}"
+    );
+    assert!(
+        !step_summaries.iter().any(|(_, rule_name, _)| {
+            rule_name == "Pull Constant From Fraction"
+                || rule_name == "Simplify Multiplication with Division"
+        }),
+        "post-calculus presentation should hide mechanical fraction cleanup before the compact result: {step_summaries:?}"
     );
 }
 

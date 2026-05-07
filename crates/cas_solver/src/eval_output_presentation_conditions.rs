@@ -1,4 +1,4 @@
-use cas_api_models::{AssumptionDto, RequiredConditionWire, WarningWire};
+use cas_api_models::{AssumptionDto, BlockedHintDto, RequiredConditionWire, WarningWire};
 use cas_ast::Context;
 use cas_formatter::DisplayExpr;
 use cas_solver_core::domain_normalization::normalize_and_dedupe_conditions;
@@ -59,6 +59,21 @@ pub(crate) fn collect_output_required_display(
         .iter()
         .filter(|cond| !assumed_filter.covers_required_condition(ctx, cond))
         .map(|cond| cond.display(ctx))
+        .collect()
+}
+
+pub(crate) fn collect_output_blocked_hints(
+    ctx: &Context,
+    resolved: cas_ast::ExprId,
+    blocked_hints: &[crate::BlockedHint],
+) -> Vec<BlockedHintDto> {
+    crate::filter_blocked_hints_for_eval(ctx, resolved, blocked_hints)
+        .iter()
+        .map(|hint| BlockedHintDto {
+            rule: hint.rule.clone(),
+            requires: vec![crate::format_blocked_hint_condition(ctx, hint)],
+            tip: hint.suggestion.to_string(),
+        })
         .collect()
 }
 

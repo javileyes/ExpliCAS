@@ -143,6 +143,37 @@ fn health_smoke_nested_sqrt() {
     );
 }
 
+#[test]
+fn health_factored_quadratic_reciprocal_denominator_avoids_post_cleanup_cycle() {
+    let mut simplifier = Simplifier::new();
+    simplifier.register_default_rules();
+    simplifier.profiler.enable_health();
+    simplifier.profiler.clear_run();
+
+    let expr =
+        cas_parser::parse("1/(2*(x^2+2-3*x))", &mut simplifier.context).expect("parse failed");
+    let opts = SimplifyOptions::default();
+    let budgets = opts.budgets;
+    let (_, _, stats) = simplifier.simplify_with_stats(expr, opts);
+
+    let diagnostics = format!(
+        "stats: {stats:?}\nhealth:\n{}",
+        simplifier.profiler.health_report()
+    );
+    assert!(
+        stats.post_cleanup.iters_used < budgets.post_iters,
+        "PostCleanup should not saturate its iteration budget\n{diagnostics}"
+    );
+    assert!(
+        stats.post_cleanup.rewrites_used <= 8,
+        "PostCleanup should not churn on an already factored primitive denominator\n{diagnostics}"
+    );
+    assert!(
+        stats.cycle_events.is_empty(),
+        "no cycle events should be recorded for an already factored primitive denominator\n{diagnostics}"
+    );
+}
+
 // ==================== BUDGET SATURATION CHECKS ====================
 
 #[test]

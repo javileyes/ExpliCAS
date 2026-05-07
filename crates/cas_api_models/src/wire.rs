@@ -6,7 +6,7 @@
 use cas_ast::Span;
 use serde::{Deserialize, Serialize};
 
-use crate::{AssumptionDto, WarningWire};
+use crate::{AssumptionDto, BlockedHintDto, WarningWire};
 
 /// Current schema version for the wire format.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -162,11 +162,50 @@ pub struct EvalWireReplyParts<'a> {
     pub warnings: &'a [WarningWire],
     pub assumptions_used: &'a [AssumptionDto],
     pub required_display: &'a [String],
+    pub blocked_hints: &'a [BlockedHintDto],
     pub strategy: Option<&'a str>,
     pub result: &'a str,
     pub result_latex: Option<&'a str>,
     pub steps_count: usize,
     pub steps_mode: &'a str,
+}
+
+/// Format blocked hints for human-facing wire/CLI messages.
+///
+/// The structured `blocked_hints` payload remains ungrouped. This helper only
+/// reduces repeated condition/tip noise in display messages.
+pub fn format_blocked_hint_message_lines(blocked_hints: &[BlockedHintDto]) -> Vec<String> {
+    let mut grouped: Vec<(String, String, Vec<String>)> = Vec::new();
+
+    for hint in blocked_hints {
+        let requires = hint.requires.join(", ");
+        if let Some((_, _, rules)) =
+            grouped
+                .iter_mut()
+                .find(|(existing_requires, existing_tip, _)| {
+                    existing_requires == &requires && existing_tip == &hint.tip
+                })
+        {
+            if !rules.iter().any(|rule| rule == &hint.rule) {
+                rules.push(hint.rule.clone());
+            }
+            continue;
+        }
+
+        grouped.push((requires, hint.tip.clone(), vec![hint.rule.clone()]));
+    }
+
+    let mut lines = Vec::new();
+    for (requires, tip, rules) in grouped {
+        lines.push(format!(
+            "\u{2139}\u{FE0F} Blocked: requires {} [{}]",
+            requires,
+            rules.join(", ")
+        ));
+        lines.push(format!("  {tip}"));
+    }
+
+    lines
 }
 
 /// Build a wire envelope for eval-style wire outputs.
@@ -183,6 +222,7 @@ pub fn build_eval_wire_reply(parts: EvalWireReplyParts<'_>) -> WireReply {
         warnings,
         assumptions_used,
         required_display,
+        blocked_hints,
         strategy,
         result,
         result_latex,
@@ -213,6 +253,10 @@ pub fn build_eval_wire_reply(parts: EvalWireReplyParts<'_>) -> WireReply {
         for cond in required_display {
             messages.push(WireMsg::new(WireKind::Info, format!("  \u{2022} {}", cond)));
         }
+    }
+
+    for line in format_blocked_hint_message_lines(blocked_hints) {
+        messages.push(WireMsg::new(WireKind::Info, line));
     }
 
     if let Some(strategy) = strategy {
@@ -280,6 +324,7 @@ mod tests {
             warnings: &warnings,
             assumptions_used: &[],
             required_display: &required,
+            blocked_hints: &[],
             strategy: Some("expand"),
             result: "42",
             result_latex: Some("42"),
@@ -305,6 +350,7 @@ mod tests {
             warnings: &[],
             assumptions_used: &[],
             required_display: &[],
+            blocked_hints: &[],
             strategy: None,
             result: "ok",
             result_latex: None,
@@ -322,6 +368,7 @@ mod tests {
             warnings: &[],
             assumptions_used: &[],
             required_display: &[],
+            blocked_hints: &[],
             strategy: None,
             result: "ok",
             result_latex: None,
@@ -331,5 +378,37 @@ mod tests {
         assert_eq!(reply.messages.len(), 2);
         assert_eq!(reply.messages[1].kind, WireKind::Steps);
         assert_eq!(reply.messages[1].text, "2 simplification step(s)");
+    }
+
+    #[test]
+    fn format_blocked_hint_message_lines_groups_repeated_condition_and_tip() {
+        let hints = vec![
+            BlockedHintDto {
+                rule: "Cancel Identical Numerator/Denominator".to_string(),
+                requires: vec!["x \u{2260} 0".to_string()],
+                tip: "use `domain generic` to allow definability assumptions".to_string(),
+            },
+            BlockedHintDto {
+                rule: "Simplify Nested Fraction".to_string(),
+                requires: vec!["x \u{2260} 0".to_string()],
+                tip: "use `domain generic` to allow definability assumptions".to_string(),
+            },
+            BlockedHintDto {
+                rule: "Cancel Common Factors".to_string(),
+                requires: vec!["x \u{2260} 0".to_string()],
+                tip: "use `domain generic` to allow definability assumptions".to_string(),
+            },
+        ];
+
+        let lines = format_blocked_hint_message_lines(&hints);
+        assert_eq!(lines.len(), 2);
+        assert!(lines[0].contains("x \u{2260} 0"));
+        assert!(lines[0].contains("Cancel Identical Numerator/Denominator"));
+        assert!(lines[0].contains("Simplify Nested Fraction"));
+        assert!(lines[0].contains("Cancel Common Factors"));
+        assert_eq!(
+            lines[1],
+            "  use `domain generic` to allow definability assumptions"
+        );
     }
 }

@@ -195,7 +195,7 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
         let steps = json["steps"].as_array().expect("steps should be an array");
         assert!(
             steps.iter().any(|step| {
-                step["rule"] == "Present calculus result in compact form"
+                step["rule"] == "Presentar resultado de cálculo en forma compacta"
                     && step["before"]
                         .as_str()
                         .is_some_and(|before| before.contains(expected_before))

@@ -136,6 +136,9 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Subtract Fractions" => "Restar fracciones",
         "Symbolic Differentiation" => "Calcular la derivada",
         "Symbolic Integration" => "Calcular la integral",
+        "Present calculus result in compact form" => {
+            "Presentar resultado de cálculo en forma compacta"
+        }
         "Pull Constant From Fraction" => "Sacar constante de una fracción",
         "Simplify Multiplication with Division" => "Combinar fracciones en una multiplicación",
         "Simplify Nested Fraction" => "Cancelar factores en una fracción",

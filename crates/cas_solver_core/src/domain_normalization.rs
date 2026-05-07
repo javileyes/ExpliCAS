@@ -332,7 +332,17 @@ fn compact_positive_power_gap_for_display(ctx: &mut Context, expr: ExprId) -> Op
         return Some(compact);
     }
 
-    compact_expanded_shifted_fourth_gap_for_display(ctx, expr)
+    if let Some(compact) = compact_expanded_shifted_fourth_gap_for_display(ctx, expr) {
+        return Some(compact);
+    }
+
+    if let Some(compact) =
+        compact_expanded_negative_scaled_low_degree_power_gap_for_display(ctx, expr)
+    {
+        return Some(compact);
+    }
+
+    compact_expanded_negative_monic_low_degree_power_gap_for_display(ctx, expr)
 }
 
 fn sqrt_positive_lower_shift_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
@@ -557,6 +567,119 @@ fn compact_expanded_monic_low_degree_power_gap_for_display(
     }
 
     None
+}
+
+fn compact_expanded_negative_monic_low_degree_power_gap_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let variables = cas_ast::collect_variables(ctx, expr);
+    if variables.len() != 1 {
+        return None;
+    }
+    let var = variables.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, expr, var.as_str()).ok()?;
+    let degree = poly.degree();
+    if degree < 4 || poly.leading_coeff() != -BigRational::one() {
+        return None;
+    }
+
+    let neg_poly = poly.neg();
+    for power in 2..=8_i64 {
+        let power_usize = power as usize;
+        if degree % power_usize != 0 {
+            continue;
+        }
+        let base_degree = degree / power_usize;
+        if !matches!((power, base_degree), (2, 2) | (4..=8, 1 | 2)) {
+            continue;
+        }
+
+        let candidate = monic_power_root_candidate(&neg_poly, var, power, base_degree)?;
+        if power == 2 && !polynomial_has_additive_shape(&candidate) {
+            continue;
+        }
+        let candidate_power = polynomial_positive_power(&candidate, power);
+        let residual = neg_poly.sub(&candidate_power);
+        if residual.is_zero() || residual.degree() > 0 {
+            continue;
+        }
+        let residual_constant = residual.coeffs.first()?.clone();
+        if !residual_constant.is_negative() {
+            continue;
+        }
+
+        let base = candidate.to_expr(ctx);
+        let exp = ctx.num(power);
+        let power_expr = ctx.add(Expr::Pow(base, exp));
+        let offset = ctx.add(Expr::Number(residual_constant.abs()));
+        return Some(ctx.add(Expr::Sub(offset, power_expr)));
+    }
+
+    None
+}
+
+fn compact_expanded_negative_scaled_low_degree_power_gap_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let variables = cas_ast::collect_variables(ctx, expr);
+    if variables.len() != 1 {
+        return None;
+    }
+    let var = variables.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, expr, var.as_str()).ok()?;
+    let degree = poly.degree();
+    if degree < 4 || !poly.leading_coeff().is_negative() {
+        return None;
+    }
+
+    let scale = -poly.leading_coeff();
+    if scale.is_one() || !scale.is_integer() {
+        return None;
+    }
+
+    let normalized_positive = poly.neg().div_scalar(&scale);
+    for power in 2..=8_i64 {
+        let power_usize = power as usize;
+        if degree % power_usize != 0 {
+            continue;
+        }
+        let base_degree = degree / power_usize;
+        if !matches!((power, base_degree), (2, 2) | (4..=8, 1 | 2)) {
+            continue;
+        }
+
+        let candidate = monic_power_root_candidate(&normalized_positive, var, power, base_degree)?;
+        if power == 2 && !polynomial_has_additive_shape(&candidate) {
+            continue;
+        }
+
+        let candidate_power = polynomial_positive_power(&candidate, power);
+        let residual = normalized_positive.sub(&candidate_power);
+        if residual.is_zero() || residual.degree() > 0 {
+            continue;
+        }
+        let residual_constant = residual.coeffs.first()?.clone();
+        if !residual_constant.is_negative() {
+            continue;
+        }
+
+        let offset = ctx.add(Expr::Number(residual_constant.abs() * scale.clone()));
+        let base = candidate.to_expr(ctx);
+        let exp = ctx.num(power);
+        let power_expr = ctx.add(Expr::Pow(base, exp));
+        let scale_expr = ctx.add(Expr::Number(scale.clone()));
+        let scaled_power = ctx.add(Expr::Mul(scale_expr, power_expr));
+        return Some(ctx.add(Expr::Sub(offset, scaled_power)));
+    }
+
+    None
+}
+
+fn polynomial_has_additive_shape(poly: &Polynomial) -> bool {
+    let nonzero_terms = poly.coeffs.iter().filter(|coeff| !coeff.is_zero()).count();
+    nonzero_terms >= 2
 }
 
 fn shifted_var_expr_for_display(ctx: &mut Context, var: &str, shift: &BigRational) -> ExprId {
@@ -1285,6 +1408,61 @@ fn positive_condition_dominates_affine_positive_offset(
     offset_poly
         .constant_value()
         .is_some_and(|offset| offset >= BigRational::zero())
+}
+
+fn one_minus_positive_const_over_expr_parts(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, BigRational)> {
+    match ctx.get(expr).clone() {
+        Expr::Sub(left, right) if is_one_constant(ctx, left) => {
+            positive_const_over_expr_parts(ctx, right)
+        }
+        Expr::Add(left, right) if is_one_constant(ctx, left) => {
+            negative_const_over_expr_parts(ctx, right)
+        }
+        Expr::Add(left, right) if is_one_constant(ctx, right) => {
+            negative_const_over_expr_parts(ctx, left)
+        }
+        _ => None,
+    }
+}
+
+fn positive_const_over_expr_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let constant = as_rational_const(ctx, num)?;
+    constant.is_positive().then_some((den, constant))
+}
+
+fn negative_const_over_expr_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => positive_const_over_expr_parts(ctx, inner),
+        Expr::Div(num, den) => {
+            let constant = as_rational_const(ctx, num)?;
+            constant.is_negative().then_some((den, -constant))
+        }
+        _ => None,
+    }
+}
+
+fn positive_condition_dominates_reciprocal_offset_nonnegative(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonnegative_expr: ExprId,
+) -> bool {
+    let Some((den, offset)) = one_minus_positive_const_over_expr_parts(ctx, nonnegative_expr)
+    else {
+        return false;
+    };
+
+    let offset_expr = ctx.add(Expr::Number(offset));
+    let gap = ctx.add(Expr::Sub(den, offset_expr));
+    let normalized_positive = normalize_condition_expr_preserve_sign(ctx, positive_expr);
+    let normalized_gap = normalize_condition_expr_preserve_sign(ctx, gap);
+
+    exprs_equivalent_up_to_nonzero_scalar(ctx, normalized_positive, normalized_gap)
 }
 
 fn nonzero_nonconstant_scale(source: &MultiPoly, target: &MultiPoly) -> Option<BigRational> {
@@ -2680,6 +2858,9 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                     if exprs_equivalent(ctx, *nn_expr, *pos_expr)
                         || is_odd_power_of(ctx, *nn_expr, *pos_expr)
                         || is_positive_multiple_of(ctx, *nn_expr, *pos_expr)
+                        || positive_condition_dominates_reciprocal_offset_nonnegative(
+                            ctx, *pos_expr, *nn_expr,
+                        )
                     {
                         to_remove.push(i);
                         break;
@@ -3653,6 +3834,22 @@ mod tests {
             .collect();
 
         assert_eq!(rendered, vec!["3 - (x + 1)^4 > 0".to_string()]);
+    }
+
+    #[test]
+    fn positive_expanded_negative_monic_quadratic_square_gap_preserves_compact_display() {
+        let mut ctx = Context::new();
+        let gap = parse("6 - x^4 - 2*x^3 - 3*x^2 - 2*x", &mut ctx)
+            .expect("parse expanded quadratic-square gap");
+
+        let normalized =
+            normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::Positive(gap)]);
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["7 - (x^2 + x + 1)^2 > 0".to_string()]);
     }
 
     #[test]
