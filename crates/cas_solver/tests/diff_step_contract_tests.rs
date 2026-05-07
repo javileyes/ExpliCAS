@@ -452,6 +452,49 @@ fn scaled_arcsin_linear_diff_evaluates_to_reciprocal_root() {
 }
 
 #[test]
+fn scaled_arcsin_unit_interval_residual_collapses_inside_subtraction_context() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let input = "diff(1/2*arcsin(2*x-1), x) - 1/(2*sqrt(x)*sqrt(1-x))";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "0");
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["x > 0".to_string(), "1 - x > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
 fn scaled_asinh_linear_diff_evaluates_to_reciprocal_root() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -879,6 +922,182 @@ fn log_abs_quotient_diff_uses_direct_domain_safe_log_rule() {
         vec!["x - 1 ≠ 0".to_string(), "x + 1 ≠ 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+}
+
+#[test]
+fn log_power_diff_uses_compact_numeric_post_calculus_presentation() {
+    for (input, expected_result, expected_required) in [
+        ("diff(ln(x^2), x)", "2 / x", vec!["x ≠ 0".to_string()]),
+        (
+            "diff(ln((x+1)^2), x)",
+            "2 / (x + 1)",
+            vec!["x + 1 ≠ 0".to_string()],
+        ),
+        ("diff(ln(x^3), x)", "3 / x", vec!["x > 0".to_string()]),
+        ("diff(ln(x^-2), x)", "-2 / x", vec!["x ≠ 0".to_string()]),
+        (
+            "diff(ln((x+1)^-2), x)",
+            "-2 / (x + 1)",
+            vec!["x + 1 ≠ 0".to_string()],
+        ),
+        ("diff(ln(x^-3), x)", "-3 / x", vec!["x > 0".to_string()]),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+
+        assert_eq!(result, expected_result, "input: {input}");
+        assert!(
+            !result.contains("1 *"),
+            "post-calculus log-power presentation should not keep unit products: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_required,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn sqrt_negative_even_power_diff_uses_essential_domain_guard() {
+    for (input, expected_result, expected_required) in [
+        (
+            "diff(sqrt(x^-2), x)",
+            "-1 / (x * |x|)",
+            vec!["x ≠ 0".to_string()],
+        ),
+        (
+            "diff(sqrt((x+1)^-2), x)",
+            "-1 / (|x + 1| * (x + 1))",
+            vec!["x + 1 ≠ 0".to_string()],
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+
+        assert_eq!(result, expected_result, "input: {input}");
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_required,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn log_sqrt_negative_even_power_diff_preserves_essential_domain_guard() {
+    for (input, expected_result, expected_required) in [
+        (
+            "diff(ln(sqrt(x^-2)), x)",
+            "-1 / x",
+            vec!["x ≠ 0".to_string()],
+        ),
+        (
+            "diff(ln(sqrt((x+1)^-2)), x)",
+            "-1 / (x + 1)",
+            vec!["x + 1 ≠ 0".to_string()],
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+
+        assert_eq!(result, expected_result, "input: {input}");
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_required,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
 }
 
 #[test]
@@ -8249,6 +8468,54 @@ fn bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentati
             None,
         ),
         (
+            "diff(arcsin(2*sqrt(x)-1), x)",
+            "1 / (2 * sqrt(x) * sqrt(sqrt(x) - x))",
+            vec!["x > 0".to_string(), "sqrt(x) - x > 0".to_string()],
+            None,
+        ),
+        (
+            "diff(arcsin(2*sqrt(2*x)-1), x)",
+            "1 / (sqrt(2 * x) * sqrt(sqrt(2 * x) - 2 * x))",
+            vec!["x > 0".to_string(), "sqrt(2 * x) - 2 * x > 0".to_string()],
+            None,
+        ),
+        (
+            "diff(arccos(2*sqrt(2*x)-1), x)",
+            "-1 / (sqrt(2 * x) * sqrt(sqrt(2 * x) - 2 * x))",
+            vec!["x > 0".to_string(), "sqrt(2 * x) - 2 * x > 0".to_string()],
+            None,
+        ),
+        (
+            "diff(arccos(2*sqrt(x)-1), x)",
+            "-1 / (2 * sqrt(x) * sqrt(sqrt(x) - x))",
+            vec!["x > 0".to_string(), "sqrt(x) - x > 0".to_string()],
+            None,
+        ),
+        (
+            "diff(arcsin(1-2*sqrt(x)), x)",
+            "-1 / (2 * sqrt(x) * sqrt(sqrt(x) - x))",
+            vec!["x > 0".to_string(), "sqrt(x) - x > 0".to_string()],
+            None,
+        ),
+        (
+            "diff(arcsin(1-2*sqrt(2*x)), x)",
+            "-1 / (sqrt(2 * x) * sqrt(sqrt(2 * x) - 2 * x))",
+            vec!["x > 0".to_string(), "sqrt(2 * x) - 2 * x > 0".to_string()],
+            None,
+        ),
+        (
+            "diff(arccos(1-2*sqrt(x)), x)",
+            "1 / (2 * sqrt(x) * sqrt(sqrt(x) - x))",
+            vec!["x > 0".to_string(), "sqrt(x) - x > 0".to_string()],
+            None,
+        ),
+        (
+            "diff(arccos(1-2*sqrt(2*x)), x)",
+            "1 / (sqrt(2 * x) * sqrt(sqrt(2 * x) - 2 * x))",
+            vec!["x > 0".to_string(), "sqrt(2 * x) - 2 * x > 0".to_string()],
+            None,
+        ),
+        (
             "diff(arcsin(sqrt(2*x)), x)",
             "1 / (sqrt(2 * x) * sqrt(1 - 2 * x))",
             vec!["1 - 2 * x > 0".to_string(), "x > 0".to_string()],
@@ -8356,6 +8623,33 @@ fn bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentati
             "expected the derivative to keep the ordinary symbolic differentiation trace"
         );
     }
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let residual_input = "diff(arcsin(2*sqrt(x)-1), x) - 1/(2*sqrt(x)*sqrt(sqrt(x)-x))";
+    let parsed = parse(residual_input, &mut engine.simplifier.context).expect("parse residual");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: residual_input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval residual");
+    let residual_result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression residual result, got {other:?}"),
+    };
+    assert_eq!(residual_result, "0");
 }
 
 #[test]

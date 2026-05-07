@@ -75,6 +75,35 @@ pub fn match_sub_self_semantic_expr(ctx: &Context, expr: ExprId) -> Option<ExprI
         return None;
     };
 
+    if sqrt_product_term_is_one(ctx, *lhs) && is_one_expr(ctx, *rhs) {
+        return Some(*lhs);
+    }
+    if is_one_expr(ctx, *lhs) && sqrt_product_term_is_one(ctx, *rhs) {
+        return Some(*rhs);
+    }
+    if let (Some(lhs_coeff), Some(rhs_coeff)) = (
+        scaled_sqrt_product_one_coeff(ctx, *lhs),
+        rational_const_expr(ctx, *rhs),
+    ) {
+        if lhs_coeff == rhs_coeff {
+            return Some(*lhs);
+        }
+    }
+    if let (Some(lhs_coeff), Some(rhs_coeff)) = (
+        rational_const_expr(ctx, *lhs),
+        scaled_sqrt_product_one_coeff(ctx, *rhs),
+    ) {
+        if lhs_coeff == rhs_coeff {
+            return Some(*rhs);
+        }
+    }
+    if scaled_sqrt_product_one_term_matches_product(ctx, *lhs, *rhs) {
+        return Some(*lhs);
+    }
+    if scaled_sqrt_product_one_term_matches_product(ctx, *rhs, *lhs) {
+        return Some(*rhs);
+    }
+
     if match_abs_sub_mirror_expr(ctx, *lhs, *rhs) {
         return Some(*lhs);
     }
@@ -111,7 +140,39 @@ pub fn match_add_inverse_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 
     let checker = SemanticEqualityChecker::new(ctx);
 
+    if sqrt_product_term_is_one(ctx, *l) && is_negative_one_expr(ctx, *r) {
+        return Some(*l);
+    }
+    if sqrt_product_term_is_one(ctx, *r) && is_negative_one_expr(ctx, *l) {
+        return Some(*r);
+    }
+    if let (Some(l_coeff), Some(r_coeff)) = (
+        scaled_sqrt_product_one_coeff(ctx, *l),
+        rational_const_expr(ctx, *r),
+    ) {
+        if l_coeff + r_coeff == BigRational::zero() {
+            return Some(*l);
+        }
+    }
+    if let (Some(l_coeff), Some(r_coeff)) = (
+        rational_const_expr(ctx, *l),
+        scaled_sqrt_product_one_coeff(ctx, *r),
+    ) {
+        if l_coeff + r_coeff == BigRational::zero() {
+            return Some(*r);
+        }
+    }
+    if scaled_sqrt_product_one_term_cancels_product(ctx, *l, *r) {
+        return Some(*l);
+    }
+    if scaled_sqrt_product_one_term_cancels_product(ctx, *r, *l) {
+        return Some(*r);
+    }
+
     if let Expr::Neg(neg_inner) = ctx.get(*r) {
+        if sqrt_product_term_is_one(ctx, *l) && is_one_expr(ctx, *neg_inner) {
+            return Some(*l);
+        }
         if match_abs_sub_mirror_expr(ctx, *neg_inner, *l) {
             return Some(*l);
         }
@@ -125,6 +186,9 @@ pub fn match_add_inverse_expr(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         }
     }
     if let Expr::Neg(neg_inner) = ctx.get(*l) {
+        if sqrt_product_term_is_one(ctx, *r) && is_one_expr(ctx, *neg_inner) {
+            return Some(*r);
+        }
         if match_abs_sub_mirror_expr(ctx, *neg_inner, *r) {
             return Some(*r);
         }
@@ -465,6 +529,251 @@ fn normalize_sqrt_product_term(ctx: &Context, expr: ExprId) -> Option<Normalized
     normalized.saw_root_like.then_some(normalized)
 }
 
+fn sqrt_product_term_is_one(ctx: &Context, expr: ExprId) -> bool {
+    if sqrt_product_reciprocal_pair_is_one(ctx, expr) {
+        return true;
+    }
+    if sqrt_split_product_reciprocal_unit_is_one(ctx, expr) {
+        return true;
+    }
+
+    let Some(normalized) = normalize_sqrt_product_term(ctx, expr) else {
+        return false;
+    };
+    normalized.sign == 1 && normalized.squared_scale.is_one() && normalized.affine_powers.is_empty()
+}
+
+fn sqrt_product_reciprocal_pair_is_one(ctx: &Context, expr: ExprId) -> bool {
+    let factors = crate::expr_nary::mul_leaves(ctx, expr);
+    if factors.len() != 2 {
+        return false;
+    }
+
+    sqrt_product_reciprocal_pair_factors_are_one(ctx, factors[0], factors[1])
+}
+
+fn sqrt_product_reciprocal_pair_factors_are_one(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let Some((base_a, exp_a)) = sqrt_like_base_and_exponent(ctx, left) else {
+        return false;
+    };
+    let Some((base_b, exp_b)) = sqrt_like_base_and_exponent(ctx, right) else {
+        return false;
+    };
+
+    let half = BigRational::new(1.into(), 2.into());
+    let neg_half = -half.clone();
+    ((exp_a == half && exp_b == neg_half) || (exp_a == neg_half && exp_b == half))
+        && crate::poly_compare::poly_eq(ctx, base_a, base_b)
+}
+
+fn sqrt_split_product_reciprocal_unit_is_one(ctx: &Context, expr: ExprId) -> bool {
+    let factors = crate::expr_nary::mul_leaves(ctx, expr);
+    sqrt_split_product_unit_factor_indices(ctx, &factors)
+        .is_some_and(|indices| indices.len() == factors.len())
+}
+
+fn sqrt_split_product_unit_factor_indices(ctx: &Context, factors: &[ExprId]) -> Option<Vec<usize>> {
+    for (product_index, product_factor) in factors.iter().enumerate() {
+        let Some(product_leaves) = positive_sqrt_product_leaves(ctx, *product_factor) else {
+            continue;
+        };
+        if product_leaves.len() < 2 || product_leaves.len() > 3 {
+            continue;
+        }
+
+        let checker = SemanticEqualityChecker::new(ctx);
+        let mut used = vec![product_index];
+        for product_leaf in product_leaves {
+            let reciprocal_index =
+                factors
+                    .iter()
+                    .enumerate()
+                    .find_map(|(factor_index, factor)| {
+                        if used.contains(&factor_index) {
+                            return None;
+                        }
+                        reciprocal_sqrt_base(ctx, *factor)
+                            .filter(|base| checker.are_equal(product_leaf, *base))
+                            .map(|_| factor_index)
+                    })?;
+            used.push(reciprocal_index);
+        }
+
+        used.sort_unstable();
+        return Some(used);
+    }
+
+    None
+}
+
+fn positive_sqrt_product_leaves(ctx: &Context, expr: ExprId) -> Option<Vec<ExprId>> {
+    let (base, exp) = sqrt_like_base_and_exponent(ctx, expr)?;
+    (exp == BigRational::new(1.into(), 2.into())).then(|| {
+        crate::expr_nary::mul_leaves(ctx, base)
+            .into_iter()
+            .collect()
+    })
+}
+
+fn reciprocal_sqrt_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let (base, exp) = sqrt_like_base_and_exponent(ctx, expr)?;
+    (exp == BigRational::new((-1).into(), 2.into())).then_some(base)
+}
+
+#[derive(Debug, Clone)]
+struct ProductTerm {
+    coeff: BigRational,
+    factors: Vec<ExprId>,
+}
+
+fn scaled_sqrt_product_one_coeff(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    let term = scaled_sqrt_product_one_term(ctx, expr)?;
+    term.factors.is_empty().then_some(term.coeff)
+}
+
+fn scaled_sqrt_product_one_term_matches_product(
+    ctx: &Context,
+    unit_expr: ExprId,
+    product_expr: ExprId,
+) -> bool {
+    let Some(unit_term) = scaled_sqrt_product_one_term(ctx, unit_expr) else {
+        return false;
+    };
+    let Some(product_term) = rational_product_term(ctx, product_expr) else {
+        return false;
+    };
+
+    unit_term.coeff == product_term.coeff
+        && expr_factor_multisets_equal(ctx, &unit_term.factors, &product_term.factors)
+}
+
+fn scaled_sqrt_product_one_term_cancels_product(
+    ctx: &Context,
+    unit_expr: ExprId,
+    product_expr: ExprId,
+) -> bool {
+    let Some(unit_term) = scaled_sqrt_product_one_term(ctx, unit_expr) else {
+        return false;
+    };
+    let Some(product_term) = rational_product_term(ctx, product_expr) else {
+        return false;
+    };
+
+    unit_term.coeff + product_term.coeff == BigRational::zero()
+        && expr_factor_multisets_equal(ctx, &unit_term.factors, &product_term.factors)
+}
+
+fn scaled_sqrt_product_one_term(ctx: &Context, expr: ExprId) -> Option<ProductTerm> {
+    let mut term = rational_product_term(ctx, expr)?;
+    remove_one_sqrt_product_unit(ctx, &mut term.factors).then_some(term)
+}
+
+fn rational_product_term(ctx: &Context, expr: ExprId) -> Option<ProductTerm> {
+    let (sign, expr) = strip_negated_term(ctx, expr);
+    let mut coeff = sign;
+    let mut factors = Vec::new();
+
+    for raw_factor in crate::expr_nary::mul_leaves(ctx, expr) {
+        let (factor_sign, factor) = strip_negated_term(ctx, raw_factor);
+        coeff *= factor_sign;
+
+        if let Some(value) = crate::numeric_eval::as_rational_const(ctx, factor) {
+            coeff *= value.clone();
+        } else {
+            factors.push(factor);
+        }
+    }
+
+    Some(ProductTerm { coeff, factors })
+}
+
+fn remove_one_sqrt_product_unit(ctx: &Context, factors: &mut Vec<ExprId>) -> bool {
+    if let Some(indices) = sqrt_split_product_unit_factor_indices(ctx, factors) {
+        for index in indices.into_iter().rev() {
+            factors.remove(index);
+        }
+        return true;
+    }
+
+    for i in 0..factors.len() {
+        for j in (i + 1)..factors.len() {
+            if sqrt_product_reciprocal_pair_factors_are_one(ctx, factors[i], factors[j]) {
+                factors.remove(j);
+                factors.remove(i);
+                return true;
+            }
+        }
+    }
+
+    if let Some(index) = factors
+        .iter()
+        .position(|factor| sqrt_product_term_is_one(ctx, *factor))
+    {
+        factors.remove(index);
+        return true;
+    }
+
+    false
+}
+
+fn expr_factor_multisets_equal(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    let checker = SemanticEqualityChecker::new(ctx);
+    let mut used = vec![false; right.len()];
+    'outer: for left_factor in left {
+        for (index, right_factor) in right.iter().enumerate() {
+            if used[index] {
+                continue;
+            }
+            if left_factor == right_factor || checker.are_equal(*left_factor, *right_factor) {
+                used[index] = true;
+                continue 'outer;
+            }
+        }
+
+        return false;
+    }
+
+    true
+}
+
+fn sqrt_like_base_and_exponent(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            let exp = crate::numeric_eval::as_rational_const(ctx, *exp)?;
+            (exp == BigRational::new(1.into(), 2.into())
+                || exp == BigRational::new((-1).into(), 2.into()))
+            .then_some((*base, exp))
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) =>
+        {
+            Some((args[0], BigRational::new(1.into(), 2.into())))
+        }
+        _ => None,
+    }
+}
+
+fn is_one_expr(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(value) if value.is_one())
+}
+
+fn is_negative_one_expr(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(value) if *value == -BigRational::one())
+}
+
+fn rational_const_expr(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    let (sign, expr) = strip_negated_term(ctx, expr);
+    crate::numeric_eval::as_rational_const(ctx, expr).map(|value| sign * value.clone())
+}
+
 fn accumulate_sqrt_product_factor(
     ctx: &Context,
     expr: ExprId,
@@ -801,6 +1110,81 @@ mod tests {
         )
         .expect("parse");
         assert!(match_add_inverse_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_reciprocal_sqrt_product_minus_one_with_polynomial_equivalent_bases() {
+        let mut ctx = Context::new();
+        let expr = parse("(x*(1-x))^((1/2))*(x-x^2)^((-1/2)) - 1", &mut ctx).expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_reciprocal_sqrt_product_add_negative_one_with_polynomial_equivalent_bases() {
+        let mut ctx = Context::new();
+        let product = parse("(x*(1-x))^((1/2))*(x-x^2)^((-1/2))", &mut ctx).expect("parse");
+        let one = ctx.num(1);
+        let neg_one = ctx.add(cas_ast::Expr::Neg(one));
+        let expr = ctx.add_raw(cas_ast::Expr::Add(product, neg_one));
+        assert!(match_add_inverse_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_scaled_reciprocal_sqrt_product_minus_matching_constant() {
+        let mut ctx = Context::new();
+        let expr = parse("2*(x*(1-x))^((-1/2))*(x-x^2)^((1/2)) - 2", &mut ctx).expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_scaled_reciprocal_sqrt_product_add_negative_matching_constant() {
+        let mut ctx = Context::new();
+        let expr = parse("2*(x*(1-x))^((-1/2))*(x-x^2)^((1/2)) + (-2)", &mut ctx).expect("parse");
+        assert!(match_add_inverse_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_symbolic_scaled_reciprocal_sqrt_product_minus_matching_product() {
+        let mut ctx = Context::new();
+        let expr = parse("2*a*(x*(1-x))^((-1/2))*(x-x^2)^((1/2)) - 2*a", &mut ctx).expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_symbolic_scaled_reciprocal_sqrt_product_add_negative_matching_product() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("2*a*(x*(1-x))^((-1/2))*(x-x^2)^((1/2)) + (-2*a)", &mut ctx).expect("parse");
+        assert!(match_add_inverse_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_split_reciprocal_sqrt_product_minus_one() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "x^(-1/2)*(x*(x^(1/2)-x))^(1/2)*(x^(1/2)-x)^(-1/2) - 1",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn detects_symbolic_scaled_split_reciprocal_sqrt_product_minus_matching_product() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "a*x^(-1/2)*(x*(x^(1/2)-x))^(1/2)*(x^(1/2)-x)^(-1/2) - a",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_some());
+    }
+
+    #[test]
+    fn rejects_symbolic_scaled_reciprocal_sqrt_product_with_mismatched_product() {
+        let mut ctx = Context::new();
+        let expr = parse("2*a*(x*(1-x))^((-1/2))*(x-x^2)^((1/2)) - 2*b", &mut ctx).expect("parse");
+        assert!(match_sub_self_semantic_expr(&ctx, expr).is_none());
     }
 
     #[test]

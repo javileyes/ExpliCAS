@@ -87,6 +87,29 @@ fn test_scaled_symbolic_root_quotient_cancels_numeric_factors() {
 }
 
 #[test]
+fn test_scaled_polynomial_root_product_residual_cancels_matching_constant() {
+    test_simplify("sqrt(4*x-4*x^2)/(sqrt(x)*sqrt(1-x)) - 2", "0");
+}
+
+#[test]
+fn test_symbolic_scaled_polynomial_root_product_residual_cancels_matching_product() {
+    test_simplify("a*sqrt(4*x-4*x^2)/(sqrt(x)*sqrt(1-x)) - 2*a", "0");
+}
+
+#[test]
+fn test_split_reciprocal_sqrt_product_residual_cancels_unit() {
+    test_simplify("x^(-1/2)*(x*(x^(1/2)-x))^(1/2)*(x^(1/2)-x)^(-1/2) - 1", "0");
+}
+
+#[test]
+fn test_symbolic_scaled_split_reciprocal_sqrt_product_residual_cancels_matching_product() {
+    test_simplify(
+        "a*x^(-1/2)*(x*(x^(1/2)-x))^(1/2)*(x^(1/2)-x)^(-1/2) - a",
+        "0",
+    );
+}
+
+#[test]
 fn test_scaled_function_root_quotient_cancels_numeric_factors() {
     let mut simplifier = Simplifier::with_default_rules();
     let expr =

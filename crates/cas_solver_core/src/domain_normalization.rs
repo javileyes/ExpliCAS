@@ -122,8 +122,9 @@ fn positive_odd_power_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 }
 
 fn positive_condition_equivalent_nonzero_base(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
-    // Positive(x^even) -> NonZero(x) because x^(2k) > 0 <=> x != 0 for reals.
-    if let Some(base) = extract_even_positive_power_base(ctx, expr) {
+    // Positive(x^(2k)) -> NonZero(x), including k < 0, because real even
+    // integer powers are positive exactly away from the base's zero set.
+    if let Some(base) = extract_even_nonzero_integer_power_base(ctx, expr) {
         return Some(base);
     }
 
@@ -184,7 +185,7 @@ fn positive_condition_equivalent_nonzero_conditions(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<Vec<ImplicitCondition>> {
-    if let Some(base) = extract_even_positive_power_base(ctx, expr) {
+    if let Some(base) = extract_even_nonzero_integer_power_base(ctx, expr) {
         return Some(expand_nonzero_condition_for_display(ctx, base));
     }
 
@@ -218,9 +219,57 @@ fn positive_condition_equivalent_nonzero_conditions(
     positive_condition_equivalent_nonzero_conditions_from_factorable(ctx, normalized)
 }
 
+fn extract_even_nonzero_integer_power_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let Expr::Number(exp_num) = ctx.get(*exp) else {
+        return None;
+    };
+    if !exp_num.is_integer() || exp_num.is_zero() {
+        return None;
+    }
+
+    let exp_int = exp_num.to_integer();
+    let two: num_bigint::BigInt = 2.into();
+    (&exp_int % &two == num_bigint::BigInt::zero()).then_some(*base)
+}
+
 fn positive_sqrt_even_power_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     let sqrt_arg = extract_sqrt_like_base(ctx, expr)?;
-    extract_even_positive_power_base(ctx, sqrt_arg)
+    extract_even_nonzero_integer_power_base(ctx, sqrt_arg)
+}
+
+fn nonnegative_negative_even_power_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let Expr::Number(exp_num) = ctx.get(*exp) else {
+        return None;
+    };
+    if !exp_num.is_integer() || exp_num.is_zero() {
+        return None;
+    }
+
+    let exp_int = exp_num.to_integer();
+    let two: num_bigint::BigInt = 2.into();
+    let zero: num_bigint::BigInt = 0.into();
+    (exp_int < zero && (&exp_int % &two == num_bigint::BigInt::zero())).then_some(*base)
+}
+
+fn positive_reciprocal_requires_nonzero_guard(ctx: &Context, expr: ExprId) -> bool {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return false;
+    };
+    if !as_rational_const(ctx, *num).is_some_and(|constant| constant.is_positive()) {
+        return false;
+    }
+
+    extract_abs_argument_view(ctx, *den).is_some()
+        || extract_even_nonzero_integer_power_base(ctx, *den).is_some()
+        || extract_sqrt_like_base(ctx, *den)
+            .and_then(|radicand| extract_even_nonzero_integer_power_base(ctx, radicand))
+            .is_some()
 }
 
 fn positive_perfect_square_base_from_sqrt_rewrite(
@@ -374,6 +423,113 @@ fn compact_positive_sqrt_lower_bound_for_display(
     let boundary = ctx.add(Expr::Number(shift_squared));
     let gap = ctx.add(Expr::Sub(base, boundary));
     Some(normalize_condition_expr_preserve_sign(ctx, gap))
+}
+
+fn scaled_sqrt_radicand_for_display(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    let (sign, expr) = match ctx.get(expr) {
+        Expr::Neg(inner) => (-BigRational::one(), *inner),
+        _ => (BigRational::one(), expr),
+    };
+
+    if let Some(radicand) = extract_sqrt_like_base(ctx, expr) {
+        return Some((sign, radicand));
+    }
+
+    let Expr::Mul(_, _) = ctx.get(expr) else {
+        return None;
+    };
+
+    let mut scale = sign;
+    let mut radicand = None;
+    for factor in mul_leaves(ctx, expr) {
+        if let Some(value) = as_rational_const(ctx, factor) {
+            scale *= value;
+            continue;
+        }
+
+        let factor_radicand = extract_sqrt_like_base(ctx, factor)?;
+        if radicand.replace(factor_radicand).is_some() {
+            return None;
+        }
+    }
+
+    Some((scale, radicand?))
+}
+
+fn shifted_unit_interval_sqrt_arg_radicand_for_display(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let two = BigRational::from_integer(2.into());
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            if as_rational_const(ctx, *right) == Some(BigRational::one()) {
+                let (scale, radicand) = scaled_sqrt_radicand_for_display(ctx, *left)?;
+                if scale == two {
+                    return Some(radicand);
+                }
+            }
+
+            if as_rational_const(ctx, *left) == Some(BigRational::one()) {
+                let (scale, radicand) = scaled_sqrt_radicand_for_display(ctx, *right)?;
+                if scale == two {
+                    return Some(radicand);
+                }
+            }
+        }
+        Expr::Add(left, right) => {
+            for (constant_side, sqrt_side) in [(*left, *right), (*right, *left)] {
+                let Some(constant) = as_rational_const(ctx, constant_side) else {
+                    continue;
+                };
+                if constant.abs() != BigRational::one() {
+                    continue;
+                }
+                let (scale, radicand) = scaled_sqrt_radicand_for_display(ctx, sqrt_side)?;
+                if scale.abs() == two {
+                    return Some(radicand);
+                }
+            }
+        }
+        _ => {}
+    }
+
+    None
+}
+
+fn shifted_unit_interval_sqrt_open_interval_parts_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let squared_arg = match ctx.get(expr) {
+        Expr::Sub(left, right) if as_rational_const(ctx, *left) == Some(BigRational::one()) => {
+            square_base(ctx, *right)?
+        }
+        Expr::Add(left, right) => {
+            let square_expr = if as_rational_const(ctx, *left) == Some(BigRational::one()) {
+                negative_inner(ctx, *right)?
+            } else if as_rational_const(ctx, *right) == Some(BigRational::one()) {
+                negative_inner(ctx, *left)?
+            } else {
+                return None;
+            };
+            square_base(ctx, square_expr)?
+        }
+        _ => return None,
+    };
+    let radicand = shifted_unit_interval_sqrt_arg_radicand_for_display(ctx, squared_arg)?;
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let gap = ctx.add(Expr::Sub(sqrt_radicand, radicand));
+    let gap = normalize_condition_expr_preserve_sign(ctx, gap);
+
+    Some((radicand, gap))
+}
+
+fn negative_inner(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => Some(*inner),
+        _ => None,
+    }
 }
 
 fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId) -> ExprId {
@@ -2097,21 +2253,64 @@ pub fn normalize_and_dedupe_conditions(
     combine_nonzero_nonnegative_into_positive(ctx, &mut result);
     combine_factored_nonzero_nonnegative_into_positive(ctx, &mut result);
     apply_dominance_rules(ctx, &mut result);
+    if result.is_empty() {
+        restore_nonzero_domain_hole_guards(ctx, conditions, &mut result);
+    }
     result
+}
+
+fn restore_nonzero_domain_hole_guards(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+    result: &mut Vec<ImplicitCondition>,
+) {
+    for cond in conditions {
+        let restored = match cond {
+            ImplicitCondition::NonZero(expr)
+                if !condition_is_intrinsically_satisfied(ctx, cond) =>
+            {
+                expand_nonzero_condition_for_display(ctx, *expr)
+            }
+            ImplicitCondition::Positive(expr)
+                if positive_sqrt_even_power_base(ctx, *expr).is_some()
+                    || positive_reciprocal_requires_nonzero_guard(ctx, *expr) =>
+            {
+                expand_condition_for_display(ctx, cond)
+            }
+            _ => Vec::new(),
+        };
+
+        for condition in restored {
+            if condition_is_intrinsically_satisfied(ctx, &condition) {
+                continue;
+            }
+            if !result.iter().any(|existing| {
+                conditions_equivalent(ctx, existing, &condition)
+                    || conditions_same_display(ctx, existing, &condition)
+            }) {
+                result.push(condition);
+            }
+        }
+    }
 }
 
 fn condition_is_intrinsically_satisfied(ctx: &Context, cond: &ImplicitCondition) -> bool {
     match cond {
         ImplicitCondition::Positive(expr) => {
-            is_intrinsically_positive_real(ctx, *expr)
-                || positive_quadratic_power_gap_is_intrinsic(ctx, *expr)
+            positive_sqrt_even_power_base(ctx, *expr).is_none()
+                && !positive_reciprocal_requires_nonzero_guard(ctx, *expr)
+                && (is_intrinsically_positive_real(ctx, *expr)
+                    || positive_quadratic_power_gap_is_intrinsic(ctx, *expr))
         }
         ImplicitCondition::NonNegative(expr) => {
             is_intrinsically_nonnegative_real(ctx, *expr)
                 || is_intrinsically_positive_real(ctx, *expr)
                 || positive_quadratic_power_gap_is_intrinsic(ctx, *expr)
         }
-        ImplicitCondition::NonZero(expr) => is_intrinsically_positive_real(ctx, *expr),
+        ImplicitCondition::NonZero(expr) => {
+            nonnegative_negative_even_power_base(ctx, *expr).is_none()
+                && is_intrinsically_positive_real(ctx, *expr)
+        }
     }
 }
 
@@ -2265,7 +2464,11 @@ fn expand_condition_for_display(
                 vec![normalized]
             }
         }
-        _ => {
+        ImplicitCondition::NonNegative(expr) => {
+            if let Some(base) = nonnegative_negative_even_power_base(ctx, *expr) {
+                return expand_nonzero_condition_for_display(ctx, base);
+            }
+
             let normalized = normalize_condition(ctx, cond);
             if condition_is_intrinsically_satisfied(ctx, &normalized) {
                 Vec::new()
@@ -2787,6 +2990,41 @@ fn positive_condition_dominates_sqrt_lower_nonzero(
     positive_ordered_exprs_equivalent(ctx, positive_expr, boundary)
 }
 
+fn positive_condition_dominates_shifted_unit_sqrt_open_interval(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+    skip_index: usize,
+    positive_expr: ExprId,
+    open_interval_expr: ExprId,
+) -> bool {
+    let Some((radicand, compact_gap)) =
+        shifted_unit_interval_sqrt_open_interval_parts_for_display(ctx, open_interval_expr)
+    else {
+        return false;
+    };
+
+    let normalized_positive = normalize_condition_expr_preserve_sign(ctx, positive_expr);
+    let gap_matches = positive_ordered_exprs_equivalent(ctx, normalized_positive, compact_gap)
+        || conditions_same_display(
+            ctx,
+            &ImplicitCondition::Positive(normalized_positive),
+            &ImplicitCondition::Positive(compact_gap),
+        );
+    if !gap_matches {
+        return false;
+    }
+
+    conditions.iter().enumerate().any(|(idx, condition)| {
+        if idx == skip_index {
+            return false;
+        }
+        let ImplicitCondition::Positive(other_expr) = condition else {
+            return false;
+        };
+        positive_ordered_exprs_equivalent(ctx, *other_expr, radicand)
+    })
+}
+
 fn nonzero_condition_dominates_sqrt_lower_nonzero(
     ctx: &mut Context,
     nonzero_expr: ExprId,
@@ -2843,6 +3081,13 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                         || is_positive_power_of_base(ctx, *derived_expr, *pos_expr)
                         || positive_condition_dominates_affine_positive_offset(
                             ctx,
+                            *pos_expr,
+                            *derived_expr,
+                        )
+                        || positive_condition_dominates_shifted_unit_sqrt_open_interval(
+                            ctx,
+                            conditions,
+                            i,
                             *pos_expr,
                             *derived_expr,
                         )
@@ -3573,6 +3818,60 @@ mod tests {
             &normalized[0],
             &ImplicitCondition::Positive(positive)
         ));
+    }
+
+    #[test]
+    fn compact_shifted_unit_sqrt_gap_dominates_raw_inverse_trig_open_interval_guard() {
+        let mut ctx = Context::new();
+        let raw_open_interval =
+            parse("1 - (2*sqrt(2*x)-1)^2", &mut ctx).expect("parse raw open interval");
+        let radicand = parse("2*x", &mut ctx).expect("parse radicand");
+        let compact_gap = parse("sqrt(2*x)-2*x", &mut ctx).expect("parse compact shifted sqrt gap");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(raw_open_interval),
+                ImplicitCondition::Positive(radicand),
+                ImplicitCondition::Positive(compact_gap),
+            ],
+        );
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec!["x > 0".to_string(), "sqrt(2 * x) - 2 * x > 0".to_string()]
+        );
+    }
+
+    #[test]
+    fn compact_shifted_unit_pow_half_gap_dominates_raw_inverse_trig_open_interval_guard() {
+        let mut ctx = Context::new();
+        let raw_open_interval =
+            parse("1 - (2*(2*x)^(1/2)-1)^2", &mut ctx).expect("parse raw open interval");
+        let radicand = parse("x", &mut ctx).expect("parse normalized radicand");
+        let compact_gap = parse("sqrt(2*x)-2*x", &mut ctx).expect("parse compact shifted sqrt gap");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(raw_open_interval),
+                ImplicitCondition::Positive(radicand),
+                ImplicitCondition::Positive(compact_gap),
+            ],
+        );
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec!["x > 0".to_string(), "sqrt(2 * x) - 2 * x > 0".to_string()]
+        );
     }
 
     #[test]

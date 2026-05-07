@@ -51,6 +51,50 @@ fn expr_contains_hyperbolic_builtin_local(ctx: &cas_ast::Context, expr: ExprId) 
     )
 }
 
+fn expr_is_named_function_call_local(ctx: &cas_ast::Context, expr: ExprId, names: &[&str]) -> bool {
+    let Expr::Function(fn_id, _) = ctx.get(expr) else {
+        return false;
+    };
+    names.iter().any(|name| ctx.sym_name(*fn_id) == *name)
+}
+
+fn expr_contains_named_function_local(
+    ctx: &cas_ast::Context,
+    root: ExprId,
+    names: &[&str],
+) -> bool {
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Function(fn_id, args) => {
+                if names.iter().any(|name| ctx.sym_name(*fn_id) == *name) {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+    false
+}
+
+fn expr_is_post_calculus_residual_candidate_local(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Neg(_)
+    )
+}
+
 fn collapse_redundant_post_calculus_trace_if_direct_step_is_compact(
     ctx: &mut cas_ast::Context,
     resolved: ExprId,
@@ -186,7 +230,7 @@ impl Engine {
             };
 
         let (mut res, mut steps, stats) =
-            ctx_simplifier.simplify_with_stats(expr_to_simplify, simplify_opts);
+            ctx_simplifier.simplify_with_stats(expr_to_simplify, simplify_opts.clone());
 
         let hyperbolic_zero_rewrite =
             crate::rules::hyperbolic::try_build_atanh_square_ratio_log_zero_rewrite(
@@ -236,6 +280,48 @@ impl Engine {
                     .meta_mut()
                     .assumption_events
                     .extend(expand_log_events);
+            }
+        }
+
+        let calculus_call_names = ["diff", "integrate", "int"];
+        let embedded_calculus_residual =
+            expr_contains_named_function_local(
+                &ctx_simplifier.context,
+                expr_to_simplify,
+                &calculus_call_names,
+            ) && !expr_is_named_function_call_local(
+                &ctx_simplifier.context,
+                expr_to_simplify,
+                &calculus_call_names,
+            ) && !expr_contains_named_function_local(
+                &ctx_simplifier.context,
+                res,
+                &calculus_call_names,
+            ) && expr_is_post_calculus_residual_candidate_local(&ctx_simplifier.context, res);
+
+        if embedded_calculus_residual {
+            let first_pass_required = ctx_simplifier.take_required_conditions();
+            let (post_residual_res, _post_residual_steps, _post_residual_stats) =
+                ctx_simplifier.simplify_with_stats(res, simplify_opts);
+            let second_pass_required = ctx_simplifier.take_required_conditions();
+            ctx_simplifier.extend_required_conditions(
+                first_pass_required.into_iter().chain(second_pass_required),
+            );
+
+            if post_residual_res != res {
+                if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                    let mut post_residual_step = crate::Step::new(
+                        "Post-calculus residual simplification",
+                        "Re-simplify residual after resolving calculus calls",
+                        res,
+                        post_residual_res,
+                        Vec::new(),
+                        Some(&ctx_simplifier.context),
+                    );
+                    post_residual_step.importance = crate::ImportanceLevel::Medium;
+                    steps.push(post_residual_step);
+                }
+                res = post_residual_res;
             }
         }
 

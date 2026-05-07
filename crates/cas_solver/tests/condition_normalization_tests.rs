@@ -741,6 +741,39 @@ fn test_positive_even_power_with_sign_varying_cofactor_keeps_positive_guard() {
 }
 
 #[test]
+fn test_nonzero_negative_even_power_preserves_base_guard() {
+    let mut ctx = Context::new();
+    let expr = cas_parser::parse("x^-2", &mut ctx).expect("parse negative even power");
+
+    let rendered = render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(expr)]);
+
+    assert_eq!(rendered, vec!["x ≠ 0"]);
+}
+
+#[test]
+fn test_log_reciprocal_abs_condition_bundle_preserves_base_guard() {
+    let mut ctx = Context::new();
+    let reciprocal_square = cas_parser::parse("1/x^2", &mut ctx).expect("parse reciprocal square");
+    let reciprocal_abs = cas_parser::parse("1/abs(x)", &mut ctx).expect("parse reciprocal abs");
+    let sqrt_reciprocal_square =
+        cas_parser::parse("sqrt(x^-2)", &mut ctx).expect("parse sqrt reciprocal square");
+    let x = cas_parser::parse("x", &mut ctx).expect("parse x");
+    let negative_even_power = cas_parser::parse("x^-2", &mut ctx).expect("parse negative power");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::NonNegative(reciprocal_square),
+            ImplicitCondition::Positive(reciprocal_abs),
+            ImplicitCondition::Positive(sqrt_reciprocal_square),
+            ImplicitCondition::NonZero(x),
+            ImplicitCondition::NonNegative(negative_even_power),
+        ],
+    );
+    assert_eq!(rendered, vec!["x ≠ 0"]);
+}
+
+#[test]
 fn test_positive_condition_keeps_opposite_orientation_distinct() {
     let mut ctx = Context::new();
     let positive_x = cas_parser::parse("x", &mut ctx).expect("parse x");
@@ -977,4 +1010,42 @@ fn test_nonzero_negative_integer_power_condition_displays_base() {
         render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(inverse_square)]);
 
     assert_eq!(rendered, vec!["x^2 + x - 1 ≠ 0"]);
+}
+
+#[test]
+fn test_positive_negative_even_power_condition_reduces_to_base_nonzero_guard() {
+    let mut ctx = Context::new();
+    let inverse_square =
+        cas_parser::parse("(x + 1)^(-2)", &mut ctx).expect("parse inverse shifted square");
+
+    let rendered =
+        render_conditions_normalized(&mut ctx, &[ImplicitCondition::Positive(inverse_square)]);
+
+    assert_eq!(rendered, vec!["x + 1 ≠ 0"]);
+}
+
+#[test]
+fn test_nonnegative_negative_even_power_condition_reduces_to_base_nonzero_guard() {
+    let mut ctx = Context::new();
+    let inverse_square =
+        cas_parser::parse("(x + 1)^(-2)", &mut ctx).expect("parse inverse shifted square");
+
+    let rendered =
+        render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonNegative(inverse_square)]);
+
+    assert_eq!(rendered, vec!["x + 1 ≠ 0"]);
+}
+
+#[test]
+fn test_positive_sqrt_negative_even_power_condition_reduces_to_base_nonzero_guard() {
+    let mut ctx = Context::new();
+    let sqrt_inverse_square = cas_parser::parse("sqrt((x + 1)^(-2))", &mut ctx)
+        .expect("parse sqrt inverse shifted square");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[ImplicitCondition::Positive(sqrt_inverse_square)],
+    );
+
+    assert_eq!(rendered, vec!["x + 1 ≠ 0"]);
 }

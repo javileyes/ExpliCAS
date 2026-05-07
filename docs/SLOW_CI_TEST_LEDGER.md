@@ -50,6 +50,34 @@ Do not create entries for:
 
 ## Current Entries
 
+### 2026-05-07: `inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions`
+
+- area:
+  - `cas_solver`
+  - diff step contract for inverse reciprocal trig derivatives
+- repro:
+  - `cargo test -p cas_solver --test diff_step_contract_tests inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions -- --exact --nocapture`
+- latest measured time:
+  - observed in `make ci`: `66.72s` test time
+  - focused repro: `65.51s` test time (`real 68.85s`)
+- classification:
+  - `test verification pathology`
+- root cause hypothesis:
+  - the single debug-CI contract table exercises many public `arcsec`/`arccsc`
+    derivative shapes, including compact post-calculus presentation and domain
+    normalization checks, and re-runs equivalence verification for each row
+  - the exact repro is stable-slow even outside the full suite, so this is not
+    suite startup noise
+- retained action:
+  - pending: split the active debug-CI table into a minimal representative smoke
+    and an ignored/manual exhaustive sweep, or move duplicated equivalence-heavy
+    checks closer to the helper layer while keeping public smoke coverage for
+    each structurally distinct family
+- embedded corpus guardrail:
+  - unchanged engine runtime path so far
+- status:
+  - `open`
+
 ### 2026-05-02: `integrate_contract_supported_antiderivatives_verify_by_differentiation`
 
 - area:

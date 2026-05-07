@@ -3041,6 +3041,18 @@ fn integrate_contract_beta_sqrt_product_kernel_preserves_open_domain_and_verifie
             "rendered beta-kernel derivative should preserve both open denominator conditions"
         );
     }
+
+    let (nested_residual, mut nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(a/(2*sqrt(x)*sqrt(1-x)), x), x) - a/(2*sqrt(x)*sqrt(1-x))",
+    );
+    let mut expected_required = vec!["1 - x > 0".to_string(), "x > 0".to_string()];
+    nested_required.sort();
+    expected_required.sort();
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required, expected_required,
+        "nested symbolic beta-kernel verification should preserve both open denominator conditions"
+    );
 }
 
 #[test]
