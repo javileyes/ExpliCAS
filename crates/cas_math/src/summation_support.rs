@@ -1085,7 +1085,6 @@ pub fn try_build_telescoping_rational_sum(
     {
         let var_expr = ctx.var(var);
         let one = ctx.num(1);
-        let reciprocal_coeff = ctx.add(Expr::Div(one, coeff));
         let start_base = substitute_expr_by_id(ctx, base, var_expr, start);
         let end_plus_one = ctx.add(Expr::Add(end, one));
         let end_next_base = substitute_expr_by_id(ctx, base, var_expr, end_plus_one);
@@ -1095,7 +1094,7 @@ pub fn try_build_telescoping_rational_sum(
         let first_term = ctx.add(Expr::Div(one1, start_base));
         let second_term = ctx.add(Expr::Div(one2, end_next_base));
         let diff = ctx.add(Expr::Sub(first_term, second_term));
-        return Some(ctx.add(Expr::Mul(reciprocal_coeff, diff)));
+        return Some(ctx.add(Expr::Div(diff, coeff)));
     }
 
     let (offset1, offset2) = match (
@@ -1743,8 +1742,10 @@ mod tests {
             }
         );
         assert!(
-            (rendered.contains("1 / a") || rendered.contains(")/a"))
-                && (rendered.contains("a + b") || rendered.contains("b + 1 * a"))
+            (rendered.contains("1 / a") || rendered.contains(")/a") || rendered.contains(") / a"))
+                && (rendered.contains("a + b")
+                    || rendered.contains("b + a")
+                    || rendered.contains("b + 1 * a"))
                 && (rendered.contains("a·n + a + b")
                     || rendered.contains("a·n + b + a")
                     || rendered.contains("a + a·n + b")

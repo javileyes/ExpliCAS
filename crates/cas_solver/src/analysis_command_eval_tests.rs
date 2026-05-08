@@ -2653,9 +2653,12 @@ mod tests {
             .any(|line| line.contains("Split a fraction into a whole part plus remainder")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
-                && line.contains("-a / c")
-                && line.contains("(d - c * x)")
-                && (line.contains("b + a * d / c") || line.contains("a * d / c + b"))
+                && (line.contains("-a / c") || line.contains("- a / c"))
+                && (line.contains("(d - c * x)") || line.contains("(d - c·x)"))
+                && (line.contains("b + a * d / c")
+                    || line.contains("a * d / c + b")
+                    || line.contains("b + a·d / c")
+                    || line.contains("a·d / c + b"))
         }));
     }
 

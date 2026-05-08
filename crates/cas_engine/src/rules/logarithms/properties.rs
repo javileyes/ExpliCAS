@@ -1,13 +1,35 @@
 use crate::rule::Rewrite;
-use cas_ast::ExprId;
+use cas_ast::{Expr, ExprId};
+use cas_math::expr_extract::extract_log_base_argument_view;
+use cas_math::expr_rewrite::smart_mul;
 use cas_math::logarithm_inverse_support::{
-    expand_logs_collect_positive_assumptions, log_even_power_needs_requires_lookup,
-    log_exp_inverse_policy_mode_from_flags, plan_log_abs_simplify_policy,
-    plan_log_even_power_policy, try_plan_log_even_power_abs_expr, try_rewrite_log_abs_power_expr,
-    try_rewrite_log_abs_simplify_expr, try_rewrite_log_chain_product_expr,
-    try_rewrite_log_mul_div_expansion_expr, try_rewrite_log_reciprocal_even_power_expr,
-    LogChainProductRewriteKind,
+    expand_logs_collect_positive_assumptions, ln_base_sentinel,
+    log_even_power_needs_requires_lookup, log_exp_inverse_policy_mode_from_flags, make_log_expr,
+    plan_log_abs_simplify_policy, plan_log_even_power_policy, try_plan_log_even_power_abs_expr,
+    try_rewrite_log_abs_power_expr, try_rewrite_log_abs_simplify_expr,
+    try_rewrite_log_chain_product_expr, try_rewrite_log_mul_div_expansion_expr,
+    try_rewrite_log_reciprocal_even_power_expr, LogChainProductRewriteKind,
 };
+
+fn inherited_negative_subject(
+    ctx: &mut cas_ast::Context,
+    parent_ctx: &crate::parent_context::ParentContext,
+    subject: ExprId,
+) -> Option<ExprId> {
+    let neg_subject = ctx.add(Expr::Neg(subject));
+    let implicit_domain: Option<crate::ImplicitDomain> =
+        parent_ctx.implicit_domain().cloned().or_else(|| {
+            parent_ctx
+                .root_expr()
+                .map(|root| crate::infer_implicit_domain(ctx, root, parent_ctx.value_domain()))
+        });
+
+    let implied = implicit_domain.as_ref().is_some_and(|id| {
+        let dc = crate::DomainContext::new(id.conditions().iter().cloned().collect());
+        dc.is_condition_implied(ctx, &crate::ImplicitCondition::Positive(neg_subject))
+    });
+    implied.then_some(neg_subject)
+}
 
 /// Domain-aware expansion rule for log products/quotients.
 ///
@@ -174,6 +196,7 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
             matches!(dm, crate::DomainMode::Assume),
             matches!(dm, crate::DomainMode::Strict),
         );
+        let negative_subject = inherited_negative_subject(ctx, parent_ctx, planned.inner_base);
 
         let in_requires = if log_even_power_needs_requires_lookup(
             mode,
@@ -211,6 +234,19 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
                 chain_desc,
                 assume_positive_subject,
             } => {
+                if let Some(neg_subject) = negative_subject {
+                    let (base_opt, _) = extract_log_base_argument_view(ctx, expr)?;
+                    let log_negative =
+                        make_log_expr(ctx, base_opt.unwrap_or_else(ln_base_sentinel), neg_subject);
+                    let negative_rewrite = smart_mul(ctx, planned.exponent, log_negative);
+                    let mut rw = crate::rule::Rewrite::new(planned.with_abs_rewrite)
+                        .desc("log(b, x^(even)) = even·log(b, |x|)");
+                    let chain = ChainedRewrite::new(negative_rewrite)
+                        .desc("|x| = -x for x < 0")
+                        .local(planned.abs_inner_base, neg_subject);
+                    rw = rw.chain(chain);
+                    return Some(rw);
+                }
                 let mut rw = crate::rule::Rewrite::new(planned.with_abs_rewrite)
                     .desc("log(b, x^(even)) = even·log(b, |x|)");
                 let mut chain = ChainedRewrite::new(planned.without_abs_rewrite)
@@ -228,6 +264,12 @@ impl crate::rule::Rule for LogEvenPowerWithChainedAbsRule {
             cas_math::logarithm_inverse_support::LogEvenPowerPolicyPlan::RewriteWithAbsAssume {
                 assume_positive_subject,
             } => {
+                if negative_subject.is_some() {
+                    return Some(
+                        crate::rule::Rewrite::new(planned.with_abs_rewrite)
+                            .desc("log(b, x^(even)) = even·log(b, |x|)"),
+                    );
+                }
                 let mut rw = crate::rule::Rewrite::new(planned.with_abs_rewrite)
                     .desc("log(b, x^(even)) = even·log(b, |x|)");
                 if assume_positive_subject {
@@ -368,6 +410,14 @@ impl crate::rule::Rule for LogAbsSimplifyRule {
         use crate::helpers::prove_positive;
         let planned = try_rewrite_log_abs_simplify_expr(ctx, expr)?;
         let vd = parent_ctx.value_domain();
+        if let Some(neg_subject) =
+            inherited_negative_subject(ctx, parent_ctx, planned.inner_subject)
+        {
+            let (base_opt, _) = extract_log_base_argument_view(ctx, expr)?;
+            let rewritten =
+                make_log_expr(ctx, base_opt.unwrap_or_else(ln_base_sentinel), neg_subject);
+            return Some(Rewrite::new(rewritten).desc("ln(|x|) = ln(-x) for x < 0"));
+        }
         let policy = plan_log_abs_simplify_policy(
             log_exp_inverse_policy_mode_from_flags(
                 matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume),

@@ -1,4 +1,5 @@
 use crate::expression::ExprId;
+use num_rational::BigRational;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum BoundType {
@@ -50,6 +51,8 @@ pub enum ConditionPredicate {
     Positive(ExprId),
     /// Expression must be non-negative (≥ 0)
     NonNegative(ExprId),
+    /// Expression must be at least a rational lower bound.
+    LowerBound { expr: ExprId, lower: BigRational },
     /// Expression must be defined
     Defined(ExprId),
     /// Argument must be in principal range of inverse trig function
@@ -67,6 +70,7 @@ impl ConditionPredicate {
             Self::NonZero(_) => "≠ 0".to_string(),
             Self::Positive(_) => "> 0".to_string(),
             Self::NonNegative(_) => "≥ 0".to_string(),
+            Self::LowerBound { lower, .. } => format!("≥ {}", lower),
             Self::Defined(_) => "is defined".to_string(),
             Self::InvTrigPrincipalRange { func, .. } => {
                 format!("in principal range of {}", func)
@@ -82,6 +86,7 @@ impl ConditionPredicate {
             Self::NonZero(e)
             | Self::Positive(e)
             | Self::NonNegative(e)
+            | Self::LowerBound { expr: e, .. }
             | Self::Defined(e)
             | Self::InvTrigPrincipalRange { arg: e, .. }
             | Self::EqZero(e)

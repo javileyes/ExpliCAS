@@ -782,6 +782,504 @@ fn test_eval_assume_mode_dedupes_shared_positive_assumption_across_rules() {
 }
 
 #[test]
+fn test_log_even_power_uses_inherited_negative_domain_for_abs_cleanup() {
+    let generic = eval_json("ln(x^2) - 2*ln(-x)");
+
+    assert_eq!(generic["ok"], true);
+    assert_eq!(generic["result"], "0");
+    let generic_required = generic["required_conditions"]
+        .as_array()
+        .expect("generic required_conditions should be an array");
+    assert!(
+        generic_required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_display"] == "-x"
+        }),
+        "generic mode should preserve the inherited log-domain condition: {generic_required:?}"
+    );
+    assert!(
+        generic
+            .get("assumptions_used")
+            .and_then(|value| value.as_array())
+            .is_none_or(|assumptions| assumptions.is_empty()),
+        "generic mode must not introduce assumptions"
+    );
+
+    let assume = eval_json_with_args("ln(x^2) - 2*ln(-x)", &["--domain", "assume"]);
+
+    assert_eq!(assume["ok"], true);
+    assert_eq!(assume["result"], "0");
+    let empty_assume_assumptions = Vec::new();
+    let assume_assumptions = assume
+        .get("assumptions_used")
+        .and_then(|value| value.as_array())
+        .unwrap_or(&empty_assume_assumptions);
+    assert!(
+        !assume_assumptions
+            .iter()
+            .any(|assumption| assumption["display"] == "x > 0"),
+        "assume mode should consume inherited -x > 0, not assume x > 0: {assume_assumptions:?}"
+    );
+    let assume_required = assume["required_conditions"]
+        .as_array()
+        .expect("assume required_conditions should be an array");
+    assert!(
+        assume_required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_display"] == "-x"
+        }),
+        "assume mode should preserve the inherited log-domain condition: {assume_required:?}"
+    );
+
+    let log_abs_residual = eval_json("ln(abs(x)) - ln(-x)");
+    assert_eq!(log_abs_residual["ok"], true);
+    assert_eq!(
+        log_abs_residual["result"], "0",
+        "ln(|x|) should use inherited -x > 0 instead of staying one step short"
+    );
+
+    let scaled_negative = eval_json("ln(abs(x)) - ln(-x/2) - ln(2)");
+    assert_eq!(scaled_negative["ok"], true);
+    assert_eq!(
+        scaled_negative["result"], "0",
+        "scaled negative log domain should imply x < 0 for abs cleanup"
+    );
+    let scaled_required = scaled_negative["required_conditions"]
+        .as_array()
+        .expect("scaled required_conditions should be an array");
+    assert!(
+        scaled_required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_display"] == "-x"
+        }),
+        "scaled negative domain should normalize to -x > 0: {scaled_required:?}"
+    );
+
+    let affine_negative = eval_json("ln(abs(2*x+1)) - ln(-(2*x+1))");
+    assert_eq!(affine_negative["ok"], true);
+    assert_eq!(
+        affine_negative["result"], "0",
+        "affine negative log domain should imply the affine subject is negative"
+    );
+    let affine_required = affine_negative["required_conditions"]
+        .as_array()
+        .expect("affine required_conditions should be an array");
+    assert!(
+        affine_required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_display"] == "-2·x - 1"
+        }),
+        "affine negative domain should preserve the affine required condition: {affine_required:?}"
+    );
+}
+
+#[test]
+fn test_cancelled_log_domain_feeds_sqrt_square_abs_cleanup() {
+    let positive = eval_json("sqrt(x^2)-x+ln(x)-ln(x)");
+
+    assert_eq!(positive["ok"], true);
+    assert_eq!(
+        positive["result"], "0",
+        "cancelled ln(x) domain should let sqrt(x^2) collapse through |x| -> x"
+    );
+    let positive_required = positive["required_conditions"]
+        .as_array()
+        .expect("positive required_conditions should be an array");
+    assert!(
+        positive_required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_display"] == "x"
+        }),
+        "positive log domain should be retained as x > 0: {positive_required:?}"
+    );
+
+    let negative = eval_json("sqrt(x^2)+x+ln(-x)-ln(-x)");
+
+    assert_eq!(negative["ok"], true);
+    assert_eq!(
+        negative["result"], "0",
+        "cancelled ln(-x) domain should let sqrt(x^2) collapse through |x| -> -x"
+    );
+    let negative_required = negative["required_conditions"]
+        .as_array()
+        .expect("negative required_conditions should be an array");
+    assert!(
+        negative_required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_display"] == "-x"
+        }),
+        "negative log domain should be retained as -x > 0: {negative_required:?}"
+    );
+}
+
+#[test]
+fn test_cancelled_sqrt_domain_feeds_abs_cleanup_but_nonzero_does_not() {
+    let abs_cleanup = eval_json("abs(x)-x+sqrt(x)-sqrt(x)");
+
+    assert_eq!(abs_cleanup["ok"], true);
+    assert_eq!(
+        abs_cleanup["result"], "0",
+        "cancelled sqrt(x) domain should let |x| collapse to x"
+    );
+    let abs_required = abs_cleanup["required_conditions"]
+        .as_array()
+        .expect("abs cleanup required_conditions should be an array");
+    assert!(
+        abs_required.iter().any(|condition| {
+            condition["kind"] == "NonNegative" && condition["expr_display"] == "x"
+        }),
+        "cancelled sqrt(x) should retain x >= 0: {abs_required:?}"
+    );
+
+    let sqrt_square_cleanup = eval_json("sqrt(x^2)-x+sqrt(x)-sqrt(x)");
+
+    assert_eq!(sqrt_square_cleanup["ok"], true);
+    assert_eq!(
+        sqrt_square_cleanup["result"], "0",
+        "cancelled sqrt(x) domain should let sqrt(x^2) collapse through |x| -> x"
+    );
+    let sqrt_square_required = sqrt_square_cleanup["required_conditions"]
+        .as_array()
+        .expect("sqrt square required_conditions should be an array");
+    assert!(
+        sqrt_square_required.iter().any(|condition| {
+            condition["kind"] == "NonNegative" && condition["expr_display"] == "x"
+        }),
+        "cancelled sqrt(x) should retain x >= 0: {sqrt_square_required:?}"
+    );
+
+    let nonzero_control = eval_json("abs(x)-x+1/x-1/x");
+
+    assert_eq!(nonzero_control["ok"], true);
+    assert_eq!(
+        nonzero_control["result"], "|x| - x",
+        "cancelled reciprocal domain must not treat x != 0 as a sign condition"
+    );
+    let nonzero_required = nonzero_control["required_conditions"]
+        .as_array()
+        .expect("nonzero control required_conditions should be an array");
+    assert!(
+        nonzero_required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_display"] == "x"
+        }),
+        "cancelled reciprocal should retain only x != 0: {nonzero_required:?}"
+    );
+    assert!(
+        !nonzero_required.iter().any(|condition| {
+            condition["kind"] == "Positive" || condition["kind"] == "NonNegative"
+        }),
+        "nonzero control must not synthesize sign conditions: {nonzero_required:?}"
+    );
+}
+
+#[test]
+fn test_cancelled_non_ln_log_domains_feed_abs_cleanup() {
+    for expr in [
+        "abs(x)-x+log2(x)-log2(x)",
+        "abs(x)-x+log10(x)-log10(x)",
+        "abs(x)-x+log(2,x)-log(2,x)",
+    ] {
+        let json = eval_json(expr);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(
+            json["result"], "0",
+            "cancelled non-ln log domain should let |x| collapse to x for {expr}"
+        );
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_display"] == "x"
+            }),
+            "cancelled non-ln log should retain x > 0 for {expr}: {required:?}"
+        );
+        assert_eq!(
+            required.len(),
+            1,
+            "cancelled non-ln log should not add redundant domain guards for {expr}: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn test_cancelled_acosh_lower_bound_feeds_abs_cleanup_conservatively() {
+    let direct = eval_json("abs(x)-x+acosh(x)-acosh(x)");
+
+    assert_eq!(direct["ok"], true);
+    assert_eq!(
+        direct["result"], "0",
+        "cancelled acosh(x) domain x >= 1 should let |x| collapse to x"
+    );
+    let direct_required = direct["required_conditions"]
+        .as_array()
+        .expect("direct required_conditions should be an array");
+    assert!(
+        direct_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "x"
+        }),
+        "cancelled acosh(x) should retain the lower-bound domain: {direct_required:?}"
+    );
+    let direct_display = direct["required_display"]
+        .as_array()
+        .expect("direct required_display should be an array");
+    assert!(
+        direct_display
+            .iter()
+            .any(|condition| condition.as_str() == Some("x ≥ 1")),
+        "cancelled acosh(x) should render x >= 1: {direct_display:?}"
+    );
+
+    let affine = eval_json("abs(x)-x+acosh(2*x+1)-acosh(2*x+1)");
+
+    assert_eq!(affine["ok"], true);
+    assert_eq!(
+        affine["result"], "0",
+        "cancelled acosh(2*x+1) domain should imply x >= 0 for abs cleanup"
+    );
+    let affine_required = affine["required_conditions"]
+        .as_array()
+        .expect("affine required_conditions should be an array");
+    assert!(
+        affine_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "2·x + 1"
+        }),
+        "affine acosh should retain the original lower-bound domain: {affine_required:?}"
+    );
+
+    let negative_orientation = eval_json("abs(x)-x+acosh(1-x)-acosh(1-x)");
+
+    assert_eq!(negative_orientation["ok"], true);
+    assert_eq!(
+        negative_orientation["result"], "-2·x",
+        "acosh(1-x) domain implies x <= 0, so |x| should rewrite to -x, not x"
+    );
+    let negative_required = negative_orientation["required_conditions"]
+        .as_array()
+        .expect("negative orientation required_conditions should be an array");
+    assert!(
+        negative_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "1 - x"
+        }),
+        "negative orientation acosh should retain its lower-bound domain: {negative_required:?}"
+    );
+
+    let negative_cancellation = eval_json("abs(x)+x+acosh(1-2*x)-acosh(1-2*x)");
+
+    assert_eq!(negative_cancellation["ok"], true);
+    assert_eq!(
+        negative_cancellation["result"], "0",
+        "acosh(1-2*x) domain implies x <= 0, so |x| + x should collapse"
+    );
+    let negative_cancellation_required = negative_cancellation["required_conditions"]
+        .as_array()
+        .expect("negative cancellation required_conditions should be an array");
+    assert!(
+        negative_cancellation_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "1 - 2·x"
+        }),
+        "negative cancellation should retain its lower-bound domain: {negative_cancellation_required:?}"
+    );
+
+    let shifted_negative = eval_json("abs(x-1)+x-1+acosh(3-2*x)-acosh(3-2*x)");
+
+    assert_eq!(shifted_negative["ok"], true);
+    assert_eq!(
+        shifted_negative["result"], "0",
+        "acosh(3-2*x) domain implies x - 1 <= 0, so |x-1| + x - 1 should collapse"
+    );
+    let shifted_negative_required = shifted_negative["required_conditions"]
+        .as_array()
+        .expect("shifted negative required_conditions should be an array");
+    assert!(
+        shifted_negative_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "3 - 2·x"
+        }),
+        "shifted negative should retain its lower-bound domain: {shifted_negative_required:?}"
+    );
+
+    let affine_negative_target = eval_json("abs(2*x+1)+2*x+1+acosh(-4*x-1)-acosh(-4*x-1)");
+
+    assert_eq!(affine_negative_target["ok"], true);
+    assert_eq!(
+        affine_negative_target["result"], "0",
+        "acosh(-4*x-1) domain implies 2*x + 1 <= 0, so |2*x+1| + 2*x + 1 should collapse"
+    );
+    let affine_negative_target_required = affine_negative_target["required_conditions"]
+        .as_array()
+        .expect("affine negative target required_conditions should be an array");
+    assert!(
+        affine_negative_target_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "-4·x - 1"
+        }),
+        "affine negative target should retain its lower-bound domain: {affine_negative_target_required:?}"
+    );
+
+    let reciprocal_negative = eval_json("abs(1/(x-1))+1/(x-1)+acosh(3-2*x)-acosh(3-2*x)");
+
+    assert_eq!(reciprocal_negative["ok"], true);
+    assert_eq!(
+        reciprocal_negative["result"], "0",
+        "acosh(3-2*x) plus x-1 != 0 should imply 1/(x-1) < 0, so |1/(x-1)| + 1/(x-1) collapses"
+    );
+    let reciprocal_negative_required = reciprocal_negative["required_conditions"]
+        .as_array()
+        .expect("reciprocal negative required_conditions should be an array");
+    assert!(
+        reciprocal_negative_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "3 - 2·x"
+        }),
+        "reciprocal negative should retain its lower-bound domain: {reciprocal_negative_required:?}"
+    );
+    assert!(
+        reciprocal_negative_required
+            .iter()
+            .any(|condition| condition["kind"] == "NonZero" && condition["expr_display"] == "x - 1"),
+        "reciprocal negative should retain its nonzero denominator guard: {reciprocal_negative_required:?}"
+    );
+
+    let reciprocal_even_power = eval_json("abs(1/(x-1)^2)-1/(x-1)^2+acosh(3-2*x)-acosh(3-2*x)");
+
+    assert_eq!(reciprocal_even_power["ok"], true);
+    assert_eq!(
+        reciprocal_even_power["result"], "0",
+        "x-1 != 0 should imply 1/(x-1)^2 > 0, so |1/(x-1)^2| collapses"
+    );
+    let reciprocal_even_power_required = reciprocal_even_power["required_conditions"]
+        .as_array()
+        .expect("reciprocal even power required_conditions should be an array");
+    assert!(
+        reciprocal_even_power_required
+            .iter()
+            .any(|condition| condition["kind"] == "NonZero" && condition["expr_display"] == "x - 1"),
+        "reciprocal even power should retain its nonzero denominator guard: {reciprocal_even_power_required:?}"
+    );
+
+    let reciprocal_odd_power = eval_json("abs(1/(x-1)^3)+1/(x-1)^3+acosh(3-2*x)-acosh(3-2*x)");
+
+    assert_eq!(reciprocal_odd_power["ok"], true);
+    assert_eq!(
+        reciprocal_odd_power["result"], "0",
+        "acosh(3-2*x) plus x-1 != 0 should imply 1/(x-1)^3 < 0"
+    );
+    let reciprocal_odd_power_required = reciprocal_odd_power["required_conditions"]
+        .as_array()
+        .expect("reciprocal odd power required_conditions should be an array");
+    assert!(
+        reciprocal_odd_power_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "3 - 2·x"
+        }),
+        "reciprocal odd power should retain its lower-bound domain: {reciprocal_odd_power_required:?}"
+    );
+    assert!(
+        reciprocal_odd_power_required
+            .iter()
+            .any(|condition| condition["kind"] == "NonZero" && condition["expr_display"] == "x - 1"),
+        "reciprocal odd power should retain its nonzero denominator guard: {reciprocal_odd_power_required:?}"
+    );
+
+    let product_positive =
+        eval_json("abs(1/((x-1)*(x-2)))-1/((x-1)*(x-2))+acosh(3-2*x)-acosh(3-2*x)");
+
+    assert_eq!(product_positive["ok"], true);
+    assert_eq!(
+        product_positive["result"], "0",
+        "under x <= 1, both x-1 and x-2 are negative and nonzero, so their reciprocal product is positive"
+    );
+    let product_positive_required = product_positive["required_conditions"]
+        .as_array()
+        .expect("product positive required_conditions should be an array");
+    assert!(
+        product_positive_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "3 - 2·x"
+        }),
+        "product positive should retain its lower-bound domain: {product_positive_required:?}"
+    );
+    assert!(
+        product_positive_required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_display"] == "x - 1"
+        }) && product_positive_required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_display"] == "x - 2"
+        }),
+        "product positive should retain both nonzero factor guards: {product_positive_required:?}"
+    );
+
+    let product_negative =
+        eval_json("abs(1/((x-1)*(2-x)))+1/((x-1)*(2-x))+acosh(3-2*x)-acosh(3-2*x)");
+
+    assert_eq!(product_negative["ok"], true);
+    assert_eq!(
+        product_negative["result"], "0",
+        "under x <= 1, x-1 is negative and 2-x is positive, so the reciprocal product is negative"
+    );
+    let product_negative_required = product_negative["required_conditions"]
+        .as_array()
+        .expect("product negative required_conditions should be an array");
+    assert!(
+        product_negative_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "3 - 2·x"
+        }),
+        "product negative should retain its lower-bound domain: {product_negative_required:?}"
+    );
+    assert!(
+        product_negative_required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_display"] == "x - 1"
+        }) && product_negative_required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_display"] == "x - 2"
+        }),
+        "product negative should retain both nonzero factor guards: {product_negative_required:?}"
+    );
+
+    let mixed_power_product_negative =
+        eval_json("abs(1/((x-1)^2*(x-2)))+1/((x-1)^2*(x-2))+acosh(3-2*x)-acosh(3-2*x)");
+
+    assert_eq!(mixed_power_product_negative["ok"], true);
+    assert_eq!(
+        mixed_power_product_negative["result"], "0",
+        "under x <= 1, (x-1)^2 is positive and x-2 is negative, so the reciprocal product is negative"
+    );
+    let mixed_power_product_negative_required = mixed_power_product_negative["required_conditions"]
+        .as_array()
+        .expect("mixed power product negative required_conditions should be an array");
+    assert!(
+        mixed_power_product_negative_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "3 - 2·x"
+        }),
+        "mixed power product negative should retain its lower-bound domain: {mixed_power_product_negative_required:?}"
+    );
+    assert!(
+        mixed_power_product_negative_required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_display"] == "x - 1"
+        }) && mixed_power_product_negative_required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_display"] == "x - 2"
+        }),
+        "mixed power product negative should retain both nonzero factor guards: {mixed_power_product_negative_required:?}"
+    );
+
+    let mixed_power_product_positive =
+        eval_json("abs(1/((x-1)^2*(2-x)))-1/((x-1)^2*(2-x))+acosh(3-2*x)-acosh(3-2*x)");
+
+    assert_eq!(mixed_power_product_positive["ok"], true);
+    assert_eq!(
+        mixed_power_product_positive["result"], "0",
+        "under x <= 1, (x-1)^2 and 2-x are positive, so the reciprocal product is positive"
+    );
+    let mixed_power_product_positive_required = mixed_power_product_positive["required_conditions"]
+        .as_array()
+        .expect("mixed power product positive required_conditions should be an array");
+    assert!(
+        mixed_power_product_positive_required.iter().any(|condition| {
+            condition["kind"] == "LowerBound" && condition["expr_display"] == "3 - 2·x"
+        }),
+        "mixed power product positive should retain its lower-bound domain: {mixed_power_product_positive_required:?}"
+    );
+    assert!(
+        mixed_power_product_positive_required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_display"] == "x - 1"
+        }) && mixed_power_product_positive_required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_display"] == "x - 2"
+        }),
+        "mixed power product positive should retain both nonzero factor guards: {mixed_power_product_positive_required:?}"
+    );
+}
+
+#[test]
 fn test_wire_output_message_present() {
     let wire = eval_wire("3*4");
 

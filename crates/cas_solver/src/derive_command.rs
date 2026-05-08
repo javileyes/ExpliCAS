@@ -7198,6 +7198,15 @@ fn format_derive_eval_lines(
 ) -> Vec<String> {
     let target =
         cas_formatter::clean_display_string(&cas_formatter::render_expr(ctx, output.target_expr));
+    let result_target = parenthesize_plain_numeric_exponents_for_derive_result(
+        &cas_formatter::clean_display_string(&format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: &*ctx,
+                id: output.target_expr
+            }
+        )),
+    );
     match output.status {
         DeriveStatus::Derived { strategy } => {
             let mut lines = crate::format_full_simplify_eval_lines(
@@ -7220,6 +7229,9 @@ fn format_derive_eval_lines(
                 ],
             );
             retarget_final_after_line(&mut lines, &target);
+            if matches!(strategy, DeriveStrategy::FractionDecompose) {
+                retarget_result_line(&mut lines, &result_target);
+            }
             lines.insert(1, format!("Target: {target}"));
             lines.insert(2, format!("Strategy: {}", strategy.label()));
             append_derive_requires_lines(
@@ -7355,6 +7367,43 @@ fn retarget_final_after_line(lines: &mut [String], target: &str) {
     {
         lines[index] = format!("   After: {target}");
     }
+}
+
+fn retarget_result_line(lines: &mut [String], target: &str) {
+    if let Some(index) = lines.iter().rposition(|line| line.starts_with("Result:")) {
+        lines[index] = format!("Result: {target}");
+    }
+}
+
+fn parenthesize_plain_numeric_exponents_for_derive_result(input: &str) -> String {
+    let mut output = String::with_capacity(input.len());
+    let mut chars = input.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        output.push(ch);
+        if ch != '^' || chars.peek().is_some_and(|next| *next == '(') {
+            continue;
+        }
+
+        let mut exponent = String::new();
+        if chars.peek().is_some_and(|next| *next == '-') {
+            exponent.push(chars.next().expect("peeked sign"));
+        }
+
+        while chars.peek().is_some_and(|next| next.is_ascii_digit()) {
+            exponent.push(chars.next().expect("peeked digit"));
+        }
+
+        if exponent.is_empty() || exponent == "-" {
+            output.push_str(&exponent);
+        } else {
+            output.push('(');
+            output.push_str(&exponent);
+            output.push(')');
+        }
+    }
+
+    output
 }
 
 fn derive_target_match(

@@ -64,6 +64,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     ImplicitCondition::Positive(t) => {
                         Some(crate::AssumptionEvent::positive(self.context, *t))
                     }
+                    ImplicitCondition::LowerBound(_, _) => None,
                     ImplicitCondition::NonZero(_) => None, // Skip definability in Assume mode
                 },
             );

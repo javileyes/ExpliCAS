@@ -9718,3 +9718,46 @@ The burden of proof stays the same:
     trig affine argument
   - the retained implementation gates raw preservation to that family instead
     of treating all public `integrate` calls as terminal presentation forms
+
+## 2026-05-08 - Discovery observe-only: acosh real-domain lower bound is not representable in implicit-domain facts
+
+- area:
+  - robustness / domain-regime / sign-aware abs cleanup
+- status:
+  - `discovery-observe-only`
+- observed probes:
+  - `abs(x)-x+acosh(x)-acosh(x)` returns `|x| - x` with no required
+    conditions
+  - `sqrt(x^2)-x+acosh(x)-acosh(x)` returns `|x| - x` with no required
+    conditions
+- reusable signature:
+  - `acosh(u)` in the real domain requires `u >= 1`
+  - the current implicit-domain vocabulary can express `u >= 0`, `u > 0`,
+    and `u != 0`, but not a shifted lower bound such as `u - 1 >= 0`
+  - recording only `u > 0` would let `abs(u) -> u` but would understate the
+    real domain after `acosh` cancels, so it is not a retainable fix
+- decision:
+  - do not patch `acosh` as a weaker positivity condition
+  - treat this as a future domain-model extension candidate before promoting
+    `acosh`-driven abs cleanup cases
+
+## 2026-05-08 - Retained: acosh lower-bound domain feeds sign-aware abs cleanup
+
+- area:
+  - robustness / domain-regime / sign-aware abs cleanup
+- retained correction:
+  - represent `acosh(u)`'s real input domain as an explicit lower-bound
+    condition `u >= 1`
+  - allow lower-bound facts to imply weaker nonnegative/positive targets only
+    through exact polynomial-margin checks
+- promoted cases:
+  - `abs(x)-x+acosh(x)-acosh(x)` -> `0`, requiring `x >= 1`
+  - `abs(x)-x+acosh(2*x+1)-acosh(2*x+1)` -> `0`, requiring
+    `2*x + 1 >= 1`
+  - `abs(x)-x+acosh(1-x)-acosh(1-x)` stays `|x| - x`, requiring
+    `1 - x >= 1`
+- decision:
+  - supersedes the observe-only row above for the bounded `acosh` lower-bound
+    case
+  - this is not a general inequality solver; it is a conservative exact
+    lower-bound implication used by existing domain-aware simplification

@@ -36,6 +36,7 @@ pub(crate) fn collect_output_required_conditions(
         .map(|cond| {
             let (kind, expr_id) = match cond {
                 crate::ImplicitCondition::NonNegative(e) => ("NonNegative", *e),
+                crate::ImplicitCondition::LowerBound(e, _) => ("LowerBound", *e),
                 crate::ImplicitCondition::Positive(e) => ("Positive", *e),
                 crate::ImplicitCondition::NonZero(e) => ("NonZero", *e),
             };

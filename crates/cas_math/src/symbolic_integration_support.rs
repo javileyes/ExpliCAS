@@ -14,6 +14,8 @@ use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
 
+type LinearPartialFractionTerms = Vec<(BigRational, Polynomial, usize)>;
+
 fn ln_abs(ctx: &mut Context, arg: ExprId) -> ExprId {
     let abs_arg = ctx.call_builtin(BuiltinFn::Abs, vec![arg]);
     ctx.call_builtin(BuiltinFn::Ln, vec![abs_arg])
@@ -6035,6 +6037,257 @@ fn polynomial_log_derivative_antiderivative(
     Some(mul2_raw(ctx, scale_expr, log_abs_den))
 }
 
+#[derive(Clone)]
+struct PartialFractionLinearFactor {
+    factor: Polynomial,
+    multiplicity: usize,
+}
+
+fn polynomial_pow(poly: &Polynomial, exponent: usize) -> Polynomial {
+    let mut result = Polynomial::one(poly.var.clone());
+    for _ in 0..exponent {
+        result = result.mul(poly);
+    }
+    result
+}
+
+fn grouped_linear_rational_factors(
+    denominator: &Polynomial,
+) -> Option<Vec<PartialFractionLinearFactor>> {
+    const MAX_PARTIAL_FRACTION_DEGREE: usize = 4;
+
+    if denominator.degree() < 2 || denominator.degree() > MAX_PARTIAL_FRACTION_DEGREE {
+        return None;
+    }
+
+    let mut groups: Vec<PartialFractionLinearFactor> = Vec::new();
+    for factor in denominator.factor_rational_roots() {
+        if factor.degree() != 1 {
+            return None;
+        }
+
+        if let Some(group) = groups.iter_mut().find(|group| group.factor == factor) {
+            group.multiplicity += 1;
+        } else {
+            groups.push(PartialFractionLinearFactor {
+                factor,
+                multiplicity: 1,
+            });
+        }
+    }
+
+    let total_degree: usize = groups.iter().map(|group| group.multiplicity).sum();
+    (total_degree == denominator.degree()).then_some(groups)
+}
+
+fn solve_rational_linear_system(
+    mut matrix: Vec<Vec<BigRational>>,
+    mut rhs: Vec<BigRational>,
+) -> Option<Vec<BigRational>> {
+    let n = rhs.len();
+    if matrix.len() != n || matrix.iter().any(|row| row.len() != n) {
+        return None;
+    }
+
+    for col in 0..n {
+        let pivot = (col..n).find(|row| !matrix[*row][col].is_zero())?;
+        if pivot != col {
+            matrix.swap(pivot, col);
+            rhs.swap(pivot, col);
+        }
+
+        let pivot_value = matrix[col][col].clone();
+        for entry in matrix[col].iter_mut().skip(col) {
+            *entry /= pivot_value.clone();
+        }
+        rhs[col] /= pivot_value;
+
+        for row in 0..n {
+            if row == col || matrix[row][col].is_zero() {
+                continue;
+            }
+
+            let factor = matrix[row][col].clone();
+            let pivot_tail: Vec<_> = matrix[col].iter().skip(col).cloned().collect();
+            for (entry, pivot_entry) in matrix[row].iter_mut().skip(col).zip(pivot_tail) {
+                *entry -= factor.clone() * pivot_entry;
+            }
+            let pivot_rhs = rhs[col].clone();
+            rhs[row] -= factor * pivot_rhs;
+        }
+    }
+
+    Some(rhs)
+}
+
+fn proper_rational_linear_partial_fraction_terms(
+    numerator: &Polynomial,
+    denominator: &Polynomial,
+) -> Option<LinearPartialFractionTerms> {
+    if numerator.degree() >= denominator.degree() {
+        return None;
+    }
+
+    let groups = grouped_linear_rational_factors(denominator)?;
+    let mut bases = Vec::new();
+    for group in &groups {
+        for power in 1..=group.multiplicity {
+            let divisor = polynomial_pow(&group.factor, power);
+            let (quotient, remainder) = denominator.div_rem(&divisor).ok()?;
+            if !remainder.is_zero() {
+                return None;
+            }
+            bases.push((group.factor.clone(), power, quotient));
+        }
+    }
+
+    let unknown_count = bases.len();
+    if unknown_count != denominator.degree() {
+        return None;
+    }
+
+    let mut matrix = vec![vec![BigRational::zero(); unknown_count]; unknown_count];
+    for (col, (_, _, quotient)) in bases.iter().enumerate() {
+        for (row, coeff) in quotient.coeffs.iter().enumerate().take(unknown_count) {
+            matrix[row][col] = coeff.clone();
+        }
+    }
+
+    let rhs = (0..unknown_count)
+        .map(|idx| {
+            numerator
+                .coeffs
+                .get(idx)
+                .cloned()
+                .unwrap_or_else(BigRational::zero)
+        })
+        .collect();
+    let coefficients = solve_rational_linear_system(matrix, rhs)?;
+
+    Some(
+        coefficients
+            .into_iter()
+            .zip(bases)
+            .filter_map(|(coefficient, (factor, power, _))| {
+                (!coefficient.is_zero()).then_some((coefficient, factor, power))
+            })
+            .collect(),
+    )
+}
+
+fn rational_linear_partial_fraction_decomposition(
+    numerator: &Polynomial,
+    denominator: &Polynomial,
+) -> Option<(Polynomial, LinearPartialFractionTerms)> {
+    grouped_linear_rational_factors(denominator)?;
+
+    let (quotient, remainder) = if numerator.degree() >= denominator.degree() {
+        numerator.div_rem(denominator).ok()?
+    } else {
+        (Polynomial::zero(numerator.var.clone()), numerator.clone())
+    };
+
+    let terms = if remainder.is_zero() {
+        Vec::new()
+    } else {
+        proper_rational_linear_partial_fraction_terms(&remainder, denominator)?
+    };
+
+    (!quotient.is_zero() || !terms.is_empty()).then_some((quotient, terms))
+}
+
+fn partial_fraction_linear_term_antiderivative(
+    ctx: &mut Context,
+    coefficient: BigRational,
+    factor: &Polynomial,
+    power: usize,
+) -> Option<ExprId> {
+    let slope = factor.coeffs.get(1)?.clone();
+    if slope.is_zero() {
+        return None;
+    }
+
+    let factor_expr = factor.to_expr(ctx);
+    if power == 1 {
+        let scale = coefficient / slope;
+        let log_abs = ln_abs(ctx, factor_expr);
+        return Some(scale_rational_term(ctx, scale, log_abs));
+    }
+
+    let scale = -coefficient / (slope * BigRational::from_integer((power as i64 - 1).into()));
+    let denominator = if power == 2 {
+        factor_expr
+    } else {
+        let exponent = ctx.num((power as i64) - 1);
+        ctx.add(Expr::Pow(factor_expr, exponent))
+    };
+    let numerator = ctx.add(Expr::Number(scale));
+    Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+fn rational_linear_partial_fraction_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
+    let denominator = Polynomial::from_expr(ctx, den, var).ok()?;
+    let (quotient, terms) =
+        rational_linear_partial_fraction_decomposition(&numerator, &denominator)?;
+
+    let mut integral_terms = Vec::new();
+    if !quotient.is_zero() {
+        let quotient_expr = quotient.to_expr(ctx);
+        integral_terms.push(integrate_symbolic_expr(ctx, quotient_expr, var)?);
+    }
+
+    for (coefficient, factor, power) in terms {
+        integral_terms.push(partial_fraction_linear_term_antiderivative(
+            ctx,
+            coefficient,
+            &factor,
+            power,
+        )?);
+    }
+
+    match integral_terms.len() {
+        0 => None,
+        1 => Some(integral_terms[0]),
+        _ => {
+            let sum = build_balanced_add(ctx, &integral_terms);
+            Some(cas_ast::hold::wrap_hold(ctx, sum))
+        }
+    }
+}
+
+fn rational_linear_partial_fraction_required_nonzero(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Vec<ExprId> {
+    let (num, den) = match ctx.get(expr) {
+        Expr::Div(num, den) => (*num, *den),
+        _ => return vec![],
+    };
+
+    let Ok(numerator) = Polynomial::from_expr(ctx, num, var) else {
+        return vec![];
+    };
+    let Ok(denominator) = Polynomial::from_expr(ctx, den, var) else {
+        return vec![];
+    };
+    if rational_linear_partial_fraction_decomposition(&numerator, &denominator).is_none() {
+        return vec![];
+    };
+
+    grouped_linear_rational_factors(&denominator)
+        .into_iter()
+        .flatten()
+        .map(|group| group.factor.to_expr(ctx))
+        .collect()
+}
+
 fn arcsin_polynomial_substitution_from_radicand(
     ctx: &mut Context,
     numerator: ExprId,
@@ -6977,6 +7230,9 @@ pub fn integrate_symbolic_required_nonzero_conditions(
                 ctx, expr, var,
             ),
         )
+        .chain(rational_linear_partial_fraction_required_nonzero(
+            ctx, expr, var,
+        ))
         .collect();
 
     dedup_required_conditions(ctx, conditions)
@@ -7572,6 +7828,11 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         if let Some(integral) = polynomial_log_derivative_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
+
+        if let Some(integral) = rational_linear_partial_fraction_antiderivative(ctx, num, den, var)
+        {
+            return Some(integral);
+        }
     }
 
     if let IntKind::Function(fn_id, args) = kind {
@@ -7799,7 +8060,9 @@ fn is_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{get_linear_coeffs, integrate_symbolic_expr};
+    use super::{
+        get_linear_coeffs, integrate_symbolic_expr, integrate_symbolic_required_nonzero_conditions,
+    };
     use crate::polynomial::Polynomial;
     use cas_ast::Context;
     use cas_formatter::DisplayExpr;
@@ -8891,6 +9154,56 @@ mod tests {
         let expr = parse("(2*x+3)/((x+1)*(x+2))", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "ln(|(x + 1) * (x + 2)|)");
+    }
+
+    #[test]
+    fn integrates_rational_partial_fractions_over_repeated_linear_factors() {
+        let mut ctx = Context::new();
+        let expr = parse("(3*x+5)/(x^3-x^2-x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        let result = rendered(&ctx, out);
+
+        assert!(
+            result.contains("ln(|x + 1|)") && result.contains("ln(|x - 1|)"),
+            "expected logarithmic simple-pole terms, got {result}"
+        );
+        assert!(
+            result.contains("4 / (x - 1)"),
+            "expected repeated-pole rational term, got {result}"
+        );
+
+        let mut conditions: Vec<_> =
+            integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x")
+                .into_iter()
+                .map(|condition| rendered(&ctx, condition))
+                .collect();
+        conditions.sort();
+        assert_eq!(conditions, vec!["x + 1", "x - 1"]);
+    }
+
+    #[test]
+    fn integrates_improper_rational_partial_fractions_after_polynomial_division() {
+        let mut ctx = Context::new();
+        let expr = parse("(x^3+3*x+5)/(x^3-x^2-x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        let result = rendered(&ctx, out);
+
+        assert!(
+            result.contains("ln(|x + 1|)") && result.contains("ln(|x - 1|)"),
+            "expected logarithmic remainder terms, got {result}"
+        );
+        assert!(
+            result.contains("9/2 / (x - 1)"),
+            "expected repeated-pole remainder term, got {result}"
+        );
+
+        let mut conditions: Vec<_> =
+            integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x")
+                .into_iter()
+                .map(|condition| rendered(&ctx, condition))
+                .collect();
+        conditions.sort();
+        assert_eq!(conditions, vec!["x + 1", "x - 1"]);
     }
 
     #[test]

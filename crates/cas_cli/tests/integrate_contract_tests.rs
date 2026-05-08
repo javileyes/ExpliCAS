@@ -1765,6 +1765,107 @@ fn integrate_contract_reciprocal_linear_uses_abs_log() {
 }
 
 #[test]
+fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() {
+    let input = "integrate((3*x+5)/(x^3-x^2-x+1), x)";
+    let (result, mut required) = evaluated_integral_with_required_conditions(input);
+
+    assert!(
+        !result.starts_with("integrate("),
+        "expected a proper antiderivative, got {result}"
+    );
+    assert!(
+        result.contains("ln(|x + 1|)") && result.contains("ln(|x - 1|)"),
+        "expected logarithmic linear partial-fraction terms, got {result}"
+    );
+    assert!(
+        result.contains("4 / (x - 1)"),
+        "expected repeated-pole rational term, got {result}"
+    );
+    assert!(
+        result.contains(" - 4 / (x - 1)") && !result.contains("+ -"),
+        "expected a clean subtraction for the repeated-pole rational term, got {result}"
+    );
+    required.sort();
+    assert_eq!(
+        required,
+        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+
+    let residual = "diff(integrate((3*x+5)/(x^3-x^2-x+1), x), x) - (3*x+5)/(x^3-x^2-x+1)";
+    let (residual_result, mut residual_required) =
+        evaluated_expr_with_required_conditions(residual);
+    residual_required.sort();
+    assert_eq!(residual_result, "0");
+    assert_eq!(
+        residual_required,
+        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        "nested verification should preserve the source denominator domain"
+    );
+}
+
+#[test]
+fn integrate_contract_improper_rational_partial_fractions_use_polynomial_division() {
+    let input = "integrate((x^3+3*x+5)/(x^3-x^2-x+1), x)";
+    let (result, mut required) = evaluated_integral_with_required_conditions(input);
+
+    assert!(
+        !result.starts_with("integrate("),
+        "expected a proper antiderivative, got {result}"
+    );
+    assert!(
+        result.contains("ln(|x + 1|)") && result.contains("ln(|x - 1|)"),
+        "expected logarithmic partial-fraction remainder terms, got {result}"
+    );
+    assert!(
+        result.contains("9/2 / (x - 1)") && !result.contains("+ -"),
+        "expected a clean repeated-pole rational remainder term, got {result}"
+    );
+    assert!(
+        result.contains("+ x") && !result.contains("1 * x"),
+        "expected the polynomial quotient term to omit the unit factor, got {result}"
+    );
+    required.sort();
+    assert_eq!(
+        required,
+        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+
+    let residual = "diff(integrate((x^3+3*x+5)/(x^3-x^2-x+1), x), x) - (x^3+3*x+5)/(x^3-x^2-x+1)";
+    let (residual_result, mut residual_required) =
+        evaluated_expr_with_required_conditions(residual);
+    residual_required.sort();
+    assert_eq!(residual_result, "0");
+    assert_eq!(
+        residual_required,
+        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        "nested verification should preserve the source denominator domain"
+    );
+}
+
+#[test]
+fn integrate_contract_partial_fractions_do_not_claim_irreducible_quadratics() {
+    let input = "integrate((x+1)/(x^2+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "integrate((x + 1) / (x^2 + 1), x)");
+    assert!(
+        required.is_empty(),
+        "irreducible quadratic residual should not add synthetic required conditions: {required:?}"
+    );
+
+    let input = "integrate((x^3+x+1)/(x^2+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "integrate((x^3 + x + 1) / (x^2 + 1), x)");
+    assert!(
+        required.is_empty(),
+        "improper irreducible quadratic residual should not add synthetic required conditions: {required:?}"
+    );
+}
+
+#[test]
 fn integrate_contract_direct_reciprocal_uses_abs_log_and_nonzero_domain() {
     let (result, required) = evaluated_integral_with_required_conditions("integrate(1/x, x)");
 

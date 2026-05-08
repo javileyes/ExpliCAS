@@ -4,7 +4,7 @@ use crate::rule::Rewrite;
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::abs_support::{
     abs_domain_mode_from_flags, abs_needs_implicit_domain_check, is_ln_or_log_call,
-    try_plan_abs_nonnegative_rewrite, try_plan_abs_positive_rewrite,
+    try_plan_abs_negative_rewrite, try_plan_abs_nonnegative_rewrite, try_plan_abs_positive_rewrite,
     try_plan_symbolic_root_cancel_rewrite, try_rewrite_abs_even_power_expr,
     try_rewrite_abs_exp_identity_expr, try_rewrite_abs_idempotent_expr,
     try_rewrite_abs_numeric_factor_expr, try_rewrite_abs_odd_power_expr,
@@ -16,12 +16,14 @@ use cas_math::abs_support::{
     value_domain_mode_from_flag, AbsAssumptionKind, AbsDomainRewriteKind, AbsFixedRewriteKind,
     SymbolicRootCancelRewriteKind,
 };
+use cas_math::expr_nary::{AddView, Sign};
 use cas_math::root_forms::try_rewrite_odd_half_power_expr;
 
 fn format_abs_domain_rewrite_desc(kind: AbsDomainRewriteKind) -> &'static str {
     match kind {
         AbsDomainRewriteKind::Positive => "|x| = x for x > 0",
         AbsDomainRewriteKind::PositiveAssume => "|x| = x (assuming x > 0)",
+        AbsDomainRewriteKind::Negative => "|x| = -x for x <= 0",
         AbsDomainRewriteKind::NonNegative => "|x| = x for x >= 0",
         AbsDomainRewriteKind::NonNegativeAssume => "|x| = x (assuming x >= 0)",
     }
@@ -68,6 +70,130 @@ fn expr_contains_structural(ctx: &Context, haystack: ExprId, needle: ExprId) -> 
     }
 }
 
+fn expr_structurally_equal(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    left == right || cas_ast::ordering::compare_expr(ctx, left, right).is_eq()
+}
+
+fn try_unwrap_neg_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => Some(*inner),
+        _ => None,
+    }
+}
+
+fn merged_implicit_domain_conditions(
+    ctx: &mut Context,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> Vec<crate::ImplicitCondition> {
+    parent_ctx
+        .implicit_domain()
+        .cloned()
+        .or_else(|| {
+            parent_ctx
+                .root_expr()
+                .map(|root| crate::infer_implicit_domain(ctx, root, parent_ctx.value_domain()))
+        })
+        .into_iter()
+        .flat_map(|id| id.conditions().iter().cloned().collect::<Vec<_>>())
+        .collect()
+}
+
+fn remaining_add_terms_cancel_structurally(
+    ctx: &Context,
+    terms: &[(ExprId, Sign)],
+    first_skip: usize,
+    second_skip: usize,
+) -> bool {
+    let mut used = vec![false; terms.len()];
+    used[first_skip] = true;
+    used[second_skip] = true;
+
+    for i in 0..terms.len() {
+        if used[i] {
+            continue;
+        }
+        let (left_expr, left_sign) = terms[i];
+        let mut matched = false;
+        for j in (i + 1)..terms.len() {
+            if used[j] {
+                continue;
+            }
+            let (right_expr, right_sign) = terms[j];
+            if left_sign != right_sign && expr_structurally_equal(ctx, left_expr, right_expr) {
+                used[i] = true;
+                used[j] = true;
+                matched = true;
+                break;
+            }
+        }
+        if !matched {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn abs_add_term_pair_is_domain_zero(
+    ctx: &mut Context,
+    dc: &crate::DomainContext,
+    inner: ExprId,
+    paired_sign: Sign,
+) -> bool {
+    match paired_sign {
+        Sign::Neg => {
+            dc.is_condition_implied(ctx, &crate::ImplicitCondition::NonNegative(inner))
+                || dc.is_condition_implied(ctx, &crate::ImplicitCondition::Positive(inner))
+        }
+        Sign::Pos => {
+            let neg_inner = ctx.add(Expr::Neg(inner));
+            dc.is_condition_implied(ctx, &crate::ImplicitCondition::NonNegative(neg_inner))
+                || dc.is_condition_implied(ctx, &crate::ImplicitCondition::Positive(neg_inner))
+        }
+    }
+}
+
+fn try_cancel_abs_add_view_under_domain(
+    ctx: &mut Context,
+    expr: ExprId,
+    dc: &crate::DomainContext,
+) -> Option<Rewrite> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return None;
+    }
+    let terms: Vec<_> = view.terms.iter().copied().collect();
+
+    for (abs_index, (abs_expr, abs_sign)) in terms.iter().copied().enumerate() {
+        if abs_sign != Sign::Pos {
+            continue;
+        }
+        let Some(inner) = try_unwrap_abs_arg(ctx, abs_expr) else {
+            continue;
+        };
+        for (other_index, (other_expr, other_sign)) in terms.iter().copied().enumerate() {
+            if other_index == abs_index || !expr_structurally_equal(ctx, inner, other_expr) {
+                continue;
+            }
+            if !abs_add_term_pair_is_domain_zero(ctx, dc, inner, other_sign) {
+                continue;
+            }
+            if !remaining_add_terms_cancel_structurally(ctx, &terms, abs_index, other_index) {
+                continue;
+            }
+
+            let zero = ctx.num(0);
+            let desc = match other_sign {
+                Sign::Neg => "|x| - x = 0 for x >= 0",
+                Sign::Pos => "|x| + x = 0 for x <= 0",
+            };
+            return Some(Rewrite::new(zero).desc(desc).local(expr, zero));
+        }
+    }
+
+    None
+}
+
 define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
     let rewrite = try_rewrite_evaluate_abs_expr(ctx, expr)?;
     Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
@@ -103,8 +229,9 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
 
         // Only needed in Strict/Generic to accept inherited positivity from sticky implicit domain.
         let implied = if abs_needs_implicit_domain_check(mode, proven) {
-            if let Some(id) = parent_ctx.implicit_domain() {
-                let dc = crate::DomainContext::new(id.conditions().iter().cloned().collect());
+            let conditions = merged_implicit_domain_conditions(ctx, parent_ctx);
+            if !conditions.is_empty() {
+                let dc = crate::DomainContext::new(conditions);
                 let cond = crate::ImplicitCondition::Positive(inner);
                 dc.is_condition_implied(ctx, &cond)
             } else {
@@ -135,6 +262,57 @@ impl crate::rule::Rule for AbsPositiveSimplifyRule {
     }
 
     // V2.14.21: Ensure step is visible - domain simplification is didactically important
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+}
+
+/// Simplify absolute value under inherited non-positivity.
+///
+/// This consumes existing domain facts such as `-x >= 0`; it never introduces a
+/// new negative assumption.
+pub struct AbsNegativeSimplifyRule;
+
+impl crate::rule::Rule for AbsNegativeSimplifyRule {
+    fn name(&self) -> &str {
+        "Abs Under Negativity"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        let inner = try_unwrap_abs_arg(ctx, expr)?;
+        let implicit_domain: Option<crate::ImplicitDomain> =
+            parent_ctx.implicit_domain().cloned().or_else(|| {
+                parent_ctx
+                    .root_expr()
+                    .map(|root| crate::infer_implicit_domain(ctx, root, parent_ctx.value_domain()))
+            });
+        let neg_inner = ctx.add(Expr::Neg(inner));
+        let negative_implied = implicit_domain.as_ref().is_some_and(|id| {
+            let dc = crate::DomainContext::new(id.conditions().iter().cloned().collect());
+            dc.is_condition_implied(ctx, &crate::ImplicitCondition::NonNegative(neg_inner))
+        });
+
+        let plan = try_plan_abs_negative_rewrite(ctx, expr, negative_implied)?;
+        Some(
+            Rewrite::new(plan.rewritten)
+                .desc(format_abs_domain_rewrite_desc(plan.kind))
+                .local(expr, plan.rewritten),
+        )
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::FUNCTION)
+    }
+
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST
+    }
+
     fn importance(&self) -> crate::step::ImportanceLevel {
         crate::step::ImportanceLevel::High
     }
@@ -171,8 +349,9 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
 
         // Only needed in Strict/Generic to accept inherited non-negativity from sticky implicit domain.
         let implied = if abs_needs_implicit_domain_check(mode, proven) {
-            if let Some(id) = parent_ctx.implicit_domain() {
-                let dc = crate::DomainContext::new(id.conditions().iter().cloned().collect());
+            let conditions = merged_implicit_domain_conditions(ctx, parent_ctx);
+            if !conditions.is_empty() {
+                let dc = crate::DomainContext::new(conditions);
                 let cond = crate::ImplicitCondition::NonNegative(inner);
                 dc.is_condition_implied(ctx, &cond)
             } else {
@@ -204,6 +383,117 @@ impl crate::rule::Rule for AbsNonNegativeSimplifyRule {
 
     fn importance(&self) -> crate::step::ImportanceLevel {
         crate::step::ImportanceLevel::High
+    }
+}
+
+/// Cancel |u| - u or |u| + u when the root implicit domain proves u has the
+/// required sign. This is intentionally narrower than general arithmetic
+/// cancellation: it only consumes an exact abs atom paired with the same inner.
+pub struct AbsDomainAddSubCancellationRule;
+
+impl crate::rule::Rule for AbsDomainAddSubCancellationRule {
+    fn name(&self) -> &str {
+        "Abs Domain Add/Sub Cancellation"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        let conditions = merged_implicit_domain_conditions(ctx, parent_ctx);
+        if conditions.is_empty() {
+            return None;
+        }
+        let dc = crate::DomainContext::new(conditions);
+
+        if let Some(rewrite) = try_cancel_abs_add_view_under_domain(ctx, expr, &dc) {
+            return Some(rewrite);
+        }
+
+        match ctx.get(expr).clone() {
+            Expr::Sub(left, right) => {
+                let inner = try_unwrap_abs_arg(ctx, left)?;
+                if !expr_structurally_equal(ctx, inner, right) {
+                    return None;
+                }
+                let nonnegative = dc
+                    .is_condition_implied(ctx, &crate::ImplicitCondition::NonNegative(inner))
+                    || dc.is_condition_implied(ctx, &crate::ImplicitCondition::Positive(inner));
+                if !nonnegative {
+                    return None;
+                }
+                let zero = ctx.num(0);
+                Some(
+                    Rewrite::new(zero)
+                        .desc("|x| - x = 0 for x >= 0")
+                        .local(expr, zero),
+                )
+            }
+            Expr::Add(left, right) => {
+                let (abs_expr, other) = if try_unwrap_abs_arg(ctx, left).is_some() {
+                    (left, right)
+                } else if try_unwrap_abs_arg(ctx, right).is_some() {
+                    (right, left)
+                } else {
+                    return None;
+                };
+                let inner = try_unwrap_abs_arg(ctx, abs_expr)?;
+
+                if let Some(negated_other) = try_unwrap_neg_arg(ctx, other) {
+                    if !expr_structurally_equal(ctx, inner, negated_other) {
+                        return None;
+                    }
+                    let nonnegative = dc
+                        .is_condition_implied(ctx, &crate::ImplicitCondition::NonNegative(inner))
+                        || dc.is_condition_implied(ctx, &crate::ImplicitCondition::Positive(inner));
+                    if !nonnegative {
+                        return None;
+                    }
+                    let zero = ctx.num(0);
+                    return Some(
+                        Rewrite::new(zero)
+                            .desc("|x| - x = 0 for x >= 0")
+                            .local(expr, zero),
+                    );
+                }
+
+                if !expr_structurally_equal(ctx, inner, other) {
+                    return None;
+                }
+                let neg_inner = ctx.add(Expr::Neg(inner));
+                let nonpositive = dc
+                    .is_condition_implied(ctx, &crate::ImplicitCondition::NonNegative(neg_inner))
+                    || dc.is_condition_implied(ctx, &crate::ImplicitCondition::Positive(neg_inner));
+                if !nonpositive {
+                    return None;
+                }
+                let zero = ctx.num(0);
+                Some(
+                    Rewrite::new(zero)
+                        .desc("|x| + x = 0 for x <= 0")
+                        .local(expr, zero),
+                )
+            }
+            _ => None,
+        }
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD_SUB)
+    }
+
+    fn allowed_phases(&self) -> crate::phase::PhaseMask {
+        crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST
+    }
+
+    fn importance(&self) -> crate::step::ImportanceLevel {
+        crate::step::ImportanceLevel::High
+    }
+
+    fn priority(&self) -> i32 {
+        512
     }
 }
 
@@ -577,8 +867,10 @@ pub fn register(simplifier: &mut crate::Simplifier) {
                                                            // simplifier.add_rule(Box::new(SimplifySqrtOddPowerRule)); // sqrt(x^3) -> |x| * sqrt(x)
     simplifier.add_rule(Box::new(SymbolicRootCancelRule)); // V2.14.45: sqrt(x^n, n) -> x in Assume mode
     simplifier.add_rule(Box::new(EvaluateAbsRule));
+    simplifier.add_rule(Box::new(AbsNegativeSimplifyRule)); // |x| -> -x when inherited domain proves x < 0
     simplifier.add_rule(Box::new(AbsPositiveSimplifyRule)); // V2.14.20: |x| -> x when x > 0
     simplifier.add_rule(Box::new(AbsNonNegativeSimplifyRule)); // |x| -> x when x >= 0 (from sqrt requirements)
+    simplifier.add_rule(Box::new(AbsDomainAddSubCancellationRule)); // |x| ± x cancellation under root domain
     simplifier.add_rule(Box::new(AbsSquaredRule));
     simplifier.add_rule(Box::new(AbsPowerOddMagnitudeRule)); // |x|^(2k+1) -> x^(2k)*|x|
     simplifier.add_rule(Box::new(AbsIdempotentRule)); // ||x|| → |x|

@@ -5,6 +5,7 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_domain::{
     exprs_equivalent, exprs_equivalent_up_to_sign, is_abs_of, is_odd_power_of,
     is_positive_multiple_of, is_positive_power_of_base, is_product_dominated_by_positives,
+    positive_expr_implies_lower_bound,
 };
 use cas_math::expr_extract::{
     extract_abs_argument_view, extract_log_base_argument_view, extract_sqrt_argument_view,
@@ -65,6 +66,7 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
 
     let normalized_expr = match cond {
         ImplicitCondition::NonNegative(e) => normalize_condition_expr_preserve_sign(ctx, *e),
+        ImplicitCondition::LowerBound(e, _) => *e,
         ImplicitCondition::Positive(e) => normalize_condition_expr_preserve_sign(ctx, *e),
         ImplicitCondition::NonZero(e) => {
             let stripped = strip_nonzero_scalar_factors_for_display(ctx, *e);
@@ -79,6 +81,9 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
             } else {
                 ImplicitCondition::NonNegative(normalized_expr)
             }
+        }
+        ImplicitCondition::LowerBound(_, lower) => {
+            ImplicitCondition::LowerBound(normalized_expr, lower.clone())
         }
         ImplicitCondition::Positive(_) => {
             if let Some(compact) = compact_positive_power_gap_for_display(ctx, normalized_expr) {
@@ -1396,6 +1401,7 @@ fn rewrite_sign_quotients_with_positive_components(
                 Expr::Div(num, den) => Some((idx, true, *num, *den)),
                 _ => None,
             },
+            ImplicitCondition::LowerBound(_, _) => None,
             ImplicitCondition::NonZero(_) => None,
         };
 
@@ -2404,6 +2410,10 @@ fn condition_is_intrinsically_satisfied(ctx: &Context, cond: &ImplicitCondition)
                 || is_intrinsically_positive_real(ctx, *expr)
                 || positive_quadratic_power_gap_is_intrinsic(ctx, *expr)
         }
+        ImplicitCondition::LowerBound(expr, lower) => match ctx.get(*expr) {
+            Expr::Number(value) => value >= lower,
+            _ => false,
+        },
         ImplicitCondition::NonZero(expr) => {
             nonnegative_negative_even_power_base(ctx, *expr).is_none()
                 && is_intrinsically_positive_real(ctx, *expr)
@@ -2566,6 +2576,14 @@ fn expand_condition_for_display(
                 return expand_nonzero_condition_for_display(ctx, base);
             }
 
+            let normalized = normalize_condition(ctx, cond);
+            if condition_is_intrinsically_satisfied(ctx, &normalized) {
+                Vec::new()
+            } else {
+                vec![normalized]
+            }
+        }
+        ImplicitCondition::LowerBound(_, _) => {
             let normalized = normalize_condition(ctx, cond);
             if condition_is_intrinsically_satisfied(ctx, &normalized) {
                 Vec::new()
@@ -3182,6 +3200,132 @@ fn nonzero_condition_dominates_sqrt_lower_nonzero(
             .is_some_and(|base| exprs_equivalent_up_to_sign(ctx, nonzero_expr, base))
 }
 
+fn nonzero_condition_dominates_lower_bound(
+    ctx: &mut Context,
+    nonzero_expr: ExprId,
+    bounded_expr: ExprId,
+    lower: &BigRational,
+) -> bool {
+    let lower_expr = ctx.add(Expr::Number(lower.clone()));
+    let gap = ctx.add(Expr::Sub(bounded_expr, lower_expr));
+    let normalized_gap = normalize_condition_expr(ctx, gap);
+    let factored_gap = factor(ctx, normalized_gap);
+
+    for candidate in [gap, normalized_gap, factored_gap] {
+        if nonzero_integer_power_base_for_display(ctx, candidate)
+            .is_some_and(|base| exprs_equivalent_up_to_sign(ctx, nonzero_expr, base))
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn positive_condition_dominates_reciprocal_surd_lower_bound(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    bounded_expr: ExprId,
+    lower: &BigRational,
+) -> bool {
+    if !lower.is_one() {
+        return false;
+    }
+
+    let mut rational_coeff = BigRational::one();
+    let mut sqrt_arg = None;
+    let mut payload_factors = Vec::new();
+    collect_reciprocal_surd_lower_bound_parts(
+        ctx,
+        bounded_expr,
+        &mut rational_coeff,
+        &mut sqrt_arg,
+        &mut payload_factors,
+    );
+
+    let Some(sqrt_arg) = sqrt_arg else {
+        return false;
+    };
+    if payload_factors.is_empty() || rational_coeff != BigRational::one() / sqrt_arg.clone() {
+        return false;
+    }
+
+    let payload = build_balanced_mul(ctx, &payload_factors);
+    let sqrt_arg_expr = ctx.add(Expr::Number(sqrt_arg));
+    let sqrt_expr = ctx.call_builtin(BuiltinFn::Sqrt, vec![sqrt_arg_expr]);
+    let expected_gap = ctx.add(Expr::Sub(payload, sqrt_expr));
+    let normalized_gap = normalize_condition_expr_preserve_sign(ctx, expected_gap);
+
+    positive_ordered_exprs_equivalent(ctx, positive_expr, expected_gap)
+        || positive_ordered_exprs_equivalent(ctx, positive_expr, normalized_gap)
+        || conditions_same_display(
+            ctx,
+            &ImplicitCondition::Positive(positive_expr),
+            &ImplicitCondition::Positive(expected_gap),
+        )
+        || conditions_same_display(
+            ctx,
+            &ImplicitCondition::Positive(positive_expr),
+            &ImplicitCondition::Positive(normalized_gap),
+        )
+}
+
+fn collect_reciprocal_surd_lower_bound_parts(
+    ctx: &Context,
+    expr: ExprId,
+    rational_coeff: &mut BigRational,
+    sqrt_arg: &mut Option<BigRational>,
+    payload_factors: &mut Vec<ExprId>,
+) {
+    if let Some(value) = as_rational_const(ctx, expr) {
+        *rational_coeff *= value;
+        return;
+    }
+
+    if let Some(arg) = extract_sqrt_like_base(ctx, expr) {
+        if let Some(value) = as_rational_const(ctx, arg) {
+            if value.is_positive() && sqrt_arg.is_none() {
+                *sqrt_arg = Some(value);
+                return;
+            }
+        }
+    }
+
+    match ctx.get(expr) {
+        Expr::Mul(left, right) => {
+            collect_reciprocal_surd_lower_bound_parts(
+                ctx,
+                *left,
+                rational_coeff,
+                sqrt_arg,
+                payload_factors,
+            );
+            collect_reciprocal_surd_lower_bound_parts(
+                ctx,
+                *right,
+                rational_coeff,
+                sqrt_arg,
+                payload_factors,
+            );
+        }
+        Expr::Div(num, den) => {
+            if let Some(value) = as_rational_const(ctx, *den) {
+                collect_reciprocal_surd_lower_bound_parts(
+                    ctx,
+                    *num,
+                    rational_coeff,
+                    sqrt_arg,
+                    payload_factors,
+                );
+                *rational_coeff /= value;
+            } else {
+                payload_factors.push(expr);
+            }
+        }
+        _ => payload_factors.push(expr),
+    }
+}
+
 fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitCondition>) {
     let mut to_remove: Vec<usize> = Vec::new();
 
@@ -3260,6 +3404,32 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                 }
                 (ImplicitCondition::NonZero(nz_expr), ImplicitCondition::NonNegative(nn_expr)) => {
                     if is_factorial_of_arg(ctx, *nz_expr, *nn_expr) {
+                        to_remove.push(i);
+                        break;
+                    }
+                }
+                (
+                    ImplicitCondition::LowerBound(bounded_expr, lower),
+                    ImplicitCondition::Positive(pos_expr),
+                ) => {
+                    if positive_expr_implies_lower_bound(ctx, *pos_expr, *bounded_expr, lower)
+                        || positive_condition_dominates_reciprocal_surd_lower_bound(
+                            ctx,
+                            *pos_expr,
+                            *bounded_expr,
+                            lower,
+                        )
+                    {
+                        to_remove.push(i);
+                        break;
+                    }
+                }
+                (
+                    ImplicitCondition::LowerBound(bounded_expr, lower),
+                    ImplicitCondition::NonZero(nz_expr),
+                ) => {
+                    if nonzero_condition_dominates_lower_bound(ctx, *nz_expr, *bounded_expr, lower)
+                    {
                         to_remove.push(i);
                         break;
                     }
@@ -3425,6 +3595,23 @@ mod tests {
             expr,
             DISPLAY_SIGN_PROOF_DEPTH
         ));
+    }
+
+    #[test]
+    fn reciprocal_surd_lower_bound_is_dominated_by_matching_positive_gap() {
+        let mut ctx = Context::new();
+        let bounded = parse("sqrt(5)*(x^2+x)/5", &mut ctx).expect("parse bounded expression");
+        let gap = parse("x^2+x-sqrt(5)", &mut ctx).expect("parse positive gap");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::LowerBound(bounded, BigRational::one()),
+                ImplicitCondition::Positive(gap),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x^2 + x - sqrt(5) > 0"]);
     }
 
     #[test]

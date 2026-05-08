@@ -86,6 +86,31 @@ mod tests {
     }
 
     #[test]
+    fn render_expr_displays_negative_quotient_in_sum_as_subtraction() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let four = ctx.num(4);
+        let neg_four = ctx.add(Expr::Neg(four));
+        let denominator = ctx.add(Expr::Sub(x, one));
+        let quotient = ctx.add(Expr::Div(neg_four, denominator));
+        let expr = ctx.add(Expr::Add(two, quotient));
+
+        assert_eq!(render_expr(&ctx, expr), "2 - 4 / (x - 1)");
+    }
+
+    #[test]
+    fn render_expr_omits_unit_factor_in_product() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let product = ctx.add(Expr::Mul(one, x));
+
+        assert_eq!(render_expr(&ctx, product), "x");
+    }
+
+    #[test]
     fn render_expr_does_not_group_multiple_negative_products() {
         let mut ctx = Context::new();
         let a = ctx.var("a");

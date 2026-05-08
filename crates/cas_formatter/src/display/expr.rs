@@ -191,6 +191,27 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                     _ => {}
                 }
 
+                if is_positive_one_factor(self.context, *l) {
+                    return write!(
+                        f,
+                        "{}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *r
+                        }
+                    );
+                }
+                if is_positive_one_factor(self.context, *r) {
+                    return write!(
+                        f,
+                        "{}",
+                        DisplayExpr {
+                            context: self.context,
+                            id: *l
+                        }
+                    );
+                }
+
                 let lhs_prec = precedence(self.context, *l);
                 let rhs_prec = precedence(self.context, *r);
                 let op_prec = 2; // Mul precedence
@@ -963,6 +984,16 @@ pub(super) fn check_negative(
                 _ => (false, None, None),
             }
         }
+        Expr::Div(a, b) => {
+            let left_neg = direct_negative_factor(ctx, *a);
+            let right_neg = direct_negative_factor(ctx, *b);
+            match (left_neg, right_neg) {
+                (Some((_inner, coeff)), None) | (None, Some((_inner, coeff))) => {
+                    (true, None, coeff)
+                }
+                _ => (false, None, None),
+            }
+        }
         _ => (false, None, None),
     }
 }
@@ -976,6 +1007,10 @@ pub(super) fn direct_negative_factor(
         Expr::Number(n) if *n < num_rational::BigRational::zero() => Some((id, Some((-n).clone()))),
         _ => None,
     }
+}
+
+fn is_positive_one_factor(ctx: &Context, id: ExprId) -> bool {
+    matches!(ctx.get(id), Expr::Number(n) if n.is_one())
 }
 
 pub(super) fn format_term_absolute(
@@ -1026,7 +1061,73 @@ pub(super) fn format_term_absolute(
                 _ => write!(f, "{}", DisplayExpr { context: ctx, id }),
             }
         }
+        Expr::Div(a, b) => {
+            let left_neg = direct_negative_factor(ctx, *a);
+            let right_neg = direct_negative_factor(ctx, *b);
+            match (left_neg, right_neg) {
+                (Some((inner, coeff)), None) => format_div_absolute(
+                    f,
+                    ctx,
+                    RenderFactor::Direct(inner, coeff),
+                    RenderFactor::Expr(*b),
+                ),
+                (None, Some((inner, coeff))) => format_div_absolute(
+                    f,
+                    ctx,
+                    RenderFactor::Expr(*a),
+                    RenderFactor::Direct(inner, coeff),
+                ),
+                _ => write!(f, "{}", DisplayExpr { context: ctx, id }),
+            }
+        }
         _ => write!(f, "{}", DisplayExpr { context: ctx, id }),
+    }
+}
+
+fn format_div_absolute(
+    f: &mut fmt::Formatter<'_>,
+    ctx: &Context,
+    numerator: RenderFactor,
+    denominator: RenderFactor,
+) -> fmt::Result {
+    let numerator_prec = match &numerator {
+        RenderFactor::Direct(_, Some(_)) => 3,
+        RenderFactor::Direct(id, None) | RenderFactor::Expr(id) => precedence(ctx, *id),
+    };
+    let denominator_prec = match &denominator {
+        RenderFactor::Direct(_, Some(_)) => 3,
+        RenderFactor::Direct(id, None) | RenderFactor::Expr(id) => precedence(ctx, *id),
+    };
+
+    if numerator_prec < 2 {
+        write!(f, "(")?;
+        format_render_factor_absolute(f, ctx, numerator)?;
+        write!(f, ")")?;
+    } else {
+        format_render_factor_absolute(f, ctx, numerator)?;
+    }
+
+    write!(f, " / ")?;
+
+    if denominator_prec <= 2 {
+        write!(f, "(")?;
+        format_render_factor_absolute(f, ctx, denominator)?;
+        write!(f, ")")
+    } else {
+        format_render_factor_absolute(f, ctx, denominator)
+    }
+}
+
+fn format_render_factor_absolute(
+    f: &mut fmt::Formatter<'_>,
+    ctx: &Context,
+    factor: RenderFactor,
+) -> fmt::Result {
+    match factor {
+        RenderFactor::Direct(_, Some(coeff)) => write!(f, "{}", coeff),
+        RenderFactor::Direct(id, None) | RenderFactor::Expr(id) => {
+            write!(f, "{}", DisplayExpr { context: ctx, id })
+        }
     }
 }
 
@@ -1069,10 +1170,10 @@ fn format_mul_absolute(
     left: RenderFactor,
     right: RenderFactor,
 ) -> fmt::Result {
-    if render_factor_is_unit_direct(&left) {
+    if render_factor_is_unit(ctx, &left) {
         return format_abs_factor(f, ctx, right);
     }
-    if render_factor_is_unit_direct(&right) {
+    if render_factor_is_unit(ctx, &right) {
         return format_abs_factor(f, ctx, left);
     }
 
@@ -1081,8 +1182,11 @@ fn format_mul_absolute(
     format_abs_factor(f, ctx, right)
 }
 
-fn render_factor_is_unit_direct(factor: &RenderFactor) -> bool {
-    matches!(factor, RenderFactor::Direct(_, Some(coeff)) if coeff.is_one())
+fn render_factor_is_unit(ctx: &Context, factor: &RenderFactor) -> bool {
+    match factor {
+        RenderFactor::Direct(_, Some(coeff)) => coeff.is_one(),
+        RenderFactor::Direct(id, None) | RenderFactor::Expr(id) => is_positive_one_factor(ctx, *id),
+    }
 }
 
 fn format_abs_factor(

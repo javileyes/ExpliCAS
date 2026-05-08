@@ -8,9 +8,9 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 
 | id | category | steps | wire substeps | flags |
 | --- | --- | ---: | ---: | --- |
-| `rationalize_linear_root` | `rationalization` | 6 | 3 | none |
-| `nested_fraction_one_over_sum` | `nested_fraction` | 2 | 3 | none |
-| `nested_fraction_fraction_over_sum` | `nested_fraction` | 2 | 3 | none |
+| `rationalize_linear_root` | `rationalization` | 5 | 3 | none |
+| `nested_fraction_one_over_sum` | `nested_fraction` | 2 | 2 | none |
+| `nested_fraction_fraction_over_sum` | `nested_fraction` | 2 | 2 | none |
 | `combine_like_terms_basic` | `combine` | 2 | 1 | none |
 | `log_product_cancellation` | `logs` | 1 | 0 | none |
 | `same_denominator_fraction_focus` | `fractions` | 2 | 1 | none |
@@ -18,7 +18,7 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 | `difference_of_squares_quotient` | `quotient` | 2 | 2 | none |
 | `pythagorean_identity` | `trig` | 1 | 2 | none |
 | `inverse_trig_identity` | `inverse_trig` | 5 | 1 | none |
-| `polynomial_expansion_cancel` | `polynomial` | 5 | 2 | none |
+| `polynomial_expansion_cancel` | `polynomial` | 3 | 2 | none |
 | `perfect_square_root` | `radicals` | 1 | 2 | none |
 | `cube_quotient_radical` | `quotient` | 1 | 3 | none |
 | `geometric_product_cancellation` | `polynomial` | 1 | 3 | none |
@@ -28,7 +28,7 @@ Command: `cargo test -p cas_didactic --test didactic_step_quality_audit didactic
 - Input: `1 / (sqrt(x) - 1) - (sqrt(x) + 1) / (x - 1)`
 - Focus: `web_substeps_latex_and_human_explanation`
 - Final result: `0`
-- Step count: `6`
+- Step count: `5`
 - Wire substep count: `3`
 - Flags: none
 
@@ -85,7 +85,7 @@ Steps:
 - Focus: `narrate_common_denominator_without_magic`
 - Final result: `x * y / (x + y)`
 - Step count: `2`
-- Wire substep count: `3`
+- Wire substep count: `2`
 - Flags: none
 
 ### CLI Step By Step
@@ -94,11 +94,6 @@ Steps:
 Steps:
 1. Sumar fracciones
    Before: 1/(1/x + 1/y)
-   [Simplificación de fracción compleja]
-      [Simplificar el numerador y el denominador]
-        (x + y)/(x ·  y)
-        ->
-        (x + y)/(x ·  y)
    After: 1/((x + y)/(x · y))
 2. Simplificar fracción anidada
    Before: 1/((x + y)/(x · y))
@@ -121,10 +116,7 @@ Steps:
    - after: `1/((x + y)/(x · y))`
    - before_latex: `\frac{1}{{\color{red}{\frac{1}{x} + \frac{1}{y}}}}`
    - after_latex: `\frac{1}{{\color{green}{\frac{x + y}{x\cdot y}}}}`
-   - substeps:
-     1. `Simplificar el numerador y el denominador`
-        - before_latex: `\frac{x + y}{x\cdot y}`
-        - after_latex: `\frac{x + y}{x\cdot y}`
+   - substeps: none
 2. `Simplificar fracción anidada`
    - before: `1/((x + y)/(x · y))`
    - after: `(x · y)/(x + y)`
@@ -144,7 +136,7 @@ Steps:
 - Focus: `explain_inner_fraction_then_outer_division`
 - Final result: `y * z / (x * y + x * z)`
 - Step count: `2`
-- Wire substep count: `3`
+- Wire substep count: `2`
 - Flags: none
 
 ### CLI Step By Step
@@ -153,11 +145,6 @@ Steps:
 Steps:
 1. Sumar fracciones
    Before: (1/x)/(1/y + 1/z)
-   [Simplificación de fracción compleja]
-      [Simplificar el numerador y el denominador]
-        (y + z)/(y ·  z)
-        ->
-        (y + z)/(y ·  z)
    After: (1/x)/((y + z)/(y · z))
 2. Simplificar fracción anidada
    Before: (1/x)/((y + z)/(y · z))
@@ -180,10 +167,7 @@ Steps:
    - after: `(1/x)/((y + z)/(y · z))`
    - before_latex: `\frac{\frac{1}{x}}{{\color{red}{\frac{1}{y} + \frac{1}{z}}}}`
    - after_latex: `\frac{\frac{1}{x}}{{\color{green}{\frac{y + z}{y\cdot z}}}}`
-   - substeps:
-     1. `Simplificar el numerador y el denominador`
-        - before_latex: `\frac{y + z}{y\cdot z}`
-        - after_latex: `\frac{y + z}{y\cdot z}`
+   - substeps: none
 2. `Simplificar fracción anidada`
    - before: `(1/x)/((y + z)/(y · z))`
    - after: `(y · z)/(x · (y + z))`
@@ -468,7 +452,7 @@ Steps:
 - Input: `(a+b)^2 - a^2 - 2*a*b`
 - Focus: `expansion_and_collection_should_be_readable`
 - Final result: `b^2`
-- Step count: `5`
+- Step count: `3`
 - Wire substep count: `2`
 - Flags: none
 
@@ -480,7 +464,7 @@ Steps:
    Before: ((a + b))^2 - a^2 - 2 · a · b
    After: b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b
 2. Cancel exact additive pairs
-   Before: a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b
+   Before: b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b
       [Cancelar términos opuestos exactos]
         a^2 - a^2
         ->

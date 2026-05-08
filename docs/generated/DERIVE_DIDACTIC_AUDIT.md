@@ -1354,12 +1354,12 @@ Result: 2 * x
 ### CLI
 
 ```text
-Parsed: -a / c + (a * d / c + b) / (d - c * x)
+Parsed: (a * d / c + b) / (d - c * x) - a / c
 Target: (a * x + b) / (d - c * x)
 Strategy: combine fraction
 Steps (Aggressive Mode):
 1. Combine the whole part with the remaining fraction  [Mixed Fraction Combine]
-   Before: -a / c + (a * d / c + b) / (d - c * x)
+   Before: (a * d / c + b) / (d - c * x) + a / c
    After: (a * x + b) / (d - c * x)
 Result: (a * x + b) / (d - c * x)
 ℹ️ Requires:
@@ -1370,7 +1370,7 @@ Result: (a * x + b) / (d - c * x)
 ### Web / JSON Steps
 
 1. `Unir parte entera y fracción`
-   - before: `-a/c + ((a · d)/c + b)/(d - c · x)`
+   - before: `((a · d)/c + b)/(d - c · x) - a/c`
    - after: `(a · x + b)/(d - c · x)`
    - substeps: none
 
@@ -15524,7 +15524,7 @@ Result: (b - a * c) / (c + x) + a
 
 - Source: `(a*x+b)/(d-c*x)`
 - Target: `-a/c + (b+a*d/c)/(d-c*x)`
-- Result: `-a / c + (a * d / c + b) / (d - c * x)`
+- Result: `(a * d / c + b) / (d - c * x) - a / c`
 - Web step count: `1`
 - Web substep count: `2`
 - Flags: none
@@ -15533,13 +15533,13 @@ Result: (b - a * c) / (c + x) + a
 
 ```text
 Parsed: (a * x + b) / (d - c * x)
-Target: -a / c + (a * d / c + b) / (d - c * x)
+Target: (a * d / c + b) / (d - c * x) - a / c
 Strategy: split fraction
 Steps (Aggressive Mode):
 1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
    Before: (a * x + b) / (d - c * x)
-   After: -a / c + (a * d / c + b) / (d - c * x)
-Result: -a / c + (a * d / c + b) / (d - c * x)
+   After: (a * d / c + b) / (d - c * x) - a / c
+Result: (a * d / c + b) / (d - c * x) + a / c
 ℹ️ Requires:
   • c ≠ 0
   • c * x - d ≠ 0
@@ -15549,7 +15549,7 @@ Result: -a / c + (a * d / c + b) / (d - c * x)
 
 1. `Separar parte entera y resto`
    - before: `(a · x + b)/(d - c · x)`
-   - after: `-a/c + ((a · d)/c + b)/(d - c · x)`
+   - after: `((a · d)/c + b)/(d - c · x) - a/c`
    - substeps:
      1. `Reescribir el numerador como parte entera por denominador más resto`
      2. `Separar la suma del numerador sobre el denominador`

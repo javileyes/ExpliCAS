@@ -76,6 +76,7 @@ pub enum AbsAssumptionKind {
 pub enum AbsDomainRewriteKind {
     Positive,
     PositiveAssume,
+    Negative,
     NonNegative,
     NonNegativeAssume,
 }
@@ -164,6 +165,28 @@ pub fn try_plan_abs_positive_rewrite(
             }
         }
     }
+}
+
+/// Decide rewrite plan for `abs(x)` under a strict negativity context.
+///
+/// This intentionally has no assume-mode branch: `|x| -> -x` is only retained
+/// when the caller has already proved or inherited `x < 0`.
+pub fn try_plan_abs_negative_rewrite(
+    ctx: &mut Context,
+    expr: ExprId,
+    negative_implied: bool,
+) -> Option<AbsDomainRewrite> {
+    let inner = try_unwrap_abs_arg(ctx, expr)?;
+    if !negative_implied {
+        return None;
+    }
+
+    let rewritten = ctx.add(Expr::Neg(inner));
+    Some(AbsDomainRewrite {
+        rewritten,
+        kind: AbsDomainRewriteKind::Negative,
+        assumption: None,
+    })
 }
 
 /// Decide rewrite plan for `abs(x)` under a non-negativity proof context.

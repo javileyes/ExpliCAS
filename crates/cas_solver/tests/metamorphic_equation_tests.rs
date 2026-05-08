@@ -34,7 +34,7 @@ use cas_solver::command_api::solve::{evaluate_solve_command_lines_with_session, 
 use cas_solver::runtime::{
     CasError, DomainMode, EvalOptions, Simplifier, SolverOptions, StatelessEvalSession, ValueDomain,
 };
-use num_traits::Signed;
+use num_traits::{Signed, Zero};
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -2595,6 +2595,11 @@ fn implicit_cond_is_redundant(ctx: &Context, c: &ImplicitCondition) -> bool {
         ImplicitCondition::NonZero(e) => oracle.query(&Predicate::NonZero(*e)).is_proven(),
         ImplicitCondition::Positive(e) => oracle.query(&Predicate::Positive(*e)).is_proven(),
         ImplicitCondition::NonNegative(e) => oracle.query(&Predicate::NonNegative(*e)).is_proven(),
+        ImplicitCondition::LowerBound(e, lower) => {
+            c.is_trivial(ctx)
+                || (lower <= &num_rational::BigRational::zero()
+                    && oracle.query(&Predicate::NonNegative(*e)).is_proven())
+        }
     }
 }
 
@@ -4064,6 +4069,14 @@ fn render_required_signatures(ctx: &Context, required: &[ImplicitCondition]) -> 
                     context: ctx,
                     id: *id
                 }
+            ),
+            ImplicitCondition::LowerBound(id, lower) => format!(
+                "lower_bound({}, {})",
+                DisplayExpr {
+                    context: ctx,
+                    id: *id
+                },
+                lower
             ),
         })
         .collect();

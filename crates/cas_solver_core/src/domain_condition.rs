@@ -5,8 +5,9 @@
 //! - display policy (`RequiresDisplayLevel`)
 //! - inferred condition set container (`ImplicitDomain`)
 
-use cas_ast::{Context, ExprId};
+use cas_ast::{Context, Expr, ExprId};
 use cas_math::expr_extract::extract_abs_argument_view;
+use num_rational::BigRational;
 use std::collections::HashSet;
 
 /// An implicit condition inferred from expression structure.
@@ -14,6 +15,8 @@ use std::collections::HashSet;
 pub enum ImplicitCondition {
     /// x ≥ 0 (from sqrt(x) or x^(1/2))
     NonNegative(ExprId),
+    /// x ≥ c, for real-domain lower bounds such as acosh(x), where c = 1.
+    LowerBound(ExprId, BigRational),
     /// x > 0 (from ln(x) or log(x))
     Positive(ExprId),
     /// x ≠ 0 (from 1/x or Div(_, x))
@@ -32,6 +35,14 @@ impl ImplicitCondition {
                     context: ctx,
                     id: *e
                 }
+            ),
+            Self::LowerBound(e, lower) => format!(
+                "{} ≥ {}",
+                DisplayExpr {
+                    context: ctx,
+                    id: *e
+                },
+                lower
             ),
             Self::Positive(e) => {
                 if let Some(arg) = extract_abs_argument_view(ctx, *e) {
@@ -65,7 +76,10 @@ impl ImplicitCondition {
     /// Check if this condition is trivial (always true or on a constant expression).
     pub fn is_trivial(&self, ctx: &Context) -> bool {
         let expr = match self {
-            Self::NonNegative(e) | Self::Positive(e) | Self::NonZero(e) => *e,
+            Self::NonNegative(e)
+            | Self::LowerBound(e, _)
+            | Self::Positive(e)
+            | Self::NonZero(e) => *e,
         };
 
         if matches!(self, Self::NonZero(_))
@@ -120,6 +134,12 @@ impl ImplicitCondition {
             return true;
         }
 
+        if let Self::LowerBound(_, lower) = self {
+            if let Expr::Number(n) = ctx.get(expr) {
+                return n >= lower;
+            }
+        }
+
         // Fully numeric expressions are trivial in this context.
         if !cas_math::expr_predicates::contains_variable(ctx, expr) {
             return true;
@@ -141,6 +161,7 @@ impl ImplicitCondition {
 
         match self {
             Self::NonNegative(e) => witness_survives(ctx, *e, output, WitnessKind::Sqrt),
+            Self::LowerBound(_, _) => false,
             Self::Positive(e) => witness_survives(ctx, *e, output, WitnessKind::Log),
             Self::NonZero(e) => witness_survives(ctx, *e, output, WitnessKind::Division),
         }
@@ -213,6 +234,12 @@ impl ImplicitDomain {
         self.conditions.insert(ImplicitCondition::NonNegative(expr));
     }
 
+    /// Add a lower-bound condition.
+    pub fn add_lower_bound(&mut self, expr: ExprId, lower: BigRational) {
+        self.conditions
+            .insert(ImplicitCondition::LowerBound(expr, lower));
+    }
+
     /// Add a Positive condition.
     pub fn add_positive(&mut self, expr: ExprId) {
         self.conditions.insert(ImplicitCondition::Positive(expr));
@@ -280,6 +307,10 @@ impl From<&ImplicitCondition> for cas_ast::ConditionPredicate {
     fn from(cond: &ImplicitCondition) -> Self {
         match cond {
             ImplicitCondition::NonNegative(e) => cas_ast::ConditionPredicate::NonNegative(*e),
+            ImplicitCondition::LowerBound(e, lower) => cas_ast::ConditionPredicate::LowerBound {
+                expr: *e,
+                lower: lower.clone(),
+            },
             ImplicitCondition::Positive(e) => cas_ast::ConditionPredicate::Positive(*e),
             ImplicitCondition::NonZero(e) => cas_ast::ConditionPredicate::NonZero(*e),
         }
@@ -298,6 +329,9 @@ impl TryFrom<&cas_ast::ConditionPredicate> for ImplicitCondition {
     fn try_from(pred: &cas_ast::ConditionPredicate) -> Result<Self, Self::Error> {
         match pred {
             cas_ast::ConditionPredicate::NonNegative(e) => Ok(ImplicitCondition::NonNegative(*e)),
+            cas_ast::ConditionPredicate::LowerBound { expr, lower } => {
+                Ok(ImplicitCondition::LowerBound(*expr, lower.clone()))
+            }
             cas_ast::ConditionPredicate::Positive(e) => Ok(ImplicitCondition::Positive(*e)),
             cas_ast::ConditionPredicate::NonZero(e) => Ok(ImplicitCondition::NonZero(*e)),
             _ => Err(()),

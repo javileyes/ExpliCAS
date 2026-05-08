@@ -8,7 +8,7 @@
 use crate::domain_condition::{ImplicitCondition, ImplicitDomain};
 use crate::domain_proof::Proof;
 use crate::domain_witness::{witness_survives_in_context, WitnessKind};
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_extract::{
     extract_abs_argument_view, extract_log_base_argument_view, extract_sqrt_argument_view,
     extract_unary_log_argument_view, log10_base_sentinel,
@@ -17,6 +17,7 @@ use cas_math::expr_predicates::{
     contains_variable, has_positivity_structure, is_even_root_exponent,
 };
 use cas_math::numeric_eval::as_rational_const;
+use num_rational::BigRational;
 use num_traits::{Signed, Zero};
 
 /// Result of domain delta check between input and output.
@@ -85,7 +86,9 @@ where
         .filter(|c| {
             matches!(
                 c,
-                ImplicitCondition::NonNegative(_) | ImplicitCondition::Positive(_)
+                ImplicitCondition::NonNegative(_)
+                    | ImplicitCondition::LowerBound(_, _)
+                    | ImplicitCondition::Positive(_)
             )
         })
         .cloned()
@@ -161,6 +164,15 @@ where
                             WitnessKind::Log,
                             format!("{} > 0", var_name),
                             format!("from ln({})", var_name),
+                        )
+                    }
+                    ImplicitCondition::LowerBound(t, lower) => {
+                        let var_name = format_expr_short(ctx, *t);
+                        (
+                            *t,
+                            WitnessKind::Sqrt,
+                            format!("{} >= {}", var_name, lower),
+                            format!("from lower bound on {}", var_name),
                         )
                     }
                     ImplicitCondition::NonZero(_) => continue,
@@ -290,6 +302,7 @@ fn is_covered_by_stronger_predicate(
             Some(replacement),
             WitnessKind::Log,
         ),
+        ImplicitCondition::LowerBound(_, _) => false,
         ImplicitCondition::Positive(_) => false,
         ImplicitCondition::NonZero(_) => false,
     }
@@ -348,10 +361,20 @@ fn add_positive_and_propagate<F>(
 }
 
 fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
-    let mut stack = vec![root];
+    let mut stack = vec![(root, false)];
 
-    while let Some(expr) = stack.pop() {
+    while let Some((expr, inside_calculus_call)) = stack.pop() {
         match ctx.get(expr) {
+            Expr::Function(fn_id, args)
+                if !inside_calculus_call
+                    && ctx.builtin_of(*fn_id) == Some(BuiltinFn::Acosh)
+                    && args.len() == 1 =>
+            {
+                if !matches!(ctx.get(args[0]), Expr::Number(_)) {
+                    domain.add_lower_bound(args[0], BigRational::from_integer(1.into()));
+                }
+                stack.push((args[0], inside_calculus_call));
+            }
             Expr::Function(_, _) if extract_sqrt_argument_view(ctx, expr).is_some() => {
                 let Some(arg) = extract_sqrt_argument_view(ctx, expr) else {
                     continue;
@@ -359,26 +382,26 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
                 if !matches!(ctx.get(arg), Expr::Number(_)) {
                     domain.add_nonnegative(arg);
                 }
-                stack.push(arg);
+                stack.push((arg, inside_calculus_call));
             }
             Expr::Function(_, _) if extract_unary_log_argument_view(ctx, expr).is_some() => {
                 let Some(arg) = extract_unary_log_argument_view(ctx, expr) else {
                     continue;
                 };
                 domain.add_positive(arg);
-                stack.push(arg);
+                stack.push((arg, inside_calculus_call));
             }
             Expr::Function(_, _) if extract_log_base_argument_view(ctx, expr).is_some() => {
                 let Some((base_opt, arg)) = extract_log_base_argument_view(ctx, expr) else {
                     continue;
                 };
                 domain.add_positive(arg);
-                stack.push(arg);
+                stack.push((arg, inside_calculus_call));
 
                 if let Some(base) = base_opt {
                     if base != log10_base_sentinel() && !matches!(ctx.get(base), Expr::Number(_)) {
                         domain.add_positive(base);
-                        stack.push(base);
+                        stack.push((base, inside_calculus_call));
                     }
                 }
             }
@@ -398,30 +421,36 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
                         }
                     }
                 }
-                stack.push(*base);
-                stack.push(*exp);
+                stack.push((*base, inside_calculus_call));
+                stack.push((*exp, inside_calculus_call));
             }
             Expr::Div(num, den) => {
                 domain.add_nonzero(*den);
                 add_denominator_nonzero_implications(ctx, *den, domain);
-                stack.push(*num);
-                stack.push(*den);
+                stack.push((*num, inside_calculus_call));
+                stack.push((*den, inside_calculus_call));
             }
             Expr::Add(l, r) | Expr::Sub(l, r) | Expr::Mul(l, r) => {
-                stack.push(*l);
-                stack.push(*r);
+                stack.push((*l, inside_calculus_call));
+                stack.push((*r, inside_calculus_call));
             }
             Expr::Neg(inner) => {
-                stack.push(*inner);
+                stack.push((*inner, inside_calculus_call));
             }
-            Expr::Function(_, args) => {
-                stack.extend(args.iter().copied());
+            Expr::Function(fn_id, args) => {
+                let enters_calculus =
+                    matches!(ctx.sym_name(*fn_id), "diff" | "integrate" | "limit");
+                stack.extend(
+                    args.iter()
+                        .copied()
+                        .map(|arg| (arg, inside_calculus_call || enters_calculus)),
+                );
             }
             Expr::Matrix { data, .. } => {
-                stack.extend(data.iter().copied());
+                stack.extend(data.iter().copied().map(|arg| (arg, inside_calculus_call)));
             }
             Expr::Hold(inner) => {
-                stack.push(*inner);
+                stack.push((*inner, inside_calculus_call));
             }
             Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
         }

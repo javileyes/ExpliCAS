@@ -19,6 +19,7 @@ pub(super) fn map_required_conditions(
         .map(|cond| {
             let (kind, expr_id) = match cond {
                 ImplicitCondition::NonNegative(e) => ("NonNegative", *e),
+                ImplicitCondition::LowerBound(e, _) => ("LowerBound", *e),
                 ImplicitCondition::Positive(e) => ("Positive", *e),
                 ImplicitCondition::NonZero(e) => ("NonZero", *e),
             };

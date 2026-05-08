@@ -13250,6 +13250,28 @@ fn try_standard_sub_self_cancel_shortcut(
     ))
 }
 
+fn try_standard_abs_domain_add_sub_cancellation_shortcut(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+    sticky_domain: Option<crate::ImplicitDomain>,
+) -> Option<(ExprId, Vec<Step>)> {
+    let mut parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+    if let Some(domain) = sticky_domain {
+        parent_ctx = parent_ctx.with_implicit_domain(Some(domain));
+    }
+    let rule = crate::rules::functions::AbsDomainAddSubCancellationRule;
+    let rewrite = crate::rule::Rule::apply(&rule, ctx, expr, &parent_ctx)?;
+    Some(finish_root_shortcut_with_rewrite_meta(
+        ctx,
+        expr,
+        rewrite,
+        "Abs Domain Add/Sub Cancellation",
+        collect_steps,
+    ))
+}
+
 fn try_standard_exact_zero_equivalence_shortcut(
     options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
@@ -22260,11 +22282,14 @@ fn try_standard_exact_additive_pair_chain_pipeline_shortcut(
     let (rewritten, mut shortcut_steps) =
         try_standard_exact_additive_pair_chain_shortcut(options, ctx, expr, collect_steps)?;
 
+    let needs_domain_resimplify =
+        exact_additive_pair_chain_result_needs_domain_resimplify(options, ctx, expr, rewritten);
     let should_resimplify =
         expr_contains_any_builtin_local(ctx, rewritten, &[BuiltinFn::Atan, BuiltinFn::Arctan])
             || matches_direct_small_zero_identity_root(ctx, rewritten)
             || matches_direct_small_zero_or_known_pair_base_root(ctx, rewritten)
-            || cas_math::numeric_eval::contains_i(ctx, rewritten);
+            || cas_math::numeric_eval::contains_i(ctx, rewritten)
+            || needs_domain_resimplify;
 
     if !should_resimplify {
         return Some((rewritten, shortcut_steps));
@@ -22272,6 +22297,9 @@ fn try_standard_exact_additive_pair_chain_pipeline_shortcut(
 
     let mut simplifier = crate::Simplifier::with_default_rules();
     std::mem::swap(&mut simplifier.context, ctx);
+    if needs_domain_resimplify {
+        simplifier.set_sticky_implicit_domain(expr, options.shared.semantics.value_domain);
+    }
     let (result, inner_steps, _stats) = simplifier.simplify_with_stats(
         rewritten,
         crate::SimplifyOptions {
@@ -22286,6 +22314,21 @@ fn try_standard_exact_additive_pair_chain_pipeline_shortcut(
     }
 
     Some((result, shortcut_steps))
+}
+
+fn exact_additive_pair_chain_result_needs_domain_resimplify(
+    options: &crate::phase::SimplifyOptions,
+    ctx: &Context,
+    original: ExprId,
+    rewritten: ExprId,
+) -> bool {
+    if !expr_contains_any_builtin_local(ctx, rewritten, &[BuiltinFn::Abs, BuiltinFn::Sqrt]) {
+        return false;
+    }
+
+    let input_domain =
+        crate::infer_implicit_domain(ctx, original, options.shared.semantics.value_domain);
+    !input_domain.conditions().is_empty()
 }
 
 fn try_finalize_trivial_additive_closure_root(
@@ -27294,6 +27337,22 @@ impl Orchestrator {
                         crate::phase::PipelineStats::default(),
                     );
                 }
+                let sticky_domain = simplifier.sticky_implicit_domain().cloned();
+                if let Some((result, shortcut_steps)) =
+                    try_standard_abs_domain_add_sub_cancellation_shortcut(
+                        &self.options,
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                        sticky_domain,
+                    )
+                {
+                    return (
+                        result,
+                        shortcut_steps,
+                        crate::phase::PipelineStats::default(),
+                    );
+                }
                 if !is_nested_additive_pair_root(&simplifier.context, expr) {
                     if let Some((result, shortcut_steps)) =
                         try_standard_exact_zero_equivalence_shortcut(
@@ -27599,6 +27658,14 @@ impl Orchestrator {
                 );
             }
             if add_root || sub_root {
+                let sticky_domain = simplifier.sticky_implicit_domain().cloned();
+                return_root_shortcut_pair!(try_standard_abs_domain_add_sub_cancellation_shortcut(
+                    &self.options,
+                    &mut simplifier.context,
+                    expr,
+                    collect_steps,
+                    sticky_domain,
+                ));
                 if is_targeted_early_small_zero_additive_combination_candidate_root(
                     &mut simplifier.context,
                     expr,
@@ -28064,7 +28131,9 @@ impl Orchestrator {
         // V2.15.8: Set sticky implicit domain from original input to propagate inherited
         // requires across the phase pipeline. Hidden solve root shortcuts above do not need it,
         // because final diagnostics re-derive implicit conditions from input/result.
-        simplifier.set_sticky_implicit_domain(expr, self.options.shared.semantics.value_domain);
+        if simplifier.sticky_implicit_domain().is_none() {
+            simplifier.set_sticky_implicit_domain(expr, self.options.shared.semantics.value_domain);
+        }
 
         // PRE-PASS 1: Eager eval for expand() calls using fast mod-p path
         // This runs BEFORE any simplification to avoid budget exhaustion on huge arguments

@@ -16,6 +16,7 @@ pub fn condition_predicate_to_display(pred: &ConditionPredicate, ctx: &Context) 
         ConditionPredicate::NonZero(_) => format!("{} != 0", expr_str),
         ConditionPredicate::Positive(_) => format!("{} > 0", expr_str),
         ConditionPredicate::NonNegative(_) => format!("{} >= 0", expr_str),
+        ConditionPredicate::LowerBound { lower, .. } => format!("{} >= {}", expr_str, lower),
         ConditionPredicate::Defined(_) => format!("defined({})", expr_str),
         ConditionPredicate::InvTrigPrincipalRange { func, .. } => {
             format!("{} in principal range of {}", expr_str, func)
@@ -37,6 +38,9 @@ pub fn condition_predicate_to_latex(pred: &ConditionPredicate, ctx: &Context) ->
         ConditionPredicate::NonZero(_) => format!("{} \\neq 0", expr_latex),
         ConditionPredicate::Positive(_) => format!("{} > 0", expr_latex),
         ConditionPredicate::NonNegative(_) => format!("{} \\geq 0", expr_latex),
+        ConditionPredicate::LowerBound { lower, .. } => {
+            format!("{} \\geq {}", expr_latex, lower)
+        }
         ConditionPredicate::Defined(_) => format!("\\text{{defined}}({})", expr_latex),
         ConditionPredicate::InvTrigPrincipalRange { func, .. } => {
             format!("{} \\in \\text{{principal range of }}{}", expr_latex, func)

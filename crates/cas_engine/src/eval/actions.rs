@@ -61,6 +61,7 @@ fn limit_domain_path_warning(
             let witness = match cond {
                 crate::ImplicitCondition::Positive(witness)
                 | crate::ImplicitCondition::NonNegative(witness) => *witness,
+                crate::ImplicitCondition::LowerBound(_, _) => return None,
                 crate::ImplicitCondition::NonZero(_) => return None,
             };
 
@@ -71,6 +72,7 @@ fn limit_domain_path_warning(
             let witness = match cond {
                 crate::ImplicitCondition::Positive(witness)
                 | crate::ImplicitCondition::NonNegative(witness) => *witness,
+                crate::ImplicitCondition::LowerBound(_, _) => return None,
                 crate::ImplicitCondition::NonZero(_) => return None,
             };
 
