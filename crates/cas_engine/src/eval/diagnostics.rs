@@ -103,6 +103,72 @@ fn push_blocked_hints(
     }
 }
 
+fn has_empty_real_domain_diff_block(blocked_hints: &[crate::BlockedHint]) -> bool {
+    blocked_hints.iter().any(|hint| {
+        hint.rule == "Symbolic Differentiation"
+            && hint
+                .suggestion
+                .contains("real domain is empty; no real derivative is exposed")
+    })
+}
+
+fn is_inverse_reciprocal_trig_empty_domain_diff_residual(
+    ctx: &cas_ast::Context,
+    result: &EvalResult,
+) -> bool {
+    let Some(result_expr) = eval_result_first_expr(result) else {
+        return false;
+    };
+    let Some(call) = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, result_expr)
+    else {
+        return false;
+    };
+    let mut target = call.target;
+    while let cas_ast::Expr::Hold(inner) = ctx.get(target) {
+        target = *inner;
+    }
+    let cas_ast::Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if args.len() != 1 {
+        return false;
+    }
+    if !matches!(
+        ctx.builtin_of(*fn_id),
+        Some(
+            cas_ast::BuiltinFn::Arcsin
+                | cas_ast::BuiltinFn::Asin
+                | cas_ast::BuiltinFn::Arccos
+                | cas_ast::BuiltinFn::Acos
+        )
+    ) {
+        return false;
+    }
+    let cas_ast::Expr::Function(arg_fn_id, arg_args) = ctx.get(args[0]) else {
+        return false;
+    };
+    arg_args.len() == 1
+        && matches!(
+            ctx.builtin_of(*arg_fn_id),
+            Some(cas_ast::BuiltinFn::Sec | cas_ast::BuiltinFn::Csc)
+        )
+}
+
+fn public_required_conditions(
+    ctx: &cas_ast::Context,
+    result: &EvalResult,
+    diagnostics: &crate::diagnostics::Diagnostics,
+    blocked_hints: &[crate::BlockedHint],
+) -> Vec<crate::ImplicitCondition> {
+    if has_empty_real_domain_diff_block(blocked_hints)
+        && is_inverse_reciprocal_trig_empty_domain_diff_residual(ctx, result)
+    {
+        return Vec::new();
+    }
+
+    diagnostics.required_conditions()
+}
+
 fn push_assumed_from_steps(
     steps: &[crate::Step],
     diagnostics: &mut crate::diagnostics::Diagnostics,
@@ -209,7 +275,7 @@ impl Engine {
         // Collect blocked hints from simplifier
         let blocked_hints = self.simplifier.take_blocked_hints();
 
-        let diagnostics = build_eval_diagnostics(EvalDiagnosticsInput {
+        let mut diagnostics = build_eval_diagnostics(EvalDiagnosticsInput {
             ctx: &self.simplifier.context,
             resolved,
             result: &result,
@@ -219,6 +285,14 @@ impl Engine {
             blocked_hints: &blocked_hints,
             inherited_diagnostics: &inherited_diagnostics,
         });
+        if has_empty_real_domain_diff_block(&blocked_hints)
+            && is_inverse_reciprocal_trig_empty_domain_diff_residual(
+                &self.simplifier.context,
+                &result,
+            )
+        {
+            diagnostics.requires.clear();
+        }
 
         // Update stored entry with final diagnostics and optional simplified cache.
         // This keeps cache write policy centralized in session-core helpers.
@@ -238,7 +312,12 @@ impl Engine {
 
         // Legacy field: extract conditions from diagnostics for backward compatibility
         // Tests and some code paths still use output.required_conditions
-        let required_conditions = diagnostics.required_conditions();
+        let required_conditions = public_required_conditions(
+            &self.simplifier.context,
+            &result,
+            &diagnostics,
+            &blocked_hints,
+        );
 
         // V2.9.9: Convert raw steps to display-ready steps via unified pipeline.
         // This is the ONLY place DisplayEvalSteps is constructed from raw steps.

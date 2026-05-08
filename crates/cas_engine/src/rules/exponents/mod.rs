@@ -8,7 +8,9 @@ pub use power_rules::{
 };
 pub use rationalization::{
     CubeRootDenRationalizeRule, PowPowCancelReciprocalRule, RationalizeLinearSqrtDenRule,
-    RationalizeSumOfSqrtsDenRule, ReciprocalSqrtCanonRule, RootMergeDivRule, RootMergeMulRule,
+    RationalizeSumOfSqrtsDenRule, ReciprocalSqrtCanonRule, ReciprocalSqrtProductFactorCancelRule,
+    ReciprocalSqrtProductMergeRule, ReciprocalSqrtQuotientDenCancelRule, RootMergeDivRule,
+    RootMergeMulRule,
 };
 pub use simplification::{
     EvenPowSubSwapRule, ExpQuotientRule, IdentityPowerRule, MulNaryCombinePowersRule,
@@ -43,6 +45,12 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(RootMergeMulRule));
     // Merge sqrt quotients: sqrt(a)/sqrt(b) → sqrt(a/b) (with requires a≥0, b>0)
     simplifier.add_rule(Box::new(RootMergeDivRule));
+    // Merge reciprocal sqrt products: a^(-1/2)*b^(-1/2) → (a*b)^(-1/2)
+    simplifier.add_rule(Box::new(ReciprocalSqrtProductMergeRule));
+    // Cancel positive product factors against reciprocal sqrt products.
+    simplifier.add_rule(Box::new(ReciprocalSqrtProductFactorCancelRule));
+    // Cancel quotient denominators against reciprocal sqrt quotients in residuals.
+    simplifier.add_rule(Box::new(ReciprocalSqrtQuotientDenCancelRule));
     // Cancel reciprocal exponents: (u^y)^(1/y) → u (with requires u>0, y≠0)
     simplifier.add_rule(Box::new(PowPowCancelReciprocalRule));
     // Canonicalize reciprocal sqrt: 1/√x → x^(-1/2), √x/x → x^(-1/2)

@@ -1,5 +1,6 @@
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_domain::exprs_equivalent;
+use cas_math::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
 use cas_math::polynomial::Polynomial;
 use num_rational::BigRational;
 use num_traits::{One, Zero};
@@ -968,7 +969,7 @@ fn inverse_reciprocal_trig_positive_arg_sqrt_coeff(
                     continue;
                 }
 
-                if !matched_arg && exprs_equivalent(ctx, factor, arg) {
+                if !matched_arg && exprs_match(ctx, factor, arg) {
                     matched_arg = true;
                     continue;
                 }
@@ -1088,6 +1089,42 @@ fn inverse_reciprocal_trig_positive_quadratic_diff_matches(
         &call.var_name,
     )?;
     (actual_coeff == expected_coeff).then_some(Vec::new())
+}
+
+fn inverse_reciprocal_trig_sqrt_polynomial_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (builtin, arg, target_scale) = scaled_inverse_reciprocal_trig_target(ctx, call.target)?;
+    let base = sqrt_like_base(ctx, arg)?;
+    let base_poly = Polynomial::from_expr(ctx, base, &call.var_name).ok()?;
+    let derivative = base_poly.derivative();
+    if derivative.is_zero() {
+        return None;
+    }
+
+    let divisor_scale = cas_math::numeric_eval::as_rational_const(ctx, divisor)?;
+    if divisor_scale.is_zero() {
+        return None;
+    }
+
+    let sign = inverse_reciprocal_trig_derivative_sign(builtin)?;
+    let two = BigRational::from_integer(2.into());
+    let expected_coeff = sign * target_scale / (two * divisor_scale);
+    let gap_poly = base_poly.sub(&Polynomial::one(call.var_name.clone()));
+    let gap = gap_poly.to_expr(ctx);
+    let actual_coeff = inverse_reciprocal_trig_positive_arg_sqrt_coeff(
+        ctx,
+        right,
+        base,
+        gap,
+        &derivative,
+        &call.var_name,
+    )?;
+    (actual_coeff == expected_coeff).then_some(vec![crate::ImplicitCondition::Positive(gap)])
 }
 
 fn inverse_reciprocal_trig_affine_diff_matches(
@@ -1677,6 +1714,730 @@ fn integrated_log_abs_plain_trig_diff_matches(
     Some(required_nonzero.chain(required_positive).collect())
 }
 
+fn integrated_quadratic_exp_linear_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)?;
+    if diff_call.var_name != integrate_call.var_name {
+        return None;
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_exp_linear_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        return None;
+    }
+
+    if !exprs_match(ctx, integrate_call.target, right) {
+        return None;
+    }
+
+    Some(Vec::new())
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ConstantPassthroughOrientation {
+    Add,
+    LeadingSub,
+}
+
+struct ConstantPassthrough {
+    constant: BigRational,
+    core: ExprId,
+    orientation: ConstantPassthroughOrientation,
+}
+
+fn negated_expr_core(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => Some(*inner),
+        Expr::Mul(left, right) => {
+            let negative_one = -BigRational::one();
+            if cas_math::numeric_eval::as_rational_const(ctx, *left)
+                .is_some_and(|value| value == negative_one)
+            {
+                Some(*right)
+            } else if cas_math::numeric_eval::as_rational_const(ctx, *right)
+                .is_some_and(|value| value == negative_one)
+            {
+                Some(*left)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn strip_constant_passthrough(ctx: &Context, expr: ExprId) -> Option<ConstantPassthrough> {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            if let Some(constant) = cas_math::numeric_eval::as_rational_const(ctx, *left) {
+                if let Some(inner) = negated_expr_core(ctx, *right) {
+                    return Some(ConstantPassthrough {
+                        constant,
+                        core: inner,
+                        orientation: ConstantPassthroughOrientation::LeadingSub,
+                    });
+                }
+                Some(ConstantPassthrough {
+                    constant,
+                    core: *right,
+                    orientation: ConstantPassthroughOrientation::Add,
+                })
+            } else if let Some(constant) = cas_math::numeric_eval::as_rational_const(ctx, *right) {
+                if let Some(inner) = negated_expr_core(ctx, *left) {
+                    return Some(ConstantPassthrough {
+                        constant,
+                        core: inner,
+                        orientation: ConstantPassthroughOrientation::LeadingSub,
+                    });
+                }
+                Some(ConstantPassthrough {
+                    constant,
+                    core: *left,
+                    orientation: ConstantPassthroughOrientation::Add,
+                })
+            } else {
+                None
+            }
+        }
+        Expr::Sub(left, right) => {
+            let constant = cas_math::numeric_eval::as_rational_const(ctx, *left)?;
+            Some(ConstantPassthrough {
+                constant,
+                core: *right,
+                orientation: ConstantPassthroughOrientation::LeadingSub,
+            })
+        }
+        _ => None,
+    }
+}
+
+fn rational_expr(ctx: &mut Context, value: &BigRational) -> ExprId {
+    ctx.add(Expr::Number(value.clone()))
+}
+
+fn build_constant_passthrough_expr(
+    ctx: &mut Context,
+    constant: &BigRational,
+    core: ExprId,
+    orientation: ConstantPassthroughOrientation,
+) -> ExprId {
+    let constant = rational_expr(ctx, constant);
+    match orientation {
+        ConstantPassthroughOrientation::Add => ctx.add(Expr::Add(constant, core)),
+        ConstantPassthroughOrientation::LeadingSub => ctx.add(Expr::Sub(constant, core)),
+    }
+}
+
+fn diff_inverse_reciprocal_trig_core_difference_conditions(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    try_diff_inverse_reciprocal_trig_residual_zero_preorder(ctx, left, right)
+        .or_else(|| try_diff_inverse_reciprocal_trig_residual_zero_preorder(ctx, right, left))
+        .map(|(_zero, required_conditions)| required_conditions)
+}
+
+fn diff_inverse_reciprocal_trig_core_sum_conditions(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let neg_right = ctx.add(Expr::Neg(right));
+    diff_inverse_reciprocal_trig_core_difference_conditions(ctx, left, neg_right).or_else(|| {
+        let neg_left = ctx.add(Expr::Neg(left));
+        diff_inverse_reciprocal_trig_core_difference_conditions(ctx, right, neg_left)
+    })
+}
+
+fn arctan_sqrt_positive_polynomial_quotient_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    right: ExprId,
+) -> Option<()> {
+    let compact =
+        crate::rules::calculus::arctan_sqrt_positive_polynomial_quotient_derivative_for_diff_call(
+            ctx, diff_expr,
+        )?;
+    let compact = cas_ast::hold::strip_all_holds(ctx, compact);
+    (exprs_match(ctx, compact, right)
+        || quotient_matches_with_unordered_products(ctx, compact, right))
+    .then_some(())
+}
+
+fn arctan_sqrt_derivative_presentation_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    let radicand = arctan_sqrt_radicand_arg(ctx, target)?;
+    let compact =
+        crate::rules::calculus::try_post_calculus_presentation(ctx, diff_expr, diff_expr)?;
+    let compact = cas_ast::hold::strip_all_holds(ctx, compact);
+    if !(exprs_match(ctx, compact, right)
+        || quotient_matches_with_unordered_products(ctx, compact, right)
+        || quotient_matches_with_polynomial_content_denominators(
+            ctx,
+            compact,
+            right,
+            &call.var_name,
+        ))
+    {
+        return None;
+    }
+
+    Some(vec![crate::ImplicitCondition::Positive(radicand)])
+}
+
+fn unit_interval_bounded_inverse_trig_derivative_presentation_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let required_conditions =
+        unit_interval_bounded_inverse_trig_derivative_presentation_conditions(ctx, diff_expr)?;
+    let compact =
+        crate::rules::calculus::try_post_calculus_presentation(ctx, diff_expr, diff_expr)?;
+    let compact = cas_ast::hold::strip_all_holds(ctx, compact);
+    if !(exprs_match(ctx, compact, right)
+        || quotient_matches_with_unordered_products(ctx, compact, right))
+    {
+        return None;
+    }
+
+    Some(required_conditions)
+}
+
+fn unit_interval_bounded_inverse_trig_derivative_presentation_conditions(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let mut target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    if let Expr::Div(numerator, denominator) = ctx.get(target).clone() {
+        let denominator = cas_ast::views::as_rational_const(ctx, denominator, 8)?;
+        if denominator.is_zero() {
+            return None;
+        }
+        target = numerator;
+    }
+
+    let mut inverse_trig_arg = None;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, target) {
+        if cas_ast::views::as_rational_const(ctx, factor, 8).is_some() {
+            continue;
+        }
+
+        let Expr::Function(fn_id, args) = ctx.get(factor).clone() else {
+            return None;
+        };
+        if args.len() != 1
+            || !matches!(
+                ctx.builtin_of(fn_id),
+                Some(BuiltinFn::Arcsin | BuiltinFn::Asin | BuiltinFn::Arccos | BuiltinFn::Acos)
+            )
+            || inverse_trig_arg.replace(args[0]).is_some()
+        {
+            return None;
+        }
+    }
+
+    let arg = inverse_trig_arg?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, &call.var_name).ok()?;
+    if arg_poly.degree() != 1 {
+        return None;
+    }
+    let offset = arg_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let two = BigRational::from_integer(2.into());
+    let unit_interval_arg = (offset == -BigRational::one() && slope == two)
+        || (offset == BigRational::one() && slope == -two);
+    if !unit_interval_arg {
+        return None;
+    }
+
+    let var = ctx.var(&call.var_name);
+    let one = ctx.num(1);
+    let one_minus_var = ctx.add(Expr::Sub(one, var));
+    Some(vec![
+        crate::ImplicitCondition::Positive(var),
+        crate::ImplicitCondition::Positive(one_minus_var),
+    ])
+}
+
+fn arctan_sqrt_radicand_arg(ctx: &Context, target: ExprId) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return None;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(BuiltinFn::Atan | BuiltinFn::Arctan | BuiltinFn::Acot | BuiltinFn::Arccot)
+        )
+    {
+        return None;
+    }
+    sqrt_like_base(ctx, args[0])
+}
+
+fn quotient_matches_with_unordered_products(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let (left_num, left_den, right_num, right_den) = match (ctx.get(left), ctx.get(right)) {
+        (Expr::Div(left_num, left_den), Expr::Div(right_num, right_den)) => {
+            (*left_num, *left_den, *right_num, *right_den)
+        }
+        _ => return false,
+    };
+
+    exprs_match(ctx, left_num, right_num)
+        && (unordered_product_factors_match(ctx, left_den, right_den)
+            || compact_sqrt_one_plus_denominator_matches_expanded_sum(ctx, left_den, right_den)
+            || compact_sqrt_one_plus_denominator_matches_expanded_sum(ctx, right_den, left_den))
+}
+
+fn unordered_product_factors_match(ctx: &mut Context, left: ExprId, right: ExprId) -> bool {
+    let left_factors = cas_math::expr_nary::mul_leaves(ctx, left);
+    let mut right_factors = cas_math::expr_nary::mul_leaves(ctx, right);
+    if left_factors.len() != right_factors.len() {
+        return false;
+    }
+
+    for left_factor in left_factors {
+        let Some(pos) = right_factors
+            .iter()
+            .position(|right_factor| exprs_match(ctx, left_factor, *right_factor))
+        else {
+            return false;
+        };
+        right_factors.remove(pos);
+    }
+    true
+}
+
+fn quotient_matches_with_polynomial_content_denominators(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    let (left_num, left_den, right_num, right_den) = match (ctx.get(left), ctx.get(right)) {
+        (Expr::Div(left_num, left_den), Expr::Div(right_num, right_den)) => {
+            (*left_num, *left_den, *right_num, *right_den)
+        }
+        _ => return false,
+    };
+
+    if exprs_match(ctx, left_num, right_num)
+        && unordered_product_factors_match_after_polynomial_content(
+            ctx, left_den, right_den, var_name,
+        )
+    {
+        return true;
+    }
+
+    let Some((left_coeff, left_factors)) =
+        rational_quotient_parts_after_polynomial_content(ctx, left_num, left_den, var_name)
+    else {
+        return false;
+    };
+    let Some((right_coeff, right_factors)) =
+        rational_quotient_parts_after_polynomial_content(ctx, right_num, right_den, var_name)
+    else {
+        return false;
+    };
+    left_coeff == right_coeff && unordered_factor_lists_match(ctx, left_factors, right_factors)
+}
+
+fn rational_quotient_parts_after_polynomial_content(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    var_name: &str,
+) -> Option<(BigRational, Vec<ExprId>)> {
+    let numerator = rational_const_for_matching(ctx, numerator)?;
+    let (denominator_scale, denominator_factors) =
+        product_factors_after_polynomial_content(ctx, denominator, var_name)?;
+    if denominator_scale.is_zero() {
+        return None;
+    }
+    Some((numerator / denominator_scale, denominator_factors))
+}
+
+fn rational_const_for_matching(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    if let Some(value) = cas_math::numeric_eval::as_rational_const(ctx, expr) {
+        return Some(value);
+    }
+    match ctx.get(expr) {
+        Expr::Neg(inner) => rational_const_for_matching(ctx, *inner).map(|value| -value),
+        _ => None,
+    }
+}
+
+fn unordered_product_factors_match_after_polynomial_content(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    let Some((left_scale, left_factors)) =
+        product_factors_after_polynomial_content(ctx, left, var_name)
+    else {
+        return false;
+    };
+    let Some((right_scale, right_factors)) =
+        product_factors_after_polynomial_content(ctx, right, var_name)
+    else {
+        return false;
+    };
+    if left_scale != right_scale || left_factors.len() != right_factors.len() {
+        return false;
+    }
+
+    unordered_factor_lists_match(ctx, left_factors, right_factors)
+}
+
+fn unordered_factor_lists_match(
+    ctx: &mut Context,
+    left_factors: Vec<ExprId>,
+    right_factors: Vec<ExprId>,
+) -> bool {
+    if left_factors.len() != right_factors.len() {
+        return false;
+    }
+    let mut unmatched_right = right_factors;
+    for left_factor in left_factors {
+        let Some(pos) = unmatched_right
+            .iter()
+            .position(|right_factor| exprs_match(ctx, left_factor, *right_factor))
+        else {
+            return false;
+        };
+        unmatched_right.remove(pos);
+    }
+    true
+}
+
+fn product_factors_after_polynomial_content(
+    ctx: &mut Context,
+    expr: ExprId,
+    _var_name: &str,
+) -> Option<(BigRational, Vec<ExprId>)> {
+    let mut scale = BigRational::one();
+    let mut factors = Vec::new();
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(value) = rational_const_for_matching(ctx, factor) {
+            scale *= value;
+            continue;
+        }
+
+        let budget = PolyBudget {
+            max_terms: 8,
+            max_total_degree: 4,
+            max_pow_exp: 4,
+        };
+        if let Ok(poly) = multipoly_from_expr(ctx, factor, &budget) {
+            let (content, primitive) = poly.primitive_part();
+            if content.is_zero() {
+                return None;
+            }
+            if content.is_one() {
+                factors.push(factor);
+            } else {
+                scale *= content;
+                factors.push(multipoly_to_expr(&primitive, ctx));
+            }
+            continue;
+        }
+
+        factors.push(factor);
+    }
+
+    Some((scale, factors))
+}
+
+fn compact_sqrt_one_plus_denominator_matches_expanded_sum(
+    ctx: &mut Context,
+    compact: ExprId,
+    expanded: ExprId,
+) -> bool {
+    let Some((compact_scale, compact_base)) = compact_sqrt_one_plus_denominator(ctx, compact)
+    else {
+        return false;
+    };
+    let Some((expanded_scale, expanded_base)) = expanded_sqrt_one_plus_denominator(ctx, expanded)
+    else {
+        return false;
+    };
+
+    compact_scale == expanded_scale && exprs_match(ctx, compact_base, expanded_base)
+}
+
+fn compact_sqrt_one_plus_denominator(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(BigRational, ExprId)> {
+    let mut scale = BigRational::one();
+    let mut sqrt_base = None;
+    let mut add_one_base = None;
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(value) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+            scale *= value;
+            continue;
+        }
+        if let Some(base) = sqrt_like_base(ctx, factor) {
+            if sqrt_base.replace(base).is_some() {
+                return None;
+            }
+            continue;
+        }
+        if let Some(base) = plus_one_base(ctx, factor) {
+            if add_one_base.replace(base).is_some() {
+                return None;
+            }
+            continue;
+        }
+        return None;
+    }
+
+    let sqrt_base = sqrt_base?;
+    let add_one_base = add_one_base?;
+    exprs_match(ctx, sqrt_base, add_one_base).then_some((scale, sqrt_base))
+}
+
+fn plus_one_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    if is_one_constant(ctx, *left) {
+        Some(*right)
+    } else if is_one_constant(ctx, *right) {
+        Some(*left)
+    } else {
+        None
+    }
+}
+
+fn expanded_sqrt_one_plus_denominator(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(BigRational, ExprId)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Add(left, right) => (*left, *right),
+        _ => return None,
+    };
+    let left_term = scaled_sqrt_power_term(ctx, left)?;
+    let right_term = scaled_sqrt_power_term(ctx, right)?;
+
+    let (half_term, three_half_term) = if left_term.2 == BigRational::new(1.into(), 2.into())
+        && right_term.2 == BigRational::new(3.into(), 2.into())
+    {
+        (left_term, right_term)
+    } else if left_term.2 == BigRational::new(3.into(), 2.into())
+        && right_term.2 == BigRational::new(1.into(), 2.into())
+    {
+        (right_term, left_term)
+    } else {
+        return None;
+    };
+
+    (half_term.0 == three_half_term.0 && exprs_match(ctx, half_term.1, three_half_term.1))
+        .then_some((half_term.0, half_term.1))
+}
+
+fn scaled_sqrt_power_term(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(BigRational, ExprId, BigRational)> {
+    let mut scale = BigRational::one();
+    let mut power = None;
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(value) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+            scale *= value;
+            continue;
+        }
+        let (base, exponent) = sqrt_power_factor(ctx, factor)?;
+        if power.replace((base, exponent)).is_some() {
+            return None;
+        }
+    }
+
+    let (base, exponent) = power?;
+    Some((scale, base, exponent))
+}
+
+fn sqrt_power_factor(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
+    if let Some(base) = sqrt_like_base(ctx, expr) {
+        return Some((base, BigRational::new(1.into(), 2.into())));
+    }
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let Expr::Number(exponent) = ctx.get(*exp) else {
+        return None;
+    };
+    if *exponent == BigRational::new(1.into(), 2.into())
+        || *exponent == BigRational::new(3.into(), 2.into())
+    {
+        Some((*base, exponent.clone()))
+    } else {
+        None
+    }
+}
+
+fn arctan_sqrt_positive_polynomial_quotient_shifted_pair_conditions(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if arctan_sqrt_positive_polynomial_quotient_diff_matches(ctx, left, right).is_some()
+        || arctan_sqrt_positive_polynomial_quotient_diff_matches(ctx, right, left).is_some()
+        || quotient_matches_with_unordered_products(ctx, left, right)
+    {
+        return Some(Vec::new());
+    }
+    arctan_sqrt_derivative_presentation_diff_matches(ctx, left, right)
+        .or_else(|| arctan_sqrt_derivative_presentation_diff_matches(ctx, right, left))
+        .or_else(|| {
+            unit_interval_bounded_inverse_trig_derivative_presentation_diff_matches(
+                ctx, left, right,
+            )
+        })
+        .or_else(|| {
+            unit_interval_bounded_inverse_trig_derivative_presentation_diff_matches(
+                ctx, right, left,
+            )
+        })
+}
+
+fn arctan_sqrt_positive_polynomial_quotient_shifted_core_sum_conditions(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let neg_right = negated_quotient_for_matching(ctx, right);
+    arctan_sqrt_positive_polynomial_quotient_shifted_pair_conditions(ctx, left, neg_right).or_else(
+        || {
+            let neg_left = negated_quotient_for_matching(ctx, left);
+            arctan_sqrt_positive_polynomial_quotient_shifted_pair_conditions(ctx, neg_left, right)
+        },
+    )
+}
+
+fn negated_quotient_for_matching(ctx: &mut Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr).clone() {
+        Expr::Div(num, den) => {
+            let neg_num = ctx.add(Expr::Neg(num));
+            ctx.add(Expr::Div(neg_num, den))
+        }
+        _ => ctx.add(Expr::Neg(expr)),
+    }
+}
+
+fn arctan_sqrt_positive_polynomial_quotient_shifted_passthrough_conditions(
+    ctx: &mut Context,
+    numerator_passthrough: &ConstantPassthrough,
+    denominator_passthrough: &ConstantPassthrough,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if numerator_passthrough.orientation == denominator_passthrough.orientation {
+        arctan_sqrt_positive_polynomial_quotient_shifted_pair_conditions(
+            ctx,
+            numerator_passthrough.core,
+            denominator_passthrough.core,
+        )
+    } else {
+        arctan_sqrt_positive_polynomial_quotient_shifted_core_sum_conditions(
+            ctx,
+            numerator_passthrough.core,
+            denominator_passthrough.core,
+        )
+    }
+}
+
+pub(crate) fn try_diff_arctan_sqrt_positive_polynomial_quotient_shifted_one_root(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (numerator, denominator) = match ctx.get(expr) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+    let numerator_passthrough = strip_constant_passthrough(ctx, numerator)?;
+    let denominator_passthrough = strip_constant_passthrough(ctx, denominator)?;
+    if numerator_passthrough.constant != denominator_passthrough.constant {
+        return None;
+    }
+    let mut required_conditions =
+        arctan_sqrt_positive_polynomial_quotient_shifted_passthrough_conditions(
+            ctx,
+            &numerator_passthrough,
+            &denominator_passthrough,
+        )?;
+    required_conditions.push(crate::ImplicitCondition::NonZero(denominator));
+
+    Some((ctx.num(1), required_conditions))
+}
+
+pub(crate) fn try_diff_arctan_sqrt_positive_polynomial_quotient_shifted_compact_mismatch(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (numerator, denominator) = match ctx.get(expr) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+    let numerator_passthrough = strip_constant_passthrough(ctx, numerator)?;
+    let denominator_passthrough = strip_constant_passthrough(ctx, denominator)?;
+    if numerator_passthrough.constant == denominator_passthrough.constant {
+        return None;
+    }
+    let mut required_conditions =
+        arctan_sqrt_positive_polynomial_quotient_shifted_passthrough_conditions(
+            ctx,
+            &numerator_passthrough,
+            &denominator_passthrough,
+        )?;
+
+    let compact_numerator = build_constant_passthrough_expr(
+        ctx,
+        &numerator_passthrough.constant,
+        denominator_passthrough.core,
+        denominator_passthrough.orientation,
+    );
+    let compact_quotient = ctx.add(Expr::Div(compact_numerator, denominator));
+
+    required_conditions.push(crate::ImplicitCondition::NonZero(denominator));
+    Some((compact_quotient, required_conditions))
+}
+
 pub(crate) fn try_diff_reciprocal_trig_residual_zero_preorder(
     ctx: &mut Context,
     left: ExprId,
@@ -1694,12 +2455,16 @@ pub(crate) fn try_diff_inverse_reciprocal_trig_residual_zero_preorder(
     right: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
-    let required_conditions = inverse_reciprocal_trig_affine_diff_matches(
-        ctx, diff_expr, divisor, right,
-    )
-    .or_else(|| {
-        inverse_reciprocal_trig_positive_quadratic_diff_matches(ctx, diff_expr, divisor, right)
-    })?;
+    let required_conditions =
+        inverse_reciprocal_trig_affine_diff_matches(ctx, diff_expr, divisor, right)
+            .or_else(|| {
+                inverse_reciprocal_trig_positive_quadratic_diff_matches(
+                    ctx, diff_expr, divisor, right,
+                )
+            })
+            .or_else(|| {
+                inverse_reciprocal_trig_sqrt_polynomial_diff_matches(ctx, diff_expr, divisor, right)
+            })?;
     Some((ctx.num(0), required_conditions))
 }
 
@@ -1724,6 +2489,41 @@ pub(crate) fn try_diff_integral_plain_trig_residual_zero_preorder(
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
     let required_conditions =
         integrated_log_abs_plain_trig_diff_matches(ctx, diff_expr, divisor, right)?;
+    Some((ctx.num(0), required_conditions))
+}
+
+pub(crate) fn try_diff_integral_quadratic_exp_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_wrapped_root_zero(
+        ctx,
+        expr,
+        3,
+        try_diff_integral_quadratic_exp_residual_direct_root_zero,
+    )
+}
+
+fn try_diff_integral_quadratic_exp_residual_direct_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        _ => return None,
+    };
+    try_diff_integral_quadratic_exp_residual_zero_preorder(ctx, left, right)
+        .or_else(|| try_diff_integral_quadratic_exp_residual_zero_preorder(ctx, right, left))
+}
+
+fn try_diff_integral_quadratic_exp_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    let required_conditions =
+        integrated_quadratic_exp_linear_diff_matches(ctx, diff_expr, divisor, right)?;
     Some((ctx.num(0), required_conditions))
 }
 
@@ -1820,6 +2620,89 @@ pub(crate) fn try_diff_inverse_reciprocal_trig_residual_root_zero(
         }
         _ => None,
     }
+}
+
+pub(crate) fn try_diff_inverse_reciprocal_trig_shifted_quotient_root_one(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (numerator, denominator) = match ctx.get(expr) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+
+    let numerator_passthrough = strip_constant_passthrough(ctx, numerator)?;
+    let denominator_passthrough = strip_constant_passthrough(ctx, denominator)?;
+    if numerator_passthrough.constant != denominator_passthrough.constant {
+        return None;
+    }
+
+    let mut required_conditions =
+        if numerator_passthrough.orientation == denominator_passthrough.orientation {
+            diff_inverse_reciprocal_trig_core_difference_conditions(
+                ctx,
+                numerator_passthrough.core,
+                denominator_passthrough.core,
+            )
+        } else {
+            diff_inverse_reciprocal_trig_core_sum_conditions(
+                ctx,
+                numerator_passthrough.core,
+                denominator_passthrough.core,
+            )
+        }?;
+    required_conditions.push(crate::ImplicitCondition::NonZero(denominator));
+
+    Some((ctx.num(1), required_conditions))
+}
+
+pub(crate) fn try_diff_inverse_reciprocal_trig_shifted_quotient_compact_mismatch(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (numerator, denominator) = match ctx.get(expr) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+
+    let numerator_passthrough = strip_constant_passthrough(ctx, numerator)?;
+    let denominator_passthrough = strip_constant_passthrough(ctx, denominator)?;
+    if numerator_passthrough.constant == denominator_passthrough.constant {
+        return None;
+    }
+
+    let (target_orientation, required_conditions) =
+        if numerator_passthrough.orientation == denominator_passthrough.orientation {
+            (
+                denominator_passthrough.orientation,
+                diff_inverse_reciprocal_trig_core_difference_conditions(
+                    ctx,
+                    numerator_passthrough.core,
+                    denominator_passthrough.core,
+                )?,
+            )
+        } else {
+            (
+                denominator_passthrough.orientation,
+                diff_inverse_reciprocal_trig_core_sum_conditions(
+                    ctx,
+                    numerator_passthrough.core,
+                    denominator_passthrough.core,
+                )?,
+            )
+        };
+
+    let compact_numerator = build_constant_passthrough_expr(
+        ctx,
+        &numerator_passthrough.constant,
+        denominator_passthrough.core,
+        target_orientation,
+    );
+    let compact_quotient = ctx.add(Expr::Div(compact_numerator, denominator));
+    let mut required_conditions = required_conditions;
+    required_conditions.push(crate::ImplicitCondition::NonZero(denominator));
+
+    Some((compact_quotient, required_conditions))
 }
 
 pub(crate) fn try_diff_integral_reciprocal_trig_residual_root_zero(
@@ -1964,6 +2847,13 @@ mod tests {
         format!("{}", DisplayExpr { context: ctx, id })
     }
 
+    fn require_match<T>(value: Option<T>) -> T {
+        match value {
+            Some(value) => value,
+            None => panic!("expected residual helper to match"),
+        }
+    }
+
     fn root_residual_result(input: &str) -> Option<String> {
         let mut ctx = Context::new();
         let expr = parse(input, &mut ctx)
@@ -1993,6 +2883,89 @@ mod tests {
             .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
         try_diff_integral_plain_trig_residual_root_zero(&mut ctx, expr)
             .map(|(result, _required_conditions)| render(&ctx, result))
+    }
+
+    fn integral_quadratic_exp_root_residual_result(input: &str) -> Option<String> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_integral_quadratic_exp_residual_root_zero(&mut ctx, expr)
+            .map(|(result, _required_conditions)| render(&ctx, result))
+    }
+
+    fn diff_arctan_sqrt_positive_quotient_shifted_one_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_arctan_sqrt_positive_polynomial_quotient_shifted_one_root(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|cond| cond.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
+    fn diff_arctan_sqrt_positive_quotient_shifted_mismatch_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_arctan_sqrt_positive_polynomial_quotient_shifted_compact_mismatch(&mut ctx, expr)
+            .map(|(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|cond| cond.display(&ctx))
+                        .collect(),
+                )
+            })
+    }
+
+    fn diff_inverse_reciprocal_trig_shifted_quotient_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_inverse_reciprocal_trig_shifted_quotient_root_one(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|cond| cond.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
+    fn diff_inverse_reciprocal_trig_shifted_quotient_mismatch_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_inverse_reciprocal_trig_shifted_quotient_compact_mismatch(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|cond| cond.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
     }
 
     fn simplify_text(input: &str) -> String {
@@ -2177,6 +3150,347 @@ mod tests {
                 "diff(integrate(cot(2*x+1), x), y) - cot(2*x+1)"
             ),
             None
+        );
+    }
+
+    #[test]
+    fn diff_integral_quadratic_exp_residual_root_cancels_supported_target() {
+        let input = "diff(integrate((x^2+x+1)*exp(2*x+1), x), x) - (x^2+x+1)*exp(2*x+1)";
+        assert_eq!(
+            integral_quadratic_exp_root_residual_result(input),
+            Some("0".to_string())
+        );
+        assert_eq!(simplify_text(input), "0");
+
+        assert_eq!(
+            integral_quadratic_exp_root_residual_result(
+                "diff(integrate((x^2+x+1)*exp(2*x+1), y), y) - (x^2+x+1)*exp(2*x+1)"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn diff_arctan_sqrt_positive_quotient_shifted_one_root_cancels_supported_pair() {
+        let input = "(1 + diff(arctan(sqrt((x^2+x+1)/(x^2+x+3))), x))/(1 + (2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3))))";
+        let (result, required_conditions) =
+            require_match(diff_arctan_sqrt_positive_quotient_shifted_one_result(input));
+        assert_eq!(result, "1");
+        assert_eq!(
+            required_conditions,
+            vec![
+                "(2 * x + 1) / (2 * sqrt((x^2 + x + 1) / (x^2 + x + 3)) * (x^2 + x + 2) * (x^2 + x + 3)) + 1 ≠ 0"
+                    .to_string()
+            ]
+        );
+
+        assert!(diff_arctan_sqrt_positive_quotient_shifted_one_result(
+            "(1 + diff(arctan(sqrt((x^2+x+1)/(x^2+x+3))), y))/(1 + (2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3))))"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn diff_arctan_sqrt_positive_quotient_shifted_one_root_cancels_negative_orientation_pair() {
+        let input = "(1 - diff(arctan(sqrt((x^2+x+1)/(x^2+x+3))), x))/(1 - (2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3))))";
+        let (result, required_conditions) =
+            require_match(diff_arctan_sqrt_positive_quotient_shifted_one_result(input));
+        assert_eq!(result, "1");
+        assert_eq!(
+            required_conditions,
+            vec![
+                "1 - (2 * x + 1) / (2 * sqrt((x^2 + x + 1) / (x^2 + x + 3)) * (x^2 + x + 2) * (x^2 + x + 3)) ≠ 0"
+                    .to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn diff_arctan_sqrt_positive_quotient_shifted_constant_root_cancels_matching_wrappers() {
+        let plus_input = "(2 + diff(arctan(sqrt((x^2+x+1)/(x^2+x+3))), x))/(2 + (2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3))))";
+        let (plus_result, plus_required_conditions) = require_match(
+            diff_arctan_sqrt_positive_quotient_shifted_one_result(plus_input),
+        );
+        assert_eq!(plus_result, "1");
+        assert_eq!(
+            plus_required_conditions,
+            vec![
+                "(2 * x + 1) / (2 * sqrt((x^2 + x + 1) / (x^2 + x + 3)) * (x^2 + x + 2) * (x^2 + x + 3)) + 2 ≠ 0"
+                    .to_string()
+            ]
+        );
+
+        let minus_input = "(2 - diff(arctan(sqrt((x^2+x+1)/(x^2+x+3))), x))/(2 - (2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3))))";
+        let (minus_result, minus_required_conditions) = require_match(
+            diff_arctan_sqrt_positive_quotient_shifted_one_result(minus_input),
+        );
+        assert_eq!(minus_result, "1");
+        assert_eq!(
+            minus_required_conditions,
+            vec![
+                "2 - (2 * x + 1) / (2 * sqrt((x^2 + x + 1) / (x^2 + x + 3)) * (x^2 + x + 2) * (x^2 + x + 3)) ≠ 0"
+                    .to_string()
+            ]
+        );
+
+        assert!(diff_arctan_sqrt_positive_quotient_shifted_one_result(
+            "(2 + diff(arctan(sqrt((x^2+x+1)/(x^2+x+3))), x))/(3 + (2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3))))"
+        )
+        .is_none());
+        assert!(diff_arctan_sqrt_positive_quotient_shifted_one_result(
+            "(2 + diff(arctan(sqrt((x^2+x+1)/(x^2+x+3))), x))/(2 - (2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3))))"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn diff_arctan_sqrt_positive_quotient_shifted_mismatch_compacts_diff_side() {
+        assert_eq!(
+            simplify_text("(1 + diff(arctan(sqrt(x)), x))/(2 + 1/(2*sqrt(x)*(x+1)))"),
+            "(1 / (2 * sqrt(x) * (x + 1)) + 1) / (1 / (2 * sqrt(x) * (x + 1)) + 2)"
+        );
+        assert_eq!(
+            simplify_text("(1 - diff(arctan(sqrt(x)), x))/(2 - 1/(2*sqrt(x)*(x+1)))"),
+            "(1 - 1 / (2 * sqrt(x) * (x + 1))) / (2 - 1 / (2 * sqrt(x) * (x + 1)))"
+        );
+        assert_eq!(
+            simplify_text("(1 + diff(arctan(sqrt(2*x+3)), x))/(2 + 1/(sqrt(2*x+3)*(2*x+4)))"),
+            "(1 / (sqrt(2 * x + 3) * (2 * x + 4)) + 1) / (1 / (sqrt(2 * x + 3) * (2 * x + 4)) + 2)"
+        );
+        assert_eq!(
+            simplify_text("(1 - diff(arctan(sqrt(2*x+3)), x))/(2 - 1/(sqrt(2*x+3)*(2*x+4)))"),
+            "(1 - 1 / (sqrt(2 * x + 3) * (2 * x + 4))) / (2 - 1 / (sqrt(2 * x + 3) * (2 * x + 4)))"
+        );
+        assert_eq!(
+            simplify_text(
+                "(1 + diff(arctan(sqrt(5-3*x)), x))/(2 - 3/(2*sqrt(5-3*x)*(6-3*x)))"
+            ),
+            "(1 - 3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x))) / (2 - 3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)))"
+        );
+        assert_eq!(
+            simplify_text(
+                "(1 - diff(arctan(sqrt(5-3*x)), x))/(2 + 3/(2*sqrt(5-3*x)*(6-3*x)))"
+            ),
+            "(3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)) + 1) / (3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)) + 2)"
+        );
+        assert_eq!(
+            simplify_text("(1 + diff(arctan(sqrt(5-3*x)), x))/(1 - 3/(2*sqrt(5-3*x)*(6-3*x)))"),
+            "1"
+        );
+        assert_eq!(
+            simplify_text(
+                "(1 + diff(arccot(sqrt(5-3*x)), x))/(2 + 3/(2*sqrt(5-3*x)*(6-3*x)))"
+            ),
+            "(3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)) + 1) / (3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)) + 2)"
+        );
+        assert_eq!(
+            simplify_text(
+                "(1 - diff(arccot(sqrt(5-3*x)), x))/(2 - 3/(2*sqrt(5-3*x)*(6-3*x)))"
+            ),
+            "(1 - 3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x))) / (2 - 3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)))"
+        );
+        assert_eq!(
+            simplify_text("(1 + diff(arccot(sqrt(5-3*x)), x))/(1 + 3/(2*sqrt(5-3*x)*(6-3*x)))"),
+            "1"
+        );
+
+        let plus_input = "(1 + diff(arctan(sqrt((x^2+x+1)/(x^2+x+3))), x))/(2 + (2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3))))";
+        let (plus_result, plus_required_conditions) = require_match(
+            diff_arctan_sqrt_positive_quotient_shifted_mismatch_result(plus_input),
+        );
+        assert_ne!(plus_result, "1");
+        assert!(!plus_result.contains("diff"), "{plus_result}");
+        assert!(plus_result.contains("+ 1"), "{plus_result}");
+        assert!(plus_result.contains("+ 2"), "{plus_result}");
+        assert_eq!(
+            plus_required_conditions,
+            vec![
+                "(2 * x + 1) / (2 * sqrt((x^2 + x + 1) / (x^2 + x + 3)) * (x^2 + x + 2) * (x^2 + x + 3)) + 2 ≠ 0"
+                    .to_string()
+            ]
+        );
+
+        let minus_input = "(1 - diff(arctan(sqrt((x^2+x+1)/(x^2+x+3))), x))/(2 - (2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3))))";
+        let (minus_result, minus_required_conditions) = require_match(
+            diff_arctan_sqrt_positive_quotient_shifted_mismatch_result(minus_input),
+        );
+        assert_ne!(minus_result, "1");
+        assert!(!minus_result.contains("diff"), "{minus_result}");
+        assert!(minus_result.contains("1 -"), "{minus_result}");
+        assert!(minus_result.contains("2 -"), "{minus_result}");
+        assert_eq!(
+            minus_required_conditions,
+            vec![
+                "2 - (2 * x + 1) / (2 * sqrt((x^2 + x + 1) / (x^2 + x + 3)) * (x^2 + x + 2) * (x^2 + x + 3)) ≠ 0"
+                    .to_string()
+            ]
+        );
+
+        assert!(diff_arctan_sqrt_positive_quotient_shifted_mismatch_result(
+            "(1 + diff(arctan(sqrt((x^2+x+1)/(x^2+x+3))), x))/(1 + (2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3))))"
+        )
+        .is_none());
+        assert!(diff_arctan_sqrt_positive_quotient_shifted_mismatch_result(
+            "(1 + diff(arctan(sqrt((x^2+x+1)/(x^2+x+3))), x))/(2 - (2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3))))"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn diff_unit_interval_bounded_inverse_trig_shifted_quotient_compacts_contextual_diff() {
+        assert_eq!(
+            simplify_text("(1 + diff(1/2*arcsin(2*x-1), x))/(1 + 1/(2*sqrt(x)*sqrt(1-x)))"),
+            "1"
+        );
+        assert_eq!(
+            simplify_text("(1 + diff(1/2*arccos(2*x-1), x))/(1 - 1/(2*sqrt(x)*sqrt(1-x)))"),
+            "1"
+        );
+        assert_eq!(
+            simplify_text("(1 + diff(1/2*arcsin(2*x-1), x))/(2 + 1/(2*sqrt(x)*sqrt(1-x)))"),
+            "(1 / (2 * sqrt(x) * sqrt(1 - x)) + 1) / (1 / (2 * sqrt(x) * sqrt(1 - x)) + 2)"
+        );
+        assert_eq!(
+            simplify_text("(1 + diff(1/2*arccos(2*x-1), x))/(2 - 1/(2*sqrt(x)*sqrt(1-x)))"),
+            "(1 - 1 / (2 * sqrt(x) * sqrt(1 - x))) / (2 - 1 / (2 * sqrt(x) * sqrt(1 - x)))"
+        );
+    }
+
+    #[test]
+    fn diff_inverse_reciprocal_trig_shifted_quotient_root_cancels_matching_wrappers() {
+        let minus_input = "(1 - diff(arcsec(sqrt(x+1)), x))/(1 - 1/(2*(x+1)*sqrt(x)))";
+        let (minus_result, minus_required_conditions) = require_match(
+            diff_inverse_reciprocal_trig_shifted_quotient_result(minus_input),
+        );
+        assert_eq!(minus_result, "1");
+        assert_eq!(
+            minus_required_conditions,
+            vec![
+                "x > 0".to_string(),
+                "1 - 1 / (2 * sqrt(x) * (x + 1)) ≠ 0".to_string()
+            ]
+        );
+
+        let arccsc_input = "(1 - diff(arccsc(sqrt(x+1)), x))/(1 + 1/(2*(x+1)*sqrt(x)))";
+        let (arccsc_result, arccsc_required_conditions) = require_match(
+            diff_inverse_reciprocal_trig_shifted_quotient_result(arccsc_input),
+        );
+        assert_eq!(arccsc_result, "1");
+        assert_eq!(
+            arccsc_required_conditions,
+            vec![
+                "x > 0".to_string(),
+                "1 / (2 * sqrt(x) * (x + 1)) + 1 ≠ 0".to_string()
+            ]
+        );
+
+        assert!(diff_inverse_reciprocal_trig_shifted_quotient_result(
+            "(1 - diff(arcsec(sqrt(x+1)), x))/(2 - 1/(2*(x+1)*sqrt(x)))"
+        )
+        .is_none());
+        assert!(diff_inverse_reciprocal_trig_shifted_quotient_result(
+            "(1 + diff(arcsec(sqrt(x+1)), x))/(1 - 1/(2*(x+1)*sqrt(x)))"
+        )
+        .is_none());
+        assert!(diff_inverse_reciprocal_trig_shifted_quotient_result(
+            "(1 - diff(arccsc(sqrt(x+1)), x))/(2 + 1/(2*(x+1)*sqrt(x)))"
+        )
+        .is_none());
+        assert!(diff_inverse_reciprocal_trig_shifted_quotient_result(
+            "(1 - diff(arccsc(sqrt(x+1)), x))/(1 - 1/(2*(x+1)*sqrt(x)))"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn diff_inverse_reciprocal_trig_shifted_quotient_mismatch_compacts_diff_side() {
+        let arccsc_input = "(1 - diff(arccsc(sqrt(x+1)), x))/(2 + 1/(2*(x+1)*sqrt(x)))";
+        let (arccsc_result, arccsc_required_conditions) = require_match(
+            diff_inverse_reciprocal_trig_shifted_quotient_mismatch_result(arccsc_input),
+        );
+        assert_ne!(arccsc_result, "1");
+        assert!(!arccsc_result.contains("diff"), "{arccsc_result}");
+        assert!(arccsc_result.contains("+ 1"), "{arccsc_result}");
+        assert!(arccsc_result.contains("+ 2"), "{arccsc_result}");
+        assert_eq!(
+            arccsc_required_conditions,
+            vec![
+                "x > 0".to_string(),
+                "1 / (2 * sqrt(x) * (x + 1)) + 2 ≠ 0".to_string()
+            ]
+        );
+
+        let arcsec_input = "(1 - diff(arcsec(sqrt(x+1)), x))/(2 - 1/(2*(x+1)*sqrt(x)))";
+        let (arcsec_result, arcsec_required_conditions) = require_match(
+            diff_inverse_reciprocal_trig_shifted_quotient_mismatch_result(arcsec_input),
+        );
+        assert_ne!(arcsec_result, "1");
+        assert!(!arcsec_result.contains("diff"), "{arcsec_result}");
+        assert!(arcsec_result.contains("1 -"), "{arcsec_result}");
+        assert!(arcsec_result.contains("2 -"), "{arcsec_result}");
+        assert_eq!(
+            arcsec_required_conditions,
+            vec![
+                "x > 0".to_string(),
+                "2 - 1 / (2 * sqrt(x) * (x + 1)) ≠ 0".to_string()
+            ]
+        );
+
+        let arcsec_negative_affine_input =
+            "(1 + diff(arcsec(sqrt(5-3*x)), x))/(2 - 3/(2*(5-3*x)*sqrt(4-3*x)))";
+        let (arcsec_negative_affine_result, arcsec_negative_affine_required_conditions) =
+            require_match(
+                diff_inverse_reciprocal_trig_shifted_quotient_mismatch_result(
+                    arcsec_negative_affine_input,
+                ),
+            );
+        assert_ne!(arcsec_negative_affine_result, "1");
+        assert!(!arcsec_negative_affine_result.contains("diff"));
+        assert_eq!(
+            arcsec_negative_affine_result,
+            "(1 - 3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x))) / (2 - 3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)))"
+        );
+        assert_eq!(
+            arcsec_negative_affine_required_conditions,
+            vec![
+                "4 - 3 * x > 0".to_string(),
+                "2 - 3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)) ≠ 0".to_string()
+            ]
+        );
+
+        let arccsc_negative_affine_input =
+            "(1 + diff(arccsc(sqrt(5-3*x)), x))/(2 + 3/(2*(5-3*x)*sqrt(4-3*x)))";
+        let (arccsc_negative_affine_result, arccsc_negative_affine_required_conditions) =
+            require_match(
+                diff_inverse_reciprocal_trig_shifted_quotient_mismatch_result(
+                    arccsc_negative_affine_input,
+                ),
+            );
+        assert_ne!(arccsc_negative_affine_result, "1");
+        assert!(!arccsc_negative_affine_result.contains("diff"));
+        assert_eq!(
+            arccsc_negative_affine_result,
+            "(3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)) + 1) / (3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)) + 2)"
+        );
+        assert_eq!(
+            arccsc_negative_affine_required_conditions,
+            vec![
+                "4 - 3 * x > 0".to_string(),
+                "3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)) + 2 ≠ 0".to_string()
+            ]
+        );
+
+        assert!(
+            diff_inverse_reciprocal_trig_shifted_quotient_mismatch_result(
+                "(1 - diff(arccsc(sqrt(x+1)), x))/(1 + 1/(2*(x+1)*sqrt(x)))"
+            )
+            .is_none()
+        );
+        assert!(
+            diff_inverse_reciprocal_trig_shifted_quotient_mismatch_result(
+                "(1 - diff(arccsc(sqrt(x+1)), x))/(2 - 1/(2*(x+1)*sqrt(x)))"
+            )
+            .is_none()
         );
     }
 

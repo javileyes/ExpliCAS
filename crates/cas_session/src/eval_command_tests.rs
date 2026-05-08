@@ -395,7 +395,7 @@ mod tests {
 
         let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
         assert_eq!(payload["ok"], true);
-        assert_eq!(payload["result"], "diff(atanh((x^2 + 2)^(1/2)), x)");
+        assert_eq!(payload["result"], "diff(atanh(sqrt(x^2 + 2)), x)");
 
         let blocked = payload["blocked_hints"]
             .as_array()

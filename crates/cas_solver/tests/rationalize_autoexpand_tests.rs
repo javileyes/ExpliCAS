@@ -128,7 +128,9 @@ fn test_rationalize_respects_autoexpand_budget() {
 
     // Should expand to 2√2 (since 2 <= max_pow_exp)
     assert!(
-        result_str.contains("√(2)") || result_str.contains("2^(1/2)"),
+        result_str.contains("sqrt(2)")
+            || result_str.contains("√(2)")
+            || result_str.contains("2^(1/2)"),
         "Should simplify to 2√2. Got: {}",
         result_str
     );

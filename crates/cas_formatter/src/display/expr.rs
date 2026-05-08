@@ -2,7 +2,7 @@
 
 use crate::{Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
-use num_traits::{One, Zero};
+use num_traits::{One, Signed, Zero};
 use std::fmt;
 
 use super::mul_symbol;
@@ -345,6 +345,9 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                     if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
                         return write!(f, "1");
                     }
+                    if n.is_positive() && is_one_half_exponent(self.context, *e) {
+                        return write!(f, "sqrt({n})");
+                    }
                 }
 
                 let base_prec = precedence(self.context, *b);
@@ -390,6 +393,11 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 };
 
                 if needs_parens {
+                    if let Some(exp) =
+                        format_unit_fraction_scaled_expression_for_display(self.context, *e)
+                    {
+                        return write!(f, "({exp})");
+                    }
                     write!(
                         f,
                         "({})",
@@ -570,6 +578,18 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                             id: args[1]
                         }
                     )
+                } else if args.len() == 1 && prefers_quotient_sum_function_arg(name) {
+                    let arg = format_preferred_function_arg_for_display(self.context, args[0])
+                        .unwrap_or_else(|| {
+                            format!(
+                                "{}",
+                                DisplayExpr {
+                                    context: self.context,
+                                    id: args[0]
+                                }
+                            )
+                        });
+                    write!(f, "{}({})", name, arg)
                 } else {
                     write!(f, "{}(", name)?;
                     for (i, arg) in args.iter().enumerate() {
@@ -697,10 +717,196 @@ fn is_internal_hold_wrapped(ctx: &Context, id: ExprId) -> bool {
 }
 
 fn is_one_half_exponent(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Number(n) => *n == BigRational::new(1.into(), 2.into()),
+        Expr::Div(num, den) => {
+            matches!(ctx.get(*num), Expr::Number(n) if n.is_one())
+                && matches!(ctx.get(*den), Expr::Number(n) if *n == BigRational::from_integer(2.into()))
+        }
+        _ => false,
+    }
+}
+
+fn prefers_quotient_sum_function_arg(name: &str) -> bool {
     matches!(
-        ctx.get(id),
-        Expr::Number(n) if *n == BigRational::new(1.into(), 2.into())
+        name,
+        "sin"
+            | "cos"
+            | "tan"
+            | "sinh"
+            | "cosh"
+            | "tanh"
+            | "exp"
+            | "arcsin"
+            | "asin"
+            | "arccos"
+            | "acos"
+            | "arctan"
+            | "atan"
+            | "asinh"
+            | "acosh"
+            | "atanh"
     )
+}
+
+fn format_preferred_function_arg_for_display(ctx: &Context, id: ExprId) -> Option<String> {
+    format_unit_fraction_scaled_expression_for_display(ctx, id)
+        .or_else(|| format_half_power_function_arg_for_display(ctx, id))
+}
+
+fn format_half_power_function_arg_for_display(ctx: &Context, id: ExprId) -> Option<String> {
+    let id = unwrap_internal_hold_for_display(ctx, id);
+    let Expr::Pow(base, exp) = ctx.get(id) else {
+        return None;
+    };
+    if !is_one_half_exponent(ctx, *exp) {
+        return None;
+    }
+    let base = format!(
+        "{}",
+        DisplayExpr {
+            context: ctx,
+            id: *base
+        }
+    );
+    Some(format!("sqrt({base})"))
+}
+
+fn format_unit_fraction_scaled_expression_for_display(ctx: &Context, id: ExprId) -> Option<String> {
+    let id = unwrap_internal_hold_for_display(ctx, id);
+    let (numerator, denominator) = match ctx.get(id) {
+        Expr::Mul(left, right) => {
+            if let Some(denominator) = unit_fraction_denominator_for_display(ctx, *left) {
+                if displayable_quotient_numerator(ctx, *right) {
+                    return render_expression_over_denominator_for_display(
+                        ctx,
+                        *right,
+                        denominator,
+                    );
+                }
+            }
+            if let Some(denominator) = unit_fraction_denominator_for_display(ctx, *right) {
+                if displayable_quotient_numerator(ctx, *left) {
+                    return render_expression_over_denominator_for_display(ctx, *left, denominator);
+                }
+            }
+
+            let (scale, numerator) = match (ctx.get(*left), ctx.get(*right)) {
+                (Expr::Number(scale), _) if displayable_quotient_numerator(ctx, *right) => {
+                    (scale, *right)
+                }
+                (_, Expr::Number(scale)) if displayable_quotient_numerator(ctx, *left) => {
+                    (scale, *left)
+                }
+                _ => return None,
+            };
+            if !scale.is_positive() || !scale.numer().is_one() || scale.denom().is_one() {
+                return None;
+            }
+            (numerator, scale.denom().to_string())
+        }
+        Expr::Div(num, den) => {
+            let Expr::Number(denominator) = ctx.get(*den) else {
+                return None;
+            };
+            if !denominator.is_positive()
+                || !denominator.is_integer()
+                || denominator.is_one()
+                || !denominator.denom().is_one()
+            {
+                return None;
+            }
+            let numerator = unit_mul_numerator_for_display(ctx, *num)?;
+            (numerator, denominator.numer().to_string())
+        }
+        _ => return None,
+    };
+
+    let numerator = unwrap_internal_hold_for_display(ctx, numerator);
+    render_expression_over_denominator_for_display(ctx, numerator, denominator)
+}
+
+fn unit_fraction_denominator_for_display(ctx: &Context, id: ExprId) -> Option<String> {
+    let id = unwrap_internal_hold_for_display(ctx, id);
+    match ctx.get(id) {
+        Expr::Number(scale)
+            if scale.is_positive() && scale.numer().is_one() && !scale.denom().is_one() =>
+        {
+            Some(scale.denom().to_string())
+        }
+        Expr::Div(num, den) => {
+            let Expr::Number(numerator) = ctx.get(*num) else {
+                return None;
+            };
+            let Expr::Number(denominator) = ctx.get(*den) else {
+                return None;
+            };
+            if numerator.is_one()
+                && denominator.is_positive()
+                && denominator.is_integer()
+                && !denominator.is_one()
+                && denominator.denom().is_one()
+            {
+                Some(denominator.numer().to_string())
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn render_expression_over_denominator_for_display(
+    ctx: &Context,
+    numerator: ExprId,
+    denominator: String,
+) -> Option<String> {
+    let numerator = unwrap_internal_hold_for_display(ctx, numerator);
+    if !displayable_quotient_numerator(ctx, numerator) {
+        return None;
+    }
+    let numerator_display = format!(
+        "{}",
+        DisplayExpr {
+            context: ctx,
+            id: numerator
+        }
+    );
+    if quotient_numerator_needs_parens(ctx, numerator) {
+        Some(format!("({numerator_display}) / {denominator}"))
+    } else {
+        Some(format!("{numerator_display} / {denominator}"))
+    }
+}
+
+fn unit_mul_numerator_for_display(ctx: &Context, id: ExprId) -> Option<ExprId> {
+    let id = unwrap_internal_hold_for_display(ctx, id);
+    if displayable_quotient_numerator(ctx, id) {
+        return Some(id);
+    }
+
+    let Expr::Mul(left, right) = ctx.get(id) else {
+        return None;
+    };
+    match (ctx.get(*left), ctx.get(*right)) {
+        (Expr::Number(n), _) if n.is_one() => {
+            displayable_quotient_numerator(ctx, *right).then_some(*right)
+        }
+        (_, Expr::Number(n)) if n.is_one() => {
+            displayable_quotient_numerator(ctx, *left).then_some(*left)
+        }
+        _ => None,
+    }
+}
+
+fn displayable_quotient_numerator(ctx: &Context, id: ExprId) -> bool {
+    let id = unwrap_internal_hold_for_display(ctx, id);
+    !matches!(ctx.get(id), Expr::Number(_))
+}
+
+fn quotient_numerator_needs_parens(ctx: &Context, id: ExprId) -> bool {
+    let id = unwrap_internal_hold_for_display(ctx, id);
+    is_add_sub_after_internal_hold(ctx, id) || matches!(ctx.get(id), Expr::Div(_, _))
 }
 
 #[derive(Clone, Copy)]

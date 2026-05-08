@@ -95,6 +95,51 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-08: Affine Hyperbolic By-Parts Compact-Presentation Gate Fires Too Late
+
+- area:
+  - calculus / integration / post-calculus presentation
+- status:
+  - `promoted-after-follow-up`
+- discovered case:
+  - `integrate((2*x+3)*sinh(2*x+1), x)`
+  - `integrate((2*x+3)*cosh(2*x+1), x)`
+- local lane:
+  - focused CLI JSON probes with `--steps on` while trying to remove
+    expand/refactor noise from affine hyperbolic integration-by-parts traces
+- local result:
+  - public results are correct and compact:
+    `1/2*(cosh(2*x+1)*(2*x+3)-sinh(2*x+1))`
+    and
+    `1/2*(sinh(2*x+1)*(2*x+3)-cosh(2*x+1))`
+  - adding an `IntegrateRule` compact-preservation gate for
+    `P1(x)*sinh/cosh(ax+b)` does not remove the earlier
+    `Expandir la expresión` step
+- why it was not promoted:
+  - initial attempt was not promoted because by the time `IntegrateRule` runs,
+    the integrand has already been expanded
+    to a sum such as `3*sinh(2*x+1) + 2*x*sinh(2*x+1)`, so the compact product
+    detector no longer sees the original product
+  - forcing compactness at this point would require a narrower pre-integration
+    simplification/orchestration gate, not another post-result hold
+  - a follow-up attempt to preserve the raw `integrate(...)` target with the
+    symbolic integration detector was rejected on runtime: the focused
+    didactic contract stayed green but took about 67s, which violated the
+    retained-ROI guardrail
+- retained action:
+  - kept the didactic improvement that recognizes linear by-parts terms inside
+    an already-expanded integrand and exposes `Usar integración por partes`
+  - promoted a cheap syntactic guard in the historical polynomial
+    `DistributeRule`: preserve `sinh/cosh(...) * (additive)` products instead
+    of distributing them by default. This lets supported affine hyperbolic
+    by-parts integrals start directly with `Calcular la integral`, preserves
+    compact post-calculus presentation, and also keeps rational affine
+    hyperbolic by-parts results factored as `2/3*f(...)*(x+1)`
+- what could make it combinable later:
+  - extend the same presentation policy to trig/exp by-parts only if a
+    similarly cheap syntactic guard keeps `failed=0` and does not hide useful
+    explicit expansion in non-calculus paths
+
 ### 2026-05-07: Quadratic `arcsec/arccsc` Residual Gap Expansion Promoted With Narrow Residual Gates
 
 - area:
@@ -9632,3 +9677,44 @@ The burden of proof stays the same:
 - decision:
   - retained as a local calculus presentation improvement
   - supersedes the observe-only row above for this bounded public trace case
+
+## 2026-05-08 - Local win / guardrail fail: broad reciprocal sqrt product merge
+
+- area:
+  - coverage / reciprocal-root products / calculus residual verification
+- status:
+  - `superseded-by-narrower-guarded-rule`
+- local win:
+  - a broad rule for `a^(-1/2)*b^(-1/2) -> (a*b)^(-1/2)` closed the residual
+    `diff(arcsin(sqrt(2*x-1)), x) - 1/(sqrt(2*x-1)*sqrt(2-2*x))`
+- guardrail failure:
+  - `make engine-fast` failed `calculus_diff_contract` because the broad rule
+    also touched direct derivative presentation cases such as
+    `diff(acosh(sqrt(x)), x)` and `diff(arcsin(sqrt(x)), x)`, adding or
+    reordering required conditions in already-stable public contracts
+- retained learning:
+  - reciprocal-root product merging is useful for residual contexts, but it
+    should not run broadly inside final calculus presentation paths
+  - the retained implementation requires an additive/subtractive residual
+    ancestor and composed symbolic bases, preserving existing direct `diff`
+    contracts while closing the targeted residual
+
+## 2026-05-08 - Local win / guardrail fail: broad raw integrate-route preservation
+
+- area:
+  - calculus / integration runtime / nested diff verification
+- status:
+  - `superseded-by-family-gated-preservation`
+- local win:
+  - preserving raw `diff(integrate(...), x)` targets closed the residual probe
+    for `integrate((x^3+x)*sin(2*x+1), x)` without the previous
+    `depth_overflow` warning
+- guardrail failure:
+  - the broad preservation changed many stable integration-contract
+    presentations by bypassing established pre/post-calculus shaping
+- retained learning:
+  - raw integration targets are valuable only when the integrand is a bounded
+    repeated integration-by-parts kernel with a polynomial factor and direct
+    trig affine argument
+  - the retained implementation gates raw preservation to that family instead
+    of treating all public `integrate` calls as terminal presentation forms

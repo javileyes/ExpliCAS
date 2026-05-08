@@ -477,6 +477,14 @@ pub fn try_rewrite_rationalize_product_denominator_expr(
     }
 
     let (radicand, index) = extract_root_base(ctx, root)?;
+    if let Expr::Div(_, radicand_den) = ctx.get(radicand) {
+        if non_root_factors
+            .iter()
+            .any(|factor| cas_ast::ordering::compare_expr(ctx, *factor, *radicand_den).is_eq())
+        {
+            return None;
+        }
+    }
     let index_int = match ctx.get(index) {
         Expr::Number(n) if n.is_integer() => n.to_integer(),
         _ => return None,
@@ -744,6 +752,17 @@ mod tests {
             .expect("product-den rationalization should apply");
         let rendered = cas_formatter::render_expr(&ctx, rewrite.rewritten);
         assert!(rendered.contains("sqrt(y)") || rendered.contains("y^(1/2)"));
+    }
+
+    #[test]
+    fn skips_rationalize_product_denominator_when_quotient_root_denominator_is_present() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*x+1)/(2*(x^2+x+2)*(x^2+x+3)*sqrt((x^2+x+1)/(x^2+x+3)))",
+            &mut ctx,
+        )
+        .expect("parse");
+        assert!(try_rewrite_rationalize_product_denominator_expr(&mut ctx, expr).is_none());
     }
 
     #[test]

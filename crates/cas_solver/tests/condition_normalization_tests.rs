@@ -417,6 +417,24 @@ fn test_positive_even_power_product_quotient_with_nonnegative_shadow_stays_atomi
 }
 
 #[test]
+fn test_positive_affine_partition_quotient_expands_to_positive_parts() {
+    let mut ctx = Context::new();
+    let quotient = cas_parser::parse("x / (1 - x)", &mut ctx).expect("parse quotient");
+    let denominator = cas_parser::parse("1 - x", &mut ctx).expect("parse denominator");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::Positive(quotient),
+            ImplicitCondition::NonNegative(quotient),
+            ImplicitCondition::NonZero(denominator),
+        ],
+    );
+
+    assert_eq!(rendered, vec!["x > 0", "1 - x > 0"]);
+}
+
+#[test]
 fn test_expanded_shifted_square_product_nonzero_is_dominated_by_atomic_guards() {
     let mut ctx = Context::new();
     let composite =

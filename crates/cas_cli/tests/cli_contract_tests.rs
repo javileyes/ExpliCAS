@@ -115,7 +115,7 @@ fn test_eval_text_surfaces_blocked_diff_domain_hint_on_stderr() {
         .args(["eval", "diff(atanh(sqrt(x^2+2)), x)"])
         .assert()
         .success()
-        .stdout(predicate::str::contains("diff(atanh((x^2 + 2)^(1/2)), x)"))
+        .stdout(predicate::str::contains("diff(atanh(sqrt(x^2 + 2)), x)"))
         .stderr(predicate::str::contains("Blocked: requires -x"))
         .stderr(predicate::str::contains(
             "real domain is empty; no real derivative is exposed",

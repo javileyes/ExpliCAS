@@ -262,7 +262,7 @@ fn evaluate_envelope_wire_diff_atanh_empty_real_domain_surfaces_specific_blocked
 
     assert_eq!(
         wire["result"]["value"]["display"],
-        "diff(atanh((x^2 + 2)^(1/2)), x)"
+        "diff(atanh(sqrt(x^2 + 2)), x)"
     );
     let blocked = wire["transparency"]["blocked_hints"]
         .as_array()

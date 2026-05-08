@@ -72,7 +72,10 @@ fn test_rationalize_compact_form() {
     // - Expanded: -x + x*√2 or x*√2 - x
     // Both are mathematically correct after rationalization
     assert!(
-        result_str.contains("x") && (result_str.contains("2^(1/2)") || result_str.contains("√")),
+        result_str.contains("x")
+            && (result_str.contains("2^(1/2)")
+                || result_str.contains("sqrt(2)")
+                || result_str.contains("√")),
         "Expected result containing x and sqrt(2), got: {}",
         result_str
     );
@@ -205,7 +208,10 @@ fn test_nested_surd_and_regular_parts() {
     );
     // The rationalized part should be present (with surd)
     assert!(
-        result_str.contains("2") && (result_str.contains("^(1/2)") || result_str.contains("√")),
+        result_str.contains("2")
+            && (result_str.contains("^(1/2)")
+                || result_str.contains("sqrt(2)")
+                || result_str.contains("√")),
         "Expected rationalized surd part, got: {}",
         result_str
     );

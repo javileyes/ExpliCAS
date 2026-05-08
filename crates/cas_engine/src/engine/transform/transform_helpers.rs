@@ -56,6 +56,68 @@ fn integrate_call_should_preserve_raw_target_for_direct_integration(
         || integrate_target_is_inverse_hyperbolic_sqrt_reciprocal(ctx, args[0], var_name)
         || integrate_target_is_sqrt_trig_reciprocal_derivative(ctx, args[0], var_name)
         || integrate_target_is_sqrt_trig_log_derivative(ctx, args[0], var_name)
+        || integrate_target_is_repeated_trig_by_parts_kernel(ctx, args[0], var_name)
+        || integrate_target_is_repeated_exp_by_parts_kernel(ctx, args[0], var_name)
+        || (crate::rule::steps_enabled()
+            && integrate_target_is_affine_times_basic_by_parts_kernel(ctx, args[0], var_name))
+}
+
+fn integrate_target_is_affine_times_basic_by_parts_kernel(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Mul(left, right) = ctx.get(target) else {
+        return false;
+    };
+
+    (expr_is_additive_affine_polynomial(ctx, *left, var_name)
+        && expr_is_basic_linear_by_parts_kernel(ctx, *right, var_name))
+        || (expr_is_additive_affine_polynomial(ctx, *right, var_name)
+            && expr_is_basic_linear_by_parts_kernel(ctx, *left, var_name))
+}
+
+fn expr_is_additive_affine_polynomial(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return false;
+    }
+    let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) else {
+        return false;
+    };
+    poly.degree() == 1
+}
+
+fn expr_is_basic_linear_by_parts_kernel(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let arg = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(
+                    ctx.builtin_of(*fn_id),
+                    Some(
+                        cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos | cas_ast::BuiltinFn::Exp
+                    )
+                ) =>
+        {
+            args[0]
+        }
+        Expr::Pow(base, exp) if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E)) => {
+            *exp
+        }
+        _ => return false,
+    };
+
+    let Ok(poly) = Polynomial::from_expr(ctx, arg, var_name) else {
+        return false;
+    };
+    poly.degree() == 1
 }
 
 fn diff_target_should_preserve_raw_derivative_route(
@@ -70,10 +132,14 @@ fn diff_target_should_preserve_raw_derivative_route(
     let Some(var_name) = diff_variable_name(ctx, variable) else {
         return false;
     };
-    diff_target_is_affine_polynomial_times_direct_builtin_derivative_target(ctx, target, var_name)
+    diff_target_is_repeated_trig_by_parts_integrate_call(ctx, target, var_name)
+        || diff_target_is_affine_polynomial_times_direct_builtin_derivative_target(
+            ctx, target, var_name,
+        )
         || diff_target_is_affine_times_arctan_reciprocal_affine(ctx, target, var_name)
         || diff_target_is_arctan_reciprocal_affine_by_parts_sum(ctx, target, var_name)
         || diff_target_is_arctan_affine_by_parts_sum(ctx, target, var_name)
+        || diff_target_is_inverse_tangent_direct_trig_linear_arg(ctx, target, var_name)
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
         || diff_target_is_scaled_bounded_inverse_trig_surd_quotient(ctx, target, var_name)
@@ -82,6 +148,124 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_constant_scaled_positive_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_reciprocal_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_atanh_surd_polynomial(ctx, target, var_name)
+}
+
+fn diff_target_is_repeated_trig_by_parts_integrate_call(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return false;
+    }
+    diff_variable_name(ctx, args[1]).is_some_and(|integrate_var| integrate_var == var_name)
+        && integrate_target_is_repeated_trig_by_parts_kernel(ctx, args[0], var_name)
+}
+
+fn integrate_target_is_repeated_trig_by_parts_kernel(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Mul(left, right) = ctx.get(target) else {
+        return false;
+    };
+
+    (expr_is_repeated_by_parts_polynomial(ctx, *left, var_name)
+        && expr_is_direct_trig_linear_arg(ctx, *right, var_name))
+        || (expr_is_repeated_by_parts_polynomial(ctx, *right, var_name)
+            && expr_is_direct_trig_linear_arg(ctx, *left, var_name))
+}
+
+fn diff_target_is_inverse_tangent_direct_trig_linear_arg(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(
+                cas_ast::BuiltinFn::Atan
+                    | cas_ast::BuiltinFn::Arctan
+                    | cas_ast::BuiltinFn::Acot
+                    | cas_ast::BuiltinFn::Arccot
+            )
+        )
+    {
+        return false;
+    }
+
+    expr_is_direct_trig_linear_arg(ctx, args[0], var_name)
+}
+
+fn integrate_target_is_repeated_exp_by_parts_kernel(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Mul(left, right) = ctx.get(target) else {
+        return false;
+    };
+
+    (expr_is_repeated_by_parts_polynomial(ctx, *left, var_name)
+        && expr_is_direct_exp_linear_arg(ctx, *right, var_name))
+        || (expr_is_repeated_by_parts_polynomial(ctx, *right, var_name)
+            && expr_is_direct_exp_linear_arg(ctx, *left, var_name))
+}
+
+fn expr_is_repeated_by_parts_polynomial(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) else {
+        return false;
+    };
+    matches!(poly.degree(), 2..=4)
+}
+
+fn expr_is_direct_trig_linear_arg(ctx: &cas_ast::Context, expr: ExprId, var_name: &str) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return false;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+        )
+    {
+        return false;
+    }
+    let Ok(poly) = Polynomial::from_expr(ctx, args[0], var_name) else {
+        return false;
+    };
+    poly.degree() == 1
+}
+
+fn expr_is_direct_exp_linear_arg(ctx: &cas_ast::Context, expr: ExprId, var_name: &str) -> bool {
+    let arg = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(ctx.builtin_of(*fn_id), Some(cas_ast::BuiltinFn::Exp)) =>
+        {
+            args[0]
+        }
+        Expr::Pow(base, exp) if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E)) => {
+            *exp
+        }
+        _ => return false,
+    };
+    let Ok(poly) = Polynomial::from_expr(ctx, arg, var_name) else {
+        return false;
+    };
+    poly.degree() == 1
 }
 
 fn diff_variable_name(ctx: &cas_ast::Context, variable: ExprId) -> Option<&str> {

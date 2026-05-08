@@ -28,6 +28,10 @@ fn format_expr(ctx: &Context, id: ExprId) -> String {
     format!("{}", DisplayExpr { context: ctx, id })
 }
 
+fn contains_sqrt2_minus_one(output: &str) -> bool {
+    output.contains("sqrt(2) - 1") || output.contains("√(2) - 1") || output.contains("2^(1/2) - 1")
+}
+
 // ============================================================================
 // SIMPLIFY: Binomial×Binomial Preservation
 // ============================================================================
@@ -319,7 +323,7 @@ fn test_simplify_preserves_fractional_binomial() {
     // Should contain the binomial structure, not be fully distributed
     // Expected: (√(2) - 1)/2 or 1/2 * (√(2) - 1)
     assert!(
-        output.contains("√(2) - 1") || output.contains("2^(1/2) - 1"),
+        contains_sqrt2_minus_one(&output),
         "simplify should preserve fractional binomial form: got {}",
         output
     );
@@ -364,7 +368,7 @@ fn test_contract_fractional_binomial_style_only() {
 
     // simplify should preserve binomial structure
     assert!(
-        simp_out.contains("√(2) - 1") || simp_out.contains("2^(1/2) - 1"),
+        contains_sqrt2_minus_one(&simp_out),
         "simplify should preserve fractional binomial: got {}",
         simp_out
     );
@@ -387,7 +391,7 @@ fn test_contract_negative_fractional_binomial() {
 
     // Should have √2 - 1 (flipped), not 1 - √2
     assert!(
-        output.contains("√(2) - 1") || output.contains("2^(1/2) - 1"),
+        contains_sqrt2_minus_one(&output),
         "simplify should flip negative binomial to positive form: got {}",
         output
     );

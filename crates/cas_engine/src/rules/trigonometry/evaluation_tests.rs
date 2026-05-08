@@ -63,6 +63,6 @@ fn test_cot_five_pi_over_twelve() {
                 id: rewrite.new_expr
             }
         ),
-        "2 - 3^(1 / 2)"
+        "2 - sqrt(3)"
     );
 }

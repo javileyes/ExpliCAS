@@ -13,8 +13,11 @@ fn test_simplify(input: &str, expected_part: &str) {
         }
     );
     println!("Input: {}, Result: {}", input, res_str);
+    let sqrt_expected = expected_part
+        .replace("2^(1/2)", "sqrt(2)")
+        .replace("3^(1/2)", "sqrt(3)");
     assert!(
-        res_str.contains(expected_part),
+        res_str.contains(expected_part) || res_str.contains(&sqrt_expected),
         "Expected result to contain '{}', got '{}'",
         expected_part,
         res_str

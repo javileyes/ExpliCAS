@@ -11,11 +11,15 @@ use cas_solver_core::engine_events::EngineEvent;
 ///
 /// Keeps step formatting behavior consistent with timeline rendering.
 pub fn collect_step_payloads(steps: &[Step], ctx: &Context, steps_mode: &str) -> Vec<StepWire> {
-    prepare::prepare_step_payloads(steps, ctx, steps_mode)
-        .iter()
-        .enumerate()
-        .map(|(index, enriched)| build::build_step_wire(ctx, index + 1, enriched))
-        .collect()
+    let mut payloads = Vec::new();
+    for enriched in prepare::prepare_step_payloads(steps, ctx, steps_mode) {
+        let wire = build::build_step_wire(ctx, payloads.len() + 1, &enriched);
+        if is_noop_post_calculus_presentation(&wire) {
+            continue;
+        }
+        payloads.push(wire);
+    }
+    payloads
 }
 
 /// Convert steps to typed step payload DTOs, falling back to engine events when
@@ -31,4 +35,8 @@ pub fn collect_step_payloads_with_events(
         return collected;
     }
     events::collect_event_step_payloads(events, ctx)
+}
+
+fn is_noop_post_calculus_presentation(step: &StepWire) -> bool {
+    step.rule == "Presentar resultado de cálculo en forma compacta" && step.before == step.after
 }

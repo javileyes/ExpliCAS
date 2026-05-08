@@ -1621,6 +1621,103 @@ fn positive_condition_dominates_reciprocal_offset_nonnegative(
     exprs_equivalent_up_to_nonzero_scalar(ctx, normalized_positive, normalized_gap)
 }
 
+fn positive_product_polynomial_is_dominated_by_positive_factor_pair(
+    ctx: &Context,
+    product_expr: ExprId,
+    known_positive_exprs: &[ExprId],
+) -> bool {
+    use cas_math::multipoly::{multipoly_from_expr, PolyBudget};
+
+    if known_positive_exprs.len() < 2 {
+        return false;
+    }
+
+    let budget = PolyBudget {
+        max_terms: 64,
+        max_total_degree: 8,
+        max_pow_exp: 8,
+    };
+    let Ok(product_poly) = multipoly_from_expr(ctx, product_expr, &budget) else {
+        return false;
+    };
+    if product_poly.is_zero() || product_poly.total_degree() < 2 {
+        return false;
+    }
+
+    for (left_idx, left_expr) in known_positive_exprs.iter().enumerate() {
+        let Ok(left_poly) = multipoly_from_expr(ctx, *left_expr, &budget) else {
+            continue;
+        };
+        if !left_poly.vars.iter().all(|var| {
+            product_poly
+                .vars
+                .iter()
+                .any(|product_var| product_var == var)
+        }) {
+            continue;
+        }
+        let left_poly = left_poly.align_vars(&product_poly.vars);
+
+        for right_expr in known_positive_exprs.iter().skip(left_idx + 1) {
+            let Ok(right_poly) = multipoly_from_expr(ctx, *right_expr, &budget) else {
+                continue;
+            };
+            if !right_poly.vars.iter().all(|var| {
+                product_poly
+                    .vars
+                    .iter()
+                    .any(|product_var| product_var == var)
+            }) {
+                continue;
+            }
+            let right_poly = right_poly.align_vars(&product_poly.vars);
+            let Ok(candidate_product) = left_poly.mul(&right_poly, &budget) else {
+                continue;
+            };
+
+            if polynomial_is_positive_scalar_multiple(&candidate_product, &product_poly) {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+fn polynomial_is_positive_scalar_multiple(source: &MultiPoly, target: &MultiPoly) -> bool {
+    if source.vars != target.vars || source.is_zero() || target.is_zero() {
+        return false;
+    }
+
+    let mut scale: Option<BigRational> = None;
+    for (source_coeff, source_mono) in &source.terms {
+        let Some((target_coeff, _)) = target
+            .terms
+            .iter()
+            .find(|(_, target_mono)| target_mono == source_mono)
+        else {
+            return false;
+        };
+        let term_scale = target_coeff / source_coeff;
+        match &scale {
+            Some(existing) if existing != &term_scale => return false,
+            Some(_) => {}
+            None => scale = Some(term_scale),
+        }
+    }
+
+    if target.terms.iter().any(|(_, target_mono)| {
+        !source
+            .terms
+            .iter()
+            .any(|(_, source_mono)| source_mono == target_mono)
+    }) {
+        return false;
+    }
+
+    scale.is_some_and(|value| value.is_positive())
+}
+
 fn nonzero_nonconstant_scale(source: &MultiPoly, target: &MultiPoly) -> Option<BigRational> {
     let mut scale: Option<BigRational> = None;
     let mut saw_nonconstant = false;
@@ -2483,6 +2580,10 @@ fn expand_positive_quotient_condition_for_display(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<Vec<ImplicitCondition>> {
+    if let Some(expanded) = expand_positive_affine_partition_quotient_condition(ctx, expr) {
+        return Some(expanded);
+    }
+
     let (num, den) = match ctx.get(expr) {
         Expr::Div(num, den) => (*num, *den),
         _ => return None,
@@ -2512,6 +2613,43 @@ fn expand_positive_quotient_condition_for_display(
     }
 
     Some(expanded)
+}
+
+fn expand_positive_affine_partition_quotient_condition(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<ImplicitCondition>> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var_name = vars.iter().next()?;
+    let num_poly = Polynomial::from_expr(ctx, num, var_name.as_str()).ok()?;
+    let den_poly = Polynomial::from_expr(ctx, den, var_name.as_str()).ok()?;
+    if num_poly.degree() > 1 || den_poly.degree() > 1 {
+        return None;
+    }
+
+    let partition_sum = num_poly.add(&den_poly);
+    if partition_sum.degree() != 0 {
+        return None;
+    }
+    let partition_total = partition_sum
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if !partition_total.is_positive() {
+        return None;
+    }
+
+    let numerator_positive = normalize_condition(ctx, &ImplicitCondition::Positive(num));
+    let denominator_positive = normalize_condition(ctx, &ImplicitCondition::Positive(den));
+    Some(vec![numerator_positive, denominator_positive])
 }
 
 fn expand_nonzero_condition_for_display(ctx: &mut Context, expr: ExprId) -> Vec<ImplicitCondition> {
@@ -3220,6 +3358,15 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                     && is_product_dominated_by_positives(ctx, factored, &other_positive_exprs)
                 {
                     to_remove.push(i);
+                    continue;
+                }
+
+                if positive_product_polynomial_is_dominated_by_positive_factor_pair(
+                    ctx,
+                    *prod_expr,
+                    &other_positive_exprs,
+                ) {
+                    to_remove.push(i);
                 }
             }
         }
@@ -3478,6 +3625,31 @@ mod tests {
         }));
         assert!(normalized.iter().any(|cond| {
             conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x_minus_y))
+        }));
+    }
+
+    #[test]
+    fn positive_affine_factors_dominate_expanded_product_condition() {
+        let mut ctx = Context::new();
+        let left_gap = parse("1 - x", &mut ctx).expect("parse left gap");
+        let right_gap = parse("2*x - 1", &mut ctx).expect("parse right gap");
+        let expanded_product = parse("3*x - 2*x^2 - 1", &mut ctx).expect("parse product");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(expanded_product),
+                ImplicitCondition::Positive(left_gap),
+                ImplicitCondition::Positive(right_gap),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2);
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(left_gap))
+        }));
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(right_gap))
         }));
     }
 

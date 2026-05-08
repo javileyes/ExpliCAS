@@ -88,13 +88,17 @@ impl crate::rule::Rule for DyadicCosProductToSinRule {
             policy,
             cas_math::trig_dyadic_policy_support::DyadicSinNonzeroPolicyDecision::Block
         ) {
-            // Block with hint
-            crate::register_blocked_hint(crate::BlockedHint {
-                rule: "Dyadic Cos Product".to_string(),
-                expr_id: sin_theta,
-                key: crate::AssumptionKey::nonzero_key(ctx, sin_theta),
-                suggestion: "use `domain assume` to allow this transformation",
-            });
+            // Keep hints for genuine dyadic products. The n=1 shape
+            // `2*cos(theta)` is too common in ordinary calculus output to be
+            // an actionable blocked-simplification hint.
+            if plan.n > 1 {
+                crate::register_blocked_hint(crate::BlockedHint {
+                    rule: "Dyadic Cos Product".to_string(),
+                    expr_id: sin_theta,
+                    key: crate::AssumptionKey::nonzero_key(ctx, sin_theta),
+                    suggestion: "use `domain assume` to allow this transformation",
+                });
+            }
             return None;
         }
 

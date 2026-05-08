@@ -37,6 +37,11 @@ type SignedTerms = Vec<(ExprId, Sign)>;
 type ConcreteLogExpansion = (ExprId, ExprId, SignedTerms);
 
 pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let integration_by_parts_substeps = generate_integration_by_parts_substeps(ctx, step);
+    if !integration_by_parts_substeps.is_empty() {
+        return integration_by_parts_substeps;
+    }
+
     let sixth_power_substeps = generate_sum_difference_sixth_powers_substeps(ctx, step);
     if !sixth_power_substeps.is_empty() {
         return sixth_power_substeps;
@@ -11386,6 +11391,84 @@ fn generate_sum_difference_cubes_cancel_substeps(ctx: &Context, step: &Step) -> 
         .with_before_latex(latex_expr(ctx, matching_factor))
         .with_after_latex(latex_expr(ctx, remaining_factor)),
     ]
+}
+
+fn generate_integration_by_parts_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    let mut scratch = ctx.clone();
+    let is_quadratic_by_parts =
+        cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_exp_linear_target(
+            &mut scratch,
+            args[0],
+            var_name,
+        ) || cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_trig_linear_target(
+            &mut scratch,
+            args[0],
+            var_name,
+        );
+    let is_linear_by_parts = contains_linear_integration_by_parts_target(ctx, args[0], var_name);
+    if !is_quadratic_by_parts && !is_linear_by_parts {
+        return Vec::new();
+    }
+    let title = if is_quadratic_by_parts {
+        "Usar integración por partes repetida"
+    } else {
+        "Usar integración por partes"
+    };
+
+    vec![
+        SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(latex_expr(ctx, after)),
+    ]
+}
+
+fn contains_linear_integration_by_parts_target(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let mut scratch = ctx.clone();
+    if cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_exp_linear_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_trig_linear_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_hyperbolic_linear_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) {
+        return true;
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right) | Expr::Sub(left, right) => {
+            contains_linear_integration_by_parts_target(ctx, *left, var_name)
+                || contains_linear_integration_by_parts_target(ctx, *right, var_name)
+        }
+        Expr::Neg(inner) => contains_linear_integration_by_parts_target(ctx, *inner, var_name),
+        _ => false,
+    }
 }
 
 fn display_expr(ctx: &Context, expr: ExprId) -> String {

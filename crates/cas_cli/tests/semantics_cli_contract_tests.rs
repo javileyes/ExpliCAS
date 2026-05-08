@@ -790,13 +790,13 @@ fn derive_root_nesting_keeps_wire_steps_when_steps_count_is_positive() {
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "sqrt(2·sqrt(6) + 5)");
-    assert_eq!(wire["steps_count"], 2);
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert!(
         !steps.is_empty(),
         "expected wire steps for derive root nesting when steps_count is positive"
     );
+    assert_eq!(wire["steps_count"], steps.len());
 }
 
 #[test]

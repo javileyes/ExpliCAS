@@ -4005,14 +4005,11 @@ fn derive_didactic_sqrt_product_merge_shows_both_source_factors() {
 }
 
 #[test]
-fn derive_didactic_sqrt_arithmetic_sum_shows_hidden_radical_extraction() {
+fn derive_didactic_sqrt_arithmetic_sum_combines_like_radicals() {
     assert_case_step_titles(
         "simplify_sqrt_arithmetic_sum",
         "Agrupar términos semejantes",
-        &[
-            "Extraer el cuadrado perfecto dentro de la raíz",
-            "Sumar los coeficientes que acompañan a 2^(1/2)",
-        ],
+        &["Sumar los coeficientes que acompañan a sqrt(2)"],
     );
 }
 

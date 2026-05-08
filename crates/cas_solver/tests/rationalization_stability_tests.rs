@@ -233,7 +233,7 @@ fn test_rationalize_binomial_minus_case() {
     assert!(json.contains("\"ok\":true"));
     // Should produce 2 + sqrt(3)
     assert!(
-        json.contains("3^(1/2)") || json.contains("√(3)"),
+        json.contains("sqrt(3)") || json.contains("3^(1/2)") || json.contains("√(3)"),
         "Missing sqrt(3) in result: {}",
         json
     );

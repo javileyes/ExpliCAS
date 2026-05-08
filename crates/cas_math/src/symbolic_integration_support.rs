@@ -9,6 +9,7 @@ use crate::polynomial::Polynomial;
 use crate::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
+use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::cmp::Ordering;
@@ -4721,19 +4722,130 @@ fn linear_times_exp_linear_antiderivative(
             continue;
         }
 
-        let arg_slope_expr = ctx.add(Expr::Number(arg_slope.clone()));
-        let quotient = if arg_slope.is_one() {
-            cofactor
-        } else {
-            ctx.add(Expr::Div(cofactor, arg_slope_expr))
-        };
-        let correction = cofactor_slope / (arg_slope.clone() * arg_slope);
-        let correction_expr = ctx.add(Expr::Number(correction));
-        let inner = ctx.add(Expr::Sub(quotient, correction_expr));
+        let correction = cofactor_slope / (arg_slope.clone() * arg_slope.clone());
+        let correction_poly = Polynomial::new(vec![correction], var.to_string());
+        let inner_poly = cofactor_poly.div_scalar(&arg_slope).sub(&correction_poly);
+        let inner = inner_poly.to_expr(ctx);
         return Some(mul2_raw(ctx, *factor, inner));
     }
 
     None
+}
+
+pub fn integrate_symbolic_is_linear_times_exp_linear_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    linear_times_exp_linear_antiderivative(ctx, expr, var).is_some()
+}
+
+fn quadratic_times_exp_linear_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for (exp_index, factor) in factors.iter().enumerate() {
+        let Some(exp_arg) = exp_like_arg(ctx, *factor) else {
+            continue;
+        };
+
+        let arg_poly = Polynomial::from_expr(ctx, exp_arg, var).ok()?;
+        if arg_poly.degree() != 1 {
+            continue;
+        }
+        let arg_slope = arg_poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if arg_slope.is_zero() {
+            continue;
+        }
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != exp_index).then_some(*factor))
+            .collect();
+        let cofactor = if cofactor_factors.is_empty() {
+            ctx.num(1)
+        } else {
+            build_balanced_mul(ctx, &cofactor_factors)
+        };
+        let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+        if !(2..=4).contains(&cofactor_poly.degree()) {
+            continue;
+        }
+
+        let slope_sq = arg_slope.clone() * arg_slope.clone();
+        let slope_cube = slope_sq.clone() * arg_slope.clone();
+        let slope_fourth = slope_cube.clone() * arg_slope.clone();
+        let slope_fifth = slope_fourth.clone() * arg_slope.clone();
+        let second_derivative = cofactor_poly.derivative().derivative();
+        let third_derivative = second_derivative.derivative();
+        let inner_poly = cofactor_poly
+            .div_scalar(&arg_slope)
+            .sub(&cofactor_poly.derivative().div_scalar(&slope_sq))
+            .add(&second_derivative.div_scalar(&slope_cube))
+            .sub(&third_derivative.div_scalar(&slope_fourth))
+            .add(&third_derivative.derivative().div_scalar(&slope_fifth));
+        let exp_factor = ctx.call_builtin(BuiltinFn::Exp, vec![exp_arg]);
+        return Some(exp_times_polynomial_with_rational_content_factored(
+            ctx,
+            exp_factor,
+            &inner_poly,
+        ));
+    }
+
+    None
+}
+
+pub fn integrate_symbolic_is_quadratic_times_exp_linear_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    quadratic_times_exp_linear_antiderivative(ctx, expr, var).is_some()
+}
+
+pub fn integrate_symbolic_is_quadratic_times_trig_linear_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    quadratic_times_trig_linear_antiderivative(ctx, expr, var).is_some()
+}
+
+fn exp_times_polynomial_with_rational_content_factored(
+    ctx: &mut Context,
+    exp_factor: ExprId,
+    poly: &Polynomial,
+) -> ExprId {
+    let mut denominator_lcm = num_bigint::BigInt::one();
+    for coeff in &poly.coeffs {
+        denominator_lcm = denominator_lcm.lcm(coeff.denom());
+    }
+
+    if denominator_lcm.is_one() {
+        let inner = poly.to_expr(ctx);
+        return mul2_raw(ctx, exp_factor, inner);
+    }
+
+    let denominator = BigRational::from_integer(denominator_lcm);
+    let scaled_poly = poly.mul(&Polynomial::new(
+        vec![denominator.clone()],
+        poly.var.clone(),
+    ));
+    let inner = scaled_poly.to_expr(ctx);
+    let numerator = mul2_raw(ctx, exp_factor, inner);
+    let denominator_expr = ctx.add(Expr::Number(denominator));
+    ctx.add(Expr::Div(numerator, denominator_expr))
 }
 
 fn trig_like_factor(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
@@ -4770,6 +4882,120 @@ fn scale_factor(ctx: &mut Context, scale: BigRational, expr: ExprId) -> ExprId {
     }
     let scale_expr = ctx.add(Expr::Number(scale));
     mul2_raw(ctx, scale_expr, expr)
+}
+
+fn polynomial_trig_term(
+    ctx: &mut Context,
+    poly: &Polynomial,
+    builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    if poly.is_zero() {
+        return None;
+    }
+
+    let trig = ctx.call_builtin(builtin, vec![arg]);
+    let poly_expr = poly.to_expr(ctx);
+    if poly.degree() == 0 && poly.coeffs.first().is_some_and(BigRational::is_one) {
+        Some(trig)
+    } else {
+        Some(mul2_raw(ctx, poly_expr, trig))
+    }
+}
+
+fn quadratic_times_trig_linear_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for (trig_index, factor) in factors.iter().enumerate() {
+        let Some((builtin, trig_arg)) = trig_like_factor(ctx, *factor) else {
+            continue;
+        };
+
+        let Ok(arg_poly) = Polynomial::from_expr(ctx, trig_arg, var) else {
+            continue;
+        };
+        if arg_poly.degree() != 1 {
+            continue;
+        }
+        let arg_slope = arg_poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if arg_slope.is_zero() {
+            continue;
+        }
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
+            .collect();
+        let cofactor = if cofactor_factors.is_empty() {
+            ctx.num(1)
+        } else {
+            build_balanced_mul(ctx, &cofactor_factors)
+        };
+        let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
+            continue;
+        };
+        if !(2..=4).contains(&cofactor_poly.degree()) {
+            continue;
+        }
+
+        let slope_sq = arg_slope.clone() * arg_slope.clone();
+        let slope_cube = slope_sq.clone() * arg_slope.clone();
+        let slope_fourth = slope_cube.clone() * arg_slope.clone();
+        let slope_fifth = slope_fourth.clone() * arg_slope.clone();
+        let p_over_slope = cofactor_poly.div_scalar(&arg_slope);
+        let p_prime_over_slope_sq = cofactor_poly.derivative().div_scalar(&slope_sq);
+        let second_derivative = cofactor_poly.derivative().derivative();
+        let p_second_over_slope_cube = second_derivative.div_scalar(&slope_cube);
+        let third_derivative = second_derivative.derivative();
+        let p_third_over_slope_fourth = third_derivative.div_scalar(&slope_fourth);
+        let p_fourth_over_slope_fifth = third_derivative.derivative().div_scalar(&slope_fifth);
+
+        return match builtin {
+            BuiltinFn::Sin => {
+                let sin_poly = p_prime_over_slope_sq.sub(&p_third_over_slope_fourth);
+                let cos_poly = p_second_over_slope_cube
+                    .sub(&p_over_slope)
+                    .sub(&p_fourth_over_slope_fifth);
+                let terms: Vec<ExprId> = [
+                    polynomial_trig_term(ctx, &sin_poly, BuiltinFn::Sin, trig_arg),
+                    polynomial_trig_term(ctx, &cos_poly, BuiltinFn::Cos, trig_arg),
+                ]
+                .into_iter()
+                .flatten()
+                .collect();
+                Some(build_balanced_add(ctx, &terms))
+            }
+            BuiltinFn::Cos => {
+                let sin_poly = p_over_slope
+                    .sub(&p_second_over_slope_cube)
+                    .add(&p_fourth_over_slope_fifth);
+                let cos_poly = p_prime_over_slope_sq.sub(&p_third_over_slope_fourth);
+                let terms: Vec<ExprId> = [
+                    polynomial_trig_term(ctx, &sin_poly, BuiltinFn::Sin, trig_arg),
+                    polynomial_trig_term(ctx, &cos_poly, BuiltinFn::Cos, trig_arg),
+                ]
+                .into_iter()
+                .flatten()
+                .collect();
+                Some(build_balanced_add(ctx, &terms))
+            }
+            _ => None,
+        };
+    }
+
+    None
 }
 
 fn linear_times_trig_linear_antiderivative(
@@ -4828,11 +5054,13 @@ fn linear_times_trig_linear_antiderivative(
             continue;
         }
 
-        let arg_slope_expr = ctx.add(Expr::Number(arg_slope.clone()));
         let quotient = if arg_slope.is_one() {
             cofactor
-        } else {
+        } else if arg_slope.is_integer() {
+            let arg_slope_expr = ctx.add(Expr::Number(arg_slope.clone()));
             ctx.add(Expr::Div(cofactor, arg_slope_expr))
+        } else {
+            scale_factor(ctx, BigRational::one() / arg_slope.clone(), cofactor)
         };
         let correction = cofactor_slope / (arg_slope.clone() * arg_slope);
 
@@ -4854,6 +5082,14 @@ fn linear_times_trig_linear_antiderivative(
     }
 
     None
+}
+
+pub fn integrate_symbolic_is_linear_times_trig_linear_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    linear_times_trig_linear_antiderivative(ctx, expr, var).is_some()
 }
 
 fn linear_times_hyperbolic_linear_antiderivative(
@@ -4938,6 +5174,14 @@ fn linear_times_hyperbolic_linear_antiderivative(
     }
 
     None
+}
+
+pub fn integrate_symbolic_is_linear_times_hyperbolic_linear_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    linear_times_hyperbolic_linear_antiderivative(ctx, expr, var).is_some()
 }
 
 fn exact_rational_sqrt(value: &BigRational) -> Option<BigRational> {
@@ -7030,7 +7274,15 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = quadratic_times_exp_linear_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = linear_times_exp_linear_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
+    if let Some(integral) = quadratic_times_trig_linear_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
 
@@ -7701,23 +7953,54 @@ mod tests {
 
         let expr = parse("(2*x+3)*exp(2*x+1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
-        assert_eq!(
-            rendered(&ctx, out),
-            "e^(2 * x + 1) * ((2 * x + 3) / 2 - 1/2)"
-        );
+        assert_eq!(rendered(&ctx, out), "e^(2 * x + 1) * (x + 1)");
 
         let expr = parse("(x+1)*exp((3*x+2)/2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
-        assert_eq!(
-            rendered(&ctx, out),
-            "e^((3 * x + 2) / 2) * ((x + 1) / 3/2 - 4/9)"
-        );
+        assert_eq!(rendered(&ctx, out), "e^((3 * x + 2) / 2) * (2/3 * x + 2/9)");
 
         let expr = parse("(x+1)*exp((2-3*x)/2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "e^((2 - 3 * x) / 2) * (-(x + 1) / 3/2 - 4/9)"
+            "e^((2 - 3 * x) / 2) * (-2/3 * x - 10/9)"
+        );
+    }
+
+    #[test]
+    fn integrates_quadratic_times_exp_linear_by_parts() {
+        let mut ctx = Context::new();
+        let expr = parse("x^2*exp(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "exp(x) * (x^2 + 2 - 2 * x)");
+
+        let expr = parse("(x^2+x+1)*exp(2*x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "exp(2 * x + 1) * (x^2 + 1) / 2");
+
+        let expr = parse("(x^2+x+1)*exp((2-3*x)/2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "exp((2 - 3 * x) / 2) * (-18 * x^2 - 42 * x - 46) / 27"
+        );
+
+        let expr = parse("x^3*exp(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "exp(x) * (x^3 + 6 * x - 3 * x^2 - 6)");
+
+        let expr = parse("(x^3+x)*exp(2*x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "exp(2 * x + 1) * (4 * x^3 + 10 * x - 6 * x^2 - 5) / 8"
+        );
+
+        let expr = parse("x^4*exp(2*x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "exp(2 * x + 1) * (2 * x^4 + 6 * x^2 + 3 - 4 * x^3 - 6 * x) / 4"
         );
     }
 
@@ -7750,28 +8033,83 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "4/9 * sin((3 * x + 2) / 2) - (cos((3 * x + 2) / 2) * (x + 1))/3/2"
+            "4/9 * sin((3 * x + 2) / 2) - 2/3 * (x + 1) * cos((3 * x + 2) / 2)"
         );
 
         let expr = parse("(x+1)*cos((3*x+2)/2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "4/9 * cos((3 * x + 2) / 2) + (sin((3 * x + 2) / 2) * (x + 1))/3/2"
+            "4/9 * cos((3 * x + 2) / 2) + 2/3 * (x + 1) * sin((3 * x + 2) / 2)"
         );
 
         let expr = parse("(x+1)*sin((2-3*x)/2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "4/9 * sin((2 - 3 * x) / 2) - -cos((2 - 3 * x) / 2) * (x + 1)/3/2"
+            "4/9 * sin((2 - 3 * x) / 2) - -2/3 * (x + 1) * cos((2 - 3 * x) / 2)"
         );
 
         let expr = parse("(x+1)*cos((2-3*x)/2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "4/9 * cos((2 - 3 * x) / 2) + -sin((2 - 3 * x) / 2) * (x + 1)/3/2"
+            "4/9 * cos((2 - 3 * x) / 2) + -2/3 * (x + 1) * sin((2 - 3 * x) / 2)"
+        );
+    }
+
+    #[test]
+    fn integrates_quadratic_times_trig_linear_by_parts() {
+        let mut ctx = Context::new();
+        let expr = parse("x^2*sin(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "2 * x * sin(x) + (2 - x^2) * cos(x)");
+
+        let expr = parse("x^2*cos(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "2 * x * cos(x) + (x^2 - 2) * sin(x)");
+
+        let expr = parse("(x^2+x+1)*sin(2*x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(1/2 * x + 1/4) * sin(2 * x + 1) + (-1/2 * x^2 - 1/2 * x - 1/4) * cos(2 * x + 1)"
+        );
+    }
+
+    #[test]
+    fn integrates_cubic_times_trig_linear_by_parts() {
+        let mut ctx = Context::new();
+        let expr = parse("x^3*sin(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(6 * x - x^3) * cos(x) + (3 * x^2 - 6) * sin(x)"
+        );
+
+        let expr = parse("x^3*cos(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^3 - 6 * x) * sin(x) + (3 * x^2 - 6) * cos(x)"
+        );
+    }
+
+    #[test]
+    fn integrates_quartic_times_trig_linear_by_parts() {
+        let mut ctx = Context::new();
+        let expr = parse("x^4*sin(2*x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^3 - 3/2 * x) * sin(2 * x + 1) + (3/2 * x^2 - 1/2 * x^4 - 3/4) * cos(2 * x + 1)"
+        );
+
+        let expr = parse("x^4*cos(2*x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^3 - 3/2 * x) * cos(2 * x + 1) + (1/2 * x^4 + 3/4 - 3/2 * x^2) * sin(2 * x + 1)"
         );
     }
 
@@ -8119,7 +8457,7 @@ mod tests {
 
         let expr = parse("1/(sqrt(x)*(x+4))", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
-        assert_eq!(rendered(&ctx, out), "arctan(1/2 * sqrt(x))");
+        assert_eq!(rendered(&ctx, out), "arctan(sqrt(x) / 2)");
 
         let expr = parse("1/(2*sqrt(x)*(4*x+1))", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");

@@ -44,9 +44,10 @@ fn test_dyadic_cos_product_pi_9() {
 #[test]
 fn test_sin_supplementary_angle() {
     let result = simplify("sin(8*pi/9)");
+    let compact = result.replace(' ', "");
     // 8/9 = 1 - 1/9, so sin(8π/9) = sin(π - π/9) = sin(π/9)
     assert!(
-        result.contains("1/9") && result.contains("sin"),
+        result.contains("sin") && (compact.contains("1/9") || compact.contains("pi/9")),
         "sin(8π/9) should simplify to sin(π/9), got: {}",
         result
     );

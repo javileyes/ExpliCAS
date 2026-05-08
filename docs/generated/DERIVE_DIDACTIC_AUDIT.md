@@ -8,7 +8,7 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 
 - Derived cases audited: `472`
 - Mean top-level step count: `1.06`
-- Total web substeps: `483`
+- Total web substeps: `482`
 
 ## Flag Summary
 
@@ -39,7 +39,7 @@ No audit flags emitted.
 | `power_merge` | 10 | 0 | 0 | 2 |
 | `radical_power` | 6 | 0 | 0 | 12 |
 | `rationalize` | 9 | 0 | 0 | 25 |
-| `simplify` | 90 | 0 | 0 | 83 |
+| `simplify` | 90 | 0 | 0 | 82 |
 | `solve_prep` | 8 | 0 | 0 | 21 |
 | `telescoping_fraction` | 15 | 0 | 0 | 30 |
 | `trig_contract` | 49 | 0 | 0 | 25 |
@@ -492,7 +492,7 @@ No audit flags emitted.
 | `reciprocal_trig_special_value_sec_pi_fourth` | `simplify` | 1 | 0 | none |
 | `sec_tan_pythagorean_to_one` | `simplify` | 1 | 0 | none |
 | `simplify_sqrt_arithmetic_difference` | `simplify` | 1 | 1 | none |
-| `simplify_sqrt_arithmetic_sum` | `simplify` | 1 | 2 | none |
+| `simplify_sqrt_arithmetic_sum` | `simplify` | 1 | 1 | none |
 | `sin_arccos_complement_projection` | `simplify` | 1 | 2 | none |
 | `sin_arctan_right_triangle_projection` | `simplify` | 1 | 2 | none |
 | `solve_prep_complete_square_alt_variable_symbolic_leading_coeff` | `solve_prep` | 1 | 3 | none |
@@ -15036,7 +15036,7 @@ Result: 2 * sqrt(2)
    - before: `3 · sqrt(2) - sqrt(2)`
    - after: `2 · sqrt(2)`
    - substeps:
-     1. `Sumar los coeficientes que acompañan a 2^(1/2)`
+     1. `Sumar los coeficientes que acompañan a sqrt(2)`
 
 ## simplify_sqrt_arithmetic_sum (simplify)
 
@@ -15044,7 +15044,7 @@ Result: 2 * sqrt(2)
 - Target: `3*sqrt(2)`
 - Result: `3 * sqrt(2)`
 - Web step count: `1`
-- Web substep count: `2`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -15055,7 +15055,7 @@ Target: 3 * sqrt(2)
 Strategy: combine like terms
 Steps (Aggressive Mode):
 1. Combine like terms  [Combine Like Terms]
-   Before: sqrt(8) + 2 * sqrt(2)
+   Before: sqrt(2) + 2 * sqrt(2)
    Cambio local: sqrt(2) + 2 * sqrt(2) -> 3 * sqrt(2)
    After: 3 * sqrt(2)
 Result: 3 * sqrt(2)
@@ -15064,11 +15064,10 @@ Result: 3 * sqrt(2)
 ### Web / JSON Steps
 
 1. `Agrupar términos semejantes`
-   - before: `sqrt(8) + 2 · sqrt(2)`
+   - before: `sqrt(2) + 2 · sqrt(2)`
    - after: `3 · sqrt(2)`
    - substeps:
-     1. `Extraer el cuadrado perfecto dentro de la raíz`
-     2. `Sumar los coeficientes que acompañan a 2^(1/2)`
+     1. `Sumar los coeficientes que acompañan a sqrt(2)`
 
 ## sin_arccos_complement_projection (simplify)
 

@@ -1,16 +1,16 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-05-07T18:33:05.380274+00:00
+- Generated: 2026-05-08T08:13:36.865388+00:00
 - Git branch: main
-- Git commit: `6a6aa09257d775c7647a90d7c649fe2d56b19c21`
+- Git commit: `44c7e95cd411efe370a253b39e88e3f4b5e6f96c`
 - Profile: `guardrail`
 
 ## Embedded Runtime Guardrail
 
 - Dimension: contextual simplify/equivalence under real wrappers.
 - Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 5.26s
-- Per-case runtime: 3.640ms/case
+- Elapsed: 4.94s
+- Per-case runtime: 3.419ms/case
 - Coverage axes: 7 wrappers across 25 families
 - Context axes: 4 complexity levels across 6 shell depths
 - Largest wrapper share: 20.1%
@@ -65,7 +65,7 @@
 - Dimension: educational quality of derive target-driven traces and web substeps.
 - Interpretation: diagnostic trace-quality lane; not a semantic correctness or runtime metric.
 - Outcomes: cases=472 flagged=0 flagged_rate=0.0%
-- Substeps: total_web_substeps=483 mean_step_count=1.06
+- Substeps: total_web_substeps=482 mean_step_count=1.06
 - Flags: no_web_substeps=0 no_web_steps=0
 
 ## Simplify Didactic Trace Audit
@@ -80,10 +80,10 @@
 
 - Dimension: public calculus behavior, result simplification, domain conditions, and step noise.
 - Interpretation: small executable calculus vertical slices; failures should be classified before broadening pre-calculus rules.
-- `diff`: passed=141 failed=0 ignored=1 filtered_out=0
+- `diff`: passed=157 failed=0 ignored=1 filtered_out=0
 - `limit`: passed=64 failed=0 ignored=0 filtered_out=0
 - `limit_presimplify_safe`: passed=8 failed=0 ignored=0 filtered_out=0
-- `integrate`: passed=152 failed=0 ignored=1 filtered_out=0
+- `integrate`: passed=165 failed=0 ignored=1 filtered_out=0
 
 ## Simplify Closure Signal
 
@@ -101,13 +101,13 @@
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 5.26s | passed=1445 failed=0 total=1445 wrappers=7 families=25 avg_case=3.640ms |
-| `derive_contract` | `pass` | 5.05s | derived=390 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
-| `derive_shadow_pressure` | `pass` | 0.27s | sampled=65 derived=65 unsupported=0 not_equivalent=0 mean_step_count=1.05 generic_simplify_strategy_successes=0 single_step=61 multi_step_ids=4 embedded_families=25/25 |
-| `derive_didactic_audit` | `pass` | 32.82s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 |
-| `simplify_didactic_audit` | `pass` | 1.01s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
-| `simplify_strict` | `pass` | 19.74s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
-| `calculus_diff_contract` | `pass` | 4.02s | passed=141 failed=0 |
-| `calculus_limit_contract` | `pass` | 19.33s | passed=64 failed=0 |
-| `calculus_limit_presimplify_contract` | `pass` | 0.67s | passed=8 failed=0 |
-| `calculus_integrate_contract` | `pass` | 8.88s | passed=152 failed=0 |
+| `embedded_equivalence_context` | `pass` | 4.94s | passed=1445 failed=0 total=1445 wrappers=7 families=25 avg_case=3.419ms |
+| `derive_contract` | `pass` | 4.62s | derived=390 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
+| `derive_shadow_pressure` | `pass` | 0.24s | sampled=65 derived=65 unsupported=0 not_equivalent=0 mean_step_count=1.05 generic_simplify_strategy_successes=0 single_step=61 multi_step_ids=4 embedded_families=25/25 |
+| `derive_didactic_audit` | `pass` | 25.18s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 |
+| `simplify_didactic_audit` | `pass` | 0.92s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
+| `simplify_strict` | `pass` | 19.03s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
+| `calculus_diff_contract` | `pass` | 3.70s | passed=157 failed=0 |
+| `calculus_limit_contract` | `pass` | 15.51s | passed=64 failed=0 |
+| `calculus_limit_presimplify_contract` | `pass` | 0.65s | passed=8 failed=0 |
+| `calculus_integrate_contract` | `pass` | 10.05s | passed=165 failed=0 |

@@ -25963,6 +25963,50 @@ impl Orchestrator {
             return (zero, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
+        if let Some((one, required_conditions)) =
+            crate::calculus_residual_support::try_diff_inverse_reciprocal_trig_shifted_quotient_root_one(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    one,
+                    "Collapse shifted quotient of matching inverse reciprocal trig derivative",
+                    "Inverse Reciprocal Trig Diff Shifted Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (one, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((compact, required_conditions)) =
+            crate::calculus_residual_support::try_diff_inverse_reciprocal_trig_shifted_quotient_compact_mismatch(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    compact,
+                    "Compact nonmatching shifted quotient of inverse reciprocal trig derivative",
+                    "Inverse Reciprocal Trig Diff Shifted Quotient Mismatch",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (compact, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
         if let Some((zero, required_conditions)) =
             crate::calculus_residual_support::try_diff_integral_reciprocal_trig_residual_root_zero(
                 &mut simplifier.context,
@@ -26005,6 +26049,72 @@ impl Orchestrator {
                 Vec::new()
             };
             return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_diff_integral_quadratic_exp_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify matching quadratic exponential antiderivative residual",
+                    "Quadratic Exp Integral Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((one, required_conditions)) =
+            crate::calculus_residual_support::try_diff_arctan_sqrt_positive_polynomial_quotient_shifted_one_root(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    one,
+                    "Collapse shifted quotient of matching derivative presentation",
+                    "Arctan Sqrt Diff Shifted Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (one, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((compact, required_conditions)) =
+            crate::calculus_residual_support::try_diff_arctan_sqrt_positive_polynomial_quotient_shifted_compact_mismatch(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    compact,
+                    "Compact nonmatching shifted quotient of arctan sqrt derivative",
+                    "Arctan Sqrt Diff Shifted Quotient Mismatch",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (compact, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
         // Narrow hidden solve root shortcuts. Keep them limited to the
@@ -31467,7 +31577,7 @@ mod tests {
         };
 
         let rendered = render_expr(&ctx, result);
-        assert!(rendered.contains("3^(1 / 2) + 2"));
+        assert!(rendered.contains("sqrt(3) + 2") || rendered.contains("3^(1 / 2) + 2"));
         assert!(rendered.contains("u"));
         assert!(!rendered.contains("arcsin"));
     }
@@ -32909,7 +33019,7 @@ mod tests {
         let mut orchestrator = Orchestrator::new();
         let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
         let rendered = render_expr(&simplifier.context, rewritten);
-        assert!(rendered.contains("3^(1 / 2) + 2"));
+        assert!(rendered.contains("sqrt(3) + 2") || rendered.contains("3^(1 / 2) + 2"));
         assert!(rendered.contains("u + 2"));
         assert!(rendered.contains("u + 3"));
     }

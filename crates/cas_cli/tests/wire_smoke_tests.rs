@@ -226,6 +226,71 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
 }
 
 #[test]
+fn test_eval_json_omits_noop_post_calculus_presentation_step() {
+    let expr = "diff(arctan(1/sqrt(x)), x)";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "-1 / (2·sqrt(x)·(x + 1))");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert!(
+        steps.iter().all(|step| {
+            step["rule"] != "Presentar resultado de cálculo en forma compacta"
+                || step["before"] != step["after"]
+        }),
+        "post-calculus presentation should not emit a visible no-op step for {expr}: {steps:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "no-op presentation filtering should preserve the sqrt-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_diff_arcsin_sqrt_affine_residual_collapses_reciprocal_root_product() {
+    let cases = [
+        "diff(arcsin(sqrt(2*x-1)), x) - 1/(sqrt(2*x-1)*sqrt(2-2*x))",
+        "(2-2*x)^(-1/2)*(2*x-1)^(-1/2) - ((2-2*x)*(2*x-1))^(-1/2)",
+    ];
+
+    for expr in cases {
+        let json = eval_json(expr);
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(json["result"], "0", "expr: {expr}");
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "1 - x"
+            }),
+            "expected Positive(1 - x) for {expr}: {required:?}"
+        );
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "2·x - 1"
+            }),
+            "expected Positive(2*x - 1) for {expr}: {required:?}"
+        );
+        assert!(
+            !required.iter().any(|condition| {
+                condition["kind"] == "Positive"
+                    && condition["expr_canonical"] == "3·x - 2·x^2 - 1"
+            }),
+            "expanded product guard should be dominated by its positive factors for {expr}: {required:?}"
+        );
+    }
+}
+
+#[test]
 fn test_eval_integral_assume_mode_separates_assumptions_from_requires() {
     let generic = eval_json_with_args("integrate(ln(a^2), x)", &["--domain", "generic"]);
 

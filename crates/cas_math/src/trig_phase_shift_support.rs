@@ -724,6 +724,6 @@ mod tests {
                 id: rewrite.rewritten
             }
         );
-        assert_eq!(rewritten_str, "sin(1/9 * pi)");
+        assert_eq!(rewritten_str, "sin(pi / 9)");
     }
 }

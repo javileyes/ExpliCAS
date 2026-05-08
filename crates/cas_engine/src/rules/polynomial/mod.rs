@@ -135,6 +135,10 @@ define_rule!(
             return None;
         }
 
+        if should_preserve_compact_hyperbolic_additive_product(ctx, l, r) {
+            return None;
+        }
+
         // Multiplicative distribution uses cas_math helper that preserves
         // historical guard ordering and semantics.
         let parent_mul_terms =
@@ -183,6 +187,42 @@ fn should_preserve_compact_power_product_with_factorable_integer_add(
 fn should_preserve_compact_asinh_self_product(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     asinh_arg(ctx, left).is_some_and(|arg| structurally_same(ctx, arg, right))
         || asinh_arg(ctx, right).is_some_and(|arg| structurally_same(ctx, arg, left))
+}
+
+fn should_preserve_compact_hyperbolic_additive_product(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let left_additive = matches!(ctx.get(left), Expr::Add(_, _) | Expr::Sub(_, _));
+    let right_additive = matches!(ctx.get(right), Expr::Add(_, _) | Expr::Sub(_, _));
+
+    (left_additive && expr_contains_hyperbolic_function(ctx, right))
+        || (right_additive && expr_contains_hyperbolic_function(ctx, left))
+}
+
+fn expr_contains_hyperbolic_function(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            matches!(ctx.sym_name(*fn_id), "sinh" | "cosh")
+                || args
+                    .iter()
+                    .any(|arg| expr_contains_hyperbolic_function(ctx, *arg))
+        }
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            expr_contains_hyperbolic_function(ctx, *left)
+                || expr_contains_hyperbolic_function(ctx, *right)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_hyperbolic_function(ctx, *inner),
+        Expr::Matrix { data, .. } => data
+            .iter()
+            .any(|item| expr_contains_hyperbolic_function(ctx, *item)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
+    }
 }
 
 fn asinh_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
