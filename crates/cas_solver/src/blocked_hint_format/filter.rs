@@ -1,4 +1,5 @@
-use cas_ast::{Context, ExprId};
+use cas_ast::{Context, Expr, ExprId};
+use num_traits::Zero;
 
 /// Filter blocked hints for eval display.
 ///
@@ -14,9 +15,15 @@ pub fn filter_blocked_hints_for_eval(
         cas_ast::Expr::Constant(cas_ast::Constant::Undefined)
     );
 
+    let result_is_zero = matches!(ctx.get(resolved), Expr::Number(value) if value.is_zero());
+
     hints
         .iter()
-        .filter(|hint| !(result_is_undefined && hint.key.kind() == "defined"))
+        .filter(|hint| {
+            !(hint.key.kind() == "defined"
+                && (result_is_undefined
+                    || (result_is_zero && hint.suggestion.starts_with("cycle detected"))))
+        })
         .cloned()
         .collect()
 }

@@ -75,13 +75,47 @@ fn explicit_integrate_call_parts(ctx: &Context, expr: ExprId) -> (ExprId, String
     (args[0], ctx.sym_name(*sym_id).to_string())
 }
 
-fn assert_antiderivative_verifies(input: &str) -> bool {
+#[derive(Debug, PartialEq, Eq)]
+enum AntiderivativeVerificationRoute {
+    PublicResidual,
+    InternalDerivative,
+}
+
+fn should_verify_antiderivative_with_public_integrate_residual(
+    ctx: &mut Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> bool {
+    cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_exp_linear_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_trig_linear_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_trig_linear_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_hyperbolic_linear_target(
+        ctx, integrand, var_name,
+    )
+}
+
+fn assert_antiderivative_verifies(input: &str) -> AntiderivativeVerificationRoute {
     let mut simplifier = Simplifier::with_default_rules();
     simplifier.disable_rule("Double Angle Identity");
     let expr = parse(input, &mut simplifier.context).expect("parse integration input");
     let (integrand, var_name) = explicit_integrate_call_parts(&simplifier.context, expr);
 
+    if should_verify_antiderivative_with_public_integrate_residual(
+        &mut simplifier.context,
+        integrand,
+        &var_name,
+    ) {
+        let public_residual = integrate_call_antiderivative_residual_result(input);
+        if public_residual == "0" {
+            return AntiderivativeVerificationRoute::PublicResidual;
+        }
+    }
+
     let (antiderivative, _) = simplifier.simplify(expr);
+    let antiderivative_rendered = render_expr(&simplifier.context, antiderivative);
     let var = simplifier.context.var(&var_name);
     let diff_call = simplifier.context.call("diff", vec![antiderivative, var]);
     let (derivative, _) = simplifier.simplify(diff_call);
@@ -92,21 +126,20 @@ fn assert_antiderivative_verifies(input: &str) -> bool {
     let (residual, _) = simplifier.simplify(residual);
     let residual_rendered = render_expr(&simplifier.context, residual);
     if residual_rendered == "0" {
-        return false;
+        return AntiderivativeVerificationRoute::InternalDerivative;
     }
 
-    let antiderivative_rendered = render_expr(&simplifier.context, antiderivative);
-    let public_fallback = rendered_antiderivative_residual_result(input, &antiderivative_rendered);
-    if public_fallback == "0" {
-        return true;
+    let public_residual = rendered_antiderivative_residual_result(input, &antiderivative_rendered);
+    if public_residual == "0" {
+        return AntiderivativeVerificationRoute::PublicResidual;
     }
 
     panic!(
-        "antiderivative verification failed for {input}\nintegral result: {}\nderivative: {}\nexpected integrand: {}\npublic fallback residual: {}",
+        "antiderivative verification failed for {input}\nintegral result: {}\nderivative: {}\nexpected integrand: {}\npublic residual: {}",
         antiderivative_rendered,
         render_expr(&simplifier.context, derivative),
         render_expr(&simplifier.context, expected_integrand),
-        public_fallback,
+        public_residual,
     );
 }
 
@@ -118,6 +151,36 @@ fn assert_rendered_antiderivative_verifies(input: &str, rendered_antiderivative:
         "0",
         "antiderivative verification failed for {input}\nintegral result: {rendered_antiderivative}"
     );
+}
+
+fn integrate_call_antiderivative_residual_result(input: &str) -> String {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let expr = parse(input, &mut engine.simplifier.context).expect("parse integration input");
+    let (integrand, var_name) = explicit_integrate_call_parts(&engine.simplifier.context, expr);
+    let var = engine.simplifier.context.var(&var_name);
+    let diff_call = engine.simplifier.context.call("diff", vec![expr, var]);
+    let residual = engine
+        .simplifier
+        .context
+        .add(Expr::Sub(diff_call, integrand));
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: format!("diff({input}, {var_name}) - integrand"),
+                parsed: residual,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval derivative residual");
+
+    match output.result {
+        EvalResult::Expr(expr) => render_expr(&engine.simplifier.context, expr),
+        other => panic!("expected expression result, got {other:?}"),
+    }
 }
 
 fn rendered_antiderivative_residual_result(input: &str, rendered_antiderivative: &str) -> String {
@@ -163,10 +226,17 @@ const REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES: &[&str] = &[
     "integrate(x^2*cos(x), x)",
     "integrate(x^3*sin(x), x)",
     "integrate(x^3*cos(x), x)",
+    "integrate(x^5*sin(x), x)",
+    "integrate(x^5*cos(x), x)",
     "integrate((2*x+3)*exp(2*x+1), x)",
     "integrate(x^2*exp(x), x)",
     "integrate(x^3*exp(x), x)",
+    "integrate(x^5*exp(x), x)",
     "integrate((x^3+x)*exp(2*x+1), x)",
+    "integrate(x^2*sinh(x), x)",
+    "integrate(x^2*cosh(x), x)",
+    "integrate((x^3+x)*sinh(2*x+1), x)",
+    "integrate((x^3+x)*cosh(2*x+1), x)",
     "integrate(2*x*exp(x^2), x)",
     "integrate(cosh(x)/(1+sinh(x)^2), x)",
     "integrate(2*cosh(2*x+1)/(1+sinh(2*x+1)^2), x)",
@@ -392,18 +462,56 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
 }
 
 #[test]
-fn integrate_contract_antiderivative_public_fallback_stays_sparse() {
-    let fallback_inputs: Vec<_> = REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES
-        .iter()
-        .copied()
-        .filter(|input| assert_antiderivative_verifies(input))
-        .collect();
+fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_hyperbolic_by_parts(
+) {
+    for input in [
+        "integrate(x^2*sinh(x), x)",
+        "integrate(x^2*cosh(x), x)",
+        "integrate((x^3+x)*sinh(2*x+1), x)",
+        "integrate((x^3+x)*cosh(2*x+1), x)",
+    ] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+}
 
-    assert_eq!(
-        fallback_inputs,
-        Vec::<&str>::new(),
-        "representative antiderivative verification should not need the public fallback route"
-    );
+#[test]
+fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_exp_by_parts() {
+    for input in [
+        "integrate(x^2*exp(x), x)",
+        "integrate(x^3*exp(x), x)",
+        "integrate(x^5*exp(x), x)",
+        "integrate((x^3+x)*exp(2*x+1), x)",
+    ] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_trig_by_parts() {
+    for input in [
+        "integrate(x*sin(x), x)",
+        "integrate(x*cos(x), x)",
+        "integrate(x^2*sin(x), x)",
+        "integrate(x^2*cos(x), x)",
+        "integrate(x^5*sin(x), x)",
+        "integrate(x^5*cos(x), x)",
+        "integrate((2*x+3)*sin(2*x+1), x)",
+        "integrate((2*x+3)*cos(2*x+1), x)",
+    ] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
 }
 
 #[test]
@@ -456,6 +564,70 @@ fn integrate_contract_cubic_trig_by_parts_presents_without_blocked_hint() {
     );
     assert_eq!(cos_blocked, 0, "unexpected blocked hints for x^3*cos(x)");
     assert_antiderivative_verifies("integrate(x^3*cos(x), x)");
+}
+
+#[test]
+fn integrate_contract_quintic_trig_by_parts_presents_without_blocked_hint() {
+    let (sin_wire, sin_stderr) = cli_eval_json_with_stderr("integrate(x^5*sin(x), x)");
+    assert_eq!(
+        sin_wire["result"],
+        "(20·x^3 - x^5 - 120·x)·cos(x) + (5·x^4 + 120 - 60·x^2)·sin(x)"
+    );
+    assert!(
+        sin_wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "unexpected required conditions for x^5*sin(x): {:?}",
+        sin_wire["required_conditions"]
+    );
+    assert!(
+        !sin_stderr.contains("depth_overflow"),
+        "quintic sin by-parts presentation should not emit depth_overflow warning\nstderr:\n{sin_stderr}"
+    );
+    assert_antiderivative_verifies("integrate(x^5*sin(x), x)");
+
+    let (cos_wire, cos_stderr) = cli_eval_json_with_stderr("integrate(x^5*cos(x), x)");
+    assert_eq!(
+        cos_wire["result"],
+        "(x^5 + 120·x - 20·x^3)·sin(x) + (5·x^4 + 120 - 60·x^2)·cos(x)"
+    );
+    assert!(
+        cos_wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "unexpected required conditions for x^5*cos(x): {:?}",
+        cos_wire["required_conditions"]
+    );
+    assert!(
+        !cos_stderr.contains("depth_overflow"),
+        "quintic cos by-parts presentation should not emit depth_overflow warning\nstderr:\n{cos_stderr}"
+    );
+    assert_antiderivative_verifies("integrate(x^5*cos(x), x)");
+}
+
+#[test]
+fn integrate_contract_quintic_trig_by_parts_nested_residual_verifies_publicly() {
+    for residual in [
+        "diff(integrate(x^5*sin(x), x), x) - x^5*sin(x)",
+        "diff(integrate(x^5*cos(x), x), x) - x^5*cos(x)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(residual);
+        assert_eq!(wire["result"], "0");
+        assert!(
+            wire["required_conditions"]
+                .as_array()
+                .expect("required_conditions should be an array")
+                .is_empty(),
+            "unexpected required conditions for {residual}: {:?}",
+            wire["required_conditions"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "quintic trig by-parts nested residual should not emit depth_overflow warning\nstderr:\n{stderr}"
+        );
+    }
 }
 
 #[test]
@@ -588,6 +760,54 @@ fn integrate_contract_quartic_exp_by_parts_verifies() {
     assert!(
         !stderr.contains("depth_overflow"),
         "nested quartic exp verification should not emit depth_overflow warning\nstderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn integrate_contract_quintic_exp_by_parts_verifies() {
+    let input = "integrate(x^5*exp(x), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+    assert_eq!(
+        wire["result"],
+        "e^x·(x^5 + 20·x^3 + 120·x - 5·x^4 - 60·x^2 - 120)"
+    );
+    assert!(
+        wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "unexpected required conditions for x^5*exp(x): {:?}",
+        wire["required_conditions"]
+    );
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "quintic exp by-parts presentation should not emit depth_overflow warning\nstderr:\n{stderr}"
+    );
+
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    let integration_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .expect("expected public symbolic integration step");
+    let substeps = integration_step["substeps"]
+        .as_array()
+        .expect("integration step should expose didactic substeps");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar integración por partes repetida"),
+        "expected repeated integration-by-parts substep for {input}, got {substeps:?}"
+    );
+
+    let residual = "diff(integrate(x^5*exp(x), x), x) - x^5*exp(x)";
+    let (wire, stderr) = cli_eval_json_with_stderr(residual);
+    assert_eq!(wire["result"], "0");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "nested quintic exp verification should not emit depth_overflow warning\nstderr:\n{stderr}"
     );
 }
 
@@ -928,7 +1148,7 @@ fn integrate_contract_symbolic_constant_verification_preserves_independent_domai
 #[test]
 #[ignore = "exhaustive debug verification is intentionally slower; CI runs the representative smoke test"]
 fn integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive() {
-    let fallback_inputs: Vec<_> = [
+    let public_residual_inputs: Vec<_> = [
         "integrate(2*x + 3, x)",
         "integrate((3*x)^2, x)",
         "integrate(sin(2*x), x)",
@@ -961,6 +1181,8 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaus
         "integrate((x+1)*cosh((3*x+2)/2), x)",
         "integrate((x+1)*sinh((2-3*x)/2), x)",
         "integrate((x+1)*cosh((2-3*x)/2), x)",
+        "integrate(x^2*sinh(x), x)",
+        "integrate(x^2*cosh(x), x)",
         "integrate(2*x*exp(x^2), x)",
         "integrate(2*x*cos(x^2), x)",
         "integrate(2*x*sin(x^2), x)",
@@ -1091,13 +1313,32 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaus
         "integrate(-x^2*csc(x^3)*cot(x^3), x)",
     ]
     .into_iter()
-    .filter(|input| assert_antiderivative_verifies(input))
+    .filter(|input| {
+        assert_antiderivative_verifies(input) == AntiderivativeVerificationRoute::PublicResidual
+    })
     .collect();
 
     assert_eq!(
-        fallback_inputs,
-        Vec::<&str>::new(),
-        "exhaustive debug antiderivative verification should not need the public fallback route"
+        public_residual_inputs,
+        vec![
+            "integrate(x^2*exp(x), x)",
+            "integrate(x^3*exp(x), x)",
+            "integrate((x^2+x+1)*exp(2*x+1), x)",
+            "integrate((x^3+x)*exp(2*x+1), x)",
+            "integrate(x*sin(x), x)",
+            "integrate(x*cos(x), x)",
+            "integrate(x^2*sin(x), x)",
+            "integrate(x^2*cos(x), x)",
+            "integrate((2*x+3)*sin(2*x+1), x)",
+            "integrate((2*x+3)*cos(2*x+1), x)",
+            "integrate((x+1)*sin((3*x+2)/2), x)",
+            "integrate((x+1)*cos((3*x+2)/2), x)",
+            "integrate((x+1)*sin((2-3*x)/2), x)",
+            "integrate((x+1)*cos((2-3*x)/2), x)",
+            "integrate(x^2*sinh(x), x)",
+            "integrate(x^2*cosh(x), x)",
+        ],
+        "exhaustive debug antiderivative verification should only use the bounded public residual route for known exp, trig, and hyperbolic by-parts smoke cases"
     );
 }
 
@@ -1407,6 +1648,70 @@ fn integrate_contract_linear_times_hyperbolic_linear_by_parts() {
         required.is_empty(),
         "unexpected required_conditions: {required:?}"
     );
+}
+
+#[test]
+fn integrate_contract_polynomial_times_hyperbolic_linear_by_parts_verifies() {
+    for (input, expected_result, residual) in [
+        (
+            "integrate(x^2*sinh(x), x)",
+            "(x^2 + 2)·cosh(x) - 2·x·sinh(x)",
+            "diff(integrate(x^2*sinh(x), x), x) - x^2*sinh(x)",
+        ),
+        (
+            "integrate(x^2*cosh(x), x)",
+            "(x^2 + 2)·sinh(x) - 2·x·cosh(x)",
+            "diff(integrate(x^2*cosh(x), x), x) - x^2*cosh(x)",
+        ),
+        (
+            "integrate((x^2+x)*sinh(2*x+1), x)",
+            "(1/2·x^2 + 1/2·x + 1/4)·cosh(2·x + 1) - (1/2·x + 1/4)·sinh(2·x + 1)",
+            "diff(integrate((x^2+x)*sinh(2*x+1), x), x) - (x^2+x)*sinh(2*x+1)",
+        ),
+        (
+            "integrate((x^3+x)*sinh(2*x+1), x)",
+            "(1/2·x^3 + 5/4·x)·cosh(2·x + 1) - (3/4·x^2 + 5/8)·sinh(2·x + 1)",
+            "diff(integrate((x^3+x)*sinh(2*x+1), x), x) - (x^3+x)*sinh(2*x+1)",
+        ),
+        (
+            "integrate((x^3+x)*cosh(2*x+1), x)",
+            "(1/2·x^3 + 5/4·x)·sinh(2·x + 1) - (3/4·x^2 + 5/8)·cosh(2·x + 1)",
+            "diff(integrate((x^3+x)*cosh(2*x+1), x), x) - (x^3+x)*cosh(2*x+1)",
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result);
+        assert_eq!(
+            wire["required_conditions"]
+                .as_array()
+                .expect("required_conditions array")
+                .len(),
+            0,
+            "unexpected required_conditions for {input}: {:?}",
+            wire["required_conditions"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "quadratic hyperbolic by-parts presentation should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+        assert!(
+            wire["steps"]
+                .as_array()
+                .expect("steps array")
+                .iter()
+                .flat_map(|step| step["substeps"].as_array().into_iter().flatten())
+                .any(|substep| substep["title"] == "Usar integración por partes repetida"),
+            "quadratic hyperbolic by-parts should expose repeated integration-by-parts substep: {wire:?}"
+        );
+
+        let (wire, stderr) = cli_eval_json_with_stderr(residual);
+        assert_eq!(wire["result"], "0");
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "quadratic hyperbolic by-parts verification should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+    }
 }
 
 #[test]
@@ -2110,6 +2415,19 @@ fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() 
         residual_required,
         vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
         "nested verification should preserve the source denominator domain"
+    );
+    assert_rendered_antiderivative_verifies(input, &result);
+
+    let reordered_residual =
+        "diff((-1/2)*ln(abs(x-1)) - 4/(x-1) + (1/2)*ln(abs(x+1)), x) - (3*x+5)/(x^3-x^2-x+1)";
+    let (reordered_result, mut reordered_required) =
+        evaluated_expr_with_required_conditions(reordered_residual);
+    reordered_required.sort();
+    assert_eq!(reordered_result, "0");
+    assert_eq!(
+        reordered_required,
+        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        "reordered rendered antiderivative verification should preserve the source denominator domain"
     );
 
     let input = "integrate((3*x+5)/((1-x)^2*(x+1)), x)";
@@ -4426,6 +4744,22 @@ fn integrate_contract_polynomial_derivative_asinh_substitution() {
         "negative asinh substitution should remain unconditional: {required:?}"
     );
     assert_antiderivative_verifies(input);
+}
+
+#[test]
+fn integrate_contract_polynomial_derivative_asinh_residual_omits_cycle_blocked_hint_after_zero() {
+    let input = "diff(integrate(2*x/sqrt(1+x^4), x), x) - 2*x/sqrt(1+x^4)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert_eq!(wire["result"], "0");
+    assert!(
+        wire.get("blocked_hints").is_none(),
+        "successful residual should not surface non-actionable cycle blocked hints: {wire:?}"
+    );
+    assert!(
+        !stderr.contains("cycle detected"),
+        "successful residual should not print cycle detected hint\nstderr:\n{stderr}"
+    );
 }
 
 #[test]

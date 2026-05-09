@@ -11412,21 +11412,25 @@ fn generate_integration_by_parts_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     };
     let var_name = ctx.sym_name(*var_sym);
     let mut scratch = ctx.clone();
-    let is_quadratic_by_parts =
-        cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_exp_linear_target(
+    let is_repeated_by_parts =
+        cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_exp_linear_target(
             &mut scratch,
             args[0],
             var_name,
-        ) || cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_trig_linear_target(
+        ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_trig_linear_target(
+            &mut scratch,
+            args[0],
+            var_name,
+        ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_hyperbolic_linear_target(
             &mut scratch,
             args[0],
             var_name,
         );
     let is_linear_by_parts = contains_linear_integration_by_parts_target(ctx, args[0], var_name);
-    if !is_quadratic_by_parts && !is_linear_by_parts {
+    if !is_repeated_by_parts && !is_linear_by_parts {
         return Vec::new();
     }
-    let title = if is_quadratic_by_parts {
+    let title = if is_repeated_by_parts {
         "Usar integración por partes repetida"
     } else {
         "Usar integración por partes"
@@ -11454,6 +11458,10 @@ fn contains_linear_integration_by_parts_target(
         expr,
         var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_hyperbolic_linear_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_hyperbolic_linear_target(
         &mut scratch,
         expr,
         var_name,

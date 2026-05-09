@@ -146,6 +146,56 @@ fn signed_numerators_cancel(ctx: &mut Context, left: ExprId, right: ExprId) -> b
     polynomial_sqrt_scaled_terms_equivalent(ctx, left, neg_right)
 }
 
+fn signed_fraction_cross_products_cancel(
+    ctx: &mut Context,
+    left_num: ExprId,
+    left_den: ExprId,
+    right_num: ExprId,
+    right_den: ExprId,
+) -> bool {
+    let vars = [
+        cas_ast::collect_variables(ctx, left_num),
+        cas_ast::collect_variables(ctx, left_den),
+        cas_ast::collect_variables(ctx, right_num),
+        cas_ast::collect_variables(ctx, right_den),
+    ]
+    .into_iter()
+    .flatten()
+    .collect::<std::collections::BTreeSet<_>>();
+    if vars.len() != 1 {
+        return false;
+    }
+    let Some(var) = vars.into_iter().next() else {
+        return false;
+    };
+
+    let Ok(left_num_poly) = Polynomial::from_expr(ctx, left_num, &var) else {
+        return false;
+    };
+    let Ok(left_den_poly) = Polynomial::from_expr(ctx, left_den, &var) else {
+        return false;
+    };
+    let Ok(right_num_poly) = Polynomial::from_expr(ctx, right_num, &var) else {
+        return false;
+    };
+    let Ok(right_den_poly) = Polynomial::from_expr(ctx, right_den, &var) else {
+        return false;
+    };
+
+    if left_den_poly.is_zero()
+        || right_den_poly.is_zero()
+        || left_den_poly.degree() > MAX_DENOMINATOR_POLY_DEGREE
+        || right_den_poly.degree() > MAX_DENOMINATOR_POLY_DEGREE
+    {
+        return false;
+    }
+
+    let left_cross = left_num_poly.mul(&right_den_poly);
+    let right_cross = right_num_poly.mul(&left_den_poly);
+    let combined = left_cross.add(&right_cross);
+    combined.degree() <= MAX_MULTI_FRACTION_LCM_DEGREE && combined.is_zero()
+}
+
 fn polynomial_fraction_sum_residual_zero(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     if cas_ast::count_nodes(ctx, expr) > MAX_EXTENDED_FRACTION_RESIDUAL_NODES {
         return None;
@@ -285,14 +335,15 @@ pub(crate) fn try_polynomial_denominator_fraction_residual_zero(
     }
 
     let ((left_num, left_den), (right_num, right_den)) = pair;
-    if !polynomial_denominators_match(ctx, left_den, right_den) {
-        return None;
-    }
-    if !signed_numerators_cancel(ctx, left_num, right_num) {
-        return None;
+    if polynomial_denominators_match(ctx, left_den, right_den) {
+        if signed_numerators_cancel(ctx, left_num, right_num) {
+            return Some(ctx.num(0));
+        }
+    } else if signed_fraction_cross_products_cancel(ctx, left_num, left_den, right_num, right_den) {
+        return Some(ctx.num(0));
     }
 
-    Some(ctx.num(0))
+    None
 }
 
 #[cfg(test)]
@@ -377,6 +428,26 @@ mod tests {
     fn polynomial_fraction_sum_residual_rejects_nonzero_scaled_quadratic_square_derivative() {
         assert_eq!(
             residual_result("2/(4*(4*x^2+1)) + (3 - 8*x^2)/(8*x^2 + 2)^2 - 1/(4*x^2 + 1)^2"),
+            None
+        );
+    }
+
+    #[test]
+    fn polynomial_fraction_pair_residual_cancels_scaled_denominator_cross_product() {
+        assert_eq!(
+            residual_result(
+                "(81/128*x + 135/128)/(27/128*x^3 + 27/128 - 27/128*x^2 - 27/128*x) - (3*x+5)/(x^3-x^2-x+1)"
+            ),
+            Some("0".to_string())
+        );
+    }
+
+    #[test]
+    fn polynomial_fraction_pair_residual_rejects_nonzero_scaled_denominator_cross_product() {
+        assert_eq!(
+            residual_result(
+                "(81/128*x + 136/128)/(27/128*x^3 + 27/128 - 27/128*x^2 - 27/128*x) - (3*x+5)/(x^3-x^2-x+1)"
+            ),
             None
         );
     }

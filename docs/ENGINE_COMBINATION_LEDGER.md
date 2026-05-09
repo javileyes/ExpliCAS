@@ -95,6 +95,43 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-09: Sparse Affine Hyperbolic By-Parts Internal Verification Needed A Public Residual Gate
+
+- area:
+  - calculus / integration / antiderivative verification harness
+- status:
+  - `promoted-after-harness-follow-up`
+- discovered case:
+  - `integrate((x^3+x)*sinh(2*x+1), x)`
+  - public residual:
+    `diff(integrate((x^3+x)*sinh(2*x+1), x), x) - (x^3+x)*sinh(2*x+1)`
+- local lane:
+  - focused CLI residual probe after adding the bounded hyperbolic integral
+    residual matcher
+  - attempted promotion to
+    `REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES`
+- local result:
+  - public CLI residual now returns `0` with no required conditions and no
+    `depth_overflow`
+  - focused contract row for the same expression is cheap and exposes
+    `Usar integración por partes repetida`
+- why it was not promoted:
+  - the representative antiderivative verifier first differentiates and
+    simplifies the rendered antiderivative through an internal path before the
+    public residual fallback can apply
+  - that internal verification path stayed running for more than three minutes
+    on the sparse affine hyperbolic cubic case, so live representative
+    promotion would add a slow test even though the public residual is now fast
+- retained action:
+  - promoted after a harness follow-up: the representative verifier now uses
+    the bounded public `diff(integrate(...), x) - integrand` residual route
+    first for this sparse affine hyperbolic case
+  - kept the focused CLI integration contract as the step-quality and result
+    presentation guardrail
+- what could make it combinable later:
+  - generalize the public-residual-first gate only for future families with a
+    measured internal verification cliff and a bounded public residual matcher
+
 ### 2026-05-08: Affine Hyperbolic By-Parts Compact-Presentation Gate Fires Too Late
 
 - area:

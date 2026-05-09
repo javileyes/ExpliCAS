@@ -7122,7 +7122,13 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
             &call.var_name,
         );
     let preserve_compact_repeated_trig_by_parts =
-        cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_trig_linear_target(
+        cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_trig_linear_target(
+            ctx,
+            call.target,
+            &call.var_name,
+        );
+    let preserve_compact_repeated_hyperbolic_by_parts =
+        cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_hyperbolic_linear_target(
             ctx,
             call.target,
             &call.var_name,
@@ -7167,6 +7173,7 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
         || preserve_compact_linear_exp_by_parts
         || preserve_compact_linear_trig_by_parts
         || preserve_compact_repeated_trig_by_parts
+        || preserve_compact_repeated_hyperbolic_by_parts
         || preserve_compact_inverse_sqrt_arg
         || preserve_compact_sqrt_reciprocal_trig_result
         || preserve_compact_sqrt_trig_log_result

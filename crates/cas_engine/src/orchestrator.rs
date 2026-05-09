@@ -26095,6 +26095,28 @@ impl Orchestrator {
         }
 
         if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_explicit_log_abs_antiderivative_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify matching log-absolute antiderivative residual",
+                    "Log-Absolute Diff Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) =
             crate::calculus_residual_support::try_diff_integral_quadratic_exp_residual_root_zero(
                 &mut simplifier.context,
                 expr,
@@ -26107,6 +26129,28 @@ impl Orchestrator {
                     zero,
                     "Verify matching quadratic exponential antiderivative residual",
                     "Quadratic Exp Integral Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_diff_integral_hyperbolic_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify matching hyperbolic antiderivative residual",
+                    "Hyperbolic Integral Residual",
                 );
                 step.meta_mut().required_conditions = required_conditions;
                 vec![step]

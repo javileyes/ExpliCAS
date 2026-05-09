@@ -96,9 +96,13 @@ where
         collect_output_required_conditions(required_conditions_raw, ctx, &assumptions_used);
     let required_display =
         collect_output_required_display(required_conditions_raw, ctx, &assumptions_used);
+    let blocked_hint_result = match prepared.output_view.result {
+        crate::EvalResult::Expr(expr) => expr,
+        _ => prepared.output_view.resolved,
+    };
     let blocked_hints = collect_output_blocked_hints(
         ctx,
-        prepared.output_view.resolved,
+        blocked_hint_result,
         &prepared.output_view.blocked_hints,
     );
     let timings_us = TimingsWire {

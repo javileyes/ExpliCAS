@@ -119,6 +119,92 @@ fn expr_is_additive(ctx: &Context, expr: ExprId) -> bool {
     matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
 }
 
+fn expr_contains_plain_log_abs(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(BuiltinFn::Ln) =>
+        {
+            matches!(
+                ctx.get(args[0]),
+                Expr::Function(abs_fn_id, abs_args)
+                    if abs_args.len() == 1
+                        && ctx.builtin_of(*abs_fn_id) == Some(BuiltinFn::Abs)
+            )
+        }
+        Expr::Add(left, right) | Expr::Sub(left, right) | Expr::Mul(left, right) => {
+            expr_contains_plain_log_abs(ctx, *left) || expr_contains_plain_log_abs(ctx, *right)
+        }
+        Expr::Div(num, den) => {
+            expr_contains_plain_log_abs(ctx, *num) || expr_contains_plain_log_abs(ctx, *den)
+        }
+        Expr::Neg(inner) => expr_contains_plain_log_abs(ctx, *inner),
+        Expr::Pow(_, exp) => expr_contains_plain_log_abs(ctx, *exp),
+        _ => false,
+    }
+}
+
+fn scale_expr_pruned(ctx: &mut Context, scale: BigRational, expr: ExprId) -> ExprId {
+    if scale.is_zero() || is_zero(ctx, expr) {
+        return ctx.num(0);
+    }
+    if scale.is_one() {
+        return expr;
+    }
+    if scale == -BigRational::one() {
+        return neg_pruned(ctx, expr);
+    }
+
+    let scale_expr = ctx.add(Expr::Number(scale));
+    mul_pruned(ctx, scale_expr, expr)
+}
+
+fn differentiate_scaled_additive_log_abs_by_linearity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let mut terms = Vec::new();
+    collect_scaled_add_terms(ctx, expr, BigRational::one(), &mut terms);
+    if terms.len() < 2
+        || !terms
+            .iter()
+            .any(|(_scale, term)| expr_contains_plain_log_abs(ctx, *term))
+    {
+        return None;
+    }
+
+    let mut out = ctx.num(0);
+    for (scale, term) in terms {
+        let derivative = differentiate_symbolic_expr(ctx, term, var)?;
+        let scaled_derivative = scale_expr_pruned(ctx, scale, derivative);
+        out = add_pruned(ctx, out, scaled_derivative);
+    }
+
+    Some(out)
+}
+
+fn differentiate_additive_by_linearity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Add(l, r) => {
+            let (l, r) = (*l, *r);
+            let dl = differentiate_symbolic_expr(ctx, l, var)?;
+            let dr = differentiate_symbolic_expr(ctx, r, var)?;
+            Some(add_pruned(ctx, dl, dr))
+        }
+        Expr::Sub(l, r) => {
+            let (l, r) = (*l, *r);
+            let dl = differentiate_symbolic_expr(ctx, l, var)?;
+            let dr = differentiate_symbolic_expr(ctx, r, var)?;
+            Some(sub_pruned(ctx, dl, dr))
+        }
+        _ => None,
+    }
+}
+
 fn collect_scaled_add_terms(
     ctx: &Context,
     expr: ExprId,
@@ -3477,6 +3563,10 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         return Some(ctx.num(0));
     }
 
+    if let Some(derivative) = differentiate_scaled_additive_log_abs_by_linearity(ctx, expr, var) {
+        return Some(derivative);
+    }
+
     if let Some(derivative) = arctan_reciprocal_affine_by_parts_derivative(ctx, expr, var) {
         return Some(derivative);
     }
@@ -3527,18 +3617,7 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
                 Some(ctx.num(0))
             }
         }
-        Expr::Add(l, r) => {
-            let (l, r) = (*l, *r);
-            let dl = differentiate_symbolic_expr(ctx, l, var)?;
-            let dr = differentiate_symbolic_expr(ctx, r, var)?;
-            Some(add_pruned(ctx, dl, dr))
-        }
-        Expr::Sub(l, r) => {
-            let (l, r) = (*l, *r);
-            let dl = differentiate_symbolic_expr(ctx, l, var)?;
-            let dr = differentiate_symbolic_expr(ctx, r, var)?;
-            Some(sub_pruned(ctx, dl, dr))
-        }
+        Expr::Add(_, _) | Expr::Sub(_, _) => differentiate_additive_by_linearity(ctx, expr, var),
         Expr::Neg(inner) => {
             let inner = *inner;
             let d_inner = differentiate_symbolic_expr(ctx, inner, var)?;
@@ -4207,6 +4286,23 @@ mod tests {
 
             assert_eq!(rendered(&ctx, out), expected, "input: {input}");
         }
+    }
+
+    #[test]
+    fn differentiates_additive_log_abs_partial_fraction_primitive_by_linearity() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(-1/2)*ln(abs(x-1)) - 4/(x-1) + (1/2)*ln(abs(x+1))",
+            &mut ctx,
+        )
+        .expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        let text = rendered(&ctx, out);
+
+        assert!(!text.contains("ln("), "{text}");
+        assert!(text.contains("x + 1"), "{text}");
+        assert!(text.contains("x - 1"), "{text}");
+        assert!(text.contains("(x - 1)^2"), "{text}");
     }
 
     #[test]

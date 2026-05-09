@@ -5282,7 +5282,7 @@ pub fn integrate_symbolic_is_linear_times_exp_linear_target(
     linear_times_exp_linear_antiderivative(ctx, expr, var).is_some()
 }
 
-fn quadratic_times_exp_linear_antiderivative(
+fn polynomial_times_exp_linear_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
     var: &str,
@@ -5321,7 +5321,7 @@ fn quadratic_times_exp_linear_antiderivative(
             build_balanced_mul(ctx, &cofactor_factors)
         };
         let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
-        if !(2..=4).contains(&cofactor_poly.degree()) {
+        if !(2..=5).contains(&cofactor_poly.degree()) {
             continue;
         }
 
@@ -5329,14 +5329,17 @@ fn quadratic_times_exp_linear_antiderivative(
         let slope_cube = slope_sq.clone() * arg_slope.clone();
         let slope_fourth = slope_cube.clone() * arg_slope.clone();
         let slope_fifth = slope_fourth.clone() * arg_slope.clone();
+        let slope_sixth = slope_fifth.clone() * arg_slope.clone();
         let second_derivative = cofactor_poly.derivative().derivative();
         let third_derivative = second_derivative.derivative();
+        let fourth_derivative = third_derivative.derivative();
         let inner_poly = cofactor_poly
             .div_scalar(&arg_slope)
             .sub(&cofactor_poly.derivative().div_scalar(&slope_sq))
             .add(&second_derivative.div_scalar(&slope_cube))
             .sub(&third_derivative.div_scalar(&slope_fourth))
-            .add(&third_derivative.derivative().div_scalar(&slope_fifth));
+            .add(&fourth_derivative.div_scalar(&slope_fifth))
+            .sub(&fourth_derivative.derivative().div_scalar(&slope_sixth));
         let exp_factor = ctx.call_builtin(BuiltinFn::Exp, vec![exp_arg]);
         return Some(exp_times_polynomial_with_rational_content_factored(
             ctx,
@@ -5348,20 +5351,20 @@ fn quadratic_times_exp_linear_antiderivative(
     None
 }
 
-pub fn integrate_symbolic_is_quadratic_times_exp_linear_target(
+pub fn integrate_symbolic_is_polynomial_times_exp_linear_target(
     ctx: &mut Context,
     expr: ExprId,
     var: &str,
 ) -> bool {
-    quadratic_times_exp_linear_antiderivative(ctx, expr, var).is_some()
+    polynomial_times_exp_linear_antiderivative(ctx, expr, var).is_some()
 }
 
-pub fn integrate_symbolic_is_quadratic_times_trig_linear_target(
+pub fn integrate_symbolic_is_polynomial_times_trig_linear_target(
     ctx: &mut Context,
     expr: ExprId,
     var: &str,
 ) -> bool {
-    quadratic_times_trig_linear_antiderivative(ctx, expr, var).is_some()
+    polynomial_times_trig_linear_antiderivative(ctx, expr, var).is_some()
 }
 
 fn exp_times_polynomial_with_rational_content_factored(
@@ -5445,7 +5448,7 @@ fn polynomial_trig_term(
     }
 }
 
-fn quadratic_times_trig_linear_antiderivative(
+fn polynomial_times_trig_linear_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
     var: &str,
@@ -5488,7 +5491,7 @@ fn quadratic_times_trig_linear_antiderivative(
         let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
             continue;
         };
-        if !(2..=4).contains(&cofactor_poly.degree()) {
+        if !(2..=5).contains(&cofactor_poly.degree()) {
             continue;
         }
 
@@ -5496,17 +5499,22 @@ fn quadratic_times_trig_linear_antiderivative(
         let slope_cube = slope_sq.clone() * arg_slope.clone();
         let slope_fourth = slope_cube.clone() * arg_slope.clone();
         let slope_fifth = slope_fourth.clone() * arg_slope.clone();
+        let slope_sixth = slope_fifth.clone() * arg_slope.clone();
         let p_over_slope = cofactor_poly.div_scalar(&arg_slope);
         let p_prime_over_slope_sq = cofactor_poly.derivative().div_scalar(&slope_sq);
         let second_derivative = cofactor_poly.derivative().derivative();
         let p_second_over_slope_cube = second_derivative.div_scalar(&slope_cube);
         let third_derivative = second_derivative.derivative();
         let p_third_over_slope_fourth = third_derivative.div_scalar(&slope_fourth);
-        let p_fourth_over_slope_fifth = third_derivative.derivative().div_scalar(&slope_fifth);
+        let fourth_derivative = third_derivative.derivative();
+        let p_fourth_over_slope_fifth = fourth_derivative.div_scalar(&slope_fifth);
+        let p_fifth_over_slope_sixth = fourth_derivative.derivative().div_scalar(&slope_sixth);
 
         return match builtin {
             BuiltinFn::Sin => {
-                let sin_poly = p_prime_over_slope_sq.sub(&p_third_over_slope_fourth);
+                let sin_poly = p_prime_over_slope_sq
+                    .sub(&p_third_over_slope_fourth)
+                    .add(&p_fifth_over_slope_sixth);
                 let cos_poly = p_second_over_slope_cube
                     .sub(&p_over_slope)
                     .sub(&p_fourth_over_slope_fifth);
@@ -5523,7 +5531,9 @@ fn quadratic_times_trig_linear_antiderivative(
                 let sin_poly = p_over_slope
                     .sub(&p_second_over_slope_cube)
                     .add(&p_fourth_over_slope_fifth);
-                let cos_poly = p_prime_over_slope_sq.sub(&p_third_over_slope_fourth);
+                let cos_poly = p_prime_over_slope_sq
+                    .sub(&p_third_over_slope_fourth)
+                    .add(&p_fifth_over_slope_sixth);
                 let terms: Vec<ExprId> = [
                     polynomial_trig_term(ctx, &sin_poly, BuiltinFn::Sin, trig_arg),
                     polynomial_trig_term(ctx, &cos_poly, BuiltinFn::Cos, trig_arg),
@@ -5724,6 +5734,118 @@ pub fn integrate_symbolic_is_linear_times_hyperbolic_linear_target(
     var: &str,
 ) -> bool {
     linear_times_hyperbolic_linear_antiderivative(ctx, expr, var).is_some()
+}
+
+fn polynomial_hyperbolic_term(
+    ctx: &mut Context,
+    poly: &Polynomial,
+    builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    if poly.is_zero() {
+        return None;
+    }
+
+    let hyperbolic = ctx.call_builtin(builtin, vec![arg]);
+    let poly_expr = poly.to_expr(ctx);
+    if poly.degree() == 0 && poly.coeffs.first().is_some_and(BigRational::is_one) {
+        Some(hyperbolic)
+    } else {
+        Some(mul2_raw(ctx, poly_expr, hyperbolic))
+    }
+}
+
+fn polynomial_times_hyperbolic_linear_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for (hyperbolic_index, factor) in factors.iter().enumerate() {
+        let Some((builtin, hyperbolic_arg)) = hyperbolic_like_factor(ctx, *factor) else {
+            continue;
+        };
+
+        let Ok(arg_poly) = Polynomial::from_expr(ctx, hyperbolic_arg, var) else {
+            continue;
+        };
+        if arg_poly.degree() != 1 {
+            continue;
+        }
+        let arg_slope = arg_poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if arg_slope.is_zero() {
+            continue;
+        }
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != hyperbolic_index).then_some(*factor))
+            .collect();
+        let cofactor = if cofactor_factors.is_empty() {
+            ctx.num(1)
+        } else {
+            build_balanced_mul(ctx, &cofactor_factors)
+        };
+        let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
+            continue;
+        };
+        if !(2..=5).contains(&cofactor_poly.degree()) {
+            continue;
+        }
+
+        let slope_sq = arg_slope.clone() * arg_slope.clone();
+        let slope_cube = slope_sq.clone() * arg_slope.clone();
+        let slope_fourth = slope_cube.clone() * arg_slope.clone();
+        let slope_fifth = slope_fourth.clone() * arg_slope.clone();
+        let slope_sixth = slope_fifth.clone() * arg_slope.clone();
+        let first_derivative = cofactor_poly.derivative();
+        let second_derivative = first_derivative.derivative();
+        let third_derivative = second_derivative.derivative();
+        let fourth_derivative = third_derivative.derivative();
+        let fifth_derivative = fourth_derivative.derivative();
+
+        let even_poly = cofactor_poly
+            .div_scalar(&arg_slope)
+            .add(&second_derivative.div_scalar(&slope_cube))
+            .add(&fourth_derivative.div_scalar(&slope_fifth));
+        let odd_poly = first_derivative
+            .div_scalar(&slope_sq)
+            .add(&third_derivative.div_scalar(&slope_fourth))
+            .add(&fifth_derivative.div_scalar(&slope_sixth));
+
+        let (even_builtin, odd_builtin) = match builtin {
+            BuiltinFn::Sinh => (BuiltinFn::Cosh, BuiltinFn::Sinh),
+            BuiltinFn::Cosh => (BuiltinFn::Sinh, BuiltinFn::Cosh),
+            _ => return None,
+        };
+
+        let even_term = polynomial_hyperbolic_term(ctx, &even_poly, even_builtin, hyperbolic_arg)?;
+        let Some(odd_term) =
+            polynomial_hyperbolic_term(ctx, &odd_poly, odd_builtin, hyperbolic_arg)
+        else {
+            return Some(even_term);
+        };
+        return Some(ctx.add(Expr::Sub(even_term, odd_term)));
+    }
+
+    None
+}
+
+pub fn integrate_symbolic_is_polynomial_times_hyperbolic_linear_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    polynomial_times_hyperbolic_linear_antiderivative(ctx, expr, var).is_some()
 }
 
 fn exact_rational_sqrt(value: &BigRational) -> Option<BigRational> {
@@ -8317,7 +8439,7 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
-    if let Some(integral) = quadratic_times_exp_linear_antiderivative(ctx, expr, var) {
+    if let Some(integral) = polynomial_times_exp_linear_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
 
@@ -8325,11 +8447,15 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
-    if let Some(integral) = quadratic_times_trig_linear_antiderivative(ctx, expr, var) {
+    if let Some(integral) = polynomial_times_trig_linear_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
 
     if let Some(integral) = linear_times_trig_linear_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
+    if let Some(integral) = polynomial_times_hyperbolic_linear_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
 
@@ -9037,7 +9163,7 @@ mod tests {
     }
 
     #[test]
-    fn integrates_quadratic_times_exp_linear_by_parts() {
+    fn integrates_polynomial_times_exp_linear_by_parts() {
         let mut ctx = Context::new();
         let expr = parse("x^2*exp(x)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
@@ -9070,6 +9196,13 @@ mod tests {
         assert_eq!(
             rendered(&ctx, out),
             "exp(2 * x + 1) * (2 * x^4 + 6 * x^2 + 3 - 4 * x^3 - 6 * x) / 4"
+        );
+
+        let expr = parse("x^5*exp(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "exp(x) * (x^5 + 20 * x^3 + 120 * x - 5 * x^4 - 60 * x^2 - 120)"
         );
     }
 
@@ -9183,6 +9316,24 @@ mod tests {
     }
 
     #[test]
+    fn integrates_quintic_times_trig_linear_by_parts() {
+        let mut ctx = Context::new();
+        let expr = parse("x^5*sin(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(20 * x^3 - x^5 - 120 * x) * cos(x) + (5 * x^4 + 120 - 60 * x^2) * sin(x)"
+        );
+
+        let expr = parse("x^5*cos(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^5 + 120 * x - 20 * x^3) * sin(x) + (5 * x^4 + 120 - 60 * x^2) * cos(x)"
+        );
+    }
+
+    #[test]
     fn integrates_linear_times_hyperbolic_linear_by_parts() {
         let mut ctx = Context::new();
         let expr = parse("x*sinh(x)", &mut ctx).expect("parse");
@@ -9219,6 +9370,25 @@ mod tests {
         assert_eq!(
             rendered(&ctx, out),
             "(sinh((3 * x + 2) / 2) * (x + 1))/3/2 - 4/9 * cosh((3 * x + 2) / 2)"
+        );
+    }
+
+    #[test]
+    fn integrates_polynomial_times_hyperbolic_linear_by_parts() {
+        let mut ctx = Context::new();
+        let expr = parse("x^2*sinh(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "(x^2 + 2) * cosh(x) - 2 * x * sinh(x)");
+
+        let expr = parse("x^2*cosh(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "(x^2 + 2) * sinh(x) - 2 * x * cosh(x)");
+
+        let expr = parse("x^5*sinh(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^5 + 20 * x^3 + 120 * x) * cosh(x) - (5 * x^4 + 60 * x^2 + 120) * sinh(x)"
         );
     }
 
