@@ -27,8 +27,16 @@ ERRORS=0
 TMP_FILE="$(mktemp "${TMPDIR:-/tmp}/presimplify_safe_for_limit.XXXXXX.rs")"
 trap 'rm -f "$TMP_FILE"' EXIT
 
-START_LINE="$(rg -n '^const PRESIMPLIFY_MAX_DEPTH:' "$FILE" | head -n1 | cut -d: -f1)"
-END_LINE="$(rg -n '^#\[cfg\(test\)\]' "$FILE" | awk -F: -v start="$START_LINE" '$1 > start { print $1; exit }')"
+if command -v rg >/dev/null 2>&1; then
+  search_regex() { rg -n "$1" "$2"; }
+  search_fixed() { rg -n -F "$1" "$2"; }
+else
+  search_regex() { grep -nE "$1" "$2"; }
+  search_fixed() { grep -nF "$1" "$2"; }
+fi
+
+START_LINE="$(search_regex '^const PRESIMPLIFY_MAX_DEPTH:' "$FILE" | head -n1 | cut -d: -f1)"
+END_LINE="$(search_regex '^#\[cfg\(test\)\]' "$FILE" | awk -F: -v start="$START_LINE" '$1 > start { print $1; exit }')"
 
 if [[ -z "$START_LINE" || -z "$END_LINE" ]]; then
   echo "❌ could not isolate presimplify_safe_for_limit in $FILE"
@@ -37,7 +45,7 @@ fi
 
 sed -n "${START_LINE},$((END_LINE - 1))p" "$FILE" > "$TMP_FILE"
 
-if ! rg -n -F "pub fn presimplify_safe_for_limit" "$TMP_FILE" >/dev/null 2>&1; then
+if ! search_fixed "pub fn presimplify_safe_for_limit" "$TMP_FILE" >/dev/null 2>&1; then
   echo "❌ presimplify_safe_for_limit not found in isolated lint slice"
   exit 1
 fi
@@ -59,20 +67,20 @@ DENY_PATTERNS=(
 )
 
 for p in "${DENY_PATTERNS[@]}"; do
-  if rg -n -F "$p" "$TMP_FILE" >/dev/null 2>&1; then
+  if search_fixed "$p" "$TMP_FILE" >/dev/null 2>&1; then
     echo "❌ presimplify_safe must NOT reference: $p"
-    rg -n -F "$p" "$TMP_FILE"
+    search_fixed "$p" "$TMP_FILE"
     ((ERRORS++)) || true
   fi
 done
 
 # Allowlist check: should use canonical helpers (not local definitions)
-if rg -n "^fn is_zero\b" "$TMP_FILE" >/dev/null 2>&1; then
+if search_regex "^fn is_zero([^[:alnum:]_]|$)" "$TMP_FILE" >/dev/null 2>&1; then
   echo "❌ presimplify_safe has local is_zero; use crate::helpers::is_zero"
   ((ERRORS++)) || true
 fi
 
-if rg -n "^fn is_one\b" "$TMP_FILE" >/dev/null 2>&1; then
+if search_regex "^fn is_one([^[:alnum:]_]|$)" "$TMP_FILE" >/dev/null 2>&1; then
   echo "❌ presimplify_safe has local is_one; use crate::helpers::is_one"
   ((ERRORS++)) || true
 fi

@@ -4553,6 +4553,327 @@ fn polynomial_log_product_substitution_antiderivative(
     None
 }
 
+fn monomial_times_ln_var_by_parts_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for (log_index, factor) in factors.iter().enumerate() {
+        let Expr::Function(fn_id, args) = ctx.get(*factor) else {
+            continue;
+        };
+        if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(BuiltinFn::Ln) {
+            continue;
+        }
+        if !is_var(ctx, args[0], var) {
+            continue;
+        }
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != log_index).then_some(*factor))
+            .collect();
+        if cofactor_factors.is_empty() {
+            return None;
+        }
+        let cofactor = build_balanced_mul(ctx, &cofactor_factors);
+        let (scale, power) = scaled_var_power_term(ctx, cofactor, var)?;
+        if !power.denom().is_one() || power.is_negative() {
+            return None;
+        }
+        let next_power = power + BigRational::one();
+        if next_power.is_zero() {
+            return None;
+        }
+
+        let var_expr = ctx.var(var);
+        let next_power_expr = ctx.add(Expr::Number(next_power.clone()));
+        let x_next = ctx.add(Expr::Pow(var_expr, next_power_expr));
+        let x_next_log = mul2_raw(ctx, x_next, *factor);
+        let first = ctx.add(Expr::Div(x_next_log, next_power_expr));
+
+        let next_power_squared = next_power.clone() * next_power;
+        let second_scale = BigRational::one() / next_power_squared;
+        let second = scale_rational_term(ctx, second_scale, x_next);
+        let integral = ctx.add(Expr::Sub(first, second));
+
+        return Some(scale_rational_term(ctx, scale, integral));
+    }
+
+    None
+}
+
+fn linear_affine_ln_term_parts(
+    ctx: &mut Context,
+    term: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId, BigRational, BigRational)> {
+    let factors = mul_leaves(ctx, term);
+
+    for (log_index, factor) in factors.iter().enumerate() {
+        let log_arg = match ctx.get(*factor).clone() {
+            Expr::Function(fn_id, args)
+                if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln) =>
+            {
+                args[0]
+            }
+            _ => continue,
+        };
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != log_index).then_some(*factor))
+            .collect();
+        let cofactor = if cofactor_factors.is_empty() {
+            ctx.num(1)
+        } else {
+            build_balanced_mul(ctx, &cofactor_factors)
+        };
+        let (cofactor_slope, cofactor_offset) = get_linear_coeffs(ctx, cofactor, var)?;
+        let cofactor_slope = rational_constant_value(ctx, cofactor_slope)?;
+        let cofactor_offset = rational_constant_value(ctx, cofactor_offset)?;
+
+        return Some((log_arg, *factor, cofactor_slope, cofactor_offset));
+    }
+
+    None
+}
+
+fn build_linear_expr_from_rationals(
+    ctx: &mut Context,
+    var: &str,
+    slope: BigRational,
+    offset: BigRational,
+) -> Option<ExprId> {
+    if slope.is_zero() && offset.is_zero() {
+        return None;
+    }
+
+    let mut terms = Vec::new();
+    if !slope.is_zero() {
+        let var_expr = ctx.var(var);
+        terms.push(scale_rational_term(ctx, slope, var_expr));
+    }
+    if !offset.is_zero() {
+        terms.push(ctx.add(Expr::Number(offset)));
+    }
+
+    Some(build_balanced_add(ctx, &terms))
+}
+
+fn additive_linear_times_affine_ln_by_parts_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return None;
+    }
+
+    let mut common_log_arg = None;
+    let mut common_log_factor = None;
+    let mut slope_sum = BigRational::zero();
+    let mut offset_sum = BigRational::zero();
+
+    for (term, sign) in view.terms {
+        let (log_arg, log_factor, mut slope, mut offset) =
+            linear_affine_ln_term_parts(ctx, term, var)?;
+        if sign == Sign::Neg {
+            slope = -slope;
+            offset = -offset;
+        }
+
+        if let Some(existing_arg) = common_log_arg {
+            if compare_expr(ctx, existing_arg, log_arg) != Ordering::Equal {
+                return None;
+            }
+        } else {
+            common_log_arg = Some(log_arg);
+            common_log_factor = Some(log_factor);
+        }
+
+        slope_sum += slope;
+        offset_sum += offset;
+    }
+
+    let cofactor = build_linear_expr_from_rationals(ctx, var, slope_sum, offset_sum)?;
+    let combined_expr = mul2_raw(ctx, cofactor, common_log_factor?);
+    linear_times_affine_ln_by_parts_antiderivative(ctx, combined_expr, var)
+}
+
+fn linear_times_affine_ln_by_parts_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for (log_index, factor) in factors.iter().enumerate() {
+        let log_arg = match ctx.get(*factor).clone() {
+            Expr::Function(fn_id, args)
+                if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln) =>
+            {
+                args[0]
+            }
+            _ => continue,
+        };
+        let (arg_slope, arg_offset) = get_linear_coeffs(ctx, log_arg, var)?;
+        let arg_slope = rational_constant_value(ctx, arg_slope)?;
+        if arg_slope.is_zero() {
+            continue;
+        }
+        let arg_offset = rational_constant_value(ctx, arg_offset)?;
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != log_index).then_some(*factor))
+            .collect();
+        if cofactor_factors.is_empty() {
+            continue;
+        }
+        let cofactor = build_balanced_mul(ctx, &cofactor_factors);
+        let (cofactor_slope, cofactor_offset) = get_linear_coeffs(ctx, cofactor, var)?;
+        let cofactor_slope = rational_constant_value(ctx, cofactor_slope)?;
+        let cofactor_offset = rational_constant_value(ctx, cofactor_offset)?;
+        if cofactor_slope.is_zero() && cofactor_offset.is_zero() {
+            continue;
+        }
+
+        if !cofactor_slope.is_zero()
+            && cofactor_offset.clone() * arg_slope.clone()
+                == cofactor_slope.clone() * arg_offset.clone()
+        {
+            let proportional_scale = cofactor_slope.clone() / arg_slope.clone();
+            let two = ctx.num(2);
+            let arg_squared = ctx.add(Expr::Pow(log_arg, two));
+            let log_term = mul2_raw(ctx, arg_squared, *factor);
+
+            let var_expr = ctx.var(var);
+            let two = ctx.num(2);
+            let x_squared = ctx.add(Expr::Pow(var_expr, two));
+            let quadratic_coeff =
+                -(arg_slope.clone() * arg_slope.clone()) / BigRational::from_integer(2.into());
+            let quadratic_term = scale_rational_term(ctx, quadratic_coeff, x_squared);
+            let linear_coeff = -(arg_slope.clone() * arg_offset.clone());
+            let linear_term = scale_rational_term(ctx, linear_coeff, var_expr);
+            let inner = build_balanced_add(ctx, &[log_term, quadratic_term, linear_term]);
+
+            let scale =
+                proportional_scale / (BigRational::from_integer(2.into()) * arg_slope.clone());
+            return Some(scale_rational_term(ctx, scale, inner));
+        }
+
+        if !cofactor_slope.is_zero() && !cofactor_offset.is_zero() {
+            let arg_slope_squared = arg_slope.clone() * arg_slope.clone();
+            let u_coeff = cofactor_slope.clone() / arg_slope_squared.clone();
+            let constant_coeff = (cofactor_offset.clone() * arg_slope.clone()
+                - cofactor_slope.clone() * arg_offset.clone())
+                / arg_slope_squared;
+
+            let log_inner_shift =
+                (BigRational::from_integer(2.into()) * constant_coeff.clone()) / u_coeff.clone();
+            let log_inner = if log_inner_shift.is_zero() {
+                log_arg
+            } else {
+                let shift = ctx.add(Expr::Number(log_inner_shift));
+                ctx.add(Expr::Add(log_arg, shift))
+            };
+            let log_coeff = build_balanced_mul(ctx, &[log_arg, log_inner]);
+            let log_coeff = scale_rational_term(
+                ctx,
+                u_coeff.clone() / BigRational::from_integer(2.into()),
+                log_coeff,
+            );
+            let log_term = mul2_raw(ctx, log_coeff, *factor);
+
+            let var_expr = ctx.var(var);
+            let two = ctx.num(2);
+            let x_squared = ctx.add(Expr::Pow(var_expr, two));
+            let quadratic_term = scale_rational_term(
+                ctx,
+                -cofactor_slope.clone() / BigRational::from_integer(4.into()),
+                x_squared,
+            );
+
+            let linear_coeff = cofactor_slope.clone() * arg_offset.clone()
+                / (BigRational::from_integer(2.into()) * arg_slope.clone())
+                - cofactor_offset.clone();
+            let linear_term = scale_rational_term(ctx, linear_coeff, var_expr);
+
+            return Some(build_balanced_add(
+                ctx,
+                &[log_term, quadratic_term, linear_term],
+            ));
+        }
+
+        let mut integral_terms = Vec::new();
+
+        if !cofactor_slope.is_zero() {
+            let var_expr = ctx.var(var);
+            let two = ctx.num(2);
+            let x_squared = ctx.add(Expr::Pow(var_expr, two));
+            let half_x_squared = ctx.add(Expr::Div(x_squared, two));
+
+            let log_coeff = {
+                let denominator =
+                    BigRational::from_integer(2.into()) * arg_slope.clone() * arg_slope.clone();
+                let offset_square = arg_offset.clone() * arg_offset.clone();
+                let offset_term = offset_square / denominator;
+                if offset_term.is_zero() {
+                    half_x_squared
+                } else {
+                    let offset_term = ctx.add(Expr::Number(offset_term));
+                    ctx.add(Expr::Sub(half_x_squared, offset_term))
+                }
+            };
+            let log_term = mul2_raw(ctx, log_coeff, *factor);
+            let negative_quarter_x_squared =
+                scale_rational_term(ctx, BigRational::new((-1).into(), 4.into()), x_squared);
+
+            let linear_scale =
+                arg_offset.clone() / (BigRational::from_integer(2.into()) * arg_slope.clone());
+            let x_integral = if linear_scale.is_zero() {
+                ctx.add(Expr::Add(log_term, negative_quarter_x_squared))
+            } else {
+                let linear_term = scale_rational_term(ctx, linear_scale, var_expr);
+                build_balanced_add(ctx, &[log_term, negative_quarter_x_squared, linear_term])
+            };
+            let x_integral = scale_rational_term(ctx, cofactor_slope, x_integral);
+            integral_terms.push(cas_ast::hold::wrap_hold(ctx, x_integral));
+        }
+
+        if !cofactor_offset.is_zero() {
+            let one = ctx.num(1);
+            let log_minus_one = ctx.add(Expr::Sub(*factor, one));
+            let affine_log_integral = mul2_raw(ctx, log_arg, log_minus_one);
+            let affine_log_integral =
+                scale_rational_term(ctx, BigRational::one() / arg_slope, affine_log_integral);
+            let affine_log_integral =
+                scale_rational_term(ctx, cofactor_offset, affine_log_integral);
+            integral_terms.push(cas_ast::hold::wrap_hold(ctx, affine_log_integral));
+        }
+
+        return Some(match integral_terms.as_slice() {
+            [single] => *single,
+            _ => build_balanced_add(ctx, &integral_terms),
+        });
+    }
+
+    None
+}
+
 fn positive_integer_power_value(ctx: &Context, expr: ExprId) -> Option<u32> {
     match ctx.get(expr) {
         Expr::Number(n) if n.denom().is_one() && n.is_positive() => n.to_integer().to_u32(),
@@ -7896,6 +8217,12 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         {
             return Some(integral);
         }
+
+        if let Some(integral) =
+            additive_linear_times_affine_ln_by_parts_antiderivative(ctx, expr, var)
+        {
+            return Some(integral);
+        }
     }
 
     if let IntKind::Add(l, r) = kind {
@@ -7974,6 +8301,14 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let Some(integral) = polynomial_log_product_substitution_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
+    if let Some(integral) = monomial_times_ln_var_by_parts_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
+    if let Some(integral) = linear_times_affine_ln_by_parts_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
 

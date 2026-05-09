@@ -1911,6 +1911,103 @@ fn integrate_contract_linear_log_table_preserves_positive_domain() {
 }
 
 #[test]
+fn integrate_contract_monomial_times_log_by_parts_preserves_positive_domain() {
+    let cases = [
+        ("integrate(x*ln(x), x)", "1/4 * (2 * ln(x) * x^2 - x^2)"),
+        ("integrate(x^2*ln(x), x)", "1/9 * (3 * ln(x) * x^3 - x^3)"),
+    ];
+
+    for (input, expected) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected, "input: {input}");
+        assert_eq!(
+            required,
+            vec!["x > 0".to_string()],
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+        assert_rendered_antiderivative_verifies(input, &result);
+    }
+}
+
+#[test]
+fn integrate_contract_linear_monomial_times_affine_log_by_parts_preserves_positive_domain() {
+    let cases = [
+        (
+            "integrate(x*ln(2*x+1), x)",
+            "(x^2 / 2 - 1/8) * ln(2 * x + 1) + 1/4 * x - 1/4 * x^2",
+            "2 * x + 1 > 0",
+        ),
+        (
+            "integrate(3*x*ln(2*x+1), x)",
+            "3 * ((x^2 / 2 - 1/8) * ln(2 * x + 1) + 1/4 * x - 1/4 * x^2)",
+            "2 * x + 1 > 0",
+        ),
+        (
+            "integrate(x*ln(x+1), x)",
+            "(x^2 / 2 - 1/2) * ln(x + 1) + 1/2 * x - 1/4 * x^2",
+            "x + 1 > 0",
+        ),
+        (
+            "integrate((x+1)*ln(2*x+1), x)",
+            "1/8 * (ln(2 * x + 1) * (2 * x + 1) * (2 * x + 3) - 2 * x^2 - 6 * x)",
+            "2 * x + 1 > 0",
+        ),
+        (
+            "integrate((2*x+3)*ln(2*x+1), x)",
+            "1/4 * (ln(2 * x + 1) * (2 * x + 1) * (2 * x + 5) - 2 * x^2 - 10 * x)",
+            "2 * x + 1 > 0",
+        ),
+        (
+            "integrate((1-2*x)*ln(1-2*x), x)",
+            "1/4 * (2 * x^2 - ln(1 - 2 * x) * (1 - 2 * x)^2 - 2 * x)",
+            "1 - 2 * x > 0",
+        ),
+    ];
+
+    for (input, expected, required_condition) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected, "input: {input}");
+        assert_eq!(
+            required,
+            vec![required_condition.to_string()],
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+        assert_rendered_antiderivative_verifies(input, &result);
+    }
+}
+
+#[test]
+fn integrate_contract_affine_log_by_parts_presentation_stays_quiet() {
+    for input in ["integrate(x*ln(2*x+1), x)", "integrate((x+1)*ln(2*x+1), x)"] {
+        let (_wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "affine log by-parts presentation should not emit depth_overflow for {input}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_affine_log_by_parts_offset_residual_stays_quiet() {
+    for input in [
+        "diff(integrate((x+1)*ln(2*x+1), x), x) - (x+1)*ln(2*x+1)",
+        "diff(integrate((1-2*x)*ln(1-2*x), x), x) - (1-2*x)*ln(1-2*x)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+        assert_eq!(wire["result"], "0", "input: {input}");
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "offset affine log by-parts residual should not emit depth_overflow for {input}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_polynomial_log_product_preserves_source_domain() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(2*x*ln(x^2-1), x)");

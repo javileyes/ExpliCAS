@@ -2963,7 +2963,6 @@ Steps (Aggressive Mode):
 Result: ln(x^(3) * y^(2))
 ℹ️ Requires:
   • x > 0
-  • x^3 * y^2 > 0
   • y ≠ 0
 ```
 
@@ -11646,8 +11645,8 @@ Steps (Aggressive Mode):
    After: (m + 1) * (n + 3) / ((m + 2) * (n + 2))
 Result: (m + 1) * (n + 3) / ((m + 2) * (n + 2))
 ℹ️ Requires:
-  • k + 2 ≠ 0
   • m * n + 2 * m + 2 * n + 4 ≠ 0
+  • k + 2 ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -11682,8 +11681,8 @@ Steps (Aggressive Mode):
    After: (a + n + 1) * (a + m - 1) / ((a + m) * (a + n))
 Result: (a + n + 1) * (a + m - 1) / ((a + m) * (a + n))
 ℹ️ Requires:
-  • a + k ≠ 0
   • a^2 + a * m + a * n + m * n ≠ 0
+  • a + k ≠ 0
 ```
 
 ### Web / JSON Steps
@@ -13469,7 +13468,6 @@ Steps (Aggressive Mode):
    ℹ️ Requires: y^2 > 0
 Result: 0
 ℹ️ Requires:
-  • x^3 * y^2 > 0
   • x > 0
   • y ≠ 0
 ```

@@ -55,9 +55,9 @@ Steps:
 2. Calcular potencia numérica
    Before: (sqrt(x) + 1)/(x - 1^2) - (sqrt(x) + 1)/(x - 1)
    After: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)
-3. Cancel fraction residual with equivalent polynomial denominators
+3. Equivalent Residual Cancellation
    Before: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)
-   Cambio local: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1) -> 0
+   Cambio local: sqrt(x) + 1 - (sqrt(x) + 1) -> 0
    After: 0
 ```
 
@@ -78,6 +78,12 @@ Steps:
      3. `En el denominador aparece una diferencia de cuadrados`
         - before_latex: `\frac{(\sqrt{x} + 1)}{(\sqrt{x} - 1) \cdot (\sqrt{x} + 1)}`
         - after_latex: `\frac{\sqrt{x} + 1}{x - 1^{2}}`
+2. `Collapse Common-Scale Equivalent Difference`
+   - before: `sqrt(x) + 1 - (sqrt(x) + 1)`
+   - after: `0`
+   - before_latex: `{\color{red}{1 + \sqrt{x} - 1 - \sqrt{x}}}`
+   - after_latex: `{\color{green}{0}}`
+   - substeps: none
 
 ## nested_fraction_one_over_sum (nested_fraction)
 

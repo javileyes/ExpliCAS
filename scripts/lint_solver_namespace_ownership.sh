@@ -29,6 +29,26 @@ TARGETS=(
 ALLOWED='cas_solver::(api|runtime|wire|session_api|command_api|math|strategies)(::|\b)'
 ERRORS=0
 
+if command -v rg >/dev/null 2>&1; then
+    search_solver_paths() {
+        rg -n --glob '*.{rs,kt}' 'cas_solver::[A-Za-z_][A-Za-z0-9_]*' "${TARGETS[@]}" || true
+    }
+
+    search_root_brace_imports() {
+        rg -n --glob '*.rs' 'use cas_solver::\{' "${TARGETS[@]}" || true
+    }
+else
+    search_solver_paths() {
+        find "${TARGETS[@]}" -type f \( -name '*.rs' -o -name '*.kt' \) \
+            -exec grep -HnE 'cas_solver::[A-Za-z_][A-Za-z0-9_]*' {} + 2>/dev/null || true
+    }
+
+    search_root_brace_imports() {
+        find "${TARGETS[@]}" -type f -name '*.rs' \
+            -exec grep -HnE 'use cas_solver::\{' {} + 2>/dev/null || true
+    }
+fi
+
 while IFS= read -r hit; do
     file="${hit%%:*}"
     line="${hit#*:}"
@@ -39,16 +59,12 @@ while IFS= read -r hit; do
 
     echo "✘ ERROR: non-owned cas_solver root usage: $hit"
     ERRORS=$((ERRORS + 1))
-done < <(
-    rg -n --glob '*.{rs,kt}' 'cas_solver::[A-Za-z_][A-Za-z0-9_]*' "${TARGETS[@]}" || true
-)
+done < <(search_solver_paths)
 
 while IFS= read -r hit; do
     echo "✘ ERROR: root brace import from cas_solver: $hit"
     ERRORS=$((ERRORS + 1))
-done < <(
-    rg -n --glob '*.rs' 'use cas_solver::\{' "${TARGETS[@]}" || true
-)
+done < <(search_root_brace_imports)
 
 if [ "$ERRORS" -gt 0 ]; then
     echo

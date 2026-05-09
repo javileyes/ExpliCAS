@@ -24,7 +24,7 @@ set -euo pipefail
 # Notes:
 # - Toolchain pinned via rust-toolchain.toml (channel = "x.y.z") if present
 # - MSRV read from root Cargo.toml rust-version if present
-# - If lints are enabled and scripts use rg, you need ripgrep installed.
+# - Repo lints should run with or without ripgrep installed.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
