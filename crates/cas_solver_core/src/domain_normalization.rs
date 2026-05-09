@@ -1489,6 +1489,11 @@ fn nonzero_is_dominated_by_positive_condition(
                 normalized_positive,
                 normalized_expr,
             )
+            || positive_log_condition_dominates_argument_minus_one_nonzero(
+                ctx,
+                normalized_positive,
+                normalized_expr,
+            )
             || positive_polynomial_condition_contains_nonzero_factor(
                 ctx,
                 normalized_positive,
@@ -1531,6 +1536,26 @@ fn positive_condition_dominates_affine_nonzero_offset(
         (scale.is_positive() && offset >= BigRational::zero())
             || (scale.is_negative() && offset <= BigRational::zero())
     })
+}
+
+fn positive_log_condition_dominates_argument_minus_one_nonzero(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    let Some((base_opt, arg)) = extract_log_base_argument_view(ctx, positive_expr) else {
+        return false;
+    };
+    if base_opt.is_some() {
+        return false;
+    }
+
+    let one = ctx.num(1);
+    let arg_minus_one = ctx.add(Expr::Sub(arg, one));
+    let normalized_boundary = normalize_condition_expr(ctx, arg_minus_one);
+    let normalized_nonzero = normalize_condition_expr(ctx, nonzero_expr);
+
+    exprs_equivalent_up_to_sign(ctx, normalized_nonzero, normalized_boundary)
 }
 
 fn positive_condition_dominates_affine_positive_offset(
@@ -2247,6 +2272,14 @@ fn is_positive_under_display_conditions(
         }
     }
 
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        if as_rational_const(ctx, *exp).is_some_and(|n| n.is_positive())
+            && is_positive_under_display_conditions(ctx, conditions, skip_index, *base, depth - 1)
+        {
+            return true;
+        }
+    }
+
     if let Some(base) = extract_sqrt_like_base(ctx, expr) {
         if is_positive_under_display_conditions(ctx, conditions, skip_index, base, depth - 1) {
             return true;
@@ -2328,13 +2361,20 @@ pub fn normalize_and_dedupe_conditions(
 ) -> Vec<ImplicitCondition> {
     let mut result: Vec<ImplicitCondition> = Vec::new();
 
-    for cond in conditions {
+    for (idx, cond) in conditions.iter().enumerate() {
         if condition_is_intrinsically_satisfied(ctx, cond) {
             continue;
         }
 
         if let ImplicitCondition::NonZero(expr) = cond {
-            if nonzero_is_dominated_by_positive_condition(ctx, conditions, *expr) {
+            if is_positive_under_display_conditions_or_factored(
+                ctx,
+                conditions,
+                idx,
+                *expr,
+                DISPLAY_SIGN_PROOF_DEPTH,
+            ) || nonzero_is_dominated_by_positive_condition(ctx, conditions, *expr)
+            {
                 continue;
             }
         }
@@ -3346,6 +3386,9 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                         || positive_condition_dominates_affine_nonzero_offset(
                             ctx, *pos_expr, *nz_expr,
                         )
+                        || positive_log_condition_dominates_argument_minus_one_nonzero(
+                            ctx, *pos_expr, *nz_expr,
+                        )
                         || positive_condition_dominates_sqrt_lower_nonzero(ctx, *pos_expr, *nz_expr)
                         || positive_polynomial_condition_contains_nonzero_factor(
                             ctx, *pos_expr, *nz_expr,
@@ -3924,6 +3967,82 @@ mod tests {
     }
 
     #[test]
+    fn positive_unary_log_dominates_argument_boundary_nonzero() {
+        let mut ctx = Context::new();
+        let ln_x = parse("ln(x)", &mut ctx).expect("parse ln(x)");
+        let x = parse("x", &mut ctx).expect("parse x");
+        let x_minus_one = parse("x - 1", &mut ctx).expect("parse x - 1");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(x_minus_one),
+                ImplicitCondition::Positive(ln_x),
+                ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2, "got: {normalized:?}");
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(ln_x)) }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x)) }));
+        assert!(
+            !normalized.iter().any(|cond| {
+                conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_minus_one))
+            }),
+            "ln(x) > 0 implies x > 1, so x - 1 != 0 is redundant: {normalized:?}"
+        );
+    }
+
+    #[test]
+    fn positive_unary_log_dominates_opposite_oriented_argument_boundary_nonzero() {
+        let mut ctx = Context::new();
+        let ln_x = parse("ln(x)", &mut ctx).expect("parse ln(x)");
+        let one_minus_x = parse("1 - x", &mut ctx).expect("parse 1 - x");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(one_minus_x),
+                ImplicitCondition::Positive(ln_x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 1, "got: {normalized:?}");
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(ln_x)
+        ));
+    }
+
+    #[test]
+    fn positive_unknown_base_log_keeps_argument_boundary_nonzero() {
+        let mut ctx = Context::new();
+        let log_b_x = parse("log(b, x)", &mut ctx).expect("parse log(b, x)");
+        let x_minus_one = parse("x - 1", &mut ctx).expect("parse x - 1");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(x_minus_one),
+                ImplicitCondition::Positive(log_b_x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2, "got: {normalized:?}");
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::NonZero(x_minus_one))
+        }));
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(log_b_x))
+        }));
+    }
+
+    #[test]
     fn nonzero_tanh_display_condition_normalizes_to_sinh_nonzero() {
         let mut ctx = Context::new();
         let tanh_expr = parse("tanh(2*x + 1)", &mut ctx).expect("parse tanh");
@@ -4027,6 +4146,23 @@ mod tests {
         );
 
         assert_eq!(normalized, vec![ImplicitCondition::Positive(u)]);
+    }
+
+    #[test]
+    fn positive_fractional_power_sum_under_positive_base_drops_nonzero_condition() {
+        let mut ctx = Context::new();
+        let denominator = parse("x^(3/2) + 4*x^(1/2)", &mut ctx).expect("parse denominator");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(x),
+                ImplicitCondition::NonZero(denominator),
+            ],
+        );
+
+        assert_eq!(normalized, vec![ImplicitCondition::Positive(x)]);
     }
 
     #[test]

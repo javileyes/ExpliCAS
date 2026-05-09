@@ -26083,8 +26083,8 @@ impl Orchestrator {
                 let mut step = build_root_shortcut_compact_step(
                     expr,
                     zero,
-                    "Verify matching trig log antiderivative residual",
-                    "Trig Log Integral Residual",
+                    "Verify matching plain trig antiderivative residual",
+                    "Plain Trig Integral Residual",
                 );
                 step.meta_mut().required_conditions = required_conditions;
                 vec![step]
@@ -26107,6 +26107,25 @@ impl Orchestrator {
                     zero,
                     "Verify matching quadratic exponential antiderivative residual",
                     "Quadratic Exp Integral Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) = crate::calculus_residual_support::
+            try_diff_integral_rational_quadratic_residual_root_zero(&mut simplifier.context, expr)
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify matching rational quadratic antiderivative residual",
+                    "Rational Quadratic Integral Residual",
                 );
                 step.meta_mut().required_conditions = required_conditions;
                 vec![step]
@@ -26158,6 +26177,47 @@ impl Orchestrator {
                 Vec::new()
             };
             return (compact, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_diff_sqrt_log_plus_constant_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Cancel matching sqrt-log derivative residual",
+                    "Sqrt Log Diff Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some(zero) = crate::calculus_residual_support::
+            try_reciprocal_half_power_shared_denominator_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            let shortcut_steps = if collect_steps {
+                vec![build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Cancel matching reciprocal half-power residual",
+                    "Reciprocal Half-Power Residual",
+                )]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
         // Narrow hidden solve root shortcuts. Keep them limited to the

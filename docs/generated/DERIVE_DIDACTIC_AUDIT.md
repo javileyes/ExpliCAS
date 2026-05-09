@@ -15539,7 +15539,7 @@ Steps (Aggressive Mode):
 1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
    Before: (a * x + b) / (d - c * x)
    After: (a * d / c + b) / (d - c * x) - a / c
-Result: (a * d / c + b) / (d - c * x) + a / c
+Result: (a * d / c + b) / (d - c * x) - a / c
 ℹ️ Requires:
   • c ≠ 0
   • c * x - d ≠ 0

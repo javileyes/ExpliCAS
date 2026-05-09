@@ -9761,3 +9761,258 @@ The burden of proof stays the same:
     case
   - this is not a general inequality solver; it is a conservative exact
     lower-bound implication used by existing domain-aware simplification
+
+## 2026-05-08 - Local win / guardrail fail: numeric-first fraction numerator display
+
+- area:
+  - calculus / post-calculus presentation / formatter
+- status:
+  - `rejected`
+- local win:
+  - changing fraction numerator display to prefer numeric factors first improved
+    the probe `integrate(-2*x^2/(sin(x^3)^2), x)` from
+    `(cos(x^3) * 2)/(3 * sin(x^3))` to
+    `(2 * cos(x^3))/(3 * sin(x^3))`
+- guardrail failure:
+  - `make engine-fast` failed `calculus_diff_contract`
+  - the broad formatter change altered stable derivative contract strings such
+    as log/abs quotient outputs from `(x * 2)/(...)` to `(2 * x)/(...)`
+  - one inverse-trig derivative presentation lost the visible leading negative
+    sign in `diff(arccos(sqrt(3/2)*(x^2+x+1)^2), x)`, making the broad display
+    rewrite unsafe as a presentation-only change
+- retained learning:
+  - numerator factor ordering for final calculus presentation is valuable, but
+    it cannot be changed broadly in `FractionDisplayView` without auditing sign
+    extraction and existing derivative contracts
+  - the next attempt should be a narrower post-integration presentation layer or
+    a formatter change with explicit sign-preservation tests for inverse-trig
+    derivative quotients
+
+## 2026-05-09 - Discovery observe-only: reparsed compact quadratic-square antiderivative residual
+
+- area:
+  - calculus / integrate / post-calculus presentation / residual simplification
+- status:
+  - `superseded-by-retained`
+- observed probes:
+  - `integrate(1/(4*x^2+1)^2, x)` now renders the compact primitive
+    `1/4*arctan(2*x) + x/(2*(4*x^2+1))`
+  - `diff(integrate(1/(4*x^2+1)^2, x), x) - 1/(4*x^2+1)^2` reduces to `0`
+  - reparsing the rendered primitive in
+    `diff(1/4*arctan(2*x) + x/(2*(4*x^2+1)), x) - 1/(4*x^2+1)^2`
+    leaves an algebraic residual instead of reducing to `0`
+- reusable signature:
+  - the supported integration path can verify the antiderivative while the
+    standalone residual simplifier still misses a common-denominator collapse
+    involving the derivative of a compact rational tail plus an arctan term
+- decision:
+  - retain the public `integrate(...)` capability with a nested-diff contract
+  - do not promote the scaled case into a rendered-antiderivative round-trip
+    lane until the public residual simplifier closes this standalone form
+
+## 2026-05-09 - Retained: short polynomial rational residual sums close public rendered antiderivative check
+
+- area:
+  - calculus / integrate / post-calculus presentation / residual simplification
+- retained correction:
+  - add a bounded exact residual check for short sums of rational terms with
+    polynomial denominators
+  - compute a small polynomial LCM and prove the combined numerator is zero
+    before collapsing the residual
+- promoted case:
+  - `diff(1/4*arctan(2*x) + x/(2*(4*x^2+1)), x) - 1/(4*x^2+1)^2` -> `0`
+  - `integrate(1/(4*x^2+1)^2, x)` now has a public rendered-antiderivative
+    verification contract
+- decision:
+  - supersedes the observe-only row above for this bounded rational residual
+  - the matcher stays deliberately small: at most four rational terms,
+    polynomial denominators, and a low-degree common denominator
+  - the lower-level exhaustive helper still rejects the reparsed primitive
+    because it bypasses the public engine residual route; keep that as a
+    separate harness/core-alignment candidate rather than forcing promotion
+
+## 2026-05-09 - Rejected: broad public-engine antiderivative helper
+
+- area:
+  - calculus / integrate / verification harness / runtime
+- status:
+  - rejected
+- local win:
+  - replacing the internal `Simplifier::simplify` verification helper with a
+    public `Engine::eval` residual route lets the scaled compact primitive
+    `integrate(1/(4*x^2+1)^2, x)` verify through the same route users exercise
+- rejection reason:
+  - applying that route to every existing antiderivative helper call made the
+    representative smoke materially slower and left the exhaustive ignored lane
+    running for more than two minutes before cancellation
+- retained learning:
+  - public rendered-antiderivative round-trips are valuable as targeted
+    coverage, but the broad helper should not be swapped wholesale without a
+    cheaper shared residual path
+  - the retained direction is to promote minimal rendered round-trip assertions
+    for compact public forms, not to route the entire integration verification
+    suite through the public engine twice per case
+
+## 2026-05-09 - Retained: antiderivative helper uses public fallback only after internal residual miss
+
+- area:
+  - calculus / integrate / verification harness / post-calculus residuals
+- retained correction:
+  - keep the internal `Simplifier::simplify` antiderivative verification as
+    the fast path
+  - if that direct residual does not reduce to `0`, re-check the rendered
+    primitive through the public engine residual route before failing the test
+- promoted case:
+  - `integrate(1/(4*x^2+1)^2, x)` is now included in both the representative
+    antiderivative verification smoke and the ignored exhaustive verification
+    lane
+- validation signal:
+  - representative antiderivative smoke stayed cheap after the fallback change
+  - the ignored exhaustive lane completed successfully instead of requiring
+    cancellation after the broad public-route attempt
+- decision:
+  - this is a harness alignment improvement, not a new integration rule
+  - retain the fallback because it preserves the fast path for existing cases
+    while letting compact public primitives exercise the same residual route
+    users see
+
+## 2026-05-09 - Retained: antiderivative fallback observability stays sparse
+
+- area:
+  - observability / calculus / integrate / verification harness
+- retained correction:
+  - make the antiderivative verification helper report whether it used the
+    public rendered-antiderivative fallback
+  - share the representative antiderivative verification case list with a
+    sparse-fallback contract
+- promoted signal:
+  - among the representative supported antiderivative cases, only
+    `integrate(1/(4*x^2+1)^2, x)` requires the public residual fallback
+- decision:
+  - keep the fallback as a harness escape, not the normal verification route
+  - do not move residual support into the lower-level simplifier until broader
+    fallback usage appears
+
+## 2026-05-09 - Retained: exhaustive antiderivative fallback contract stays sparse
+
+- area:
+  - observability / calculus / integrate / verification harness
+- retained correction:
+  - extend the ignored exhaustive antiderivative verification lane so it records
+    every case that needs the public rendered-antiderivative residual fallback
+  - keep the lane non-CI by default, but make it fail if fallback usage broadens
+    silently
+- observed signal:
+  - the exhaustive supported-antiderivative list still reports only
+    `integrate(1/(4*x^2+1)^2, x)` as a fallback case
+- decision:
+  - retain the fallback as a measured harness escape
+  - defer moving this support into the lower-level simplifier until a broader
+    fallback cluster appears
+
+## 2026-05-09 - Retained: affine trig cube integration
+
+- area:
+  - calculus / integrate / trig powers / bounded power reduction
+- retained correction:
+  - add conservative antiderivatives for `sin(linear)^3` and `cos(linear)^3`
+  - reuse the existing affine extraction and post-integration simplification
+- promoted cases:
+  - `integrate(sin(x)^3, x)` -> `1/3*(cos(x)^3 - 3*cos(x))`
+  - `integrate(cos(x)^3, x)` -> `1/3*(3*sin(x) - sin(x)^3)`
+  - affine variants such as `integrate(sin(2*x + 1)^3, x)` are verified by
+    differentiating the returned antiderivative
+- domain decision:
+  - no new required conditions are introduced for real-domain integer powers of
+    sine and cosine
+- engine feedback:
+  - the new cases verify through the existing antiderivative differentiation
+    helper and do not broaden public residual fallback usage
+
+## 2026-05-09 - Rejected: affine trig fifth integration before residual verification hardening
+
+- area:
+  - calculus / integrate / trig powers / antiderivative verification
+- status:
+  - rejected
+- local win:
+  - a bounded extension from cubic to fifth powers can construct direct
+    primitives for `sin(linear)^5` and `cos(linear)^5`
+- rejection reason:
+  - public residual probes such as
+    `diff(integrate(sin(x)^5, x), x) - sin(x)^5` and affine variants did not
+    return cheaply enough for promotion
+  - this violates the current integration policy that promoted families must be
+    verified by differentiating the chosen antiderivative
+- retained learning:
+  - odd trig powers beyond cubic need residual simplification hardening before
+    public integration promotion
+  - the next retained candidate should target the reusable residual closure for
+    fifth-power trig primitives, not add more answer-only integration patterns
+
+## 2026-05-09 - Discovery observe-only: sqrt-log reciprocal residual still misses shared scalar factor
+
+- area:
+  - calculus / diff / post-calculus presentation / residual simplification
+- status:
+  - `superseded-by-retained`
+- observed probes:
+  - `diff(sqrt(ln(x)), x)` returns the correct internal form
+    `ln(x)^(-1/2) / (2*x)` with `ln(x) > 0` and `x > 0`
+  - `ln(x)^(-1/2)/x - ln(x)^(1/2)/(x*ln(x))` reduces to `0`
+  - `diff(sqrt(ln(x)), x) - 1/(2*x*sqrt(ln(x)))` still leaves
+    `ln(x)^(-1/2) / (2*x) - ln(x)^(1/2) / (2*x*ln(x))`
+- retained learning:
+  - positive-log condition normalization can remove the redundant
+    `x - 1 != 0` guard, but residual closure still misses the same
+    reciprocal-power equivalence when a shared scalar product such as `2*x`
+    is present
+- decision:
+  - retain only the domain-condition cleanup in this iteration
+  - treat the remaining residual as a separate bounded simplification candidate
+    for shared-denominator reciprocal fractional powers
+
+## 2026-05-09 - Retained: sqrt-log shared denominator reciprocal residual
+
+- area:
+  - coverage / calculus feedback / reciprocal half-power residuals
+- retained correction:
+  - add a bounded root residual matcher for
+    `u^(-1/2)/k - u^(1/2)/(k*u) -> 0`
+  - keep the matcher exact: the denominator factor set must match after
+    removing one copy of `u` from the expanded side
+- promoted probes:
+  - `ln(x)^(-1/2)/(2*x) - ln(x)^(1/2)/(2*x*ln(x)) -> 0`
+  - `diff(sqrt(ln(x)), x) - 1/(2*x*sqrt(ln(x))) -> 0`
+- domain decision:
+  - no new assumptions are introduced by the matcher
+  - public output keeps `ln(x) > 0` and `x > 0`
+- rejection guard:
+  - mismatched scales such as
+    `ln(x)^(-1/2)/(2*x) - ln(x)^(1/2)/(3*x*ln(x))` are rejected
+- engine feedback:
+  - the retained value is reusable residual closure for reciprocal
+    fractional powers with functional bases, discovered through a calculus
+    presentation miss
+
+## 2026-05-09 - Retained: sqrt-log plus-constant residual fast path
+
+- area:
+  - runtime / calculus feedback / post-diff residuals
+- retained correction:
+  - add a bounded root residual matcher for
+    `diff(sqrt(ln(x)+c), x) - 1/(2*x*sqrt(ln(x)+c)) -> 0`
+  - keep the matcher exact: the log argument must be the differentiation
+    variable and the denominator must contain precisely `2`, that variable,
+    and the matching square root
+- promoted probes:
+  - `diff(sqrt(ln(x)+1), x) - 1/(2*x*sqrt(ln(x)+1)) -> 0`
+  - `diff(sqrt(ln(x)+2), x) - 1/(2*x*sqrt(ln(x)+2)) -> 0`
+- domain decision:
+  - public output keeps both required conditions:
+    `ln(x)+c > 0` and `x > 0`
+  - mismatched variables and mismatched scales are rejected
+- engine feedback:
+  - some correct residuals were reaching expensive general simplification
+    after differentiation; a cheap pre-route is retainable when the full
+    chain-rule identity and domain witnesses are syntactically visible

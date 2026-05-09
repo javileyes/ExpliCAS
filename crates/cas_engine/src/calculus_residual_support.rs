@@ -41,18 +41,13 @@ fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<
 }
 
 fn is_positive_half(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Number(value) => *value == BigRational::new(1.into(), 2.into()),
-        _ => false,
-    }
+    cas_math::numeric_eval::as_rational_const(ctx, expr)
+        .is_some_and(|value| value == BigRational::new(1.into(), 2.into()))
 }
 
 fn is_negative_half(ctx: &Context, expr: ExprId) -> bool {
-    match ctx.get(expr) {
-        Expr::Number(value) => *value == BigRational::new((-1).into(), 2.into()),
-        Expr::Neg(inner) => is_positive_half(ctx, *inner),
-        _ => false,
-    }
+    cas_math::numeric_eval::as_rational_const(ctx, expr)
+        .is_some_and(|value| value == BigRational::new((-1).into(), 2.into()))
 }
 
 fn sqrt_like_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -73,6 +68,212 @@ fn reciprocal_sqrt_like_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         Expr::Div(num, den) if is_one_constant(ctx, *num) => sqrt_like_base(ctx, *den),
         _ => None,
     }
+}
+
+fn denominator_factor_multiset_matches(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    let mut used = vec![false; right.len()];
+    'outer: for left_factor in left {
+        for (index, right_factor) in right.iter().enumerate() {
+            if !used[index] && exprs_match(ctx, *left_factor, *right_factor) {
+                used[index] = true;
+                continue 'outer;
+            }
+        }
+        return false;
+    }
+
+    true
+}
+
+fn remove_denominator_factor_matching_base(
+    ctx: &Context,
+    factors: &[ExprId],
+    base: ExprId,
+) -> Option<Vec<ExprId>> {
+    let index = factors
+        .iter()
+        .position(|factor| exprs_match(ctx, *factor, base))?;
+    Some(
+        factors
+            .iter()
+            .enumerate()
+            .filter_map(|(candidate_index, factor)| (candidate_index != index).then_some(*factor))
+            .collect(),
+    )
+}
+
+fn quotient_numerator_denominator(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Div(numerator, denominator) => Some((*numerator, *denominator)),
+        _ => None,
+    }
+}
+
+fn reciprocal_half_power_shared_denominator_terms_cancel(
+    ctx: &mut Context,
+    reciprocal_term: ExprId,
+    expanded_term: ExprId,
+) -> Option<()> {
+    let (reciprocal_num, reciprocal_den) = quotient_numerator_denominator(ctx, reciprocal_term)?;
+    let (expanded_num, expanded_den) = quotient_numerator_denominator(ctx, expanded_term)?;
+
+    let base = reciprocal_sqrt_like_base(ctx, reciprocal_num)?;
+    let expanded_base = sqrt_like_base(ctx, expanded_num)?;
+    if !exprs_match(ctx, base, expanded_base) {
+        return None;
+    }
+
+    let reciprocal_den_factors = cas_math::expr_nary::mul_leaves(ctx, reciprocal_den);
+    let expanded_den_factors = cas_math::expr_nary::mul_leaves(ctx, expanded_den);
+    let expanded_without_base =
+        remove_denominator_factor_matching_base(ctx, &expanded_den_factors, base)?;
+
+    denominator_factor_multiset_matches(ctx, &reciprocal_den_factors, &expanded_without_base)
+        .then_some(())
+}
+
+pub(crate) fn try_reciprocal_half_power_shared_denominator_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        Expr::Add(left, right) => {
+            let Expr::Neg(negated_right) = ctx.get(*right) else {
+                return None;
+            };
+            (*left, *negated_right)
+        }
+        _ => return None,
+    };
+
+    reciprocal_half_power_shared_denominator_terms_cancel(ctx, left, right)
+        .or_else(|| reciprocal_half_power_shared_denominator_terms_cancel(ctx, right, left))
+        .map(|_| ctx.num(0))
+}
+
+fn expr_is_variable_named(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
+    let Expr::Variable(sym) = ctx.get(expr) else {
+        return false;
+    };
+    ctx.sym_name(*sym) == var_name
+}
+
+fn log_plus_numeric_constant_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(arg) = unary_builtin_arg(ctx, expr, BuiltinFn::Ln) {
+        return Some(arg);
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            if cas_math::numeric_eval::as_rational_const(ctx, *left).is_some() {
+                return unary_builtin_arg(ctx, *right, BuiltinFn::Ln);
+            }
+            if cas_math::numeric_eval::as_rational_const(ctx, *right).is_some() {
+                return unary_builtin_arg(ctx, *left, BuiltinFn::Ln);
+            }
+            None
+        }
+        Expr::Sub(left, right)
+            if cas_math::numeric_eval::as_rational_const(ctx, *right).is_some() =>
+        {
+            unary_builtin_arg(ctx, *left, BuiltinFn::Ln)
+        }
+        _ => None,
+    }
+}
+
+fn unit_over_two_arg_sqrt_base(
+    ctx: &Context,
+    expr: ExprId,
+    expected_arg: ExprId,
+    expected_base: ExprId,
+) -> bool {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return false;
+    };
+    if !is_one_constant(ctx, *num) {
+        return false;
+    }
+
+    let mut numeric_den = BigRational::one();
+    let mut matched_arg = false;
+    let mut matched_sqrt = false;
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, *den) {
+        if let Some(coeff) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+            numeric_den *= coeff;
+            continue;
+        }
+
+        if !matched_arg && exprs_match(ctx, factor, expected_arg) {
+            matched_arg = true;
+            continue;
+        }
+
+        if !matched_sqrt {
+            if let Some(base) = sqrt_like_base(ctx, factor) {
+                if exprs_match(ctx, base, expected_base) {
+                    matched_sqrt = true;
+                    continue;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    matched_arg && matched_sqrt && numeric_den == BigRational::from_integer(2.into())
+}
+
+fn diff_sqrt_log_plus_constant_residual_conditions(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let base = sqrt_like_base(ctx, call.target)?;
+    let log_arg = log_plus_numeric_constant_arg(ctx, base)?;
+    if !expr_is_variable_named(ctx, log_arg, &call.var_name) {
+        return None;
+    }
+    if !unit_over_two_arg_sqrt_base(ctx, right, log_arg, base) {
+        return None;
+    }
+
+    Some(vec![
+        crate::ImplicitCondition::Positive(base),
+        crate::ImplicitCondition::Positive(log_arg),
+    ])
+}
+
+pub(crate) fn try_diff_sqrt_log_plus_constant_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        Expr::Add(left, right) => {
+            let Expr::Neg(negated_right) = ctx.get(*right) else {
+                return None;
+            };
+            (*left, *negated_right)
+        }
+        _ => return None,
+    };
+
+    let required_conditions = diff_sqrt_log_plus_constant_residual_conditions(ctx, left, right)
+        .or_else(|| diff_sqrt_log_plus_constant_residual_conditions(ctx, right, left))?;
+    Some((ctx.num(0), required_conditions))
 }
 
 fn scaled_reciprocal_sqrt_coeff(
@@ -1631,6 +1832,84 @@ fn integrated_reciprocal_trig_derivative_diff_matches(
     Some(required_nonzero.chain(required_positive).collect())
 }
 
+fn integral_required_conditions(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Vec<crate::ImplicitCondition> {
+    let required_nonzero =
+        cas_math::symbolic_integration_support::integrate_symbolic_required_nonzero_conditions(
+            ctx, target, var_name,
+        )
+        .into_iter()
+        .map(crate::ImplicitCondition::NonZero);
+    let required_positive =
+        cas_math::symbolic_integration_support::integrate_symbolic_required_positive_conditions(
+            ctx, target, var_name,
+        )
+        .into_iter()
+        .map(crate::ImplicitCondition::Positive);
+
+    required_nonzero.chain(required_positive).collect()
+}
+
+fn is_supported_rational_polynomial_integral_target(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    const MAX_SUPPORTED_RATIONAL_POLYNOMIAL_DEGREE: usize = 4;
+
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let Expr::Div(num, den) = ctx.get(target) else {
+        return false;
+    };
+    if Polynomial::from_expr(ctx, *num, var_name).is_err() {
+        return false;
+    }
+    let Ok(denominator) = Polynomial::from_expr(ctx, *den, var_name) else {
+        return false;
+    };
+    denominator.degree() >= 2
+        && denominator.degree() <= MAX_SUPPORTED_RATIONAL_POLYNOMIAL_DEGREE
+        && cas_math::symbolic_integration_support::integrate_symbolic_expr(ctx, target, var_name)
+            .is_some()
+}
+
+fn integrated_rational_quadratic_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)?;
+    if diff_call.var_name != integrate_call.var_name {
+        return None;
+    }
+    if !exprs_match(ctx, integrate_call.target, right) {
+        return None;
+    }
+    if !is_supported_rational_polynomial_integral_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ))
+}
+
 fn log_abs_plain_trig_target_diff_matches(
     ctx: &mut Context,
     target: ExprId,
@@ -1712,6 +1991,235 @@ fn integrated_log_abs_plain_trig_diff_matches(
         .map(crate::ImplicitCondition::Positive);
 
     Some(required_nonzero.chain(required_positive).collect())
+}
+
+fn affine_trig_power_target(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+    expected_power: i64,
+) -> Option<(BuiltinFn, ExprId, BigRational)> {
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let Expr::Pow(base, exp) = ctx.get(target).clone() else {
+        return None;
+    };
+    let Expr::Number(power) = ctx.get(exp) else {
+        return None;
+    };
+    if *power != BigRational::from_integer(expected_power.into()) {
+        return None;
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(base).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !matches!(builtin, BuiltinFn::Sin | BuiltinFn::Cos) {
+        return None;
+    }
+
+    let arg_poly = Polynomial::from_expr(ctx, args[0], var_name).ok()?;
+    if arg_poly.degree() != 1 {
+        return None;
+    }
+    let slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if slope.is_zero() {
+        return None;
+    }
+
+    Some((builtin, args[0], slope))
+}
+
+fn companion_builtin_for_odd_power_primitive(builtin: BuiltinFn) -> Option<BuiltinFn> {
+    match builtin {
+        BuiltinFn::Sin => Some(BuiltinFn::Cos),
+        BuiltinFn::Cos => Some(BuiltinFn::Sin),
+        _ => None,
+    }
+}
+
+fn companion_power_factor(
+    ctx: &mut Context,
+    expr: ExprId,
+    companion_builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<u32> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    if let Some(companion_arg) = unary_builtin_arg(ctx, expr, companion_builtin) {
+        return exprs_match(ctx, companion_arg, arg).then_some(1);
+    }
+
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let companion_arg = unary_builtin_arg(ctx, base, companion_builtin)?;
+    if !exprs_match(ctx, companion_arg, arg) {
+        return None;
+    }
+    let Expr::Number(power) = ctx.get(exp) else {
+        return None;
+    };
+    if *power == BigRational::from_integer(3.into()) {
+        Some(3)
+    } else if *power == BigRational::from_integer(5.into()) {
+        Some(5)
+    } else {
+        None
+    }
+}
+
+fn collect_companion_power_terms(
+    ctx: &mut Context,
+    expr: ExprId,
+    companion_builtin: BuiltinFn,
+    arg: ExprId,
+    scale: BigRational,
+    terms: &mut Vec<(u32, BigRational)>,
+) -> Option<()> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Number(value) if value.is_zero() => Some(()),
+        Expr::Add(left, right) => {
+            collect_companion_power_terms(ctx, left, companion_builtin, arg, scale.clone(), terms)?;
+            collect_companion_power_terms(ctx, right, companion_builtin, arg, scale, terms)
+        }
+        Expr::Sub(left, right) => {
+            collect_companion_power_terms(ctx, left, companion_builtin, arg, scale.clone(), terms)?;
+            collect_companion_power_terms(ctx, right, companion_builtin, arg, -scale, terms)
+        }
+        Expr::Neg(inner) => {
+            collect_companion_power_terms(ctx, inner, companion_builtin, arg, -scale, terms)
+        }
+        Expr::Div(num, den) => {
+            let den_scale = cas_math::numeric_eval::as_rational_const(ctx, den)?;
+            if den_scale.is_zero() {
+                return None;
+            }
+            collect_companion_power_terms(
+                ctx,
+                num,
+                companion_builtin,
+                arg,
+                scale / den_scale,
+                terms,
+            )
+        }
+        Expr::Mul(_, _) => {
+            let mut term_scale = scale;
+            let mut non_numeric = None;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if let Some(value) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+                    term_scale *= value;
+                    continue;
+                }
+                if non_numeric.replace(factor).is_some() {
+                    return None;
+                }
+            }
+            collect_companion_power_terms(
+                ctx,
+                non_numeric?,
+                companion_builtin,
+                arg,
+                term_scale,
+                terms,
+            )
+        }
+        _ => {
+            let power = companion_power_factor(ctx, expr, companion_builtin, arg)?;
+            terms.push((power, scale));
+            Some(())
+        }
+    }
+}
+
+fn companion_power_coeff(terms: &[(u32, BigRational)], power: u32) -> BigRational {
+    terms
+        .iter()
+        .filter_map(|(term_power, coeff)| (*term_power == power).then_some(coeff.clone()))
+        .fold(BigRational::zero(), |acc, coeff| acc + coeff)
+}
+
+fn fifth_power_primitive_target_diff_matches(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+    right: ExprId,
+) -> Option<bool> {
+    let (builtin, arg, slope) = affine_trig_power_target(ctx, right, var_name, 5)?;
+    let companion_builtin = companion_builtin_for_odd_power_primitive(builtin)?;
+    let mut terms = Vec::new();
+    collect_companion_power_terms(
+        ctx,
+        target,
+        companion_builtin,
+        arg,
+        BigRational::one(),
+        &mut terms,
+    )?;
+
+    if terms
+        .iter()
+        .any(|(power, coeff)| !matches!(*power, 1 | 3 | 5) && !coeff.is_zero())
+    {
+        return None;
+    }
+
+    let expected = |numerator: i64, denominator: i64| {
+        BigRational::new(numerator.into(), denominator.into()) / slope.clone()
+    };
+    let (expected_one, expected_three, expected_five) = match builtin {
+        BuiltinFn::Sin => (expected(-1, 1), expected(2, 3), expected(-1, 5)),
+        BuiltinFn::Cos => (expected(1, 1), expected(-2, 3), expected(1, 5)),
+        _ => return None,
+    };
+
+    Some(
+        companion_power_coeff(&terms, 1) == expected_one
+            && companion_power_coeff(&terms, 3) == expected_three
+            && companion_power_coeff(&terms, 5) == expected_five,
+    )
+}
+
+fn integrated_affine_trig_fifth_power_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        affine_trig_power_target(ctx, integrate_call.target, &integrate_call.var_name, 5)?;
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(Vec::new());
+    }
+
+    fifth_power_primitive_target_diff_matches(ctx, diff_call.target, &diff_call.var_name, right)
+        .filter(|matched| *matched)
+        .map(|_| Vec::new())
 }
 
 fn integrated_quadratic_exp_linear_diff_matches(
@@ -2487,8 +2995,10 @@ pub(crate) fn try_diff_integral_plain_trig_residual_zero_preorder(
     right: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
-    let required_conditions =
-        integrated_log_abs_plain_trig_diff_matches(ctx, diff_expr, divisor, right)?;
+    let required_conditions = integrated_log_abs_plain_trig_diff_matches(
+        ctx, diff_expr, divisor, right,
+    )
+    .or_else(|| integrated_affine_trig_fifth_power_diff_matches(ctx, diff_expr, divisor, right))?;
     Some((ctx.num(0), required_conditions))
 }
 
@@ -2524,6 +3034,41 @@ fn try_diff_integral_quadratic_exp_residual_zero_preorder(
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
     let required_conditions =
         integrated_quadratic_exp_linear_diff_matches(ctx, diff_expr, divisor, right)?;
+    Some((ctx.num(0), required_conditions))
+}
+
+pub(crate) fn try_diff_integral_rational_quadratic_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_wrapped_root_zero(
+        ctx,
+        expr,
+        3,
+        try_diff_integral_rational_quadratic_residual_direct_root_zero,
+    )
+}
+
+fn try_diff_integral_rational_quadratic_residual_direct_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        _ => return None,
+    };
+    try_diff_integral_rational_quadratic_residual_zero_preorder(ctx, left, right)
+        .or_else(|| try_diff_integral_rational_quadratic_residual_zero_preorder(ctx, right, left))
+}
+
+fn try_diff_integral_rational_quadratic_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    let required_conditions =
+        integrated_rational_quadratic_diff_matches(ctx, diff_expr, divisor, right)?;
     Some((ctx.num(0), required_conditions))
 }
 
@@ -2869,6 +3414,86 @@ mod tests {
             .map(|result| render(&ctx, result))
     }
 
+    fn reciprocal_half_power_shared_denominator_result(input: &str) -> Option<String> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_reciprocal_half_power_shared_denominator_residual_root_zero(&mut ctx, expr)
+            .map(|result| render(&ctx, result))
+    }
+
+    #[test]
+    fn reciprocal_half_power_shared_denominator_residual_cancels_function_base() {
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "ln(x)^(-1/2)/(2*x) - ln(x)^(1/2)/(2*x*ln(x))"
+            ),
+            Some("0".to_string())
+        );
+    }
+
+    #[test]
+    fn reciprocal_half_power_shared_denominator_residual_rejects_mismatched_scale() {
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "ln(x)^(-1/2)/(2*x) - ln(x)^(1/2)/(3*x*ln(x))"
+            ),
+            None
+        );
+    }
+
+    fn diff_sqrt_log_plus_constant_root_residual_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_sqrt_log_plus_constant_residual_root_zero(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|cond| cond.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
+    #[test]
+    fn diff_sqrt_log_plus_constant_residual_cancels_direct_chain_rule_pair() {
+        assert_eq!(
+            diff_sqrt_log_plus_constant_root_residual_result(
+                "diff(sqrt(ln(x)+1), x) - 1/(2*x*sqrt(ln(x)+1))"
+            ),
+            Some((
+                "0".to_string(),
+                vec!["ln(x) + 1 > 0".to_string(), "x > 0".to_string()]
+            ))
+        );
+    }
+
+    #[test]
+    fn diff_sqrt_log_plus_constant_residual_rejects_mismatched_variable() {
+        assert_eq!(
+            diff_sqrt_log_plus_constant_root_residual_result(
+                "diff(sqrt(ln(x)+1), y) - 1/(2*x*sqrt(ln(x)+1))"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn diff_sqrt_log_plus_constant_residual_rejects_mismatched_scale() {
+        assert_eq!(
+            diff_sqrt_log_plus_constant_root_residual_result(
+                "diff(sqrt(ln(x)+1), x) - 1/(3*x*sqrt(ln(x)+1))"
+            ),
+            None
+        );
+    }
+
     fn integral_reciprocal_trig_root_residual_result(input: &str) -> Option<String> {
         let mut ctx = Context::new();
         let expr = parse(input, &mut ctx)
@@ -3148,6 +3773,36 @@ mod tests {
         assert_eq!(
             integral_plain_trig_root_residual_result(
                 "diff(integrate(cot(2*x+1), x), y) - cot(2*x+1)"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_fifth_power_reduction() {
+        let cases = [
+            "diff(integrate(sin(x)^5, x), x) - sin(x)^5",
+            "diff(integrate(cos(x)^5, x), x) - cos(x)^5",
+            "diff(integrate(sin(2*x+1)^5, x), x) - sin(2*x+1)^5",
+            "diff(integrate(cos(2*x+1)^5, x), x) - cos(2*x+1)^5",
+            "diff(1/5*(10/3*cos(x)^3 - cos(x)^5 - 5*cos(x)), x) - sin(x)^5",
+            "diff(1/5*(sin(x)^5 + 5*sin(x) - 10/3*sin(x)^3), x) - cos(x)^5",
+            "diff(1/10*(10/3*cos(2*x+1)^3 - cos(2*x+1)^5 - 5*cos(2*x+1)), x) - sin(2*x+1)^5",
+            "diff(1/10*(sin(2*x+1)^5 + 5*sin(2*x+1) - 10/3*sin(2*x+1)^3), x) - cos(2*x+1)^5",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+
+        assert_eq!(
+            integral_plain_trig_root_residual_result(
+                "diff(integrate(sin(2*x+1)^5, x), y) - sin(2*x+1)^5"
             ),
             None
         );

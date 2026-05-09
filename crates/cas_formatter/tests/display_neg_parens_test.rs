@@ -7,6 +7,19 @@
 
 use cas_ast::{hold, Context, Expr};
 use cas_formatter::DisplayExpr;
+use cas_parser::parse;
+
+fn render(input: &str) -> String {
+    let mut ctx = Context::new();
+    let expr = parse(input, &mut ctx).expect("parse expression");
+    format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: expr
+        }
+    )
+}
 
 // ============================================================================
 // CLI Display Tests (DisplayExpr)
@@ -290,6 +303,16 @@ fn test_fraction_display_extracts_negative_numeric_denominator_sign() {
     );
 
     assert_eq!(display, "-x / 2");
+}
+
+#[test]
+fn test_fraction_display_preserves_negative_sign_for_inverse_trig_like_quotient() {
+    let display = render("-2*(2*x^3+3*x^2+3*x+1)*sqrt(3)/sqrt(2-3*(x^2+x+1)^4)");
+
+    assert_eq!(
+        display,
+        "-2 * sqrt(3) * (2 * x^3 + 3 * x^2 + 3 * x + 1) / sqrt(2 - 3 * (x^2 + x + 1)^4)"
+    );
 }
 
 /// Internal hold barriers on the RHS of subtraction still need parentheses.

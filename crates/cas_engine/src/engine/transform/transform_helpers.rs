@@ -1541,7 +1541,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
         }
 
-        if matches!(op, BinaryOp::Add | BinaryOp::Sub) {
+        if matches!(op, BinaryOp::Add | BinaryOp::Sub) && !self.collect_steps_enabled() {
             if let Some(zero) =
                 crate::fraction_residual_support::try_polynomial_denominator_fraction_residual_zero(
                     self.context,
@@ -1600,7 +1600,10 @@ impl<'a> LocalSimplificationTransformer<'a> {
             id
         };
 
-        if matches!(op, BinaryOp::Add | BinaryOp::Sub) && rebuilt != id {
+        if matches!(op, BinaryOp::Add | BinaryOp::Sub)
+            && rebuilt != id
+            && !self.collect_steps_enabled()
+        {
             if let Some(zero) =
                 crate::fraction_residual_support::try_polynomial_denominator_fraction_residual_zero(
                     self.context,

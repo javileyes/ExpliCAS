@@ -25,7 +25,7 @@ fn test_integrate_power() {
                 id: rewrite.new_expr
             }
         ),
-        "x^(1 + 2) / (1 + 2)" // Canonical: smaller numbers first
+        "x^3 / 3"
     );
 }
 
@@ -188,10 +188,6 @@ fn test_integrate_linear_subst_power() {
             &crate::parent_context::ParentContext::root(),
         )
         .unwrap();
-    // Note: 2*3 is not simplified by IntegrateRule, it produces Expr::mul(2, 3).
-    // Simplification happens later in the pipeline.
-    // So we expect (2*x + 1)^(2+1) / (2 * (2+1))
-    // Actually get_linear_coeffs returns a=2+0 for 2x+1.
     assert_eq!(
         format!(
             "{}",
@@ -200,7 +196,7 @@ fn test_integrate_linear_subst_power() {
                 id: rewrite.new_expr
             }
         ),
-        "(2 * x + 1)^(1 + 2) / ((0 + 2) * (1 + 2))" // Canonical: polynomial order (2*x before 1)
+        "(2 * x + 1)^3 / (2 * 3)"
     );
 }
 

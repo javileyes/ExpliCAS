@@ -7,6 +7,8 @@ const MAX_FRACTION_RESIDUAL_NODES: usize = 96;
 const MAX_EXTENDED_FRACTION_RESIDUAL_NODES: usize = 176;
 const MAX_EXTENDED_FRACTION_COMPONENT_NODES: usize = 72;
 const MAX_DENOMINATOR_POLY_DEGREE: usize = 6;
+const MAX_MULTI_FRACTION_RESIDUAL_TERMS: usize = 4;
+const MAX_MULTI_FRACTION_LCM_DEGREE: usize = 8;
 
 fn expr_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
@@ -42,6 +44,40 @@ fn signed_fraction_pair(
             signed_fraction_term(ctx, left, true)?,
             signed_fraction_term(ctx, right, false)?,
         )),
+        _ => None,
+    }
+}
+
+fn collect_signed_fraction_terms(
+    ctx: &mut Context,
+    expr: ExprId,
+    positive: bool,
+    terms: &mut Vec<(ExprId, ExprId)>,
+) -> Option<()> {
+    if terms.len() >= MAX_MULTI_FRACTION_RESIDUAL_TERMS {
+        return None;
+    }
+
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            collect_signed_fraction_terms(ctx, left, positive, terms)?;
+            collect_signed_fraction_terms(ctx, right, positive, terms)
+        }
+        Expr::Sub(left, right) => {
+            collect_signed_fraction_terms(ctx, left, positive, terms)?;
+            collect_signed_fraction_terms(ctx, right, !positive, terms)
+        }
+        Expr::Neg(inner) => collect_signed_fraction_terms(ctx, inner, !positive, terms),
+        Expr::Div(num, den) if positive => {
+            terms.push((num, den));
+            Some(())
+        }
+        Expr::Div(num, den) => {
+            let signed_num = ctx.add(Expr::Neg(num));
+            terms.push((signed_num, den));
+            Some(())
+        }
         _ => None,
     }
 }
@@ -108,6 +144,62 @@ fn signed_numerators_cancel(ctx: &mut Context, left: ExprId, right: ExprId) -> b
     }
 
     polynomial_sqrt_scaled_terms_equivalent(ctx, left, neg_right)
+}
+
+fn polynomial_fraction_sum_residual_zero(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    if cas_ast::count_nodes(ctx, expr) > MAX_EXTENDED_FRACTION_RESIDUAL_NODES {
+        return None;
+    }
+
+    let mut terms = Vec::new();
+    collect_signed_fraction_terms(ctx, expr, true, &mut terms)?;
+    if terms.len() < 3 || terms.len() > MAX_MULTI_FRACTION_RESIDUAL_TERMS {
+        return None;
+    }
+    if !terms.iter().all(|(num, den)| {
+        cas_ast::count_nodes(ctx, *num) <= MAX_EXTENDED_FRACTION_COMPONENT_NODES
+            && cas_ast::count_nodes(ctx, *den) <= MAX_EXTENDED_FRACTION_COMPONENT_NODES
+    }) {
+        return None;
+    }
+
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var = vars.into_iter().next()?;
+
+    let mut parsed_terms = Vec::with_capacity(terms.len());
+    for (num, den) in terms {
+        let numerator = Polynomial::from_expr(ctx, num, &var).ok()?;
+        let denominator = Polynomial::from_expr(ctx, den, &var).ok()?;
+        if denominator.is_zero() || denominator.degree() > MAX_DENOMINATOR_POLY_DEGREE {
+            return None;
+        }
+        parsed_terms.push((numerator, denominator));
+    }
+
+    let mut lcm = Polynomial::one(var.clone());
+    for (_, denominator) in &parsed_terms {
+        let gcd = lcm.gcd(denominator);
+        let product = lcm.mul(denominator);
+        let (quotient, remainder) = product.div_rem(&gcd).ok()?;
+        if !remainder.is_zero() || quotient.degree() > MAX_MULTI_FRACTION_LCM_DEGREE {
+            return None;
+        }
+        lcm = quotient;
+    }
+
+    let mut combined = Polynomial::zero(var);
+    for (numerator, denominator) in parsed_terms {
+        let (scale, remainder) = lcm.div_rem(&denominator).ok()?;
+        if !remainder.is_zero() {
+            return None;
+        }
+        combined = combined.add(&numerator.mul(&scale));
+    }
+
+    combined.is_zero().then(|| ctx.num(0))
 }
 
 fn polynomial_sqrt_scaled_terms_equivalent(ctx: &mut Context, left: ExprId, right: ExprId) -> bool {
@@ -185,7 +277,9 @@ pub(crate) fn try_polynomial_denominator_fraction_residual_zero(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ExprId> {
-    let pair = signed_fraction_pair(ctx, expr)?;
+    let Some(pair) = signed_fraction_pair(ctx, expr) else {
+        return polynomial_fraction_sum_residual_zero(ctx, expr);
+    };
     if !fraction_pair_within_budget(ctx, expr, &pair) {
         return None;
     }
@@ -267,6 +361,22 @@ mod tests {
             residual_result(
                 "sqrt(x^4+2*x*x^2+x^2+6*x^2+6*x+9-1)*(2*x+1)/((x^4+2*x*x^2+x^2+6*x^2+6*x+9-1)*(x^2+x+3)) - sqrt(x^4+2*x^3+7*x^2+6*x+8)*(2*x+2)/((x^2+x+3)*(x^4+2*x^3+7*x^2+6*x+8))"
             ),
+            None
+        );
+    }
+
+    #[test]
+    fn polynomial_fraction_sum_residual_cancels_scaled_quadratic_square_derivative() {
+        assert_eq!(
+            residual_result("2/(4*(4*x^2+1)) + (2 - 8*x^2)/(8*x^2 + 2)^2 - 1/(4*x^2 + 1)^2"),
+            Some("0".to_string())
+        );
+    }
+
+    #[test]
+    fn polynomial_fraction_sum_residual_rejects_nonzero_scaled_quadratic_square_derivative() {
+        assert_eq!(
+            residual_result("2/(4*(4*x^2+1)) + (3 - 8*x^2)/(8*x^2 + 2)^2 - 1/(4*x^2 + 1)^2"),
             None
         );
     }

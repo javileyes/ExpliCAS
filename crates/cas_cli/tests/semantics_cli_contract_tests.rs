@@ -169,6 +169,17 @@ fn equiv_log_product_requires_both_sides_domain() {
 }
 
 #[test]
+fn log_even_power_minus_negative_log_uses_inferred_negative_domain_for_abs() {
+    let (output, code) = run_cli(&["eval", "ln(x^2) - 2*ln(-x)", "--format", "json"]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["domain"]["mode"], "generic");
+    assert_eq!(wire["required_display"], json!(["-x > 0"]));
+}
+
+#[test]
 fn root_product_merge_in_generic_carries_nonnegative_requires() {
     let (output, code) = run_cli(&["eval", "sqrt(x)*sqrt(y)", "--format", "json"]);
     assert_eq!(code, 0);
@@ -187,7 +198,7 @@ fn root_quotient_merge_in_generic_carries_positive_denominator_requires() {
 
     assert_eq!(wire["result"], "(x / y)^(1/2)");
     assert_eq!(wire["domain"]["mode"], "generic");
-    assert_eq!(wire["required_display"], json!(["y > 0", "x ≥ 0"]));
+    assert_eq!(wire["required_display"], json!(["x ≥ 0", "y > 0"]));
 }
 
 #[test]
@@ -239,7 +250,7 @@ fn root_quotient_merge_in_assume_preserves_intrinsic_requires_not_assumes() {
 
     assert_eq!(wire["result"], "(x / y)^(1/2)");
     assert_eq!(wire["domain"]["mode"], "assume");
-    assert_eq!(wire["required_display"], json!(["y > 0", "x ≥ 0"]));
+    assert_eq!(wire["required_display"], json!(["x ≥ 0", "y > 0"]));
     assert!(
         wire["assumptions_used"].is_null()
             || wire["assumptions_used"]
@@ -2556,7 +2567,7 @@ fn eval_complex_nested_fraction_pipeline_keeps_before_after_highlights_in_wire_l
     let wire = parse_wire(&output);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 4);
+    assert_eq!(steps.len(), 5);
 
     for (idx, step) in steps.iter().enumerate() {
         let before_latex = step["before_latex"].as_str().expect("before_latex");
@@ -3040,7 +3051,7 @@ fn eval_complex_nested_fraction_pipeline_shows_denominator_common_denominator_th
 
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 4);
+    assert_eq!(steps.len(), 5);
     assert_rule_eq(&steps[2]["rule"], "Simplificar fracción anidada");
     let substeps = steps[2]["substeps"].as_array().expect("substeps array");
     assert_eq!(substeps.len(), 2);
@@ -4755,7 +4766,7 @@ fn eval_fraction_difference_to_zero_shows_common_denominator_substeps() {
     let wire = parse_wire(&output);
 
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["steps_count"], 2);
+    assert_eq!(wire["steps_count"], 3);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_rule_eq(&steps[0]["rule"], "Sumar fracciones");
     let substeps = steps[0]["substeps"].as_array().expect("substeps array");
@@ -4784,6 +4795,10 @@ fn eval_fraction_difference_to_zero_shows_common_denominator_substeps() {
     assert!(
         !before_latex.contains("{\\color{red}{{x}^{2}}}"),
         "step 2 should not leak the highlight into the unrelated second denominator, got: {before_latex}"
+    );
+    assert_rule_eq(
+        &steps[2]["rule"],
+        "Collapse Common-Scale Equivalent Difference",
     );
 }
 
