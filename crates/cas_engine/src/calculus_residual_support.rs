@@ -834,6 +834,10 @@ fn reciprocal_trig_derivative_target_scale_expr(
         return Some(ctx.add(Expr::Neg(scale)));
     }
 
+    if let Some(scale) = raw_reciprocal_trig_derivative_target_scale_expr(ctx, expr, builtin, arg) {
+        return Some(scale);
+    }
+
     let (first_builtin, second_builtin) = reciprocal_trig_derivative_pair(builtin)?;
     let mut first_seen = false;
     let mut second_seen = false;
@@ -868,6 +872,144 @@ fn reciprocal_trig_derivative_target_scale_expr(
     } else {
         Some(cas_math::expr_nary::build_balanced_mul(ctx, &scale_factors))
     }
+}
+
+fn raw_reciprocal_trig_derivative_target_scale_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Div(num, den) => {
+            raw_reciprocal_trig_derivative_quotient_scale_expr(ctx, num, den, builtin, arg)
+        }
+        Expr::Mul(_, _) => {
+            let mut scale_factors = Vec::new();
+            let mut matched_target_scale = None;
+
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if let Some(target_scale) =
+                    raw_reciprocal_trig_derivative_target_scale_expr(ctx, factor, builtin, arg)
+                {
+                    if matched_target_scale.replace(target_scale).is_some() {
+                        return None;
+                    }
+                    continue;
+                }
+
+                scale_factors.push(factor);
+            }
+
+            let target_scale = matched_target_scale?;
+            if !expr_is_one(ctx, target_scale) {
+                scale_factors.push(target_scale);
+            }
+
+            if scale_factors.is_empty() {
+                Some(ctx.num(1))
+            } else {
+                Some(cas_math::expr_nary::build_balanced_mul(ctx, &scale_factors))
+            }
+        }
+        _ => None,
+    }
+}
+
+fn raw_reciprocal_trig_derivative_numerator_term_scale_expr(
+    ctx: &mut Context,
+    term: ExprId,
+    numerator_builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    let factors = cas_math::expr_nary::mul_leaves(ctx, term);
+    let mut numerator_index = None;
+
+    for (idx, factor) in factors.iter().enumerate() {
+        let Some(factor_arg) = unary_builtin_arg(ctx, *factor, numerator_builtin) else {
+            continue;
+        };
+        if !exprs_equivalent(ctx, factor_arg, arg) {
+            continue;
+        }
+        if numerator_index.replace(idx).is_some() {
+            return None;
+        }
+    }
+
+    let numerator_index = numerator_index?;
+    let scale_factors: Vec<ExprId> = factors
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
+        .collect();
+
+    Some(if scale_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        cas_math::expr_nary::build_balanced_mul(ctx, &scale_factors)
+    })
+}
+
+fn raw_reciprocal_trig_derivative_numerator_scale_expr(
+    ctx: &mut Context,
+    num: ExprId,
+    numerator_builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, num);
+    if terms.len() <= 1 {
+        return raw_reciprocal_trig_derivative_numerator_term_scale_expr(
+            ctx,
+            num,
+            numerator_builtin,
+            arg,
+        );
+    }
+
+    let mut scale_terms = Vec::with_capacity(terms.len());
+    for (term, sign) in terms {
+        let scale = raw_reciprocal_trig_derivative_numerator_term_scale_expr(
+            ctx,
+            term,
+            numerator_builtin,
+            arg,
+        )?;
+        scale_terms.push(match sign {
+            cas_math::expr_nary::Sign::Pos => scale,
+            cas_math::expr_nary::Sign::Neg => ctx.add(Expr::Neg(scale)),
+        });
+    }
+
+    Some(cas_math::expr_nary::build_balanced_add(ctx, &scale_terms))
+}
+
+fn raw_reciprocal_trig_derivative_quotient_scale_expr(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    let (numerator_builtin, denominator_builtin) = match builtin {
+        BuiltinFn::Sec => (BuiltinFn::Sin, BuiltinFn::Cos),
+        BuiltinFn::Csc => (BuiltinFn::Cos, BuiltinFn::Sin),
+        _ => return None,
+    };
+
+    let Expr::Pow(den_base, den_exp) = ctx.get(den).clone() else {
+        return None;
+    };
+    let power = cas_math::numeric_eval::as_rational_const(ctx, den_exp)?;
+    if power != BigRational::from_integer(2.into()) {
+        return None;
+    }
+    let den_arg = unary_builtin_arg(ctx, den_base, denominator_builtin)?;
+    if !exprs_equivalent(ctx, den_arg, arg) {
+        return None;
+    }
+
+    raw_reciprocal_trig_derivative_numerator_scale_expr(ctx, num, numerator_builtin, arg)
 }
 
 fn reciprocal_trig_derivative_integrand_quotient(
@@ -1882,8 +2024,18 @@ fn integrated_reciprocal_trig_derivative_diff_matches(
         return None;
     }
 
+    let mut direct_required_conditions = None;
     let mut condition_target = integrate_call.target;
-    let antiderivative = if let Some(antiderivative) =
+    let antiderivative = if let Some((antiderivative, required_nonzero)) =
+        cas_math::symbolic_integration_support::integrate_symbolic_polynomial_trig_reciprocal_derivative_root_gate(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )
+    {
+        direct_required_conditions = Some(vec![crate::ImplicitCondition::NonZero(required_nonzero)]);
+        antiderivative
+    } else if let Some(antiderivative) =
         cas_math::symbolic_integration_support::integrate_symbolic_expr(
             ctx,
             integrate_call.target,
@@ -1908,6 +2060,10 @@ fn integrated_reciprocal_trig_derivative_diff_matches(
     )?;
     if !matched {
         return None;
+    }
+
+    if let Some(required_conditions) = direct_required_conditions {
+        return Some(required_conditions);
     }
 
     let required_nonzero =
@@ -3547,9 +3703,10 @@ pub(crate) fn try_diff_integral_reciprocal_trig_residual_zero_preorder(
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
     let required_conditions =
-        integrated_log_abs_reciprocal_trig_diff_matches(ctx, diff_expr, divisor, right).or_else(
-            || integrated_reciprocal_trig_derivative_diff_matches(ctx, diff_expr, divisor, right),
-        )?;
+        integrated_reciprocal_trig_derivative_diff_matches(ctx, diff_expr, divisor, right)
+            .or_else(|| {
+                integrated_log_abs_reciprocal_trig_diff_matches(ctx, diff_expr, divisor, right)
+            })?;
     Some((ctx.num(0), required_conditions))
 }
 
@@ -3997,8 +4154,13 @@ fn try_diff_integral_reciprocal_trig_residual_direct_root_zero(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
-    let (left, right) = match ctx.get(expr) {
-        Expr::Sub(left, right) => (*left, *right),
+    let (left, right) = match ctx.get(expr).clone() {
+        Expr::Sub(left, right) => (left, right),
+        Expr::Add(left, right) => match (ctx.get(left).clone(), ctx.get(right).clone()) {
+            (_, Expr::Neg(right_inner)) => (left, right_inner),
+            (Expr::Neg(left_inner), _) => (right, left_inner),
+            _ => return None,
+        },
         _ => return None,
     };
     try_diff_integral_reciprocal_trig_residual_zero_preorder(ctx, left, right)
@@ -5223,6 +5385,8 @@ mod tests {
             "diff(integrate(2*x*csc(x^2)*cot(x^2), x), x) - 2*x*csc(x^2)*cot(x^2)",
             "diff(integrate((4*x^3-2*x)*sec(x^4-x^2)*tan(x^4-x^2), x), x) - (4*x^3-2*x)*sec(x^4-x^2)*tan(x^4-x^2)",
             "diff(integrate((4*x^3-2*x)*csc(x^4-x^2)*cot(x^4-x^2), x), x) - (4*x^3-2*x)*csc(x^4-x^2)*cot(x^4-x^2)",
+            "diff(integrate((2*x+1)*sin(x^2+x)/cos(x^2+x)^2, x), x) - (2*x+1)*sin(x^2+x)/cos(x^2+x)^2",
+            "diff(integrate((2*x+1)*cos(x^2+x)/sin(x^2+x)^2, x), x) - (2*x+1)*cos(x^2+x)/sin(x^2+x)^2",
         ];
 
         for input in cases {

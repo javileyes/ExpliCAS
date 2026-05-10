@@ -95,6 +95,48 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-10: Product-Wrapped Reciprocal Trig Derivative Integration Hits Public Routing Cliff
+
+- area:
+  - calculus / integration / reciprocal trig derivative / product-wrapper routing
+- status:
+  - `promoted-after-root-gate`
+- discovered case:
+  - `integrate((2*x+1)*sin(x^2+x)/cos(x^2+x)^2, x)`
+  - `integrate((2*x+1)*cos(x^2+x)/sin(x^2+x)^2, x)`
+- local lane:
+  - focused CLI JSON probes with 4s timeouts after raw reciprocal trig
+    derivative quotient coverage was already green
+  - temporary low-level `cas_math::integrate_symbolic_expr` probe that
+    combined the external polynomial cofactor into the quotient numerator
+- local result:
+  - direct derivative quotient shape
+    `integrate((2*x+1)/cos(x^2+x)^2, x)` returns `tan(x^2 + x)` quickly
+  - the low-level matcher can integrate the product-wrapped raw shapes when
+    presented as a combined quotient numerator
+  - the public CLI spelling with the polynomial factor outside the quotient
+    still times out and emits repeated `depth_overflow` warnings before
+    promotion
+- why it was not promoted:
+  - the public route appears to pre-simplify or recurse through the
+    product/quotient expression before the root symbolic integration matcher
+    sees the reusable `u' * trig(u) / trig(u)^2` structure
+  - retaining only the low-level helper would make an internal test green while
+    leaving the public engine behavior unfixed
+- retained action:
+  - a later combination pass retained a narrow root gate before generic
+    required-condition and presentation probes for public `integrate(...)`
+  - the gate only accepts polynomial reciprocal trig derivative quotients and
+    returns the same nonzero denominator condition as the underlying symbolic
+    integration matcher
+  - the public antiderivative residual path now reuses the same gate and can
+    compare raw `sin(u)/cos(u)^2` and `cos(u)/sin(u)^2` forms against the
+    derivative of the compact `sec(u)` / `-csc(u)` primitive
+- what could make it combinable later:
+  - the retained root gate can be used as the pattern for future calculus
+    routing cliffs, but only when a cheap family recognizer can return both the
+    antiderivative and its required conditions before broad probing
+
 ### 2026-05-10: Raw Negative/Noise Calculus Residual Wrappers Needed Additive Gate
 
 - area:

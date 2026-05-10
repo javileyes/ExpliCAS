@@ -6946,14 +6946,14 @@ Result: a^(3) + 3 * a * b^(2) - 3 * b * a^(2) - b^(3)
 
 1. `Expandir binomio`
    - before: `((a - b))^3`
-   - after: `((-b))^3 + 3 · a · ((-b))^2 + a^3 + 3 · -b · a^2`
+   - after: `((-b))^3 + 3 · a · ((-b))^2 + a^3 - 3 · b · a^2`
    - substeps: none
 2. `Negative Base Power`
-   - before: `((-b))^3 + 3 · a · ((-b))^2 + a^3 + 3 · -b · a^2`
-   - after: `3 · a · ((-b))^2 + a^3 + 3 · -b · a^2 - b^3`
+   - before: `((-b))^3 + 3 · a · ((-b))^2 + a^3 - 3 · b · a^2`
+   - after: `3 · a · ((-b))^2 + a^3 - 3 · b · a^2 - b^3`
    - substeps: none
 3. `Negative Base Power`
-   - before: `3 · a · ((-b))^2 + a^3 + 3 · -b · a^2 - b^3`
+   - before: `3 · a · ((-b))^2 + a^3 - 3 · b · a^2 - b^3`
    - after: `a^3 - 3 · b · a^2 + 3 · a · b^2 - b^3`
    - substeps: none
 

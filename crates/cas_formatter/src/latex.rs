@@ -384,6 +384,21 @@ mod tests {
     }
 
     #[test]
+    fn test_latex_mul_with_negative_factor_lifts_sign_to_product() {
+        let mut ctx = Context::new();
+        let y = ctx.var("y");
+        let two = ctx.num(2);
+        let neg_y = ctx.add(Expr::Neg(y));
+        let expr = ctx.add(Expr::Mul(two, neg_y));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "-2\\cdot y");
+    }
+
+    #[test]
     fn test_latex_sub_does_not_parenthesize_simple_product_rhs() {
         let mut ctx = Context::new();
         let x = ctx.var("x");

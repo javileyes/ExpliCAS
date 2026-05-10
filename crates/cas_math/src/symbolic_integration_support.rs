@@ -1961,6 +1961,70 @@ fn scale_reciprocal_integration_result_preserving_presentation(
     cas_ast::hold::wrap_hold(ctx, scaled)
 }
 
+fn polynomial_trig_reciprocal_derivative_term_cofactor(
+    ctx: &mut Context,
+    term: ExprId,
+    numerator_builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, term);
+    let mut numerator_index = None;
+
+    for (idx, factor) in factors.iter().enumerate() {
+        let Some(numerator_arg) = unary_builtin_arg(ctx, *factor, numerator_builtin) else {
+            continue;
+        };
+        if compare_expr(ctx, numerator_arg, arg) != Ordering::Equal {
+            continue;
+        }
+        if numerator_index.replace(idx).is_some() {
+            return None;
+        }
+    }
+
+    let numerator_index = numerator_index?;
+    let cofactor_factors: Vec<ExprId> = factors
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
+        .collect();
+
+    Some(if cofactor_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        build_balanced_mul(ctx, &cofactor_factors)
+    })
+}
+
+fn polynomial_trig_reciprocal_derivative_cofactor(
+    ctx: &mut Context,
+    num: ExprId,
+    numerator_builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    let terms = crate::expr_nary::add_terms_signed(ctx, num);
+    if terms.len() <= 1 {
+        return polynomial_trig_reciprocal_derivative_term_cofactor(
+            ctx,
+            num,
+            numerator_builtin,
+            arg,
+        );
+    }
+
+    let mut cofactor_terms = Vec::with_capacity(terms.len());
+    for (term, sign) in terms {
+        let cofactor =
+            polynomial_trig_reciprocal_derivative_term_cofactor(ctx, term, numerator_builtin, arg)?;
+        cofactor_terms.push(match sign {
+            Sign::Pos => cofactor,
+            Sign::Neg => ctx.add(Expr::Neg(cofactor)),
+        });
+    }
+
+    Some(build_balanced_add(ctx, &cofactor_terms))
+}
+
 fn polynomial_trig_reciprocal_derivative_antiderivative(
     ctx: &mut Context,
     num: ExprId,
@@ -1977,23 +2041,8 @@ fn polynomial_trig_reciprocal_derivative_antiderivative(
         return None;
     }
 
-    let factors = mul_leaves(ctx, num);
-    let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, numerator_builtin)
-            .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
-    })?;
-
-    let cofactor_factors: Vec<ExprId> = factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-        .collect();
-    let cofactor = if cofactor_factors.is_empty() {
-        ctx.num(1)
-    } else {
-        build_balanced_mul(ctx, &cofactor_factors)
-    };
-
+    let cofactor =
+        polynomial_trig_reciprocal_derivative_cofactor(ctx, num, numerator_builtin, arg)?;
     let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
     let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
     let derivative = arg_poly.derivative();
@@ -2028,6 +2077,60 @@ fn polynomial_trig_reciprocal_derivative_antiderivative(
         ))
     } else {
         Some(scale_reciprocal_integration_result(ctx, scale, integral))
+    }
+}
+
+fn polynomial_trig_reciprocal_derivative_antiderivative_with_required_nonzero(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let integral = polynomial_trig_reciprocal_derivative_antiderivative(ctx, num, den, var)?;
+    let required_nonzero =
+        polynomial_trig_reciprocal_derivative_required_nonzero_from_parts(ctx, num, den, var)?;
+    Some((integral, required_nonzero))
+}
+
+pub fn integrate_symbolic_polynomial_trig_reciprocal_derivative_root_gate(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Div(num, den) => {
+            polynomial_trig_reciprocal_derivative_antiderivative_with_required_nonzero(
+                ctx, num, den, var,
+            )
+        }
+        Expr::Mul(left, right) => {
+            if let Expr::Div(num, den) = ctx.get(right).clone() {
+                let combined_num = mul2_raw(ctx, left, num);
+                if let Some(out) =
+                    polynomial_trig_reciprocal_derivative_antiderivative_with_required_nonzero(
+                        ctx,
+                        combined_num,
+                        den,
+                        var,
+                    )
+                {
+                    return Some(out);
+                }
+            }
+
+            if let Expr::Div(num, den) = ctx.get(left).clone() {
+                let combined_num = mul2_raw(ctx, right, num);
+                return polynomial_trig_reciprocal_derivative_antiderivative_with_required_nonzero(
+                    ctx,
+                    combined_num,
+                    den,
+                    var,
+                );
+            }
+
+            None
+        }
+        _ => None,
     }
 }
 
@@ -2817,22 +2920,8 @@ fn polynomial_trig_reciprocal_derivative_required_nonzero_from_parts(
         return None;
     }
 
-    let factors = mul_leaves(ctx, num);
-    let (numerator_index, _) = factors.iter().enumerate().find(|(_, factor)| {
-        unary_builtin_arg(ctx, **factor, numerator_builtin)
-            .is_some_and(|numerator_arg| compare_expr(ctx, numerator_arg, arg) == Ordering::Equal)
-    })?;
-
-    let cofactor_factors: Vec<ExprId> = factors
-        .iter()
-        .enumerate()
-        .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
-        .collect();
-    if cofactor_factors.is_empty() {
-        return None;
-    }
-    let cofactor = build_balanced_mul(ctx, &cofactor_factors);
-
+    let cofactor =
+        polynomial_trig_reciprocal_derivative_cofactor(ctx, num, numerator_builtin, arg)?;
     let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
     let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
     let derivative = arg_poly.derivative();
@@ -11657,6 +11746,38 @@ mod tests {
         let expr = parse("3*(x^2*cos(x^3)/sin(x^3)^2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "-csc(x^3)");
+
+        let expr = parse("(2*x+1)*sin(x^2+x)/cos(x^2+x)^2", &mut ctx).expect("parse");
+        let (out, required_nonzero) =
+            super::integrate_symbolic_polynomial_trig_reciprocal_derivative_root_gate(
+                &mut ctx, expr, "x",
+            )
+            .expect("root gate");
+        assert_eq!(rendered(&ctx, out), "sec(x^2 + x)");
+        assert_eq!(rendered(&ctx, required_nonzero), "cos(x^2 + x)");
+
+        let expr = parse("(2*x+1)*cos(x^2+x)/sin(x^2+x)^2", &mut ctx).expect("parse");
+        let (out, required_nonzero) =
+            super::integrate_symbolic_polynomial_trig_reciprocal_derivative_root_gate(
+                &mut ctx, expr, "x",
+            )
+            .expect("root gate");
+        assert_eq!(rendered(&ctx, out), "-csc(x^2 + x)");
+        assert_eq!(rendered(&ctx, required_nonzero), "sin(x^2 + x)");
+
+        let expr = parse("(3*sin(x^2+x)+6*x*sin(x^2+x))/cos(x^2+x)^2", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "3 * sec(x^2 + x)");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "cos(x^2 + x)");
+
+        let expr = parse("(3*cos(x^2+x)+6*x*cos(x^2+x))/sin(x^2+x)^2", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-3 * csc(x^2 + x)");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "sin(x^2 + x)");
     }
 
     #[test]

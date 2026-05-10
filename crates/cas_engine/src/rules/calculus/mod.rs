@@ -7008,6 +7008,23 @@ fn collect_sqrt_reciprocal_trig_product_signal(
 
 define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
     let call = try_extract_integrate_call(ctx, expr)?;
+    if let Some((result, required_nonzero)) =
+        cas_math::symbolic_integration_support::integrate_symbolic_polynomial_trig_reciprocal_derivative_root_gate(
+            ctx,
+            call.target,
+            &call.var_name,
+        )
+    {
+        let desc = render_integrate_desc_with(&call, |id| {
+            format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
+        });
+        return Some(
+            Rewrite::new(result)
+                .desc(desc)
+                .requires(crate::ImplicitCondition::NonZero(required_nonzero)),
+        );
+    }
+
     let required_nonzero = integrate_required_nonzero_conditions(ctx, call.target, &call.var_name);
     let mut required_positive =
         integrate_required_positive_conditions(ctx, call.target, &call.var_name);

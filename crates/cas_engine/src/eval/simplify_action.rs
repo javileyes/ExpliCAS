@@ -177,6 +177,94 @@ impl Engine {
         resolved: ExprId,
     ) -> Result<ActionResult, anyhow::Error> {
         let effective_opts = self.effective_options(options, resolved);
+
+        if let Some(call) = crate::symbolic_calculus_call_support::try_extract_integrate_call(
+            &self.simplifier.context,
+            resolved,
+        ) {
+            if let Some((result, required_nonzero)) =
+                cas_math::symbolic_integration_support::integrate_symbolic_polynomial_trig_reciprocal_derivative_root_gate(
+                    &mut self.simplifier.context,
+                    call.target,
+                    &call.var_name,
+                )
+            {
+                let desc = crate::symbolic_calculus_call_support::render_integrate_desc_with(
+                    &call,
+                    |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &self.simplifier.context,
+                                id
+                            }
+                        )
+                    },
+                );
+                let required_condition = crate::ImplicitCondition::NonZero(required_nonzero);
+                let mut steps = Vec::new();
+                if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                    let mut step = crate::Step::new(
+                        "Symbolic Integration",
+                        &desc,
+                        resolved,
+                        result,
+                        Vec::new(),
+                        Some(&self.simplifier.context),
+                    );
+                    step.meta_mut()
+                        .required_conditions
+                        .push(required_condition.clone());
+                    steps.push(step);
+                }
+
+                return Ok((
+                    crate::EvalResult::Expr(result),
+                    Vec::new(),
+                    steps,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    vec![required_condition],
+                ));
+            }
+        }
+
+        if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_diff_integral_reciprocal_trig_residual_root_zero(
+                &mut self.simplifier.context,
+                resolved,
+            )
+        {
+            let mut steps = Vec::new();
+            if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                let mut step = crate::Step::new(
+                    "Post-calculus residual simplification",
+                    "Verify supported antiderivative by differentiating it",
+                    resolved,
+                    zero,
+                    Vec::new(),
+                    Some(&self.simplifier.context),
+                );
+                step.meta_mut()
+                    .required_conditions
+                    .extend(required_conditions.iter().cloned());
+                steps.push(step);
+            }
+
+            return Ok((
+                crate::EvalResult::Expr(zero),
+                Vec::new(),
+                steps,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                required_conditions,
+            ));
+        }
+
         let profile = self.profile_cache.get_or_build(&effective_opts);
         let inherited_allow_numerical_verification = self.simplifier.allow_numerical_verification;
         let inherited_debug_mode = self.simplifier.debug_mode;

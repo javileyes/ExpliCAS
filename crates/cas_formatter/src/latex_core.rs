@@ -349,6 +349,14 @@ pub trait LaTeXRenderer {
             }
         }
 
+        if let Some(abs_latex) = self.direct_negative_mul_abs_latex(l, r) {
+            return if parent_needs_parens {
+                format!("(-{})", abs_latex)
+            } else {
+                format!("-{}", abs_latex)
+            };
+        }
+
         // V2.14.40: Absorb fractional coefficient into fraction for cleaner display
         // Pattern: (1/n) * expr -> \frac{expr}{n}
         // Pattern: (k/n) * expr -> \frac{k \cdot expr}{n} or just k/n * expr (simpler)
@@ -1082,6 +1090,14 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             if n.is_integer() && *n == num_rational::BigRational::from_integer(1.into()) {
                 return self.render_with_path(l, parent_needs_parens, &self.child_path(path, 0));
             }
+        }
+
+        if let Some(abs_latex) = self.direct_negative_mul_abs_latex_path(l, r, path) {
+            return if parent_needs_parens {
+                format!("(-{})", abs_latex)
+            } else {
+                format!("-{}", abs_latex)
+            };
         }
 
         // V2.14.40: Absorb fractional coefficient into fraction for cleaner display

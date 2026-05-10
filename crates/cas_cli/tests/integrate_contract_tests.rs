@@ -5671,6 +5671,72 @@ fn integrate_contract_polynomial_cosecant_squared_substitution_preserves_nonzero
 }
 
 #[test]
+fn integrate_contract_raw_reciprocal_trig_derivative_quotients_render_compactly() {
+    let cases = [
+        (
+            "integrate(x*sin(x^2)/cos(x^2)^2, x)",
+            "sec(x^2) / 2",
+            "cos(x^2) ≠ 0",
+            "diff(integrate(x*sin(x^2)/cos(x^2)^2, x), x) - x*sin(x^2)/cos(x^2)^2",
+        ),
+        (
+            "integrate(x^2*cos(x^3)/sin(x^3)^2, x)",
+            "-csc(x^3) / 3",
+            "sin(x^3) ≠ 0",
+            "diff(integrate(x^2*cos(x^3)/sin(x^3)^2, x), x) - x^2*cos(x^3)/sin(x^3)^2",
+        ),
+        (
+            "integrate((2*x+1)*sin(x^2+x)/cos(x^2+x)^2, x)",
+            "sec(x^2 + x)",
+            "cos(x^2 + x) ≠ 0",
+            "diff(integrate((2*x+1)*sin(x^2+x)/cos(x^2+x)^2, x), x) - (2*x+1)*sin(x^2+x)/cos(x^2+x)^2",
+        ),
+        (
+            "integrate((2*x+1)*cos(x^2+x)/sin(x^2+x)^2, x)",
+            "-csc(x^2 + x)",
+            "sin(x^2 + x) ≠ 0",
+            "diff(integrate((2*x+1)*cos(x^2+x)/sin(x^2+x)^2, x), x) - (2*x+1)*cos(x^2+x)/sin(x^2+x)^2",
+        ),
+        (
+            "integrate((3*sin(x^2+x)+6*x*sin(x^2+x))/cos(x^2+x)^2, x)",
+            "3 * sec(x^2 + x)",
+            "cos(x^2 + x) ≠ 0",
+            "diff(integrate(3*(2*x+1)*sin(x^2+x)/cos(x^2+x)^2, x), x) - 3*(2*x+1)*sin(x^2+x)/cos(x^2+x)^2",
+        ),
+        (
+            "integrate((3*cos(x^2+x)+6*x*cos(x^2+x))/sin(x^2+x)^2, x)",
+            "-3 * csc(x^2 + x)",
+            "sin(x^2 + x) ≠ 0",
+            "diff(integrate(3*(2*x+1)*cos(x^2+x)/sin(x^2+x)^2, x), x) - 3*(2*x+1)*cos(x^2+x)/sin(x^2+x)^2",
+        ),
+    ];
+
+    for (input, expected_result, expected_condition, residual_input) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected_result, "unexpected result for {input}");
+        assert_eq!(
+            required,
+            vec![expected_condition.to_string()],
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_rendered_antiderivative_verifies(input, &result);
+
+        let (residual_result, residual_required) =
+            evaluated_expr_with_required_conditions(residual_input);
+        assert_eq!(
+            residual_result, "0",
+            "unexpected antiderivative residual for {input}"
+        );
+        assert_eq!(
+            residual_required,
+            vec![expected_condition.to_string()],
+            "residual should preserve required domain for {input}: {residual_required:?}"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_polynomial_trig_derivative_substitution_preserves_compact_arg() {
     let input = "integrate((4*x^3-2*x)*sin(x^4-x^2), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
@@ -6201,6 +6267,77 @@ fn integrate_contract_sqrt_chain_secant_cosecant_products_verify() {
             "unexpected nested required_conditions for {input}: {nested_required:?}"
         );
     }
+}
+
+#[test]
+fn integrate_contract_sqrt_chain_raw_reciprocal_trig_derivative_quotients_render_compactly() {
+    let cases = [
+        (
+            "integrate(sin(sqrt(x))*sqrt(x)/(2*x*cos(sqrt(x))^2), x)",
+            "sec(sqrt(x))",
+            vec!["cos(sqrt(x)) ≠ 0", "x > 0"],
+            "diff(integrate(sin(sqrt(x))*sqrt(x)/(2*x*cos(sqrt(x))^2), x), x) - sin(sqrt(x))*sqrt(x)/(2*x*cos(sqrt(x))^2)",
+        ),
+        (
+            "integrate(cos(sqrt(2*x))*(2*x)^(-1/2)/sin(sqrt(2*x))^2, x)",
+            "-csc(sqrt(2 * x))",
+            vec!["x > 0", "sin(sqrt(2 * x)) ≠ 0"],
+            "diff(integrate(cos(sqrt(2*x))*(2*x)^(-1/2)/sin(sqrt(2*x))^2, x), x) - cos(sqrt(2*x))*(2*x)^(-1/2)/sin(sqrt(2*x))^2",
+        ),
+        (
+            "integrate(3*sin(sqrt(3*x+1))/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))^2), x)",
+            "sec(sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
+            "diff(integrate(3*sin(sqrt(3*x+1))/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))^2), x), x) - 3*sin(sqrt(3*x+1))/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))^2)",
+        ),
+        (
+            "integrate(-2*cos(sqrt(3-2*x))/(sqrt(3-2*x)*sin(sqrt(3-2*x))^2), x)",
+            "-2 * csc(sqrt(3 - 2 * x))",
+            vec!["3 - 2 * x > 0", "sin(sqrt(3 - 2 * x)) ≠ 0"],
+            "diff(integrate(-2*cos(sqrt(3-2*x))/(sqrt(3-2*x)*sin(sqrt(3-2*x))^2), x), x) + 2*cos(sqrt(3-2*x))/(sqrt(3-2*x)*sin(sqrt(3-2*x))^2)",
+        ),
+    ];
+
+    for (input, expected_result, expected_conditions, residual_input) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected_result, "unexpected result for {input}");
+        assert_eq!(
+            required, expected_conditions,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_rendered_antiderivative_verifies(input, &result);
+
+        let (residual_result, residual_required) =
+            evaluated_expr_with_required_conditions(residual_input);
+        assert_eq!(
+            residual_result, "0",
+            "unexpected antiderivative residual for {input}"
+        );
+        assert_eq!(
+            residual_required, expected_conditions,
+            "residual should preserve required domain for {input}: {residual_required:?}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_negative_scaled_cosecant_result_latex_keeps_sign_on_coefficient() {
+    let input = "integrate(-2*cos(sqrt(3-2*x))/(sqrt(3-2*x)*sin(sqrt(3-2*x))^2), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for negative scaled cosecant integral: {stderr}"
+    );
+    assert_eq!(wire["result"], "-2·csc(sqrt(3 - 2·x))");
+    assert_eq!(
+        wire["result_latex"],
+        "-2\\cdot \\csc(\\sqrt{3 - 2\\cdot x})"
+    );
+    assert_ne!(
+        wire["result_latex"], "2\\cdot -\\csc(\\sqrt{3 - 2\\cdot x})",
+        "negative sign should not remain inside the multiplicative factor"
+    );
 }
 
 #[test]
