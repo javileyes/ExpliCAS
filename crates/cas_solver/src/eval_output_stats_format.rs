@@ -24,6 +24,7 @@ pub(crate) fn format_limited_output_expr(
             id: expr
         }
     );
+    let full = crate::pipeline_display::compact_subtracted_difference_display(full);
     let len = full.chars().count();
 
     if len <= max_chars {

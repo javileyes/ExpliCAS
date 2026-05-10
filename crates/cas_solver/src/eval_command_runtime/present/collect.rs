@@ -103,6 +103,7 @@ where
     let blocked_hints = collect_output_blocked_hints(
         ctx,
         blocked_hint_result,
+        required_conditions_raw,
         &prepared.output_view.blocked_hints,
     );
     let timings_us = TimingsWire {

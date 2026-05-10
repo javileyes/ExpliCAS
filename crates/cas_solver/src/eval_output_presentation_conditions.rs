@@ -66,9 +66,10 @@ pub(crate) fn collect_output_required_display(
 pub(crate) fn collect_output_blocked_hints(
     ctx: &Context,
     resolved: cas_ast::ExprId,
+    required_conditions: &[crate::ImplicitCondition],
     blocked_hints: &[crate::BlockedHint],
 ) -> Vec<BlockedHintDto> {
-    crate::filter_blocked_hints_for_eval(ctx, resolved, blocked_hints)
+    crate::filter_blocked_hints_for_eval(ctx, resolved, required_conditions, blocked_hints)
         .iter()
         .map(|hint| BlockedHintDto {
             rule: hint.rule.clone(),

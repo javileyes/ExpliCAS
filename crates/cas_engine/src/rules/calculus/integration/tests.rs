@@ -306,7 +306,7 @@ fn test_integrate_secant_squared_kernel() {
                 id: rewrite.new_expr
             }
         ),
-        "sin(x) / cos(x)"
+        "tan(x)"
     );
     assert_eq!(rewrite.required_conditions.len(), 1);
     assert_eq!(rewrite.required_conditions[0].display(&ctx), "cos(x) ≠ 0");
@@ -332,7 +332,7 @@ fn test_integrate_cosecant_squared_kernel() {
                 id: rewrite.new_expr
             }
         ),
-        "-cos(x) / sin(x)"
+        "-cot(x)"
     );
     assert_eq!(rewrite.required_conditions.len(), 1);
     assert_eq!(rewrite.required_conditions[0].display(&ctx), "sin(x) ≠ 0");

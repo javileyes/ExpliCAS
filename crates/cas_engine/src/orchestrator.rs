@@ -26094,6 +26094,72 @@ impl Orchestrator {
             return (zero, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
+        if let Some((compact, required_conditions)) = crate::calculus_residual_support::
+            try_diff_integral_plain_trig_residual_constant_passthrough_quotient(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    compact,
+                    "Compact quotient with matching plain trig antiderivative residual",
+                    "Plain Trig Integral Residual Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (compact, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_diff_integral_inverse_trig_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify matching inverse trig antiderivative residual",
+                    "Inverse Trig Integral Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((compact, required_conditions)) = crate::calculus_residual_support::
+            try_diff_integral_inverse_trig_residual_constant_passthrough_quotient(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    compact,
+                    "Compact quotient with matching inverse trig antiderivative residual",
+                    "Inverse Trig Integral Residual Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (compact, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
         if let Some((zero, required_conditions)) =
             crate::calculus_residual_support::try_explicit_log_abs_antiderivative_residual_root_zero(
                 &mut simplifier.context,
@@ -26160,6 +26226,28 @@ impl Orchestrator {
             return (zero, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
+        if let Some((compact, required_conditions)) = crate::calculus_residual_support::
+            try_diff_integral_hyperbolic_residual_constant_passthrough_quotient(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    compact,
+                    "Compact quotient with matching hyperbolic antiderivative residual",
+                    "Hyperbolic Integral Residual Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (compact, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
         if let Some((zero, required_conditions)) = crate::calculus_residual_support::
             try_diff_integral_rational_quadratic_residual_root_zero(&mut simplifier.context, expr)
         {
@@ -26177,6 +26265,116 @@ impl Orchestrator {
                 Vec::new()
             };
             return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((compact, required_conditions)) = crate::calculus_residual_support::
+            try_diff_integral_rational_quadratic_residual_constant_passthrough_quotient(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    compact,
+                    "Compact quotient with matching rational quadratic antiderivative residual",
+                    "Rational Quadratic Integral Residual Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (compact, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) = crate::calculus_residual_support::
+            try_explicit_positive_quadratic_cube_antiderivative_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify matching positive quadratic cube antiderivative residual",
+                    "Positive Quadratic Cube Integral Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((compact, required_conditions)) = crate::calculus_residual_support::
+            try_explicit_positive_quadratic_cube_antiderivative_residual_constant_passthrough_quotient(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    compact,
+                    "Compact quotient with matching positive quadratic cube antiderivative residual",
+                    "Positive Quadratic Cube Integral Residual Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (compact, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) = crate::calculus_residual_support::
+            try_explicit_positive_quadratic_square_antiderivative_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify matching positive quadratic square antiderivative residual",
+                    "Positive Quadratic Square Integral Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((compact, required_conditions)) = crate::calculus_residual_support::
+            try_explicit_positive_quadratic_square_antiderivative_residual_constant_passthrough_quotient(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    compact,
+                    "Compact quotient with matching positive quadratic square antiderivative residual",
+                    "Positive Quadratic Square Integral Residual Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (compact, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
         if let Some((one, required_conditions)) =

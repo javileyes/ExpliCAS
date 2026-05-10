@@ -95,6 +95,80 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-10: Raw Negative/Noise Calculus Residual Wrappers Needed Additive Gate
+
+- area:
+  - calculus / residual simplification / discovery harness
+- status:
+  - `superseded-by-retained-additive-gate`
+- discovered case:
+  - generated wrappers around public antiderivative residuals:
+    `((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))-1)/(x+2)`
+    and
+    `(((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/(x+2)) + (x-x)`
+- local lane:
+  - `scripts/engine_calculus_residual_probe_smoke.py` exploratory probes with
+    an 8s wall budget before harness promotion
+- local result:
+  - raw negative and additive-noise wrappers timeout for the representative
+    `sinh` and `cosh` by-parts residual families
+  - a narrower signed orientation wrapper using an external constant factor is
+    stable and was promoted only to the discovery harness:
+    `(-1)*(({residual}+1)/(x+2)) -> -1/(x+2)`
+- retained action:
+  - a later robustness pass retained a bounded helper update:
+    `core - constant` now compacts through the existing constant-passthrough
+    quotient route, and exact syntactic zero noise such as `x-x` is stripped
+    only around the residual quotient helper
+  - the retained discovery harness now covers both:
+    `(({residual})-1)/(x+2) -> -1/(x+2)` and
+    `(({residual}+1)/(x+2))+(x-x) -> 1/(x+2)`
+- why it was not promoted before the retained gate:
+  - the raw subtraction/noise forms re-enter the heavier hyperbolic residual
+    path before the proven-zero residual is compacted
+  - promoting them to default or live coverage would add known timeout traffic
+    rather than a retained public calculus capability
+- retained learning:
+  - the reusable fix was not a broader hyperbolic simplifier; it was a narrow
+    pre-route around already-supported residual quotient compaction
+
+### 2026-05-10: Deep Hyperbolic Antiderivative Residual Wrapper Timeout After One-Level Quotient Retention
+
+- area:
+  - calculus / residual simplification / discovery harness
+- status:
+  - `observe-only`
+- discovered case:
+  - generated wrapper probes around public antiderivative residuals:
+    `2*(((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/(x+2))`
+    and
+    `((((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/(x+2))/(x+3))`
+- local lane:
+  - `scripts/engine_calculus_residual_probe_smoke.py` exploratory probes with
+    2s and 8s wall budgets before corpus promotion
+- local result:
+  - the product-denominator wrapper
+    `(({residual})+1)/((x+2)*(x+3))` passes quickly across the representative
+    calculus residual families and was promoted only to the discovery harness
+  - the scaled quotient wrapper was later retained by allowing a single
+    nonzero constant factor around the existing constant-passthrough quotient
+    route:
+    `2*(({residual}+1)/(x+2)) -> 2/(x+2)`
+  - the one-level nested quotient wrapper was later retained by compacting the
+    inner quotient first and then multiplying denominators:
+    `(({residual}+1)/(x+2))/(x+3) -> 1/((x+2)*(x+3))`
+  - deeper repeated quotient wrappers remain intentionally unpromoted
+- why it was not promoted:
+  - the remaining deeper quotient failure is a reusable structural runtime
+    cliff in wrapped hyperbolic antiderivative residual simplification, not a
+    stable public capability
+  - promoting arbitrary quotient nesting to live/contract coverage would add
+    hot timeout pressure rather than retained mathematical completeness
+- what could make it combinable later:
+  - a cheap residual-shape gate that recognizes a proven zero calculus residual
+    before deeper repeated quotient wrappers trigger the heavier
+    hyperbolic-by-parts simplification path
+
 ### 2026-05-09: Sparse Affine Hyperbolic By-Parts Internal Verification Needed A Public Residual Gate
 
 - area:
@@ -449,7 +523,7 @@ The burden of proof stays the same:
 - area:
   - calculus / integration verification / inverse-trig affine by-parts residuals
 - status:
-  - `observe-only`
+  - `superseded-by-retained-residual-closure`
 - attempted case:
   - generalize the retained `integrate(arctan(a*x), x)` by-parts rule to
     shifted affine arguments such as `integrate(arctan(2*x+1), x)` and
@@ -10053,3 +10127,445 @@ The burden of proof stays the same:
   - some correct residuals were reaching expensive general simplification
     after differentiation; a cheap pre-route is retainable when the full
     chain-rule identity and domain witnesses are syntactically visible
+
+## 2026-05-09 - Discovery observe-only: shifted quadratic cubic repeated-pole residual does not close
+
+- area:
+  - calculus / integrate / rational partial fractions / residual simplification
+- status:
+  - `superseded-by-retained`
+- observed probes:
+  - `integrate(1/((x+1)^3*(x^2+2*x+2)), x)` now constructs a compact
+    primitive:
+    `1/2*ln(x^2 + 2*x + 2) - ln(|x + 1|) - 1/(2*(x + 1)^2)`
+  - `diff(integrate(1/((x+1)^3*(x^2+2*x+2)), x), x) - 1/((x+1)^3*(x^2+2*x+2))`
+    does not currently collapse to `0`
+- retained learning:
+  - cubic repeated-pole integration over a shifted definite quadratic can
+    produce a valid-looking primitive, but public residual closure is weaker
+    than for the centered quadratic representative
+  - promote only the centered minimal representative in the current iteration
+    and treat shifted-quadratic residual closure as a separate simplification
+    candidate
+
+## 2026-05-10 - Retained: shifted quadratic cubic repeated-pole residual closure
+
+- area:
+  - engine / coverage / rational residual simplification after calculus
+- status:
+  - `retained`
+- retained probes:
+  - `diff(integrate(1/((x+1)^3*(x^2+2*x+2)), x), x) - 1/((x+1)^3*(x^2+2*x+2)) -> 0`
+  - `Requires: x + 1 ≠ 0`
+- retained learning:
+  - the integration formula was already valid; the weak point was public
+    post-calculus residual closure when eval runs hidden simplification in
+    compact step mode
+  - a final bounded polynomial-denominator residual check in the
+    post-calculus residual lane is enough to close the case without widening
+    integration rules
+
+## 2026-05-10 - Discovery observe-only: shifted polynomial-arctan by-parts verification is too expensive
+
+- area:
+  - calculus / integrate / inverse trig by parts / residual simplification
+- status:
+  - `observe-only`
+- observed probes:
+  - `integrate((x+1)*arctan(2*x+1), x)` can construct an explicit primitive
+    through the same by-parts identity used for unshifted polynomial-arctan
+    products
+  - `diff(integrate((x+1)*arctan(2*x+1), x), x) - (x+1)*arctan(2*x+1)` did
+    not collapse cheaply during contract promotion
+  - `equiv(diff(integrate((x+1)*arctan(2*x+1), x), x), (x+1)*arctan(2*x+1))`
+    returned `true`, but only after repeated depth-overflow warnings and an
+    expensive simplification path
+- retained learning:
+  - shifted affine polynomial-arctan by-parts is mathematically reusable, but
+    current residual/equivalence closure is not cheap enough for live
+    promotion
+  - retain the unshifted `arctan(a*x)` subset first and treat shifted affine
+    verification as a separate post-calculus simplification/runtime candidate
+
+## 2026-05-10 - Discovery observe-only: degree-six polynomial-arctan by-parts residual misses cancellation
+
+- area:
+  - calculus / integrate / inverse trig by parts / residual simplification
+- status:
+  - `superseded-by-retained`
+- observed probes:
+  - temporary promotion of `integrate(x^6*arctan(x), x)` constructed a compact
+    primitive:
+    `1/7*x^7*arctan(x) - 1/42*x^6 - 1/14*x^2 + 1/14*ln(x^2 + 1) + 1/28*x^4`
+  - focused public contract verification failed on
+    `diff(integrate(x^6*arctan(x), x), x) - x^6*arctan(x)`
+  - the residual kept a rational expression with terms like
+    `x^3 + x - x*(x^2 + 1)` instead of canceling the polynomial numerator to
+    zero
+- retained learning:
+  - the by-parts construction and positive-quadratic rational integral can
+    produce a plausible degree-six primitive, but public residual closure is
+    not yet strong enough for live promotion
+  - retain the bounded degree-five subset first; treat degree-six as a future
+    post-calculus residual simplification candidate rather than broadening the
+    integration family further
+
+## 2026-05-10 - Retained: symbolic polynomial-denominator residual closure unlocks degree-six arctan by parts
+
+- area:
+  - engine / coverage / post-calculus rational residual simplification
+- status:
+  - `retained`
+- retained probes:
+  - `diff(integrate(x^6*arctan(x), x), x) - x^6*arctan(x) -> 0`
+  - `integrate(x^6*arctan(x), x)` now returns
+    `1/7*x^7*arctan(x) - 1/42*x^6 - 1/14*x^2 + 1/14*ln(x^2 + 1) + 1/28*x^4`
+- retained learning:
+  - the reusable missing capability was not a broader integration rule; it was
+    a bounded residual cancellation where polynomial denominators carry
+    symbolic opaque coefficients such as `arctan(x)` in the numerator
+  - keeping the checker gated by small denominator degree, small term count,
+    and polynomial-identity proof preserves the global guardrails while
+    allowing the integration cap to move from degree five to degree six
+
+## 2026-05-10 - Retained: suppress non-actionable depth warning for closed embedded calculus residual
+
+- area:
+  - engine / robustness / post-calculus residual verification
+- status:
+  - `retained`
+- retained probes:
+  - `diff(integrate(x^6*arctan(x), x), x) - x^6*arctan(x) -> 0`
+  - the same public residual no longer emits `depth_overflow` on stderr
+- retained learning:
+  - embedded calculus residuals can briefly traverse a deep internal form
+    before the post-calculus residual lane closes them to zero
+  - suppressing depth-overflow warnings only for add/sub residuals that already
+    contain embedded calculus calls keeps the public output clean without
+    changing the final simplification semantics
+
+## 2026-05-10 - Retained: inverse-trig antiderivative residual root shortcut
+
+- area:
+  - engine / runtime / post-calculus residual verification
+- status:
+  - `retained`
+- retained probes:
+  - `diff(integrate(x^6*arctan(x), x), x) - x^6*arctan(x) -> 0`
+  - local CLI timing for that residual dropped from roughly `386-397ms` to
+    `4-9ms`
+- retained learning:
+  - once a bounded integration family is already verified by construction,
+    `diff(integrate(f, x), x) - f` can use a narrow root shortcut instead of
+    paying for full expansion and residual simplification
+  - reusing the exact polynomial-arctan integration matcher keeps the shortcut
+    conservative: it does not broaden integration, assume new domains, or mask
+    unrelated residual failures
+
+## 2026-05-10 - Retained: degree-five rational antiderivative residual gate
+
+- area:
+  - engine / runtime / post-calculus rational residual verification
+- status:
+  - `retained`
+- retained probes:
+  - `diff(integrate(1/((x+1)^3*(x^2+2*x+2)), x), x) - 1/((x+1)^3*(x^2+2*x+2)) -> 0`
+  - `Requires: x + 1 ≠ 0`
+  - local CLI timing for that residual dropped from roughly `162ms` to
+    `36-37ms`
+- retained learning:
+  - the integration family was already public and verified; the expensive
+    part was residual recognition falling through to full simplification
+  - degree-five rational residual recognition is safe when it is gated by the
+    same repeated-linear-times-positive-quadratic decomposition used by the
+    integrator, rather than by constructing the full antiderivative only to
+    decide if the shortcut applies
+
+## 2026-05-10 - Retained: direct conditions for degree-five rational residuals
+
+- area:
+  - engine / runtime / post-calculus rational residual verification
+- status:
+  - `retained`
+- retained probes:
+  - `diff(integrate(1/((x+1)^3*(x^2+2*x+2)), x), x) - 1/((x+1)^3*(x^2+2*x+2)) -> 0`
+  - `Requires: x + 1 ≠ 0`
+  - local CLI timing for that residual moved from roughly `36-37ms` to
+    `30-32ms`
+- retained learning:
+  - after a degree-five rational residual has already matched the structural
+    repeated-linear-times-positive-quadratic family, routing conditions
+    through the general integration condition aggregator is unnecessary work
+  - returning the nonzero linear factor from the same decomposition preserves
+    domain reporting while reducing residual verification cost without
+    broadening the integration rule
+
+## 2026-05-10 - Retained: degree-four numerator over positive quadratic cube residual closure
+
+- area:
+  - calculus / integration / post-calculus residual verification
+- status:
+  - `retained`
+- discovered case:
+  - `integrate(x^4/(x^2+1)^3, x)`
+  - candidate antiderivative:
+    `3/8*arctan(x) + (3*x^3+5*x)/(8*(x^2+1)^2) - x/(x^2+1)`
+- local lane:
+  - focused CLI probe during bounded `q(x)^3` numerator-degree reduction
+- local result:
+  - the integrator can construct a mathematically valid primitive by reducing
+    `x^4/q^3` into existing `q^-2` and `q^-3` subfamilies
+  - public residual did not collapse to `0`:
+    `diff(integrate(x^4/(x^2+1)^3,x),x)-x^4/(x^2+1)^3`
+- promotion result:
+  - the rendered primitive mixes an arctan term with rational terms over
+    `q`, `q^2`, `q^3`, and `q^4`, and now verifies publicly to `0` through the
+    bounded polynomial-fraction residual checker
+- retained learning:
+  - degree-three reduction is safe to promote because it verifies directly
+  - degree-four positive-quadratic-cube reduction is retainable once the
+    bounded post-calculus residual path proves the rendered antiderivative
+  - the existing polynomial-fraction residual checker can use its
+    already-bounded LCM degree 8 path for individual denominator powers up to
+    degree 8 without broadening the integration rule blindly
+
+## 2026-05-10 - Retained: bounded cross-symbol exact-zero residual noise
+
+- area:
+  - engine / robustness / post-calculus residual wrappers
+- status:
+  - `retained`
+- pre-promotion probe:
+  - `(((((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/(x+2))+(x-x))+(y-y))`
+- pre-promotion result:
+  - the cross-symbol `+(y-y)` variant panicked before the residual pre-route
+    could close it
+- retained result:
+  - the bounded residual pre-route now strips two exact-zero additive noise
+    layers and returns `1 / (x + 2)` with only `x + 2 != 0`
+  - the retained smoke representative uses one same-symbol and one
+    cross-symbol exact-zero noise layer rather than duplicating `x-x`
+
+## 2026-05-10 - Retained: third exact-zero residual noise layer
+
+- area:
+  - engine / robustness / post-calculus residual wrappers
+- status:
+  - `retained`
+- pre-promotion probe:
+  - `((((((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/(x+2))+(x-x))+(y-y))+(z-z))`
+- pre-promotion result:
+  - hiperbólicas timed out under the public CLI residual probe, while the
+    rational representative still reached `1 / (x + 2)` slowly
+- retained result:
+  - the residual pre-route now strips up to three exact-zero additive noise
+    layers before quotient matching
+  - the smoke matrix keeps a single representative `plus_triple_noise`; deeper
+    noise remains intentionally outside this cycle rather than becoming an
+    unbounded simplification rule
+
+## 2026-05-10 - Retained: neutral multiplicative wrapper after triple residual noise
+
+- area:
+  - engine / robustness / post-calculus residual wrappers
+- status:
+  - `retained`
+- pre-promotion probe:
+  - `((((((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/(x+2))+(x-x))+(y-y))+(z-z))*1`
+- pre-promotion result:
+  - simple `*1`, `1*`, and `/1` wrappers already passed, but the composition
+    of `plus_triple_noise` with outer `*1` timed out for hyperbolic residuals
+    and was slow for the rational representative
+- retained result:
+  - after removing a constant factor, the residual quotient pre-route now
+    re-applies bounded exact-zero noise stripping before quotient matching
+  - the smoke matrix promotes only the composed `plus_triple_noise_times_one`
+    representative rather than all neutral multiplicative variants
+
+## 2026-05-10 - Retained: shifted quotient denominator residual conditions
+
+- area:
+  - engine / robustness / post-calculus residual shifted quotient
+- status:
+  - `retained`
+- pre-promotion probes:
+  - `((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/((diff(integrate(x^4*cosh(2*x+1),x),x)-x^4*cosh(2*x+1))+1)`
+  - `((diff(integrate(1/((x+1)^3*(x^2+2*x+2)),x),x)-1/((x+1)^3*(x^2+2*x+2)))+1)/((diff(integrate(1/(x^2+1),x),x)-1/(x^2+1))+1)`
+- pre-promotion result:
+  - the numerator residual compacted, but the denominator residual stayed in
+    the public required conditions as `NonZero(R + 1)`
+  - this produced correct-looking results with a noisy, structurally provable
+    condition
+- retained result:
+  - shifted residual denominators are compacted to their nonzero constant for
+    quotient matching
+  - structural `NonZero(R + c)` conditions are filtered only when `R` is a
+    supported integral residual and `c != 0`, while preserving real required
+    conditions needed to prove `R = 0`
+  - the residual smoke matrix promotes two representatives: same-family
+    hyperbolic and cross-family rational-over-reciprocal-trig
+
+## 2026-05-10 - Retained: negative shifted quotient denominator presentation
+
+- area:
+  - engine / calculus / post-calculus residual presentation
+- status:
+  - `retained`
+- pre-promotion probe:
+  - `((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/((diff(integrate(x^4*cosh(2*x+1),x),x)-x^4*cosh(2*x+1))-1)`
+- pre-promotion result:
+  - the denominator residual was correctly proved as `-1`, but the public
+    result rendered as `-1 / 1`
+- retained result:
+  - quotient residual presentation now divides by any nonzero rational
+    denominator constant produced by the residual proof, not only by `1`
+  - the smoke matrix promotes one minimal negative shifted denominator
+    representative and keeps broader scalar variants as discovery-only unless
+    they expose a distinct failure signature
+
+## 2026-05-10 - Retained: scaled shifted quotient denominator residuals
+
+- area:
+  - engine / calculus / post-calculus residual presentation
+- status:
+  - `retained`
+- pre-promotion probe:
+  - `((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/(2*((diff(integrate(x^4*cosh(2*x+1),x),x)-x^4*cosh(2*x+1))+1))`
+- pre-promotion result:
+  - the numerator residual compacted, but the denominator stayed as
+    `2*(R + 1)` and left a residual `NonZero(R + 1)` condition
+- retained result:
+  - shifted residual denominator compaction now accepts one nonzero rational
+    factor outside the residual passthrough
+  - structural condition filtering uses the same bounded factor stripping, so
+    the public result is `1/2` with no residual required condition
+  - the smoke matrix promotes one scaled-denominator representative rather
+    than all scalar variants
+
+## 2026-05-10 - Retained: scaled numerator and denominator residual quotient
+
+- area:
+  - engine / robustness / post-calculus residual wrappers
+- status:
+  - `retained`
+- pre-promotion probe:
+  - `3*((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/(2*((diff(integrate(x^4*cosh(2*x+1),x),x)-x^4*cosh(2*x+1))+1))`
+- pre-promotion result:
+  - denominator-side scaling was already retained, but adding a nonzero
+    rational scale on the numerator made the public residual probe time out
+    before the direct residual quotient route could recognize `R + c`
+- retained result:
+  - the quotient residual pre-route now strips one nonzero rational factor from
+    the numerator before matching the shifted residual passthrough
+  - numerator and denominator scales are combined as rationals, so the public
+    result is `3/2` with no residual required condition
+  - the smoke matrix promotes one scalar composition representative rather
+    than enumerating equivalent scalar variants
+
+## 2026-05-10 - Retained: residual factor inside product denominator
+
+- area:
+  - engine / robustness / post-calculus residual wrappers
+- status:
+  - `retained`
+- pre-promotion probe:
+  - `3*((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/(((diff(integrate(x^4*cosh(2*x+1),x),x)-x^4*cosh(2*x+1))+1)*(x+2))`
+- pre-promotion result:
+  - the numerator residual compacted, but the denominator product kept a
+    structurally provable residual factor as a public `NonZero(R + 1)`
+    condition
+  - this produced a correct-looking quotient only after carrying avoidable
+    post-calculus condition noise
+- retained result:
+  - denominator compaction now replaces one proved nonzero residual factor
+    inside a product while preserving `NonZero` requirements for the external
+    denominator factors
+  - the public result is `3 / (x + 2)` with only `x + 2` as a required
+    condition
+  - the smoke matrix promotes one representative composition rather than all
+    equivalent product-denominator scalar variants
+
+## 2026-05-10 - Retained: negative residual factor product denominator presentation
+
+- area:
+  - calculus / post-calculus residual presentation
+- status:
+  - `retained`
+- pre-promotion probe:
+  - `3*((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/((x+2)*((diff(integrate(x^4*cosh(2*x+1),x),x)-x^4*cosh(2*x+1))-1)*(x+3))`
+- pre-promotion result:
+  - the residual denominator factor was correctly proved as `-1`, but the
+    public result kept the sign in the denominator as
+    `3 / (-(x + 2)·(x + 3))`
+- retained result:
+  - quotient presentation now removes one exact `-1` product factor from a
+    compact residual denominator and moves the sign to the numerator
+  - the public result is `-3 / ((x + 2)·(x + 3))`
+  - required conditions stay attached only to the real external denominator
+    factors: `x + 2` and `x + 3`
+
+## 2026-05-10 - Retained: residual numerator inside fraction denominator
+
+- area:
+  - calculus / post-calculus residual presentation
+- status:
+  - `retained`
+- pre-promotion probe:
+  - `3*((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/(((diff(integrate(x^4*cosh(2*x+1),x),x)-x^4*cosh(2*x+1))-1)/(x+2))`
+- pre-promotion result:
+  - the residual denominator numerator stayed visible as
+    `3 / ((R - 1) / (x + 2))`
+  - the public required conditions also retained the structural residual
+    condition `NonZero(R - 1)` even though the residual is proved as `0`
+- retained result:
+  - fraction denominators now compact one proved nonzero residual numerator and
+    divide by the resulting constant
+  - the public result is `-3·(x + 2)`
+  - the structural residual condition is filtered while preserving the real
+    external denominator condition `x + 2`
+
+## 2026-05-10 - Retained coverage: scaled residual fraction denominator
+
+- area:
+  - calculus / post-calculus residual smoke coverage
+- status:
+  - `retained`
+- pre-promotion probes:
+  - `3*(R1+1)/((R2+1)/(x+2))`
+  - `3*(R1+1)/(2*((R2-1)/(x+2)))`
+  - `3*(R1+1)/(2*((R2+1)/(x+2)))`
+- retained result:
+  - the engine already compacted the family correctly, so no engine code
+    change was needed
+  - the smoke matrix promotes only the minimal scaled negative representative:
+    `3*(R1+1)/(2*((R2-1)/(x+2))) -> -3/2·(x + 2)`
+  - required conditions stay limited to the external denominator factor:
+    `x + 2`
+- promotion rationale:
+  - this protects the combination of a fraction denominator, proved nonzero
+    residual numerator, sign orientation, and rational external scale without
+    promoting near-duplicate positive-orientation variants
+
+## 2026-05-10 - Retained coverage: positive quadratic residual fraction denominator
+
+- area:
+  - calculus / post-calculus residual smoke coverage
+- status:
+  - `retained`
+- pre-promotion probes:
+  - `3*(R1+1)/((R2-1)/(x^2+1))`
+  - `3*(R1+1)/((R2-1)/((x-1)*(x+1)))`
+  - cross-family `rational_quad` over `recip_trig` with denominator `x^2+1`
+- retained result:
+  - the engine already compacted the positive quadratic denominator case
+    correctly, so no engine code change was needed
+  - the smoke matrix promotes only the minimal positive-quadratic
+    representative:
+    `3*(R1+1)/((R2-1)/(x^2+1)) -> -3·(x^2 + 1)`
+  - required conditions are empty because `x^2 + 1` is nonzero over the real
+    domain
+- promotion rationale:
+  - previous promoted fraction-denominator cases covered linear external
+    factors with explicit `NonZero` requirements
+  - this adds the semantic/domain regime where the external denominator is
+    structurally present but contributes no real-domain requirement

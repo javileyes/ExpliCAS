@@ -46,10 +46,17 @@ pub(crate) fn render_expr_latex_for_eval(
     intent: EvalLatexRenderIntent,
 ) -> String {
     let style = style_for_eval_intent(ctx, id, signals, intent);
-    LaTeXExprStyled {
+    let latex = LaTeXExprStyled {
         context: ctx,
         id,
         style_prefs: &style,
     }
-    .to_latex()
+    .to_latex();
+
+    match intent {
+        EvalLatexRenderIntent::Input => latex,
+        EvalLatexRenderIntent::Result => {
+            crate::pipeline_display::compact_subtracted_difference_display(latex)
+        }
+    }
 }

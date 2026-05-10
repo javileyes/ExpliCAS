@@ -2,6 +2,7 @@ use cas_formatter::DisplayExpr;
 use cas_math::eval_f64;
 use cas_parser::parse;
 use cas_session::SessionState;
+use cas_solver::command_api::eval::evaluate_eval_command_output;
 use cas_solver::runtime::{Engine, EvalAction, EvalRequest, EvalResult, StepsMode};
 use cas_solver_core::domain_normalization::normalize_and_dedupe_conditions;
 use std::collections::HashMap;
@@ -134,6 +135,57 @@ fn chain_rule_power_composition_diff_evaluates_to_simplified_product() {
         required.is_empty(),
         "unexpected required_conditions: {required:?}"
     );
+}
+
+#[test]
+fn reciprocal_trig_affine_diff_omits_non_actionable_cycle_hints() {
+    for (input, expected_condition, expected_terms) in [
+        (
+            "diff(sec((3*x+2)/2), x)",
+            "cos((3 * x + 2) / 2) ≠ 0",
+            ["sec((3 * x + 2) / 2)", "tan((3 * x + 2) / 2)"],
+        ),
+        (
+            "diff(csc((2-3*x)/2), x)",
+            "sin((2 - 3 * x) / 2) ≠ 0",
+            ["csc((2 - 3 * x) / 2)", "cot((2 - 3 * x) / 2)"],
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::Off;
+
+        let output =
+            evaluate_eval_command_output(&mut engine, &mut state, input, false).expect("eval");
+        let result = output
+            .result_line
+            .as_ref()
+            .expect("result line")
+            .line
+            .as_str();
+
+        for expected_term in expected_terms {
+            assert!(
+                result.contains(expected_term),
+                "input: {input}, result should keep compact reciprocal trig factors; got: {result}"
+            );
+        }
+
+        assert!(
+            output.metadata.hint_lines.is_empty(),
+            "input: {input}, successful derivative should not surface stale cycle hints: {:?}",
+            output.metadata.hint_lines
+        );
+        assert!(
+            output
+                .metadata
+                .requires_lines
+                .iter()
+                .any(|line| line.contains(expected_condition)),
+            "input: {input}, required domain should remain visible: {:?}",
+            output.metadata.requires_lines
+        );
+    }
 }
 
 #[test]

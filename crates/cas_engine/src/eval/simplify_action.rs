@@ -205,6 +205,7 @@ impl Engine {
         ctx_simplifier.set_step_listener(inherited_step_listener);
 
         let mut simplify_opts = effective_opts.to_simplify_options();
+        let calculus_call_names = ["diff", "integrate", "int"];
 
         let (expr_to_simplify, expand_log_events) =
             if let Expr::Function(fn_id, args) = ctx_simplifier.context.get(resolved).clone() {
@@ -228,6 +229,22 @@ impl Engine {
             } else {
                 (resolved, Vec::new())
             };
+
+        let input_embedded_calculus_residual = expr_contains_named_function_local(
+            &ctx_simplifier.context,
+            expr_to_simplify,
+            &calculus_call_names,
+        ) && !expr_is_named_function_call_local(
+            &ctx_simplifier.context,
+            expr_to_simplify,
+            &calculus_call_names,
+        ) && expr_is_post_calculus_residual_candidate_local(
+            &ctx_simplifier.context,
+            expr_to_simplify,
+        );
+        if input_embedded_calculus_residual {
+            simplify_opts.suppress_depth_overflow_warnings = true;
+        }
 
         let (mut res, mut steps, stats) =
             ctx_simplifier.simplify_with_stats(expr_to_simplify, simplify_opts.clone());
@@ -283,7 +300,6 @@ impl Engine {
             }
         }
 
-        let calculus_call_names = ["diff", "integrate", "int"];
         let embedded_calculus_residual =
             expr_contains_named_function_local(
                 &ctx_simplifier.context,
@@ -307,6 +323,12 @@ impl Engine {
             ctx_simplifier.extend_required_conditions(
                 first_pass_required.into_iter().chain(second_pass_required),
             );
+            let post_residual_res =
+                crate::fraction_residual_support::try_polynomial_denominator_fraction_residual_zero(
+                    &mut ctx_simplifier.context,
+                    post_residual_res,
+                )
+                .unwrap_or(post_residual_res);
 
             if post_residual_res != res {
                 if effective_opts.steps_mode != crate::options::StepsMode::Off {

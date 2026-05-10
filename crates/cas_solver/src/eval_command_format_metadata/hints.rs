@@ -10,8 +10,22 @@ pub(super) fn format_hint_lines(
         return Vec::new();
     }
 
-    let hints =
-        crate::filter_blocked_hints_for_eval(context, output.resolved, &output.blocked_hints);
+    let blocked_hint_result = match output.result {
+        crate::EvalResult::Expr(expr) => expr,
+        _ => output.resolved,
+    };
+    let required_conditions = output
+        .diagnostics
+        .requires
+        .iter()
+        .map(|item| item.cond.clone())
+        .collect::<Vec<_>>();
+    let hints = crate::filter_blocked_hints_for_eval(
+        context,
+        blocked_hint_result,
+        &required_conditions,
+        &output.blocked_hints,
+    );
     if hints.is_empty() {
         Vec::new()
     } else {

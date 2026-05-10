@@ -66,7 +66,7 @@ fn eval_result_first_expr(result: &EvalResult) -> Option<ExprId> {
 }
 
 fn push_structural_requires(
-    ctx: &cas_ast::Context,
+    ctx: &mut cas_ast::Context,
     resolved: ExprId,
     result: &EvalResult,
     diagnostics: &mut crate::diagnostics::Diagnostics,
@@ -76,6 +76,21 @@ fn push_structural_requires(
     let input_domain =
         infer_implicit_domain(ctx, resolved, crate::semantics::ValueDomain::RealOnly);
     for cond in input_domain.conditions() {
+        if let crate::ImplicitCondition::NonZero(expr) = cond {
+            if let Some(required_conditions) =
+                crate::calculus_residual_support::shifted_integral_residual_passthrough_nonzero_required_conditions(
+                    ctx, *expr,
+                )
+            {
+                for required in required_conditions {
+                    diagnostics.push_required(
+                        required,
+                        crate::diagnostics::RequireOrigin::InputImplicit,
+                    );
+                }
+                continue;
+            }
+        }
         diagnostics.push_required(
             cond.clone(),
             crate::diagnostics::RequireOrigin::InputImplicit,
@@ -86,6 +101,21 @@ fn push_structural_requires(
         let output_domain =
             infer_implicit_domain(ctx, result_id, crate::semantics::ValueDomain::RealOnly);
         for cond in output_domain.conditions() {
+            if let crate::ImplicitCondition::NonZero(expr) = cond {
+                if let Some(required_conditions) =
+                    crate::calculus_residual_support::shifted_integral_residual_passthrough_nonzero_required_conditions(
+                        ctx, *expr,
+                    )
+                {
+                    for required in required_conditions {
+                        diagnostics.push_required(
+                            required,
+                            crate::diagnostics::RequireOrigin::OutputImplicit,
+                        );
+                    }
+                    continue;
+                }
+            }
             diagnostics.push_required(
                 cond.clone(),
                 crate::diagnostics::RequireOrigin::OutputImplicit,
@@ -203,7 +233,7 @@ fn build_simplified_cache_update(
 }
 
 struct EvalDiagnosticsInput<'a> {
-    ctx: &'a cas_ast::Context,
+    ctx: &'a mut cas_ast::Context,
     resolved: ExprId,
     result: &'a EvalResult,
     steps: &'a [crate::Step],
@@ -276,7 +306,7 @@ impl Engine {
         let blocked_hints = self.simplifier.take_blocked_hints();
 
         let mut diagnostics = build_eval_diagnostics(EvalDiagnosticsInput {
-            ctx: &self.simplifier.context,
+            ctx: &mut self.simplifier.context,
             resolved,
             result: &result,
             steps: &steps,

@@ -9,6 +9,19 @@ fn expr_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
 }
 
+fn expr_exact_noise_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    if left == right {
+        return true;
+    }
+
+    match (ctx.get(left), ctx.get(right)) {
+        (Expr::Number(left), Expr::Number(right)) => left == right,
+        (Expr::Constant(left), Expr::Constant(right)) => left == right,
+        (Expr::Variable(left), Expr::Variable(right)) => left == right,
+        _ => expr_eq(ctx, left, right),
+    }
+}
+
 fn exprs_match(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     if expr_eq(ctx, left, right) || exprs_equivalent(ctx, left, right) {
         return true;
@@ -79,6 +92,91 @@ fn denominator_factor_multiset_matches(ctx: &Context, left: &[ExprId], right: &[
     'outer: for left_factor in left {
         for (index, right_factor) in right.iter().enumerate() {
             if !used[index] && exprs_match(ctx, *left_factor, *right_factor) {
+                used[index] = true;
+                continue 'outer;
+            }
+        }
+        return false;
+    }
+
+    true
+}
+
+fn rational_polynomial_terms_match(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    let Some((left_num, left_den)) = quotient_numerator_denominator(ctx, left) else {
+        return false;
+    };
+    let Some((right_num, right_den)) = quotient_numerator_denominator(ctx, right) else {
+        return false;
+    };
+    let Ok(left_num) = Polynomial::from_expr(ctx, left_num, var_name) else {
+        return false;
+    };
+    let Ok(left_den) = Polynomial::from_expr(ctx, left_den, var_name) else {
+        return false;
+    };
+    let Ok(right_num) = Polynomial::from_expr(ctx, right_num, var_name) else {
+        return false;
+    };
+    let Ok(right_den) = Polynomial::from_expr(ctx, right_den, var_name) else {
+        return false;
+    };
+
+    left_num.mul(&right_den) == right_num.mul(&left_den)
+}
+
+fn antiderivative_term_matches(ctx: &Context, left: ExprId, right: ExprId, var_name: &str) -> bool {
+    if exprs_match(ctx, left, right) {
+        return true;
+    }
+
+    if rational_polynomial_terms_match(ctx, left, right, var_name) {
+        return true;
+    }
+
+    for builtin in [BuiltinFn::Arctan, BuiltinFn::Atan] {
+        let Some((left_scale, left_arg)) = scaled_unary_builtin_rational_target(ctx, left, builtin)
+        else {
+            continue;
+        };
+        let Some((right_scale, right_arg)) =
+            scaled_unary_builtin_rational_target(ctx, right, builtin)
+        else {
+            continue;
+        };
+        if left_scale == right_scale && exprs_match(ctx, left_arg, right_arg) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn additive_term_multiset_matches(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    if antiderivative_term_matches(ctx, left, right, var_name) {
+        return true;
+    }
+
+    let left_terms = cas_math::expr_nary::add_leaves(ctx, left);
+    let right_terms = cas_math::expr_nary::add_leaves(ctx, right);
+    if left_terms.len() != right_terms.len() || left_terms.len() < 2 {
+        return false;
+    }
+
+    let mut used = vec![false; right_terms.len()];
+    'outer: for left_term in left_terms {
+        for (index, right_term) in right_terms.iter().enumerate() {
+            if !used[index] && antiderivative_term_matches(ctx, left_term, *right_term, var_name) {
                 used[index] = true;
                 continue 'outer;
             }
@@ -1853,27 +1951,54 @@ fn integral_required_conditions(
     required_nonzero.chain(required_positive).collect()
 }
 
-fn is_supported_rational_polynomial_integral_target(
+fn supported_rational_polynomial_integral_required_conditions(
     ctx: &mut Context,
     target: ExprId,
     var_name: &str,
-) -> bool {
-    const MAX_SUPPORTED_RATIONAL_POLYNOMIAL_DEGREE: usize = 4;
+) -> Option<Vec<crate::ImplicitCondition>> {
+    const MAX_SUPPORTED_RATIONAL_POLYNOMIAL_DEGREE: usize = 6;
 
     let target = cas_ast::hold::strip_all_holds(ctx, target);
     let Expr::Div(num, den) = ctx.get(target) else {
-        return false;
+        return None;
     };
     if Polynomial::from_expr(ctx, *num, var_name).is_err() {
-        return false;
+        return None;
     }
     let Ok(denominator) = Polynomial::from_expr(ctx, *den, var_name) else {
-        return false;
+        return None;
     };
-    denominator.degree() >= 2
-        && denominator.degree() <= MAX_SUPPORTED_RATIONAL_POLYNOMIAL_DEGREE
-        && cas_math::symbolic_integration_support::integrate_symbolic_expr(ctx, target, var_name)
-            .is_some()
+    let degree = denominator.degree();
+    if !(2..=MAX_SUPPORTED_RATIONAL_POLYNOMIAL_DEGREE).contains(&degree) {
+        return None;
+    }
+
+    if degree == 5 {
+        let required_nonzero = cas_math::symbolic_integration_support::integrate_symbolic_rational_linear_positive_quadratic_required_nonzero_if_target(
+            ctx,
+            target,
+            var_name,
+        )?;
+        return Some(
+            required_nonzero
+                .into_iter()
+                .map(crate::ImplicitCondition::NonZero)
+                .collect(),
+        );
+    }
+    if degree == 6
+        && !cas_math::symbolic_integration_support::integrate_symbolic_is_positive_quadratic_cube_target(
+            ctx,
+            target,
+            var_name,
+        )
+    {
+        return None;
+    }
+
+    cas_math::symbolic_integration_support::integrate_symbolic_expr(ctx, target, var_name)?;
+
+    Some(integral_required_conditions(ctx, target, var_name))
 }
 
 fn integrated_rational_quadratic_diff_matches(
@@ -1895,19 +2020,77 @@ fn integrated_rational_quadratic_diff_matches(
     if !exprs_match(ctx, integrate_call.target, right) {
         return None;
     }
-    if !is_supported_rational_polynomial_integral_target(
+    supported_rational_polynomial_integral_required_conditions(
         ctx,
         integrate_call.target,
         &integrate_call.var_name,
+    )
+}
+
+fn explicit_positive_quadratic_cube_antiderivative_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_positive_quadratic_cube_target(
+        ctx,
+        right,
+        &diff_call.var_name,
     ) {
         return None;
     }
 
-    Some(integral_required_conditions(
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
         ctx,
-        integrate_call.target,
-        &integrate_call.var_name,
-    ))
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = cas_ast::hold::strip_all_holds(ctx, diff_call.target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(Vec::new())
+}
+
+fn explicit_positive_quadratic_square_antiderivative_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_positive_quadratic_square_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = cas_ast::hold::strip_all_holds(ctx, diff_call.target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(Vec::new())
 }
 
 fn collect_log_abs_nonzero_conditions(
@@ -2504,6 +2687,38 @@ fn integrated_polynomial_trig_linear_diff_matches(
     Some(Vec::new())
 }
 
+fn integrated_polynomial_arctan_affine_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)?;
+    if diff_call.var_name != integrate_call.var_name {
+        return None;
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_arctan_affine_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        return None;
+    }
+
+    if !exprs_match(ctx, integrate_call.target, right) {
+        return None;
+    }
+
+    Some(Vec::new())
+}
+
 fn integrated_polynomial_hyperbolic_linear_diff_matches(
     ctx: &mut Context,
     diff_expr: ExprId,
@@ -2603,15 +2818,82 @@ fn strip_constant_passthrough(ctx: &Context, expr: ExprId) -> Option<ConstantPas
             }
         }
         Expr::Sub(left, right) => {
-            let constant = cas_math::numeric_eval::as_rational_const(ctx, *left)?;
-            Some(ConstantPassthrough {
-                constant,
-                core: *right,
-                orientation: ConstantPassthroughOrientation::LeadingSub,
-            })
+            if let Some(constant) = cas_math::numeric_eval::as_rational_const(ctx, *left) {
+                Some(ConstantPassthrough {
+                    constant,
+                    core: *right,
+                    orientation: ConstantPassthroughOrientation::LeadingSub,
+                })
+            } else {
+                let constant = -cas_math::numeric_eval::as_rational_const(ctx, *right)?;
+                Some(ConstantPassthrough {
+                    constant,
+                    core: *left,
+                    orientation: ConstantPassthroughOrientation::Add,
+                })
+            }
         }
         _ => None,
     }
+}
+
+fn exact_zero_noise_expr_with_depth(ctx: &Context, expr: ExprId, depth: u8) -> bool {
+    if is_zero_constant(ctx, expr) {
+        return true;
+    }
+    if depth == 0 {
+        return false;
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            exact_zero_noise_expr_with_depth(ctx, *left, depth - 1)
+                && exact_zero_noise_expr_with_depth(ctx, *right, depth - 1)
+        }
+        Expr::Sub(left, right) => {
+            expr_exact_noise_eq(ctx, *left, *right)
+                || (exact_zero_noise_expr_with_depth(ctx, *left, depth - 1)
+                    && exact_zero_noise_expr_with_depth(ctx, *right, depth - 1))
+        }
+        _ => false,
+    }
+}
+
+fn exact_zero_noise_expr(ctx: &Context, expr: ExprId) -> bool {
+    exact_zero_noise_expr_with_depth(ctx, expr, 4)
+}
+
+fn strip_exact_zero_additive_noise(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Add(left, right) if exact_zero_noise_expr(ctx, *left) => Some(*right),
+        Expr::Add(left, right) if exact_zero_noise_expr(ctx, *right) => Some(*left),
+        Expr::Add(left, right) => match (ctx.get(*left), ctx.get(*right)) {
+            (Expr::Sub(core, noise), _) if expr_exact_noise_eq(ctx, *noise, *right) => Some(*core),
+            (_, Expr::Sub(core, noise)) if expr_exact_noise_eq(ctx, *noise, *left) => Some(*core),
+            _ => None,
+        },
+        Expr::Sub(left, right) if exact_zero_noise_expr(ctx, *right) => Some(*left),
+        Expr::Sub(left, right) => match ctx.get(*left) {
+            Expr::Add(core, noise) if expr_exact_noise_eq(ctx, *noise, *right) => Some(*core),
+            Expr::Add(noise, core) if expr_exact_noise_eq(ctx, *noise, *right) => Some(*core),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn strip_exact_zero_additive_noise_bounded(
+    ctx: &Context,
+    mut expr: ExprId,
+    max_depth: u8,
+) -> ExprId {
+    for _ in 0..max_depth {
+        let Some(stripped) = strip_exact_zero_additive_noise(ctx, expr) else {
+            break;
+        };
+        expr = stripped;
+    }
+    expr
 }
 
 fn rational_expr(ctx: &mut Context, value: &BigRational) -> ExprId {
@@ -3347,6 +3629,18 @@ fn try_diff_integral_hyperbolic_residual_direct_root_zero(
         .or_else(|| try_diff_integral_hyperbolic_residual_zero_preorder(ctx, right, left))
 }
 
+pub(crate) fn try_diff_integral_hyperbolic_residual_constant_passthrough_quotient(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_constant_passthrough_quotient(
+        ctx,
+        expr,
+        2,
+        try_diff_integral_hyperbolic_residual_direct_root_zero,
+    )
+}
+
 fn try_diff_integral_hyperbolic_residual_zero_preorder(
     ctx: &mut Context,
     left: ExprId,
@@ -3391,6 +3685,122 @@ fn try_diff_integral_rational_quadratic_residual_zero_preorder(
     let required_conditions =
         integrated_rational_quadratic_diff_matches(ctx, diff_expr, divisor, right)?;
     Some((ctx.num(0), required_conditions))
+}
+
+pub(crate) fn try_diff_integral_rational_quadratic_residual_constant_passthrough_quotient(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_constant_passthrough_quotient(
+        ctx,
+        expr,
+        2,
+        try_diff_integral_rational_quadratic_residual_direct_root_zero,
+    )
+}
+
+pub(crate) fn try_explicit_positive_quadratic_cube_antiderivative_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_wrapped_root_zero(
+        ctx,
+        expr,
+        3,
+        try_explicit_positive_quadratic_cube_antiderivative_residual_direct_root_zero,
+    )
+}
+
+fn try_explicit_positive_quadratic_cube_antiderivative_residual_direct_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        _ => return None,
+    };
+    try_explicit_positive_quadratic_cube_antiderivative_residual_zero_preorder(ctx, left, right)
+        .or_else(|| {
+            try_explicit_positive_quadratic_cube_antiderivative_residual_zero_preorder(
+                ctx, right, left,
+            )
+        })
+}
+
+fn try_explicit_positive_quadratic_cube_antiderivative_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    let required_conditions = explicit_positive_quadratic_cube_antiderivative_diff_matches(
+        ctx, diff_expr, divisor, right,
+    )?;
+    Some((ctx.num(0), required_conditions))
+}
+
+pub(crate) fn try_explicit_positive_quadratic_cube_antiderivative_residual_constant_passthrough_quotient(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_constant_passthrough_quotient(
+        ctx,
+        expr,
+        2,
+        try_explicit_positive_quadratic_cube_antiderivative_residual_direct_root_zero,
+    )
+}
+
+pub(crate) fn try_explicit_positive_quadratic_square_antiderivative_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_wrapped_root_zero(
+        ctx,
+        expr,
+        3,
+        try_explicit_positive_quadratic_square_antiderivative_residual_direct_root_zero,
+    )
+}
+
+fn try_explicit_positive_quadratic_square_antiderivative_residual_direct_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        _ => return None,
+    };
+    try_explicit_positive_quadratic_square_antiderivative_residual_zero_preorder(ctx, left, right)
+        .or_else(|| {
+            try_explicit_positive_quadratic_square_antiderivative_residual_zero_preorder(
+                ctx, right, left,
+            )
+        })
+}
+
+fn try_explicit_positive_quadratic_square_antiderivative_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    let required_conditions = explicit_positive_quadratic_square_antiderivative_diff_matches(
+        ctx, diff_expr, divisor, right,
+    )?;
+    Some((ctx.num(0), required_conditions))
+}
+
+pub(crate) fn try_explicit_positive_quadratic_square_antiderivative_residual_constant_passthrough_quotient(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_constant_passthrough_quotient(
+        ctx,
+        expr,
+        2,
+        try_explicit_positive_quadratic_square_antiderivative_residual_direct_root_zero,
+    )
 }
 
 fn constant_scaled_hyperbolic_reciprocal_diff_matches(
@@ -3598,6 +4008,31 @@ fn try_diff_integral_reciprocal_trig_residual_direct_root_zero(
 type IntegralResidualRootResult = Option<(ExprId, Vec<crate::ImplicitCondition>)>;
 type IntegralResidualRootMatcher = fn(&mut Context, ExprId) -> IntegralResidualRootResult;
 
+fn try_any_diff_integral_residual_wrapped_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+    depth: u8,
+    primary_root_zero: IntegralResidualRootMatcher,
+) -> IntegralResidualRootResult {
+    for matcher in [
+        primary_root_zero,
+        try_diff_integral_quadratic_exp_residual_direct_root_zero,
+        try_diff_integral_hyperbolic_residual_direct_root_zero,
+        try_diff_integral_rational_quadratic_residual_direct_root_zero,
+        try_diff_integral_reciprocal_trig_residual_direct_root_zero,
+        try_diff_integral_plain_trig_residual_direct_root_zero,
+        try_diff_integral_inverse_trig_residual_direct_root_zero,
+    ] {
+        if let Some(result) =
+            try_diff_integral_residual_wrapped_root_zero(ctx, expr, depth, matcher)
+        {
+            return Some(result);
+        }
+    }
+
+    None
+}
+
 fn try_diff_integral_residual_wrapped_root_zero(
     ctx: &mut Context,
     expr: ExprId,
@@ -3679,6 +4114,462 @@ fn try_diff_integral_residual_wrapped_root_zero(
     }
 }
 
+fn compact_nonzero_residual_passthrough_denominator(
+    ctx: &mut Context,
+    denominator: ExprId,
+    depth: u8,
+    direct_root_zero: IntegralResidualRootMatcher,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let denominator = strip_exact_zero_additive_noise_bounded(ctx, denominator, 3);
+    let (scale, denominator) = strip_single_nonzero_constant_factor(ctx, denominator)
+        .unwrap_or((BigRational::one(), denominator));
+    if let Some((denominator, required_conditions)) =
+        compact_nonzero_residual_passthrough_denominator_factor(
+            ctx,
+            denominator,
+            depth,
+            direct_root_zero,
+        )
+    {
+        let denominator = apply_compacted_denominator_scale(ctx, &scale, denominator)?;
+        return Some((denominator, required_conditions));
+    }
+
+    if let Some((denominator, required_conditions)) =
+        compact_nonzero_residual_passthrough_div_denominator(
+            ctx,
+            &scale,
+            denominator,
+            depth,
+            direct_root_zero,
+        )
+    {
+        return Some((denominator, required_conditions));
+    }
+
+    compact_nonzero_residual_passthrough_product_denominator(
+        ctx,
+        scale,
+        denominator,
+        depth,
+        direct_root_zero,
+    )
+}
+
+fn compact_nonzero_residual_passthrough_denominator_factor(
+    ctx: &mut Context,
+    denominator: ExprId,
+    depth: u8,
+    direct_root_zero: IntegralResidualRootMatcher,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let passthrough = strip_constant_passthrough(ctx, denominator)?;
+    if passthrough.constant.is_zero() {
+        return None;
+    }
+
+    let (_zero, required_conditions) = try_any_diff_integral_residual_wrapped_root_zero(
+        ctx,
+        passthrough.core,
+        depth,
+        direct_root_zero,
+    )?;
+    let denominator = rational_expr(ctx, &passthrough.constant);
+    Some((denominator, required_conditions))
+}
+
+fn compact_nonzero_residual_passthrough_div_denominator(
+    ctx: &mut Context,
+    scale: &BigRational,
+    denominator: ExprId,
+    depth: u8,
+    direct_root_zero: IntegralResidualRootMatcher,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let Expr::Div(numerator, inner_denominator) = ctx.get(denominator).clone() else {
+        return None;
+    };
+    if cas_math::numeric_eval::as_rational_const(ctx, inner_denominator)
+        .is_some_and(|value| value.is_zero())
+    {
+        return None;
+    }
+
+    let (numerator, mut required_conditions) =
+        compact_nonzero_residual_passthrough_denominator_factor(
+            ctx,
+            numerator,
+            depth,
+            direct_root_zero,
+        )?;
+    if !cas_math::numeric_eval::as_rational_const(ctx, inner_denominator)
+        .is_some_and(|value| value.is_one())
+    {
+        required_conditions.push(crate::ImplicitCondition::NonZero(inner_denominator));
+    }
+
+    let numerator = apply_compacted_denominator_scale(ctx, scale, numerator)?;
+    Some((
+        ctx.add(Expr::Div(numerator, inner_denominator)),
+        required_conditions,
+    ))
+}
+
+fn apply_compacted_denominator_scale(
+    ctx: &mut Context,
+    scale: &BigRational,
+    denominator: ExprId,
+) -> Option<ExprId> {
+    if scale.is_zero() {
+        return None;
+    }
+    if let Some(denominator_constant) = cas_math::numeric_eval::as_rational_const(ctx, denominator)
+    {
+        return Some(rational_expr(ctx, &(scale * denominator_constant)));
+    }
+    if scale.is_one() {
+        return Some(denominator);
+    }
+    let scale_expr = rational_expr(ctx, scale);
+    Some(cas_math::expr_nary::build_balanced_mul(
+        ctx,
+        &[scale_expr, denominator],
+    ))
+}
+
+fn nonzero_conditions_for_denominator_factors(
+    ctx: &Context,
+    factors: &[ExprId],
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let mut conditions = Vec::new();
+    for factor in factors {
+        if let Some(value) = cas_math::numeric_eval::as_rational_const(ctx, *factor) {
+            if value.is_zero() {
+                return None;
+            }
+        } else {
+            conditions.push(crate::ImplicitCondition::NonZero(*factor));
+        }
+    }
+    Some(conditions)
+}
+
+fn compact_nonzero_residual_passthrough_product_denominator(
+    ctx: &mut Context,
+    scale: BigRational,
+    denominator: ExprId,
+    depth: u8,
+    direct_root_zero: IntegralResidualRootMatcher,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let factors = cas_math::expr_nary::mul_leaves(ctx, denominator);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for (index, factor) in factors.iter().enumerate() {
+        let Some((compacted_factor, mut required_conditions)) =
+            compact_nonzero_residual_passthrough_denominator_factor(
+                ctx,
+                *factor,
+                depth,
+                direct_root_zero,
+            )
+        else {
+            continue;
+        };
+
+        let external_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(factor_index, factor)| (factor_index != index).then_some(*factor))
+            .collect();
+        required_conditions.extend(nonzero_conditions_for_denominator_factors(
+            ctx,
+            &external_factors,
+        )?);
+
+        let compacted_factor = apply_compacted_denominator_scale(ctx, &scale, compacted_factor)?;
+        let mut rebuilt_factors = Vec::with_capacity(factors.len());
+        if !is_one_constant(ctx, compacted_factor) {
+            rebuilt_factors.push(compacted_factor);
+        }
+        rebuilt_factors.extend(external_factors);
+        let denominator = cas_math::expr_nary::build_balanced_mul(ctx, &rebuilt_factors);
+        return Some((denominator, required_conditions));
+    }
+
+    None
+}
+
+pub(crate) fn shifted_integral_residual_passthrough_nonzero_required_conditions(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let expr = strip_exact_zero_additive_noise_bounded(ctx, expr, 3);
+    let (scale, expr) =
+        strip_single_nonzero_constant_factor(ctx, expr).unwrap_or((BigRational::one(), expr));
+    if let Some((_denominator, required_conditions)) =
+        compact_nonzero_residual_passthrough_denominator_factor(
+            ctx,
+            expr,
+            3,
+            try_diff_integral_quadratic_exp_residual_direct_root_zero,
+        )
+    {
+        return Some(required_conditions);
+    }
+
+    if let Some((_denominator, required_conditions)) =
+        compact_nonzero_residual_passthrough_div_denominator(
+            ctx,
+            &scale,
+            expr,
+            3,
+            try_diff_integral_quadratic_exp_residual_direct_root_zero,
+        )
+    {
+        return Some(required_conditions);
+    }
+
+    compact_nonzero_residual_passthrough_product_denominator(
+        ctx,
+        scale,
+        expr,
+        3,
+        try_diff_integral_quadratic_exp_residual_direct_root_zero,
+    )
+    .map(|(_denominator, required_conditions)| required_conditions)
+}
+
+fn try_diff_integral_residual_constant_passthrough_quotient(
+    ctx: &mut Context,
+    expr: ExprId,
+    depth: u8,
+    direct_root_zero: IntegralResidualRootMatcher,
+) -> IntegralResidualRootResult {
+    try_diff_integral_residual_constant_passthrough_quotient_with_nested_depth(
+        ctx,
+        expr,
+        depth,
+        1,
+        direct_root_zero,
+    )
+}
+
+fn try_diff_integral_residual_constant_passthrough_quotient_with_nested_depth(
+    ctx: &mut Context,
+    expr: ExprId,
+    depth: u8,
+    nested_quotient_depth: u8,
+    direct_root_zero: IntegralResidualRootMatcher,
+) -> IntegralResidualRootResult {
+    let expr = strip_exact_zero_additive_noise_bounded(ctx, expr, 3);
+    let (scale, quotient_expr) =
+        strip_single_nonzero_constant_factor(ctx, expr).unwrap_or((BigRational::one(), expr));
+    let quotient_expr = strip_exact_zero_additive_noise_bounded(ctx, quotient_expr, 3);
+    let Expr::Div(numerator, denominator) = ctx.get(quotient_expr).clone() else {
+        return None;
+    };
+    if cas_math::numeric_eval::as_rational_const(ctx, denominator)
+        .is_some_and(|value| value.is_zero())
+    {
+        return None;
+    }
+
+    if nested_quotient_depth > 0 {
+        if let Some((inner_result, mut required_conditions)) =
+            try_diff_integral_residual_constant_passthrough_quotient_with_nested_depth(
+                ctx,
+                numerator,
+                depth,
+                nested_quotient_depth - 1,
+                direct_root_zero,
+            )
+        {
+            let (denominator, denominator_conditions, compacted_denominator) =
+                match compact_nonzero_residual_passthrough_denominator(
+                    ctx,
+                    denominator,
+                    depth,
+                    direct_root_zero,
+                ) {
+                    Some((denominator, required_conditions)) => {
+                        (denominator, required_conditions, true)
+                    }
+                    None => (denominator, Vec::new(), false),
+                };
+            required_conditions.extend(denominator_conditions);
+            if !compacted_denominator
+                && cas_math::numeric_eval::as_rational_const(ctx, denominator).is_none()
+            {
+                required_conditions.push(crate::ImplicitCondition::NonZero(denominator));
+            }
+            let result = multiply_quotient_denominator(ctx, inner_result, denominator, &scale)?;
+            return Some((result, required_conditions));
+        }
+    }
+
+    let (numerator_scale, numerator) = strip_single_nonzero_constant_factor(ctx, numerator)
+        .unwrap_or((BigRational::one(), numerator));
+    let passthrough = strip_constant_passthrough(ctx, numerator)?;
+    let (_zero, mut required_conditions) = try_diff_integral_residual_wrapped_root_zero(
+        ctx,
+        passthrough.core,
+        depth,
+        direct_root_zero,
+    )?;
+    let (denominator, denominator_conditions, compacted_denominator) =
+        match compact_nonzero_residual_passthrough_denominator(
+            ctx,
+            denominator,
+            depth,
+            direct_root_zero,
+        ) {
+            Some((denominator, required_conditions)) => (denominator, required_conditions, true),
+            None => (denominator, Vec::new(), false),
+        };
+    required_conditions.extend(denominator_conditions);
+    if !compacted_denominator
+        && cas_math::numeric_eval::as_rational_const(ctx, denominator).is_none()
+    {
+        required_conditions.push(crate::ImplicitCondition::NonZero(denominator));
+    }
+
+    let result_constant = passthrough.constant * numerator_scale * scale;
+    let result = if result_constant.is_zero() {
+        ctx.num(0)
+    } else if let Some(denominator_constant) =
+        cas_math::numeric_eval::as_rational_const(ctx, denominator)
+    {
+        if denominator_constant.is_zero() {
+            return None;
+        }
+        rational_expr(ctx, &(result_constant / denominator_constant))
+    } else if is_one_constant(ctx, denominator) {
+        rational_expr(ctx, &result_constant)
+    } else {
+        let (result_constant, denominator) = if let Some(stripped_denominator) =
+            strip_negative_one_product_factor(ctx, denominator)
+        {
+            (-result_constant, stripped_denominator)
+        } else {
+            (result_constant, denominator)
+        };
+        if let Some(result) = constant_over_fraction_denominator(ctx, &result_constant, denominator)
+        {
+            return Some((result, required_conditions));
+        }
+        let constant = rational_expr(ctx, &result_constant);
+        ctx.add(Expr::Div(constant, denominator))
+    };
+    Some((result, required_conditions))
+}
+
+fn constant_over_fraction_denominator(
+    ctx: &mut Context,
+    constant: &BigRational,
+    denominator: ExprId,
+) -> Option<ExprId> {
+    let Expr::Div(denominator_num, denominator_den) = ctx.get(denominator).clone() else {
+        return None;
+    };
+    let denominator_num = cas_math::numeric_eval::as_rational_const(ctx, denominator_num)?;
+    if denominator_num.is_zero() {
+        return None;
+    }
+    let result_scale = constant / denominator_num;
+    if let Some(denominator_den) = cas_math::numeric_eval::as_rational_const(ctx, denominator_den) {
+        return Some(rational_expr(ctx, &(result_scale * denominator_den)));
+    }
+    if result_scale.is_one() {
+        return Some(denominator_den);
+    }
+    let scale = rational_expr(ctx, &result_scale);
+    Some(cas_math::expr_nary::build_balanced_mul(
+        ctx,
+        &[scale, denominator_den],
+    ))
+}
+
+fn strip_negative_one_product_factor(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Mul(_, _) = ctx.get(expr) else {
+        return None;
+    };
+
+    let factors = cas_math::expr_nary::mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let negative_one = -BigRational::one();
+    let mut removed_negative_one = false;
+    let mut remaining = Vec::with_capacity(factors.len() - 1);
+    for factor in factors {
+        if !removed_negative_one
+            && cas_math::numeric_eval::as_rational_const(ctx, factor)
+                .is_some_and(|value| value == negative_one)
+        {
+            removed_negative_one = true;
+            continue;
+        }
+        remaining.push(factor);
+    }
+
+    removed_negative_one.then(|| cas_math::expr_nary::build_balanced_mul(ctx, &remaining))
+}
+
+fn multiply_quotient_denominator(
+    ctx: &mut Context,
+    quotient: ExprId,
+    denominator: ExprId,
+    scale: &BigRational,
+) -> Option<ExprId> {
+    let Expr::Div(numerator, inner_denominator) = ctx.get(quotient).clone() else {
+        return None;
+    };
+    if scale.is_zero() {
+        return None;
+    }
+    if is_one_constant(ctx, denominator) {
+        return if scale.is_one() {
+            Some(quotient)
+        } else {
+            let scale_expr = rational_expr(ctx, scale);
+            Some(ctx.add(Expr::Mul(scale_expr, quotient)))
+        };
+    }
+    let numerator = if scale.is_one() {
+        numerator
+    } else {
+        let scale_expr = rational_expr(ctx, scale);
+        ctx.add(Expr::Mul(scale_expr, numerator))
+    };
+    let combined_denominator =
+        cas_math::expr_nary::build_balanced_mul(ctx, &[inner_denominator, denominator]);
+    Some(ctx.add(Expr::Div(numerator, combined_denominator)))
+}
+
+fn strip_single_nonzero_constant_factor(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, ExprId)> {
+    let Expr::Mul(_, _) = ctx.get(expr) else {
+        return None;
+    };
+
+    let mut scale = BigRational::one();
+    let mut non_constant = None;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(factor_scale) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+            scale *= factor_scale;
+            continue;
+        }
+        if non_constant.replace(factor).is_some() {
+            return None;
+        }
+    }
+
+    (!scale.is_zero()).then_some((scale, non_constant?))
+}
+
 pub(crate) fn try_diff_integral_plain_trig_residual_root_zero(
     ctx: &mut Context,
     expr: ExprId,
@@ -3701,6 +4592,65 @@ fn try_diff_integral_plain_trig_residual_direct_root_zero(
     };
     try_diff_integral_plain_trig_residual_zero_preorder(ctx, left, right)
         .or_else(|| try_diff_integral_plain_trig_residual_zero_preorder(ctx, right, left))
+}
+
+pub(crate) fn try_diff_integral_plain_trig_residual_constant_passthrough_quotient(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_constant_passthrough_quotient(
+        ctx,
+        expr,
+        2,
+        try_diff_integral_plain_trig_residual_direct_root_zero,
+    )
+}
+
+pub(crate) fn try_diff_integral_inverse_trig_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_wrapped_root_zero(
+        ctx,
+        expr,
+        3,
+        try_diff_integral_inverse_trig_residual_direct_root_zero,
+    )
+}
+
+fn try_diff_integral_inverse_trig_residual_direct_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        _ => return None,
+    };
+    try_diff_integral_inverse_trig_residual_zero_preorder(ctx, left, right)
+        .or_else(|| try_diff_integral_inverse_trig_residual_zero_preorder(ctx, right, left))
+}
+
+pub(crate) fn try_diff_integral_inverse_trig_residual_constant_passthrough_quotient(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_constant_passthrough_quotient(
+        ctx,
+        expr,
+        2,
+        try_diff_integral_inverse_trig_residual_direct_root_zero,
+    )
+}
+
+fn try_diff_integral_inverse_trig_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    let required_conditions =
+        integrated_polynomial_arctan_affine_diff_matches(ctx, diff_expr, divisor, right)?;
+    Some((ctx.num(0), required_conditions))
 }
 
 #[cfg(test)]
@@ -3849,6 +4799,52 @@ mod tests {
             .map(|(result, _required_conditions)| render(&ctx, result))
     }
 
+    fn integral_inverse_trig_root_residual_result(input: &str) -> Option<String> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_integral_inverse_trig_residual_root_zero(&mut ctx, expr)
+            .map(|(result, _required_conditions)| render(&ctx, result))
+    }
+
+    fn integral_plain_trig_passthrough_quotient_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_integral_plain_trig_residual_constant_passthrough_quotient(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
+    fn integral_inverse_trig_passthrough_quotient_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_integral_inverse_trig_residual_constant_passthrough_quotient(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
     fn integral_quadratic_exp_root_residual_result(input: &str) -> Option<String> {
         let mut ctx = Context::new();
         let expr = parse(input, &mut ctx)
@@ -3863,6 +4859,205 @@ mod tests {
             .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
         try_diff_integral_hyperbolic_residual_root_zero(&mut ctx, expr)
             .map(|(result, _required_conditions)| render(&ctx, result))
+    }
+
+    fn integral_hyperbolic_passthrough_quotient_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_integral_hyperbolic_residual_constant_passthrough_quotient(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
+    fn integral_rational_root_residual_result(input: &str) -> Option<String> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_integral_rational_quadratic_residual_root_zero(&mut ctx, expr)
+            .map(|(result, _required_conditions)| render(&ctx, result))
+    }
+
+    fn integral_rational_passthrough_quotient_result(input: &str) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_integral_rational_quadratic_residual_constant_passthrough_quotient(&mut ctx, expr)
+            .map(|(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            })
+    }
+
+    fn explicit_positive_quadratic_cube_antiderivative_residual_result(
+        input: &str,
+    ) -> Option<String> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_explicit_positive_quadratic_cube_antiderivative_residual_root_zero(&mut ctx, expr)
+            .map(|(result, _required_conditions)| render(&ctx, result))
+    }
+
+    fn explicit_positive_quadratic_square_antiderivative_residual_result(
+        input: &str,
+    ) -> Option<String> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_explicit_positive_quadratic_square_antiderivative_residual_root_zero(&mut ctx, expr)
+            .map(|(result, _required_conditions)| render(&ctx, result))
+    }
+
+    fn explicit_positive_quadratic_cube_passthrough_quotient_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_explicit_positive_quadratic_cube_antiderivative_residual_constant_passthrough_quotient(
+            &mut ctx, expr,
+        )
+        .map(|(result, required_conditions)| {
+            (
+                render(&ctx, result),
+                required_conditions
+                    .into_iter()
+                    .map(|condition| condition.display(&ctx))
+                    .collect(),
+            )
+        })
+    }
+
+    fn explicit_positive_quadratic_square_passthrough_quotient_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_explicit_positive_quadratic_square_antiderivative_residual_constant_passthrough_quotient(
+            &mut ctx, expr,
+        )
+        .map(|(result, required_conditions)| {
+            (
+                render(&ctx, result),
+                required_conditions
+                    .into_iter()
+                    .map(|condition| condition.display(&ctx))
+                    .collect(),
+            )
+        })
+    }
+
+    #[test]
+    fn explicit_positive_quadratic_cube_antiderivative_residual_cancels_scaled_affine_quartic() {
+        assert_eq!(
+            explicit_positive_quadratic_cube_antiderivative_residual_result(
+                "diff(3/16*arctan(2*x+1)+(6*x^3+9*x^2+7*x+2)/(4*(4*x^2+4*x+2)^2)+(-2*x-1)/(2*(4*x^2+4*x+2)),x)-(2*x+1)^4/(((2*x+1)^2+1)^3)"
+            ),
+            Some("0".to_string())
+        );
+    }
+
+    #[test]
+    fn explicit_positive_quadratic_square_antiderivative_residual_cancels_quotient_wrapper() {
+        let residual = "diff(1/2*arctan(x)+x/(2*(x^2+1)),x)-1/(x^2+1)^2";
+        let quotient = format!("({residual})/(x+1)");
+        let mut ctx = Context::new();
+        let expr = parse(&quotient, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {quotient}: {err:?}"));
+        let Some((result, required_conditions)) =
+            try_explicit_positive_quadratic_square_antiderivative_residual_root_zero(
+                &mut ctx, expr,
+            )
+        else {
+            panic!("wrapped quotient residual should cancel");
+        };
+        assert_eq!(render(&ctx, result), "0");
+        assert_eq!(required_conditions.len(), 1);
+        let crate::ImplicitCondition::NonZero(required_denominator) = required_conditions[0] else {
+            panic!("expected wrapped quotient to add only a nonzero denominator condition");
+        };
+        assert_eq!(render(&ctx, required_denominator), "x + 1");
+        assert_eq!(simplify_text(&quotient), "0");
+
+        assert_eq!(
+            explicit_positive_quadratic_square_antiderivative_residual_result(residual),
+            Some("0".to_string())
+        );
+    }
+
+    #[test]
+    fn explicit_positive_quadratic_square_antiderivative_residual_compacts_passthrough_quotient() {
+        let residual = "diff(1/2*arctan(x)+x/(2*(x^2+1)),x)-1/(x^2+1)^2";
+        let input = format!("(({residual}) + 1)/(x+2)");
+        assert_eq!(
+            explicit_positive_quadratic_square_passthrough_quotient_result(&input),
+            Some(("1 / (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+        );
+        assert_eq!(simplify_text(&input), "1 / (x + 2)");
+    }
+
+    #[test]
+    fn explicit_positive_quadratic_cube_antiderivative_residual_cancels_wrappers() {
+        let residual = "diff(3/16*arctan(2*x+1)+(6*x^3+9*x^2+7*x+2)/(4*(4*x^2+4*x+2)^2)+(-2*x-1)/(2*(4*x^2+4*x+2)),x)-(2*x+1)^4/(((2*x+1)^2+1)^3)";
+        let cases = [
+            format!("0 - ({residual})"),
+            format!("({residual}) + 0"),
+            format!("2*({residual})"),
+        ];
+
+        for input in cases {
+            assert_eq!(
+                explicit_positive_quadratic_cube_antiderivative_residual_result(&input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(&input), "0", "{input}");
+        }
+
+        let quotient = format!("({residual})/(x+1)");
+        let mut ctx = Context::new();
+        let expr = parse(&quotient, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {quotient}: {err:?}"));
+        let Some((result, required_conditions)) =
+            try_explicit_positive_quadratic_cube_antiderivative_residual_root_zero(&mut ctx, expr)
+        else {
+            panic!("wrapped quotient residual should cancel");
+        };
+        assert_eq!(render(&ctx, result), "0");
+        assert_eq!(required_conditions.len(), 1);
+        let crate::ImplicitCondition::NonZero(required_denominator) = required_conditions[0] else {
+            panic!("expected wrapped quotient to add only a nonzero denominator condition");
+        };
+        assert_eq!(render(&ctx, required_denominator), "x + 1");
+        assert_eq!(simplify_text(&quotient), "0");
+    }
+
+    #[test]
+    fn explicit_positive_quadratic_cube_antiderivative_residual_compacts_passthrough_quotient() {
+        let residual = "diff(3/8*arctan(x)+(3*x^3+5*x)/(8*(x^2+1)^2),x)-1/(x^2+1)^3";
+        let input = format!("(1 - ({residual}))/(x+2)");
+        assert_eq!(
+            explicit_positive_quadratic_cube_passthrough_quotient_result(&input),
+            Some(("1 / (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+        );
+        assert_eq!(simplify_text(&input), "1 / (x + 2)");
     }
 
     fn diff_arctan_sqrt_positive_quotient_shifted_one_result(
@@ -4166,6 +5361,7 @@ mod tests {
             "diff(integrate((2*x+3)*cos(2*x+1), x), x) - (2*x+3)*cos(2*x+1)",
             "diff(integrate((x^3+x)*sin(2*x+1), x), x) - (x^3+x)*sin(2*x+1)",
             "diff(integrate((x^3+x)*cos(2*x+1), x), x) - (x^3+x)*cos(2*x+1)",
+            "diff(integrate((x^5+x^2)*sin(2*x+1), x), x) - (x^5+x^2)*sin(2*x+1)",
         ];
 
         for input in cases {
@@ -4206,6 +5402,72 @@ mod tests {
     }
 
     #[test]
+    fn diff_integral_plain_trig_residual_compacts_constant_passthrough_quotient() {
+        let residual = "diff(integrate((x^5+x^2)*sin(2*x+1), x), x) - (x^5+x^2)*sin(2*x+1)";
+        let input = format!("(({residual}) + 1)/(x+2)");
+        assert_eq!(
+            integral_plain_trig_passthrough_quotient_result(&input),
+            Some(("1 / (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+        );
+        assert_eq!(simplify_text(&input), "1 / (x + 2)");
+    }
+
+    #[test]
+    fn diff_integral_inverse_trig_residual_root_verifies_polynomial_arctan_by_parts() {
+        let cases = [
+            "diff(integrate(x*arctan(x), x), x) - x*arctan(x)",
+            "diff(integrate(x^6*arctan(x), x), x) - x^6*arctan(x)",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_inverse_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+
+        assert_eq!(
+            integral_inverse_trig_root_residual_result(
+                "diff(integrate(x^6*arctan(x), y), y) - x^6*arctan(x)"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn diff_integral_inverse_trig_residual_root_cancels_polynomial_arctan_wrappers() {
+        let residual = "diff(integrate(x^6*arctan(x), x), x) - x^6*arctan(x)";
+        let cases = [
+            format!("({residual}) + 0"),
+            format!("0 - ({residual})"),
+            format!("2*({residual})"),
+            format!("({residual})/(x+1)"),
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_inverse_trig_root_residual_result(&input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(&input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_inverse_trig_residual_compacts_constant_passthrough_quotient() {
+        let residual = "diff(integrate(x^6*arctan(x), x), x) - x^6*arctan(x)";
+        let input = format!("(({residual}) + 1)/(x+2)");
+        assert_eq!(
+            integral_inverse_trig_passthrough_quotient_result(&input),
+            Some(("1 / (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+        );
+        assert_eq!(simplify_text(&input), "1 / (x + 2)");
+    }
+
+    #[test]
     fn diff_integral_quadratic_exp_residual_root_cancels_supported_target() {
         let input = "diff(integrate((x^2+x+1)*exp(2*x+1), x), x) - (x^2+x+1)*exp(2*x+1)";
         assert_eq!(
@@ -4213,6 +5475,13 @@ mod tests {
             Some("0".to_string())
         );
         assert_eq!(simplify_text(input), "0");
+
+        let quartic_input = "diff(integrate(x^4*exp(2*x+1), x), x) - x^4*exp(2*x+1)";
+        assert_eq!(
+            integral_quadratic_exp_root_residual_result(quartic_input),
+            Some("0".to_string())
+        );
+        assert_eq!(simplify_text(quartic_input), "0");
 
         assert_eq!(
             integral_quadratic_exp_root_residual_result(
@@ -4231,12 +5500,243 @@ mod tests {
         );
         assert_eq!(simplify_text(input), "0");
 
+        let high_degree_input =
+            "diff(integrate((x^5+x^2)*sinh(2*x+1), x), x) - (x^5+x^2)*sinh(2*x+1)";
+        assert_eq!(
+            integral_hyperbolic_root_residual_result(high_degree_input),
+            Some("0".to_string())
+        );
+        assert_eq!(simplify_text(high_degree_input), "0");
+
         assert_eq!(
             integral_hyperbolic_root_residual_result(
                 "diff(integrate((x^2+x)*sinh(2*x+1), y), y) - (x^2+x)*sinh(2*x+1)"
             ),
             None
         );
+    }
+
+    #[test]
+    fn diff_integral_hyperbolic_residual_compacts_constant_passthrough_quotient() {
+        let residual = "diff(integrate(x^5*sinh(2*x+1), x), x) - x^5*sinh(2*x+1)";
+        for input in [
+            format!("(({residual}) + 1)/(x+2)"),
+            format!("(1 - ({residual}))/(x+2)"),
+            format!("2*((({residual}) + 1)/(x+2))"),
+            format!("((1 - ({residual}))/(x+2))*2"),
+            format!("((({residual}) + 1)/(x+2))/(x+3)"),
+            format!("(({residual}) - 1)/(x+2)"),
+            format!("((({residual}) + 1)/(x+2)) + (x-x)"),
+            format!("((((({residual}) + 1)/(x+2)) + (x-x)) + (y-y))"),
+            format!("(((((({residual}) + 1)/(x+2)) + (x-x)) + (y-y)) + (z-z))"),
+            format!("(((((({residual}) + 1)/(x+2)) + (x-x)) + (y-y)) + (z-z))*1"),
+        ] {
+            let (expected, required_conditions) = if input.contains("x+3") {
+                (
+                    "1 / ((x + 2) * (x + 3))",
+                    vec!["x + 2 ≠ 0".to_string(), "x + 3 ≠ 0".to_string()],
+                )
+            } else if input.contains("*2") || input.starts_with("2*") {
+                ("2 / (x + 2)", vec!["x + 2 ≠ 0".to_string()])
+            } else if input.contains("- 1") {
+                ("-1 / (x + 2)", vec!["x + 2 ≠ 0".to_string()])
+            } else {
+                ("1 / (x + 2)", vec!["x + 2 ≠ 0".to_string()])
+            };
+            assert_eq!(
+                integral_hyperbolic_passthrough_quotient_result(&input),
+                Some((expected.to_string(), required_conditions)),
+                "{input}"
+            );
+            assert_eq!(simplify_text(&input), expected, "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_hyperbolic_residual_rejects_deeper_passthrough_quotient_shortcut() {
+        let residual = "diff(integrate(x^5*sinh(2*x+1), x), x) - x^5*sinh(2*x+1)";
+        let input = format!("((((({residual}) + 1)/(x+2))/(x+3))/(x+4))");
+        assert_eq!(
+            integral_hyperbolic_passthrough_quotient_result(&input),
+            None
+        );
+    }
+
+    #[test]
+    fn diff_integral_residual_compacts_shifted_residual_denominator() {
+        let numerator = "diff(integrate(x^5*sinh(2*x+1), x), x) - x^5*sinh(2*x+1)";
+        let denominator = "diff(integrate(x^4*cosh(2*x+1), x), x) - x^4*cosh(2*x+1)";
+        let input = format!("(({numerator}) + 1)/(({denominator}) + 1)");
+
+        assert_eq!(
+            integral_hyperbolic_passthrough_quotient_result(&input),
+            Some(("1".to_string(), vec![]))
+        );
+        assert_eq!(simplify_text(&input), "1");
+    }
+
+    #[test]
+    fn diff_integral_residual_compacts_negative_shifted_residual_denominator() {
+        let numerator = "diff(integrate(x^5*sinh(2*x+1), x), x) - x^5*sinh(2*x+1)";
+        let denominator = "diff(integrate(x^4*cosh(2*x+1), x), x) - x^4*cosh(2*x+1)";
+        let input = format!("(({numerator}) + 1)/(({denominator}) - 1)");
+
+        assert_eq!(
+            integral_hyperbolic_passthrough_quotient_result(&input),
+            Some(("-1".to_string(), vec![]))
+        );
+        assert_eq!(simplify_text(&input), "-1");
+    }
+
+    #[test]
+    fn diff_integral_residual_compacts_scaled_shifted_residual_denominator() {
+        let numerator = "diff(integrate(x^5*sinh(2*x+1), x), x) - x^5*sinh(2*x+1)";
+        let denominator = "diff(integrate(x^4*cosh(2*x+1), x), x) - x^4*cosh(2*x+1)";
+        let input = format!("(({numerator}) + 1)/(2*(({denominator}) + 1))");
+
+        assert_eq!(
+            integral_hyperbolic_passthrough_quotient_result(&input),
+            Some(("1/2".to_string(), vec![]))
+        );
+        assert_eq!(simplify_text(&input), "1/2");
+    }
+
+    #[test]
+    fn diff_integral_residual_compacts_scaled_numerator_and_denominator() {
+        let numerator = "diff(integrate(x^5*sinh(2*x+1), x), x) - x^5*sinh(2*x+1)";
+        let denominator = "diff(integrate(x^4*cosh(2*x+1), x), x) - x^4*cosh(2*x+1)";
+        let input = format!("3*(({numerator}) + 1)/(2*(({denominator}) + 1))");
+
+        assert_eq!(
+            integral_hyperbolic_passthrough_quotient_result(&input),
+            Some(("3/2".to_string(), vec![]))
+        );
+        assert_eq!(simplify_text(&input), "3/2");
+    }
+
+    #[test]
+    fn diff_integral_residual_compacts_product_denominator_residual_factor() {
+        let numerator = "diff(integrate(x^5*sinh(2*x+1), x), x) - x^5*sinh(2*x+1)";
+        let denominator = "diff(integrate(x^4*cosh(2*x+1), x), x) - x^4*cosh(2*x+1)";
+        let input = format!("3*(({numerator}) + 1)/((({denominator}) + 1)*(x+2))");
+
+        assert_eq!(
+            integral_hyperbolic_passthrough_quotient_result(&input),
+            Some(("3 / (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+        );
+        assert_eq!(simplify_text(&input), "3 / (x + 2)");
+    }
+
+    #[test]
+    fn diff_integral_residual_moves_negative_product_denominator_sign_to_numerator() {
+        let numerator = "diff(integrate(x^5*sinh(2*x+1), x), x) - x^5*sinh(2*x+1)";
+        let denominator = "diff(integrate(x^4*cosh(2*x+1), x), x) - x^4*cosh(2*x+1)";
+        let input = format!("3*(({numerator}) + 1)/((x+2)*(({denominator}) - 1)*(x+3))");
+
+        assert_eq!(
+            integral_hyperbolic_passthrough_quotient_result(&input),
+            Some((
+                "-3 / ((x + 2) * (x + 3))".to_string(),
+                vec!["x + 2 ≠ 0".to_string(), "x + 3 ≠ 0".to_string()]
+            ))
+        );
+        assert_eq!(simplify_text(&input), "-3 / ((x + 2) * (x + 3))");
+    }
+
+    #[test]
+    fn diff_integral_residual_compacts_fraction_denominator_residual_numerator() {
+        let numerator = "diff(integrate(x^5*sinh(2*x+1), x), x) - x^5*sinh(2*x+1)";
+        let denominator = "diff(integrate(x^4*cosh(2*x+1), x), x) - x^4*cosh(2*x+1)";
+        let input = format!("3*(({numerator}) + 1)/((({denominator}) - 1)/(x+2))");
+
+        assert_eq!(
+            integral_hyperbolic_passthrough_quotient_result(&input),
+            Some(("-3 * (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+        );
+        assert_eq!(simplify_text(&input), "-3 * (x + 2)");
+    }
+
+    #[test]
+    fn shifted_integral_residual_condition_filter_handles_product_denominator_factor() {
+        let mut ctx = Context::new();
+        let input = "(diff(integrate(x^4*cosh(2*x+1), x), x) - x^4*cosh(2*x+1) + 1)*(x+2)";
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        let conditions =
+            shifted_integral_residual_passthrough_nonzero_required_conditions(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("expected product denominator condition to compact"));
+        let rendered: Vec<String> = conditions
+            .into_iter()
+            .map(|condition| condition.display(&ctx).to_string())
+            .collect();
+
+        assert_eq!(rendered, vec!["x + 2 ≠ 0"]);
+    }
+
+    #[test]
+    fn shifted_integral_residual_condition_filter_handles_fraction_denominator_numerator() {
+        let mut ctx = Context::new();
+        let input = "(diff(integrate(x^4*cosh(2*x+1), x), x) - x^4*cosh(2*x+1) - 1)/(x+2)";
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        let conditions =
+            shifted_integral_residual_passthrough_nonzero_required_conditions(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("expected fractional denominator condition to compact"));
+        let rendered: Vec<String> = conditions
+            .into_iter()
+            .map(|condition| condition.display(&ctx).to_string())
+            .collect();
+
+        assert_eq!(rendered, vec!["x + 2 ≠ 0"]);
+    }
+
+    #[test]
+    fn diff_integral_rational_residual_root_cancels_shifted_quadratic_repeated_pole() {
+        let input = "diff(integrate(1/((x+1)^3*(x^2+2*x+2)), x), x) - 1/((x+1)^3*(x^2+2*x+2))";
+        assert_eq!(
+            integral_rational_root_residual_result(input),
+            Some("0".to_string())
+        );
+        assert_eq!(simplify_text(input), "0");
+
+        assert_eq!(
+            integral_rational_root_residual_result(
+                "diff(integrate(1/((x+1)^3*(x^2+2*x+2)), y), y) - 1/((x+1)^3*(x^2+2*x+2))"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn diff_integral_rational_residual_compacts_constant_passthrough_quotient() {
+        let residual = "diff(integrate(1/((x+1)^3*(x^2+2*x+2)), x), x) - 1/((x+1)^3*(x^2+2*x+2))";
+        for input in [
+            format!("(({residual}) + 1)/(x+2)"),
+            format!("(1 - ({residual}))/(x+2)"),
+        ] {
+            assert_eq!(
+                integral_rational_passthrough_quotient_result(&input),
+                Some((
+                    "1 / (x + 2)".to_string(),
+                    vec!["x + 1 ≠ 0".to_string(), "x + 2 ≠ 0".to_string()]
+                )),
+                "{input}"
+            );
+            assert_eq!(simplify_text(&input), "1 / (x + 2)", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_rational_residual_compacts_cross_family_shifted_denominator() {
+        let numerator = "diff(integrate(1/((x+1)^3*(x^2+2*x+2)), x), x) - 1/((x+1)^3*(x^2+2*x+2))";
+        let denominator = "diff(integrate(1/(x^2+1), x), x) - 1/(x^2+1)";
+        let input = format!("(({numerator}) + 1)/(({denominator}) + 1)");
+
+        assert_eq!(
+            integral_rational_passthrough_quotient_result(&input),
+            Some(("1".to_string(), vec!["x + 1 ≠ 0".to_string()]))
+        );
+        assert_eq!(simplify_text(&input), "1");
     }
 
     #[test]
