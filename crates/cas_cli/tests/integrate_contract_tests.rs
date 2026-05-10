@@ -517,6 +517,71 @@ fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_f
 }
 
 #[test]
+fn integrate_contract_negative_by_parts_primitives_keep_compact_public_form() {
+    let cases = [
+        (
+            "integrate(-x*exp(x), x)",
+            "e^x·(1 - x)",
+            "{e}^{x}\\cdot (1 - x)",
+            "diff(integrate(-x*exp(x), x), x) + x*exp(x)",
+        ),
+        (
+            "integrate(-x^2*sin(x), x)",
+            "-2·x·sin(x) + (x^2 - 2)·cos(x)",
+            "-2\\cdot x\\cdot \\sin(x) + ({x}^{2} - 2)\\cdot \\cos(x)",
+            "diff(integrate(-x^2*sin(x), x), x) + x^2*sin(x)",
+        ),
+    ];
+
+    for (input, expected_result, expected_latex, residual) in cases {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(
+            stderr.is_empty(),
+            "unexpected stderr for negative by-parts primitive: {stderr}"
+        );
+        assert_eq!(wire["result"], expected_result);
+        assert_eq!(wire["result_latex"], expected_latex);
+        assert_eq!(wire["required_display"], serde_json::json!([]));
+
+        let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+        assert!(
+            residual_stderr.is_empty(),
+            "unexpected stderr for negative by-parts residual: {residual_stderr}"
+        );
+        assert_eq!(residual_wire["result"], "0");
+        assert_eq!(residual_wire["required_display"], serde_json::json!([]));
+    }
+}
+
+#[test]
+fn integrate_contract_negative_affine_trig_by_parts_keeps_compact_public_form() {
+    let input = "integrate(-(2*x+3)*sin(2*x+1), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for negative affine trig by-parts primitive: {stderr}"
+    );
+    assert_eq!(
+        wire["result"],
+        "1/2·(cos(2·x + 1)·(2·x + 3) - sin(2·x + 1))"
+    );
+    assert_eq!(
+        wire["result_latex"],
+        "\\frac{\\cos(2\\cdot x + 1)\\cdot (2\\cdot x + 3) - \\sin(2\\cdot x + 1)}{2}"
+    );
+    assert_eq!(wire["required_display"], serde_json::json!([]));
+
+    let residual = "diff(integrate(-(2*x+3)*sin(2*x+1), x), x) + (2*x+3)*sin(2*x+1)";
+    let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+    assert!(
+        residual_stderr.is_empty(),
+        "unexpected stderr for negative affine trig by-parts residual: {residual_stderr}"
+    );
+    assert_eq!(residual_wire["result"], "0");
+    assert_eq!(residual_wire["required_display"], serde_json::json!([]));
+}
+
+#[test]
 fn integrate_contract_quadratic_trig_by_parts_presents_without_blocked_hint() {
     let (sin_result, sin_required, sin_blocked) =
         evaluated_expr_with_required_conditions_and_blocked_count("integrate(x^2*sin(x), x)");
@@ -1572,7 +1637,7 @@ fn integrate_contract_linear_times_trig_linear_by_parts() {
         evaluated_integral_with_required_conditions("integrate((x+1)*sin((3*x+2)/2), x)");
     assert_eq!(
         result,
-        "4/9 * sin((3 * x + 2) / 2) - 2/3 * cos((3 * x + 2) / 2) * (x + 1)"
+        "4/9 * sin((3 * x + 2) / 2) - 2/3 * (x + 1) * cos((3 * x + 2) / 2)"
     );
     assert!(
         required.is_empty(),
@@ -1583,7 +1648,7 @@ fn integrate_contract_linear_times_trig_linear_by_parts() {
         evaluated_integral_with_required_conditions("integrate((x+1)*cos((3*x+2)/2), x)");
     assert_eq!(
         result,
-        "4/9 * cos((3 * x + 2) / 2) + 2/3 * sin((3 * x + 2) / 2) * (x + 1)"
+        "4/9 * cos((3 * x + 2) / 2) + 2/3 * (x + 1) * sin((3 * x + 2) / 2)"
     );
     assert!(
         required.is_empty(),
@@ -1594,7 +1659,7 @@ fn integrate_contract_linear_times_trig_linear_by_parts() {
         evaluated_integral_with_required_conditions("integrate((x+1)*sin((2-3*x)/2), x)");
     assert_eq!(
         result,
-        "4/9 * sin((2 - 3 * x) / 2) + 2/3 * cos((2 - 3 * x) / 2) * (x + 1)"
+        "4/9 * sin((2 - 3 * x) / 2) + 2/3 * (x + 1) * cos((2 - 3 * x) / 2)"
     );
     assert!(
         required.is_empty(),
@@ -1605,7 +1670,7 @@ fn integrate_contract_linear_times_trig_linear_by_parts() {
         evaluated_integral_with_required_conditions("integrate((x+1)*cos((2-3*x)/2), x)");
     assert_eq!(
         result,
-        "4/9 * cos((2 - 3 * x) / 2) - 2/3 * sin((2 - 3 * x) / 2) * (x + 1)"
+        "4/9 * cos((2 - 3 * x) / 2) - 2/3 * (x + 1) * sin((2 - 3 * x) / 2)"
     );
     assert!(
         required.is_empty(),
@@ -2181,6 +2246,45 @@ fn integrate_contract_polynomial_hyperbolic_sinh_reciprocal_derivative_substitut
         vec!["sinh(x^2) ≠ 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+}
+
+#[test]
+fn integrate_contract_negative_scaled_hyperbolic_reciprocal_primitives_keep_domain_signal() {
+    let cases = [
+        (
+            "integrate(-2*x*sinh(x^2)/cosh(x^2)^2, x)",
+            "1 / cosh(x^2)",
+            "\\frac{1}{\\cosh({x}^{2})}",
+            serde_json::json!([]),
+            "diff(integrate(-2*x*sinh(x^2)/cosh(x^2)^2, x), x) + 2*x*sinh(x^2)/cosh(x^2)^2",
+        ),
+        (
+            "integrate(-2*x*cosh(x^2)/sinh(x^2)^2, x)",
+            "1 / sinh(x^2)",
+            "\\frac{1}{\\sinh({x}^{2})}",
+            serde_json::json!(["sinh(x^2) ≠ 0"]),
+            "diff(integrate(-2*x*cosh(x^2)/sinh(x^2)^2, x), x) + 2*x*cosh(x^2)/sinh(x^2)^2",
+        ),
+    ];
+
+    for (input, expected_result, expected_latex, expected_required, residual) in cases {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(
+            stderr.is_empty(),
+            "unexpected stderr for negative scaled hyperbolic reciprocal primitive: {stderr}"
+        );
+        assert_eq!(wire["result"], expected_result);
+        assert_eq!(wire["result_latex"], expected_latex);
+        assert_eq!(wire["required_display"], expected_required);
+
+        let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+        assert!(
+            residual_stderr.is_empty(),
+            "unexpected stderr for negative scaled hyperbolic reciprocal residual: {residual_stderr}"
+        );
+        assert_eq!(residual_wire["result"], "0");
+        assert_eq!(residual_wire["required_display"], expected_required);
+    }
 }
 
 #[test]
@@ -4830,6 +4934,45 @@ fn integrate_contract_positive_quadratic_denominator_cube_preserves_compact_anti
 }
 
 #[test]
+fn integrate_contract_negative_derivative_over_denominator_cube_keeps_compact_domain_signal() {
+    let cases = [
+        (
+            "integrate(-2*x/(x^2+1)^3, x)",
+            "1 / (2·(x^2 + 1)^2)",
+            "\\frac{1}{2\\cdot {({x}^{2} + 1)}^{2}}",
+            serde_json::json!([]),
+            "diff(integrate(-2*x/(x^2+1)^3, x), x) + 2*x/(x^2+1)^3",
+        ),
+        (
+            "integrate(-(2*x+1)/(x^2+x-1)^3, x)",
+            "1 / (2·(x^2 + x - 1)^2)",
+            "\\frac{1}{2\\cdot {({x}^{2} + x - 1)}^{2}}",
+            serde_json::json!(["x^2 + x - 1 ≠ 0"]),
+            "diff(integrate(-(2*x+1)/(x^2+x-1)^3, x), x) + (2*x+1)/(x^2+x-1)^3",
+        ),
+    ];
+
+    for (input, expected_result, expected_latex, expected_required, residual) in cases {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(
+            stderr.is_empty(),
+            "unexpected stderr for negative rational denominator-power primitive: {stderr}"
+        );
+        assert_eq!(wire["result"], expected_result);
+        assert_eq!(wire["result_latex"], expected_latex);
+        assert_eq!(wire["required_display"], expected_required);
+
+        let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+        assert!(
+            residual_stderr.is_empty(),
+            "unexpected stderr for negative rational denominator-power residual: {residual_stderr}"
+        );
+        assert_eq!(residual_wire["result"], "0");
+        assert_eq!(residual_wire["required_display"], expected_required);
+    }
+}
+
+#[test]
 fn integrate_contract_scaled_polynomial_derivative_over_higher_denominator_power_preserves_compact_form_and_nonzero_domain(
 ) {
     let (result, required) =
@@ -6338,6 +6481,51 @@ fn integrate_contract_negative_scaled_cosecant_result_latex_keeps_sign_on_coeffi
         wire["result_latex"], "2\\cdot -\\csc(\\sqrt{3 - 2\\cdot x})",
         "negative sign should not remain inside the multiplicative factor"
     );
+}
+
+#[test]
+fn integrate_contract_negative_scaled_raw_reciprocal_trig_primitives_keep_sign_compact() {
+    let cases = [
+        (
+            "integrate(-4*x*sin(x^2)/cos(x^2)^2, x)",
+            "-2·sec(x^2)",
+            "-2\\cdot \\sec({x}^{2})",
+            "cos(x^2) ≠ 0",
+            "diff(integrate(-4*x*sin(x^2)/cos(x^2)^2, x), x) + 4*x*sin(x^2)/cos(x^2)^2",
+        ),
+        (
+            "integrate(-4*x*cos(x^2)/sin(x^2)^2, x)",
+            "2·csc(x^2)",
+            "2\\cdot \\csc({x}^{2})",
+            "sin(x^2) ≠ 0",
+            "diff(integrate(-4*x*cos(x^2)/sin(x^2)^2, x), x) + 4*x*cos(x^2)/sin(x^2)^2",
+        ),
+    ];
+
+    for (input, expected_result, expected_latex, expected_condition, residual) in cases {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(
+            stderr.is_empty(),
+            "unexpected stderr for negative scaled raw reciprocal trig primitive: {stderr}"
+        );
+        assert_eq!(wire["result"], expected_result);
+        assert_eq!(wire["result_latex"], expected_latex);
+        assert_eq!(
+            wire["required_display"],
+            serde_json::json!([expected_condition])
+        );
+
+        let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+        assert!(
+            residual_stderr.is_empty(),
+            "unexpected stderr for negative scaled raw reciprocal trig residual: {residual_stderr}"
+        );
+        assert_eq!(residual_wire["result"], "0");
+        assert_eq!(
+            residual_wire["required_display"],
+            serde_json::json!([expected_condition])
+        );
+    }
 }
 
 #[test]

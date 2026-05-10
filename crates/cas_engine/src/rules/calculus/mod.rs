@@ -7127,13 +7127,10 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
         call.target,
         &call.var_name,
     );
-    let preserve_compact_linear_trig_by_parts = crate::rule::steps_enabled()
-        && integrate_target_is_additive_affine_times_trig_additive_affine_arg(
-            ctx,
-            call.target,
-            &call.var_name,
-        )
-        && cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_trig_linear_target(
+    let preserve_compact_linear_trig_by_parts = (crate::rule::steps_enabled()
+        || target_has_top_level_negative_orientation(ctx, call.target))
+        &&
+        cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_trig_linear_target(
             ctx,
             call.target,
             &call.var_name,
@@ -7246,48 +7243,14 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
     )
 });
 
-fn integrate_target_is_additive_affine_times_trig_additive_affine_arg(
-    ctx: &Context,
-    target: ExprId,
-    var_name: &str,
-) -> bool {
-    let Expr::Mul(left, right) = ctx.get(target) else {
-        return false;
-    };
-
-    (expr_is_additive_affine_polynomial_in_var(ctx, *left, var_name)
-        && expr_is_direct_trig_with_additive_affine_arg(ctx, *right, var_name))
-        || (expr_is_additive_affine_polynomial_in_var(ctx, *right, var_name)
-            && expr_is_direct_trig_with_additive_affine_arg(ctx, *left, var_name))
-}
-
-fn expr_is_additive_affine_polynomial_in_var(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
-    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _)) {
-        return false;
+fn target_has_top_level_negative_orientation(ctx: &Context, target: ExprId) -> bool {
+    match ctx.get(target) {
+        Expr::Neg(_) => true,
+        Expr::Mul(left, right) => {
+            matches!(ctx.get(*left), Expr::Neg(_)) || matches!(ctx.get(*right), Expr::Neg(_))
+        }
+        _ => false,
     }
-    let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) else {
-        return false;
-    };
-    poly.degree() == 1
-}
-
-fn expr_is_direct_trig_with_additive_affine_arg(
-    ctx: &Context,
-    expr: ExprId,
-    var_name: &str,
-) -> bool {
-    let Expr::Function(fn_id, args) = ctx.get(expr) else {
-        return false;
-    };
-    if args.len() != 1
-        || !matches!(
-            ctx.builtin_of(*fn_id),
-            Some(BuiltinFn::Sin | BuiltinFn::Cos)
-        )
-    {
-        return false;
-    }
-    expr_is_additive_affine_polynomial_in_var(ctx, args[0], var_name)
 }
 
 fn expr_contains_direct_trig_with_affine_arg(ctx: &Context, expr: ExprId, var_name: &str) -> bool {

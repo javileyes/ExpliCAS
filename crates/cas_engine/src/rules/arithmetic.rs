@@ -515,6 +515,72 @@ fn expr_contains_any_builtin(
     false
 }
 
+fn is_direct_trig_or_hyperbolic_call(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    let expr = match ctx.get(expr) {
+        Expr::Neg(inner) => *inner,
+        _ => expr,
+    };
+    matches!(
+        ctx.get(expr),
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(
+                    ctx.builtin_of(*fn_id),
+                    Some(
+                        BuiltinFn::Sin
+                            | BuiltinFn::Cos
+                            | BuiltinFn::Sinh
+                            | BuiltinFn::Cosh
+                    )
+                )
+    )
+}
+
+fn term_has_variable_scaled_direct_trig_or_hyperbolic_factor(
+    ctx: &cas_ast::Context,
+    term: cas_ast::ExprId,
+) -> bool {
+    let factors = MulView::from_expr(ctx, term).factors;
+    if factors.len() < 2
+        || !factors
+            .iter()
+            .any(|factor| is_direct_trig_or_hyperbolic_call(ctx, *factor))
+    {
+        return false;
+    }
+
+    factors.iter().any(|factor| {
+        !is_direct_trig_or_hyperbolic_call(ctx, *factor)
+            && expr_contains_symbolic_atom_for_cancellation(ctx, *factor)
+    })
+}
+
+fn additive_has_variable_scaled_direct_trig_or_hyperbolic_term(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+    min_terms: usize,
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    (min_terms..=6).contains(&view.terms.len())
+        && view
+            .terms
+            .iter()
+            .any(|(term, _)| term_has_variable_scaled_direct_trig_or_hyperbolic_factor(ctx, *term))
+}
+
+fn product_has_variable_scaled_direct_trig_or_hyperbolic_additive_factor(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    MulView::from_expr(ctx, expr).factors.iter().any(|factor| {
+        let factor = cas_ast::hold::unwrap_hold(ctx, *factor);
+        matches!(
+            ctx.get(factor),
+            Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Neg(_)
+        ) && additive_has_variable_scaled_direct_trig_or_hyperbolic_term(ctx, factor, 2)
+    })
+}
+
 fn expr_contains_symbolic_atom_for_cancellation(
     ctx: &cas_ast::Context,
     root: cas_ast::ExprId,
@@ -15930,6 +15996,9 @@ fn try_build_exact_zero_product_factor_rewrite(
     if !allow {
         return None;
     }
+    if product_has_variable_scaled_direct_trig_or_hyperbolic_additive_factor(ctx, expr) {
+        return None;
+    }
 
     let (local_factor, child_rewrite) = try_find_exact_zero_additive_factor_in_product(ctx, expr)?;
     Some(build_exact_zero_product_factor_rewrite(
@@ -27032,8 +27101,14 @@ define_rule!(
                     BuiltinFn::Sec,
                     BuiltinFn::Csc,
                 ],
-            );
+        );
         if maybe_small_trig_direct_identity {
+            if additive_has_variable_scaled_direct_trig_or_hyperbolic_term(ctx, expr, 2)
+                && !maybe_trig_power_reduction_zero_candidate(ctx, expr)
+                && !maybe_trig_double_angle_cos_variant_zero_scope_candidate(ctx, expr)
+            {
+                return None;
+            }
             if let Some(rewrite) = try_build_exact_zero_identity_rewrite_direct(ctx, expr) {
                 return Some(rewrite);
             }

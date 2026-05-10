@@ -46,6 +46,10 @@ fn is_number(ctx: &Context, expr: ExprId, value: i64) -> bool {
 }
 
 fn scale_rational_term(ctx: &mut Context, scale: BigRational, term: ExprId) -> ExprId {
+    if let Expr::Neg(inner) = ctx.get(term).clone() {
+        return scale_rational_term(ctx, -scale, inner);
+    }
+
     if scale.is_one() {
         term
     } else if scale == BigRational::from_integer((-1).into()) {
@@ -1896,10 +1900,7 @@ fn scale_reciprocal_integration_result(
     }
 
     match ctx.get(expr).clone() {
-        Expr::Neg(inner) => {
-            let scaled_inner = scale_reciprocal_integration_result(ctx, scale, inner);
-            negate_integration_result(ctx, scaled_inner)
-        }
+        Expr::Neg(inner) => scale_reciprocal_integration_result(ctx, -scale, inner),
         Expr::Div(num, den) => {
             let numerator_scale = BigRational::from_integer(scale.numer().clone());
             let scaled_num = if is_number(ctx, num, 1) {
@@ -1938,6 +1939,9 @@ fn scale_reciprocal_integration_result_preserving_presentation(
     }
     if scale == -BigRational::one() {
         return negate_integration_result(ctx, expr);
+    }
+    if let Expr::Neg(inner) = ctx.get(expr).clone() {
+        return scale_reciprocal_integration_result_preserving_presentation(ctx, -scale, inner);
     }
 
     let numerator_scale = BigRational::from_integer(scale.numer().clone());
@@ -5704,7 +5708,7 @@ fn is_polynomial_times_linear_function_target<F>(
 where
     F: Fn(&Context, ExprId) -> Option<ExprId>,
 {
-    let factors = mul_leaves(ctx, expr);
+    let (outer_sign, factors) = signed_mul_leaves(ctx, expr);
     if factors.len() < 2 {
         return false;
     }
@@ -5739,6 +5743,10 @@ where
         } else {
             build_balanced_mul(ctx, &cofactor_factors)
         };
+        let cofactor = match outer_sign {
+            Sign::Pos => cofactor,
+            Sign::Neg => ctx.add(Expr::Neg(cofactor)),
+        };
         let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
             continue;
         };
@@ -5756,7 +5764,7 @@ pub fn integrate_symbolic_is_polynomial_times_trig_linear_target(
     var: &str,
 ) -> bool {
     is_polynomial_times_linear_function_target(ctx, expr, var, 2, 5, |ctx, factor| {
-        trig_like_factor(ctx, factor).map(|(_, arg)| arg)
+        signed_trig_like_factor(ctx, factor).map(|(_, arg, _, _)| arg)
     })
 }
 
@@ -5808,6 +5816,18 @@ fn trig_like_factor(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> 
     }
 }
 
+fn signed_trig_like_factor(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, ExprId, Sign, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => {
+            trig_like_factor(ctx, *inner).map(|(builtin, arg)| (builtin, arg, Sign::Neg, *inner))
+        }
+        _ => trig_like_factor(ctx, expr).map(|(builtin, arg)| (builtin, arg, Sign::Pos, expr)),
+    }
+}
+
 fn hyperbolic_like_factor(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
@@ -5819,6 +5839,19 @@ fn hyperbolic_like_factor(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, Exp
     match ctx.builtin_of(*fn_id) {
         Some(builtin @ (BuiltinFn::Sinh | BuiltinFn::Cosh)) => Some((builtin, args[0])),
         _ => None,
+    }
+}
+
+fn signed_hyperbolic_like_factor(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, ExprId, Sign, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => hyperbolic_like_factor(ctx, *inner)
+            .map(|(builtin, arg)| (builtin, arg, Sign::Neg, *inner)),
+        _ => {
+            hyperbolic_like_factor(ctx, expr).map(|(builtin, arg)| (builtin, arg, Sign::Pos, expr))
+        }
     }
 }
 
@@ -5854,13 +5887,15 @@ fn polynomial_times_trig_linear_antiderivative(
     expr: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    let factors = mul_leaves(ctx, expr);
+    let (outer_sign, factors) = signed_mul_leaves(ctx, expr);
     if factors.len() < 2 {
         return None;
     }
 
     for (trig_index, factor) in factors.iter().enumerate() {
-        let Some((builtin, trig_arg)) = trig_like_factor(ctx, *factor) else {
+        let Some((builtin, trig_arg, trig_sign, _trig_factor)) =
+            signed_trig_like_factor(ctx, *factor)
+        else {
             continue;
         };
 
@@ -5884,10 +5919,15 @@ fn polynomial_times_trig_linear_antiderivative(
             .enumerate()
             .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
             .collect();
-        let cofactor = if cofactor_factors.is_empty() {
+        let raw_cofactor = if cofactor_factors.is_empty() {
             ctx.num(1)
         } else {
             build_balanced_mul(ctx, &cofactor_factors)
+        };
+        let effective_sign = combine_factor_signs(outer_sign, trig_sign);
+        let cofactor = match effective_sign {
+            Sign::Pos => raw_cofactor,
+            Sign::Neg => ctx.add(Expr::Neg(raw_cofactor)),
         };
         let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
             continue;
@@ -5956,13 +5996,15 @@ fn linear_times_trig_linear_antiderivative(
     expr: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    let factors = mul_leaves(ctx, expr);
+    let (outer_sign, factors) = signed_mul_leaves(ctx, expr);
     if factors.len() < 2 {
         return None;
     }
 
     for (trig_index, factor) in factors.iter().enumerate() {
-        let Some((builtin, trig_arg)) = trig_like_factor(ctx, *factor) else {
+        let Some((builtin, trig_arg, trig_sign, trig_factor)) =
+            signed_trig_like_factor(ctx, *factor)
+        else {
             continue;
         };
 
@@ -5986,10 +6028,15 @@ fn linear_times_trig_linear_antiderivative(
             .enumerate()
             .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
             .collect();
-        let cofactor = if cofactor_factors.is_empty() {
+        let raw_cofactor = if cofactor_factors.is_empty() {
             ctx.num(1)
         } else {
             build_balanced_mul(ctx, &cofactor_factors)
+        };
+        let effective_sign = combine_factor_signs(outer_sign, trig_sign);
+        let cofactor = match effective_sign {
+            Sign::Pos => raw_cofactor,
+            Sign::Neg => ctx.add(Expr::Neg(raw_cofactor)),
         };
         let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
             continue;
@@ -6007,6 +6054,35 @@ fn linear_times_trig_linear_antiderivative(
             continue;
         }
 
+        if effective_sign == Sign::Neg && matches!(builtin, BuiltinFn::Sin) {
+            let Ok(raw_cofactor_poly) = Polynomial::from_expr(ctx, raw_cofactor, var) else {
+                continue;
+            };
+            let raw_cofactor_slope = raw_cofactor_poly
+                .coeffs
+                .get(1)
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+            if raw_cofactor_slope.is_zero() {
+                continue;
+            }
+
+            let raw_quotient = if arg_slope.is_one() {
+                raw_cofactor
+            } else if arg_slope.is_integer() {
+                let arg_slope_expr = ctx.add(Expr::Number(arg_slope.clone()));
+                ctx.add(Expr::Div(raw_cofactor, arg_slope_expr))
+            } else {
+                scale_factor(ctx, BigRational::one() / arg_slope.clone(), raw_cofactor)
+            };
+            let raw_correction = raw_cofactor_slope / (arg_slope.clone() * arg_slope.clone());
+            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![trig_arg]);
+            let quotient_cos = mul2_raw(ctx, cos_arg, raw_quotient);
+            let correction_sin = scale_factor(ctx, raw_correction, trig_factor);
+            let result = ctx.add(Expr::Sub(quotient_cos, correction_sin));
+            return Some(cas_ast::hold::wrap_hold(ctx, result));
+        }
+
         let quotient = if arg_slope.is_one() {
             cofactor
         } else if arg_slope.is_integer() {
@@ -6015,20 +6091,48 @@ fn linear_times_trig_linear_antiderivative(
         } else {
             scale_factor(ctx, BigRational::one() / arg_slope.clone(), cofactor)
         };
-        let correction = cofactor_slope / (arg_slope.clone() * arg_slope);
+        let correction = cofactor_slope / (arg_slope.clone() * arg_slope.clone());
 
         return match builtin {
             BuiltinFn::Sin => {
                 let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![trig_arg]);
-                let quotient_cos = mul2_raw(ctx, quotient, cos_arg);
-                let correction_sin = scale_factor(ctx, correction, *factor);
-                Some(ctx.add(Expr::Sub(correction_sin, quotient_cos)))
+                let correction_sin = scale_factor(ctx, correction, trig_factor);
+                if arg_slope.is_negative() {
+                    let positive_slope = -arg_slope.clone();
+                    let positive_quotient = if positive_slope.is_one() {
+                        cofactor
+                    } else if positive_slope.is_integer() {
+                        let positive_slope_expr = ctx.add(Expr::Number(positive_slope));
+                        ctx.add(Expr::Div(cofactor, positive_slope_expr))
+                    } else {
+                        scale_factor(ctx, BigRational::one() / positive_slope, cofactor)
+                    };
+                    let quotient_cos = mul2_raw(ctx, positive_quotient, cos_arg);
+                    Some(ctx.add(Expr::Add(correction_sin, quotient_cos)))
+                } else {
+                    let quotient_cos = mul2_raw(ctx, quotient, cos_arg);
+                    Some(ctx.add(Expr::Sub(correction_sin, quotient_cos)))
+                }
             }
             BuiltinFn::Cos => {
                 let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![trig_arg]);
-                let quotient_sin = mul2_raw(ctx, quotient, sin_arg);
-                let correction_cos = scale_factor(ctx, correction, *factor);
-                Some(ctx.add(Expr::Add(quotient_sin, correction_cos)))
+                let correction_cos = scale_factor(ctx, correction, trig_factor);
+                if arg_slope.is_negative() {
+                    let positive_slope = -arg_slope.clone();
+                    let positive_quotient = if positive_slope.is_one() {
+                        cofactor
+                    } else if positive_slope.is_integer() {
+                        let positive_slope_expr = ctx.add(Expr::Number(positive_slope));
+                        ctx.add(Expr::Div(cofactor, positive_slope_expr))
+                    } else {
+                        scale_factor(ctx, BigRational::one() / positive_slope, cofactor)
+                    };
+                    let quotient_sin = mul2_raw(ctx, positive_quotient, sin_arg);
+                    Some(ctx.add(Expr::Sub(correction_cos, quotient_sin)))
+                } else {
+                    let quotient_sin = mul2_raw(ctx, quotient, sin_arg);
+                    Some(ctx.add(Expr::Add(quotient_sin, correction_cos)))
+                }
             }
             _ => None,
         };
@@ -6050,13 +6154,15 @@ fn linear_times_hyperbolic_linear_antiderivative(
     expr: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    let factors = mul_leaves(ctx, expr);
+    let (outer_sign, factors) = signed_mul_leaves(ctx, expr);
     if factors.len() < 2 {
         return None;
     }
 
     for (hyperbolic_index, factor) in factors.iter().enumerate() {
-        let Some((builtin, hyperbolic_arg)) = hyperbolic_like_factor(ctx, *factor) else {
+        let Some((builtin, hyperbolic_arg, hyperbolic_sign, hyperbolic_factor)) =
+            signed_hyperbolic_like_factor(ctx, *factor)
+        else {
             continue;
         };
 
@@ -6084,6 +6190,10 @@ fn linear_times_hyperbolic_linear_antiderivative(
             ctx.num(1)
         } else {
             build_balanced_mul(ctx, &cofactor_factors)
+        };
+        let cofactor = match combine_factor_signs(outer_sign, hyperbolic_sign) {
+            Sign::Pos => cofactor,
+            Sign::Neg => ctx.add(Expr::Neg(cofactor)),
         };
         let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
             continue;
@@ -6113,13 +6223,13 @@ fn linear_times_hyperbolic_linear_antiderivative(
             BuiltinFn::Sinh => {
                 let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![hyperbolic_arg]);
                 let quotient_cosh = mul2_raw(ctx, quotient, cosh_arg);
-                let correction_sinh = scale_factor(ctx, correction, *factor);
+                let correction_sinh = scale_factor(ctx, correction, hyperbolic_factor);
                 Some(ctx.add(Expr::Sub(quotient_cosh, correction_sinh)))
             }
             BuiltinFn::Cosh => {
                 let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![hyperbolic_arg]);
                 let quotient_sinh = mul2_raw(ctx, quotient, sinh_arg);
-                let correction_cosh = scale_factor(ctx, correction, *factor);
+                let correction_cosh = scale_factor(ctx, correction, hyperbolic_factor);
                 Some(ctx.add(Expr::Sub(quotient_sinh, correction_cosh)))
             }
             _ => None,
@@ -6161,13 +6271,15 @@ fn polynomial_times_hyperbolic_linear_antiderivative(
     expr: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    let factors = mul_leaves(ctx, expr);
+    let (outer_sign, factors) = signed_mul_leaves(ctx, expr);
     if factors.len() < 2 {
         return None;
     }
 
     for (hyperbolic_index, factor) in factors.iter().enumerate() {
-        let Some((builtin, hyperbolic_arg)) = hyperbolic_like_factor(ctx, *factor) else {
+        let Some((builtin, hyperbolic_arg, hyperbolic_sign, _hyperbolic_factor)) =
+            signed_hyperbolic_like_factor(ctx, *factor)
+        else {
             continue;
         };
 
@@ -6195,6 +6307,10 @@ fn polynomial_times_hyperbolic_linear_antiderivative(
             ctx.num(1)
         } else {
             build_balanced_mul(ctx, &cofactor_factors)
+        };
+        let cofactor = match combine_factor_signs(outer_sign, hyperbolic_sign) {
+            Sign::Pos => cofactor,
+            Sign::Neg => ctx.add(Expr::Neg(cofactor)),
         };
         let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var) else {
             continue;
@@ -6247,7 +6363,7 @@ pub fn integrate_symbolic_is_polynomial_times_hyperbolic_linear_target(
     var: &str,
 ) -> bool {
     is_polynomial_times_linear_function_target(ctx, expr, var, 2, 5, |ctx, factor| {
-        hyperbolic_like_factor(ctx, factor).map(|(_, arg)| arg)
+        signed_hyperbolic_like_factor(ctx, factor).map(|(_, arg, _, _)| arg)
     })
 }
 
@@ -9308,6 +9424,21 @@ fn build_product_from_factors(ctx: &mut Context, factors: &[ExprId]) -> ExprId {
     }
 }
 
+fn signed_mul_leaves(ctx: &Context, expr: ExprId) -> (Sign, Vec<ExprId>) {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => (Sign::Neg, mul_leaves(ctx, *inner).into_iter().collect()),
+        _ => (Sign::Pos, mul_leaves(ctx, expr).into_iter().collect()),
+    }
+}
+
+fn combine_factor_signs(outer: Sign, factor: Sign) -> Sign {
+    if outer == Sign::Neg {
+        factor.negate()
+    } else {
+        factor
+    }
+}
+
 /// Integrate `expr` with respect to `var` using a small set of symbolic rules.
 pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
     // Extract variant info in one borrow, then process with owned ExprId values.
@@ -10169,6 +10300,10 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "e^x * (x - 1)");
 
+        let expr = parse("-x*exp(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "e^x * (1 - x)");
+
         let expr = parse("(2*x+3)*exp(2*x+1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "e^(2 * x + 1) * (x + 1)");
@@ -10272,14 +10407,14 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "4/9 * sin((2 - 3 * x) / 2) - -2/3 * (x + 1) * cos((2 - 3 * x) / 2)"
+            "4/9 * sin((2 - 3 * x) / 2) + 2/3 * (x + 1) * cos((2 - 3 * x) / 2)"
         );
 
         let expr = parse("(x+1)*cos((2-3*x)/2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
-            "4/9 * cos((2 - 3 * x) / 2) + -2/3 * (x + 1) * sin((2 - 3 * x) / 2)"
+            "4/9 * cos((2 - 3 * x) / 2) - 2/3 * (x + 1) * sin((2 - 3 * x) / 2)"
         );
     }
 
@@ -10289,6 +10424,10 @@ mod tests {
         let expr = parse("x^2*sin(x)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "2 * x * sin(x) + (2 - x^2) * cos(x)");
+
+        let expr = parse("-x^2*sin(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-2 * x * sin(x) + (x^2 - 2) * cos(x)");
 
         let expr = parse("x^2*cos(x)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
@@ -10593,6 +10732,10 @@ mod tests {
         let expr = parse("x*sinh(x^2)/cosh(x^2)^2", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "-1 / (2 * cosh(x^2))");
+
+        let expr = parse("-2*x*sinh(x^2)/cosh(x^2)^2", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "1 / cosh(x^2)");
     }
 
     #[test]
@@ -10609,6 +10752,10 @@ mod tests {
         let expr = parse("x*cosh(x^2)/sinh(x^2)^2", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "-1 / (2 * sinh(x^2))");
+
+        let expr = parse("-2*x*cosh(x^2)/sinh(x^2)^2", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "1 / sinh(x^2)");
     }
 
     #[test]
@@ -11455,6 +11602,10 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "-1 / (2 * (x^2 + 1)^2)");
 
+        let expr = parse("-2*x/(x^2+1)^3", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "1 / (2 * (x^2 + 1)^2)");
+
         let expr = parse("(2*x+1)/(x^4+2*x^3-x^2-2*x+1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "-1 / (x^2 + x - 1)");
@@ -11480,6 +11631,10 @@ mod tests {
         let expr = parse("(2*x+1)/(x^6+3*x^5-5*x^3+3*x-1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "-1 / (2 * (x^2 + x - 1)^2)");
+
+        let expr = parse("-(2*x+1)/(x^2+x-1)^3", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "1 / (2 * (x^2 + x - 1)^2)");
 
         let expr = parse("(2*x+1)/(4*x^6+12*x^5-20*x^3+12*x-4)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
@@ -11746,6 +11901,14 @@ mod tests {
         let expr = parse("3*(x^2*cos(x^3)/sin(x^3)^2)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "-csc(x^3)");
+
+        let expr = parse("-4*x*sin(x^2)/cos(x^2)^2", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-2 * sec(x^2)");
+
+        let expr = parse("-4*x*cos(x^2)/sin(x^2)^2", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "2 * csc(x^2)");
 
         let expr = parse("(2*x+1)*sin(x^2+x)/cos(x^2+x)^2", &mut ctx).expect("parse");
         let (out, required_nonzero) =
