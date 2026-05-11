@@ -95,6 +95,36 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-11: High-Power Log Product Integration Needs Residual Verification Narrowing
+
+- area:
+  - calculus / integration / by-parts log powers / residual simplification
+- status:
+  - `observe-only`
+- discovered case:
+  - `integrate((2*x+1)*ln(x^2+x+1)^5, x)`
+  - `integrate(2*x*ln(x^2-1)^4, x)`
+- local lane:
+  - focused CLI probes while extending `f'(x)*ln(f(x))^k` by-parts support
+    from `k=2..3` toward `k=4..5`
+- local result:
+  - the formal by-parts primitive is generated, but the public residual
+    `diff(integrate(...), x) - integrand` does not simplify to `0` for shifted
+    or conditional polynomial bases at `k>=4`
+  - the narrower positive even monic quadratic base, for example
+    `integrate(2*x*ln(x^2+1)^5, x)`, does verify publicly by differentiation
+- why it was not promoted broadly:
+  - promoting the general `f'(x)*ln(f)^k` route would expose correct-looking
+    antiderivatives that do not satisfy the current public verification
+    guardrail
+  - the retained route was narrowed to bases where residual simplification is
+    already strong enough
+- what could make it combinable later:
+  - a residual simplification improvement for high-power log-polynomial
+    products over shifted or conditional polynomial bases
+  - or a verified presentation route that keeps a residual-friendly expanded
+    form internally while rendering a compact factored primitive publicly
+
 ### 2026-05-10: Product-Wrapped Reciprocal Trig Derivative Integration Hits Public Routing Cliff
 
 - area:

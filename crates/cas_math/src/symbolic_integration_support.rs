@@ -4844,6 +4844,63 @@ fn polynomial_log_product_substitution_antiderivative(
     None
 }
 
+fn positive_integer_power_rational(base: &BigRational, exponent: u32) -> BigRational {
+    let mut acc = BigRational::one();
+    for _ in 0..exponent {
+        acc *= base.clone();
+    }
+    acc
+}
+
+fn descending_factorial_ratio(top: u32, bottom: u32) -> BigRational {
+    let mut acc = BigRational::one();
+    for value in (bottom + 1)..=top {
+        acc *= BigRational::from_integer(value.into());
+    }
+    acc
+}
+
+fn log_power_term(ctx: &mut Context, log_expr: ExprId, degree: u32) -> ExprId {
+    match degree {
+        0 => ctx.num(1),
+        1 => log_expr,
+        _ => {
+            let degree = ctx.num(i64::from(degree));
+            ctx.add(Expr::Pow(log_expr, degree))
+        }
+    }
+}
+
+fn monomial_log_power_by_parts_integral(
+    ctx: &mut Context,
+    x_next: ExprId,
+    log_expr: ExprId,
+    next_power: &BigRational,
+    log_power: u32,
+) -> ExprId {
+    let mut terms = Vec::new();
+    for degree in (0..=log_power).rev() {
+        let mut coeff = descending_factorial_ratio(log_power, degree)
+            * positive_integer_power_rational(next_power, degree);
+        if (log_power - degree) % 2 == 1 {
+            coeff = -coeff;
+        }
+
+        if degree == 0 {
+            terms.push(ctx.add(Expr::Number(coeff)));
+        } else {
+            let term = log_power_term(ctx, log_expr, degree);
+            terms.push(scale_rational_term(ctx, coeff, term));
+        }
+    }
+
+    let inner = build_balanced_add(ctx, &terms);
+    let product_raw = mul2_raw(ctx, x_next, inner);
+    let product = cas_ast::hold::wrap_hold(ctx, product_raw);
+    let denominator = positive_integer_power_rational(next_power, log_power + 1);
+    scale_rational_term(ctx, BigRational::one() / denominator, product)
+}
+
 fn monomial_times_ln_var_by_parts_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
@@ -4855,13 +4912,15 @@ fn monomial_times_ln_var_by_parts_antiderivative(
     }
 
     for (log_index, factor) in factors.iter().enumerate() {
-        let Expr::Function(fn_id, args) = ctx.get(*factor) else {
+        let Some((log_expr, log_base, log_power)) = natural_log_power_factor_parts(ctx, *factor)
+        else {
             continue;
         };
-        if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(BuiltinFn::Ln) {
+        if !matches!(log_power, 1..=5) {
             continue;
         }
-        if !is_var(ctx, args[0], var) {
+        let log_arg = natural_log_argument(ctx, log_expr)?;
+        if !is_var(ctx, log_arg, var) || !is_var(ctx, log_base, var) {
             continue;
         }
 
@@ -4886,13 +4945,21 @@ fn monomial_times_ln_var_by_parts_antiderivative(
         let var_expr = ctx.var(var);
         let next_power_expr = ctx.add(Expr::Number(next_power.clone()));
         let x_next = ctx.add(Expr::Pow(var_expr, next_power_expr));
-        let x_next_log = mul2_raw(ctx, x_next, *factor);
-        let first = ctx.add(Expr::Div(x_next_log, next_power_expr));
+        let integral = match log_power {
+            1 => {
+                let x_next_log = mul2_raw(ctx, x_next, log_expr);
+                let first = ctx.add(Expr::Div(x_next_log, next_power_expr));
 
-        let next_power_squared = next_power.clone() * next_power;
-        let second_scale = BigRational::one() / next_power_squared;
-        let second = scale_rational_term(ctx, second_scale, x_next);
-        let integral = ctx.add(Expr::Sub(first, second));
+                let next_power_squared = next_power.clone() * next_power;
+                let second_scale = BigRational::one() / next_power_squared;
+                let second = scale_rational_term(ctx, second_scale, x_next);
+                ctx.add(Expr::Sub(first, second))
+            }
+            2..=5 => {
+                monomial_log_power_by_parts_integral(ctx, x_next, log_expr, &next_power, log_power)
+            }
+            _ => return None,
+        };
 
         return Some(scale_rational_term(ctx, scale, integral));
     }
@@ -5244,7 +5311,7 @@ fn build_polynomial_log_power_product_substitution_integral(
     cofactor: ExprId,
     var: &str,
 ) -> Option<ExprId> {
-    if !matches!(power, 2 | 3) {
+    if !matches!(power, 2..=5) {
         return None;
     }
     let log_arg = natural_log_argument(ctx, log_expr)?;
@@ -5254,6 +5321,9 @@ fn build_polynomial_log_power_product_substitution_integral(
 
     let base_poly = Polynomial::from_expr(ctx, log_base, var).ok()?;
     if base_poly.degree() == 0 {
+        return None;
+    }
+    if power >= 4 && !is_strictly_positive_quadratic(&base_poly) {
         return None;
     }
     let derivative = base_poly.derivative();
@@ -5268,6 +5338,7 @@ fn build_polynomial_log_power_product_substitution_integral(
     let integral = match power {
         2 => log_square_by_parts_integral(ctx, base, log_expr),
         3 => log_cube_by_parts_integral(ctx, base, log_expr),
+        4 | 5 => polynomial_log_power_by_parts_expanded_integral(ctx, base, log_expr, power),
         _ => return None,
     };
     if scale.is_one() {
@@ -5276,6 +5347,43 @@ fn build_polynomial_log_power_product_substitution_integral(
 
     let scale_expr = ctx.add(Expr::Number(scale));
     Some(mul2_raw(ctx, scale_expr, integral))
+}
+
+fn is_strictly_positive_quadratic(poly: &Polynomial) -> bool {
+    if poly.degree() != 2 || poly.coeffs.len() != 3 || !poly.coeffs[2].is_positive() {
+        return false;
+    }
+
+    let four = BigRational::from_integer(4.into());
+    let discriminant = poly.coeffs[1].clone() * poly.coeffs[1].clone()
+        - four * poly.coeffs[2].clone() * poly.coeffs[0].clone();
+    discriminant.is_negative()
+}
+
+fn polynomial_log_power_by_parts_expanded_integral(
+    ctx: &mut Context,
+    base: ExprId,
+    log_expr: ExprId,
+    power: u32,
+) -> ExprId {
+    let mut terms = Vec::new();
+    for degree in (0..=power).rev() {
+        let mut coeff = descending_factorial_ratio(power, degree);
+        if (power - degree) % 2 == 1 {
+            coeff = -coeff;
+        }
+
+        let term = if degree == 0 {
+            cas_ast::hold::wrap_hold(ctx, base)
+        } else {
+            let log_term = log_power_term(ctx, log_expr, degree);
+            let product = mul2_raw(ctx, base, log_term);
+            cas_ast::hold::wrap_hold(ctx, product)
+        };
+        terms.push(scale_rational_term(ctx, coeff, term));
+    }
+
+    build_balanced_add(ctx, &terms)
 }
 
 fn polynomial_log_power_product_substitution_antiderivative(
@@ -5338,6 +5446,17 @@ pub fn integrate_symbolic_is_log_cube_product_substitution_target(
     }
 
     polynomial_log_power_product_substitution_antiderivative(ctx, expr, var).is_some()
+}
+
+pub fn integrate_symbolic_is_high_log_power_product_substitution_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    matches!(
+        polynomial_log_product_substitution_power(ctx, expr),
+        Some(4 | 5)
+    ) && polynomial_log_power_product_substitution_antiderivative(ctx, expr, var).is_some()
 }
 
 fn signed_term(ctx: &mut Context, term: ExprId, sign: Sign) -> ExprId {
@@ -10278,11 +10397,81 @@ mod tests {
             "(x^4 - x^2 - 1) * (ln(x^4 - x^2 - 1)^2 - 2 * ln(x^4 - x^2 - 1) + 2)"
         );
 
+        let expr = parse("x*ln(x)^2", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/8 * x^2 * (4 * ln(x)^2 - 4 * ln(x) + 2)"
+        );
+
+        let expr = parse("x^2*ln(x)^2", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/27 * x^3 * (9 * ln(x)^2 - 6 * ln(x) + 2)"
+        );
+
+        let expr = parse("x*ln(x)^3", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/16 * x^2 * (8 * ln(x)^3 - 12 * ln(x)^2 + 12 * ln(x) - 6)"
+        );
+
+        let expr = parse("x^2*ln(x)^3", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/81 * x^3 * (27 * ln(x)^3 - 27 * ln(x)^2 + 18 * ln(x) - 6)"
+        );
+
+        let expr = parse("x*ln(x)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/32 * x^2 * (16 * ln(x)^4 - 32 * ln(x)^3 + 48 * ln(x)^2 - 48 * ln(x) + 24)"
+        );
+
+        let expr = parse("x^2*ln(x)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/243 * x^3 * (81 * ln(x)^4 - 108 * ln(x)^3 + 108 * ln(x)^2 - 72 * ln(x) + 24)"
+        );
+
+        let expr = parse("x*ln(x)^5", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/64 * x^2 * (32 * ln(x)^5 - 80 * ln(x)^4 + 160 * ln(x)^3 - 240 * ln(x)^2 + 240 * ln(x) - 120)"
+        );
+
+        let expr = parse("x^2*ln(x)^5", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/729 * x^3 * (243 * ln(x)^5 - 405 * ln(x)^4 + 540 * ln(x)^3 - 540 * ln(x)^2 + 360 * ln(x) - 120)"
+        );
+
         let expr = parse("2*x*ln(x^2+1)^3", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
             rendered(&ctx, out),
             "(x^2 + 1) * (ln(x^2 + 1)^3 - 3 * ln(x^2 + 1)^2 + 6 * ln(x^2 + 1) - 6)"
+        );
+
+        let expr = parse("2*x*ln(x^2+1)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^2 + 1) * ln(x^2 + 1)^4 + 12 * (x^2 + 1) * ln(x^2 + 1)^2 + 24 * (x^2 + 1) - 24 * (x^2 + 1) * ln(x^2 + 1) - 4 * (x^2 + 1) * ln(x^2 + 1)^3"
+        );
+
+        let expr = parse("2*x*ln(x^2+1)^5", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^2 + 1) * ln(x^2 + 1)^5 + 20 * (x^2 + 1) * ln(x^2 + 1)^3 + 120 * (x^2 + 1) * ln(x^2 + 1) - 120 * (x^2 + 1) - 60 * (x^2 + 1) * ln(x^2 + 1)^2 - 5 * (x^2 + 1) * ln(x^2 + 1)^4"
         );
 
         let expr = parse("(2*x+1)*ln(x^2+x+1)^3", &mut ctx).expect("parse");

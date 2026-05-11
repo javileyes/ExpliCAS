@@ -30386,6 +30386,21 @@ mod tests {
     }
 
     #[test]
+    fn collapse_exact_zero_additive_subexpression_skips_linear_trig_by_parts_residual() {
+        let mut ctx = Context::new();
+        let expr = parse("cos(2*x+1)*(2*x+3) - sin(2*x+1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = CollapseExactZeroThreeTermSubsetRule;
+
+        assert!(
+            rule.apply(&mut ctx, expr, &parent_ctx).is_none(),
+            "linear trig by-parts presentation residual is not an exact-zero identity"
+        );
+    }
+
+    #[test]
     fn collapse_exact_zero_additive_subexpression_matches_hyperbolic_cosh_difference_to_product() {
         let mut ctx = Context::new();
         let expr = parse(

@@ -2249,6 +2249,66 @@ fn explicit_positive_quadratic_square_antiderivative_diff_matches(
     Some(Vec::new())
 }
 
+fn explicit_high_log_power_product_antiderivative_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_high_log_power_product_substitution_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+        return Some(integral_required_conditions(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ));
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_high_log_power_product_substitution_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = cas_ast::hold::strip_all_holds(ctx, diff_call.target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
 fn collect_log_abs_nonzero_conditions(
     ctx: &mut Context,
     expr: ExprId,
@@ -3960,6 +4020,58 @@ pub(crate) fn try_explicit_positive_quadratic_square_antiderivative_residual_con
     )
 }
 
+pub(crate) fn try_explicit_high_log_power_product_antiderivative_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_wrapped_root_zero(
+        ctx,
+        expr,
+        3,
+        try_explicit_high_log_power_product_antiderivative_residual_direct_root_zero,
+    )
+}
+
+fn try_explicit_high_log_power_product_antiderivative_residual_direct_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        _ => return None,
+    };
+    try_explicit_high_log_power_product_antiderivative_residual_zero_preorder(ctx, left, right)
+        .or_else(|| {
+            try_explicit_high_log_power_product_antiderivative_residual_zero_preorder(
+                ctx, right, left,
+            )
+        })
+}
+
+fn try_explicit_high_log_power_product_antiderivative_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    let required_conditions = explicit_high_log_power_product_antiderivative_diff_matches(
+        ctx, diff_expr, divisor, right,
+    )?;
+    Some((ctx.num(0), required_conditions))
+}
+
+pub(crate) fn try_explicit_high_log_power_product_antiderivative_residual_constant_passthrough_quotient(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_constant_passthrough_quotient(
+        ctx,
+        expr,
+        2,
+        try_explicit_high_log_power_product_antiderivative_residual_direct_root_zero,
+    )
+}
+
 fn constant_scaled_hyperbolic_reciprocal_diff_matches(
     ctx: &mut Context,
     diff_expr: ExprId,
@@ -5126,6 +5238,25 @@ mod tests {
         })
     }
 
+    fn explicit_high_log_power_product_antiderivative_residual_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_explicit_high_log_power_product_antiderivative_residual_root_zero(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
     #[test]
     fn explicit_positive_quadratic_cube_antiderivative_residual_cancels_scaled_affine_quartic() {
         assert_eq!(
@@ -5220,6 +5351,17 @@ mod tests {
             Some(("1 / (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
         );
         assert_eq!(simplify_text(&input), "1 / (x + 2)");
+    }
+
+    #[test]
+    fn explicit_high_log_power_product_antiderivative_residual_cancels_shifted_positive_quadratic()
+    {
+        let residual = "diff(integrate((2*x+1)*ln(x^2+x+1)^4, x), x) - (2*x+1)*ln(x^2+x+1)^4";
+        assert_eq!(
+            explicit_high_log_power_product_antiderivative_residual_result(residual),
+            Some(("0".to_string(), vec![]))
+        );
+        assert_eq!(simplify_text(residual), "0");
     }
 
     fn diff_arctan_sqrt_positive_quotient_shifted_one_result(

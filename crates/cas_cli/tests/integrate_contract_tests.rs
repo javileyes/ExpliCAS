@@ -96,6 +96,8 @@ fn should_verify_antiderivative_with_public_integrate_residual(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_positive_quadratic_cube_target(
         ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_high_log_power_product_substitution_target(
+        ctx, integrand, var_name,
     )
 }
 
@@ -2326,6 +2328,38 @@ fn integrate_contract_monomial_times_log_by_parts_preserves_positive_domain() {
     let cases = [
         ("integrate(x*ln(x), x)", "1/4 * (2 * ln(x) * x^2 - x^2)"),
         ("integrate(x^2*ln(x), x)", "1/9 * (3 * ln(x) * x^3 - x^3)"),
+        (
+            "integrate(x*ln(x)^2, x)",
+            "1/8 * x^2 * (4 * ln(x)^2 - 4 * ln(x) + 2)",
+        ),
+        (
+            "integrate(x^2*ln(x)^2, x)",
+            "1/27 * x^3 * (9 * ln(x)^2 - 6 * ln(x) + 2)",
+        ),
+        (
+            "integrate(x*ln(x)^3, x)",
+            "1/16 * x^2 * (8 * ln(x)^3 - 12 * ln(x)^2 + 12 * ln(x) - 6)",
+        ),
+        (
+            "integrate(x^2*ln(x)^3, x)",
+            "1/81 * x^3 * (27 * ln(x)^3 - 27 * ln(x)^2 + 18 * ln(x) - 6)",
+        ),
+        (
+            "integrate(x*ln(x)^4, x)",
+            "1/32 * x^2 * (16 * ln(x)^4 - 32 * ln(x)^3 + 48 * ln(x)^2 - 48 * ln(x) + 24)",
+        ),
+        (
+            "integrate(x^2*ln(x)^4, x)",
+            "1/243 * x^3 * (81 * ln(x)^4 - 108 * ln(x)^3 + 108 * ln(x)^2 - 72 * ln(x) + 24)",
+        ),
+        (
+            "integrate(x*ln(x)^5, x)",
+            "1/64 * x^2 * (32 * ln(x)^5 - 80 * ln(x)^4 + 160 * ln(x)^3 - 240 * ln(x)^2 + 240 * ln(x) - 120)",
+        ),
+        (
+            "integrate(x^2*ln(x)^5, x)",
+            "1/729 * x^3 * (243 * ln(x)^5 - 405 * ln(x)^4 + 540 * ln(x)^3 - 540 * ln(x)^2 + 360 * ln(x) - 120)",
+        ),
     ];
 
     for (input, expected) in cases {
@@ -5201,7 +5235,7 @@ fn integrate_contract_positive_log_square_product_by_parts() {
     let input = "integrate(2*x*ln(x^2+1)^2, x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "(x^2 + 1) * (ln(x^2 + 1)^2 + 2 - 2 * ln(x^2 + 1))");
+    assert_eq!(result, "(x^2 + 1) * (ln(x^2 + 1)^2 - 2 * ln(x^2 + 1) + 2)");
     assert!(
         required.is_empty(),
         "positive log-square product integration should not add required conditions: {required:?}"
@@ -5287,13 +5321,58 @@ fn integrate_contract_conditional_log_cube_product_by_parts_verifies() {
 }
 
 #[test]
+fn integrate_contract_log_high_power_product_by_parts_verifies() {
+    let cases: [(&str, &str, &[&str], &str); 3] = [
+        (
+            "integrate(2*x*ln(x^2+1)^4, x)",
+            "(x^2 + 1) * ln(x^2 + 1)^4 + 12 * (x^2 + 1) * ln(x^2 + 1)^2 + 24 * (x^2 + 1) - 24 * (x^2 + 1) * ln(x^2 + 1) - 4 * (x^2 + 1) * ln(x^2 + 1)^3",
+            &[],
+            "diff(integrate(2*x*ln(x^2+1)^4, x), x) - 2*x*ln(x^2+1)^4",
+        ),
+        (
+            "integrate(2*x*ln(x^2+1)^5, x)",
+            "(x^2 + 1) * ln(x^2 + 1)^5 + 20 * (x^2 + 1) * ln(x^2 + 1)^3 + 120 * (x^2 + 1) * ln(x^2 + 1) - 120 * (x^2 + 1) - 60 * (x^2 + 1) * ln(x^2 + 1)^2 - 5 * (x^2 + 1) * ln(x^2 + 1)^4",
+            &[],
+            "diff(integrate(2*x*ln(x^2+1)^5, x), x) - 2*x*ln(x^2+1)^5",
+        ),
+        (
+            "integrate((2*x+1)*ln(x^2+x+1)^4, x)",
+            "(x^2 + x + 1) * ln(x^2 + x + 1)^4 + 12 * (x^2 + x + 1) * ln(x^2 + x + 1)^2 + 24 * (x^2 + x + 1) - 24 * (x^2 + x + 1) * ln(x^2 + x + 1) - 4 * (x^2 + x + 1) * ln(x^2 + x + 1)^3",
+            &[],
+            "diff(integrate((2*x+1)*ln(x^2+x+1)^4, x), x) - (2*x+1)*ln(x^2+x+1)^4",
+        ),
+    ];
+
+    for (input, expected, expected_required, residual_input) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected);
+        let expected_required: Vec<String> = expected_required
+            .iter()
+            .map(|condition| condition.to_string())
+            .collect();
+        assert_eq!(
+            required, expected_required,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+
+        let (residual, residual_required) = evaluated_expr_with_required_conditions(residual_input);
+        assert_eq!(residual, "0");
+        assert_eq!(
+            residual_required, expected_required,
+            "unexpected nested required_conditions for {residual_input}: {residual_required:?}"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_linear_log_square_product_by_parts_preserves_positive_domain() {
     let input = "integrate(ln(2*x+1)^2, x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
     assert_eq!(
         result,
-        "1/2 * (2 * x + 1) * (ln(2 * x + 1)^2 + 2 - 2 * ln(2 * x + 1))"
+        "1/2 * (2 * x + 1) * (ln(2 * x + 1)^2 - 2 * ln(2 * x + 1) + 2)"
     );
     assert_eq!(
         required,
@@ -5310,7 +5389,7 @@ fn integrate_contract_quadratic_log_square_product_by_parts() {
 
     assert_eq!(
         result,
-        "(x^2 + x + 1) * (ln(x^2 + x + 1)^2 + 2 - 2 * ln(x^2 + x + 1))"
+        "(x^2 + x + 1) * (ln(x^2 + x + 1)^2 - 2 * ln(x^2 + x + 1) + 2)"
     );
     assert!(
         required.is_empty(),
@@ -5324,7 +5403,7 @@ fn integrate_contract_conditional_monomial_log_square_product_by_parts_verifies(
     let input = "integrate(2*x*ln(x^2-1)^2, x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "(x^2 - 1) * (ln(x^2 - 1)^2 + 2 - 2 * ln(x^2 - 1))");
+    assert_eq!(result, "(x^2 - 1) * (ln(x^2 - 1)^2 - 2 * ln(x^2 - 1) + 2)");
     assert_eq!(
         required,
         vec!["x^2 - 1 > 0".to_string()],
@@ -5340,7 +5419,7 @@ fn integrate_contract_conditional_quadratic_log_square_product_by_parts_verifies
 
     assert_eq!(
         result,
-        "(ln(x^2 + x - 1)^2 + 2 - 2 * ln(x^2 + x - 1)) * (x^2 + x - 1)"
+        "(ln(x^2 + x - 1)^2 - 2 * ln(x^2 + x - 1) + 2) * (x^2 + x - 1)"
     );
     assert_eq!(
         required,
@@ -5355,7 +5434,7 @@ fn integrate_contract_conditional_cubic_log_square_product_by_parts_verifies() {
     let input = "integrate((3*x^2-1)*ln(x^3-x)^2, x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "(x^3 - x) * (ln(x^3 - x)^2 + 2 - 2 * ln(x^3 - x))");
+    assert_eq!(result, "(x^3 - x) * (ln(x^3 - x)^2 - 2 * ln(x^3 - x) + 2)");
     assert_eq!(
         required,
         vec!["x^3 - x > 0".to_string()],
@@ -5371,7 +5450,7 @@ fn integrate_contract_conditional_quartic_log_square_product_by_parts_verifies()
 
     assert_eq!(
         result,
-        "(ln(x^4 - x^2 - 1)^2 + 2 - 2 * ln(x^4 - x^2 - 1)) * (x^4 - x^2 - 1)"
+        "(ln(x^4 - x^2 - 1)^2 - 2 * ln(x^4 - x^2 - 1) + 2) * (x^4 - x^2 - 1)"
     );
     assert_eq!(
         required,

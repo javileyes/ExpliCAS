@@ -51,38 +51,86 @@ fn poly_degree_fast(ctx: &Context, id: ExprId) -> Option<i32> {
     }
 }
 
+fn ln_power_display_degree(ctx: &Context, id: ExprId) -> Option<i32> {
+    match ctx.get(id) {
+        Expr::Number(_) => Some(0),
+        Expr::Neg(inner) => ln_power_display_degree(ctx, *inner),
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(cas_ast::BuiltinFn::Ln) =>
+        {
+            Some(1)
+        }
+        Expr::Pow(base, exp) => {
+            let Expr::Function(fn_id, args) = ctx.get(*base) else {
+                return None;
+            };
+            if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(cas_ast::BuiltinFn::Ln) {
+                return None;
+            }
+            let Expr::Number(n) = ctx.get(*exp) else {
+                return None;
+            };
+            if n.is_integer() && n.is_positive() {
+                n.to_i32()
+            } else {
+                None
+            }
+        }
+        Expr::Mul(a, b) => match (ctx.get(*a), ctx.get(*b)) {
+            (Expr::Number(_), _) => ln_power_display_degree(ctx, *b),
+            (_, Expr::Number(_)) => ln_power_display_degree(ctx, *a),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// Compare terms for display ordering.
-/// Primary: positive terms before negative (for "x + 1 - (...)" ordering)
-/// Secondary: non-polynomial before polynomial within same sign (for "2^(1/2) - 1" ordering)
-/// Tertiary: polynomial degree descending, then compare_expr for tie-breaking
+/// Primary for function-polynomial terms: recognizable degree descending, so
+/// post-calculus log polynomials keep their mathematical reading order.
+/// Primary otherwise: positive terms before negative, preserving established
+/// affine orientation such as `1 - x`.
+/// Tertiary: degree and compare_expr tie-breaking.
 pub fn cmp_term_for_display(ctx: &Context, a: ExprId, b: ExprId) -> std::cmp::Ordering {
     use crate::ordering::compare_expr;
     use std::cmp::Ordering;
 
-    // PRIMARY: Positive terms before negative terms
     let (a_neg, _, _) = check_negative(ctx, a);
     let (b_neg, _, _) = check_negative(ctx, b);
+    let deg_a = poly_degree_fast(ctx, a);
+    let deg_b = poly_degree_fast(ctx, b);
+    let ln_deg_a = ln_power_display_degree(ctx, a);
+    let ln_deg_b = ln_power_display_degree(ctx, b);
+    let log_polynomial_pair = matches!((ln_deg_a, ln_deg_b), (Some(a), Some(b)) if a > 0 || b > 0);
+
+    if log_polynomial_pair {
+        // Log-polynomial presentation, e.g. ln(x)^5 - 2*ln(x)^4 + ...
+        if let (Some(da), Some(db)) = (ln_deg_a, ln_deg_b) {
+            if da != db {
+                return db.cmp(&da);
+            }
+        }
+    }
+
+    // Positive terms before negative terms when degree did not decide.
     match (a_neg, b_neg) {
         (false, true) => return Ordering::Less, // positive < negative
         (true, false) => return Ordering::Greater, // negative > positive
         _ => {}                                 // Same sign: fall through to secondary
     }
 
-    // SECONDARY: Within same sign, order by polynomial degree
-    let deg_a = poly_degree_fast(ctx, a);
-    let deg_b = poly_degree_fast(ctx, b);
-
-    match (deg_a, deg_b) {
-        (Some(da), Some(db)) => {
-            // Both polynomial: higher degree first
-            if da != db {
-                return db.cmp(&da);
+    if !log_polynomial_pair {
+        // Original non-function behavior: within the same sign, order by degree.
+        match (deg_a, deg_b) {
+            (Some(da), Some(db)) => {
+                if da != db {
+                    return db.cmp(&da);
+                }
             }
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (None, None) => {}
         }
-        // Non-polynomial before polynomial (for "2^(1/2) - 1" with root before constant)
-        (None, Some(_)) => return Ordering::Less,
-        (Some(_), None) => return Ordering::Greater,
-        (None, None) => {} // Both non-polynomial: fall through
     }
 
     // TERTIARY: Structural comparison for total order

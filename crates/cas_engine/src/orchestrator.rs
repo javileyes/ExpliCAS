@@ -26377,6 +26377,50 @@ impl Orchestrator {
             return (compact, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
+        if let Some((zero, required_conditions)) = crate::calculus_residual_support::
+            try_explicit_high_log_power_product_antiderivative_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify matching high log-power product antiderivative residual",
+                    "High Log-Power Product Integral Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((compact, required_conditions)) = crate::calculus_residual_support::
+            try_explicit_high_log_power_product_antiderivative_residual_constant_passthrough_quotient(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    compact,
+                    "Compact quotient with matching high log-power product antiderivative residual",
+                    "High Log-Power Product Integral Residual Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (compact, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
         if let Some((one, required_conditions)) =
             crate::calculus_residual_support::try_diff_arctan_sqrt_positive_polynomial_quotient_shifted_one_root(
                 &mut simplifier.context,
