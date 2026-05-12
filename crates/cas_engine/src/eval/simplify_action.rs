@@ -104,15 +104,16 @@ fn collapse_redundant_post_calculus_trace_if_direct_step_is_compact(
     let Some(first) = steps.first() else {
         return false;
     };
-    if first.rule_name.as_str() != "Symbolic Differentiation" {
+    if !matches!(
+        first.rule_name.as_str(),
+        "Symbolic Differentiation" | "Symbolic Integration"
+    ) {
         return false;
     }
 
-    let Some(first_presented) =
+    let first_presented =
         crate::rules::calculus::try_post_calculus_presentation(ctx, resolved, first.after)
-    else {
-        return false;
-    };
+            .unwrap_or(first.after);
 
     let first_presented_display = format!(
         "{}",

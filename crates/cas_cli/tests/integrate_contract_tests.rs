@@ -5807,6 +5807,23 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
         "positive quadratic denominator should not emit redundant conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
+    let step_summaries = evaluated_expr_step_summaries(input);
+    assert_eq!(
+        step_summaries
+            .iter()
+            .filter(|(_, rule_name, _)| rule_name == "Symbolic Integration")
+            .count(),
+        1,
+        "integration should stay as one compact didactic step: {step_summaries:?}"
+    );
+    assert!(
+        !step_summaries.iter().any(|(_, rule_name, _)| {
+            rule_name == "Rationalize Product Denominator"
+                || rule_name == "Cancel Same Base Powers"
+                || rule_name == "Present calculus result in compact form"
+        }),
+        "compact integration trace should not expose rationalize/cancel/post-presentation roundtrip: {step_summaries:?}"
+    );
 
     let input = "integrate((2*x+1)/(sqrt(x^2+x+1)^3), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);

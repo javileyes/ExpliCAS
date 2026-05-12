@@ -1,36 +1,9 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-05-12T10:38:39.731214+00:00
+- Generated: 2026-05-12T13:56:53.845176+00:00
 - Git branch: main
-- Git commit: `e14e4e5e3af4f983752c4c55ec1fd32673d0615d`
-- Profile: `guardrail`
-
-## Embedded Runtime Guardrail
-
-- Dimension: contextual simplify/equivalence under real wrappers.
-- Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 4.94s
-- Per-case runtime: 3.419ms/case
-- Coverage axes: 7 wrappers across 25 families
-- Context axes: 4 complexity levels across 6 shell depths
-- Largest wrapper share: 20.1%
-- Largest wrapper x complexity share: 17.2%
-- Combined additive composition: total=161 families=25 collapse_rows=144 collapse_families=25/25 depth4_rows=37 depth4_families=25/25 orientation_rows=44 orientation_families=25/25 multi_core_rows=42 multi_core_families=25/25 min_family_case_count=6 target_family_case_count=6 families_at_min=22/25 families_under_target=0/25 low_family_counts=collect:6, conditional_factor:6, expand:6, factor:6, finite_telescoping:6, fraction_combine:6, fraction_decompose:6, fraction_expand:6, integrate_prep:6, log_contract:6, log_exp_inverse:6, log_expand:6, log_inverse_power:6, nested_fraction:6, polynomial_product:6, power_merge:6, radical_power:6, rationalize:6, solve_prep:6, telescoping_fraction:6, trig_contract:6, trig_expand:6 above_min_family_counts=finite_aggregate:7, number_theory:7, simplify:15
-- Wrappers: additive_passthrough_zero, combined_additive_zero, common_denominator_zero, reciprocal_shifted_difference_zero, scaled_difference_zero, shifted_quotient_one, squared_passthrough_zero
-- Sparse wrappers: reciprocal_shifted_difference_zero total=50 failed=0
-- Structural depth: max_shell_depth=5 max_expression_depth=18 avg_wrapper_overhead_nodes=13.31
-- Complexity mix: l2_wrapper_plus_noise total=1003 failed=0 avg_shell_depth=1.90, l3_nested_or_composed total=427 failed=0 avg_shell_depth=2.63, l1_single_wrapper total=10 failed=0 avg_shell_depth=1.00
-- Shell-depth mix: depth 0 total=5 failed=0, depth 1 total=140 failed=0, depth 2 total=1096 failed=0, depth 3 total=114 failed=0, depth 4 total=86 failed=0, depth 5 total=4 failed=0
-- Sparse wrapper x shell-depth buckets: reciprocal_shifted_difference_zero x depth 2 total=2 failed=0, reciprocal_shifted_difference_zero x depth 3 total=23 failed=0, reciprocal_shifted_difference_zero x depth 4 total=25 failed=0
-- Sparse wrapper x shell-depth family buckets: reciprocal_shifted_difference_zero x depth 2 x collect total=1 failed=0, reciprocal_shifted_difference_zero x depth 2 x fraction_decompose total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x conditional_factor total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x expand total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x factor total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x finite_aggregate total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x finite_telescoping total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x fraction_combine total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x fraction_expand total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x integrate_prep total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x log_contract total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x log_exp_inverse total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x log_expand total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x log_inverse_power total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x nested_fraction total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x number_theory total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x polynomial_product total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x power_merge total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x radical_power total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x rationalize total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x simplify total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x solve_prep total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x telescoping_fraction total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x trig_contract total=1 failed=0, reciprocal_shifted_difference_zero x depth 3 x trig_expand total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x collect total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x conditional_factor total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x expand total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x factor total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x finite_aggregate total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x finite_telescoping total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x fraction_combine total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x fraction_decompose total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x fraction_expand total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x integrate_prep total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x log_contract total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x log_exp_inverse total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x log_expand total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x log_inverse_power total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x nested_fraction total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x number_theory total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x polynomial_product total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x power_merge total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x radical_power total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x rationalize total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x simplify total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x solve_prep total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x telescoping_fraction total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x trig_contract total=1 failed=0, reciprocal_shifted_difference_zero x depth 4 x trig_expand total=1 failed=0
-- Sparse wrapper depth 4 family breadth: reciprocal_shifted_difference_zero depth4_families=25/25 missing=0 cases=25
-- Sparse wrapper noise budgets: reciprocal_shifted_difference_zero total=50 failed=0 avg_overhead=19.92 max_overhead=36
-- Sparse wrapper x complexity buckets: reciprocal_shifted_difference_zero x l3_nested_or_composed total=50 failed=0 avg_shell_depth=3.46
-- Dominant wrapper x complexity buckets: common_denominator_zero x l2_wrapper_plus_noise total=249 failed=0 avg_shell_depth=2.00, scaled_difference_zero x l2_wrapper_plus_noise total=249 failed=0 avg_shell_depth=1.87, shifted_quotient_one x l2_wrapper_plus_noise total=249 failed=0 avg_shell_depth=1.88
-- Sparse wrapper l3 family breadth: reciprocal_shifted_difference_zero l3_families=25/25 missing=0 cases=50
-- Sparse wrapper family breadth: reciprocal_shifted_difference_zero families=25/25 cases=50
-- Sparse wrapper family gaps: reciprocal_shifted_difference_zero missing_families=0/25 covered=25 cases=50
-- Sparse wrapper x family buckets: reciprocal_shifted_difference_zero x collect total=2 failed=0, reciprocal_shifted_difference_zero x conditional_factor total=2 failed=0, reciprocal_shifted_difference_zero x expand total=2 failed=0, reciprocal_shifted_difference_zero x factor total=2 failed=0, reciprocal_shifted_difference_zero x finite_aggregate total=2 failed=0, reciprocal_shifted_difference_zero x finite_telescoping total=2 failed=0, reciprocal_shifted_difference_zero x fraction_combine total=2 failed=0, reciprocal_shifted_difference_zero x fraction_decompose total=2 failed=0, reciprocal_shifted_difference_zero x fraction_expand total=2 failed=0, reciprocal_shifted_difference_zero x integrate_prep total=2 failed=0, reciprocal_shifted_difference_zero x log_contract total=2 failed=0, reciprocal_shifted_difference_zero x log_exp_inverse total=2 failed=0, reciprocal_shifted_difference_zero x log_expand total=2 failed=0, reciprocal_shifted_difference_zero x log_inverse_power total=2 failed=0, reciprocal_shifted_difference_zero x nested_fraction total=2 failed=0, reciprocal_shifted_difference_zero x number_theory total=2 failed=0, reciprocal_shifted_difference_zero x polynomial_product total=2 failed=0, reciprocal_shifted_difference_zero x power_merge total=2 failed=0, reciprocal_shifted_difference_zero x radical_power total=2 failed=0, reciprocal_shifted_difference_zero x rationalize total=2 failed=0, reciprocal_shifted_difference_zero x simplify total=2 failed=0, reciprocal_shifted_difference_zero x solve_prep total=2 failed=0, reciprocal_shifted_difference_zero x telescoping_fraction total=2 failed=0, reciprocal_shifted_difference_zero x trig_contract total=2 failed=0, reciprocal_shifted_difference_zero x trig_expand total=2 failed=0
+- Git commit: `6107514182d1cc83e32e01727ae15fcdf4a14e7f`
+- Profile: `fast`
 
 ## Generated Discovery Ledger
 
@@ -38,76 +11,15 @@
 - Observe-only discoveries: total=0
 - Status: no open observe-only generated discoveries.
 
-## Derive Reachability Guardrail
-
-- Dimension: source-to-target bridgeability and path quality.
-- Interpretation: measures planner/strategy reachability; not contextual wrapper strength.
-- Outcomes: derived=390 unsupported=0 not_equivalent=1
-- Path quality: mean_step_count=1.05 long_path_rate=0.00
-- Strategy specificity: generic_simplify_expected=0 distinct_expected_strategies=28
-
-## Derive Shadow Pressure
-
-- Dimension: diagnostic engine-to-derive bridgeability over representative engine equivalence rows.
-- Interpretation: exposes where known engine/metamorphic identities are not yet reachable or provable as derive targets; diagnostic, not a support gate.
-- Outcomes: sampled=65 derived=65 unsupported=0 not_equivalent=0
-- Path signal: mean_step_count=1.05 single_step_successes=61 multi_step_successes=4
-- Strategy specificity: generic_simplify_strategy_successes=0 distinct_actual_strategies=28
-- Embedded family coverage: sampled_families=25 total_families=25 missing=none
-- Multi-step shadow IDs: identity_log_product_root_cleanup:2, identity_nested_radical_denesting:2, identity_log_inverse_power_tower:2, embedded_log_inverse_power_unary_natural_alias:2
-- Generic simplify shadow IDs: none
-- Actual strategy counts: finite sums/products:11, expand trig:4, number theory:4, expand:3, expand fraction:3, rationalize:3, rewrite exponentials:3, rewrite hyperbolics:3, combine fraction:2, combine powers:2, contract logs:2, expand odd half power:2, +16 more
-- Derived family counts: Fundamental exp decomposition:3, Constant sum:2, Pythagorean Identities:2, log_exp_inverse:2, Addition of fractions:1, Binomial Expansion:1, Binomial coefficients (choose function):1, Change of base:1, Completing the square patterns:1, Difference of Squares:1, Exponential of logs:1, Factor-cancel patterns:1, +48 more
-- Problem family counts: unsupported=none not_equivalent=none
-
-## Derive Didactic Trace Audit
-
-- Dimension: educational quality of derive target-driven traces and web substeps.
-- Interpretation: diagnostic trace-quality lane; not a semantic correctness or runtime metric.
-- Outcomes: cases=472 flagged=0 flagged_rate=0.0%
-- Substeps: total_web_substeps=482 mean_step_count=1.06
-- Flags: no_web_substeps=0 no_web_steps=0
-
-## Simplify Didactic Trace Audit
-
-- Dimension: educational quality of simplify step traces and web substeps.
-- Interpretation: diagnostic trace-quality lane; not a semantic correctness or runtime metric.
-- Outcomes: cases=14 flagged=0 flagged_rate=0.0%
-- Substeps: total_wire_substeps=24 mean_step_count=2.07
-- Flags: no_wire_substeps=0 single_step_no_substeps=0 missing_math_sides=0
-
 ## Calculus Contract Signal
 
 - Dimension: public calculus behavior, result simplification, domain conditions, and step noise.
 - Interpretation: small executable calculus vertical slices; failures should be classified before broadening pre-calculus rules.
 - `diff`: passed=164 failed=0 ignored=1 filtered_out=0
-- `limit`: passed=64 failed=0 ignored=0 filtered_out=0
-- `limit_presimplify_safe`: passed=8 failed=0 ignored=0 filtered_out=0
-- `integrate`: passed=207 failed=0 ignored=1 filtered_out=0
-
-## Simplify Closure Signal
-
-- Dimension: normal-form convergence vs symbolic residual proof in the unified simplification benchmark.
-- Closure: symbolic=16519/16519 (100.0%), NF=0 (0.0%), proved-only=16519 (100.0%).
-- Residual outcomes: numeric_only=0 (0.0%), inconclusive=0 (0.0%), timeouts=0.
-- NF gap: 16519 cases are proved symbolically but do not converge to the same normal form.
-
-## Simplify Benchmark Interpretation
-
-- Dimension: broad semantic closure under metamorphic composition.
-- Proof-shape mix: quotient=3498 diff=0 composed=13021 (non-composed 21.2%, composed 78.8%).
-- Caveat: high `proved-composed` is a strong semantic/robustness signal, but a weaker direct runtime proxy because part of the closure is shaped by the benchmark harness rather than by one raw engine path.
-- Runtime interpretation: use `embedded_equivalence_context`, `simplify_zero_mixed`, and orchestrator profiling to localize real engine cost.
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 4.94s | passed=1445 failed=0 total=1445 wrappers=7 families=25 avg_case=3.419ms |
-| `derive_contract` | `pass` | 4.48s | derived=390 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
-| `derive_shadow_pressure` | `pass` | 0.23s | sampled=65 derived=65 unsupported=0 not_equivalent=0 mean_step_count=1.05 generic_simplify_strategy_successes=0 single_step=61 multi_step_ids=4 embedded_families=25/25 |
-| `derive_didactic_audit` | `pass` | 23.28s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 |
-| `simplify_didactic_audit` | `pass` | 0.87s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
-| `simplify_strict` | `pass` | 19.77s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
-| `calculus_diff_contract` | `pass` | 4.26s | passed=164 failed=0 |
-| `calculus_limit_contract` | `pass` | 14.39s | passed=64 failed=0 |
-| `calculus_limit_presimplify_contract` | `pass` | 0.60s | passed=8 failed=0 |
-| `calculus_integrate_contract` | `pass` | 8.25s | passed=207 failed=0 |
+| `simplify_add_small` | `pass` | 4.00s | passed=1 failed=0 closure=100.0% nf=0 (0.0%) proved=435 (100.0%) timeouts=0 |
+| `contextual_strict_fast` | `pass` | 31.36s | passed=1 failed=0 closure=100.0% nf=0 (0.0%) proved=64 (100.0%) timeouts=0 |
+| `contextual_radical_fast` | `pass` | 0.17s | passed=1 failed=0 closure=100.0% nf=0 (0.0%) proved=15 (100.0%) timeouts=0 |
+| `calculus_diff_contract` | `pass` | 11.76s | passed=164 failed=0 |

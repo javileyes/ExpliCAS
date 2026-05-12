@@ -113,7 +113,6 @@ class EmbeddedCandidateSmokeTests(unittest.TestCase):
                 textwrap.dedent(
                     """\
                     #!/bin/sh
-                    sleep 0.2
                     cat <<'OUT'
                     Total cases: 1
                     Passed: 1
@@ -131,13 +130,15 @@ class EmbeddedCandidateSmokeTests(unittest.TestCase):
             corpus_path = SMOKE.write_temp_corpus(row, keep_temp=False)
             old_path = os.environ.get("PATH", "")
             try:
-                with mock.patch.dict(os.environ, {"PATH": f"{temp_path}{os.pathsep}{old_path}"}):
+                with mock.patch.dict(
+                    os.environ, {"PATH": f"{temp_path}{os.pathsep}{old_path}"}
+                ):
                     result = SMOKE.run_candidate(
                         row,
                         corpus_path,
-                timeout_seconds=3.0,
-                slow_wall_seconds=0.05,
-            )
+                        timeout_seconds=3.0,
+                        slow_wall_seconds=0.0,
+                    )
             finally:
                 corpus_path.unlink(missing_ok=True)
 
@@ -146,7 +147,7 @@ class EmbeddedCandidateSmokeTests(unittest.TestCase):
         self.assertEqual(result.total_cases, 1)
         self.assertEqual(result.passed, 1)
         self.assertEqual(result.failed, 0)
-        self.assertEqual(result.slow_wall_seconds, 0.05)
+        self.assertEqual(result.slow_wall_seconds, 0.0)
 
     def test_parse_duration_seconds_accepts_ms_and_seconds(self) -> None:
         self.assertEqual(SMOKE.parse_duration_seconds("15.00ms"), 0.015)
