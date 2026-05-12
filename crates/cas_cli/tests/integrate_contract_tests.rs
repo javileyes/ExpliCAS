@@ -4672,7 +4672,7 @@ fn integrate_contract_polynomial_derivative_acosh_substitution_preserves_real_do
     assert_eq!(result, "acosh(x^2 / 2)");
     assert_eq!(
         required,
-        vec!["x^2 - 2 > 0".to_string(), "x^4 - 4 > 0".to_string()],
+        vec!["x^2 - 2 > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -4683,10 +4683,7 @@ fn integrate_contract_polynomial_derivative_acosh_substitution_preserves_real_do
     assert_eq!(result, "acosh((x^2 + x) / 2)");
     assert_eq!(
         required,
-        vec![
-            "x^2 + x - 2 > 0".to_string(),
-            "x^4 + 2 * x^3 + x^2 - 4 > 0".to_string(),
-        ],
+        vec!["x^2 + x - 2 > 0".to_string()],
         "unexpected shifted acosh required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -4697,10 +4694,7 @@ fn integrate_contract_polynomial_derivative_acosh_substitution_preserves_real_do
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec![
-            "x^4 + 2 * x^3 + x^2 - 4 > 0".to_string(),
-            "x^2 + x - 2 > 0".to_string(),
-        ],
+        vec!["x^2 + x - 2 > 0".to_string()],
         "nested acosh verification should preserve the real-domain conditions"
     );
 
@@ -4710,10 +4704,7 @@ fn integrate_contract_polynomial_derivative_acosh_substitution_preserves_real_do
     assert_eq!(result, "acosh(sqrt(5) * (x^2 + x) / 5)");
     assert_eq!(
         required,
-        vec![
-            "x^2 + x - sqrt(5) > 0".to_string(),
-            "x^4 + 2 * x^3 + x^2 - 5 > 0".to_string(),
-        ],
+        vec!["x^2 + x - sqrt(5) > 0".to_string()],
         "unexpected shifted surd-width acosh required_conditions: {required:?}"
     );
     assert_antiderivative_equiv_verifies(input);
@@ -4735,10 +4726,7 @@ fn integrate_contract_polynomial_derivative_acosh_substitution_preserves_real_do
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec![
-            "x^2 + x - sqrt(5) > 0".to_string(),
-            "x^4 + 2 * x^3 + x^2 - 5 > 0".to_string(),
-        ],
+        vec!["x^2 + x - sqrt(5) > 0".to_string()],
         "nested surd-width acosh residual should keep the compact real-domain conditions"
     );
 }
@@ -5806,6 +5794,40 @@ fn integrate_contract_polynomial_derivative_times_power_substitution() {
         vec!["x^2 - 1 ≥ 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+}
+
+#[test]
+fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_substitution() {
+    let input = "integrate((2*x+1)/(x^2+x+1)^(3/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "-2 / sqrt(x^2 + x + 1)");
+    assert!(
+        required.is_empty(),
+        "positive quadratic denominator should not emit redundant conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
+    let input = "integrate((2*x+1)/(sqrt(x^2+x+1)^3), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "-2 / sqrt(x^2 + x + 1)");
+    assert!(
+        required.is_empty(),
+        "sqrt-denominator spelling should share the same positive-quadratic domain: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
+    let input = "integrate(2*x/(x^2-1)^(3/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "-2 / sqrt(x^2 - 1)");
+    assert_eq!(
+        required,
+        vec!["x^2 - 1 > 0".to_string()],
+        "fractional denominator power should require the base to be positive"
+    );
+    assert_antiderivative_verifies(input);
 }
 
 #[test]

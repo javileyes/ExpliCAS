@@ -184,6 +184,55 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
             ["sqrt(x^2 + 1)", "x^2 + 2"],
             None,
         ),
+        (
+            "diff(sqrt(sin(x)), x)",
+            "cos(x) / (2·sqrt(sin(x)))",
+            "sin(x)^(-1/2)",
+            ["cos(x)", "sqrt(sin(x))"],
+            Some("sin(x)"),
+        ),
+        (
+            "diff(sqrt(ln(x)), x)",
+            "1 / (2·x·sqrt(ln(x)))",
+            "ln(x)^(-1/2)",
+            ["x", "sqrt(ln(x))"],
+            Some("ln(x)"),
+        ),
+        (
+            "diff(sqrt(tan(x)), x)",
+            "1 / (2·cos(x)^2·sqrt(tan(x)))",
+            "tan(x)^(-1/2)",
+            ["sqrt(tan(x))", "cos(x)^2"],
+            Some("tan(x)"),
+        ),
+        (
+            "diff(sqrt(arctan(x)), x)",
+            "1 / (2·(x^2 + 1)·sqrt(arctan(x)))",
+            "arctan(x)^(-1/2)",
+            ["sqrt(arctan(x))", "x^2 + 1"],
+            Some("arctan(x)"),
+        ),
+        (
+            "diff(sqrt(arctan(2*x+1)), x)",
+            "1 / (((2·x + 1)^2 + 1)·sqrt(arctan(2·x + 1)))",
+            "arctan(2 · x + 1)",
+            ["sqrt(arctan(2 · x + 1))", "((2 · x + 1))^2 + 1"],
+            Some("arctan(2·x + 1)"),
+        ),
+        (
+            "diff(sqrt(asinh(x)), x)",
+            "1 / (2·sqrt(x^2 + 1)·sqrt(asinh(x)))",
+            "asinh(x)^(-1/2)",
+            ["sqrt(asinh(x))", "sqrt(x^2 + 1)"],
+            Some("asinh(x)"),
+        ),
+        (
+            "diff(sqrt(asinh(2*x+1)), x)",
+            "1 / (sqrt((2·x + 1)^2 + 1)·sqrt(asinh(2·x + 1)))",
+            "asinh(2 · x + 1)",
+            ["sqrt(asinh(2 · x + 1))", "sqrt(((2 · x + 1))^2 + 1)"],
+            Some("asinh(2·x + 1)"),
+        ),
     ];
 
     for (expr, expected_result, expected_before, expected_after, required_expr) in cases {
@@ -202,8 +251,13 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
                     && step["after"].as_str().is_some_and(|after| {
                         expected_after.iter().all(|needle| after.contains(needle))
                     })
+            }) || steps.iter().any(|step| {
+                step["rule"] == "Calcular la derivada"
+                    && step["after"].as_str().is_some_and(|after| {
+                        expected_after.iter().all(|needle| after.contains(needle))
+                    })
             }),
-            "expected public JSON steps to include compact post-calculus presentation for {expr}: {steps:?}"
+            "expected public JSON steps to include compact calculus presentation for {expr}: {steps:?}"
         );
 
         let required = json["required_conditions"]
@@ -222,6 +276,102 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
                 "post-calculus presentation should not add redundant sqrt-domain guards for {expr}: {required:?}"
             );
         }
+    }
+}
+
+#[test]
+fn test_eval_json_post_calculus_sqrt_elementary_derivative_verifies() {
+    let cases = [
+        (
+            "diff(sqrt(sin(x)), x) - cos(x)/(2*sqrt(sin(x)))",
+            ["sin(x)", ""],
+        ),
+        ("diff(sqrt(ln(x)), x) - 1/(2*x*sqrt(ln(x)))", ["ln(x)", "x"]),
+        (
+            "diff(sqrt(tan(x)), x) - 1/(2*cos(x)^2*sqrt(tan(x)))",
+            ["tan(x)", ""],
+        ),
+        (
+            "diff(sqrt(arctan(x)), x) - 1/(2*(x^2+1)*sqrt(arctan(x)))",
+            ["arctan(x)", ""],
+        ),
+        (
+            "diff(sqrt(arctan(2*x+1)), x) - 1/(((2*x+1)^2+1)*sqrt(arctan(2*x+1)))",
+            ["arctan(2·x + 1)", ""],
+        ),
+        (
+            "diff(sqrt(asinh(x)), x) - 1/(2*sqrt(x^2+1)*sqrt(asinh(x)))",
+            ["asinh(x)", ""],
+        ),
+        (
+            "diff(sqrt(asinh(2*x+1)), x) - 1/(sqrt((2*x+1)^2+1)*sqrt(asinh(2*x+1)))",
+            ["asinh(2·x + 1)", ""],
+        ),
+    ];
+
+    for (expr, required_positive) in cases {
+        let json = eval_json(expr);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(json["result"], "0", "expr: {expr}");
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        for required_expr in required_positive
+            .into_iter()
+            .filter(|expr| !expr.is_empty())
+        {
+            assert!(
+                required.iter().any(|condition| {
+                    condition["kind"] == "Positive"
+                        && condition["expr_canonical"] == required_expr
+                }),
+                "residual verification should preserve Positive({required_expr}) for {expr}: {required:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_eval_json_reciprocal_half_power_shared_denominator_verifies() {
+    let cases = [
+        "tan(x)^(-1/2)/(2*cos(x)^2) - 1/(2*cos(x)^2*sqrt(tan(x)))",
+        "equiv(diff(sqrt(tan(x)), x), 1/(2*cos(x)^2*sqrt(tan(x))))",
+    ];
+
+    for expr in cases {
+        let json = eval_json(expr);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert!(
+            json["result"] == "0" || json["result"] == "true",
+            "reciprocal half-power equivalence should verify for {expr}: {}",
+            json["result"]
+        );
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "tan(x)"
+            }),
+            "expected Positive(tan(x)) for {expr}: {required:?}"
+        );
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+            }),
+            "expected NonZero(cos(x)) for {expr}: {required:?}"
+        );
+        assert!(
+            json["blocked_hints"]
+                .as_array()
+                .is_none_or(|blocked| blocked.is_empty()),
+            "direct cancellation should avoid blocked hints for {expr}: {:?}",
+            json["blocked_hints"]
+        );
     }
 }
 

@@ -9906,7 +9906,7 @@ fn inverse_hyperbolic_acosh_surd_polynomial_diff_uses_compact_real_domain() {
     );
 
     assert_eq!(
-        result, "(2 * x + 1) / sqrt(x^4 + 2 * x^3 + x^2 - 5)",
+        result, "(2 * x + 1) / sqrt((x^2 + x)^2 - 5)",
         "input: {input}, unexpected derivative result"
     );
     assert!(!result.contains("diff("), "input: {input}, got: {result}");
@@ -9931,10 +9931,7 @@ fn inverse_hyperbolic_acosh_surd_polynomial_diff_uses_compact_real_domain() {
 
     assert_eq!(
         required,
-        vec![
-            "x^2 + x - sqrt(5) > 0".to_string(),
-            "x^4 + 2 * x^3 + x^2 - 5 > 0".to_string(),
-        ],
+        vec!["x^2 + x - sqrt(5) > 0".to_string()],
         "input: {input}, unexpected required_conditions: {required:?}"
     );
 }
@@ -9972,7 +9969,7 @@ fn inverse_hyperbolic_acosh_negative_oriented_surd_polynomial_diff_preserves_sig
     );
 
     assert_eq!(
-        result, "2 * (2 * x - 1) / sqrt(4 * x^4 + 6 * x^2 - 8 * x^3 - 2 * x - 1)",
+        result, "4 * (2 * x - 1) / sqrt((1 - 2 * x)^4 - 5)",
         "input: {input}, unexpected derivative result"
     );
     assert!(!result.contains("diff("), "input: {input}, got: {result}");
@@ -9997,10 +9994,7 @@ fn inverse_hyperbolic_acosh_negative_oriented_surd_polynomial_diff_preserves_sig
 
     assert_eq!(
         required,
-        vec![
-            "(1 - 2 * x)^2 - sqrt(5) > 0".to_string(),
-            "4 * x^4 + 6 * x^2 - 8 * x^3 - 2 * x - 1 > 0".to_string(),
-        ],
+        vec!["(1 - 2 * x)^2 - sqrt(5) > 0".to_string()],
         "input: {input}, unexpected required_conditions: {required:?}"
     );
 }

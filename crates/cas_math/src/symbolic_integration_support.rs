@@ -4142,7 +4142,9 @@ fn rational_coefficient_times_reciprocal_power(
     let numerator = BigRational::from_integer(coefficient.numer().clone());
     let numerator = ctx.add(Expr::Number(numerator));
 
-    let denominator_power = if positive_exponent.is_one() {
+    let denominator_power = if positive_exponent == BigRational::new(1.into(), 2.into()) {
+        ctx.call_builtin(BuiltinFn::Sqrt, vec![base])
+    } else if positive_exponent.is_one() {
         base
     } else {
         let exponent = ctx.add(Expr::Number(positive_exponent));
@@ -4186,7 +4188,7 @@ fn polynomial_power_substitution_from_base(
     }
 
     let coefficient = scale / new_exponent.clone();
-    if new_exponent.is_integer() && new_exponent < BigRational::zero() {
+    if new_exponent < BigRational::zero() {
         return Some(rational_coefficient_times_reciprocal_power(
             ctx,
             coefficient,
@@ -4254,7 +4256,12 @@ fn polynomial_denominator_power_parts(
         let base = *base;
         let exp = *exp;
         let exponent = rational_constant_value(ctx, exp)?;
-        if !exponent.is_integer() || exponent <= BigRational::one() {
+        let (base, exponent) = if let Some(radicand) = sqrt_like_radicand(ctx, base) {
+            (radicand, exponent / BigRational::from_integer(2.into()))
+        } else {
+            (base, exponent)
+        };
+        if exponent <= BigRational::one() {
             return None;
         }
         if !contains_named_var(ctx, base, var) {
@@ -4293,14 +4300,19 @@ fn scaled_syntactic_polynomial_denominator_power_parts(
     for factor in factors {
         if power_part.is_none() {
             let candidate = match ctx.get(factor) {
-                Expr::Pow(base, exp) => Some((*base, *exp)),
+                Expr::Pow(base, exp) => {
+                    let exponent = rational_constant_value(ctx, *exp)?;
+                    if let Some(radicand) = sqrt_like_radicand(ctx, *base) {
+                        Some((radicand, exponent / BigRational::from_integer(2.into())))
+                    } else {
+                        Some((*base, exponent))
+                    }
+                }
                 _ => None,
             };
 
-            if let Some((base, exp)) = candidate {
-                let exponent = rational_constant_value(ctx, exp)?;
-                if exponent.is_integer()
-                    && exponent > BigRational::one()
+            if let Some((base, exponent)) = candidate {
+                if exponent > BigRational::one()
                     && contains_named_var(ctx, base, var)
                     && Polynomial::from_expr(ctx, base, var).is_ok()
                 {
@@ -4650,6 +4662,22 @@ fn polynomial_denominator_power_substitution_antiderivative(
     polynomial_power_substitution_from_base(ctx, adjusted_num, base, -denominator_exponent, var)
 }
 
+pub fn integrate_symbolic_is_fractional_denominator_power_substitution_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    let (num, den) = match ctx.get(expr) {
+        Expr::Div(num, den) => (*num, *den),
+        _ => return false,
+    };
+    let Some((_, exponent, _)) = polynomial_denominator_power_parts(ctx, den, var) else {
+        return false;
+    };
+    !exponent.is_integer()
+        && polynomial_denominator_power_substitution_antiderivative(ctx, num, den, var).is_some()
+}
+
 fn polynomial_negative_denominator_power_substitution_antiderivative(
     ctx: &mut Context,
     num: ExprId,
@@ -4737,6 +4765,23 @@ fn polynomial_denominator_power_substitution_required_nonzero(
         _ => return None,
     };
     let (base, _, _) = polynomial_denominator_power_parts(ctx, den, var)?;
+    polynomial_denominator_power_substitution_antiderivative(ctx, num, den, var)?;
+    Some(base)
+}
+
+fn polynomial_fractional_denominator_power_substitution_required_positive(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (num, den) = match ctx.get(expr) {
+        Expr::Div(num, den) => (*num, *den),
+        _ => return None,
+    };
+    let (base, exponent, _) = polynomial_denominator_power_parts(ctx, den, var)?;
+    if exponent.is_integer() {
+        return None;
+    }
     polynomial_denominator_power_substitution_antiderivative(ctx, num, den, var)?;
     Some(base)
 }
@@ -9428,6 +9473,9 @@ pub fn integrate_symbolic_required_positive_conditions(
     conditions.extend(sqrt_hyperbolic_reciprocal_derivative_radicand(
         ctx, expr, var,
     ));
+    conditions.extend(
+        polynomial_fractional_denominator_power_substitution_required_positive(ctx, expr, var),
+    );
     conditions.extend(atanh_polynomial_substitution_denominator(ctx, expr, var));
     conditions.extend(acosh_affine_radicands(ctx, expr, var));
     conditions
@@ -11774,6 +11822,10 @@ mod tests {
         let expr = parse("(2*x+1)*(x^2+x+1)^3", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "1/4 * (x^2 + x + 1)^4");
+
+        let expr = parse("(2*x+1)*(x^2+x+1)^(-3/2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-2 / sqrt(x^2 + x + 1)");
     }
 
     #[test]
@@ -11790,6 +11842,14 @@ mod tests {
         let expr = parse("2*x/(x^2+1)^3", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "-1 / (2 * (x^2 + 1)^2)");
+
+        let expr = parse("(2*x+1)/(x^2+x+1)^(3/2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-2 / sqrt(x^2 + x + 1)");
+
+        let expr = parse("(2*x+1)/(sqrt(x^2+x+1)^3)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-2 / sqrt(x^2 + x + 1)");
 
         let expr = parse("-2*x/(x^2+1)^3", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
@@ -11869,6 +11929,18 @@ mod tests {
                 "expected bounded reciprocal quotient detector to reject {input}"
             );
         }
+    }
+
+    #[test]
+    fn detects_fractional_denominator_power_substitution_target() {
+        let mut ctx = Context::new();
+        let expr = parse("(2*x+1)/(x^2+x+1)^(3/2)", &mut ctx).expect("parse");
+
+        assert!(
+            super::integrate_symbolic_is_fractional_denominator_power_substitution_target(
+                &mut ctx, expr, "x"
+            )
+        );
     }
 
     #[test]

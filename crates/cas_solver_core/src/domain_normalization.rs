@@ -10,7 +10,7 @@ use cas_math::expr_domain::{
 use cas_math::expr_extract::{
     extract_abs_argument_view, extract_log_base_argument_view, extract_sqrt_argument_view,
 };
-use cas_math::expr_nary::{build_balanced_mul, mul_leaves};
+use cas_math::expr_nary::{build_balanced_add, build_balanced_mul, mul_leaves, AddView};
 use cas_math::expr_normalization::{
     extract_even_positive_power_base, normalize_condition_expr as normalize_condition_expr_math,
     normalize_condition_expr_preserve_sign,
@@ -3566,9 +3566,29 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                     continue;
                 }
 
+                if positive_product_is_dominated_by_known_or_intrinsic_positive_factors(
+                    ctx,
+                    *prod_expr,
+                    &other_positive_exprs,
+                ) {
+                    to_remove.push(i);
+                    continue;
+                }
+
                 let factored = factor(ctx, *prod_expr);
                 if factored != *prod_expr
                     && is_product_dominated_by_positives(ctx, factored, &other_positive_exprs)
+                {
+                    to_remove.push(i);
+                    continue;
+                }
+
+                if factored != *prod_expr
+                    && positive_product_is_dominated_by_known_or_intrinsic_positive_factors(
+                        ctx,
+                        factored,
+                        &other_positive_exprs,
+                    )
                 {
                     to_remove.push(i);
                     continue;
@@ -3590,6 +3610,247 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
     for i in to_remove.into_iter().rev() {
         conditions.remove(i);
     }
+}
+
+fn positive_product_is_dominated_by_known_or_intrinsic_positive_factors(
+    ctx: &mut Context,
+    product_expr: ExprId,
+    known_positive_exprs: &[ExprId],
+) -> bool {
+    if known_positive_exprs.is_empty() {
+        return false;
+    }
+
+    if positive_additive_product_is_dominated_by_known_factor_and_intrinsic_remainder(
+        ctx,
+        product_expr,
+        known_positive_exprs,
+    ) {
+        return true;
+    }
+
+    if positive_even_power_gap_is_dominated_by_surd_lower_gap(
+        ctx,
+        product_expr,
+        known_positive_exprs,
+    ) {
+        return true;
+    }
+
+    if positive_polynomial_product_is_dominated_by_known_factor_and_intrinsic_remainder(
+        ctx,
+        product_expr,
+        known_positive_exprs,
+    ) {
+        return true;
+    }
+
+    let factors = mul_leaves(ctx, product_expr);
+    if factors.len() < 2 {
+        return false;
+    }
+
+    let mut saw_known_positive_factor = false;
+    for factor in factors {
+        if as_rational_const(ctx, factor).is_some_and(|value| value.is_positive()) {
+            continue;
+        }
+
+        if known_positive_exprs.iter().any(|known| {
+            exprs_equivalent(ctx, factor, *known)
+                || is_positive_power_of_base(ctx, factor, *known)
+                || is_abs_of(ctx, factor, *known)
+        }) {
+            saw_known_positive_factor = true;
+            continue;
+        }
+
+        if is_intrinsically_positive_real(ctx, factor)
+            || positive_quadratic_power_gap_is_intrinsic(ctx, factor)
+        {
+            continue;
+        }
+
+        return false;
+    }
+
+    saw_known_positive_factor
+}
+
+fn positive_even_power_gap_is_dominated_by_surd_lower_gap(
+    ctx: &mut Context,
+    product_expr: ExprId,
+    known_positive_exprs: &[ExprId],
+) -> bool {
+    for known_positive in known_positive_exprs {
+        let Some((base, radicand)) = surd_lower_gap_parts(ctx, *known_positive) else {
+            continue;
+        };
+
+        let two = ctx.num(2);
+        let base_squared = ctx.add(Expr::Pow(base, two));
+        let candidate_gap = ctx.add(Expr::Sub(base_squared, radicand));
+        if exprs_equivalent(ctx, product_expr, candidate_gap) {
+            return true;
+        }
+
+        let normalized_product = normalize_condition_expr_preserve_sign(ctx, product_expr);
+        let normalized_candidate = normalize_condition_expr_preserve_sign(ctx, candidate_gap);
+        if exprs_equivalent(ctx, normalized_product, normalized_candidate) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn surd_lower_gap_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Sub(base, rhs) => {
+            positive_rational_sqrt_radicand(ctx, *rhs).map(|radicand| (*base, radicand))
+        }
+        Expr::Add(left, right) => match (ctx.get(*left), ctx.get(*right)) {
+            (Expr::Neg(negated), _) => {
+                positive_rational_sqrt_radicand(ctx, *negated).map(|radicand| (*right, radicand))
+            }
+            (_, Expr::Neg(negated)) => {
+                positive_rational_sqrt_radicand(ctx, *negated).map(|radicand| (*left, radicand))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn positive_rational_sqrt_radicand(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let radicand = extract_sqrt_like_base(ctx, expr)?;
+    as_rational_const(ctx, radicand)
+        .is_some_and(|value| value.is_positive())
+        .then_some(radicand)
+}
+
+fn positive_polynomial_product_is_dominated_by_known_factor_and_intrinsic_remainder(
+    ctx: &mut Context,
+    product_expr: ExprId,
+    known_positive_exprs: &[ExprId],
+) -> bool {
+    use cas_math::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
+
+    let budget = PolyBudget {
+        max_terms: 64,
+        max_total_degree: 8,
+        max_pow_exp: 4,
+    };
+
+    let Ok(product_poly) = multipoly_from_expr(ctx, product_expr, &budget) else {
+        return false;
+    };
+    if product_poly.is_zero() || product_poly.is_constant() {
+        return false;
+    }
+
+    for known_positive in known_positive_exprs {
+        let Ok(known_poly) = multipoly_from_expr(ctx, *known_positive, &budget) else {
+            continue;
+        };
+        if known_poly.is_zero()
+            || known_poly.is_constant()
+            || !known_poly.vars.iter().all(|var| {
+                product_poly
+                    .vars
+                    .iter()
+                    .any(|product_var| product_var == var)
+            })
+        {
+            continue;
+        }
+
+        let aligned_known = known_poly.align_vars(&product_poly.vars);
+        let Some(quotient) = product_poly.div_exact(&aligned_known) else {
+            continue;
+        };
+        if quotient == product_poly || quotient.is_zero() {
+            continue;
+        }
+
+        let quotient_expr = multipoly_to_expr(&quotient, ctx);
+        if is_intrinsically_positive_real(ctx, quotient_expr)
+            || positive_quadratic_power_gap_is_intrinsic(ctx, quotient_expr)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn positive_additive_product_is_dominated_by_known_factor_and_intrinsic_remainder(
+    ctx: &mut Context,
+    expr: ExprId,
+    known_positive_exprs: &[ExprId],
+) -> bool {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return false;
+    }
+
+    for known_positive in known_positive_exprs {
+        let mut quotient_terms = Vec::with_capacity(view.terms.len());
+        let mut saw_known_factor = false;
+        for (term, sign) in view.terms.iter().copied() {
+            let Some(quotient_term) =
+                strip_known_positive_factor_from_product(ctx, term, *known_positive)
+            else {
+                quotient_terms.clear();
+                break;
+            };
+            saw_known_factor = true;
+            quotient_terms.push(match sign {
+                cas_math::expr_nary::Sign::Pos => quotient_term,
+                cas_math::expr_nary::Sign::Neg => ctx.add(Expr::Neg(quotient_term)),
+            });
+        }
+
+        if !saw_known_factor || quotient_terms.is_empty() {
+            continue;
+        }
+
+        let quotient = build_balanced_add(ctx, &quotient_terms);
+        if is_intrinsically_positive_real(ctx, quotient)
+            || positive_quadratic_power_gap_is_intrinsic(ctx, quotient)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn strip_known_positive_factor_from_product(
+    ctx: &mut Context,
+    product: ExprId,
+    known_positive: ExprId,
+) -> Option<ExprId> {
+    if exprs_equivalent(ctx, product, known_positive) {
+        return Some(ctx.add(Expr::Number(BigRational::one())));
+    }
+
+    let factors = mul_leaves(ctx, product);
+    for (factor_index, factor) in factors.iter().copied().enumerate() {
+        if !exprs_equivalent(ctx, factor, known_positive) {
+            continue;
+        }
+
+        let remaining: Vec<_> = factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(index, factor)| (index != factor_index).then_some(factor))
+            .collect();
+        return Some(build_balanced_mul(ctx, &remaining));
+    }
+
+    None
 }
 
 /// Render conditions for display, applying normalization and deduplication.
@@ -3881,6 +4142,108 @@ mod tests {
         assert!(normalized.iter().any(|cond| {
             conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(right_gap))
         }));
+    }
+
+    #[test]
+    fn positive_known_factor_dominates_product_with_intrinsic_positive_factor() {
+        let mut ctx = Context::new();
+        let asinh_arg = parse("asinh(2*x+1)", &mut ctx).expect("parse positive factor");
+        let product = parse(
+            "2*asinh(2*x+1) + 4*x*asinh(2*x+1) + 4*asinh(2*x+1)*x^2",
+            &mut ctx,
+        )
+        .expect("parse expanded product");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(product),
+                ImplicitCondition::Positive(asinh_arg),
+            ],
+        );
+
+        assert_eq!(
+            normalized,
+            vec![ImplicitCondition::Positive(asinh_arg)],
+            "got: {:?}",
+            normalized
+                .iter()
+                .map(|condition| condition.display(&ctx))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
+    fn positive_polynomial_known_factor_dominates_product_with_positive_quotient() {
+        let mut ctx = Context::new();
+        let known_factor = parse("x^2 + x - 2", &mut ctx).expect("parse known factor");
+        let product = parse("x^4 + 2*x^3 + x^2 - 4", &mut ctx).expect("parse polynomial product");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(known_factor),
+                ImplicitCondition::Positive(product),
+            ],
+        );
+
+        assert_eq!(
+            normalized.len(),
+            1,
+            "got: {:?}",
+            normalized
+                .iter()
+                .map(|condition| condition.display(&ctx))
+                .collect::<Vec<_>>()
+        );
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(known_factor)
+        ));
+    }
+
+    #[test]
+    fn positive_surd_lower_gap_dominates_matching_even_power_gap() {
+        let mut ctx = Context::new();
+        let known_factor = parse("x^2 + x - sqrt(5)", &mut ctx).expect("parse known factor");
+        let product =
+            parse("x^4 + 2*x^3 + x^2 - 5", &mut ctx).expect("parse matching even power gap");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(known_factor),
+                ImplicitCondition::Positive(product),
+            ],
+        );
+
+        assert_eq!(
+            normalized.len(),
+            1,
+            "got: {:?}",
+            normalized
+                .iter()
+                .map(|condition| condition.display(&ctx))
+                .collect::<Vec<_>>()
+        );
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(known_factor)
+        ));
+
+        let nonmatching_product =
+            parse("x^4 + 2*x^3 + x^2 - 6", &mut ctx).expect("parse nonmatching even power gap");
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(known_factor),
+                ImplicitCondition::Positive(nonmatching_product),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2);
     }
 
     #[test]

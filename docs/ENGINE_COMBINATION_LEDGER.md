@@ -10641,3 +10641,26 @@ The burden of proof stays the same:
     factors with explicit `NonZero` requirements
   - this adds the semantic/domain regime where the external denominator is
     structurally present but contributes no real-domain requirement
+
+## 2026-05-12 - Discovery observe-only: sqrt(tan) post-calculus presentation
+
+- area:
+  - calculus / post-calculus presentation
+- status:
+  - `discovery/observe-only`
+- candidate:
+  - render `diff(sqrt(tan(x)), x)` as
+    `1 / (2*cos(x)^2*sqrt(tan(x)))`
+- smoke outcome:
+  - the direct public result can be rendered compactly, but the corresponding
+    verification
+    `equiv(diff(sqrt(tan(x)), x), 1/(2*cos(x)^2*sqrt(tan(x))))`
+    returns `false`
+  - the residual mixes `tan(x)` with `sin(x) / cos(x)` under reciprocal square
+    roots and trips a `depth_overflow` in post-cleanup
+- learning:
+  - do not promote tan/cot square-root derivative presentation until the
+    trig-quotient equivalence path can normalize `sqrt(tan(x))` and
+    `sqrt(sin(x) / cos(x))` without cycling
+  - this is an equivalence/normalization weakness, not a calculus derivative
+    rule gap

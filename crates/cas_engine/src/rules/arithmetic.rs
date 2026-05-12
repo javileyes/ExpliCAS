@@ -14948,6 +14948,26 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
 
     if let Some((lhs_core, rhs_core)) = two_term_cores {
         let has_direct_trig_core = has_direct_trig_builtin_on_either_side(ctx, lhs_core, rhs_core);
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_reciprocal_half_power_product",
+            &expr_sample,
+            || try_build_direct_reciprocal_half_power_product_rewrite(ctx, lhs_core, rhs_core),
+        ) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_reciprocal_half_power_shared_denominator",
+            &expr_sample,
+            || {
+                try_build_direct_reciprocal_half_power_shared_denominator_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
+        ) {
+            return Some(rewrite);
+        }
         if maybe_two_term_hyperbolic_direct_identity_candidate(ctx, lhs_core, rhs_core) {
             if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
                 profiling,
@@ -19628,6 +19648,242 @@ fn try_build_direct_trig_ratio_equivalence_rewrite(
     None
 }
 
+fn reciprocal_half_power_base(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let exponent = cas_ast::views::as_rational_const(ctx, *exp, 8)?;
+    (exponent == BigRational::new((-1).into(), 2.into())).then_some(*base)
+}
+
+fn split_sqrt_factor_from_product(
+    ctx: &mut cas_ast::Context,
+    product: cas_ast::ExprId,
+    expected_base: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let view = MulView::from_expr(ctx, product);
+    for (index, factor) in view.factors.iter().copied().enumerate() {
+        let Some(base) = extract_square_root_base(ctx, factor) else {
+            continue;
+        };
+        if !exprs_match_for_cancellation(ctx, base, expected_base) {
+            continue;
+        }
+
+        let remaining_factors: Vec<_> = view
+            .factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(factor_index, factor)| (factor_index != index).then_some(factor))
+            .collect();
+        return Some((
+            factor,
+            cas_math::expr_nary::build_balanced_mul(ctx, &remaining_factors),
+        ));
+    }
+
+    None
+}
+
+fn try_match_reciprocal_half_power_shared_denominator(
+    ctx: &mut cas_ast::Context,
+    source: cas_ast::ExprId,
+    target: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let (source_numerator, source_denominator) = as_div(ctx, source)?;
+    let base = reciprocal_half_power_base(ctx, source_numerator)?;
+    let (target_numerator, target_denominator) = as_div(ctx, target)?;
+    if extract_i64_integer(ctx, target_numerator) != Some(1) {
+        return None;
+    }
+
+    let (sqrt_factor, remaining_denominator) =
+        split_sqrt_factor_from_product(ctx, target_denominator, base)?;
+    if !exprs_match_for_cancellation(ctx, source_denominator, remaining_denominator) {
+        return None;
+    }
+
+    Some((base, sqrt_factor))
+}
+
+fn try_build_direct_reciprocal_half_power_shared_denominator_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some((base, sqrt_factor)) =
+            try_match_reciprocal_half_power_shared_denominator(ctx, source, target)
+        else {
+            continue;
+        };
+
+        return Some(
+            Rewrite::with_local(
+                ctx.num(0),
+                "Reciprocal Half-Power Cancellation",
+                lhs_core,
+                rhs_core,
+            )
+            .requires(crate::ImplicitCondition::Positive(base))
+            .requires(crate::ImplicitCondition::NonZero(sqrt_factor)),
+        );
+    }
+
+    None
+}
+
+fn reciprocal_half_power_product_bases(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<[cas_ast::ExprId; 2]> {
+    let view = MulView::from_expr(ctx, expr);
+    if view.factors.len() != 2 {
+        return None;
+    }
+
+    Some([
+        reciprocal_half_power_base(ctx, view.factors[0])?,
+        reciprocal_half_power_base(ctx, view.factors[1])?,
+    ])
+}
+
+fn reciprocal_half_power_product_base_pair(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<[cas_ast::ExprId; 2]> {
+    let product_base = reciprocal_half_power_base(ctx, expr)?;
+    let view = MulView::from_expr(ctx, product_base);
+    if view.factors.len() != 2 {
+        return None;
+    }
+
+    Some([view.factors[0], view.factors[1]])
+}
+
+fn reciprocal_sqrt_product_denominator_bases(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<[cas_ast::ExprId; 2]> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    if extract_i64_integer(ctx, numerator) != Some(1) {
+        return None;
+    }
+
+    let view = MulView::from_expr(ctx, denominator);
+    if view.factors.len() != 2 {
+        return None;
+    }
+
+    Some([
+        extract_square_root_base(ctx, view.factors[0])?,
+        extract_square_root_base(ctx, view.factors[1])?,
+    ])
+}
+
+fn split_reciprocal_half_power_factor_from_product(
+    ctx: &mut cas_ast::Context,
+    product: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let view = MulView::from_expr(ctx, product);
+    for (index, factor) in view.factors.iter().copied().enumerate() {
+        let Some(base) = reciprocal_half_power_base(ctx, factor) else {
+            continue;
+        };
+
+        let remaining_factors: Vec<_> = view
+            .factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(factor_index, factor)| (factor_index != index).then_some(factor))
+            .collect();
+        return Some((
+            base,
+            cas_math::expr_nary::build_balanced_mul(ctx, &remaining_factors),
+        ));
+    }
+
+    None
+}
+
+fn reciprocal_half_power_over_sqrt_bases(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<[cas_ast::ExprId; 2]> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    if let (Some(half_base), Some(sqrt_base)) = (
+        reciprocal_half_power_base(ctx, numerator),
+        extract_square_root_base(ctx, denominator),
+    ) {
+        return Some([half_base, sqrt_base]);
+    }
+
+    let (inner_numerator, inner_denominator) = as_div(ctx, numerator)?;
+    let sqrt_base = extract_square_root_base(ctx, inner_denominator)?;
+    let (half_base, scale) = split_reciprocal_half_power_factor_from_product(ctx, inner_numerator)?;
+    if !exprs_match_for_cancellation(ctx, scale, denominator) {
+        return None;
+    }
+
+    Some([half_base, sqrt_base])
+}
+
+fn reciprocal_half_power_base_pairs_match(
+    ctx: &mut cas_ast::Context,
+    source_bases: [cas_ast::ExprId; 2],
+    target_bases: [cas_ast::ExprId; 2],
+) -> bool {
+    (exprs_match_for_cancellation(ctx, source_bases[0], target_bases[0])
+        && exprs_match_for_cancellation(ctx, source_bases[1], target_bases[1]))
+        || (exprs_match_for_cancellation(ctx, source_bases[0], target_bases[1])
+            && exprs_match_for_cancellation(ctx, source_bases[1], target_bases[0]))
+}
+
+fn try_match_reciprocal_half_power_product_equivalence(
+    ctx: &mut cas_ast::Context,
+    source: cas_ast::ExprId,
+    target: cas_ast::ExprId,
+) -> Option<[cas_ast::ExprId; 2]> {
+    let source_bases = reciprocal_half_power_product_bases(ctx, source)
+        .or_else(|| reciprocal_half_power_over_sqrt_bases(ctx, source))
+        .or_else(|| reciprocal_sqrt_product_denominator_bases(ctx, source))?;
+    let target_bases = reciprocal_half_power_product_base_pair(ctx, target)
+        .or_else(|| reciprocal_sqrt_product_denominator_bases(ctx, target))?;
+    reciprocal_half_power_base_pairs_match(ctx, source_bases, target_bases).then_some(source_bases)
+}
+
+fn try_build_direct_reciprocal_half_power_product_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some([first_base, second_base]) =
+            try_match_reciprocal_half_power_product_equivalence(ctx, source, target)
+        else {
+            continue;
+        };
+
+        return Some(
+            Rewrite::with_local(
+                ctx.num(0),
+                "Reciprocal Half-Power Product Cancellation",
+                lhs_core,
+                rhs_core,
+            )
+            .requires(crate::ImplicitCondition::Positive(first_base))
+            .requires(crate::ImplicitCondition::Positive(second_base)),
+        );
+    }
+
+    None
+}
+
 fn try_build_same_denominator_tail_trig_ratio_equivalence_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
@@ -19680,6 +19936,22 @@ fn try_build_direct_core_equivalence_rewrite(
             lhs_core,
             rhs_core,
         ));
+    }
+
+    if let Some(rewrite) =
+        try_build_direct_reciprocal_half_power_shared_denominator_rewrite(ctx, lhs_core, rhs_core)
+    {
+        profile_route(
+            "rule.direct_core_equivalence.route.reciprocal_half_power_shared_denominator",
+        );
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_build_direct_reciprocal_half_power_product_rewrite(ctx, lhs_core, rhs_core)
+    {
+        profile_route("rule.direct_core_equivalence.route.reciprocal_half_power_product");
+        return Some(rewrite);
     }
 
     if let Some(rewrite) =
@@ -27120,6 +27392,16 @@ define_rule!(
             return Some(rewrite);
         }
 
+        if term_count == 2 {
+            if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
+                if let Some(rewrite) =
+                    try_build_direct_reciprocal_half_power_product_rewrite(ctx, lhs_core, rhs_core)
+                {
+                    return Some(rewrite);
+                }
+            }
+        }
+
         if has_nontrivial_common_scale {
             return None;
         }
@@ -31376,6 +31658,155 @@ mod tests {
 
         assert_eq!(rewrite.before_local, Some(lhs));
         assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_reciprocal_half_power_shared_denominator_rewrite_matches_root_form() {
+        let mut ctx = Context::new();
+        let lhs = parse("tan(x)^(-1/2)/(2*cos(x)^2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("1/(2*cos(x)^2*sqrt(tan(x)))", &mut ctx)
+            .unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_reciprocal_half_power_shared_denominator_rewrite(
+            &mut ctx, lhs, rhs,
+        )
+        .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Reciprocal Half-Power Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_reciprocal_half_power_product_rewrite_matches_expanded_factor() {
+        let mut ctx = Context::new();
+        let lhs = parse("asinh(2*x+1)^(-1/2)*((2*x+1)^2+1)^(-1/2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("(asinh(2*x+1)*(4*x^2+4*x+2))^(-1/2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_direct_reciprocal_half_power_product_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Reciprocal Half-Power Product Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_reciprocal_half_power_product_rewrite_matches_sqrt_denominator_form() {
+        let mut ctx = Context::new();
+        let lhs = parse("asinh(2*x+1)^(-1/2)*((2*x+1)^2+1)^(-1/2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("1/(sqrt(asinh(2*x+1))*sqrt((2*x+1)^2+1))", &mut ctx)
+            .unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_direct_reciprocal_half_power_product_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Reciprocal Half-Power Product Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_reciprocal_half_power_product_rewrite_matches_scaled_sqrt_denominator_form() {
+        let mut ctx = Context::new();
+        let lhs = parse("(2*asinh(2*x+1)^(-1/2)/sqrt((2*x+1)^2+1))/2", &mut ctx)
+            .unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("1/(sqrt(asinh(2*x+1))*sqrt((2*x+1)^2+1))", &mut ctx)
+            .unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_direct_reciprocal_half_power_product_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Reciprocal Half-Power Product Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn exact_zero_identity_rewrite_matches_reciprocal_half_power_product_residual() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "asinh(2*x+1)^(-1/2)*((2*x+1)^2+1)^(-1/2) - (asinh(2*x+1)*(4*x^2+4*x+2))^(-1/2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_identity_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Reciprocal Half-Power Product Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
     }
 
     #[test]
