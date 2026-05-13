@@ -92,17 +92,58 @@ fn test_limit_neg_infinity_parity() {
 }
 
 #[test]
-fn test_limit_residual_with_warning_json() {
+fn test_limit_bounded_trig_over_divergent_denominator_json() {
     let (success, stdout) = run_limit("sin(x)/x", "x", "infinity", "json");
+    assert!(success, "Command should succeed");
+    assert!(stdout.contains("\"ok\":true"), "JSON should have ok:true");
+    assert!(
+        stdout.contains("\"result\":\"0\""),
+        "Bounded trig over divergent denominator should resolve to 0, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("\"warning\""),
+        "Resolved bounded-over-divergent limit should not warn, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_limit_bounded_arctan_over_divergent_denominator_json() {
+    let (success, stdout) = run_limit("arctan(x)/x", "x", "infinity", "json");
+    assert!(success, "Command should succeed");
+    assert!(stdout.contains("\"ok\":true"), "JSON should have ok:true");
+    assert!(
+        stdout.contains("\"result\":\"0\""),
+        "Bounded arctan over divergent denominator should resolve to 0, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("\"warning\""),
+        "Resolved bounded-over-divergent limit should not warn, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_limit_bounded_tanh_over_divergent_denominator_json() {
+    let (success, stdout) = run_limit("tanh(x)/x", "x", "infinity", "json");
+    assert!(success, "Command should succeed");
+    assert!(stdout.contains("\"ok\":true"), "JSON should have ok:true");
+    assert!(
+        stdout.contains("\"result\":\"0\""),
+        "Bounded tanh over divergent denominator should resolve to 0, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("\"warning\""),
+        "Resolved bounded-over-divergent limit should not warn, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_limit_trig_over_nondivergent_denominator_remains_residual_json() {
+    let (success, stdout) = run_limit("sin(x)/cos(x)", "x", "infinity", "json");
     assert!(success, "Command should succeed even for residual");
     assert!(stdout.contains("\"ok\":true"), "JSON should have ok:true");
     assert!(
-        stdout.contains("\"warning\""),
-        "Should have warning for unresolved limit"
-    );
-    assert!(
-        stdout.contains("limit("),
-        "Result should contain residual limit(...)"
+        stdout.contains("\"warning\"") && stdout.contains("limit("),
+        "Nondivergent trig denominator should stay residual, got: {stdout}"
     );
 }
 

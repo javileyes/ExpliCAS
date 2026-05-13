@@ -189,6 +189,111 @@ fn reciprocal_trig_affine_diff_omits_non_actionable_cycle_hints() {
 }
 
 #[test]
+fn reciprocal_trig_power_diff_keeps_compact_post_calculus_presentation() {
+    let cases = [
+        ("diff(tan(x)^2/2, x)", "tan(x) * sec(x)^2"),
+        (
+            "diff(tan(2*x+1)^2/2, x)",
+            "2 * tan(2 * x + 1) * sec(2 * x + 1)^2",
+        ),
+        ("diff(-cot(x)^2/2, x)", "cot(x) * csc(x)^2"),
+    ];
+
+    for (input, expected) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::Off;
+
+        let output =
+            evaluate_eval_command_output(&mut engine, &mut state, input, false).expect("eval");
+        let result = output
+            .result_line
+            .as_ref()
+            .expect("result line")
+            .line
+            .as_str()
+            .strip_prefix("Result: ")
+            .unwrap_or_else(|| {
+                output
+                    .result_line
+                    .as_ref()
+                    .expect("result line")
+                    .line
+                    .as_str()
+            });
+
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            !result.contains("sin(") && !result.contains("cos("),
+            "input: {input}, post-calculus presentation should keep reciprocal trig factors: {result}"
+        );
+        assert!(
+            output.metadata.requires_lines.is_empty(),
+            "input: {input}, unexpected required conditions: {:?}",
+            output.metadata.requires_lines
+        );
+    }
+}
+
+#[test]
+fn log_tan_cot_sqrt_diff_conditions_are_compact_domain_guards() {
+    for (input, expected_equivalent, expected_required) in [
+        (
+            "diff(ln(tan(sqrt(x))), x)",
+            "1/(sqrt(x)*sin(2*sqrt(x)))",
+            vec![
+                "sin(sqrt(x)) / cos(sqrt(x)) > 0".to_string(),
+                "x > 0".to_string(),
+            ],
+        ),
+        (
+            "diff(ln(cot(sqrt(x))), x)",
+            "-1/(sqrt(x)*sin(2*sqrt(x)))",
+            vec![
+                "cos(sqrt(x)) / sin(sqrt(x)) > 0".to_string(),
+                "x > 0".to_string(),
+            ],
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse input");
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let expected = parse(expected_equivalent, &mut engine.simplifier.context)
+            .unwrap_or_else(|err| panic!("parse expected {expected_equivalent}: {err}"));
+
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "input: {input}, derivative is not equivalent to {expected_equivalent}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_required,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
+}
+
+#[test]
 fn inverse_tangent_direct_trig_affine_diff_preserves_chain_rule_presentation() {
     let cases = [
         ("diff(arctan(sin(x)), x)", "cos(x) / (sin(x)^2 + 1)"),
@@ -5913,6 +6018,16 @@ fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation()
             vec!["x > 0".to_string(), "sin(sqrt(x)) ≠ 0".to_string()],
         ),
         (
+            "diff(ln(sec(sqrt(x))), x)",
+            "tan(sqrt(x)) / (2 * sqrt(x))",
+            vec!["cos(sqrt(x)) > 0".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "diff(ln(csc(sqrt(x))), x)",
+            "-cot(sqrt(x)) / (2 * sqrt(x))",
+            vec!["sin(sqrt(x)) > 0".to_string(), "x > 0".to_string()],
+        ),
+        (
             "diff(sinh(sqrt(x)), x)",
             "cosh(sqrt(x)) / (2 * sqrt(x))",
             vec!["x > 0".to_string()],
@@ -5926,6 +6041,52 @@ fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation()
             "diff(tanh(sqrt(x)), x)",
             "1 / (2 * sqrt(x) * cosh(sqrt(x))^2)",
             vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(ln(cosh(sqrt(x))), x)",
+            "tanh(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(ln(cosh(sqrt(3*x+1))), x)",
+            "3 * tanh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0".to_string()],
+        ),
+        (
+            "diff(ln(1/cosh(sqrt(x))), x)",
+            "-tanh(sqrt(x)) / (2 * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(ln(1/cosh(sqrt(3*x+1))), x)",
+            "-3 * tanh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
+            vec!["3 * x + 1 > 0".to_string()],
+        ),
+        (
+            "diff(ln(abs(sinh(sqrt(x)))), x)",
+            "1 / (2 * tanh(sqrt(x)) * sqrt(x))",
+            vec!["sinh(sqrt(x)) ≠ 0".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "diff(ln(abs(sinh(sqrt(3*x+1)))), x)",
+            "3 / (2 * tanh(sqrt(3 * x + 1)) * sqrt(3 * x + 1))",
+            vec![
+                "sinh(sqrt(3 * x + 1)) ≠ 0".to_string(),
+                "3 * x + 1 > 0".to_string(),
+            ],
+        ),
+        (
+            "diff(ln(1/sinh(sqrt(x))), x)",
+            "-1 / (2 * tanh(sqrt(x)) * sqrt(x))",
+            vec!["sinh(sqrt(x)) > 0".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "diff(ln(1/sinh(sqrt(3*x+1))), x)",
+            "-3 / (2 * tanh(sqrt(3 * x + 1)) * sqrt(3 * x + 1))",
+            vec![
+                "sinh(sqrt(3 * x + 1)) > 0".to_string(),
+                "3 * x + 1 > 0".to_string(),
+            ],
         ),
         (
             "diff(-1/cosh(sqrt(3*x+1)), x)",

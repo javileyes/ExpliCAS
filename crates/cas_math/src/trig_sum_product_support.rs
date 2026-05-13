@@ -506,7 +506,8 @@ pub fn try_plan_cos_diff_sin_diff_quotient_div_expr(
 /// Try the Werner product-to-sum identity:
 /// `2 * sin(A) * cos(B) -> sin(A+B) + sin(A-B)`.
 ///
-/// This intentionally matches the current engine behavior only (sin-cos form).
+/// This intentionally matches the current engine behavior only (sin-cos form),
+/// while preserving any factors outside the matched `2*sin(A)*cos(B)` kernel.
 pub fn try_rewrite_product_to_sum_werner_expr(
     ctx: &mut Context,
     expr: ExprId,
@@ -516,28 +517,38 @@ pub fn try_rewrite_product_to_sum_werner_expr(
         return None;
     }
 
-    let mut saw_coeff_two = false;
+    let mut two_idx: Option<usize> = None;
     let mut sin_arg: Option<ExprId> = None;
+    let mut sin_idx: Option<usize> = None;
     let mut cos_arg: Option<ExprId> = None;
+    let mut cos_idx: Option<usize> = None;
 
-    for &factor in &factors {
+    for (idx, &factor) in factors.iter().enumerate() {
         match ctx.get(factor) {
             Expr::Number(n) => {
-                if n.to_integer() == 2.into() && !saw_coeff_two {
-                    saw_coeff_two = true;
+                if *n == BigRational::from_integer(2.into()) && two_idx.is_none() {
+                    two_idx = Some(idx);
                 }
             }
             Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(*fn_id) {
-                Some(cas_ast::BuiltinFn::Sin) if sin_arg.is_none() => sin_arg = Some(args[0]),
-                Some(cas_ast::BuiltinFn::Cos) if cos_arg.is_none() => cos_arg = Some(args[0]),
+                Some(cas_ast::BuiltinFn::Sin) if sin_arg.is_none() => {
+                    sin_arg = Some(args[0]);
+                    sin_idx = Some(idx);
+                }
+                Some(cas_ast::BuiltinFn::Cos) if cos_arg.is_none() => {
+                    cos_arg = Some(args[0]);
+                    cos_idx = Some(idx);
+                }
                 _ => {}
             },
             _ => {}
         }
     }
 
-    let (a, b) = match (saw_coeff_two, sin_arg, cos_arg) {
-        (true, Some(a), Some(b)) => (a, b),
+    let (two_idx, sin_idx, cos_idx, a, b) = match (two_idx, sin_idx, cos_idx, sin_arg, cos_arg) {
+        (Some(two_idx), Some(sin_idx), Some(cos_idx), Some(a), Some(b)) => {
+            (two_idx, sin_idx, cos_idx, a, b)
+        }
         _ => return None,
     };
 
@@ -546,6 +557,13 @@ pub fn try_rewrite_product_to_sum_werner_expr(
     let sin_sum = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![a_plus_b]);
     let sin_diff = ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![a_minus_b]);
     let rewritten = ctx.add(Expr::Add(sin_sum, sin_diff));
+    let rewritten = factors
+        .into_iter()
+        .enumerate()
+        .filter_map(|(idx, factor)| {
+            (idx != two_idx && idx != sin_idx && idx != cos_idx).then_some(factor)
+        })
+        .fold(rewritten, |acc, factor| smart_mul(ctx, acc, factor));
 
     Some(TrigSumProductRewrite {
         rewritten,
@@ -827,7 +845,12 @@ pub fn try_rewrite_sum_to_product_contraction_expr(
 mod tests {
     use super::*;
     use crate::semantic_equality::SemanticEqualityChecker;
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+
+    fn rendered(ctx: &Context, id: ExprId) -> String {
+        format!("{}", DisplayExpr { context: ctx, id })
+    }
 
     #[test]
     fn extract_sum_and_diff_patterns() {
@@ -939,6 +962,17 @@ mod tests {
         assert_eq!(
             cas_ast::ordering::compare_expr(&ctx, rewrite.rewritten, expected),
             Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn rewrites_werner_sin_cos_product_preserving_extra_factors() {
+        let mut ctx = Context::new();
+        let expr = parse("2*2*sin(x)*cos(y)*z", &mut ctx).expect("parse");
+        let rewrite = try_rewrite_product_to_sum_werner_expr(&mut ctx, expr).expect("rewrite");
+        assert_eq!(
+            rendered(&ctx, rewrite.rewritten),
+            "(sin(x + y) + sin(x - y)) * 2 * z"
         );
     }
 

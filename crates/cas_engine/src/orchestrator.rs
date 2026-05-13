@@ -605,6 +605,40 @@ fn expr_contains_division_node_local(ctx: &Context, root: ExprId) -> bool {
     false
 }
 
+fn try_div_add_common_factor_residual_root_zero(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
+        || !expr_contains_division_node_local(ctx, expr)
+    {
+        return None;
+    }
+
+    let (lhs_core, rhs_core) =
+        crate::rules::arithmetic::extract_two_term_core_difference(ctx, expr)?;
+
+    for (quotient_side, residual_side) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        if !expr_contains_division_node_local(ctx, quotient_side) {
+            continue;
+        }
+
+        let Some(rewrite) =
+            cas_math::div_add_common_factor_from_den_support::try_rewrite_div_add_common_factor_from_den_expr(
+                ctx,
+                quotient_side,
+            )
+        else {
+            continue;
+        };
+
+        if compare_expr(ctx, rewrite.rewritten, residual_side) == Ordering::Equal
+            || SemanticEqualityChecker::new(ctx).are_equal(rewrite.rewritten, residual_side)
+        {
+            return Some(ctx.num(0));
+        }
+    }
+
+    None
+}
+
 #[derive(Clone, Copy, Default)]
 struct HotDirectSmallZeroFamilyFlags {
     has_log: bool,
@@ -25977,6 +26011,22 @@ impl Orchestrator {
         let collect_steps = self.options.collect_steps;
         let is_solve_mode = self.options.shared.context_mode == crate::options::ContextMode::Solve;
         self.pattern_marks_expr = None;
+
+        if let Some(zero) =
+            try_div_add_common_factor_residual_root_zero(&mut simplifier.context, expr)
+        {
+            let shortcut_steps = if collect_steps {
+                vec![build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Collapse factored quotient residual",
+                    "Factored Quotient Residual",
+                )]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
 
         if let Some(zero) = crate::calculus_residual_support::try_diff_hyperbolic_residual_root_zero(
             &mut simplifier.context,

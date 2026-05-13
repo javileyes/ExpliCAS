@@ -137,6 +137,7 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_rational_linear_positive_quadratic_integrate_call(ctx, target, var_name)
         || diff_target_is_positive_quadratic_power_integrate_call(ctx, target, var_name)
         || diff_target_is_quadratic_affine_ln_by_parts_integrate_call(ctx, target, var_name)
+        || diff_target_is_arcsin_inverse_sqrt_product_integrate_call(ctx, target, var_name)
         || diff_target_is_affine_polynomial_times_direct_builtin_derivative_target(
             ctx, target, var_name,
         )
@@ -227,6 +228,57 @@ fn diff_target_is_quadratic_affine_ln_by_parts_integrate_call(
     }
     diff_variable_name(ctx, args[1]).is_some_and(|integrate_var| integrate_var == var_name)
         && integrate_target_is_quadratic_affine_ln_by_parts_kernel(ctx, args[0], var_name)
+}
+
+fn diff_target_is_arcsin_inverse_sqrt_product_integrate_call(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return false;
+    }
+    if diff_variable_name(ctx, args[1]).is_none_or(|integrate_var| integrate_var != var_name) {
+        return false;
+    }
+
+    integrate_target_has_inverse_sqrt_product_shape(ctx, args[0], var_name)
+}
+
+fn integrate_target_has_inverse_sqrt_product_shape(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    match ctx.get(target) {
+        Expr::Div(num, den) => {
+            if contains_named_var(ctx, *num, var_name) {
+                return false;
+            }
+            let mut variable_sqrt_factor_count = 0usize;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, *den) {
+                let Some(radicand) = extract_square_root_base(ctx, factor) else {
+                    continue;
+                };
+                if cas_math::expr_nary::mul_leaves(ctx, radicand).len() >= 2 {
+                    return true;
+                }
+                if contains_named_var(ctx, radicand, var_name) {
+                    variable_sqrt_factor_count += 1;
+                }
+            }
+            variable_sqrt_factor_count >= 2
+        }
+        Expr::Pow(base, exp) => {
+            cas_ast::views::as_rational_const(ctx, *exp, 8)
+                == Some(BigRational::new((-1).into(), 2.into()))
+                && cas_math::expr_nary::mul_leaves(ctx, *base).len() >= 2
+        }
+        _ => false,
+    }
 }
 
 fn integrate_target_is_quadratic_affine_ln_by_parts_kernel(

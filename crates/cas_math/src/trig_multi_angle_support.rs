@@ -864,7 +864,13 @@ pub fn is_inside_trig_sum_quotient_with_ancestors(ctx: &Context, ancestors: &[Ex
 /// - `large = 2 * small`
 /// - `small = large / 2`
 /// - `small = (1/2) * large`
-pub fn is_double_angle_relation(ctx: &Context, large: ExprId, small: ExprId) -> bool {
+pub fn is_double_angle_relation(ctx: &mut Context, large: ExprId, small: ExprId) -> bool {
+    if extract_double_angle_arg_relaxed(ctx, large)
+        .is_some_and(|half| compare_expr(ctx, half, small) == Ordering::Equal)
+    {
+        return true;
+    }
+
     // Case 1: large = 2 * small
     if let Expr::Mul(l, r) = ctx.get(large) {
         if let Expr::Number(n) = ctx.get(*l) {
@@ -1652,9 +1658,18 @@ mod tests {
         let x_over_2 = parse("x/2", &mut ctx).expect("x/2");
         let three_x = parse("3*x", &mut ctx).expect("3*x");
 
-        assert!(is_double_angle_relation(&ctx, two_x, x));
-        assert!(is_double_angle_relation(&ctx, x, x_over_2));
-        assert!(!is_double_angle_relation(&ctx, three_x, x));
+        assert!(is_double_angle_relation(&mut ctx, two_x, x));
+        assert!(is_double_angle_relation(&mut ctx, x, x_over_2));
+        assert!(!is_double_angle_relation(&mut ctx, three_x, x));
+    }
+
+    #[test]
+    fn double_angle_relation_matches_expanded_affine_argument() {
+        let mut ctx = Context::new();
+        let large = parse("4*x + 2", &mut ctx).expect("large");
+        let small = parse("2*x + 1", &mut ctx).expect("small");
+
+        assert!(is_double_angle_relation(&mut ctx, large, small));
     }
 
     #[test]

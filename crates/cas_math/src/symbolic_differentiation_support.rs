@@ -3247,6 +3247,163 @@ fn squared_builtin_call(ctx: &mut Context, builtin: BuiltinFn, arg: ExprId) -> E
     ctx.add(Expr::Pow(call, two))
 }
 
+fn bounded_positive_integer_value(ctx: &Context, expr: ExprId, min: i64, max: i64) -> Option<i64> {
+    let Expr::Number(value) = ctx.get(expr) else {
+        return None;
+    };
+    if !value.denom().is_one() {
+        return None;
+    }
+    let value = value.to_integer().to_i64()?;
+    (min..=max).contains(&value).then_some(value)
+}
+
+fn scaled_reciprocal_trig_power_primitive_derivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let denominator_scale = rational_constant_value(ctx, den)?;
+    if denominator_scale.is_zero() {
+        return None;
+    }
+
+    let (outer_sign, core) = match ctx.get(num).clone() {
+        Expr::Neg(inner) => (-BigRational::one(), inner),
+        _ => (BigRational::one(), num),
+    };
+    let Expr::Pow(base, exp) = ctx.get(core).clone() else {
+        return None;
+    };
+    let (fn_id, args) = match ctx.get(base).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => (fn_id, args),
+        _ => return None,
+    };
+    let builtin = ctx.builtin_of(fn_id)?;
+    let (reciprocal_square_builtin, derivative_sign) = match builtin {
+        BuiltinFn::Tan => (BuiltinFn::Sec, BigRational::one()),
+        BuiltinFn::Cot => (BuiltinFn::Csc, -BigRational::one()),
+        _ => return None,
+    };
+    let power = bounded_positive_integer_value(ctx, exp, 2, 6)?;
+    let arg = args[0];
+    let d_arg = differentiate_symbolic_expr(ctx, arg, var)?;
+
+    let base_power = if power == 2 {
+        ctx.call_builtin(builtin, vec![arg])
+    } else {
+        let base_call = ctx.call_builtin(builtin, vec![arg]);
+        let next_power = ctx.num(power - 1);
+        ctx.add(Expr::Pow(base_call, next_power))
+    };
+    let reciprocal_square = squared_builtin_call(ctx, reciprocal_square_builtin, arg);
+    let product = mul_pruned(ctx, base_power, reciprocal_square);
+    let product = mul_pruned(ctx, product, d_arg);
+    let scale =
+        outer_sign * derivative_sign * BigRational::from_integer(power.into()) / denominator_scale;
+
+    Some(scale_expr_by_rational(ctx, scale, product))
+}
+
+fn scaled_trig_power_factor(
+    ctx: &Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+    power: i64,
+) -> Option<(BigRational, ExprId)> {
+    let factors = mul_leaves(ctx, expr);
+    let mut scale = BigRational::one();
+    let mut arg = None;
+
+    for factor in factors {
+        let factor = match ctx.get(factor).clone() {
+            Expr::Neg(inner) => {
+                scale = -scale;
+                inner
+            }
+            _ => factor,
+        };
+        let Expr::Pow(base, exp) = ctx.get(factor).clone() else {
+            scale *= rational_constant_value(ctx, factor)?;
+            continue;
+        };
+        let (fn_id, args) = match ctx.get(base).clone() {
+            Expr::Function(fn_id, args) if args.len() == 1 => (fn_id, args),
+            _ => {
+                scale *= rational_constant_value(ctx, factor)?;
+                continue;
+            }
+        };
+        if ctx.builtin_of(fn_id) != Some(builtin) {
+            scale *= rational_constant_value(ctx, factor)?;
+            continue;
+        }
+        if bounded_positive_integer_value(ctx, exp, power, power)? != power {
+            return None;
+        }
+        if arg.replace(args[0]).is_some() {
+            return None;
+        }
+    }
+
+    Some((scale, arg?))
+}
+
+fn scaled_trig_quotient_power_derivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    for power in 2..=6 {
+        for (num_builtin, den_builtin, primitive_builtin, reciprocal_square_builtin, sign) in [
+            (
+                BuiltinFn::Sin,
+                BuiltinFn::Cos,
+                BuiltinFn::Tan,
+                BuiltinFn::Sec,
+                BigRational::one(),
+            ),
+            (
+                BuiltinFn::Cos,
+                BuiltinFn::Sin,
+                BuiltinFn::Cot,
+                BuiltinFn::Csc,
+                -BigRational::one(),
+            ),
+        ] {
+            let Some((num_scale, num_arg)) = scaled_trig_power_factor(ctx, num, num_builtin, power)
+            else {
+                continue;
+            };
+            let Some((den_scale, den_arg)) = scaled_trig_power_factor(ctx, den, den_builtin, power)
+            else {
+                continue;
+            };
+            if den_scale.is_zero() || compare_expr(ctx, num_arg, den_arg) != Ordering::Equal {
+                continue;
+            }
+
+            let d_arg = differentiate_symbolic_expr(ctx, num_arg, var)?;
+            let base_power = if power == 2 {
+                ctx.call_builtin(primitive_builtin, vec![num_arg])
+            } else {
+                let base = ctx.call_builtin(primitive_builtin, vec![num_arg]);
+                let exp = ctx.num(power - 1);
+                ctx.add(Expr::Pow(base, exp))
+            };
+            let reciprocal_square = squared_builtin_call(ctx, reciprocal_square_builtin, num_arg);
+            let product = mul_pruned(ctx, base_power, reciprocal_square);
+            let product = mul_pruned(ctx, product, d_arg);
+            let scale = sign * BigRational::from_integer(power.into()) * num_scale / den_scale;
+            return Some(scale_expr_by_rational(ctx, scale, product));
+        }
+    }
+
+    None
+}
+
 fn secant_derivative(ctx: &mut Context, arg: ExprId, d_arg: ExprId) -> ExprId {
     let sec_u = ctx.call_builtin(BuiltinFn::Sec, vec![arg]);
     let tan_u = ctx.call_builtin(BuiltinFn::Tan, vec![arg]);
@@ -3651,6 +3808,14 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         }
         Expr::Div(l, r) => {
             let (l, r) = (*l, *r);
+            if let Some(derivative) =
+                scaled_reciprocal_trig_power_primitive_derivative(ctx, l, r, var)
+            {
+                return Some(derivative);
+            }
+            if let Some(derivative) = scaled_trig_quotient_power_derivative(ctx, l, r, var) {
+                return Some(derivative);
+            }
             if !contains_named_var(ctx, r, var) {
                 let dl = differentiate_symbolic_expr(ctx, l, var)?;
                 return Some(div_pruned(ctx, dl, r));
@@ -4022,6 +4187,30 @@ mod tests {
         let expr = parse("sin(x)/2", &mut ctx).expect("parse");
         let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
         assert_eq!(rendered(&ctx, out), "cos(x) / 2");
+    }
+
+    #[test]
+    fn differentiates_reciprocal_trig_power_primitives_compactly() {
+        let mut ctx = Context::new();
+        let expr = parse("tan(x)^2/2", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "tan(x) * sec(x)^2");
+
+        let expr = parse("tan(2*x + 1)^2/2", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "tan(2 * x + 1) * sec(2 * x + 1)^2 * 2");
+
+        let expr = parse("-cot(x)^2/2", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "cot(x) * csc(x)^2");
+
+        let expr = parse("sin(x)^2/(2*cos(x)^2)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "tan(x) * sec(x)^2");
+
+        let expr = parse("-cos(x)^2/(2*sin(x)^2)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "cot(x) * csc(x)^2");
     }
 
     #[test]

@@ -95,6 +95,44 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-13: Symbolic Beta-Sqrt Product Presentation Conflicts With Residual Verification
+
+- area:
+  - calculus / post-calculus presentation / integration residual
+- status:
+  - `retained-after-combination`
+- local lane:
+  - focused CLI probes for
+    `diff(integrate(a/(2*sqrt(x)*sqrt(1-x)), x), x)` and
+    `diff(integrate(a/(sqrt(2*x+1)*sqrt(3-2*x)), x), x)`
+- local win:
+  - allowing numerator factors free of `x` in the arcsin inverse-sqrt-product
+    detector produced compact public results:
+    `a / (2*sqrt(x)*sqrt(1-x))` and
+    `a / (sqrt(2*x+1)*sqrt(3-2*x))`
+- global result:
+  - the focused integration contract regressed before guardrail promotion:
+    `diff(integrate(a/(2*sqrt(x)*sqrt(1-x)), x), x) - a/(2*sqrt(x)*sqrt(1-x))`
+    no longer collapsed to `0` in one engine pass
+- why it regressed globally:
+  - the compact presentation has to be protected from rationalization with an
+    internal hold, especially for affine radicands
+  - inside a residual difference, that hold prevents the existing
+    inverse-differentiation verification route from normalizing the compact
+    root-product side to the same internal negative-half-power form as the
+    comparison side
+- what could make it combinable later:
+  - a narrower top-level-only post-calculus presentation path for this family
+  - or a residual verifier that can compare protected compact
+    `sqrt(A)*sqrt(B)` denominators with the merged `(A*B)^(-1/2)` form without
+    re-entering broad rationalization
+- retained follow-up:
+  - the later combination kept the compact public presentation and added a
+    narrow residual matcher for scaled reciprocal half-power products, including
+    the fraction-addition result shape `(compact * scale - merged) / const`
+  - focused residual, `engine-fast`, `engine-scorecard`, and
+    `engine-scorecard-pressure` all passed with failed = 0
+
 ### 2026-05-13: Reciprocal-Shifted Integration By Parts Trig Residual Needs Denominator Re-Entry
 
 - area:
@@ -233,6 +271,22 @@ The burden of proof stays the same:
     products over shifted or conditional polynomial bases
   - or a verified presentation route that keeps a residual-friendly expanded
     form internally while rendering a compact factored primitive publicly
+- retained follow-up:
+  - a later calculus contract promoted the shifted positive quadratic
+    subcase `integrate((2*x+1)*ln(x^2+x+1)^5, x)` after the public residual
+    `diff(integrate(...), x) - (2*x+1)*ln(x^2+x+1)^5` simplified to `0`
+  - this retains the conservative positive-base slice without promoting the
+    broader conditional-base family
+- observe-only follow-up:
+  - a later robustness cycle kept `integrate(2*x*ln(x^2-1)^4, x)` explicitly
+    unsupported while preserving `x^2 - 1 > 0`, because the formal primitive
+    residual does not simplify to `0` publicly and `equiv(diff(primitive),
+    integrand)` only succeeds after a slow path with repeated `depth_overflow`
+    warnings
+  - the shifted conditional probe
+    `diff(primitive(x^2+x-1, 4), x) - (2*x+1)*ln(x^2+x-1)^4` expanded into a
+    much larger residual and exceeded a practical probe budget, so it remains a
+    residual/cancellation discovery rather than an integration promotion
 
 ### 2026-05-10: Product-Wrapped Reciprocal Trig Derivative Integration Hits Public Routing Cliff
 
@@ -10984,3 +11038,26 @@ The burden of proof stays the same:
   - focal direct and public equivalence probes stayed quiet
   - `make engine-fast`, `make engine-scorecard`, and
     `make engine-scorecard-pressure` all passed with `failed=0`
+
+## 2026-05-13 - Discovery observe-only: sine-square antiderivative presentation under affine product verification
+
+- area:
+  - calculus / post-calculus presentation / trig residual verification
+- status:
+  - `discovery/observe-only`
+- candidate:
+  - render `integrate(sin(u)*cos(u), x)` as the compact square primitive
+    `sin(u)^2/(2*u')` for affine `u`
+- smoke outcome:
+  - standalone integration rendered correctly for `u = 2*x + 1`
+  - direct differentiation of the rendered primitive was mathematically correct
+  - the public residual
+    `diff(integrate(3*sin(2*x+1)*cos(2*x+1), x), x) - 3*sin(2*x+1)*cos(2*x+1)`
+    did not collapse to `0`; it stayed in the equivalent double-angle/product
+    residual family
+- learning:
+  - for this cycle, retain the product-to-double-angle primitive
+    `-cos(2*u)/(4*u')`, which avoids the square-power residual presentation
+    path
+  - a future presentation pass can revisit the prettier `sin(u)^2/(2*u')`
+    form once affine double-angle/product residual normalization is stronger

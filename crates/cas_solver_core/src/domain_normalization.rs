@@ -44,6 +44,10 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
     }
 
     if let ImplicitCondition::Positive(e) = cond {
+        if let Some(equivalent) = positive_trig_condition_equivalent_expr(ctx, *e) {
+            return normalize_condition(ctx, &ImplicitCondition::Positive(equivalent));
+        }
+
         if let Some(denominator) = positive_reciprocal_denominator(ctx, *e) {
             return normalize_condition(ctx, &ImplicitCondition::Positive(denominator));
         }
@@ -96,6 +100,34 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
             }
         }
         ImplicitCondition::NonZero(_) => ImplicitCondition::NonZero(normalized_expr),
+    }
+}
+
+fn positive_trig_condition_equivalent_expr(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (builtin, arg) = {
+        let Expr::Function(fn_id, args) = ctx.get(expr) else {
+            return None;
+        };
+        if args.len() != 1 {
+            return None;
+        }
+        (ctx.builtin_of(*fn_id)?, args[0])
+    };
+
+    match builtin {
+        BuiltinFn::Sec => Some(ctx.call_builtin(BuiltinFn::Cos, vec![arg])),
+        BuiltinFn::Csc => Some(ctx.call_builtin(BuiltinFn::Sin, vec![arg])),
+        BuiltinFn::Tan => {
+            let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+            Some(ctx.add(Expr::Div(sin_arg, cos_arg)))
+        }
+        BuiltinFn::Cot => {
+            let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
+            let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
+            Some(ctx.add(Expr::Div(cos_arg, sin_arg)))
+        }
+        _ => None,
     }
 }
 
@@ -2721,6 +2753,7 @@ pub fn normalize_and_dedupe_conditions(
     combine_nonzero_nonnegative_into_positive(ctx, &mut result);
     combine_factored_nonzero_nonnegative_into_positive(ctx, &mut result);
     apply_dominance_rules(ctx, &mut result);
+    drop_nonzero_conditions_with_matching_positive_condition(ctx, &mut result);
     if result.is_empty() {
         restore_nonzero_domain_hole_guards(ctx, conditions, &mut result);
     }
@@ -3718,6 +3751,9 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                         || positive_polynomial_condition_contains_nonzero_factor(
                             ctx, *pos_expr, *nz_expr,
                         )
+                        || positive_trig_quotient_condition_dominates_nonzero(
+                            ctx, *pos_expr, *nz_expr,
+                        )
                     {
                         to_remove.push(i);
                         break;
@@ -3935,6 +3971,102 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
     for i in to_remove.into_iter().rev() {
         conditions.remove(i);
     }
+}
+
+fn positive_trig_quotient_condition_dominates_nonzero(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    let Some((num_arg, den_arg)) = sin_cos_positive_quotient_args(ctx, positive_expr) else {
+        return false;
+    };
+    if !exprs_equivalent(ctx, num_arg, den_arg) {
+        return false;
+    }
+
+    let num_call = ctx.call_builtin(BuiltinFn::Sin, vec![num_arg]);
+    let den_call = ctx.call_builtin(BuiltinFn::Cos, vec![den_arg]);
+    let cot_num_call = ctx.call_builtin(BuiltinFn::Cos, vec![num_arg]);
+    let cot_den_call = ctx.call_builtin(BuiltinFn::Sin, vec![den_arg]);
+    if exprs_equivalent(ctx, nonzero_expr, num_call)
+        || exprs_equivalent(ctx, nonzero_expr, den_call)
+        || exprs_equivalent(ctx, nonzero_expr, cot_num_call)
+        || exprs_equivalent(ctx, nonzero_expr, cot_den_call)
+    {
+        return true;
+    }
+
+    let two = ctx.num(2);
+    let double_arg = ctx.add(Expr::Mul(two, num_arg));
+    let sin_double = ctx.call_builtin(BuiltinFn::Sin, vec![double_arg]);
+    exprs_equivalent_up_to_sign(ctx, nonzero_expr, sin_double)
+        || sine_double_angle_matches_arg(ctx, nonzero_expr, num_arg)
+}
+
+fn sin_cos_positive_quotient_args(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return None;
+    };
+    let (num_fn, num_arg) = sin_or_cos_arg(ctx, *num)?;
+    let (den_fn, den_arg) = sin_or_cos_arg(ctx, *den)?;
+    match (num_fn, den_fn) {
+        (BuiltinFn::Sin, BuiltinFn::Cos) | (BuiltinFn::Cos, BuiltinFn::Sin) => {
+            Some((num_arg, den_arg))
+        }
+        _ => None,
+    }
+}
+
+fn sin_or_cos_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => match ctx.builtin_of(*fn_id) {
+            Some(BuiltinFn::Sin) => Some((BuiltinFn::Sin, args[0])),
+            Some(BuiltinFn::Cos) => Some((BuiltinFn::Cos, args[0])),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn sine_double_angle_matches_arg(ctx: &Context, expr: ExprId, arg: ExprId) -> bool {
+    let Some(sin_arg) = unary_builtin_arg(ctx, expr, BuiltinFn::Sin) else {
+        return false;
+    };
+    let Expr::Mul(left, right) = ctx.get(sin_arg) else {
+        return false;
+    };
+
+    (is_two_constant(ctx, *left) && exprs_equivalent_or_same_sqrt_like_base(ctx, *right, arg))
+        || (is_two_constant(ctx, *right)
+            && exprs_equivalent_or_same_sqrt_like_base(ctx, *left, arg))
+}
+
+fn is_two_constant(ctx: &Context, expr: ExprId) -> bool {
+    as_rational_const(ctx, expr)
+        .is_some_and(|constant| constant == BigRational::from_integer(2.into()))
+}
+
+fn drop_nonzero_conditions_with_matching_positive_condition(
+    ctx: &Context,
+    conditions: &mut Vec<ImplicitCondition>,
+) {
+    let mut positive_keys = std::collections::HashSet::new();
+    for condition in conditions.iter() {
+        if let ImplicitCondition::Positive(expr) = condition {
+            positive_keys.insert(condition_factor_key(ctx, *expr));
+        }
+    }
+    if positive_keys.is_empty() {
+        return;
+    }
+
+    conditions.retain(|condition| match condition {
+        ImplicitCondition::NonZero(expr) => {
+            !positive_keys.contains(&condition_factor_key(ctx, *expr))
+        }
+        _ => true,
+    });
 }
 
 fn positive_product_is_dominated_by_known_or_intrinsic_positive_factors(
@@ -4805,6 +4937,215 @@ mod tests {
             &normalized[0],
             &ImplicitCondition::NonZero(sinh_expr)
         ));
+    }
+
+    #[test]
+    fn positive_sinh_condition_dominates_matching_tanh_nonzero_boundary() {
+        let mut ctx = Context::new();
+        let tanh_expr = parse("tanh(sqrt(x))", &mut ctx).expect("parse tanh");
+        let sinh_expr = parse("sinh(sqrt(x))", &mut ctx).expect("parse sinh");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(sinh_expr),
+                ImplicitCondition::NonZero(tanh_expr),
+                ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2, "got: {normalized:?}");
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(sinh_expr))
+        }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x)) }));
+    }
+
+    #[test]
+    fn positive_sinh_condition_dominates_matching_sinh_nonzero_boundary() {
+        let mut ctx = Context::new();
+        let sinh_expr = parse("sinh(sqrt(x))", &mut ctx).expect("parse sinh");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(sinh_expr),
+                ImplicitCondition::NonZero(sinh_expr),
+                ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2, "got: {normalized:?}");
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(sinh_expr))
+        }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x)) }));
+    }
+
+    #[test]
+    fn positive_reciprocal_sinh_condition_dominates_product_denominator_nonzero_boundary() {
+        let mut ctx = Context::new();
+        let reciprocal_sinh = parse("1/sinh(sqrt(x))", &mut ctx).expect("parse reciprocal sinh");
+        let denominator = parse("2*tanh(sqrt(x))*sqrt(x)", &mut ctx).expect("parse denominator");
+        let x = parse("x", &mut ctx).expect("parse x");
+        let sinh_expr = parse("sinh(sqrt(x))", &mut ctx).expect("parse sinh");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(reciprocal_sinh),
+                ImplicitCondition::NonZero(denominator),
+                ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2, "got: {normalized:?}");
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(sinh_expr))
+        }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x)) }));
+    }
+
+    #[test]
+    fn positive_sec_condition_normalizes_to_positive_cos_boundary() {
+        let mut ctx = Context::new();
+        let sec_expr = parse("sec(sqrt(x))", &mut ctx).expect("parse sec");
+        let cos_expr = parse("cos(sqrt(x))", &mut ctx).expect("parse cos");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(sec_expr),
+                ImplicitCondition::Positive(cos_expr),
+                ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2, "got: {normalized:?}");
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(cos_expr))
+        }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x)) }));
+    }
+
+    #[test]
+    fn positive_csc_condition_normalizes_to_positive_sin_boundary() {
+        let mut ctx = Context::new();
+        let csc_expr = parse("csc(sqrt(x))", &mut ctx).expect("parse csc");
+        let sin_expr = parse("sin(sqrt(x))", &mut ctx).expect("parse sin");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(csc_expr),
+                ImplicitCondition::Positive(sin_expr),
+                ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2, "got: {normalized:?}");
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(sin_expr))
+        }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x)) }));
+    }
+
+    #[test]
+    fn positive_tan_condition_normalizes_to_positive_sin_cos_quotient() {
+        let mut ctx = Context::new();
+        let tan_expr = parse("tan(sqrt(x))", &mut ctx).expect("parse tan");
+        let quotient = parse("sin(sqrt(x))/cos(sqrt(x))", &mut ctx).expect("parse quotient");
+        let double_angle = parse("sin(2*sqrt(x))", &mut ctx).expect("parse double angle");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(tan_expr),
+                ImplicitCondition::Positive(quotient),
+                ImplicitCondition::NonZero(double_angle),
+                ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2, "got: {normalized:?}");
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(quotient))
+        }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x)) }));
+    }
+
+    #[test]
+    fn positive_cot_condition_normalizes_to_positive_cos_sin_quotient() {
+        let mut ctx = Context::new();
+        let cot_expr = parse("cot(sqrt(x))", &mut ctx).expect("parse cot");
+        let quotient = parse("cos(sqrt(x))/sin(sqrt(x))", &mut ctx).expect("parse quotient");
+        let double_angle = parse("sin(2*sqrt(x))", &mut ctx).expect("parse double angle");
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(cot_expr),
+                ImplicitCondition::Positive(quotient),
+                ImplicitCondition::NonZero(double_angle),
+                ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2, "got: {normalized:?}");
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(quotient))
+        }));
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(x)) }));
+    }
+
+    #[test]
+    fn positive_trig_quotient_dominates_atomic_nonzero_boundaries() {
+        let mut ctx = Context::new();
+        let quotient =
+            parse("sin(sqrt(3*x+1))/cos(sqrt(3*x+1))", &mut ctx).expect("parse quotient");
+        let sin_boundary = parse("sin(sqrt(3*x+1))", &mut ctx).expect("parse sin boundary");
+        let cos_boundary = parse("cos(sqrt(3*x+1))", &mut ctx).expect("parse cos boundary");
+        let double_angle = parse("sin(2*(3*x+1)^(1/2))", &mut ctx).expect("parse double angle");
+        let radicand = parse("3*x+1", &mut ctx).expect("parse radicand");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(sin_boundary),
+                ImplicitCondition::NonZero(cos_boundary),
+                ImplicitCondition::NonZero(double_angle),
+                ImplicitCondition::Positive(quotient),
+                ImplicitCondition::Positive(radicand),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2, "got: {normalized:?}");
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(quotient))
+        }));
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(radicand))
+        }));
     }
 
     #[test]

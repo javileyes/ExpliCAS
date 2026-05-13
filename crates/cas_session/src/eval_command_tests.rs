@@ -600,6 +600,58 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_eval_command_pretty_steps_on_closes_factored_quotient_residual() {
+        let mut config =
+            standard_eval_config("(x^2*ln(x^2-1)^4 - ln(x^2-1)^4)/(x^2-1) - ln(x^2-1)^4");
+        config.steps_mode = cas_api_models::EvalStepsMode::On;
+
+        let json = crate::eval::evaluate_eval_command_pretty_with_session(
+            None,
+            config,
+            |steps, _events, context, _steps_mode| {
+                steps
+                    .iter()
+                    .enumerate()
+                    .map(|(index, step)| cas_api_models::StepWire {
+                        index: index + 1,
+                        rule: step.rule_name.to_string(),
+                        rule_latex: String::new(),
+                        before: DisplayExpr {
+                            context,
+                            id: step.before,
+                        }
+                        .to_string(),
+                        after: DisplayExpr {
+                            context,
+                            id: step.after,
+                        }
+                        .to_string(),
+                        before_latex: LaTeXExpr {
+                            context,
+                            id: step.before,
+                        }
+                        .to_latex(),
+                        after_latex: LaTeXExpr {
+                            context,
+                            id: step.after,
+                        }
+                        .to_latex(),
+                        substeps: Vec::new(),
+                    })
+                    .collect()
+            },
+        );
+
+        let payload: serde_json::Value = serde_json::from_str(&json).expect("json");
+        assert_eq!(payload["ok"], true);
+        assert_eq!(payload["result"], "0");
+        assert!(
+            payload["steps_count"].as_u64().unwrap_or(0) > 0,
+            "expected steps-on eval to keep a productive residual-closing step, got: {payload}"
+        );
+    }
+
+    #[test]
     fn evaluate_eval_command_pretty_with_session_preserves_limit_operator_in_input_latex() {
         let json = crate::eval::evaluate_eval_command_pretty_with_session(
             None,

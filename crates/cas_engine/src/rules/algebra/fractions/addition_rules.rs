@@ -67,6 +67,28 @@ fn format_sub_term_matches_denom_desc() -> &'static str {
     "Common denominator: a - b/a → (a² - b)/a"
 }
 
+fn collapse_exact_zero_radical_fraction_result(
+    ctx: &mut cas_ast::Context,
+    source_expr: cas_ast::ExprId,
+    rewritten: cas_ast::ExprId,
+    description: &'static str,
+) -> Option<Rewrite> {
+    let child_rewrite =
+        crate::rules::arithmetic::try_build_exact_zero_radical_numerator_const_division_rewrite(
+            ctx, rewritten,
+        )?;
+    Some(
+        Rewrite::with_local(
+            child_rewrite.new_expr,
+            description,
+            source_expr,
+            child_rewrite.new_expr,
+        )
+        .requires_all(child_rewrite.required_conditions)
+        .assume_all(child_rewrite.assumption_events),
+    )
+}
+
 // =============================================================================
 // Fold Add Into Fraction: k + p/q → (k·q + p)/q
 // =============================================================================
@@ -210,7 +232,13 @@ define_rule!(
             },
             crate::expand::expand,
         )?;
-        Some(Rewrite::new(plan.rewritten).desc(format_add_fraction_desc(plan.kind)))
+        let description = format_add_fraction_desc(plan.kind);
+        if let Some(rewrite) =
+            collapse_exact_zero_radical_fraction_result(ctx, expr, plan.rewritten, description)
+        {
+            return Some(rewrite);
+        }
+        Some(Rewrite::new(plan.rewritten).desc(description))
     }
 );
 
@@ -274,7 +302,13 @@ define_rule!(
         }
 
         let plan = plan_sub_fraction_rewrite_with(ctx, n1, n2, d1, d2, crate::expand::expand);
-        Some(Rewrite::new(plan.rewritten).desc(format_sub_fraction_desc(plan.kind)))
+        let description = format_sub_fraction_desc(plan.kind);
+        if let Some(rewrite) =
+            collapse_exact_zero_radical_fraction_result(ctx, expr, plan.rewritten, description)
+        {
+            return Some(rewrite);
+        }
+        Some(Rewrite::new(plan.rewritten).desc(description))
     }
 );
 

@@ -251,6 +251,7 @@ const REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES: &[&str] = &[
     "integrate(x^2*cosh(x), x)",
     "integrate((x^3+x)*sinh(2*x+1), x)",
     "integrate((x^3+x)*cosh(2*x+1), x)",
+    "integrate(sinh(x)^2*cosh(x), x)",
     "integrate(2*x*exp(x^2), x)",
     "integrate(cosh(x)/(1+sinh(x)^2), x)",
     "integrate(2*cosh(2*x+1)/(1+sinh(2*x+1)^2), x)",
@@ -268,10 +269,14 @@ const REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES: &[&str] = &[
     "integrate(2*x/sqrt(4-x^4), x)",
     "integrate(1/sqrt(4-(x+1)^2), x)",
     "integrate(1/sqrt(4+(x+1)^2), x)",
+    "integrate(sin(x)*cos(x), x)",
+    "integrate(sin(x)^2*cos(x), x)",
     "integrate(sin(2*x + 1)^3, x)",
     "integrate(cos(2*x + 1)^3, x)",
     "integrate(sec(2*x + 1)^2, x)",
     "integrate(sec(2*x + 1)*tan(2*x + 1), x)",
+    "integrate(sec(x)^2*tan(x), x)",
+    "integrate(tan(x)^2/cos(x)^2, x)",
 ];
 
 fn assert_antiderivative_equiv_verifies(input: &str) {
@@ -1548,6 +1553,142 @@ fn integrate_contract_affine_trig_square_power_reduction() {
 }
 
 #[test]
+fn integrate_contract_affine_sine_cosine_product() {
+    let public_cases = [
+        ("integrate(sin(x)*cos(x), x)", "1/2 * sin(x)^2"),
+        (
+            "integrate(3*sin(2*x + 1)*cos(2*x + 1), x)",
+            "3/4 * sin(2 * x + 1)^2",
+        ),
+    ];
+
+    for (input, expected) in public_cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            required.is_empty(),
+            "input: {input}, required: {required:?}"
+        );
+        assert_rendered_antiderivative_verifies(input, expected);
+    }
+}
+
+#[test]
+fn integrate_contract_affine_trig_power_times_derivative_product() {
+    let public_cases = [
+        ("integrate(sin(x)^2*cos(x), x)", "1/3 * sin(x)^3"),
+        (
+            "integrate(2*cos(2*x + 1)*sin(2*x + 1)^2, x)",
+            "1/3 * sin(2 * x + 1)^3",
+        ),
+        ("integrate(sin(x)*cos(x)^2, x)", "-1/3 * cos(x)^3"),
+    ];
+
+    for (input, expected) in public_cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            required.is_empty(),
+            "input: {input}, required: {required:?}"
+        );
+        assert_rendered_antiderivative_verifies(input, expected);
+    }
+}
+
+#[test]
+fn integrate_contract_affine_trig_ratio_power_reciprocal_square_product() {
+    let public_cases = [
+        (
+            "integrate(sec(x)^2*tan(x), x)",
+            "tan(x)^2 / 2",
+            vec!["cos(x) ≠ 0"],
+        ),
+        (
+            "integrate(2*sec(2*x + 1)^2*tan(2*x + 1), x)",
+            "tan(2 * x + 1)^2 / 2",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(sin(x)/cos(x)^3, x)",
+            "tan(x)^2 / 2",
+            vec!["cos(x) ≠ 0"],
+        ),
+        (
+            "integrate(tan(x)^2/cos(x)^2, x)",
+            "tan(x)^3 / 3",
+            vec!["cos(x) ≠ 0"],
+        ),
+        (
+            "integrate(2*tan(2*x + 1)^2/cos(2*x + 1)^2, x)",
+            "tan(2 * x + 1)^3 / 3",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(sin(x)^2/cos(x)^4, x)",
+            "tan(x)^3 / 3",
+            vec!["cos(x) ≠ 0"],
+        ),
+        (
+            "integrate(csc(x)^2*cot(x), x)",
+            "-cot(x)^2 / 2",
+            vec!["sin(x) ≠ 0"],
+        ),
+        (
+            "integrate(2*csc(2*x + 1)^2*cot(2*x + 1), x)",
+            "-cot(2 * x + 1)^2 / 2",
+            vec!["sin(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(cos(x)/sin(x)^3, x)",
+            "-cot(x)^2 / 2",
+            vec!["sin(x) ≠ 0"],
+        ),
+        (
+            "integrate(cot(x)^2/sin(x)^2, x)",
+            "-cot(x)^3 / 3",
+            vec!["sin(x) ≠ 0"],
+        ),
+        (
+            "integrate(2*cot(2*x + 1)^2/sin(2*x + 1)^2, x)",
+            "-cot(2 * x + 1)^3 / 3",
+            vec!["sin(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(cos(x)^2/sin(x)^4, x)",
+            "-cot(x)^3 / 3",
+            vec!["sin(x) ≠ 0"],
+        ),
+    ];
+
+    for (input, expected, expected_required) in public_cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert_eq!(
+            required, expected_required,
+            "input: {input}, required: {required:?}"
+        );
+        assert_rendered_antiderivative_verifies(input, expected);
+    }
+}
+
+#[test]
+fn integrate_contract_reciprocal_trig_power_verification_avoids_depth_overflow() {
+    for input in [
+        "diff(tan(x)^2/2, x) - sec(x)^2*tan(x)",
+        "diff(-cot(x)^2/2, x) - csc(x)^2*cot(x)",
+        "diff(tan(2*x+1)^2/2, x) - 2*sec(2*x+1)^2*tan(2*x+1)",
+        "diff(-cot(2*x+1)^2/2, x) - 2*csc(2*x+1)^2*cot(2*x+1)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert_eq!(wire["result"], "0", "unexpected residual for {input}");
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "reciprocal trig power verification should not emit depth_overflow for {input}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_affine_trig_cube_power_reduction() {
     assert_eq!(
         simplified_integral("integrate(sin(x)^3, x)"),
@@ -2009,6 +2150,28 @@ fn integrate_contract_polynomial_derivative_hyperbolic_substitution() {
 }
 
 #[test]
+fn integrate_contract_affine_hyperbolic_power_times_derivative_product() {
+    let public_cases = [
+        ("integrate(sinh(x)^2*cosh(x), x)", "1/3 * sinh(x)^3"),
+        (
+            "integrate(2*cosh(2*x + 1)*sinh(2*x + 1)^2, x)",
+            "1/3 * sinh(2 * x + 1)^3",
+        ),
+        ("integrate(sinh(x)*cosh(x)^2, x)", "1/3 * cosh(x)^3"),
+    ];
+
+    for (input, expected) in public_cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            required.is_empty(),
+            "input: {input}, required: {required:?}"
+        );
+        assert_rendered_antiderivative_verifies(input, expected);
+    }
+}
+
+#[test]
 fn integrate_contract_hyperbolic_arctan_derivative_substitution() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(cosh(x)/(1+sinh(x)^2), x)");
@@ -2442,8 +2605,8 @@ fn integrate_contract_linear_log_table_preserves_positive_domain() {
 #[test]
 fn integrate_contract_monomial_times_log_by_parts_preserves_positive_domain() {
     let cases = [
-        ("integrate(x*ln(x), x)", "1/4 * (2 * ln(x) * x^2 - x^2)"),
-        ("integrate(x^2*ln(x), x)", "1/9 * (3 * ln(x) * x^3 - x^3)"),
+        ("integrate(x*ln(x), x)", "1/4 * x^2 * (2 * ln(x) - 1)"),
+        ("integrate(x^2*ln(x), x)", "1/9 * x^3 * (3 * ln(x) - 1)"),
         (
             "integrate(x*ln(x)^2, x)",
             "1/8 * x^2 * (4 * ln(x)^2 - 4 * ln(x) + 2)",
@@ -5728,7 +5891,7 @@ fn integrate_contract_conditional_log_cube_product_by_parts_verifies() {
 
 #[test]
 fn integrate_contract_log_high_power_product_by_parts_verifies() {
-    let cases: [(&str, &str, &[&str], &str); 3] = [
+    let cases: [(&str, &str, &[&str], &str); 4] = [
         (
             "integrate(2*x*ln(x^2+1)^4, x)",
             "(x^2 + 1) * ln(x^2 + 1)^4 + 12 * (x^2 + 1) * ln(x^2 + 1)^2 + 24 * (x^2 + 1) - 24 * (x^2 + 1) * ln(x^2 + 1) - 4 * (x^2 + 1) * ln(x^2 + 1)^3",
@@ -5746,6 +5909,12 @@ fn integrate_contract_log_high_power_product_by_parts_verifies() {
             "(x^2 + x + 1) * ln(x^2 + x + 1)^4 + 12 * (x^2 + x + 1) * ln(x^2 + x + 1)^2 + 24 * (x^2 + x + 1) - 24 * (x^2 + x + 1) * ln(x^2 + x + 1) - 4 * (x^2 + x + 1) * ln(x^2 + x + 1)^3",
             &[],
             "diff(integrate((2*x+1)*ln(x^2+x+1)^4, x), x) - (2*x+1)*ln(x^2+x+1)^4",
+        ),
+        (
+            "integrate((2*x+1)*ln(x^2+x+1)^5, x)",
+            "(x^2 + x + 1) * ln(x^2 + x + 1)^5 + 20 * (x^2 + x + 1) * ln(x^2 + x + 1)^3 + 120 * (x^2 + x + 1) * ln(x^2 + x + 1) - 120 * (x^2 + x + 1) - 60 * (x^2 + x + 1) * ln(x^2 + x + 1)^2 - 5 * (x^2 + x + 1) * ln(x^2 + x + 1)^4",
+            &[],
+            "diff(integrate((2*x+1)*ln(x^2+x+1)^5, x), x) - (2*x+1)*ln(x^2+x+1)^5",
         ),
     ];
 
@@ -5769,6 +5938,19 @@ fn integrate_contract_log_high_power_product_by_parts_verifies() {
             "unexpected nested required_conditions for {residual_input}: {residual_required:?}"
         );
     }
+}
+
+#[test]
+fn integrate_contract_conditional_high_log_power_stays_unsupported_until_residual_verifies() {
+    let input = "integrate(2*x*ln(x^2-1)^4, x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "integrate(2 * x * ln(x^2 - 1)^4, x)");
+    assert_eq!(
+        required,
+        vec!["x^2 - 1 > 0".to_string()],
+        "unsupported conditional high-log-power integration should still publish its source domain"
+    );
 }
 
 #[test]
@@ -6037,14 +6219,63 @@ fn integrate_contract_beta_sqrt_product_kernel_preserves_open_domain_and_verifie
             nested_required, expected_required,
             "rendered beta-kernel derivative should preserve both open denominator conditions"
         );
+
+        let direct_diff = format!("diff({input}, x)");
+        let (direct_result, mut direct_required) =
+            evaluated_expr_with_required_conditions(&direct_diff);
+        direct_required.sort();
+        assert_eq!(direct_result, expected_derivative, "input: {direct_diff}");
+        assert_eq!(
+            direct_required, expected_required,
+            "direct diff(integrate(...)) beta-kernel presentation should preserve both open denominator conditions"
+        );
     }
+
+    let direct_affine = "diff(integrate(1/(sqrt(2*x+1)*sqrt(3-2*x)), x), x)";
+    let (direct_affine_result, mut direct_affine_required) =
+        evaluated_expr_with_required_conditions(direct_affine);
+    let mut expected_affine_required =
+        vec!["2 * x + 1 > 0".to_string(), "3 - 2 * x > 0".to_string()];
+    direct_affine_required.sort();
+    expected_affine_required.sort();
+    assert_eq!(
+        direct_affine_result,
+        "1 / (sqrt(2 * x + 1) * sqrt(3 - 2 * x))"
+    );
+    assert_eq!(
+        direct_affine_required, expected_affine_required,
+        "affine beta-kernel presentation should preserve both open denominator conditions"
+    );
+
+    let direct_symbolic = "diff(integrate(a/(2*sqrt(x)*sqrt(1-x)), x), x)";
+    let (direct_symbolic_result, mut direct_symbolic_required) =
+        evaluated_expr_with_required_conditions(direct_symbolic);
+    let mut expected_required = vec!["1 - x > 0".to_string(), "x > 0".to_string()];
+    direct_symbolic_required.sort();
+    expected_required.sort();
+    assert_eq!(direct_symbolic_result, "a / (2 * sqrt(x) * sqrt(1 - x))");
+    assert_eq!(
+        direct_symbolic_required, expected_required,
+        "symbolic beta-kernel presentation should preserve both open denominator conditions"
+    );
+
+    let direct_symbolic_affine = "diff(integrate(a/(sqrt(2*x+1)*sqrt(3-2*x)), x), x)";
+    let (direct_symbolic_affine_result, mut direct_symbolic_affine_required) =
+        evaluated_expr_with_required_conditions(direct_symbolic_affine);
+    direct_symbolic_affine_required.sort();
+    assert_eq!(
+        direct_symbolic_affine_result,
+        "a / (sqrt(2 * x + 1) * sqrt(3 - 2 * x))"
+    );
+    assert_eq!(
+        direct_symbolic_affine_required, expected_affine_required,
+        "symbolic affine beta-kernel presentation should preserve both open denominator conditions"
+    );
 
     let (nested_residual, mut nested_required) = evaluated_expr_with_required_conditions(
         "diff(integrate(a/(2*sqrt(x)*sqrt(1-x)), x), x) - a/(2*sqrt(x)*sqrt(1-x))",
     );
-    let mut expected_required = vec!["1 - x > 0".to_string(), "x > 0".to_string()];
     nested_required.sort();
-    expected_required.sort();
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required, expected_required,

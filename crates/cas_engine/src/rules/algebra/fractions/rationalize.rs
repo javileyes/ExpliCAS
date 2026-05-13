@@ -30,7 +30,11 @@ define_rule!(
             cas_math::div_add_common_factor_from_den_support::try_rewrite_div_add_common_factor_from_den_expr(
                 ctx, expr,
             )?;
-        Some(Rewrite::new(rewrite.rewritten).desc("Factor common factors from Add in Div"))
+        let mut out = Rewrite::new(rewrite.rewritten).desc("Factor common factors from Add in Div");
+        if let Some(nonzero) = rewrite.required_nonzero {
+            out = out.requires(crate::ImplicitCondition::NonZero(nonzero));
+        }
+        Some(out)
     }
 );
 
@@ -283,12 +287,31 @@ define_rule!(
 mod tests {
     use crate::parent_context::ParentContext;
     use crate::rule::Rule;
-    use crate::rules::algebra::{QuotientOfPowersRule, ReciprocalDifferenceOfSquaresRule};
+    use crate::rules::algebra::{
+        DivAddCommonFactorFromDenRule, QuotientOfPowersRule, ReciprocalDifferenceOfSquaresRule,
+    };
     use crate::DomainMode;
     use cas_ast::ordering::compare_expr;
     use cas_ast::{Context, Expr};
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
+
+    #[test]
+    fn div_add_common_factor_rule_collapses_sub_numerator_when_remainder_matches_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse("(x^2*ln(x^2-1)^4 - ln(x^2-1)^4)/(x^2-1)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed: {err}"));
+        let expected = parse("ln(x^2-1)^4", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse expected failed: {err}"));
+        let rewrite = DivAddCommonFactorFromDenRule
+            .apply(&mut ctx, expr, &ParentContext::root())
+            .unwrap_or_else(|| panic!("rewrite failed"));
+
+        assert_eq!(
+            compare_expr(&ctx, rewrite.new_expr, expected),
+            std::cmp::Ordering::Equal
+        );
+    }
 
     #[test]
     fn div_expand_to_cancel_rule_rewrites_collapsed_root_quotient_before_rationalize() {

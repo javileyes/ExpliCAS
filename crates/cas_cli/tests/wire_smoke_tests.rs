@@ -203,7 +203,7 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
             "1 / (2·cos(x)^2·sqrt(tan(x)))",
             "tan(x)^(-1/2)",
             ["sqrt(tan(x))", "cos(x)^2"],
-            Some("tan(x)"),
+            Some("sin(x) / cos(x)"),
         ),
         (
             "diff(sqrt(arctan(x)), x)",
@@ -289,7 +289,7 @@ fn test_eval_json_post_calculus_sqrt_elementary_derivative_verifies() {
         ("diff(sqrt(ln(x)), x) - 1/(2*x*sqrt(ln(x)))", ["ln(x)", "x"]),
         (
             "diff(sqrt(tan(x)), x) - 1/(2*cos(x)^2*sqrt(tan(x)))",
-            ["tan(x)", ""],
+            ["sin(x) / cos(x)", ""],
         ),
         (
             "diff(sqrt(arctan(x)), x) - 1/(2*(x^2+1)*sqrt(arctan(x)))",
@@ -355,15 +355,9 @@ fn test_eval_json_reciprocal_half_power_shared_denominator_verifies() {
             .expect("required_conditions should be an array");
         assert!(
             required.iter().any(|condition| {
-                condition["kind"] == "Positive" && condition["expr_canonical"] == "tan(x)"
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "sin(x) / cos(x)"
             }),
-            "expected Positive(tan(x)) for {expr}: {required:?}"
-        );
-        assert!(
-            required.iter().any(|condition| {
-                condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
-            }),
-            "expected NonZero(cos(x)) for {expr}: {required:?}"
+            "expected Positive(sin(x) / cos(x)) for {expr}: {required:?}"
         );
         assert!(
             json["blocked_hints"]

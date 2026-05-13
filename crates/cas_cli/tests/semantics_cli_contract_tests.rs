@@ -3856,6 +3856,30 @@ fn eval_mixed_trig_double_angle_product_difference_collapses_to_zero_in_one_step
 }
 
 #[test]
+fn eval_expanded_affine_sine_double_angle_product_difference_collapses_to_zero() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "sin(4*x+2) - 2*sin(2*x+1)*cos(2*x+1)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_rule_matches_any(
+        &steps[0]["rule"],
+        &[
+            "Collapse Exact Zero Additive Subexpression",
+            "Expandir ángulo doble",
+        ],
+    );
+}
+
+#[test]
 fn eval_mixed_trig_double_angle_product_scaled_difference_collapses_to_zero_in_one_step() {
     let (output, _code) = run_cli(&[
         "eval",

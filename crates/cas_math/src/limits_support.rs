@@ -765,6 +765,63 @@ pub fn multiplicative_limit_at_infinity(
     }
 }
 
+fn is_bounded_elementary_expr_at_infinity(ctx: &Context, expr: ExprId, var: ExprId) -> bool {
+    if !depends_on(ctx, expr, var) {
+        return true;
+    }
+
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            matches!(
+                ctx.builtin_of(*fn_id),
+                Some(
+                    BuiltinFn::Sin
+                        | BuiltinFn::Cos
+                        | BuiltinFn::Atan
+                        | BuiltinFn::Arctan
+                        | BuiltinFn::Tanh,
+                )
+            )
+        }
+        Expr::Neg(inner) => is_bounded_elementary_expr_at_infinity(ctx, *inner, var),
+        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) | Expr::Mul(lhs, rhs) => {
+            is_bounded_elementary_expr_at_infinity(ctx, *lhs, var)
+                && is_bounded_elementary_expr_at_infinity(ctx, *rhs, var)
+        }
+        Expr::Div(num, den) => {
+            is_bounded_elementary_expr_at_infinity(ctx, *num, var)
+                && !depends_on(ctx, *den, var)
+                && constant_rational_value(ctx, *den).is_some_and(|value| !value.is_zero())
+        }
+        _ => false,
+    }
+}
+
+/// Conservative bounded-over-divergent rule as `x -> ±∞`.
+///
+/// This is intentionally narrow: only real-domain globally bounded elementary
+/// numerators (`sin`/`cos`/`arctan`/`tanh`, plus finite arithmetic combinations
+/// of bounded pieces and constants) are accepted, and the denominator must
+/// already be proven divergent by the existing infinity rules.
+pub fn bounded_elementary_over_divergent_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    if !depends_on(ctx, num, var) || !is_bounded_elementary_expr_at_infinity(ctx, num, var) {
+        return None;
+    }
+
+    let den_limit = try_limit_rules_at_infinity(ctx, den, var, approach)?;
+    infinity_sign_of_expr(ctx, den_limit)?;
+    Some(ctx.num(0))
+}
+
 /// Dominance rule for linear-argument exponentials against polynomial growth as `x -> ±∞`.
 ///
 /// This is intentionally narrow: only `exp(linear)`/`e^(linear)` with optional
@@ -1165,11 +1222,12 @@ pub fn rational_poly_limit(
 /// 5. Elementary exact-argument functions
 /// 6. Additive combination
 /// 7. Determinate multiplicative combination
-/// 8. Exact exponential-vs-polynomial dominance
-/// 9. Exact subpolynomial-vs-polynomial dominance
-/// 10. Exact exponential-vs-subpolynomial dominance
-/// 11. Polynomial
-/// 12. Rational polynomial
+/// 8. Bounded trig over divergent denominator
+/// 9. Exact exponential-vs-polynomial dominance
+/// 10. Exact subpolynomial-vs-polynomial dominance
+/// 11. Exact exponential-vs-subpolynomial dominance
+/// 12. Polynomial
+/// 13. Rational polynomial
 pub fn try_limit_rules_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
@@ -1195,6 +1253,9 @@ pub fn try_limit_rules_at_infinity(
         return Some(r);
     }
     if let Some(r) = multiplicative_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = bounded_elementary_over_divergent_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = exponential_polynomial_dominance_limit_at_infinity(ctx, expr, var, approach) {
@@ -2175,6 +2236,75 @@ mod tests {
         let out = try_limit_rules_at_infinity(&mut ctx, expr, x, InfSign::Pos).expect("polynomial");
 
         assert!(matches!(ctx.get(out), Expr::Constant(Constant::Infinity)));
+    }
+
+    #[test]
+    fn bounded_elementary_over_divergent_limit_at_infinity_resolves_to_zero() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let cases = [
+            "sin(x)/x",
+            "cos(2*x + 1)/(x^2 + 1)",
+            "(2*sin(x) - cos(x))/(-x)",
+            "sin(x)*cos(x)/exp(x)",
+            "arctan(x)/x",
+            "atan(x^2 + 1)/(x^2 + 1)",
+            "(arctan(x) + sin(x))/(0 - x)",
+            "tanh(x)/x",
+            "tanh(x^2 + 1)/(x^2 + 1)",
+            "(tanh(x) - cos(x))/exp(x)",
+        ];
+
+        for expr in cases {
+            let parsed = parse_expr(&mut ctx, expr);
+            let out = try_limit_rules_at_infinity(&mut ctx, parsed, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("expected bounded-over-divergent zero for {expr}"));
+            assert!(
+                matches!(ctx.get(out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0))),
+                "expected zero for {expr}, got {:?}",
+                ctx.get(out)
+            );
+        }
+    }
+
+    #[test]
+    fn bounded_elementary_over_divergent_limit_at_infinity_rejects_unbounded_or_nondominant_shapes()
+    {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let unbounded_num = parse_expr(&mut ctx, "x*sin(x)/x");
+        let nondominant_den = parse_expr(&mut ctx, "sin(x)/cos(x)");
+        let arctan_nondominant_den = parse_expr(&mut ctx, "arctan(x)/cos(x)");
+        let tanh_nondominant_den = parse_expr(&mut ctx, "tanh(x)/cos(x)");
+
+        assert!(bounded_elementary_over_divergent_limit_at_infinity(
+            &mut ctx,
+            unbounded_num,
+            x,
+            InfSign::Pos,
+        )
+        .is_none());
+        assert!(bounded_elementary_over_divergent_limit_at_infinity(
+            &mut ctx,
+            nondominant_den,
+            x,
+            InfSign::Pos,
+        )
+        .is_none());
+        assert!(bounded_elementary_over_divergent_limit_at_infinity(
+            &mut ctx,
+            arctan_nondominant_den,
+            x,
+            InfSign::Pos,
+        )
+        .is_none());
+        assert!(bounded_elementary_over_divergent_limit_at_infinity(
+            &mut ctx,
+            tanh_nondominant_den,
+            x,
+            InfSign::Pos,
+        )
+        .is_none());
     }
 
     #[test]

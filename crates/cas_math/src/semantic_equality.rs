@@ -184,6 +184,10 @@ impl<'a> SemanticEqualityChecker<'a> {
                         || crate::poly_compare::poly_eq(self.context, *d1, *d2))
             }
 
+            (Expr::Div(_, _), _) => self.div_add_common_factor_rewrite_matches(a, b),
+
+            (_, Expr::Div(_, _)) => self.div_add_common_factor_rewrite_matches(b, a),
+
             // Recursive structural checks for compound expressions
             // Note: Add and Mul are commutative, so check both orderings
             (Expr::Add(l1, r1), Expr::Add(l2, r2)) => {
@@ -234,6 +238,20 @@ impl<'a> SemanticEqualityChecker<'a> {
             // Different expression types are not equal
             _ => false,
         }
+    }
+
+    fn div_add_common_factor_rewrite_matches(&self, source: ExprId, target: ExprId) -> bool {
+        let mut scratch = self.context.clone();
+        let Some(rewrite) =
+            crate::div_add_common_factor_from_den_support::try_rewrite_div_add_common_factor_from_den_expr(
+                &mut scratch,
+                source,
+            )
+        else {
+            return false;
+        };
+
+        SemanticEqualityChecker::new(&scratch).are_equal(rewrite.rewritten, target)
     }
 }
 
