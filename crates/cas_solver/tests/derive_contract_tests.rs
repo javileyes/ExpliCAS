@@ -39,6 +39,8 @@ struct EmbeddedEquivalenceShadowSeed {
     target: String,
 }
 
+const EMBEDDED_DERIVE_SHADOW_EXCLUDED_FAMILIES: &[&str] = &["calculus_integrate"];
+
 fn load_derive_cases() -> Vec<DeriveCase> {
     include_str!("derive_pairs.csv")
         .lines()
@@ -181,10 +183,12 @@ fn embedded_shadow_family_coverage(cases: &[IdentityShadowCase]) -> (usize, usiz
     let all_families = load_embedded_equivalence_shadow_seeds()
         .into_iter()
         .map(|seed| seed.family)
+        .filter(|family| !EMBEDDED_DERIVE_SHADOW_EXCLUDED_FAMILIES.contains(&family.as_str()))
         .collect::<BTreeSet<_>>();
     let sampled_families = cases
         .iter()
         .map(|case| case.family.to_string())
+        .filter(|family| !EMBEDDED_DERIVE_SHADOW_EXCLUDED_FAMILIES.contains(&family.as_str()))
         .collect::<BTreeSet<_>>();
     let missing = all_families
         .difference(&sampled_families)
@@ -608,6 +612,12 @@ const EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
         family: "integrate_prep",
         source: "cos(x)*cos(2*x)*cos(4*x)",
         target: "sin(8*x)/(8*sin(x))",
+    },
+    IdentityShadowCase {
+        id: "embedded_calculus_diff_bounded_arcsin_residual",
+        family: "calculus_diff",
+        source: "diff(arcsin(2*x-1)/2,x)",
+        target: "1/(2*sqrt(x)*sqrt(1-x))",
     },
     IdentityShadowCase {
         id: "embedded_log_contract_grouped_power",

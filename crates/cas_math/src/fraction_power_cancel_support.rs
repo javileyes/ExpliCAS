@@ -307,8 +307,8 @@ pub fn try_rewrite_cancel_power_fraction_expr(
     }
     let result_scale = num_scale / den_scale.clone();
 
-    if let Expr::Number(exp_val) = ctx.get(exp).clone() {
-        if !exp_val.is_integer() && exp_val.is_positive() && is_even_root_exponent(&exp_val) {
+    if let Some(exp_val) = as_rational_const(ctx, exp) {
+        if !exp_val.is_integer() && is_even_root_exponent(&exp_val) {
             let new_exp_val = exp_val - num_rational::BigRational::one();
             let base_result = if new_exp_val.is_zero() {
                 ctx.num(1)
@@ -565,6 +565,19 @@ mod tests {
 
         assert!(rendered.starts_with("-"), "rendered={rendered}");
         assert!(rendered.contains("(-1/2)"), "rendered={rendered}");
+    }
+
+    #[test]
+    fn cancel_power_fraction_rewrites_negative_even_root_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse("(2*x^2+2*x-3)^(-1/2)/(2*x^2+2*x-3)", &mut ctx).expect("parse");
+        let rw = try_rewrite_cancel_power_fraction_expr(&mut ctx, expr).expect("rewrite");
+        let rendered = cas_formatter::render_expr(&ctx, rw.rewritten);
+
+        assert!(
+            rendered.contains("(2 * x^2 + 2 * x - 3)^(-3/2)"),
+            "rendered={rendered}"
+        );
     }
 
     #[test]

@@ -133,6 +133,10 @@ fn diff_target_should_preserve_raw_derivative_route(
         return false;
     };
     diff_target_is_repeated_trig_by_parts_integrate_call(ctx, target, var_name)
+        || diff_target_is_rational_linear_partial_fraction_integrate_call(ctx, target, var_name)
+        || diff_target_is_rational_linear_positive_quadratic_integrate_call(ctx, target, var_name)
+        || diff_target_is_positive_quadratic_power_integrate_call(ctx, target, var_name)
+        || diff_target_is_quadratic_affine_ln_by_parts_integrate_call(ctx, target, var_name)
         || diff_target_is_affine_polynomial_times_direct_builtin_derivative_target(
             ctx, target, var_name,
         )
@@ -148,6 +152,212 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_constant_scaled_positive_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_reciprocal_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_atanh_surd_polynomial(ctx, target, var_name)
+}
+
+fn diff_target_is_rational_linear_partial_fraction_integrate_call(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return false;
+    }
+    diff_variable_name(ctx, args[1]).is_some_and(|integrate_var| integrate_var == var_name)
+        && cas_math::symbolic_integration_support::integrate_symbolic_is_rational_linear_partial_fraction_target(
+            ctx,
+            args[0],
+            var_name,
+        )
+}
+
+fn diff_target_is_rational_linear_positive_quadratic_integrate_call(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return false;
+    }
+    diff_variable_name(ctx, args[1]).is_some_and(|integrate_var| integrate_var == var_name)
+        && cas_math::symbolic_integration_support::integrate_symbolic_is_rational_linear_positive_quadratic_target(
+            ctx,
+            args[0],
+            var_name,
+        )
+}
+
+fn diff_target_is_positive_quadratic_power_integrate_call(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return false;
+    }
+    if diff_variable_name(ctx, args[1]).is_none_or(|integrate_var| integrate_var != var_name) {
+        return false;
+    }
+
+    cas_math::symbolic_integration_support::integrate_symbolic_is_positive_quadratic_square_target(
+        ctx, args[0], var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_positive_quadratic_cube_target(
+        ctx, args[0], var_name,
+    )
+}
+
+fn diff_target_is_quadratic_affine_ln_by_parts_integrate_call(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return false;
+    }
+    diff_variable_name(ctx, args[1]).is_some_and(|integrate_var| integrate_var == var_name)
+        && integrate_target_is_quadratic_affine_ln_by_parts_kernel(ctx, args[0], var_name)
+}
+
+fn integrate_target_is_quadratic_affine_ln_by_parts_kernel(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let additive_view = cas_math::expr_nary::AddView::from_expr(ctx, target);
+    if additive_view.terms.len() >= 2 {
+        let mut common_log_arg = None;
+        let mut cofactor_sum = Polynomial::zero(var_name.to_string());
+
+        for (term, sign) in additive_view.terms {
+            let Some((log_arg, mut cofactor_poly)) =
+                quadratic_affine_ln_term_parts_for_transform(ctx, term, var_name)
+            else {
+                return false;
+            };
+            if sign == cas_math::expr_nary::Sign::Neg {
+                cofactor_poly = cofactor_poly.neg();
+            }
+
+            if let Some(existing_arg) = common_log_arg {
+                if cas_ast::ordering::compare_expr(ctx, existing_arg, log_arg)
+                    != std::cmp::Ordering::Equal
+                {
+                    return false;
+                }
+            } else {
+                common_log_arg = Some(log_arg);
+            }
+
+            cofactor_sum = cofactor_sum.add(&cofactor_poly);
+        }
+
+        let Some(log_arg) = common_log_arg else {
+            return false;
+        };
+        return affine_ln_arg_has_positive_slope_for_transform(ctx, log_arg, var_name)
+            && cofactor_sum.degree() == 2;
+    }
+
+    let factors = cas_math::expr_nary::mul_leaves(ctx, target);
+    if factors.len() < 2 {
+        return false;
+    }
+
+    for (log_index, factor) in factors.iter().copied().enumerate() {
+        let Expr::Function(fn_id, args) = ctx.get(factor) else {
+            continue;
+        };
+        if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(cas_ast::BuiltinFn::Ln) {
+            continue;
+        }
+
+        let Ok(arg_poly) = Polynomial::from_expr(ctx, args[0], var_name) else {
+            continue;
+        };
+        if arg_poly.degree() != 1
+            || arg_poly
+                .coeffs
+                .get(1)
+                .is_none_or(|slope| !slope.is_positive())
+        {
+            continue;
+        }
+
+        let mut cofactor_poly = Polynomial::new(vec![BigRational::one()], var_name.to_string());
+        let mut saw_cofactor = false;
+        for (idx, cofactor_factor) in factors.iter().copied().enumerate() {
+            if idx == log_index {
+                continue;
+            }
+            let Ok(factor_poly) = Polynomial::from_expr(ctx, cofactor_factor, var_name) else {
+                return false;
+            };
+            cofactor_poly = cofactor_poly.mul(&factor_poly);
+            saw_cofactor = true;
+        }
+
+        return saw_cofactor && cofactor_poly.degree() == 2;
+    }
+
+    false
+}
+
+fn quadratic_affine_ln_term_parts_for_transform(
+    ctx: &cas_ast::Context,
+    term: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Polynomial)> {
+    let factors = cas_math::expr_nary::mul_leaves(ctx, term);
+
+    for (log_index, factor) in factors.iter().copied().enumerate() {
+        let Expr::Function(fn_id, args) = ctx.get(factor) else {
+            continue;
+        };
+        if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(cas_ast::BuiltinFn::Ln) {
+            continue;
+        }
+
+        let mut cofactor_poly = Polynomial::one(var_name.to_string());
+        for (idx, cofactor_factor) in factors.iter().copied().enumerate() {
+            if idx == log_index {
+                continue;
+            }
+            let Ok(factor_poly) = Polynomial::from_expr(ctx, cofactor_factor, var_name) else {
+                return None;
+            };
+            cofactor_poly = cofactor_poly.mul(&factor_poly);
+        }
+
+        return Some((args[0], cofactor_poly));
+    }
+
+    None
+}
+
+fn affine_ln_arg_has_positive_slope_for_transform(
+    ctx: &cas_ast::Context,
+    arg: ExprId,
+    var_name: &str,
+) -> bool {
+    let Ok(arg_poly) = Polynomial::from_expr(ctx, arg, var_name) else {
+        return false;
+    };
+    arg_poly.degree() == 1
+        && arg_poly
+            .coeffs
+            .get(1)
+            .is_some_and(|slope| slope.is_positive())
 }
 
 fn diff_target_is_repeated_trig_by_parts_integrate_call(
@@ -1488,7 +1698,6 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 return zero;
             }
         }
-
         // PRE-ORDER: For Mul, detect conjugate pairs in the factor chain BEFORE
         // child simplification. This prevents canonicalization (sqrt→Pow) from
         // breaking structural matching, and prevents DistributeRule from splitting
@@ -1573,13 +1782,20 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     id,
                 )
             {
-                if rewrite.description == "Power Reduction Identity" {
-                    self.record_step(
-                        "Power Reduction Identity",
-                        "Power Reduction Identity",
-                        id,
-                        rewrite.new_expr,
-                    );
+                if rewrite.description == "Power Reduction Identity"
+                    || (rewrite.required_conditions.is_empty()
+                        && rewrite.assumption_events.is_empty()
+                        && matches!(
+                            self.context.get(rewrite.new_expr),
+                            cas_ast::Expr::Number(ref n) if n.is_zero()
+                        ))
+                {
+                    let step_name = if rewrite.description == "Power Reduction Identity" {
+                        "Power Reduction Identity"
+                    } else {
+                        "Collapse Exact Zero Additive Subexpression"
+                    };
+                    self.record_step(step_name, step_name, id, rewrite.new_expr);
                     return rewrite.new_expr;
                 }
             }
@@ -1617,6 +1833,24 @@ impl<'a> LocalSimplificationTransformer<'a> {
                     zero,
                 );
                 return zero;
+            }
+        }
+        if matches!(op, BinaryOp::Add | BinaryOp::Sub) && rebuilt != id {
+            if let Some(rewrite) =
+                crate::rules::arithmetic::try_build_direct_small_zero_additive_combination_rewrite(
+                    self.context,
+                    rebuilt,
+                )
+            {
+                if rewrite.required_conditions.is_empty() && rewrite.assumption_events.is_empty() {
+                    self.record_step(
+                        "Collapse Exact Zero Additive Subexpression",
+                        "Collapse Exact Zero Additive Subexpression",
+                        rebuilt,
+                        rewrite.new_expr,
+                    );
+                    return rewrite.new_expr;
+                }
             }
         }
 

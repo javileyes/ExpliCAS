@@ -313,15 +313,12 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
             // SessionRef is a leaf - return as-is (should be resolved before simplification)
             Expr::SessionRef(_) => id,
-            // Hold barrier: simplify contents but preserve the wrapper (blocks expansive rules)
-            Expr::Hold(inner) => {
-                let new_inner = self.transform_child_at(id, crate::step::PathStep::Inner, inner);
-
-                if new_inner != inner {
-                    self.context.add(Expr::Hold(new_inner))
-                } else {
-                    id
-                }
+            // Strong internal hold: keep protected calculus presentation outputs
+            // out of the phase pipeline. The function-form `__hold(...)` remains
+            // available for the older transparent barrier contract.
+            Expr::Hold(_) => {
+                self.current_depth -= 1;
+                return id;
             }
         };
 

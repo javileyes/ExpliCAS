@@ -3421,6 +3421,87 @@ fn polynomial_antiderivative_expr(ctx: &mut Context, poly: &Polynomial) -> ExprI
 
 const MAX_ARCTAN_BY_PARTS_POLY_DEGREE: usize = 6;
 
+fn affine_args_are_opposite(ctx: &Context, left: ExprId, right: ExprId, var: &str) -> bool {
+    let Ok(left_poly) = Polynomial::from_expr(ctx, left, var) else {
+        return false;
+    };
+    let Ok(right_poly) = Polynomial::from_expr(ctx, right, var) else {
+        return false;
+    };
+    left_poly == right_poly.neg()
+}
+
+fn orient_arctan_terms_to_argument(
+    ctx: &mut Context,
+    expr: ExprId,
+    target_arg: ExprId,
+    var: &str,
+) -> ExprId {
+    let expr_data = ctx.get(expr).clone();
+    match expr_data {
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(
+                    ctx.builtin_of(fn_id),
+                    Some(BuiltinFn::Arctan | BuiltinFn::Atan)
+                )
+                && compare_expr(ctx, args[0], target_arg) != Ordering::Equal
+                && affine_args_are_opposite(ctx, args[0], target_arg, var) =>
+        {
+            let oriented = ctx.call_builtin(BuiltinFn::Arctan, vec![target_arg]);
+            ctx.add(Expr::Neg(oriented))
+        }
+        Expr::Add(left, right) => {
+            let left = orient_arctan_terms_to_argument(ctx, left, target_arg, var);
+            let right = orient_arctan_terms_to_argument(ctx, right, target_arg, var);
+            ctx.add(Expr::Add(left, right))
+        }
+        Expr::Sub(left, right) => {
+            let left = orient_arctan_terms_to_argument(ctx, left, target_arg, var);
+            let right = orient_arctan_terms_to_argument(ctx, right, target_arg, var);
+            ctx.add(Expr::Sub(left, right))
+        }
+        Expr::Mul(left, right) => {
+            let left = orient_arctan_terms_to_argument(ctx, left, target_arg, var);
+            let right = orient_arctan_terms_to_argument(ctx, right, target_arg, var);
+            ctx.add(Expr::Mul(left, right))
+        }
+        Expr::Div(left, right) => {
+            let left = orient_arctan_terms_to_argument(ctx, left, target_arg, var);
+            let right = orient_arctan_terms_to_argument(ctx, right, target_arg, var);
+            ctx.add(Expr::Div(left, right))
+        }
+        Expr::Pow(base, exp) => {
+            let base = orient_arctan_terms_to_argument(ctx, base, target_arg, var);
+            let exp = orient_arctan_terms_to_argument(ctx, exp, target_arg, var);
+            ctx.add(Expr::Pow(base, exp))
+        }
+        Expr::Neg(inner) => {
+            let inner = orient_arctan_terms_to_argument(ctx, inner, target_arg, var);
+            ctx.add(Expr::Neg(inner))
+        }
+        Expr::Function(fn_id, args) => {
+            let args = args
+                .into_iter()
+                .map(|arg| orient_arctan_terms_to_argument(ctx, arg, target_arg, var))
+                .collect();
+            ctx.add(Expr::Function(fn_id, args))
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let data = data
+                .into_iter()
+                .map(|entry| orient_arctan_terms_to_argument(ctx, entry, target_arg, var))
+                .collect();
+            ctx.add(Expr::Matrix { rows, cols, data })
+        }
+        Expr::Hold(inner) => {
+            let inner = orient_arctan_terms_to_argument(ctx, inner, target_arg, var);
+            ctx.add(Expr::Hold(inner))
+        }
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
+    }
+}
+
 fn polynomial_times_arctan_affine_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
@@ -3447,14 +3528,6 @@ fn polynomial_times_arctan_affine_antiderivative(
         let arg = args[0];
         let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
         if arg_poly.degree() != 1 {
-            continue;
-        }
-        let arg_offset = arg_poly
-            .coeffs
-            .first()
-            .cloned()
-            .unwrap_or_else(BigRational::zero);
-        if !arg_offset.is_zero() {
             continue;
         }
         let arg_slope = arg_poly
@@ -3493,7 +3566,10 @@ fn polynomial_times_arctan_affine_antiderivative(
         let denominator = arg_poly
             .mul(&arg_poly)
             .add(&Polynomial::one(arg_poly.var.clone()));
-        let numerator = v_poly.mul(&Polynomial::new(vec![arg_slope], v_poly.var.clone()));
+        let numerator = v_poly.mul(&Polynomial::new(
+            vec![arg_slope.clone()],
+            v_poly.var.clone(),
+        ));
         let numerator_expr = numerator.to_expr(ctx);
         let denominator_expr = denominator.to_expr(ctx);
         let rational_integral = positive_quadratic_linear_numerator_antiderivative(
@@ -3502,6 +3578,11 @@ fn polynomial_times_arctan_affine_antiderivative(
             denominator_expr,
             var,
         )?;
+        let rational_integral = if arg_slope.is_negative() {
+            orient_arctan_terms_to_argument(ctx, rational_integral, arg, var)
+        } else {
+            rational_integral
+        };
 
         let leading = cas_ast::hold::wrap_hold(ctx, leading);
         let rational_integral = cas_ast::hold::wrap_hold(ctx, rational_integral);
@@ -4667,6 +4748,19 @@ pub fn integrate_symbolic_is_fractional_denominator_power_substitution_target(
     expr: ExprId,
     var: &str,
 ) -> bool {
+    if let Expr::Mul(left, right) = ctx.get(expr).clone() {
+        if rational_constant_value(ctx, left).is_some() {
+            return integrate_symbolic_is_fractional_denominator_power_substitution_target(
+                ctx, right, var,
+            );
+        }
+        if rational_constant_value(ctx, right).is_some() {
+            return integrate_symbolic_is_fractional_denominator_power_substitution_target(
+                ctx, left, var,
+            );
+        }
+    }
+
     let (num, den) = match ctx.get(expr) {
         Expr::Div(num, den) => (*num, *den),
         _ => return false,
@@ -5112,6 +5206,82 @@ fn additive_linear_times_affine_ln_by_parts_antiderivative(
     linear_times_affine_ln_by_parts_antiderivative(ctx, combined_expr, var)
 }
 
+fn polynomial_affine_ln_term_parts(
+    ctx: &mut Context,
+    term: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId, Polynomial)> {
+    let factors = mul_leaves(ctx, term);
+
+    for (log_index, factor) in factors.iter().enumerate() {
+        let log_arg = match ctx.get(*factor).clone() {
+            Expr::Function(fn_id, args)
+                if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln) =>
+            {
+                args[0]
+            }
+            _ => continue,
+        };
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != log_index).then_some(*factor))
+            .collect();
+        let cofactor = if cofactor_factors.is_empty() {
+            ctx.num(1)
+        } else {
+            build_balanced_mul(ctx, &cofactor_factors)
+        };
+        let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+
+        return Some((log_arg, *factor, cofactor_poly));
+    }
+
+    None
+}
+
+fn additive_quadratic_times_affine_ln_by_parts_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return None;
+    }
+
+    let mut common_log_arg = None;
+    let mut common_log_factor = None;
+    let mut cofactor_sum = Polynomial::zero(var.to_string());
+
+    for (term, sign) in view.terms {
+        let (log_arg, log_factor, mut cofactor) = polynomial_affine_ln_term_parts(ctx, term, var)?;
+        if sign == Sign::Neg {
+            cofactor = cofactor.neg();
+        }
+
+        if let Some(existing_arg) = common_log_arg {
+            if compare_expr(ctx, existing_arg, log_arg) != Ordering::Equal {
+                return None;
+            }
+        } else {
+            common_log_arg = Some(log_arg);
+            common_log_factor = Some(log_factor);
+        }
+
+        cofactor_sum = cofactor_sum.add(&cofactor);
+    }
+
+    if cofactor_sum.degree() != 2 {
+        return None;
+    }
+
+    let cofactor = cofactor_sum.to_expr(ctx);
+    let combined_expr = mul2_raw(ctx, cofactor, common_log_factor?);
+    quadratic_times_affine_ln_by_parts_antiderivative(ctx, combined_expr, var)
+}
+
 fn linear_times_affine_ln_by_parts_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
@@ -5275,6 +5445,101 @@ fn linear_times_affine_ln_by_parts_antiderivative(
     }
 
     None
+}
+
+fn quadratic_times_affine_ln_by_parts_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    for (log_index, factor) in factors.iter().enumerate() {
+        let log_arg = match ctx.get(*factor).clone() {
+            Expr::Function(fn_id, args)
+                if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln) =>
+            {
+                args[0]
+            }
+            _ => continue,
+        };
+        let (arg_slope, arg_offset) = get_linear_coeffs(ctx, log_arg, var)?;
+        let arg_slope = rational_constant_value(ctx, arg_slope)?;
+        if !arg_slope.is_positive() {
+            continue;
+        }
+        let arg_offset = rational_constant_value(ctx, arg_offset)?;
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != log_index).then_some(*factor))
+            .collect();
+        if cofactor_factors.is_empty() {
+            continue;
+        }
+        let cofactor = build_balanced_mul(ctx, &cofactor_factors);
+        let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+        if cofactor_poly.degree() != 2 {
+            continue;
+        }
+
+        let primitive_poly = polynomial_antiderivative(&cofactor_poly);
+        let linear_divisor = Polynomial::new(
+            vec![arg_offset.clone(), arg_slope.clone()],
+            cofactor_poly.var.clone(),
+        );
+        let numerator = primitive_poly.mul(&Polynomial::new(
+            vec![arg_slope.clone()],
+            cofactor_poly.var.clone(),
+        ));
+        let (quotient, remainder) = numerator.div_rem(&linear_divisor).ok()?;
+
+        let primitive_expr = primitive_poly.to_expr(ctx);
+        let leading_product = mul2_raw(ctx, primitive_expr, *factor);
+        let leading = cas_ast::hold::wrap_hold(ctx, leading_product);
+
+        let mut residual_terms = Vec::new();
+        if !quotient.is_zero() {
+            residual_terms.push(polynomial_antiderivative_expr(ctx, &quotient));
+        }
+        if !remainder.is_zero() {
+            let remainder_coeff = remainder
+                .coeffs
+                .first()
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+            if !remainder_coeff.is_zero() {
+                residual_terms.push(scale_rational_term(
+                    ctx,
+                    remainder_coeff / arg_slope,
+                    *factor,
+                ));
+            }
+        }
+
+        if residual_terms.is_empty() {
+            return Some(leading);
+        }
+
+        let residual = build_balanced_add(ctx, &residual_terms);
+        let residual = cas_ast::hold::wrap_hold(ctx, residual);
+        return Some(ctx.add(Expr::Sub(leading, residual)));
+    }
+
+    None
+}
+
+pub fn integrate_symbolic_is_quadratic_times_affine_ln_by_parts_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    quadratic_times_affine_ln_by_parts_antiderivative(ctx, expr, var).is_some()
+        || additive_quadratic_times_affine_ln_by_parts_antiderivative(ctx, expr, var).is_some()
 }
 
 fn positive_integer_power_value(ctx: &Context, expr: ExprId) -> Option<u32> {
@@ -5927,9 +6192,13 @@ pub fn integrate_symbolic_is_polynomial_times_trig_linear_target(
     expr: ExprId,
     var: &str,
 ) -> bool {
-    is_polynomial_times_linear_function_target(ctx, expr, var, 2, 5, |ctx, factor| {
+    if is_polynomial_times_linear_function_target(ctx, expr, var, 2, 5, |ctx, factor| {
         signed_trig_like_factor(ctx, factor).map(|(_, arg, _, _)| arg)
-    })
+    }) {
+        return true;
+    }
+
+    additive_polynomial_times_trig_linear_antiderivative(ctx, expr, var).is_some()
 }
 
 pub fn integrate_symbolic_is_polynomial_times_arctan_affine_target(
@@ -6153,6 +6422,100 @@ fn polynomial_times_trig_linear_antiderivative(
     }
 
     None
+}
+
+fn polynomial_trig_linear_term_parts(
+    ctx: &mut Context,
+    term: ExprId,
+    var: &str,
+) -> Option<(BuiltinFn, ExprId, ExprId, Polynomial)> {
+    let (outer_sign, factors) = signed_mul_leaves(ctx, term);
+
+    for (trig_index, factor) in factors.iter().enumerate() {
+        let Some((builtin, trig_arg, trig_sign, trig_factor)) =
+            signed_trig_like_factor(ctx, *factor)
+        else {
+            continue;
+        };
+
+        let Ok(arg_poly) = Polynomial::from_expr(ctx, trig_arg, var) else {
+            continue;
+        };
+        if arg_poly.degree() != 1 {
+            continue;
+        }
+        let arg_slope = arg_poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if arg_slope.is_zero() {
+            continue;
+        }
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
+            .collect();
+        let raw_cofactor = if cofactor_factors.is_empty() {
+            ctx.num(1)
+        } else {
+            build_balanced_mul(ctx, &cofactor_factors)
+        };
+        let effective_sign = combine_factor_signs(outer_sign, trig_sign);
+        let cofactor = signed_term(ctx, raw_cofactor, effective_sign);
+        let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+
+        return Some((builtin, trig_arg, trig_factor, cofactor_poly));
+    }
+
+    None
+}
+
+fn additive_polynomial_times_trig_linear_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return None;
+    }
+
+    let mut common_builtin = None;
+    let mut common_arg = None;
+    let mut common_factor = None;
+    let mut cofactor_sum = Polynomial::zero(var.to_string());
+
+    for (term, sign) in view.terms {
+        let (builtin, arg, factor, mut cofactor) =
+            polynomial_trig_linear_term_parts(ctx, term, var)?;
+        if sign == Sign::Neg {
+            cofactor = cofactor.neg();
+        }
+
+        if let Some(existing_builtin) = common_builtin {
+            if builtin != existing_builtin || compare_expr(ctx, arg, common_arg?) != Ordering::Equal
+            {
+                return None;
+            }
+        } else {
+            common_builtin = Some(builtin);
+            common_arg = Some(arg);
+            common_factor = Some(factor);
+        }
+
+        cofactor_sum = cofactor_sum.add(&cofactor);
+    }
+
+    if !(2..=5).contains(&cofactor_sum.degree()) {
+        return None;
+    }
+
+    let cofactor = cofactor_sum.to_expr(ctx);
+    let combined_expr = mul2_raw(ctx, cofactor, common_factor?);
+    polynomial_times_trig_linear_antiderivative(ctx, combined_expr, var)
 }
 
 fn linear_times_trig_linear_antiderivative(
@@ -6526,9 +6889,107 @@ pub fn integrate_symbolic_is_polynomial_times_hyperbolic_linear_target(
     expr: ExprId,
     var: &str,
 ) -> bool {
-    is_polynomial_times_linear_function_target(ctx, expr, var, 2, 5, |ctx, factor| {
+    if is_polynomial_times_linear_function_target(ctx, expr, var, 2, 5, |ctx, factor| {
         signed_hyperbolic_like_factor(ctx, factor).map(|(_, arg, _, _)| arg)
-    })
+    }) {
+        return true;
+    }
+
+    additive_polynomial_times_hyperbolic_linear_antiderivative(ctx, expr, var).is_some()
+}
+
+fn polynomial_hyperbolic_linear_term_parts(
+    ctx: &mut Context,
+    term: ExprId,
+    var: &str,
+) -> Option<(BuiltinFn, ExprId, ExprId, Polynomial)> {
+    let (outer_sign, factors) = signed_mul_leaves(ctx, term);
+
+    for (hyperbolic_index, factor) in factors.iter().enumerate() {
+        let Some((builtin, hyperbolic_arg, hyperbolic_sign, hyperbolic_factor)) =
+            signed_hyperbolic_like_factor(ctx, *factor)
+        else {
+            continue;
+        };
+
+        let Ok(arg_poly) = Polynomial::from_expr(ctx, hyperbolic_arg, var) else {
+            continue;
+        };
+        if arg_poly.degree() != 1 {
+            continue;
+        }
+        let arg_slope = arg_poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if arg_slope.is_zero() {
+            continue;
+        }
+
+        let cofactor_factors: Vec<ExprId> = factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != hyperbolic_index).then_some(*factor))
+            .collect();
+        let raw_cofactor = if cofactor_factors.is_empty() {
+            ctx.num(1)
+        } else {
+            build_balanced_mul(ctx, &cofactor_factors)
+        };
+        let effective_sign = combine_factor_signs(outer_sign, hyperbolic_sign);
+        let cofactor = signed_term(ctx, raw_cofactor, effective_sign);
+        let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
+
+        return Some((builtin, hyperbolic_arg, hyperbolic_factor, cofactor_poly));
+    }
+
+    None
+}
+
+fn additive_polynomial_times_hyperbolic_linear_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 2 {
+        return None;
+    }
+
+    let mut common_builtin = None;
+    let mut common_arg = None;
+    let mut common_factor = None;
+    let mut cofactor_sum = Polynomial::zero(var.to_string());
+
+    for (term, sign) in view.terms {
+        let (builtin, arg, factor, mut cofactor) =
+            polynomial_hyperbolic_linear_term_parts(ctx, term, var)?;
+        if sign == Sign::Neg {
+            cofactor = cofactor.neg();
+        }
+
+        if let Some(existing_builtin) = common_builtin {
+            if builtin != existing_builtin || compare_expr(ctx, arg, common_arg?) != Ordering::Equal
+            {
+                return None;
+            }
+        } else {
+            common_builtin = Some(builtin);
+            common_arg = Some(arg);
+            common_factor = Some(factor);
+        }
+
+        cofactor_sum = cofactor_sum.add(&cofactor);
+    }
+
+    if !(2..=5).contains(&cofactor_sum.degree()) {
+        return None;
+    }
+
+    let cofactor = cofactor_sum.to_expr(ctx);
+    let combined_expr = mul2_raw(ctx, cofactor, common_factor?);
+    polynomial_times_hyperbolic_linear_antiderivative(ctx, combined_expr, var)
 }
 
 fn exact_rational_sqrt(value: &BigRational) -> Option<BigRational> {
@@ -7783,28 +8244,74 @@ fn positive_quadratic_cube_antiderivative(
     }
 }
 
+fn integrate_symbolic_is_positive_quadratic_power_target(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    power: i64,
+    max_numerator_degree: usize,
+) -> bool {
+    let Expr::Div(num, den) = ctx.get(expr) else {
+        return false;
+    };
+    let Ok(numerator) = Polynomial::from_expr(ctx, *num, var) else {
+        return false;
+    };
+    if numerator.degree() > max_numerator_degree {
+        return false;
+    }
+
+    let base = match ctx.get(*den) {
+        Expr::Pow(base, exp) if is_number(ctx, *exp, power) => *base,
+        _ => return false,
+    };
+    let Ok(mut denominator) = Polynomial::from_expr(ctx, base, var) else {
+        return false;
+    };
+    if denominator.degree() != 2 {
+        return false;
+    }
+    if denominator.leading_coeff().is_negative() {
+        denominator = denominator.neg();
+    }
+
+    let a = denominator
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if a <= BigRational::zero() {
+        return false;
+    }
+    let b = denominator
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let c = denominator
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let four = BigRational::from_integer(4.into());
+
+    four * a * c - b.clone() * b > BigRational::zero()
+}
+
 pub fn integrate_symbolic_is_positive_quadratic_cube_target(
-    ctx: &mut Context,
+    ctx: &Context,
     expr: ExprId,
     var: &str,
 ) -> bool {
-    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
-    let Expr::Div(num, den) = ctx.get(expr).clone() else {
-        return false;
-    };
-    positive_quadratic_cube_antiderivative(ctx, num, den, var).is_some()
+    integrate_symbolic_is_positive_quadratic_power_target(ctx, expr, var, 3, 4)
 }
 
 pub fn integrate_symbolic_is_positive_quadratic_square_target(
-    ctx: &mut Context,
+    ctx: &Context,
     expr: ExprId,
     var: &str,
 ) -> bool {
-    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
-    let Expr::Div(num, den) = ctx.get(expr).clone() else {
-        return false;
-    };
-    positive_quadratic_square_antiderivative(ctx, num, den, var).is_some()
+    integrate_symbolic_is_positive_quadratic_power_target(ctx, expr, var, 2, 2)
 }
 
 fn positive_quadratic_square_constant_antiderivative(
@@ -7965,7 +8472,7 @@ fn grouped_linear_rational_factors(
 ) -> Option<Vec<PartialFractionLinearFactor>> {
     const MAX_PARTIAL_FRACTION_DEGREE: usize = 6;
 
-    if denominator.degree() < 2 || denominator.degree() > MAX_PARTIAL_FRACTION_DEGREE {
+    if denominator.degree() < 1 || denominator.degree() > MAX_PARTIAL_FRACTION_DEGREE {
         return None;
     }
 
@@ -8212,6 +8719,26 @@ fn rational_linear_partial_fraction_required_nonzero(
         .collect()
 }
 
+pub fn integrate_symbolic_is_rational_linear_partial_fraction_target(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    let (num, den) = match ctx.get(expr) {
+        Expr::Div(num, den) => (*num, *den),
+        _ => return false,
+    };
+
+    let Ok(numerator) = Polynomial::from_expr(ctx, num, var) else {
+        return false;
+    };
+    let Ok(denominator) = Polynomial::from_expr(ctx, den, var) else {
+        return false;
+    };
+
+    rational_linear_partial_fraction_decomposition(&numerator, &denominator).is_some()
+}
+
 struct LinearPositiveQuadraticPartialFraction {
     quotient: Polynomial,
     linear_factor: Polynomial,
@@ -8435,11 +8962,23 @@ fn rational_linear_positive_quadratic_required_nonzero(
 }
 
 pub fn integrate_symbolic_is_rational_linear_positive_quadratic_target(
-    ctx: &mut Context,
+    ctx: &Context,
     expr: ExprId,
     var: &str,
 ) -> bool {
-    integrate_symbolic_rational_linear_positive_quadratic_required_nonzero_if_target(ctx, expr, var)
+    let (num, den) = match ctx.get(expr) {
+        Expr::Div(num, den) => (*num, *den),
+        _ => return false,
+    };
+
+    let Ok(numerator) = Polynomial::from_expr(ctx, num, var) else {
+        return false;
+    };
+    let Ok(denominator) = Polynomial::from_expr(ctx, den, var) else {
+        return false;
+    };
+
+    rational_linear_positive_quadratic_partial_fraction_decomposition(&numerator, &denominator)
         .is_some()
 }
 
@@ -9120,6 +9659,14 @@ fn sqrt_derivative_substitution_radicand(
     }
 }
 
+pub fn integrate_symbolic_is_sqrt_derivative_substitution_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    sqrt_derivative_substitution_radicand(ctx, expr, var).is_some()
+}
+
 fn sqrt_trig_reciprocal_derivative_radicand(
     ctx: &mut Context,
     expr: ExprId,
@@ -9646,7 +10193,24 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         }
 
         if let Some(integral) =
+            additive_quadratic_times_affine_ln_by_parts_antiderivative(ctx, expr, var)
+        {
+            return Some(integral);
+        }
+
+        if let Some(integral) =
             additive_linear_times_affine_ln_by_parts_antiderivative(ctx, expr, var)
+        {
+            return Some(integral);
+        }
+
+        if let Some(integral) = additive_polynomial_times_trig_linear_antiderivative(ctx, expr, var)
+        {
+            return Some(integral);
+        }
+
+        if let Some(integral) =
+            additive_polynomial_times_hyperbolic_linear_antiderivative(ctx, expr, var)
         {
             return Some(integral);
         }
@@ -9732,6 +10296,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let Some(integral) = monomial_times_ln_var_by_parts_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
+    if let Some(integral) = quadratic_times_affine_ln_by_parts_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
 
@@ -10363,6 +10931,18 @@ mod tests {
         let expr = parse("ln(2*x+1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "(2 * x + 1) * (ln(2 * x + 1) - 1) / 2");
+    }
+
+    #[test]
+    fn integrates_quadratic_monomial_times_positive_affine_log_by_parts() {
+        let mut ctx = Context::new();
+        let expr = parse("x^2*ln(2*x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/3 * x^3 * ln(2 * x + 1) - (1/9 * x^3 + 1/12 * x - 1/24 * ln(2 * x + 1) - 1/12 * x^2)"
+        );
     }
 
     #[test]
@@ -11648,7 +12228,7 @@ mod tests {
 
         let expr = parse("(2*x+1)^4/((2*x+1)^2+1)^3", &mut ctx).expect("parse");
         assert!(integrate_symbolic_is_positive_quadratic_cube_target(
-            &mut ctx, expr, "x"
+            &ctx, expr, "x"
         ));
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
@@ -11940,6 +12520,14 @@ mod tests {
             super::integrate_symbolic_is_fractional_denominator_power_substitution_target(
                 &mut ctx, expr, "x"
             )
+        );
+
+        let expr = parse("2*(x/(x^2-1)^(3/2))", &mut ctx).expect("parse");
+        assert!(
+            super::integrate_symbolic_is_fractional_denominator_power_substitution_target(
+                &mut ctx, expr, "x"
+            ),
+            "constant extraction before integration should preserve the fractional denominator power family"
         );
     }
 

@@ -2129,6 +2129,15 @@ fn supported_rational_polynomial_integral_required_conditions(
         return None;
     }
 
+    if cas_math::symbolic_integration_support::integrate_symbolic_is_rational_linear_partial_fraction_target(
+        ctx,
+        target,
+        var_name,
+    ) {
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(ctx, target, var_name)?;
+        return Some(integral_required_conditions(ctx, target, var_name));
+    }
+
     if degree == 5 {
         let required_nonzero = cas_math::symbolic_integration_support::integrate_symbolic_rational_linear_positive_quadratic_required_nonzero_if_target(
             ctx,
@@ -6008,6 +6017,24 @@ mod tests {
         assert_eq!(
             integral_rational_root_residual_result(
                 "diff(integrate(1/((x+1)^3*(x^2+2*x+2)), y), y) - 1/((x+1)^3*(x^2+2*x+2))"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn diff_integral_rational_residual_root_cancels_linear_partial_fraction() {
+        let input =
+            "diff(integrate(1/((x-2)*(x-1)*x*(x+1)*(x+2)), x), x) - 1/((x-2)*(x-1)*x*(x+1)*(x+2))";
+        assert_eq!(
+            integral_rational_root_residual_result(input),
+            Some("0".to_string())
+        );
+        assert_eq!(simplify_text(input), "0");
+
+        assert_eq!(
+            integral_rational_root_residual_result(
+                "diff(integrate(1/((x-2)*(x-1)*x*(x+1)*(x+2)), y), y) - 1/((x-2)*(x-1)*x*(x+1)*(x+2))"
             ),
             None
         );

@@ -3427,6 +3427,80 @@ fn acosh_affine_scaled_diff_uses_compact_root_product_presentation() {
 }
 
 #[test]
+fn acosh_fractional_affine_diff_absorbs_common_root_denominator() {
+    let cases = [
+        (
+            "diff(acosh((x+1)/2), x)",
+            "1 / (sqrt(x - 1) * sqrt(x + 3))",
+            vec!["x - 1 > 0".to_string()],
+        ),
+        (
+            "diff(acosh(-(x+1)/2), x)",
+            "-1 / (sqrt(-x - 3) * sqrt(1 - x))",
+            vec!["-x - 3 > 0".to_string()],
+        ),
+        (
+            "diff(acosh((2*x+1)/3), x)",
+            "2 / (sqrt(2 * x - 2) * sqrt(2 * x + 4))",
+            vec!["x - 1 > 0".to_string()],
+        ),
+        (
+            "diff(acosh(-(2*x+1)/3), x)",
+            "-2 / (sqrt(-2 * x - 4) * sqrt(2 - 2 * x))",
+            vec!["-x - 2 > 0".to_string()],
+        ),
+    ];
+
+    for (input, expected_display, expected_required) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_display, "input: {input}");
+
+        let expected =
+            parse(expected_display, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "input: {input}, expected compact derivative equivalent to {expected_display}, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_required,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
+}
+
+#[test]
 fn inverse_reciprocal_trig_affine_scaled_diff_uses_abs_sqrt_presentation() {
     let cases = [
         (
@@ -9536,10 +9610,68 @@ fn affine_total_domain_inverse_diff_drops_redundant_quadratic_conditions() {
 }
 
 #[test]
+fn arctan_rational_affine_diff_uses_compact_denominator_presentation() {
+    let cases = [
+        ("diff(arctan((x+1)/2), x)", "2 / ((x + 1)^2 + 4)"),
+        ("diff(arctan(-(x+1)/2), x)", "-2 / ((x + 1)^2 + 4)"),
+        ("diff(arctan((x-1)/-2), x)", "-2 / ((x - 1)^2 + 4)"),
+    ];
+
+    for (input, expected_display) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_display, "input: {input}");
+
+        let expected =
+            parse(expected_display, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "input: {input}, expected compact derivative equivalent to {expected_display}, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert!(
+            required.is_empty(),
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+    }
+}
+
+#[test]
 fn shifted_linear_asinh_diff_preserves_compact_radicand() {
     let cases = [
         ("diff(asinh(2*x+1), x)", "2 / sqrt((2 * x + 1)^2 + 1)"),
         ("diff(asinh(3-2*x), x)", "-2 / sqrt((3 - 2 * x)^2 + 1)"),
+        ("diff(asinh(-(x+1)/2), x)", "-1 / sqrt((x + 1)^2 + 4)"),
     ];
 
     for (input, expected) in cases {
@@ -10137,6 +10269,80 @@ fn inverse_hyperbolic_atanh_diff_evaluates_with_open_unit_interval_condition() {
         vec!["1 - x^2 > 0".to_string()],
         "input: {input}, unexpected required_conditions: {required:?}"
     );
+}
+
+#[test]
+fn atanh_fractional_affine_diff_preserves_open_interval_gap_presentation() {
+    let cases = [
+        (
+            "diff(atanh((x+1)/2), x)",
+            "2 / (4 - (x + 1)^2)",
+            vec!["3 - x^2 - 2 * x > 0".to_string()],
+        ),
+        (
+            "diff(atanh(-(x+1)/2), x)",
+            "-2 / (4 - (x + 1)^2)",
+            vec!["3 - x^2 - 2 * x > 0".to_string()],
+        ),
+        (
+            "diff(atanh((2*x+1)/3), x)",
+            "6 / (9 - (2 * x + 1)^2)",
+            vec!["2 - x^2 - x > 0".to_string()],
+        ),
+        (
+            "diff(atanh(-(2*x+1)/3), x)",
+            "-6 / (9 - (2 * x + 1)^2)",
+            vec!["2 - x^2 - x > 0".to_string()],
+        ),
+    ];
+
+    for (input, expected_display, expected_required) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_display, "input: {input}");
+
+        let expected =
+            parse(expected_display, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "input: {input}, expected compact derivative equivalent to {expected_display}, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_required,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
 }
 
 #[test]

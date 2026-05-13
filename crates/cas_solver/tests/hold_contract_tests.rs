@@ -103,3 +103,30 @@ fn test_factor_no_hold_leak() {
         result_str
     );
 }
+
+#[test]
+fn internal_hold_blocks_rationalize_phase_for_compact_root_denominator() {
+    let mut simplifier = Simplifier::with_default_rules();
+    let compact = parse("-2/sqrt(x^2+x+1)", &mut simplifier.context).unwrap();
+    let held = simplifier.context.add(cas_ast::Expr::Hold(compact));
+
+    let simplify_opts = EvalOptions::default().to_simplify_options();
+    let (result, _steps, stats) = simplifier.simplify_with_stats(held, simplify_opts);
+
+    let result_str = format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    );
+
+    assert!(
+        !result_str.contains("/(x^2 + x + 1)"),
+        "held compact output should not take the expansive rationalized route: {result_str}"
+    );
+    assert_eq!(
+        stats.rationalize.rewrites_used, 0,
+        "held compact calculus-style output should not be rationalized internally"
+    );
+}

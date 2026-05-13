@@ -726,6 +726,34 @@ fn expr_contains_builtin_function_local(ctx: &Context, root: ExprId) -> bool {
     false
 }
 
+fn expr_contains_named_function_local(ctx: &Context, root: ExprId, name: &str) -> bool {
+    let mut stack = vec![root];
+
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr) {
+            Expr::Function(fn_id, args) => {
+                if ctx.sym_name(*fn_id) == name {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            Expr::Pow(lhs, rhs)
+            | Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs) => {
+                stack.push(*lhs);
+                stack.push(*rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Matrix { data, .. } => stack.extend(data.iter().copied()),
+            Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    false
+}
+
 fn expr_contains_factorial_call_local(ctx: &Context, root: ExprId) -> bool {
     let mut stack = vec![root];
     while let Some(expr) = stack.pop() {
@@ -13774,7 +13802,8 @@ fn transplant_expr_subtree(src: &Context, id: ExprId, dst: &mut Context) -> Expr
                 .iter()
                 .map(|&arg| transplant_expr_subtree(src, arg, dst))
                 .collect();
-            dst.add(Expr::Function(*name, args))
+            let name = dst.intern_symbol(src.sym_name(*name));
+            dst.add(Expr::Function(name, args))
         }
         Expr::Matrix { rows, cols, data } => {
             let data = data
@@ -22289,6 +22318,7 @@ fn try_standard_exact_additive_pair_chain_pipeline_shortcut(
             || matches_direct_small_zero_identity_root(ctx, rewritten)
             || matches_direct_small_zero_or_known_pair_base_root(ctx, rewritten)
             || cas_math::numeric_eval::contains_i(ctx, rewritten)
+            || expr_contains_named_function_local(ctx, rewritten, "diff")
             || needs_domain_resimplify;
 
     if !should_resimplify {
@@ -29361,6 +29391,22 @@ mod tests {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse("tan(x) + cot(x) - sec(x)*csc(x)", &mut simplifier.context)
             .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
+        assert!(child_isolated_exact_zero(
+            &options,
+            &mut simplifier.context,
+            expr
+        ));
+    }
+
+    #[test]
+    fn child_isolated_exact_zero_reinterns_function_names_regression() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(diff(sin(e^(x^2)),x) - 2*x*cos(e^(x^2))*e^(x^2)) + (u*v+u*w-u*(v+w))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
         let options = SimplifyOptions::default();
         assert!(child_isolated_exact_zero(
             &options,
@@ -36967,6 +37013,20 @@ mod tests {
             crate::semantics::ValueDomain::ComplexEnabled;
         let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
         assert_eq!(render(&simplifier.context, rewritten), "5 * i");
+    }
+
+    #[test]
+    fn simplify_pipeline_revisits_diff_residual_after_exact_additive_pair_cancellation_regression()
+    {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(diff(exp(sin(x)),x)+m) - (cos(x)*e^sin(x)+m)",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut orchestrator = Orchestrator::new();
+        let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+        assert_eq!(render(&simplifier.context, rewritten), "0");
     }
 
     #[test]

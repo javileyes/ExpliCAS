@@ -310,6 +310,24 @@ fn test_nary_variables_in_args() {
 }
 
 #[test]
+fn test_nary_atan_opposite_affine_args_cancel() {
+    let result = simplify_str("arctan(1-x) + arctan(x-1)");
+    assert_eq!(
+        result, "0",
+        "Opposite affine arctan arguments should cancel"
+    );
+}
+
+#[test]
+fn test_nary_atan_opposite_affine_args_cancel_with_noise() {
+    let result = simplify_str("m + arctan(1-x) + arctan(x-1) - m");
+    assert_eq!(
+        result, "0",
+        "Opposite affine arctan arguments should cancel inside additive noise"
+    );
+}
+
+#[test]
 fn test_nary_complex_fractions() {
     // Complex fraction reciprocals - currently NOT supported
     // are_reciprocals() only handles simple cases like x and 1/x

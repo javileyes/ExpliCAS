@@ -1,6 +1,7 @@
 use crate::expr_nary::build_balanced_add;
-use crate::expr_relations::extract_negated_inner;
+use crate::expr_relations::{extract_negated_inner, is_negation};
 use crate::expr_terms::collect_additive_terms_flat_add;
+use crate::fraction_forms::are_denominators_opposite;
 use crate::numeric_eval::as_rational_const;
 use crate::root_forms::extract_square_root_base;
 use crate::trig_reciprocal_support::{are_reciprocals, has_reciprocal_atan_pair};
@@ -806,6 +807,71 @@ pub fn try_plan_inverse_atan_reciprocal_pair_expr(
     )
 }
 
+fn are_arctan_args_opposite(ctx: &mut Context, left: ExprId, right: ExprId) -> bool {
+    if is_negation(ctx, left, right) || are_denominators_opposite(ctx, left, right) {
+        return true;
+    }
+
+    let left_terms = flatten_add_sub_chain(ctx, left);
+    let right_terms = flatten_add_sub_chain(ctx, right);
+    if left_terms.len() < 2 || left_terms.len() != right_terms.len() {
+        return false;
+    }
+
+    let mut used_right = vec![false; right_terms.len()];
+    'left: for left_term in left_terms {
+        for (idx, right_term) in right_terms.iter().enumerate() {
+            if !used_right[idx] && is_negation(ctx, left_term, *right_term) {
+                used_right[idx] = true;
+                continue 'left;
+            }
+        }
+        return false;
+    }
+    true
+}
+
+/// Plan `arctan(u) + arctan(v) = 0` when `u` and `v` are structural opposites.
+pub fn try_plan_inverse_atan_opposite_pair_expr(
+    ctx: &mut Context,
+    terms: &[ExprId],
+    i: usize,
+    j: usize,
+) -> Option<PairWithNegationPlan> {
+    try_plan_pair_with_negation(
+        ctx,
+        terms[i],
+        terms[j],
+        terms,
+        i,
+        j,
+        |ctx, expr_i, expr_j| {
+            if let (Expr::Function(name_i, args_i), Expr::Function(name_j, args_j)) =
+                (expr_i, expr_j)
+            {
+                let is_i_atan = matches!(
+                    ctx.builtin_of(*name_i),
+                    Some(BuiltinFn::Atan | BuiltinFn::Arctan)
+                );
+                let is_j_atan = matches!(
+                    ctx.builtin_of(*name_j),
+                    Some(BuiltinFn::Atan | BuiltinFn::Arctan)
+                );
+                if is_i_atan
+                    && is_j_atan
+                    && args_i.len() == 1
+                    && args_j.len() == 1
+                    && are_arctan_args_opposite(ctx, args_i[0], args_j[0])
+                {
+                    let zero = ctx.num(0);
+                    return Some((zero, "arctan(u) + arctan(-u) = 0".to_string()));
+                }
+            }
+            None
+        },
+    )
+}
+
 /// Rewrite odd/even inverse-trig negative-argument identities.
 pub fn try_rewrite_inverse_trig_negative_expr(
     ctx: &mut Context,
@@ -912,6 +978,32 @@ pub fn try_plan_inverse_atan_reciprocal_add_expr(
     for i in 0..terms.len() {
         for j in (i + 1)..terms.len() {
             if let Some(plan) = try_plan_inverse_atan_reciprocal_pair_expr(ctx, &terms, i, j) {
+                return Some(plan);
+            }
+        }
+    }
+    None
+}
+
+/// Scan an additive expression for `arctan(u) + arctan(-u)` pairs.
+///
+/// `parent_is_add` should be true when the current expression is a sub-sum of
+/// another `Add`, in which case this planner is intentionally disabled.
+pub fn try_plan_inverse_atan_opposite_add_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    parent_is_add: bool,
+) -> Option<PairWithNegationPlan> {
+    if !matches!(ctx.get(expr), Expr::Add(_, _)) || parent_is_add {
+        return None;
+    }
+    let terms = flatten_add_sub_chain(ctx, expr);
+    if terms.len() < 2 {
+        return None;
+    }
+    for i in 0..terms.len() {
+        for j in (i + 1)..terms.len() {
+            if let Some(plan) = try_plan_inverse_atan_opposite_pair_expr(ctx, &terms, i, j) {
                 return Some(plan);
             }
         }

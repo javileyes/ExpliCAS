@@ -59,11 +59,11 @@ fn format_principal_branch_inverse_trig_desc(kind: PrincipalBranchInverseTrigKin
 }
 use cas_ast::{Context, Expr, ExprId};
 use cas_math::inverse_trig_composition_support::{
-    try_plan_atan_rational_add_expr, try_plan_inverse_atan_reciprocal_add_expr,
-    try_plan_inverse_trig_composition_expr, try_plan_inverse_trig_sum_add_expr,
-    try_plan_principal_branch_inverse_trig_expr, try_rewrite_arccot_to_arctan_expr,
-    try_rewrite_arccsc_to_arcsin_expr, try_rewrite_arcsec_to_arccos_expr,
-    try_rewrite_inverse_trig_negative_expr,
+    try_plan_atan_rational_add_expr, try_plan_inverse_atan_opposite_add_expr,
+    try_plan_inverse_atan_reciprocal_add_expr, try_plan_inverse_trig_composition_expr,
+    try_plan_inverse_trig_sum_add_expr, try_plan_principal_branch_inverse_trig_expr,
+    try_rewrite_arccot_to_arctan_expr, try_rewrite_arccsc_to_arcsin_expr,
+    try_rewrite_arcsec_to_arccos_expr, try_rewrite_inverse_trig_negative_expr,
 };
 
 // ==================== Inverse Trig Identity Rules ====================
@@ -156,6 +156,40 @@ impl crate::rule::Rule for InverseTrigAtanRule {
 
     fn priority(&self) -> i32 {
         10 // Higher priority than Machin rule (-10) to run first
+    }
+}
+
+// Rule: arctan(u) + arctan(-u) = 0.
+pub struct InverseTrigAtanOppositeRule;
+
+impl crate::rule::Rule for InverseTrigAtanOppositeRule {
+    fn name(&self) -> &str {
+        "Inverse Tan Opposite Cancellation"
+    }
+
+    fn apply(
+        &self,
+        ctx: &mut cas_ast::Context,
+        expr: cas_ast::ExprId,
+        parent_ctx: &crate::parent_context::ParentContext,
+    ) -> Option<crate::rule::Rewrite> {
+        let parent_is_add = parent_ctx
+            .immediate_parent()
+            .is_some_and(|p| matches!(ctx.get(p), Expr::Add(_, _)));
+        let plan = try_plan_inverse_atan_opposite_add_expr(ctx, expr, parent_is_add)?;
+        Some(
+            Rewrite::new(plan.final_result)
+                .desc(plan.desc)
+                .local(plan.local_before, plan.local_after),
+        )
+    }
+
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::ADD)
+    }
+
+    fn priority(&self) -> i32 {
+        20
     }
 }
 
@@ -257,6 +291,7 @@ define_rule!(
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(InverseTrigCompositionRule));
     simplifier.add_rule(Box::new(InverseTrigSumRule));
+    simplifier.add_rule(Box::new(InverseTrigAtanOppositeRule));
     simplifier.add_rule(Box::new(InverseTrigAtanRule));
     // AtanAddRationalRule: Uses sub-sum guard (skips when parent is Add) to avoid
     // interfering with reciprocal pairs in larger sums.

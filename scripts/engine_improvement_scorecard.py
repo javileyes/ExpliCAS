@@ -386,6 +386,31 @@ SUITES: dict[str, SuiteSpec] = {
             "calculus/pre-calculus visibility."
         ),
     ),
+    "calculus_integrate_compact_contract": SuiteSpec(
+        name="calculus_integrate_compact_contract",
+        category="calculus",
+        profile_tags=("fast", "fast_embedded"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_cli",
+            "--test",
+            "integrate_contract_tests",
+            "integrate_contract_polynomial_derivative_over_fractional_denominator_power_substitution",
+            "--",
+            "--exact",
+            "--nocapture",
+        ],
+        env={},
+        parser="cargo_test_basic",
+        description=(
+            "Cheap public integration compactness contract for fast calculus "
+            "visibility."
+        ),
+    ),
     "calculus_integrate_contract": SuiteSpec(
         name="calculus_integrate_contract",
         category="calculus",
@@ -868,6 +893,114 @@ def parse_generated_discovery_ledger(text: str) -> dict[str, Any]:
         "families": by_family,
         "wrappers": by_wrapper,
         "recent": discoveries[:5],
+    }
+
+
+def embedded_coverage_saturation_metrics(
+    embedded_metrics: dict[str, Any],
+) -> dict[str, Any]:
+    corpus_structure = embedded_metrics.get("corpus_structure")
+    if not isinstance(corpus_structure, dict):
+        return {}
+
+    combined = corpus_structure.get("combined_additive_zero")
+    if not isinstance(combined, dict):
+        return {}
+
+    family_counts = combined.get("family_counts")
+    if not isinstance(family_counts, dict) or not family_counts:
+        return {}
+
+    families = sorted(family for family in family_counts if isinstance(family, str))
+    if not families:
+        return {}
+
+    family_set = set(families)
+    checks: list[dict[str, Any]] = []
+
+    def append_missing_family_check(name: str, missing: Any) -> None:
+        missing_families = (
+            sorted(family for family in missing if isinstance(family, str))
+            if isinstance(missing, list)
+            else []
+        )
+        checks.append(
+            {
+                "name": name,
+                "status": "balanced" if not missing_families else "needs_attention",
+                "missing_family_count": len(missing_families),
+                "missing_families": missing_families,
+            }
+        )
+
+    under_target_counts = combined.get("under_target_family_counts")
+    if isinstance(under_target_counts, dict):
+        under_target_families = sorted(
+            family for family in under_target_counts if isinstance(family, str)
+        )
+        checks.append(
+            {
+                "name": "combined_additive_family_target",
+                "status": "balanced" if not under_target_families else "needs_attention",
+                "under_target_family_count": len(under_target_families),
+                "under_target_families": under_target_families,
+            }
+        )
+
+    append_missing_family_check(
+        "combined_additive_depth4",
+        combined.get("depth4_missing_families"),
+    )
+    append_missing_family_check(
+        "combined_additive_orientation",
+        combined.get("orientation_missing_families"),
+    )
+    append_missing_family_check(
+        "combined_additive_multi_core",
+        combined.get("multi_core_missing_families"),
+    )
+
+    wrapper_shell_depth_family_rows = embedded_metrics.get(
+        "wrapper_shell_depth_family_rows"
+    )
+    if isinstance(wrapper_shell_depth_family_rows, list):
+        reciprocal_depth4_families = {
+            row.get("family")
+            for row in wrapper_shell_depth_family_rows
+            if isinstance(row, dict)
+            and row.get("wrapper") == "reciprocal_shifted_difference_zero"
+            and row.get("shell_depth") == 4
+            and isinstance(row.get("family"), str)
+        }
+        reciprocal_missing = sorted(family_set - reciprocal_depth4_families)
+        checks.append(
+            {
+                "name": "reciprocal_shifted_difference_depth4",
+                "status": "balanced" if not reciprocal_missing else "needs_attention",
+                "missing_family_count": len(reciprocal_missing),
+                "missing_families": reciprocal_missing,
+            }
+        )
+
+    if not checks:
+        return {}
+
+    open_checks = [check for check in checks if check["status"] != "balanced"]
+    status = "balanced" if not open_checks else "needs_attention"
+    recommendation = (
+        "defer embedded corpus padding unless a new reproducible failure appears; "
+        "prefer calculus, robustness, or presentation candidates"
+        if status == "balanced"
+        else "prefer the listed embedded corpus gaps before promoting broader variants"
+    )
+
+    return {
+        "status": status,
+        "checked_family_count": len(families),
+        "balanced_check_count": len(checks) - len(open_checks),
+        "open_check_count": len(open_checks),
+        "checks": checks,
+        "recommendation": recommendation,
     }
 
 
@@ -2462,6 +2595,26 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     "- Combined additive composition: "
                     f"{combined_summary}"
                 )
+        coverage_saturation = embedded_metrics.get("coverage_saturation")
+        if not isinstance(coverage_saturation, dict):
+            coverage_saturation = embedded_coverage_saturation_metrics(embedded_metrics)
+        if isinstance(coverage_saturation, dict) and coverage_saturation:
+            status = coverage_saturation.get("status")
+            balanced_count = coverage_saturation.get("balanced_check_count")
+            open_count = coverage_saturation.get("open_check_count")
+            recommendation = coverage_saturation.get("recommendation")
+            if (
+                isinstance(status, str)
+                and isinstance(balanced_count, int)
+                and isinstance(open_count, int)
+                and isinstance(recommendation, str)
+            ):
+                total_checks = balanced_count + open_count
+                lines.append(
+                    "- Embedded coverage saturation: "
+                    f"{status} ({balanced_count}/{total_checks} checks); "
+                    f"{recommendation}."
+                )
         if isinstance(wrapper_names, list) and wrapper_names:
             lines.append(f"- Wrappers: {', '.join(wrapper_names)}")
         wrapper_rows = embedded_metrics.get("wrapper_rows")
@@ -3026,6 +3179,10 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 "limit_presimplify_safe",
                 scorecard["suites"].get("calculus_limit_presimplify_contract"),
             ),
+            (
+                "integrate_compact",
+                scorecard["suites"].get("calculus_integrate_compact_contract"),
+            ),
             ("integrate", scorecard["suites"].get("calculus_integrate_contract")),
         )
         if suite
@@ -3448,6 +3605,9 @@ def main() -> int:
                 status = suite_status(spec.name, metrics, returncode)
                 if spec.name == "embedded_equivalence_context":
                     metrics["corpus_structure"] = embedded_corpus_structure_metrics()
+                    metrics["coverage_saturation"] = (
+                        embedded_coverage_saturation_metrics(metrics)
+                    )
         measured_elapsed = effective_elapsed_seconds(metrics, elapsed)
         guardrail = compute_embedded_runtime_guardrail(
             baseline_data, spec.name, measured_elapsed

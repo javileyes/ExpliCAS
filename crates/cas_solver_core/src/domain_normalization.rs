@@ -10,7 +10,7 @@ use cas_math::expr_domain::{
 use cas_math::expr_extract::{
     extract_abs_argument_view, extract_log_base_argument_view, extract_sqrt_argument_view,
 };
-use cas_math::expr_nary::{build_balanced_add, build_balanced_mul, mul_leaves, AddView};
+use cas_math::expr_nary::{build_balanced_add, build_balanced_mul, mul_leaves, AddView, Sign};
 use cas_math::expr_normalization::{
     extract_even_positive_power_base, normalize_condition_expr as normalize_condition_expr_math,
     normalize_condition_expr_preserve_sign,
@@ -24,8 +24,11 @@ use cas_math::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquare
 use cas_math::tri_proof::TriProof;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
+use std::collections::BTreeMap;
 
 const DISPLAY_SIGN_PROOF_DEPTH: usize = 12;
+const CONDITION_DISPLAY_SIGNATURE_MAX_TERMS: usize = 12;
+const CONDITION_DISPLAY_SIGNATURE_MAX_FACTORS: usize = 8;
 
 /// Normalize an expression for display in conditions.
 pub fn normalize_condition_expr(ctx: &mut Context, expr: ExprId) -> ExprId {
@@ -2344,10 +2347,332 @@ pub fn conditions_equivalent(
             positive_ordered_exprs_equivalent(ctx, *a, *b)
         }
         (ImplicitCondition::NonZero(a), ImplicitCondition::NonZero(b)) => {
-            exprs_equivalent_up_to_sign(ctx, *a, *b)
+            nonzero_exprs_equivalent_for_display(ctx, *a, *b)
         }
         _ => false,
     }
+}
+
+fn nonzero_exprs_equivalent_for_display(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    nonzero_exprs_algebraically_equivalent_for_display(ctx, left, right)
+        || supported_integral_condition_exprs_equivalent_for_display(ctx, left, right)
+}
+
+fn nonzero_exprs_algebraically_equivalent_for_display(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    exprs_equivalent_up_to_sign(ctx, left, right)
+        || distributive_display_signatures_equivalent(ctx, left, right)
+}
+
+fn supported_integral_condition_exprs_equivalent_for_display(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    supported_integral_condition_rewrite_matches(ctx, left, right)
+        || supported_integral_condition_rewrite_matches(ctx, right, left)
+}
+
+fn supported_integral_condition_rewrite_matches(
+    ctx: &Context,
+    source: ExprId,
+    target: ExprId,
+) -> bool {
+    if !contains_integrate_call_for_condition_display(ctx, source, 12) {
+        return false;
+    }
+
+    let mut rewrite_ctx = ctx.clone();
+    let Some(rewritten_source) =
+        rewrite_supported_integrate_calls_for_condition_display(&mut rewrite_ctx, source, 12)
+    else {
+        return false;
+    };
+
+    nonzero_exprs_algebraically_equivalent_for_display(&rewrite_ctx, rewritten_source, target)
+}
+
+fn contains_integrate_call_for_condition_display(
+    ctx: &Context,
+    expr: ExprId,
+    depth: usize,
+) -> bool {
+    if depth == 0 {
+        return false;
+    }
+
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "integrate" => {
+            matches!(args.len(), 1 | 2)
+        }
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            contains_integrate_call_for_condition_display(ctx, *left, depth - 1)
+                || contains_integrate_call_for_condition_display(ctx, *right, depth - 1)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            contains_integrate_call_for_condition_display(ctx, *inner, depth - 1)
+        }
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| contains_integrate_call_for_condition_display(ctx, *arg, depth - 1)),
+        _ => false,
+    }
+}
+
+fn rewrite_supported_integrate_calls_for_condition_display(
+    ctx: &mut Context,
+    expr: ExprId,
+    depth: usize,
+) -> Option<ExprId> {
+    if depth == 0 {
+        return None;
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) if ctx.sym_name(fn_id) == "integrate" => {
+            let (target, var_name) = match args.as_slice() {
+                [target] => (*target, "x".to_string()),
+                [target, var_expr] => match ctx.get(*var_expr) {
+                    Expr::Variable(var_sym) => (*target, ctx.sym_name(*var_sym).to_string()),
+                    _ => return None,
+                },
+                _ => return None,
+            };
+            cas_math::symbolic_integration_support::integrate_symbolic_expr(ctx, target, &var_name)
+        }
+        Expr::Add(left, right) => {
+            let new_left =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, left, depth - 1);
+            let new_right =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, right, depth - 1);
+            if new_left.is_none() && new_right.is_none() {
+                return None;
+            }
+            Some(ctx.add(Expr::Add(
+                new_left.unwrap_or(left),
+                new_right.unwrap_or(right),
+            )))
+        }
+        Expr::Sub(left, right) => {
+            let new_left =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, left, depth - 1);
+            let new_right =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, right, depth - 1);
+            if new_left.is_none() && new_right.is_none() {
+                return None;
+            }
+            Some(ctx.add(Expr::Sub(
+                new_left.unwrap_or(left),
+                new_right.unwrap_or(right),
+            )))
+        }
+        Expr::Mul(left, right) => {
+            let new_left =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, left, depth - 1);
+            let new_right =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, right, depth - 1);
+            if new_left.is_none() && new_right.is_none() {
+                return None;
+            }
+            Some(ctx.add(Expr::Mul(
+                new_left.unwrap_or(left),
+                new_right.unwrap_or(right),
+            )))
+        }
+        Expr::Div(left, right) => {
+            let new_left =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, left, depth - 1);
+            let new_right =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, right, depth - 1);
+            if new_left.is_none() && new_right.is_none() {
+                return None;
+            }
+            Some(ctx.add(Expr::Div(
+                new_left.unwrap_or(left),
+                new_right.unwrap_or(right),
+            )))
+        }
+        Expr::Pow(left, right) => {
+            let new_left =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, left, depth - 1);
+            let new_right =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, right, depth - 1);
+            if new_left.is_none() && new_right.is_none() {
+                return None;
+            }
+            Some(ctx.add(Expr::Pow(
+                new_left.unwrap_or(left),
+                new_right.unwrap_or(right),
+            )))
+        }
+        Expr::Neg(inner) => {
+            let new_inner =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, inner, depth - 1)?;
+            Some(ctx.add(Expr::Neg(new_inner)))
+        }
+        Expr::Hold(inner) => {
+            let new_inner =
+                rewrite_supported_integrate_calls_for_condition_display(ctx, inner, depth - 1)?;
+            Some(ctx.add(Expr::Hold(new_inner)))
+        }
+        Expr::Function(fn_id, args) => {
+            let mut changed = false;
+            let mut new_args = Vec::with_capacity(args.len());
+            for arg in args {
+                if let Some(new_arg) =
+                    rewrite_supported_integrate_calls_for_condition_display(ctx, arg, depth - 1)
+                {
+                    changed = true;
+                    new_args.push(new_arg);
+                } else {
+                    new_args.push(arg);
+                }
+            }
+            changed.then(|| ctx.add(Expr::Function(fn_id, new_args)))
+        }
+        _ => None,
+    }
+}
+
+fn distributive_display_signatures_equivalent(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let Some(left_signature) = bounded_distributive_display_signature(ctx, left) else {
+        return false;
+    };
+    let Some(right_signature) = bounded_distributive_display_signature(ctx, right) else {
+        return false;
+    };
+
+    signatures_equal_up_to_sign(&left_signature, &right_signature)
+}
+
+type DisplayTermSignature = Vec<String>;
+type DisplayLinearSignature = BTreeMap<DisplayTermSignature, BigRational>;
+
+fn bounded_distributive_display_signature(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<DisplayLinearSignature> {
+    let terms = product_display_signature_terms(ctx, expr)?;
+    if terms.len() > CONDITION_DISPLAY_SIGNATURE_MAX_TERMS {
+        return None;
+    }
+
+    let mut signature = DisplayLinearSignature::new();
+    for (coeff, factors) in terms {
+        if coeff.is_zero() {
+            continue;
+        }
+        let entry = signature.entry(factors).or_insert_with(BigRational::zero);
+        *entry = entry.clone() + coeff;
+    }
+    signature.retain(|_, coeff| !coeff.is_zero());
+
+    (!signature.is_empty()).then_some(signature)
+}
+
+fn product_display_signature_terms(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<Vec<(BigRational, DisplayTermSignature)>> {
+    let mut terms = vec![(BigRational::one(), DisplayTermSignature::new())];
+
+    for factor in mul_leaves(ctx, expr) {
+        let factor_terms = factor_display_signature_terms(ctx, factor)?;
+        let mut next_terms = Vec::new();
+
+        for (base_coeff, base_factors) in &terms {
+            for (factor_coeff, factor_factors) in &factor_terms {
+                let mut combined_factors = base_factors.clone();
+                combined_factors.extend(factor_factors.iter().cloned());
+                if combined_factors.len() > CONDITION_DISPLAY_SIGNATURE_MAX_FACTORS {
+                    return None;
+                }
+                combined_factors.sort();
+                next_terms.push((base_coeff.clone() * factor_coeff.clone(), combined_factors));
+                if next_terms.len() > CONDITION_DISPLAY_SIGNATURE_MAX_TERMS {
+                    return None;
+                }
+            }
+        }
+
+        terms = next_terms;
+    }
+
+    Some(terms)
+}
+
+fn factor_display_signature_terms(
+    ctx: &Context,
+    factor: ExprId,
+) -> Option<Vec<(BigRational, DisplayTermSignature)>> {
+    let (factor_coeff, factor_expr) = signed_numeric_factor(ctx, factor)?;
+    let Some(factor_expr) = factor_expr else {
+        return Some(vec![(factor_coeff, DisplayTermSignature::new())]);
+    };
+
+    let additive_terms = AddView::from_expr(ctx, factor_expr).terms;
+    if additive_terms.len() > 1 {
+        let mut distributed = Vec::new();
+        for (term_expr, term_sign) in additive_terms {
+            let signed_coeff = match term_sign {
+                Sign::Pos => factor_coeff.clone(),
+                Sign::Neg => -factor_coeff.clone(),
+            };
+            for (term_coeff, term_factors) in product_display_signature_terms(ctx, term_expr)? {
+                distributed.push((signed_coeff.clone() * term_coeff, term_factors));
+                if distributed.len() > CONDITION_DISPLAY_SIGNATURE_MAX_TERMS {
+                    return None;
+                }
+            }
+        }
+        return Some(distributed);
+    }
+
+    Some(vec![(
+        factor_coeff,
+        vec![condition_factor_key(ctx, factor_expr)],
+    )])
+}
+
+fn signed_numeric_factor(ctx: &Context, expr: ExprId) -> Option<(BigRational, Option<ExprId>)> {
+    if let Some(number) = as_rational_const(ctx, expr) {
+        return Some((number, None));
+    }
+
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        let (coeff, inner_expr) = signed_numeric_factor(ctx, *inner)?;
+        return Some((-coeff, inner_expr));
+    }
+
+    Some((BigRational::one(), Some(expr)))
+}
+
+fn condition_factor_key(ctx: &Context, expr: ExprId) -> String {
+    use cas_formatter::DisplayExpr;
+
+    DisplayExpr {
+        context: ctx,
+        id: expr,
+    }
+    .to_string()
+}
+
+fn signatures_equal_up_to_sign(
+    left: &DisplayLinearSignature,
+    right: &DisplayLinearSignature,
+) -> bool {
+    left == right
+        || (left.len() == right.len()
+            && left
+                .iter()
+                .all(|(factors, coeff)| right.get(factors).is_some_and(|rhs| rhs == &-coeff)))
 }
 
 fn conditions_same_display(ctx: &Context, c1: &ImplicitCondition, c2: &ImplicitCondition) -> bool {
@@ -3988,6 +4313,61 @@ mod tests {
             &normalized[0],
             &ImplicitCondition::NonZero(base)
         ));
+    }
+
+    #[test]
+    fn nonzero_distributive_trig_denominators_dedupe_for_display() {
+        let mut ctx = Context::new();
+        let compact =
+            parse("2*x*cos(x)+(x^2-2)*sin(x)+c", &mut ctx).expect("parse compact denominator");
+        let expanded = parse("2*x*cos(x)+sin(x)*x^2+c-2*sin(x)", &mut ctx).expect("parse expanded");
+        let reordered = parse("sin(x)*(x^2-2)+2*x*cos(x)+c", &mut ctx).expect("parse reordered");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(compact),
+                ImplicitCondition::NonZero(expanded),
+                ImplicitCondition::NonZero(reordered),
+            ],
+        );
+
+        assert_eq!(
+            rendered,
+            vec!["sin(x) * (x^2 - 2) + 2 * x * cos(x) + c ≠ 0"]
+        );
+    }
+
+    #[test]
+    fn nonzero_supported_integral_denominator_dedupes_against_antiderivative_condition() {
+        let mut ctx = Context::new();
+        let antiderivative =
+            parse("2*x*cos(x)+(x^2-2)*sin(x)+c", &mut ctx).expect("parse antiderivative");
+        let original = parse("integrate(x^2*cos(x),x)+c", &mut ctx).expect("parse original");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(antiderivative),
+                ImplicitCondition::NonZero(original),
+            ],
+        );
+
+        assert_eq!(
+            rendered,
+            vec!["sin(x) * (x^2 - 2) + 2 * x * cos(x) + c ≠ 0"]
+        );
+    }
+
+    #[test]
+    fn nonzero_supported_integral_denominator_without_peer_stays_visible() {
+        let mut ctx = Context::new();
+        let original = parse("integrate(x^2*cos(x),x)+c", &mut ctx).expect("parse original");
+
+        let rendered =
+            render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(original)]);
+
+        assert_eq!(rendered, vec!["integrate(cos(x) * x^2, x) + c ≠ 0"]);
     }
 
     #[test]

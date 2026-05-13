@@ -7,9 +7,41 @@ use super::{eval_f64, EquivalenceResult, Simplifier};
 use cas_ast::{Expr, ExprId};
 use num_traits::Zero;
 
+fn expr_contains_calculus_call(ctx: &cas_ast::Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Function(fn_id, args) => {
+            matches!(ctx.sym_name(*fn_id), "diff" | "integrate" | "limit")
+                || args
+                    .iter()
+                    .any(|arg| expr_contains_calculus_call(ctx, *arg))
+        }
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            expr_contains_calculus_call(ctx, *left) || expr_contains_calculus_call(ctx, *right)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_calculus_call(ctx, *inner),
+        Expr::Matrix { data, .. } => data
+            .iter()
+            .any(|entry| expr_contains_calculus_call(ctx, *entry)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
+    }
+}
+
 impl Simplifier {
     pub fn are_equivalent(&mut self, a: ExprId, b: ExprId) -> bool {
         let diff = self.context.add(Expr::Sub(a, b));
+        if expr_contains_calculus_call(&self.context, a)
+            || expr_contains_calculus_call(&self.context, b)
+        {
+            let (direct_diff, _) = self.simplify(diff);
+            if matches!(self.context.get(direct_diff), Expr::Number(n) if n.is_zero()) {
+                return true;
+            }
+        }
+
         let expand_id = self.context.intern_symbol("expand");
         let expanded_diff = self.context.add(Expr::Function(expand_id, vec![diff]));
         let (simplified_diff, _) = self.simplify(expanded_diff);
@@ -32,6 +64,11 @@ impl Simplifier {
         match expr {
             Expr::Number(n) => n.is_zero(),
             _ => {
+                let (direct_diff, _) = self.simplify(diff);
+                if matches!(self.context.get(direct_diff), Expr::Number(n) if n.is_zero()) {
+                    return true;
+                }
+
                 if !self.allow_numerical_verification {
                     return false;
                 }

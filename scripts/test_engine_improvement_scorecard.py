@@ -214,10 +214,12 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                 "contextual_strict_fast",
                 "contextual_radical_fast",
                 "calculus_diff_contract",
+                "calculus_integrate_compact_contract",
             ],
         )
         self.assertIn("contextual_radical_fast", fast_embedded_names)
         self.assertIn("calculus_diff_contract", fast_embedded_names)
+        self.assertIn("calculus_integrate_compact_contract", fast_embedded_names)
         self.assertNotIn("calculus_limit_contract", fast_names)
         self.assertNotIn("calculus_limit_presimplify_contract", fast_names)
         self.assertNotIn("calculus_integrate_contract", fast_names)
@@ -246,8 +248,20 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             "calculus",
         )
         self.assertEqual(
+            MODULE.SUITES["calculus_integrate_compact_contract"].category,
+            "calculus",
+        )
+        self.assertEqual(
             MODULE.SUITES["calculus_integrate_contract"].category,
             "calculus",
+        )
+        integrate_compact_command = MODULE.SUITES[
+            "calculus_integrate_compact_contract"
+        ].command
+        self.assertIn("integrate_contract_tests", integrate_compact_command)
+        self.assertIn(
+            "integrate_contract_polynomial_derivative_over_fractional_denominator_power_substitution",
+            integrate_compact_command,
         )
         integrate_command = MODULE.SUITES["calculus_integrate_contract"].command
         self.assertIn("integrate_contract_tests", integrate_command)
@@ -681,6 +695,111 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertIn("under_target_family_counts=family_00:4", summary)
         self.assertIn("family_08:4", summary)
         self.assertIn("above_min_family_counts=family_09:5", summary)
+
+    def test_embedded_coverage_saturation_marks_balanced_axes(self):
+        metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
+        metrics.update(
+            {
+                "corpus_structure": {
+                    "family_count": 2,
+                    "combined_additive_zero": {
+                        "family_counts": {
+                            "calculus_diff": 6,
+                            "calculus_integrate": 6,
+                        },
+                        "under_target_family_counts": {},
+                        "depth4_missing_families": [],
+                        "orientation_missing_families": [],
+                        "multi_core_missing_families": [],
+                    },
+                },
+                "wrapper_shell_depth_family_rows": [
+                    {
+                        "wrapper": "reciprocal_shifted_difference_zero",
+                        "family": "calculus_diff",
+                        "shell_depth": 4,
+                        "total": 1,
+                        "passed": 1,
+                        "failed": 0,
+                    },
+                    {
+                        "wrapper": "reciprocal_shifted_difference_zero",
+                        "family": "calculus_integrate",
+                        "shell_depth": 4,
+                        "total": 1,
+                        "passed": 1,
+                        "failed": 0,
+                    },
+                ],
+            }
+        )
+
+        saturation = MODULE.embedded_coverage_saturation_metrics(metrics)
+
+        self.assertEqual(saturation["status"], "balanced")
+        self.assertEqual(saturation["checked_family_count"], 2)
+        self.assertEqual(saturation["balanced_check_count"], 5)
+        self.assertEqual(saturation["open_check_count"], 0)
+        self.assertIn("defer embedded corpus padding", saturation["recommendation"])
+
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "embedded_equivalence_context": {
+                    "status": "pass",
+                    "elapsed_seconds": 1.0,
+                    "metrics": {**metrics, "coverage_saturation": saturation},
+                    "delta": {},
+                },
+            },
+        }
+
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn("Embedded coverage saturation: balanced (5/5 checks)", markdown)
+        self.assertIn("prefer calculus, robustness, or presentation", markdown)
+
+    def test_embedded_coverage_saturation_reports_reciprocal_depth4_gap(self):
+        metrics = {
+            "corpus_structure": {
+                "family_count": 2,
+                "combined_additive_zero": {
+                    "family_counts": {
+                        "calculus_diff": 6,
+                        "calculus_integrate": 6,
+                    },
+                    "under_target_family_counts": {},
+                    "depth4_missing_families": [],
+                    "orientation_missing_families": [],
+                    "multi_core_missing_families": [],
+                },
+            },
+            "wrapper_shell_depth_family_rows": [
+                {
+                    "wrapper": "reciprocal_shifted_difference_zero",
+                    "family": "calculus_diff",
+                    "shell_depth": 4,
+                    "total": 1,
+                    "passed": 1,
+                    "failed": 0,
+                },
+            ],
+        }
+
+        saturation = MODULE.embedded_coverage_saturation_metrics(metrics)
+
+        self.assertEqual(saturation["status"], "needs_attention")
+        self.assertEqual(saturation["balanced_check_count"], 4)
+        self.assertEqual(saturation["open_check_count"], 1)
+        reciprocal_check = saturation["checks"][-1]
+        self.assertEqual(
+            reciprocal_check["name"], "reciprocal_shifted_difference_depth4"
+        )
+        self.assertEqual(
+            reciprocal_check["missing_families"], ["calculus_integrate"]
+        )
 
     def test_generated_discovery_ledger_metrics_and_markdown(self):
         metrics = MODULE.parse_generated_discovery_ledger(SAMPLE_DISCOVERY_LEDGER)

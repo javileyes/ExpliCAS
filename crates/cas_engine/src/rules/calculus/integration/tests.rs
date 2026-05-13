@@ -221,7 +221,7 @@ fn test_integrate_linear_subst_log() {
                 id: rewrite.new_expr
             }
         ),
-        "ln(|3 * x|) / 3"
+        "1/3 * ln(|3 * x|)"
     );
 }
 

@@ -81,6 +81,12 @@ use num_traits::{One, ToPrimitive, Zero};
 use std::cmp::Ordering;
 use std::time::Instant;
 
+type BinaryProductWithSumFactor = (
+    cas_ast::ExprId,
+    (cas_ast::ExprId, Sign),
+    (cas_ast::ExprId, Sign),
+);
+
 fn render_expr_for_orchestrator_profile(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> String {
     crate::orchestrator_shortcut_profiler::render_expr_shape_for_orchestrator_profile(ctx, expr)
 }
@@ -11458,9 +11464,14 @@ pub(crate) fn try_build_small_direct_zero_core_rewrite(
     if !additive_scope_has_negative_term(ctx, expr) {
         return None;
     }
+    if let Some(rewrite) = try_build_exact_opposite_pair_zero_rewrite(ctx, expr) {
+        return Some(rewrite);
+    }
 
     let solve_prep_candidate = maybe_solve_prep_exact_additive_candidate(ctx, expr);
     let integrate_prep_candidate = maybe_integrate_prep_exact_additive_candidate(ctx, expr);
+    let unit_fraction_trig_denominator_candidate =
+        maybe_unit_fraction_trig_denominator_equivalence_zero_candidate(ctx, expr);
     let direct_zero_identity_candidate = has_direct_small_zero_identity_candidate(ctx, expr);
     if term_count > 3 && !solve_prep_candidate && !integrate_prep_candidate {
         return None;
@@ -11488,6 +11499,7 @@ pub(crate) fn try_build_small_direct_zero_core_rewrite(
     let has_division = expr_contains_division_node(ctx, expr);
     let has_supported_shape = solve_prep_candidate
         || integrate_prep_candidate
+        || unit_fraction_trig_denominator_candidate
         || direct_zero_identity_candidate
         || ((has_trig_or_hyper
             || has_division
@@ -11532,6 +11544,11 @@ pub(crate) fn try_build_small_direct_zero_core_rewrite(
     }
     if expr_contains_division_node(ctx, expr) {
         if let Some(rewrite) =
+            try_build_unit_fraction_trig_denominator_equivalence_zero_core_rewrite(ctx, expr)
+        {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) =
             try_build_direct_reciprocal_sum_difference_nested_fraction_zero_scope_rewrite(ctx, expr)
         {
             return Some(rewrite);
@@ -11568,6 +11585,28 @@ pub(crate) fn try_build_small_direct_zero_core_rewrite(
     let rewrite = try_build_exact_zero_identity_rewrite_direct_impl(ctx, expr, false)?;
     let zero = ctx.num(0);
     (compare_expr(ctx, rewrite.final_expr(), zero) == Ordering::Equal).then_some(rewrite)
+}
+
+fn try_build_exact_opposite_pair_zero_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+    let (lhs_expr, lhs_sign) = normalize_signed_add_term(ctx, terms[0].0, terms[0].1);
+    let (rhs_expr, rhs_sign) = normalize_signed_add_term(ctx, terms[1].0, terms[1].1);
+    if lhs_sign == rhs_sign || !exprs_match_for_cancellation(ctx, lhs_expr, rhs_expr) {
+        return None;
+    }
+
+    Some(Rewrite::with_local(
+        ctx.num(0),
+        "Cancel Exact Additive Pairs",
+        expr,
+        ctx.num(0),
+    ))
 }
 
 fn has_plausible_small_zero_partition_term_shape(terms: &[(cas_ast::ExprId, Sign)]) -> bool {
@@ -11663,6 +11702,29 @@ fn small_zero_additive_combination_supported_partition_core(
         && (!has_trig_or_hyper || !has_division || has_integrate_prep || has_direct_zero_identity)
 }
 
+fn direct_small_zero_additive_combination_terms(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Vec<(cas_ast::ExprId, Sign)> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    let mut flattened = Vec::with_capacity(terms.len());
+
+    for (term_expr, term_sign) in terms {
+        let (term_expr, term_sign) = normalize_signed_add_term(ctx, term_expr, term_sign);
+        let nested_terms = AddView::from_expr(ctx, term_expr).terms;
+        if nested_terms.len() <= 1 {
+            flattened.push((term_expr, term_sign));
+            continue;
+        }
+
+        flattened.extend(nested_terms.into_iter().map(|(nested_expr, nested_sign)| {
+            (nested_expr, combine_signs(term_sign, nested_sign))
+        }));
+    }
+
+    flattened
+}
+
 fn has_direct_small_zero_identity_candidate(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
     AddView::from_expr(ctx, expr).terms.len() <= 4
         && expr_contains_division_node(ctx, expr)
@@ -11673,13 +11735,13 @@ pub(crate) fn maybe_direct_small_zero_additive_combination_candidate(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> bool {
-    let view = AddView::from_expr(ctx, expr);
-    if !(4..=small_zero_additive_combination_max_terms(ctx, expr)).contains(&view.terms.len()) {
+    let terms = direct_small_zero_additive_combination_terms(ctx, expr);
+    if !(4..=small_zero_additive_combination_max_terms(ctx, expr)).contains(&terms.len()) {
         return false;
     }
 
     for subset_len in 2..=4 {
-        if subset_len >= view.terms.len() {
+        if subset_len >= terms.len() {
             continue;
         }
         let mut stack = vec![(0usize, Vec::<usize>::new())];
@@ -11689,15 +11751,13 @@ pub(crate) fn maybe_direct_small_zero_additive_combination_candidate(
                     continue;
                 }
 
-                let first_terms: Vec<_> = view
-                    .terms
+                let first_terms: Vec<_> = terms
                     .iter()
                     .copied()
                     .enumerate()
                     .filter_map(|(index, term)| chosen.contains(&index).then_some(term))
                     .collect();
-                let second_terms: Vec<_> = view
-                    .terms
+                let second_terms: Vec<_> = terms
                     .iter()
                     .copied()
                     .enumerate()
@@ -11723,7 +11783,7 @@ pub(crate) fn maybe_direct_small_zero_additive_combination_candidate(
             }
 
             let remaining_slots = subset_len - chosen.len();
-            let max_start = view.terms.len().saturating_sub(remaining_slots);
+            let max_start = terms.len().saturating_sub(remaining_slots);
             for index in (next_index..=max_start).rev() {
                 let mut next_chosen = chosen.clone();
                 next_chosen.push(index);
@@ -11761,7 +11821,7 @@ fn try_build_small_structural_poly_zero_core_rewrite(
 fn extract_binary_product_with_sum_factor(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
-) -> Option<(cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId)> {
+) -> Option<BinaryProductWithSumFactor> {
     let factors = flatten_mul_chain(ctx, expr);
     if factors.len() != 2 {
         return None;
@@ -11769,13 +11829,21 @@ fn extract_binary_product_with_sum_factor(
 
     for (sum_factor, common_factor) in [(factors[0], factors[1]), (factors[1], factors[0])] {
         let sum_terms = AddView::from_expr(ctx, sum_factor).terms;
-        if sum_terms.len() != 2 || sum_terms.iter().any(|(_, sign)| *sign != Sign::Pos) {
+        if sum_terms.len() != 2 {
             continue;
         }
-        return Some((common_factor, sum_terms[0].0, sum_terms[1].0));
+        return Some((common_factor, sum_terms[0], sum_terms[1]));
     }
 
     None
+}
+
+fn combine_signs(lhs: Sign, rhs: Sign) -> Sign {
+    if lhs == rhs {
+        Sign::Pos
+    } else {
+        Sign::Neg
+    }
 }
 
 fn term_matches_binary_product(
@@ -11803,31 +11871,28 @@ fn try_build_structural_common_factor_zero_rewrite(
 
     for target_index in 0..terms.len() {
         let (target_expr, target_sign) = terms[target_index];
-        let Some((common_factor, left_term, right_term)) =
+        let Some((common_factor, (left_term, left_sign), (right_term, right_sign))) =
             extract_binary_product_with_sum_factor(ctx, target_expr)
         else {
             continue;
         };
-        let expected_other_sign = target_sign.negate();
         let others: Vec<_> = terms
             .iter()
             .copied()
             .enumerate()
             .filter_map(|(index, term)| (index != target_index).then_some(term))
             .collect();
-        if others
-            .iter()
-            .any(|(_, other_sign)| *other_sign != expected_other_sign)
-        {
-            continue;
-        }
+        let expected_left_sign = combine_signs(target_sign, left_sign).negate();
+        let expected_right_sign = combine_signs(target_sign, right_sign).negate();
 
-        let first_matches_left =
-            term_matches_binary_product(ctx, others[0].0, common_factor, left_term)
-                && term_matches_binary_product(ctx, others[1].0, common_factor, right_term);
-        let first_matches_right =
-            term_matches_binary_product(ctx, others[0].0, common_factor, right_term)
-                && term_matches_binary_product(ctx, others[1].0, common_factor, left_term);
+        let first_matches_left = others[0].1 == expected_left_sign
+            && others[1].1 == expected_right_sign
+            && term_matches_binary_product(ctx, others[0].0, common_factor, left_term)
+            && term_matches_binary_product(ctx, others[1].0, common_factor, right_term);
+        let first_matches_right = others[0].1 == expected_right_sign
+            && others[1].1 == expected_left_sign
+            && term_matches_binary_product(ctx, others[0].0, common_factor, right_term)
+            && term_matches_binary_product(ctx, others[1].0, common_factor, left_term);
         if first_matches_left || first_matches_right {
             return Some(
                 Rewrite::with_local(ctx.num(0), "Common Factor", expr, ctx.num(0)).substep(
@@ -11960,13 +12025,13 @@ pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
         }
     }
 
-    let view = AddView::from_expr(ctx, expr);
-    if !(4..=small_zero_additive_combination_max_terms(ctx, expr)).contains(&view.terms.len()) {
+    let terms = direct_small_zero_additive_combination_terms(ctx, expr);
+    if !(4..=small_zero_additive_combination_max_terms(ctx, expr)).contains(&terms.len()) {
         return None;
     }
 
     for subset_len in 2..=4 {
-        if subset_len >= view.terms.len() {
+        if subset_len >= terms.len() {
             continue;
         }
         let mut stack = vec![(0usize, Vec::<usize>::new())];
@@ -11976,15 +12041,13 @@ pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
                     continue;
                 }
 
-                let first_terms: Vec<_> = view
-                    .terms
+                let first_terms: Vec<_> = terms
                     .iter()
                     .copied()
                     .enumerate()
                     .filter_map(|(index, term)| chosen.contains(&index).then_some(term))
                     .collect();
-                let second_terms: Vec<_> = view
-                    .terms
+                let second_terms: Vec<_> = terms
                     .iter()
                     .copied()
                     .enumerate()
@@ -12008,7 +12071,7 @@ pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
             }
 
             let remaining_slots = subset_len - chosen.len();
-            let max_start = view.terms.len().saturating_sub(remaining_slots);
+            let max_start = terms.len().saturating_sub(remaining_slots);
             for index in (next_index..=max_start).rev() {
                 let mut next_chosen = chosen.clone();
                 next_chosen.push(index);
@@ -14948,6 +15011,18 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
 
     if let Some((lhs_core, rhs_core)) = two_term_cores {
         let has_direct_trig_core = has_direct_trig_builtin_on_either_side(ctx, lhs_core, rhs_core);
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_negative_even_root_power_reciprocal",
+            &expr_sample,
+            || {
+                try_build_direct_negative_even_root_power_reciprocal_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
+        ) {
+            return Some(rewrite);
+        }
         if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
             profiling,
             "rule.direct_identity.try.two_term_reciprocal_half_power_product",
@@ -18455,6 +18530,67 @@ fn try_build_small_rationalized_sum_of_sqrts_zero_core_rewrite(
     None
 }
 
+fn maybe_unit_fraction_trig_denominator_equivalence_zero_candidate(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) else {
+        return false;
+    };
+    let Some(lhs_denominator) = extract_unit_fraction_denominator(ctx, lhs_core) else {
+        return false;
+    };
+    let Some(rhs_denominator) = extract_unit_fraction_denominator(ctx, rhs_core) else {
+        return false;
+    };
+
+    unit_fraction_trig_denominator_supported(ctx, lhs_denominator)
+        && unit_fraction_trig_denominator_supported(ctx, rhs_denominator)
+}
+
+fn unit_fraction_trig_denominator_supported(
+    ctx: &cas_ast::Context,
+    denominator: cas_ast::ExprId,
+) -> bool {
+    matches!(ctx.get(denominator), Expr::Add(_, _) | Expr::Sub(_, _))
+        && !expr_contains_division_node(ctx, denominator)
+        && AddView::from_expr(ctx, denominator).terms.len() <= 5
+        && additive_has_variable_scaled_direct_trig_or_hyperbolic_term(ctx, denominator, 2)
+}
+
+fn try_build_unit_fraction_trig_denominator_equivalence_zero_core_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    let (lhs_core, rhs_core) = extract_two_term_core_difference(ctx, expr)?;
+    let lhs_denominator = extract_unit_fraction_denominator(ctx, lhs_core)?;
+    let rhs_denominator = extract_unit_fraction_denominator(ctx, rhs_core)?;
+
+    if !unit_fraction_trig_denominator_supported(ctx, lhs_denominator)
+        || !unit_fraction_trig_denominator_supported(ctx, rhs_denominator)
+    {
+        return None;
+    }
+
+    let denominator_difference = ctx.add(Expr::Sub(lhs_denominator, rhs_denominator));
+    if !is_zero_after_default_simplify(ctx, denominator_difference) {
+        return None;
+    }
+
+    Some(
+        Rewrite::with_local(ctx.num(0), "Subtract Fractions", expr, ctx.num(0))
+            .requires(crate::ImplicitCondition::NonZero(lhs_denominator))
+            .requires(crate::ImplicitCondition::NonZero(rhs_denominator))
+            .substep(
+                "Comparar denominadores equivalentes",
+                vec![
+                    "Los denominadores de las fracciones recíprocas se simplifican a la misma expresión, por lo que las fracciones se cancelan exactamente."
+                        .to_string(),
+                ],
+            ),
+    )
+}
+
 fn try_build_small_factorial_zero_core_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -19659,6 +19795,122 @@ fn reciprocal_half_power_base(
     (exponent == BigRational::new((-1).into(), 2.into())).then_some(*base)
 }
 
+fn negative_even_root_power_parts(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, BigRational)> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let exponent = cas_ast::views::as_rational_const(ctx, *exp, 8)?;
+    if !exponent.is_negative() || !exponent.denom().is_even() {
+        return None;
+    }
+
+    Some((*base, -exponent))
+}
+
+fn positive_even_root_power_parts(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, BigRational)> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    let exponent = cas_ast::views::as_rational_const(ctx, *exp, 8)?;
+    if !exponent.is_positive() || !exponent.denom().is_even() {
+        return None;
+    }
+
+    Some((*base, exponent))
+}
+
+fn split_negative_even_root_power_factor_from_product(
+    ctx: &mut cas_ast::Context,
+    product: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId, BigRational)> {
+    if let Some((base, exponent)) = negative_even_root_power_parts(ctx, product) {
+        return Some((ctx.num(1), base, exponent));
+    }
+
+    let view = MulView::from_expr(ctx, product);
+    for (index, factor) in view.factors.iter().copied().enumerate() {
+        let Some((base, exponent)) = negative_even_root_power_parts(ctx, factor) else {
+            continue;
+        };
+
+        let remaining_factors: Vec<_> = view
+            .factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(factor_index, factor)| (factor_index != index).then_some(factor))
+            .collect();
+        return Some((
+            cas_math::expr_nary::build_balanced_mul(ctx, &remaining_factors),
+            base,
+            exponent,
+        ));
+    }
+
+    None
+}
+
+fn positive_even_root_power_reciprocal_parts(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId, BigRational)> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    let (base, exponent) = positive_even_root_power_parts(ctx, denominator)?;
+    Some((numerator, base, exponent))
+}
+
+fn try_match_negative_even_root_power_reciprocal_equivalence(
+    ctx: &mut cas_ast::Context,
+    source: cas_ast::ExprId,
+    target: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let (source_cofactor, source_base, source_exponent) =
+        split_negative_even_root_power_factor_from_product(ctx, source)?;
+    let (target_cofactor, target_base, target_exponent) =
+        positive_even_root_power_reciprocal_parts(ctx, target)?;
+
+    if source_exponent != target_exponent
+        || !exprs_match_for_cancellation(ctx, source_base, target_base)
+        || !exprs_match_for_cancellation(ctx, source_cofactor, target_cofactor)
+    {
+        return None;
+    }
+
+    Some(source_base)
+}
+
+fn try_build_direct_negative_even_root_power_reciprocal_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some(base) =
+            try_match_negative_even_root_power_reciprocal_equivalence(ctx, source, target)
+        else {
+            continue;
+        };
+
+        return Some(
+            Rewrite::with_local(
+                ctx.num(0),
+                "Negative Even-Root Power Reciprocal Cancellation",
+                lhs_core,
+                rhs_core,
+            )
+            .requires(crate::ImplicitCondition::Positive(base)),
+        );
+    }
+
+    None
+}
+
 fn split_sqrt_factor_from_product(
     ctx: &mut cas_ast::Context,
     product: cas_ast::ExprId,
@@ -19944,6 +20196,13 @@ fn try_build_direct_core_equivalence_rewrite(
         profile_route(
             "rule.direct_core_equivalence.route.reciprocal_half_power_shared_denominator",
         );
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) =
+        try_build_direct_negative_even_root_power_reciprocal_rewrite(ctx, lhs_core, rhs_core)
+    {
+        profile_route("rule.direct_core_equivalence.route.negative_even_root_power_reciprocal");
         return Some(rewrite);
     }
 
@@ -27297,6 +27556,11 @@ define_rule!(
                 return None;
             }
             if let Some(rewrite) =
+                try_build_unit_fraction_trig_denominator_equivalence_zero_core_rewrite(ctx, expr)
+            {
+                return Some(rewrite);
+            }
+            if let Some(rewrite) =
                 try_build_direct_trig_power_reduction_equivalence_rewrite(ctx, lhs_core, rhs_core)
             {
                 return Some(rewrite);
@@ -27394,6 +27658,13 @@ define_rule!(
 
         if term_count == 2 {
             if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
+                if let Some(rewrite) =
+                    try_build_direct_negative_even_root_power_reciprocal_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                {
+                    return Some(rewrite);
+                }
                 if let Some(rewrite) =
                     try_build_direct_reciprocal_half_power_product_rewrite(ctx, lhs_core, rhs_core)
                 {
@@ -29817,6 +30088,27 @@ mod tests {
     }
 
     #[test]
+    fn small_direct_zero_core_rewrite_matches_signed_common_factor_core() {
+        let mut ctx = Context::new();
+        let expr = parse("2*cos(x) - x^2*cos(x) - cos(x)*(2-x^2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
     fn small_direct_zero_core_rewrite_matches_telescoping_fraction_core() {
         let mut ctx = Context::new();
         let expr = parse("1/(u*(u+1)) - 1/u + 1/(u+1)", &mut ctx)
@@ -30291,6 +30583,31 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse(
             "(2*cos(2*x)*sin(x) - (4*cos(x)^2*sin(x)-2*sin(x))) + (1/(u*(u+1)) - 1/u + 1/(u+1))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_flattens_signed_nested_sum() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "2*cos(x) + 2*x*sin(x) - (2*x*sin(x)+(2-x^2)*cos(x)) - x^2*cos(x)",
             &mut ctx,
         )
         .unwrap_or_else(|err| panic!("parse: {err}"));
@@ -31782,6 +32099,92 @@ mod tests {
     }
 
     #[test]
+    fn direct_negative_even_root_power_reciprocal_rewrite_matches_scaled_polynomial() {
+        let mut ctx = Context::new();
+        let lhs = parse("(2*x^2+2*x-3)^(-3/2)*(4*x+2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("(4*x+2)/(2*x^2+2*x-3)^(3/2)", &mut ctx)
+            .unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_direct_negative_even_root_power_reciprocal_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Negative Even-Root Power Reciprocal Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn exact_zero_identity_rewrite_matches_negative_even_root_power_reciprocal_residual() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(2*x^2+2*x-3)^(-3/2)*(4*x+2) - (4*x+2)/(2*x^2+2*x-3)^(3/2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_identity_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Negative Even-Root Power Reciprocal Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn exact_zero_identity_rewrite_matches_negative_even_root_power_reciprocal_product_cofactor() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(y+1)*(2*x^2+2*x-3)^(-3/2)*(4*x+2) - ((y+1)*(4*x+2))/(2*x^2+2*x-3)^(3/2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_identity_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Negative Even-Root Power Reciprocal Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
     fn exact_zero_identity_rewrite_matches_reciprocal_half_power_product_residual() {
         let mut ctx = Context::new();
         let expr = parse(
@@ -31922,6 +32325,32 @@ mod tests {
             "0"
         );
         assert_empty_or_legacy_description(&rewrite.description, "Trigonometric Quotient Identity");
+    }
+
+    #[test]
+    fn small_zero_core_matches_unit_fraction_equivalent_trig_denominators() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "1/(2*x*cos(x)+(x*x-2)*sin(x)+c) - 1/(2*x*cos(x)+(x^2-2)*sin(x)+c)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_small_direct_zero_core_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_empty_or_legacy_description(&rewrite.description, "Subtract Fractions");
+        assert_eq!(rewrite.required_conditions.len(), 2);
     }
 
     #[test]

@@ -95,6 +95,115 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-13: Reciprocal-Shifted Integration By Parts Trig Residual Needs Denominator Re-Entry
+
+- area:
+  - arithmetic / embedded reciprocal wrapper / calculus integration residual
+- status:
+  - `retained`
+- discovered case:
+  - `1/((integrate(x^2*cos(x),x))+c) - 1/((2*x*cos(x)+(x^2-2)*sin(x))+c)`
+  - `1/((integrate(x^2*sin(x),x))+c) - 1/((2*x*sin(x)+(2-x^2)*cos(x))+c)`
+- local lane:
+  - focused CLI probes while selecting a minimal `calculus_integrate`
+    `reciprocal_shifted_difference_zero` corpus representative
+- local result:
+  - direct antiderivative residuals such as
+    `diff(integrate(x^2*cos(x),x),x)-x^2*cos(x)` simplify to `0`
+  - direct reciprocal differences without the shared `+c` also simplify to `0`
+  - the retained fix adds a narrow reciprocal-denominator re-entry for
+    `1/D1 - 1/D2` when both denominators are small additive trig/hyperbolic
+    sums and existing simplification proves `D1-D2 = 0`
+- promoted coverage:
+  - `calculus_integrate_poly_cos_by_parts_trig_denominator_reentry_zero`
+    covers the shifted reciprocal wrapper without adding a new integration
+    rule
+- remaining caution:
+  - the emitted `NonZero` requirements can still contain equivalent duplicate
+    denominator forms; normalize that separately if it becomes user-visible
+
+### 2026-05-13: Additive Passthrough Diff Residual Needs Re-Entry After Cancelling Noise
+
+- area:
+  - orchestrator / calculus residual / additive passthrough
+- status:
+  - `discovery/observe-only`
+- discovered case:
+  - `((diff(exp(sin(x)),x)+m) - (cos(x)*e^sin(x)+m))`
+  - `((diff(sin(e^(x^2)),x)+m) - (2*x*cos(e^(x^2))*e^(x^2)+m))`
+- local lane:
+  - focused CLI probes while selecting a minimal `calculus_diff` wrapper-spread
+    corpus candidate
+- local result:
+  - direct residuals such as
+    `diff(e^sin(x), x) - cos(x)*e^sin(x)` simplify to `0`
+  - denominator-preserving wrappers such as
+    `diff(exp(sin(x)),x)/q - (cos(x)*e^sin(x))/q` simplify to `0`
+  - the additive passthrough shape cancels the shared `+m` noise but leaves the
+    direct diff residual unsimplified
+- why it was not promoted as coverage:
+  - promoting an easier additive `calculus_diff` row would mark the wrapper as
+    covered while hiding a reproducible routing gap for exp/trig chain
+    derivatives
+- what could make it combinable later:
+  - a narrow re-entry after shared additive passthrough cancellation that sends
+    the remaining diff residual back through the exact-zero calculus residual
+    route without adding broad no-match traffic
+
+### 2026-05-13: Isolated Context Transplant Must Reintern Function Symbols
+
+- area:
+  - orchestrator / isolated simplification / symbolic calculus calls
+- status:
+  - `observe-only`
+- discovered case:
+  - `(diff(sin(e^(x^2)),x) - 2*x*cos(e^(x^2))*e^(x^2)) + (u*v+u*w-u*(v+w))`
+- local lane:
+  - focused CLI probe while searching for a minimal `calculus_diff`
+    cross-family composition candidate
+- local result:
+  - the generated candidate panicked inside `SymbolTable::resolve` after a
+    `diff(...)` function call was transplanted into an isolated context
+  - the reusable weakness was that `transplant_expr_subtree` reinterned
+    variables but preserved source-context function `SymbolId`s
+- why it was not promoted as coverage first:
+  - the candidate exposed a structural robustness defect before corpus
+    promotion, so the retained work was the context-transplant fix plus a unit
+    regression
+- what could make it combinable later:
+  - after the robustness fix remains green under pressure, retry a minimal
+    `calculus_diff` mixed-composition corpus representative if the scorecard
+    still shows that family under target
+
+### 2026-05-13: Broad Post-Calculus Trace Compaction Hides Meaningful Presentation Steps
+
+- area:
+  - calculus / didactic trace / post-calculus presentation
+- status:
+  - `rejected`
+- local lane:
+  - focused `diff_step_contract_tests` probes for reciprocal `asinh(sqrt(...))`
+    and `atanh(sqrt(...))` derivatives after removing an internal
+    rationalize route
+- local win:
+  - the broad trace compaction removed a now-redundant final
+    `Present calculus result in compact form` step when the calculus result was
+    already display-equivalent to the final compact form
+- global result:
+  - `make engine-fast` failed `calculus_diff_contract` with 11 regressions
+    where tests intentionally require the compact post-calculus presentation
+    step to remain visible
+- why it regressed globally:
+  - display-equivalence between a calculus step and final result is not enough
+    to decide that presentation is didactically redundant
+  - several derivative families use the presentation step as the visible,
+    meaningful bridge from power/root internals to public reciprocal-root form
+- what could make it combinable later:
+  - a narrow trace-quality classifier that distinguishes redundant cleanup
+    roundtrips from meaningful presentation transitions
+  - or family-specific metadata on calculus rewrites indicating whether the
+    presentation step is explanatory or purely cosmetic
+
 ### 2026-05-11: High-Power Log Product Integration Needs Residual Verification Narrowing
 
 - area:
@@ -10664,3 +10773,214 @@ The burden of proof stays the same:
     `sqrt(sin(x) / cos(x))` without cycling
   - this is an equivalence/normalization weakness, not a calculus derivative
     rule gap
+
+## 2026-05-13 - Discovery observe-only: squared wrapper over integration-by-parts antiderivative
+
+- area:
+  - coverage / calculus-integrate contextual embedding
+- status:
+  - `discovery/observe-only`
+- candidate:
+  - promote the squared passthrough wrapper
+    `(((integrate(x^2*sin(x),x))^2)+m) - (((2*x*sin(x)+(2-x^2)*cos(x))^2)+m)`
+    as a `calculus_integrate` embedded-equivalence row
+- smoke outcome:
+  - the direct public antiderivative is stable:
+    `integrate(x^2*sin(x),x) -> 2*x*sin(x) + (2 - x^2)*cos(x)`
+  - additive, scaled, common-denominator, and shifted-quotient wrappers collapse
+    quickly
+  - the squared wrapper did not return within the cheap probe budget and was
+    killed before promotion
+- learning:
+  - start `calculus_integrate` embedded coverage with basic wrappers only
+  - defer squared wrappers for integration-by-parts antiderivatives until there
+    is a focused runtime/normalization hypothesis for trig-polynomial products
+
+## 2026-05-13 - Discovery observe-only: reversed integration-by-parts residual orientation
+
+- area:
+  - coverage / calculus-integrate contextual embedding
+- status:
+  - `discovery/observe-only`
+- candidate:
+  - promote the reversed combined residual
+    `((2*x*sin(x)+(2-x^2)*cos(x)) - integrate(x^2*sin(x),x)) + (u*v + u*w - u*(v+w))`
+    as a `calculus_integrate` orientation row
+- smoke outcome:
+  - forward combined, depth4 nested-fraction, and factor-mix wrappers collapse
+    to `0`
+  - `equiv(integrate(x^2*sin(x),x), 2*x*sin(x)+(2-x^2)*cos(x))` returns `true`
+  - the reversed residual remains as
+    `2 * cos(x) + 2 * x * sin(x) - (2 * x * sin(x) + (2 - x^2) * cos(x)) - cos(x) * x^2`
+- learning:
+  - do not mark `calculus_integrate` orientation as covered until the residual
+    path can normalize the public antiderivative form and the user target form
+    in both subtraction directions
+  - this is a contextual residual/orientation gap, not an integration rule gap
+
+## 2026-05-13 - Retained: signed common-factor residual closes integration orientation
+
+- area:
+  - coverage / exact-zero core / calculus-integrate contextual embedding
+- status:
+  - `retained`
+- retained result:
+  - the structural common-factor zero core now accepts a binary sum factor with
+    internal sign, such as `cos(x)*(2-x^2)`
+  - this closes the reversed residual
+    `((2*x*sin(x)+(2-x^2)*cos(x)) - integrate(x^2*sin(x),x)) + (u*v + u*w - u*(v+w))`
+    without adding an integration-specific shortcut
+- promotion rationale:
+  - the promoted embedded row covers `calculus_integrate` orientation with a
+    minimal collect companion core
+  - the reusable engine capability is algebraic signed common-factor
+    cancellation, not broader integration search
+
+## 2026-05-13 - Rejected partial: broad small exact-zero core re-entry
+
+- area:
+  - robustness / transform re-entry / exact-zero additive core
+- status:
+  - `rejected`
+- local win:
+  - wiring `try_build_small_direct_zero_core_rewrite` directly into the
+    `Add/Sub` transform path collapsed the isolated residual
+    `2*cos(x) + 2*x*sin(x) - (2*x*sin(x)+(2-x^2)*cos(x)) - x^2*cos(x)`
+    after child simplification
+- global result:
+  - `make engine-scorecard` regressed `calculus_integrate_contract` with a stack
+    overflow in
+    `integrate_contract_repeated_linear_times_definite_quadratic_partial_fraction`
+- retained subset:
+  - only the narrower exact-zero additive-combination re-entry was kept
+  - the failing broad direct-core re-entry was removed
+- learning:
+  - exact-zero core helpers may run deeper proof/simplify paths than their name
+    suggests
+  - transform-level re-entry should stay behind narrow candidate gates or
+    condition-free additive-combination shapes, not a general small-core probe
+
+## 2026-05-13 - Discovery observe-only: broad quadratic affine-log by-parts residuals
+
+- area:
+  - calculus / integrate / residual verification
+- status:
+  - `discovery/observe-only`
+- candidate:
+  - broaden affine-log integration by parts from `x^2*ln(2*x+1)` to mixed
+    quadratic cofactors and negative affine arguments, such as
+    `integrate((x^2+x)*ln(x+1), x)` and `integrate(x^2*ln(1-2*x), x)`
+- smoke outcome:
+  - the retained positive-slope monomial case verifies cleanly:
+    `diff(integrate(x^2*ln(2*x+1), x), x) - x^2*ln(2*x+1) -> 0`
+  - the broader mixed-cofactor residual stayed nonzero and emitted
+    `depth_overflow` warnings in cheap probes
+  - the negative-slope monomial produced a plausible antiderivative, but its
+    residual did not collapse to `0`
+- learning:
+  - keep the promoted affine-log by-parts slice restricted to the minimal
+    monomial quadratic case with positive affine argument
+  - broader polynomial affine-log support should wait for a residual
+    normalization/presentation hypothesis rather than being promoted as a
+    larger integration rule
+
+## 2026-05-13 - Discovery observe-only: arctan orientation presentation vs residual reachability
+
+- area:
+  - calculus / post-calculus presentation / inverse-trig orientation
+- status:
+  - `discovery/observe-only`
+- candidate:
+  - orient the rational correction inside
+    `integrate(x^2*arctan(1-x), x)` from `arctan(x-1)` to `arctan(1-x)` using
+    the real-domain oddness identity `arctan(-u) = -arctan(u)`
+- smoke outcome:
+  - the direct primitive rendered more coherently and
+    `diff(integrate(x^2*arctan(1-x), x), x) - x^2*arctan(1-x)` still collapsed
+    to `0`
+  - the composed residual
+    `diff(integrate(x^2*arctan(1-x)+x*arctan(1-x), x), x) - (x^2*arctan(1-x)+x*arctan(1-x))`
+    regressed to a nonzero rational residual
+  - a follow-up pair-planner probe for `arctan(1-x)+arctan(x-1)` worked at the
+    local planner level but did not reach the public simplification route
+- learning:
+  - do not promote post-calculus arctan orientation by rewriting the held
+    rational correction alone
+  - the next retained move should first observe why inverse-trig additive rules
+    that work for numeric atan pairs do not reach symbolic opposite-affine
+    pairs after alias/child rewrites
+  - keep the existing verified antiderivative form until residual reachability
+    and public presentation can improve together
+
+## 2026-05-13 - Rejected partial: global direct-difference equivalence first
+
+- area:
+  - robustness / equivalence / calculus verification
+- status:
+  - `rejected`
+- local win:
+  - trying `simplify(A-B)` before `expand(A-B)` made the public verification
+    `equiv(diff(integrate(x^2*cos(2*x+1)+x*cos(2*x+1), x), x), x^2*cos(2*x+1)+x*cos(2*x+1))`
+    return `true` immediately
+- global result:
+  - applying that order globally stalled `make engine-fast` inside
+    `calculus_diff_contract`
+- retained subset:
+  - keep the direct-first route only when either side of the public equivalence
+    still contains a calculus call (`diff`, `integrate`, or `limit`)
+  - preserve the previous expand-first behavior for ordinary equivalence
+    traffic, with the existing direct fallback only after the expand attempt
+- learning:
+  - direct residual proof is valuable for public calculus verification, where
+    an unevaluated calculus call can make the expand route much more expensive
+    than the direct simplifier route
+  - broad equivalence ordering changes are runtime-sensitive and should stay
+    behind structural gates until pressure lanes show a wider safe pattern
+
+## 2026-05-13 - Discovery observe-only: direct diff of linear partial-fraction integrals
+
+- area:
+  - calculus / diff-integrate presentation / rational partial fractions
+- status:
+  - `discovery/observe-only`
+- candidate:
+  - route `diff(integrate(f,x),x)` for rational linear partial-fraction targets
+    directly to `f`, using the same detector as public residual verification
+- retained subset:
+  - the root residual/equivalence form is retained:
+    `equiv(diff(integrate(1/((x-2)*(x-1)*x*(x+1)*(x+2)), x), x), 1/((x-2)*(x-1)*x*(x+1)*(x+2)))`
+    now returns `true` without `depth_overflow`
+- smoke outcome:
+  - the direct form
+    `diff(integrate(1/((x-2)*(x-1)*x*(x+1)*(x+2)), x), x)` still reaches the
+    differentiated log antiderivative and emits `depth_overflow` warnings
+    before rendering the compact rational result
+- learning:
+  - the residual/equivalence path and the standalone derivative presentation
+    path are distinct: the former can be fixed by the root residual matcher,
+    while the latter needs an earlier raw `diff(integrate(...),x)` gate before
+    child integration rewrites consume the call
+  - the next retained move should target that direct presentation route without
+    changing the already verified residual/equivalence behavior
+
+## 2026-05-13 - Retained follow-up: direct diff of linear partial-fraction integrals
+
+- area:
+  - robustness / calculus / diff-integrate presentation
+- status:
+  - `retained`
+- retained result:
+  - `diff(integrate(1/((x-2)*(x-1)*x*(x+1)*(x+2)), x), x)` now preserves the
+    raw supported `integrate(...)` target long enough for `DiffRule` to return
+    the compact integrand directly
+  - the direct route no longer differentiates the expanded logarithmic
+    antiderivative and no longer emits `depth_overflow`
+- implementation note:
+  - the transform pre-pass now preserves raw `diff(integrate(...),x)` targets
+    only when the integrand is accepted by the existing rational linear
+    partial-fraction detector
+  - the existing residual/equivalence route is unchanged
+- validation:
+  - focal direct and public equivalence probes stayed quiet
+  - `make engine-fast`, `make engine-scorecard`, and
+    `make engine-scorecard-pressure` all passed with `failed=0`
