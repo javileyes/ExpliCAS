@@ -108,6 +108,8 @@ fn should_verify_antiderivative_with_public_integrate_residual(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_affine_ln_by_parts_target(
         ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_positive_quadratic_ln_by_parts_target(
+        ctx, integrand, var_name,
     )
 }
 
@@ -1553,12 +1555,80 @@ fn integrate_contract_affine_trig_square_power_reduction() {
 }
 
 #[test]
+fn integrate_contract_affine_hyperbolic_square_power_reduction() {
+    let public_cases = [
+        ("integrate(sinh(x)^2, x)", "1/2 * sinh(x) * cosh(x) - x / 2"),
+        ("integrate(cosh(x)^2, x)", "1/2 * sinh(x) * cosh(x) + x / 2"),
+        ("integrate(sinh(2*x)^2, x)", "1/8 * sinh(4 * x) - 1/2 * x"),
+        (
+            "integrate(sinh(2*x + 1)^2, x)",
+            "1/4 * sinh(2 * x + 1) * cosh(2 * x + 1) - x / 2",
+        ),
+        (
+            "integrate(cosh(2*x + 1)^2, x)",
+            "1/4 * sinh(2 * x + 1) * cosh(2 * x + 1) + x / 2",
+        ),
+        (
+            "integrate(4*sinh(x)^2*cosh(x)^2, x)",
+            "1/8 * sinh(4 * x) - 1/2 * x",
+        ),
+        (
+            "integrate(sinh(2*x + 1)^2*cosh(2*x + 1)^2, x)",
+            "1/64 * sinh(4 * (2 * x + 1)) - 1/8 * x",
+        ),
+    ];
+
+    for (input, expected) in public_cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            required.is_empty(),
+            "input: {input}, required: {required:?}"
+        );
+        assert_eq!(integrate_call_antiderivative_residual_result(input), "0");
+    }
+}
+
+#[test]
+fn integrate_contract_affine_trig_ratio_square_power_reduction() {
+    let public_cases = [
+        ("integrate(tan(x)^2, x)", "tan(x) - x", vec!["cos(x) ≠ 0"]),
+        (
+            "integrate(tan(2*x + 1)^2, x)",
+            "1/2 * (tan(2 * x + 1) - 2 * x)",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        ("integrate(cot(x)^2, x)", "-cot(x) - x", vec!["sin(x) ≠ 0"]),
+        (
+            "integrate(cot(2*x + 1)^2, x)",
+            "1/2 * (-cot(2 * x + 1) - 2 * x)",
+            vec!["sin(2 * x + 1) ≠ 0"],
+        ),
+    ];
+
+    for (input, expected, expected_required) in public_cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert_eq!(required, expected_required, "input: {input}");
+        assert_rendered_antiderivative_verifies(input, expected);
+    }
+}
+
+#[test]
 fn integrate_contract_affine_sine_cosine_product() {
     let public_cases = [
         ("integrate(sin(x)*cos(x), x)", "1/2 * sin(x)^2"),
         (
             "integrate(3*sin(2*x + 1)*cos(2*x + 1), x)",
             "3/4 * sin(2 * x + 1)^2",
+        ),
+        (
+            "integrate(3*cos(2*x + 1)*sin(2*x + 1), x)",
+            "3/4 * sin(2 * x + 1)^2",
+        ),
+        (
+            "integrate(-3*sin(2*x + 1)*cos(2*x + 1), x)",
+            "-3/4 * sin(2 * x + 1)^2",
         ),
     ];
 
@@ -1581,7 +1651,16 @@ fn integrate_contract_affine_trig_power_times_derivative_product() {
             "integrate(2*cos(2*x + 1)*sin(2*x + 1)^2, x)",
             "1/3 * sin(2 * x + 1)^3",
         ),
+        (
+            "integrate(2*sin(2*x + 1)^2*cos(2*x + 1), x)",
+            "1/3 * sin(2 * x + 1)^3",
+        ),
+        (
+            "integrate(-2*cos(2*x + 1)*sin(2*x + 1)^2, x)",
+            "-1/3 * sin(2 * x + 1)^3",
+        ),
         ("integrate(sin(x)*cos(x)^2, x)", "-1/3 * cos(x)^3"),
+        ("integrate(-sin(x)*cos(x)^2, x)", "1/3 * cos(x)^3"),
     ];
 
     for (input, expected) in public_cases {
@@ -2157,7 +2236,12 @@ fn integrate_contract_affine_hyperbolic_power_times_derivative_product() {
             "integrate(2*cosh(2*x + 1)*sinh(2*x + 1)^2, x)",
             "1/3 * sinh(2 * x + 1)^3",
         ),
+        (
+            "integrate(-2*cosh(2*x + 1)*sinh(2*x + 1)^2, x)",
+            "-1/3 * sinh(2 * x + 1)^3",
+        ),
         ("integrate(sinh(x)*cosh(x)^2, x)", "1/3 * cosh(x)^3"),
+        ("integrate(-sinh(x)*cosh(x)^2, x)", "-1/3 * cosh(x)^3"),
     ];
 
     for (input, expected) in public_cases {
@@ -2603,6 +2687,88 @@ fn integrate_contract_linear_log_table_preserves_positive_domain() {
 }
 
 #[test]
+fn integrate_contract_log_reciprocal_derivative_preserves_real_domain() {
+    let cases = [
+        (
+            "integrate(1/(x*ln(x)), x)",
+            "ln(|ln(x)|)",
+            "diff(integrate(1/(x*ln(x)), x), x) - 1/(x*ln(x))",
+            vec!["x - 1 ≠ 0".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "integrate(2/((2*x+1)*ln(2*x+1)), x)",
+            "ln(|ln(2 * x + 1)|)",
+            "diff(integrate(2/((2*x+1)*ln(2*x+1)), x), x) - 2/((2*x+1)*ln(2*x+1))",
+            vec!["2 * x + 1 > 0".to_string(), "x ≠ 0".to_string()],
+        ),
+        (
+            "integrate(2*x/((x^2+1)*ln(x^2+1)), x)",
+            "ln(|ln(x^2 + 1)|)",
+            "diff(integrate(2*x/((x^2+1)*ln(x^2+1)), x), x) - 2*x/((x^2+1)*ln(x^2+1))",
+            vec!["x ≠ 0".to_string()],
+        ),
+        (
+            "integrate((2*x+1)/((x^2+x+1)*ln(x^2+x+1)), x)",
+            "ln(|ln(x^2 + x + 1)|)",
+            "diff(integrate((2*x+1)/((x^2+x+1)*ln(x^2+x+1)), x), x) - (2*x+1)/((x^2+x+1)*ln(x^2+x+1))",
+            vec!["x + 1 ≠ 0".to_string(), "x ≠ 0".to_string()],
+        ),
+        (
+            "integrate(2*x/((x^2-1)*ln(x^2-1)), x)",
+            "ln(|ln(x^2 - 1)|)",
+            "diff(integrate(2*x/((x^2-1)*ln(x^2-1)), x), x) - 2*x/((x^2-1)*ln(x^2-1))",
+            vec!["x^2 - 1 > 0".to_string(), "x^2 - 2 ≠ 0".to_string()],
+        ),
+        (
+            "integrate(2*x/((x^2+1)*ln(x^2+1)^2), x)",
+            "-1 / ln(x^2 + 1)",
+            "diff(integrate(2*x/((x^2+1)*ln(x^2+1)^2), x), x) - 2*x/((x^2+1)*ln(x^2+1)^2)",
+            vec!["x ≠ 0".to_string()],
+        ),
+        (
+            "integrate(2*x/((x^2-1)*ln(x^2-1)^2), x)",
+            "-1 / ln(x^2 - 1)",
+            "diff(integrate(2*x/((x^2-1)*ln(x^2-1)^2), x), x) - 2*x/((x^2-1)*ln(x^2-1)^2)",
+            vec!["x^2 - 1 > 0".to_string(), "x^2 - 2 ≠ 0".to_string()],
+        ),
+        (
+            "integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^2), x)",
+            "-1 / ln(x^2 + x - 1)",
+            "diff(integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^2), x), x) - (2*x+1)/((x^2+x-1)*ln(x^2+x-1)^2)",
+            vec![
+                "x + 2 ≠ 0".to_string(),
+                "x - 1 ≠ 0".to_string(),
+                "x^2 + x - 1 > 0".to_string(),
+            ],
+        ),
+        (
+            "integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^3), x)",
+            "-1 / (2 * ln(x^2 + x - 1)^2)",
+            "diff(integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^3), x), x) - (2*x+1)/((x^2+x-1)*ln(x^2+x-1)^3)",
+            vec![
+                "x + 2 ≠ 0".to_string(),
+                "x - 1 ≠ 0".to_string(),
+                "x^2 + x - 1 > 0".to_string(),
+            ],
+        ),
+    ];
+
+    for (input, expected, residual, expected_required) in cases {
+        let (result, mut required) = evaluated_integral_with_required_conditions(input);
+        required.sort();
+        assert_eq!(result, expected, "input: {input}");
+        assert_eq!(required, expected_required, "input: {input}");
+        assert_rendered_antiderivative_verifies(input, &result);
+
+        let (residual_result, mut residual_required) =
+            evaluated_expr_with_required_conditions(residual);
+        residual_required.sort();
+        assert_eq!(residual_result, "0", "input: {input}");
+        assert_eq!(residual_required, expected_required, "input: {input}");
+    }
+}
+
+#[test]
 fn integrate_contract_monomial_times_log_by_parts_preserves_positive_domain() {
     let cases = [
         ("integrate(x*ln(x), x)", "1/4 * x^2 * (2 * ln(x) - 1)"),
@@ -2734,6 +2900,54 @@ fn integrate_contract_quadratic_monomial_times_affine_log_by_parts_verifies() {
 }
 
 #[test]
+fn integrate_contract_quadratic_times_positive_quadratic_log_by_parts_verifies_shifted_argument() {
+    let cases = [
+        (
+            "integrate(ln(x^2+x+1), x)",
+            "x·ln(x^2 + x + 1) + 3·arctan((2·x + 1) / sqrt(3)) / sqrt(3) - 2·x + 1/2·ln(x^2 + x + 1)",
+            "diff(integrate(ln(x^2+x+1), x), x) - ln(x^2+x+1)",
+            true,
+        ),
+        (
+            "integrate(x*ln(x^2+x+1), x)",
+            "1/2·x^2·ln(x^2 + x + 1) - 3/2·arctan((2·x + 1) / sqrt(3)) / sqrt(3) - 1/2·x^2 + 1/4·ln(x^2 + x + 1) + 1/2·x",
+            "diff(integrate(x*ln(x^2+x+1), x), x) - x*ln(x^2+x+1)",
+            true,
+        ),
+        (
+            "integrate(x^2*ln(x^2+x+1), x)",
+            "1/3·x^3·ln(x^2 + x + 1) - 1/3·ln(x^2 + x + 1) - 2/9·x^3 + 1/6·x^2 + 1/3·x",
+            "diff(integrate(x^2*ln(x^2+x+1), x), x) - x^2*ln(x^2+x+1)",
+            true,
+        ),
+    ];
+
+    for (input, expected, residual, verify_rendered) in cases {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+        assert!(
+            stderr.is_empty(),
+            "positive-quadratic log by-parts integration should stay quiet for {input}\nstderr:\n{stderr}"
+        );
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert_eq!(wire["required_display"], serde_json::json!([]));
+        assert_antiderivative_verifies(input);
+        if verify_rendered {
+            assert_rendered_antiderivative_verifies(input, expected);
+        }
+
+        let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+
+        assert!(
+            residual_stderr.is_empty(),
+            "positive-quadratic log by-parts residual should stay quiet for {input}\nstderr:\n{residual_stderr}"
+        );
+        assert_eq!(residual_wire["result"], "0", "input: {input}");
+        assert_eq!(residual_wire["required_display"], serde_json::json!([]));
+    }
+}
+
+#[test]
 fn integrate_contract_affine_log_by_parts_presentation_stays_quiet() {
     for input in ["integrate(x*ln(2*x+1), x)", "integrate((x+1)*ln(2*x+1), x)"] {
         let (_wire, stderr) = cli_eval_json_with_stderr(input);
@@ -2779,6 +2993,36 @@ fn integrate_contract_polynomial_log_product_preserves_source_domain() {
     assert!(
         required.is_empty(),
         "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_quadratic_times_positive_quadratic_log_by_parts_verifies() {
+    let input = "integrate(x^2*ln(x^2+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "1/3 * x^3 * ln(x^2 + 1) - (2/3 * arctan(x) + 2/9 * x^3 - 2/3 * x)"
+    );
+    assert!(
+        required.is_empty(),
+        "positive quadratic log argument should not add conditions: {required:?}"
+    );
+    assert_rendered_antiderivative_verifies(input, &result);
+
+    let residual = "diff(integrate(x^2*ln(x^2+1), x), x) - x^2*ln(x^2+1)";
+    let (residual_result, residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "positive quadratic log residual should not add conditions: {residual_required:?}"
+    );
+
+    assert_eq!(
+        simplified_integral("integrate(x^2*ln(x^2-1), x)"),
+        "integrate(ln(x^2 - 1) * x^2, x)",
+        "indefinite-sign quadratic log arguments must stay unsupported"
     );
 }
 
@@ -3268,6 +3512,68 @@ fn integrate_contract_linear_times_positive_quadratic_partial_fraction_verify_by
         serde_json::json!(["x + 2 ≠ 0"])
     );
     assert_rendered_antiderivative_verifies(input, &result);
+
+    let input = "integrate((x+2)/(x^3+1), x)";
+    let (result, mut required) = evaluated_integral_with_required_conditions(input);
+
+    assert!(
+        !result.starts_with("integrate("),
+        "expected a proper antiderivative for expanded cubic linear-positive-quadratic partial fractions, got {result}"
+    );
+    assert!(
+        result.contains("ln(|x + 1|)")
+            && result.contains("ln(x^2 + 1 - x)")
+            && result.contains("arctan((2 * x - 1) / sqrt(3))"),
+        "expected expanded cubic to decompose into linear-log plus positive-quadratic log/arctan terms, got {result}"
+    );
+    required.sort();
+    assert_eq!(
+        required,
+        vec!["x + 1 ≠ 0".to_string()],
+        "expanded cubic denominator should only require the real linear pole domain: {required:?}"
+    );
+
+    let residual = "diff(integrate((x+2)/(x^3+1), x), x) - (x+2)/(x^3+1)";
+    let (residual_result, mut residual_required) =
+        evaluated_expr_with_required_conditions(residual);
+    residual_required.sort();
+    assert_eq!(residual_result, "0");
+    assert_eq!(
+        residual_required,
+        vec!["x + 1 ≠ 0".to_string()],
+        "expanded cubic verification should preserve only the real linear pole domain"
+    );
+
+    let input = "integrate((x^2+1)/(x^3+1), x)";
+    let (result, mut required) = evaluated_integral_with_required_conditions(input);
+
+    assert!(
+        !result.starts_with("integrate("),
+        "expected a proper antiderivative for expanded cubic quadratic-numerator partial fractions, got {result}"
+    );
+    assert!(
+        result.contains("ln(|x + 1|)")
+            && result.contains("ln(x^2 + 1 - x)")
+            && result.contains("arctan((2 * x - 1) / sqrt(3))"),
+        "expected expanded cubic quadratic numerator to decompose into linear-log plus positive-quadratic log/arctan terms, got {result}"
+    );
+    required.sort();
+    assert_eq!(
+        required,
+        vec!["x + 1 ≠ 0".to_string()],
+        "expanded cubic quadratic numerator should only require the real linear pole domain: {required:?}"
+    );
+
+    let residual = "diff(integrate((x^2+1)/(x^3+1), x), x) - (x^2+1)/(x^3+1)";
+    let (residual_result, mut residual_required) =
+        evaluated_expr_with_required_conditions(residual);
+    residual_required.sort();
+    assert_eq!(residual_result, "0");
+    assert_eq!(
+        residual_required,
+        vec!["x + 1 ≠ 0".to_string()],
+        "expanded cubic quadratic-numerator verification should preserve only the real linear pole domain"
+    );
 }
 
 #[test]
@@ -3622,6 +3928,48 @@ fn integrate_contract_linear_numerator_over_positive_quadratic_decomposes_to_log
     assert!(
         residual_required.is_empty(),
         "nested verification should not invent denominator conditions for a positive quadratic"
+    );
+
+    let input = "integrate(1/(x^2+x+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "2 * arctan((2 * x + 1) / sqrt(3)) / sqrt(3)");
+    assert!(
+        !result.contains("sqrt(3/4)"),
+        "positive quadratic presentation should reduce rational surd width: {result}"
+    );
+    assert!(
+        required.is_empty(),
+        "positive shifted quadratic denominator should not add synthetic required conditions: {required:?}"
+    );
+
+    let residual = "diff(integrate(1/(x^2+x+1), x), x) - 1/(x^2+x+1)";
+    let (residual_result, residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "nested verification for reduced surd width should not invent denominator conditions"
+    );
+
+    let input = "integrate(1/(1/2*x^2+1/2*x+1/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "4 * arctan((2 * x + 1) / sqrt(3)) / sqrt(3)");
+    assert!(
+        !result.contains("sqrt(3/4)"),
+        "scaled positive quadratic presentation should reduce rational surd width: {result}"
+    );
+    assert!(
+        required.is_empty(),
+        "scaled positive shifted quadratic denominator should not add synthetic required conditions: {required:?}"
+    );
+
+    let residual = "diff(integrate(1/(1/2*x^2+1/2*x+1/2), x), x) - 1/(1/2*x^2+1/2*x+1/2)";
+    let (residual_result, residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "nested verification for scaled reduced surd width should not invent denominator conditions"
     );
 
     let input = "integrate((x+3)/(2*x^2+4*x+4), x)";
@@ -5179,6 +5527,29 @@ fn integrate_contract_atanh_quadratic_kernel_with_surd_width_preserves_positive_
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
+
+    let input = "integrate(1/(3/4-(x+1/2)^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "2 * atanh((2 * x + 1) / sqrt(3)) / sqrt(3)");
+    assert!(
+        !result.contains("sqrt(3/4)"),
+        "atanh quadratic presentation should reduce rational surd width: {result}"
+    );
+    assert_eq!(
+        required,
+        vec!["1 - 2 * x^2 - 2 * x > 0".to_string()],
+        "shifted atanh quadratic should preserve its positive-domain condition"
+    );
+
+    let residual = "diff(integrate(1/(3/4-(x+1/2)^2), x), x) - 1/(3/4-(x+1/2)^2)";
+    let (residual_result, residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert_eq!(
+        residual_required,
+        vec!["1 - 2 * x^2 - 2 * x > 0".to_string()],
+        "nested shifted atanh verification should preserve the positive-domain condition"
+    );
 }
 
 #[test]
@@ -6339,6 +6710,110 @@ fn integrate_contract_polynomial_derivative_asinh_surd_width_remains_uncondition
 }
 
 #[test]
+fn integrate_contract_asinh_rational_surd_width_reduces_inner_offset() {
+    let input = "integrate(x/sqrt(x^4+3/4), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "1/2 * asinh(2 * x^2 / sqrt(3))");
+    assert!(
+        !result.contains("sqrt(3/4)"),
+        "asinh substitution presentation should reduce rational surd width: {result}"
+    );
+    assert!(
+        required.is_empty(),
+        "asinh positive radicand substitution should remain unconditional: {required:?}"
+    );
+    assert_antiderivative_equiv_verifies(input);
+    assert_rendered_antiderivative_verifies(input, &result);
+
+    let residual = "diff(integrate(x/sqrt(x^4+3/4), x), x) - x/sqrt(x^4+3/4)";
+    let (residual_result, residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "nested asinh verification should remain unconditional: {residual_required:?}"
+    );
+
+    let explicit_residual = "diff(1/2*asinh(2*x^2/sqrt(3)), x) - x/sqrt(x^4+3/4)";
+    let (explicit_residual_result, explicit_residual_required) =
+        evaluated_expr_with_required_conditions(explicit_residual);
+    assert_eq!(explicit_residual_result, "0");
+    assert!(
+        explicit_residual_required.is_empty(),
+        "explicit asinh verification should remain unconditional: {explicit_residual_required:?}"
+    );
+
+    let additive_residual = "diff(-1/2*asinh(2*x^2/sqrt(3)), x) + x/sqrt(x^4+3/4)";
+    let (additive_residual_result, additive_residual_required) =
+        evaluated_expr_with_required_conditions(additive_residual);
+    assert_eq!(additive_residual_result, "0");
+    assert!(
+        additive_residual_required.is_empty(),
+        "negative explicit asinh verification should remain unconditional: {additive_residual_required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_arcsin_rational_surd_width_reduces_inner_offset() {
+    let input = "integrate((2*x+1)/sqrt(3/4-(x^2+x+1)^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "arcsin((2 * x^2 + 2 * x + 2) / sqrt(3))");
+    assert!(
+        !result.contains("sqrt(3/4)"),
+        "arcsin substitution presentation should reduce rational surd width: {result}"
+    );
+    assert!(
+        required == ["3/4 - (x^2 + x + 1)^2 > 0"],
+        "arcsin substitution presentation should preserve the real radicand condition: {required:?}"
+    );
+    assert_antiderivative_equiv_verifies(input);
+    assert_rendered_antiderivative_verifies(input, &result);
+
+    let residual = "diff(arcsin((2*x^2+2*x+2)/sqrt(3)), x) - (2*x+1)/sqrt(3/4-(x^2+x+1)^2)";
+    let (residual_result, _residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+}
+
+#[test]
+fn integrate_contract_arcsin_scaled_rational_surd_width_verifies() {
+    let input = "integrate((x+1/2)/sqrt(3/4-(x^2+x+1)^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "1/2 * arcsin((2 * x^2 + 2 * x + 2) / sqrt(3))");
+    assert!(
+        required == ["3/4 - (x^2 + x + 1)^2 > 0"],
+        "scaled arcsin substitution should preserve the real radicand condition: {required:?}"
+    );
+    assert_antiderivative_equiv_verifies(input);
+    assert_rendered_antiderivative_verifies(input, &result);
+
+    let residual = "diff(1/2*arcsin((2*x^2+2*x+2)/sqrt(3)), x) - (x+1/2)/sqrt(3/4-(x^2+x+1)^2)";
+    let (residual_result, _residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+
+    let negative_input = "integrate(-(x+1/2)/sqrt(3/4-(x^2+x+1)^2), x)";
+    let (negative_result, negative_required) =
+        evaluated_integral_with_required_conditions(negative_input);
+    assert_eq!(
+        negative_result,
+        "-1/2 * arcsin((2 * x^2 + 2 * x + 2) / sqrt(3))"
+    );
+    assert!(
+        negative_required == ["3/4 - (x^2 + x + 1)^2 > 0"],
+        "negative scaled arcsin substitution should preserve the real radicand condition: {negative_required:?}"
+    );
+    assert_antiderivative_equiv_verifies(negative_input);
+    assert_rendered_antiderivative_verifies(negative_input, &negative_result);
+
+    let additive_residual =
+        "diff(-1/2*arcsin((2*x^2+2*x+2)/sqrt(3)), x) + (x+1/2)/sqrt(3/4-(x^2+x+1)^2)";
+    let (additive_residual_result, _additive_residual_required) =
+        evaluated_expr_with_required_conditions(additive_residual);
+    assert_eq!(additive_residual_result, "0");
+}
+
+#[test]
 fn integrate_contract_shifted_linear_scaled_asinh_substitution() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(1/sqrt(4+(x+1)^2), x)");
@@ -6585,6 +7060,14 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     );
     assert_eq!(direct_wire["result"], "(2·x + 1) / (x^2 + x + 1)^(5 / 2)");
     assert_eq!(direct_wire["required_display"], serde_json::json!([]));
+    let residual = "diff(integrate((2*x+1)/(x^2+x+1)^(5/2), x), x) - (2*x+1)/(x^2+x+1)^(5/2)";
+    let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+    assert!(
+        residual_stderr.is_empty(),
+        "higher fractional denominator-power residual should stay quiet: {residual_stderr}"
+    );
+    assert_eq!(residual_wire["result"], "0");
+    assert_eq!(residual_wire["required_display"], serde_json::json!([]));
 
     let input = "integrate((2*x+1)/(sqrt(x^2+x+1)^3), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
@@ -6627,6 +7110,17 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
         direct_wire["required_display"],
         serde_json::json!(["x^2 - 1 > 0"])
     );
+    let residual = "diff(integrate(2*x/(x^2-1)^(5/2), x), x) - 2*x/(x^2-1)^(5/2)";
+    let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+    assert!(
+        residual_stderr.is_empty(),
+        "higher conditional fractional denominator-power residual should stay quiet: {residual_stderr}"
+    );
+    assert_eq!(residual_wire["result"], "0");
+    assert_eq!(
+        residual_wire["required_display"],
+        serde_json::json!(["x^2 - 1 > 0"])
+    );
 
     let input = "integrate((4*x+2)/(2*x^2+2*x-3)^(3/2), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
@@ -6638,6 +7132,30 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
         "scaled shifted fractional denominator power should preserve the positive-base condition"
     );
     assert_antiderivative_verifies(input);
+    let residual =
+        "diff(integrate((4*x+2)/(2*x^2+2*x-3)^(5/2), x), x) - (4*x+2)/(2*x^2+2*x-3)^(5/2)";
+    let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+    assert!(
+        residual_stderr.is_empty(),
+        "higher scaled shifted fractional denominator-power residual should stay quiet: {residual_stderr}"
+    );
+    assert_eq!(residual_wire["result"], "0");
+    assert_eq!(
+        residual_wire["required_display"],
+        serde_json::json!(["2·x^2 + 2·x - 3 > 0"])
+    );
+    let residual =
+        "diff(integrate((4*x+2)/(2*x^2+2*x-3)^(7/2), x), x) - (4*x+2)/(2*x^2+2*x-3)^(7/2)";
+    let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+    assert!(
+        residual_stderr.is_empty(),
+        "deeper scaled shifted fractional denominator-power residual should stay quiet: {residual_stderr}"
+    );
+    assert_eq!(residual_wire["result"], "0");
+    assert_eq!(
+        residual_wire["required_display"],
+        serde_json::json!(["2·x^2 + 2·x - 3 > 0"])
+    );
     assert_eq!(
         rationalize_rewrites_for_simplify(input),
         0,

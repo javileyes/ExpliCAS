@@ -26045,6 +26045,28 @@ impl Orchestrator {
             return (zero, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
+        if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_diff_sqrt_acosh_split_radical_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Cancel matching acosh square-root derivative residual",
+                    "Acosh Sqrt Diff Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
         if let Some(zero) =
             crate::calculus_residual_support::try_diff_reciprocal_trig_residual_root_zero(
                 &mut simplifier.context,
@@ -26328,6 +26350,28 @@ impl Orchestrator {
             return (compact, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
+        if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_integral_hyperbolic_reciprocal_shifted_difference_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify reciprocal wrapper with matching hyperbolic antiderivative",
+                    "Hyperbolic Integral Reciprocal Wrapper",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
         if let Some((zero, required_conditions)) = crate::calculus_residual_support::
             try_diff_integral_rational_quadratic_residual_root_zero(&mut simplifier.context, expr)
         {
@@ -26338,6 +26382,28 @@ impl Orchestrator {
                     zero,
                     "Verify matching rational quadratic antiderivative residual",
                     "Rational Quadratic Integral Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) = crate::calculus_residual_support::
+            try_diff_integral_rational_quadratic_residual_reciprocal_shifted_difference_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify reciprocal wrapper with matching rational antiderivative residual",
+                    "Rational Integral Residual Reciprocal Wrapper",
                 );
                 step.meta_mut().required_conditions = required_conditions;
                 vec![step]
@@ -26501,6 +26567,28 @@ impl Orchestrator {
             return (compact, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
+        if let Some((zero, required_conditions)) = crate::calculus_residual_support::
+            try_explicit_quadratic_positive_quadratic_log_antiderivative_residual_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify matching quadratic positive-quadratic log antiderivative residual",
+                    "Quadratic Positive-Quadratic Log Integral Residual",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
         if let Some((one, required_conditions)) =
             crate::calculus_residual_support::try_diff_arctan_sqrt_positive_polynomial_quotient_shifted_one_root(
                 &mut simplifier.context,
@@ -26567,19 +26655,22 @@ impl Orchestrator {
             return (zero, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
-        if let Some(zero) = crate::calculus_residual_support::
+        if let Some((zero, required_conditions)) = crate::calculus_residual_support::
             try_reciprocal_half_power_shared_denominator_residual_root_zero(
                 &mut simplifier.context,
                 expr,
             )
         {
+            simplifier.extend_required_conditions(required_conditions.clone());
             let shortcut_steps = if collect_steps {
-                vec![build_root_shortcut_compact_step(
+                let mut step = build_root_shortcut_compact_step(
                     expr,
                     zero,
                     "Cancel matching reciprocal half-power residual",
                     "Reciprocal Half-Power Residual",
-                )]
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
             } else {
                 Vec::new()
             };

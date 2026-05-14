@@ -198,7 +198,7 @@ fn root_quotient_merge_in_generic_carries_positive_denominator_requires() {
 
     assert_eq!(wire["result"], "(x / y)^(1/2)");
     assert_eq!(wire["domain"]["mode"], "generic");
-    assert_eq!(wire["required_display"], json!(["x ≥ 0", "y > 0"]));
+    assert_eq!(wire["required_display"], json!(["y > 0", "x ≥ 0"]));
 }
 
 #[test]
@@ -250,7 +250,7 @@ fn root_quotient_merge_in_assume_preserves_intrinsic_requires_not_assumes() {
 
     assert_eq!(wire["result"], "(x / y)^(1/2)");
     assert_eq!(wire["domain"]["mode"], "assume");
-    assert_eq!(wire["required_display"], json!(["x ≥ 0", "y > 0"]));
+    assert_eq!(wire["required_display"], json!(["y > 0", "x ≥ 0"]));
     assert!(
         wire["assumptions_used"].is_null()
             || wire["assumptions_used"]
@@ -603,7 +603,6 @@ fn same_root_family_power_quotient_reaches_cli_eval_path_exactly() {
 }
 
 #[test]
-#[ignore = "Debug CLI path still overflows stack for this residual; engine rule coverage remains in cas_engine"]
 fn trig_square_cube_substitution_difference_reaches_cli_eval_path() {
     let (output, _code) = run_cli(&[
         "eval",

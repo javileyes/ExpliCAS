@@ -95,6 +95,188 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-14: Shifted Hyperbolic Square Integration Discovery
+
+- area:
+  - calculus / integration / post-calculus presentation
+- status:
+  - `observe-only`
+- generated candidate:
+  - promote `integrate(sinh(2*x+1)^2, x)` and
+    `integrate(cosh(2*x+1)^2, x)` with the same power-reduction row as the
+    basic `sinh(x)^2` / `cosh(x)^2` cases
+- local lane:
+  - focused CLI probes and `integrate_contract_affine_hyperbolic_square_power_reduction`
+- local finding:
+  - the direct primitive is mathematically valid, but public presentation of
+    shifted products such as `sinh(2*x+1)*cosh(2*x+1)` entered a slow
+    simplification route before promotion
+- retained subset:
+  - keep the minimal public cases `integrate(sinh(x)^2, x)` and
+    `integrate(cosh(x)^2, x)`
+  - a follow-up retained `integrate(sinh(2*x)^2, x)` by adding a bounded
+    product-square row for the pre-expanded
+    `4*sinh(x)^2*cosh(x)^2` shape
+- what could make it combinable later:
+  - a post-calculus presentation rule that keeps shifted hyperbolic products
+    compact without entering the expensive product-to-sum route
+
+### 2026-05-14: Constant-Base Log Square-Root Diff Presentation
+
+- area:
+  - calculus / post-calculus presentation / logarithmic derivatives
+- status:
+  - `retained`
+- retained case:
+  - `diff(sqrt(log10(x)), x)`
+  - residual:
+    `diff(sqrt(log10(x)), x) - 1/(2*x*ln(10)*sqrt(log10(x)))`
+- local lane:
+  - focused CLI probes and public JSON smoke contracts for constant-base log
+    square-root derivative presentation
+- local result:
+  - direct diff now renders as
+    `1 / (2·x·ln(10)·sqrt(log10(x)))`
+  - the residual against that rendered form collapses to `0`
+  - sibling probe `diff(sqrt(log2(x)), x)` renders with `ln(2)` in the same
+    bounded path
+  - required conditions remain the intrinsic log-domain pair:
+    `log10(x) > 0` and `x > 0`
+- implementation:
+  - extended the bounded `sqrt(elementary function)` post-diff presenter with
+    `log2`/`log10` constant-base denominator factors
+  - did not widen to arbitrary two-argument `log(base, x)` in this iteration
+- domain safety:
+  - no new assumption is introduced; the conditions are inherited from the
+    original logarithm witness and outer square-root radicand
+- bridge decision:
+  - no derive case promoted; this is final calculus presentation, not an
+    independent target-family transition
+- calculus/precalculus decision:
+  - reuses existing constant-base log differentiation and residual
+    simplification rather than changing global canonical simplification
+- validation:
+  - focused public CLI probes, public wire presentation/residual tests,
+    `calculus_diff_contract`, `make engine-fast`, and `make engine-scorecard`
+    passed with `failed = 0`
+
+### 2026-05-14: Direct `sqrt(atanh(x))` Diff Presentation With Open-Interval Guard
+
+- area:
+  - calculus / post-calculus presentation / domain preservation
+- status:
+  - `retained`
+- retained case:
+  - `diff(sqrt(atanh(x)), x)`
+  - residual:
+    `diff(sqrt(atanh(x)), x) - 1/(2*(1-x^2)*sqrt(atanh(x)))`
+- local lane:
+  - focused CLI probes and public JSON smoke contracts for the direct `atanh`
+    square-root derivative presentation
+- local result:
+  - direct diff now renders as
+    `1 / (2·(1 - x^2)·sqrt(atanh(x)))`
+  - the residual against that rendered form collapses to `0`
+  - required conditions preserve the intrinsic real-domain guard:
+    `1 - x^2 > 0` and `atanh(x) > 0`
+- implementation:
+  - extended the bounded `sqrt(elementary function)` post-diff presenter with
+    a non-radical `1 - arg^2` denominator shape for `atanh`
+  - preserved nested `atanh(...)` open-interval conditions from the original
+    diff input so presentation does not degrade them to weaker nonzero factor
+    guards
+- domain safety:
+  - no new assumption is introduced; the open-interval condition is intrinsic
+    to the `atanh` witness already present in the input AST
+- bridge decision:
+  - no derive case promoted; this is final calculus presentation and domain
+    retention, not an independent algebraic transition
+- calculus/precalculus decision:
+  - reuses existing atanh open-interval condition construction and public
+    residual verification instead of adding a calculus-only answer shortcut
+- validation:
+  - focused public CLI probes, public wire presentation/residual tests,
+    `calculus_diff_contract`, `make engine-fast`, and `make engine-scorecard`
+    passed with `failed = 0`
+
+### 2026-05-14: Direct `sqrt(acosh(x))` Diff Presentation With Dominated Product Guard
+
+- area:
+  - calculus / post-calculus presentation / domain normalization
+- status:
+  - `retained`
+- retained case:
+  - `diff(sqrt(acosh(x)), x)`
+  - residual:
+    `diff(sqrt(acosh(x)), x) - 1/(2*sqrt(x-1)*sqrt(x+1)*sqrt(acosh(x)))`
+- local lane:
+  - focused CLI probes and public JSON smoke contracts for the direct `acosh`
+    square-root derivative presentation
+- local result:
+  - direct diff now renders as
+    `1 / (2·sqrt(x - 1)·sqrt(x + 1)·sqrt(acosh(x)))`
+  - the residual against that rendered form collapses to `0`
+  - required conditions remain the minimal useful pair:
+    `x - 1 > 0` and `acosh(x) > 0`
+- implementation:
+  - retained the compact split-radical presentation for the direct `acosh(x)`
+    case
+  - extended condition dominance so a `NonNegative(product)` guard is dropped
+    only when known positive factors and intrinsic positive factors imply it,
+    including after factoring a polynomial factor
+- domain safety:
+  - no new assumption is introduced; the removed guard is implied by already
+    present positive conditions
+- bridge decision:
+  - no derive case promoted; this is a public calculus presentation and domain
+    normalization improvement, not a new didactic source-to-target route
+- calculus/precalculus decision:
+  - reuses pre-calculus condition normalization and product/factor reasoning
+    rather than adding a calculus-only special case
+- validation:
+  - focal domain-normalization unit, public wire presentation/residual tests,
+    public CLI probe, `calculus_diff_contract`, `make engine-fast`,
+    `make engine-scorecard`, and `make engine-scorecard-pressure` passed with
+    `failed = 0`
+
+### 2026-05-14: Positive-Quadratic Log By-Parts Rendered-Residual Gap
+
+- area:
+  - calculus / integration by parts / antiderivative residual verification
+- status:
+  - `retained-partial`
+- discovered case:
+  - `integrate(ln(x^2+x+1), x)`
+  - direct rendered residual for the promoted linear case:
+    `diff(1/2*x^2*ln(x^2+x+1) - 3/2*arctan((2*x+1)/sqrt(3))/sqrt(3) - 1/2*x^2 + 1/4*ln(x^2+x+1) + 1/2*x, x) - x*ln(x^2+x+1)`
+- local lane:
+  - focused CLI probes while extending positive-quadratic log by-parts from
+    quadratic cofactors to a linear cofactor
+- local result:
+  - `integrate(x*ln(x^2+x+1), x)` now produces an explicit primitive
+  - `diff(integrate(x*ln(x^2+x+1), x), x) - x*ln(x^2+x+1)` collapses to `0`
+  - retained follow-up:
+    `integrate(ln(x^2+x+1), x)` now produces an explicit primitive and its
+    public `diff(integrate(...), x) - ln(...)` residual collapses to `0`
+  - later retained follow-up:
+    differentiating the rendered standalone primitive for
+    `integrate(ln(x^2+x+1), x)` now collapses directly to `0`
+  - later retained follow-up:
+    differentiating the rendered linear primitive for `integrate(x*ln(x^2+x+1), x)`
+    now collapses directly to `0` without `depth_overflow`
+- why a residual discovery remains:
+  - the retained linear rule is safe because it stays behind a positive
+    quadratic log-by-parts gate and verifies through the public integrate
+    residual path
+  - the retained standalone rule is safe for the same reason: `Q` must be
+    positive quadratic and the residual route verifies the integrate call
+  - the rendered standalone and linear cases were closed by signed additive term
+    matching plus rational-scale normalization of additive terms
+- remaining follow-up:
+  - none for this shifted positive-quadratic log-by-parts family; future work
+    should move to a distinct positive-quadratic log shape or a broader
+    verification abstraction, not another near-duplicate of this case
+
 ### 2026-05-13: Symbolic Beta-Sqrt Product Presentation Conflicts With Residual Verification
 
 - area:
@@ -11061,3 +11243,466 @@ The burden of proof stays the same:
     path
   - a future presentation pass can revisit the prettier `sin(u)^2/(2*u')`
     form once affine double-angle/product residual normalization is stronger
+
+## 2026-05-14 - Discovery observe-only: negative affine hyperbolic power residual verification
+
+- area:
+  - calculus / integration contract / explicit derivative residual
+- status:
+  - `discovery/observe-only`
+- candidate:
+  - promote affine sign/order variants for
+    `integrate(2*cosh(2*x+1)*sinh(2*x+1)^2, x)`, including the negative
+    orientation
+    `integrate(-2*cosh(2*x+1)*sinh(2*x+1)^2, x)`
+- smoke outcome:
+  - standalone integration succeeds and renders
+    `-1/3 * sinh(2 * x + 1)^3`
+  - the additive residual
+    `diff(-1/3*sinh(2*x+1)^3, x) + 2*cosh(2*x+1)*sinh(2*x+1)^2`
+    collapses to `0`
+  - the subtractive residual shape
+    `diff(-1/3*sinh(2*x+1)^3, x) - (-2*cosh(2*x+1)*sinh(2*x+1)^2)`
+    did not finish within the cheap focal-test budget
+- learning:
+  - the mathematical capability exists, but the `diff(...) - negative_target`
+    residual route is structurally weaker than the equivalent additive route
+  - do not promote the affine negative hyperbolic-power representative until
+    explicit derivative residual normalization handles this shape directly and
+    cheaply
+
+## 2026-05-14 - Retained follow-up: negative affine hyperbolic power residual verification
+
+- area:
+  - robustness / calculus / explicit derivative residual
+- status:
+  - `retained`
+- retained result:
+  - `diff(-1/3*sinh(2*x+1)^3, x) - (-2*cosh(2*x+1)*sinh(2*x+1)^2)`
+    now collapses to `0` through the root residual path
+  - the public contract for
+    `integrate(-2*cosh(2*x+1)*sinh(2*x+1)^2, x)` is promoted with the compact
+    primitive `-1/3 * sinh(2 * x + 1)^3`
+- implementation note:
+  - the retained matcher is limited to explicit affine `sinh`/`cosh` cubic
+    primitives and their chain-rule product target
+  - it avoids widening generic `diff(...) - target` matching
+- validation:
+  - focal residual unit, affine hyperbolic integration contract,
+    `make engine-fast`, `make engine-scorecard`, and
+    `make engine-scorecard-pressure` all passed with `failed=0`
+
+## 2026-05-14 - Discovery observe-only: sign-sensitive reciprocal log-power residual
+
+- area:
+  - calculus / integration contract / explicit derivative residual
+- status:
+  - `discovery/observe-only`
+- candidate:
+  - promote the non-positive-base representative
+    `integrate(2*x/((x^2-1)*ln(x^2-1)^2), x)`
+- smoke outcome:
+  - standalone integration renders the expected reciprocal-log primitive under
+    the real-domain requirement `x^2 - 1 > 0`
+  - the explicit residual
+    `diff(integrate(2*x/((x^2-1)*ln(x^2-1)^2), x), x) - 2*x/((x^2-1)*ln(x^2-1)^2)`
+    did not collapse to `0` in the cheap public probe
+- learning:
+  - the reciprocal log-power integration rule is usable for the positive
+    representative `x^2 + 1`, but the sign-sensitive denominator family still
+    needs residual/domain normalization before public promotion
+  - keep `x^2-1` as a future robustness candidate rather than widening the
+    integration rule or weakening the verification contract
+
+## 2026-05-14 - Retained follow-up: sign-sensitive reciprocal log-power residual
+
+- area:
+  - calculus / integration contract / explicit derivative residual
+- status:
+  - `retained`
+- retained result:
+  - `integrate(2*x/((x^2-1)*ln(x^2-1)^2), x)` now renders
+    `-1 / ln(x^2 - 1)`
+  - the nested residual `diff(integrate(...), x) - ...` collapses to `0`
+  - required real-domain conditions stay explicit: `x^2 - 1 > 0`,
+    `x^2 - 2 != 0`
+- implementation note:
+  - retained through existing reciprocal log-power integration and
+    constant/rational presentation scaling; no wider integration search
+- validation:
+  - focal unit/contract plus `make engine-fast` and `make engine-scorecard`
+    passed with `failed=0`
+
+## 2026-05-14 - Retained follow-up: shifted reciprocal log-power residual conditions
+
+- area:
+  - calculus / integration contract / required-condition normalization
+- status:
+  - `retained`
+- retained result:
+  - `integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^2), x)` renders
+    `-1 / ln(x^2 + x - 1)`
+  - the nested residual `diff(integrate(...), x) - ...` collapses to `0`
+  - required real-domain conditions stay compact: `x - 1 != 0`,
+    `x + 2 != 0`, `x^2 + x - 1 > 0`
+- implementation note:
+  - the fix is in display normalization of `NonZero` conditions for n-ary sums
+    with a common factor, so the residual no longer surfaces a redundant
+    expanded denominator guard containing `ln(...)^2`
+  - no wider integration search was added
+- validation:
+  - focal domain-normalization unit, integration unit/contract,
+    `make engine-fast`, `make engine-scorecard`, and
+    `make engine-scorecard-pressure` passed with `failed=0`
+
+## 2026-05-14 - Retained follow-up: reciprocal log-power antiderivative verification
+
+- area:
+  - calculus / integration contract / explicit derivative residual
+- status:
+  - `retained`
+- retained result:
+  - `integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^3), x)` renders
+    `-1 / (2 * ln(x^2 + x - 1)^2)`
+  - both `diff(integrate(...), x) - ...` and
+    `diff(-1/(2*ln(x^2+x-1)^2), x) - ...` collapse to `0`
+  - required real-domain conditions stay compact: `x - 1 != 0`,
+    `x + 2 != 0`, `x^2 + x - 1 > 0`
+- implementation note:
+  - added a bounded family predicate for polynomial reciprocal log-derivative
+    targets and reused it in the calculus residual verifier
+  - no wider integration search was added
+- validation:
+  - focal integration unit, residual unit, public integration contract,
+    `make engine-fast`, `make engine-scorecard`, and
+    `make engine-scorecard-pressure` passed with `failed=0`
+
+## 2026-05-14 - Retained coverage: repeated partial-fraction residual under composition
+
+- area:
+  - coverage / calculus-integrate / embedded equivalence context
+- status:
+  - `retained`
+- retained result:
+  - promoted one live embedded row for the repeated-linear partial-fraction
+    representative
+    `diff(integrate((3*x+5)/(x^3-x^2-x+1),x),x) - (3*x+5)/(x^3-x^2-x+1)`
+    under a `combined_additive_zero` wrapper
+  - this covers the expanded cubic denominator with a repeated pole while also
+    checking re-entry through independent collect-style additive noise
+- why minimal:
+  - the public integration contract already covers the standalone integral and
+    direct residual
+  - the embedded corpus already had a simple linear partial-fraction direct
+    diff row, but not the repeated-pole expanded-denominator shape under
+    cross-family composition
+- validation:
+  - focal public probes, embedded corpus, `make engine-fast`,
+    `make engine-scorecard`, and `make engine-scorecard-pressure` passed with
+    `failed=0`
+
+## 2026-05-14 - Discovery observe-only: reciprocal wrapper re-entry for partial-fraction diff residual
+
+- area:
+  - coverage / calculus-integrate / reciprocal shifted wrapper
+- status:
+  - `discovery/observe-only`
+- candidate:
+  - promote
+    `1/((diff(integrate((3*x+5)/(x^3-x^2-x+1),x),x))+c) - 1/(((3*x+5)/(x^3-x^2-x+1))+c)`
+    as a `reciprocal_shifted_difference_zero` row
+- smoke outcome:
+  - the direct residual collapses to `0`
+  - the equivalent explicit rational reciprocal shape collapses to `0`
+  - the candidate with `diff(integrate(...),x)` inside the reciprocal wrapper
+    remains as a nonzero-looking difference after one side is re-entered and
+    denominator terms are ordered differently
+- learning:
+  - the calculus capability is correct, but reciprocal shifted wrappers need a
+    safer re-entry/canonicalization path for diff-integrate residuals over
+    rational partial fractions
+  - do not promote reciprocal wrappers for this family until that structural
+    gap is fixed directly
+
+## 2026-05-14 - Retained follow-up: reciprocal wrapper re-entry for partial-fraction diff residual
+
+- area:
+  - robustness / calculus-integrate / reciprocal shifted wrapper
+- status:
+  - `retained`
+- retained result:
+  - `1/((diff(integrate((3*x+5)/(x^3-x^2-x+1),x),x))+c) - 1/(((3*x+5)/(x^3-x^2-x+1))+c)`
+    now collapses to `0`
+  - the previously observe-only representative is promoted as a live
+    `reciprocal_shifted_difference_zero` embedded row
+  - required conditions stay bounded to the repeated-pole domain plus the
+    shared shifted denominator nonzero condition
+- implementation note:
+  - added a bounded root matcher for unit reciprocal denominators with one
+    shared additive shift whose remaining cores are a supported
+    `diff(integrate(T),x)` rational residual pair
+  - the matcher does not generalize rational integration or arbitrary
+    reciprocal equality; it is gated by the existing rational antiderivative
+    verifier
+- validation:
+  - focal residual unit, public CLI probe, embedded equivalence context,
+    `make engine-fast`, `make engine-scorecard`, and
+    `make engine-scorecard-pressure` passed with `failed = 0`
+
+## 2026-05-14 - Retained coverage: sine by-parts reciprocal shifted wrapper
+
+- area:
+  - coverage / calculus-integrate / reciprocal shifted wrapper
+- status:
+  - `retained`
+- retained result:
+  - promoted
+    `1/((integrate(x^2*sin(x),x))+c) - 1/((2*x*sin(x)+(2-x^2)*cos(x))+c)`
+    as a live `reciprocal_shifted_difference_zero` embedded row
+  - this closes the sine half of the earlier integration-by-parts reciprocal
+    wrapper discovery without adding new engine logic
+- why minimal:
+  - the existing live reciprocal row covered `integrate(x^2*cos(x),x)`, while
+    this representative covers the distinct public sine primitive
+    `2*x*sin(x)+(2-x^2)*cos(x)`
+  - no extra noise or deeper shell was promoted
+- validation:
+  - focused embedded candidate smoke, embedded equivalence context,
+    `make engine-fast`, and `make engine-scorecard` passed with `failed = 0`
+
+## 2026-05-14 - Retained robustness: hyperbolic by-parts reciprocal wrapper re-entry
+
+- area:
+  - robustness / calculus-integrate / reciprocal shifted wrapper
+- status:
+  - `retained`
+- retained result:
+  - `1/((integrate(x^2*sinh(x),x))+c) - 1/((x^2*cosh(x)-2*x*sinh(x)+2*cosh(x))+c)`
+    now collapses to `0`
+  - the live embedded corpus now includes the representative as
+    `calculus_integrate_poly_sinh_by_parts_reciprocal_shifted_difference_zero`
+- implementation note:
+  - added a bounded reciprocal-shifted matcher for supported polynomial
+    hyperbolic by-parts integrals
+  - comparison is against the antiderivative generated by the existing
+    integrator, with a small polynomial `sinh/cosh` cofactor comparison so
+    `(x^2+2)*cosh(x)` and `x^2*cosh(x)+2*cosh(x)` can match
+  - no new integration family or arbitrary reciprocal equality was added
+- validation:
+  - focal unit, public CLI probe, negative-var probe, and focused embedded
+    candidate smoke passed before promotion
+  - embedded equivalence context, `make engine-fast`, `make engine-scorecard`,
+    and `make engine-scorecard-pressure` passed with `failed = 0`
+
+## 2026-05-14 - Retained coverage: atanh-surd integration reciprocal wrapper
+
+- area:
+  - coverage / calculus-integrate / reciprocal shifted wrapper
+- status:
+  - `retained`
+- retained result:
+  - promoted
+    `1/((integrate(2*x/(3-x^4),x))+c) - 1/((atanh(x^2/sqrt(3))/sqrt(3))+c)`
+    as a live `reciprocal_shifted_difference_zero` embedded row
+  - this extends the existing atanh-surd representative beyond additive
+    passthrough without adding a new integration rule
+- why minimal:
+  - focused smoke also showed common-denominator and shifted-quotient wrappers
+    pass, but only the reciprocal shifted wrapper was promoted because it is
+    the strongest non-linear wrapper among the cheap candidates
+  - the earlier squared integration-by-parts wrapper probe still did not finish
+    within a cheap budget, so it remains out of live promotion
+- validation:
+  - focused embedded candidate smoke, embedded equivalence context,
+    `make engine-fast`, and `make engine-scorecard` passed with `failed = 0`
+
+## 2026-05-14 - Retained calculus: inverse-trig sqrt derivative presentation
+
+- area:
+  - calculus / post-calculus presentation / differentiation
+- status:
+  - `retained`
+- retained result:
+  - `diff(sqrt(arcsin(x)), x)` now renders as
+    `1 / (2 * sqrt(1 - x^2) * sqrt(arcsin(x)))`
+  - `diff(sqrt(arccos(x)), x)` now renders as
+    `-1 / (2 * sqrt(1 - x^2) * sqrt(arccos(x)))`
+  - required real-domain conditions stay visible:
+    `1 - x^2 > 0` plus the positive outer square-root radicand
+- implementation note:
+  - extended the existing bounded `sqrt(elementary function)` post-diff
+    presentation path with a `sqrt(1 - arg^2)` denominator shape for
+    `arcsin`/`arccos`
+  - no global simplification preference and no new differentiation rule were
+    added
+- validation:
+  - focal public wire tests, public CLI probes, `calculus_diff_contract`,
+    `make engine-fast`, and `make engine-scorecard` passed with `failed = 0`
+
+## 2026-05-14 - Retained calculus: sqrt(tanh) derivative presentation
+
+- area:
+  - calculus / post-calculus presentation / differentiation
+- status:
+  - `retained`
+- retained result:
+  - `diff(sqrt(tanh(x)), x)` now renders as
+    `1 / (2 * cosh(x)^2 * sqrt(tanh(x)))`
+  - the public residual
+    `diff(sqrt(tanh(x)), x) - 1/(2*cosh(x)^2*sqrt(tanh(x)))`
+    collapses to `0`
+  - `equiv(diff(sqrt(tanh(x)), x), 1/(2*cosh(x)^2*sqrt(tanh(x))))`
+    returns `true`
+  - required real-domain conditions stay compact: `tanh(x) > 0`
+- implementation note:
+  - extended the existing bounded `sqrt(elementary function)` post-diff
+    presentation path by mapping `tanh` to the same denominator-square shape
+    used by `tan`, with `cosh(arg)^2`
+  - no global simplification preference and no new differentiation rule were
+    added
+- rejected subset:
+  - `sqrt(atanh(x))` presentation was rejected because the compact
+    `1 - x^2` denominator form degraded the direct result condition from
+    `1 - x^2 > 0` to nonzero factors
+  - `sqrt(acosh(x))` presentation was rejected because the direct result looked
+    compact, but the residual against that presented form no longer collapsed
+    to `0`
+- validation:
+  - focal public wire tests, public CLI residual/equiv probes,
+    `calculus_diff_contract`, `make engine-fast`, and `make engine-scorecard`
+    passed with `failed = 0`
+
+## 2026-05-14 - Retained coverage: hyperbolic sqrt diff presentation guards
+
+- area:
+  - coverage / calculus-diff / post-calculus presentation
+- status:
+  - `retained`
+- retained result:
+  - promoted the existing public behavior for `diff(sqrt(sinh(x)), x)`:
+    `cosh(x) / (2 * sqrt(sinh(x)))`
+  - promoted the existing public behavior for `diff(sqrt(cosh(x)), x)`:
+    `sinh(x) / (2 * sqrt(cosh(x)))`
+  - both residual checks collapse to `0`, preserving the current real-domain
+    conditions (`sinh(x) > 0` for the first case, none for `cosh(x)`)
+- why minimal:
+  - this guards the direct hyperbolic numerator-function branch of
+    `sqrt(elementary function)` derivative presentation
+  - nearby contracts already covered trig, log, reciprocal trig, `tanh`, and
+    `asinh`; these two rows close the missing direct hyperbolic representatives
+    without adding composition or runtime pressure
+- observe-only discovery:
+  - retrying `sqrt(acosh(x))` presentation as
+    `1/(2*sqrt(x-1)*sqrt(x+1)*sqrt(acosh(x)))` was rejected before promotion
+  - the direct result looked compact and `equiv(...)` stayed `true`, but the
+    residual no longer collapsed to `0` and an extra redundant product-domain
+    condition appeared
+  - reusable signature: post-calculus presentation that splits a reciprocal
+    half-power product into multiple `sqrt` factors can be readable but may
+    weaken residual cancellation/domain normalization unless the radical-product
+    path is hardened first
+- validation:
+  - focal public wire tests, public CLI residual/equiv probes,
+    `calculus_diff_contract`, `make engine-fast`, and `make engine-scorecard`
+    passed with `failed = 0`
+
+## 2026-05-14 - Retained calculus: acosh sqrt affine residual verification
+
+- area:
+  - calculus / diff residual verification / inverse hyperbolic presentation
+- status:
+  - `retained`
+- retained result:
+  - the public residual
+    `diff(sqrt(acosh(2*x+3)), x) - 1/(sqrt(2*x+2)*sqrt(2*x+4)*sqrt(acosh(2*x+3)))`
+    now collapses to `0`
+  - the existing simple residual
+    `diff(sqrt(acosh(x)), x) - 1/(2*sqrt(x-1)*sqrt(x+1)*sqrt(acosh(x)))`
+    remains `0`
+  - `equiv(diff(sqrt(acosh(2*x+3)), x), 1/(sqrt(2*x+2)*sqrt(2*x+4)*sqrt(acosh(2*x+3))))`
+    remains `true`
+  - required real-domain conditions stay compact through the public wire path:
+    `x + 1 > 0` and `acosh(2*x + 3) > 0`
+- implementation note:
+  - added a bounded residual matcher for `diff(sqrt(acosh(arg)), x)` against
+    the split radical denominator form `sqrt(arg-1)*sqrt(arg+1)*sqrt(acosh(arg))`
+  - the matcher builds the `arg-1` and `arg+1` factors through the existing
+    polynomial representation and reuses unordered sqrt-denominator matching
+  - direct post-calculus presentation for `sqrt(acosh(...))` remains deferred;
+    this cycle only hardens residual verification for the compact target form
+- validation:
+  - focal residual helper unit, public wire residual test, public CLI
+    residual/equiv probes, and `calculus_diff_contract` passed
+
+## 2026-05-14 - Retained calculus: acosh sqrt affine diff presentation
+
+- area:
+  - calculus / diff / post-calculus presentation
+- status:
+  - `retained`
+- retained result:
+  - `diff(sqrt(acosh(2*x+3)), x)` now renders publicly as
+    `1/(sqrt(2*x+2)*sqrt(2*x+4)*sqrt(acosh(2*x+3)))`
+  - the matching residual
+    `diff(sqrt(acosh(2*x+3)), x) - 1/(sqrt(2*x+2)*sqrt(2*x+4)*sqrt(acosh(2*x+3)))`
+    still collapses to `0`
+  - `equiv(diff(sqrt(acosh(2*x+3)), x), 1/(sqrt(2*x+2)*sqrt(2*x+4)*sqrt(acosh(2*x+3))))`
+    still returns `true`
+  - required real-domain conditions stay compact through the public wire path:
+    `x + 1 > 0` and `acosh(2*x + 3) > 0`
+- implementation note:
+  - extended the existing bounded `sqrt(elementary function)` diff presentation
+    path with an `acosh(arg)` denominator shape based on `sqrt(arg-1)` and
+    `sqrt(arg+1)`
+  - the `arg-1` and `arg+1` factors are built via the polynomial
+    representation, so affine arguments render as simplified public factors
+    such as `2*x+2` and `2*x+4`
+- rejected subset:
+  - direct presentation for the simple derivative `diff(sqrt(acosh(x)), x)`
+    remains intentionally deferred
+  - the compact split form looked readable, but introduced a redundant
+    product-domain condition and weakened the simple residual path; the
+    retained rule therefore skips the derivative-`1` case
+  - reusable signature: split-radical presentation should be promoted only when
+    residual verification and domain normalization are already strong enough for
+    that shape
+- validation:
+  - focal public wire presentation/residual tests, public CLI residual probes,
+    `calculus_diff_contract`, `make engine-fast`, and `make engine-scorecard`
+    passed with `failed = 0`
+
+## 2026-05-14 - Retained robustness: scaled reciprocal half-power residual
+
+- area:
+  - robustness / calculus presentation residual / reciprocal half powers
+- status:
+  - `retained`
+- retained result:
+  - the residual shape
+    `1/2*(acosh(x)*(x^2-1))^(-1/2) - sqrt(acosh(x)*(x^2-1))/(2*acosh(x)*(x^2-1))`
+    now collapses to `0`
+  - the public `diff(sqrt(acosh(x)), x)` path remains on the previous internal
+    product-of-half-powers presentation, preserving compact required
+    conditions: `acosh(x) > 0` and `x - 1 > 0`
+  - the public residual
+    `diff(sqrt(acosh(x)), x) - 1/(2*sqrt(x-1)*sqrt(x+1)*sqrt(acosh(x)))`
+    remains `0`
+- implementation note:
+  - hardened the existing reciprocal half-power shared-denominator root
+    shortcut so it can compare a rationally scaled reciprocal half-power
+    against `sqrt(A)/(k*A)` even when the numeric content is inside one product
+    denominator factor
+  - this is a local residual-verification improvement, not a global radical
+    presentation preference
+- rejected subset:
+  - direct presentation of `diff(sqrt(acosh(x)), x)` as
+    `1/(2*sqrt(x-1)*sqrt(x+1)*sqrt(acosh(x)))` was retried and rejected in
+    this cycle
+  - although the formula and residual can now be verified, the direct public
+    route still accumulates the redundant intermediate condition
+    `acosh(x)*(x^2-1) >= 0`; presentation should wait for a domain/presentation
+    path that avoids that noise
+- validation:
+  - focal public wire residual tests, public CLI probes, and
+    `calculus_diff_contract`, `make engine-fast`, and `make engine-scorecard`
+    passed with `failed = 0`

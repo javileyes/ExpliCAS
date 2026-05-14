@@ -140,6 +140,61 @@ fn test_eval_calculus_residual_domain_modes_preserve_required_conditions() {
 }
 
 #[test]
+fn test_eval_json_inverse_trig_alias_sqrt_derivative_conditions_dedupe() {
+    let cases = [
+        (
+            "diff(sqrt(asin(2*x+1)), x)",
+            ["asin(2·x + 1)", "arcsin(2·x + 1)"],
+            1,
+        ),
+        (
+            "diff(sqrt(acos(2*x+1)), x)",
+            ["acos(2·x + 1)", "arccos(2·x + 1)"],
+            0,
+        ),
+    ];
+
+    for (expr, aliases, min_alias_guards) in cases {
+        let json = eval_json(expr);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        let alias_count = required
+            .iter()
+            .filter(|condition| {
+                condition["kind"] == "Positive"
+                    && aliases
+                        .iter()
+                        .any(|alias| condition["expr_canonical"] == *alias)
+            })
+            .count();
+
+        assert!(
+            (min_alias_guards..=1).contains(&alias_count),
+            "expected {min_alias_guards}..=1 alias positivity guards for {expr}: {required:?}"
+        );
+        if expr.contains("asin(") {
+            assert!(
+                required.iter().any(|condition| {
+                    condition["kind"] == "Positive"
+                        && condition["expr_canonical"] == "asin(2·x + 1)"
+                }),
+                "expected asin alias display to match the public result for {expr}: {required:?}"
+            );
+        }
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "-x^2 - x"
+            }),
+            "expected the inverse-trig interval guard for {expr}: {required:?}"
+        );
+    }
+}
+
+#[test]
 fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
     let cases = [
         (
@@ -199,11 +254,74 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
             Some("ln(x)"),
         ),
         (
+            "diff(sqrt(log10(x)), x)",
+            "1 / (2·x·ln(10)·sqrt(log10(x)))",
+            "log10(x)^(-1/2)",
+            ["ln(10)", "sqrt(log_10(x))"],
+            Some("log10(x)"),
+        ),
+        (
             "diff(sqrt(tan(x)), x)",
             "1 / (2·cos(x)^2·sqrt(tan(x)))",
             "tan(x)^(-1/2)",
             ["sqrt(tan(x))", "cos(x)^2"],
             Some("sin(x) / cos(x)"),
+        ),
+        (
+            "diff(sqrt(cot(x)), x)",
+            "-1 / (2·sin(x)^2·sqrt(cot(x)))",
+            "cot(x)^(-1/2)",
+            ["sqrt(cot(x))", "sin(x)^2"],
+            Some("cos(x) / sin(x)"),
+        ),
+        (
+            "diff(sqrt(tanh(x)), x)",
+            "1 / (2·cosh(x)^2·sqrt(tanh(x)))",
+            "tanh(x)^(-1/2)",
+            ["sqrt(tanh(x))", "cosh(x)^2"],
+            Some("tanh(x)"),
+        ),
+        (
+            "diff(sqrt(sinh(x)), x)",
+            "cosh(x) / (2·sqrt(sinh(x)))",
+            "sinh(x)^(-1/2)",
+            ["cosh(x)", "sqrt(sinh(x))"],
+            Some("sinh(x)"),
+        ),
+        (
+            "diff(sqrt(cosh(x)), x)",
+            "sinh(x) / (2·sqrt(cosh(x)))",
+            "cosh(x)^(-1/2)",
+            ["sinh(x)", "sqrt(cosh(x))"],
+            None,
+        ),
+        (
+            "diff(sqrt(sec(x)), x)",
+            "tan(x)·sqrt(sec(x)) / 2",
+            "|cos(x)^(-1/2)|",
+            ["tan(x)", "sqrt(sec(x))"],
+            Some("cos(x)"),
+        ),
+        (
+            "diff(sqrt(csc(x)), x)",
+            "-cot(x)·sqrt(csc(x)) / 2",
+            "|sin(x)^(-1/2)|",
+            ["cot(x)", "sqrt(csc(x))"],
+            Some("sin(x)"),
+        ),
+        (
+            "diff(sqrt(sec(3-2*x)), x)",
+            "-tan(3 - 2·x)·sqrt(sec(3 - 2·x))",
+            "|(cos(3 - 2 · x))^(-1/2)|",
+            ["tan(3 - 2 · x)", "sqrt(sec(3 - 2 · x))"],
+            Some("cos(3 - 2·x)"),
+        ),
+        (
+            "diff(sqrt(csc(3-2*x)), x)",
+            "cot(3 - 2·x)·sqrt(csc(3 - 2·x))",
+            "|(sin(3 - 2 · x))^(-1/2)|",
+            ["cot(3 - 2 · x)", "sqrt(csc(3 - 2 · x))"],
+            Some("sin(3 - 2·x)"),
         ),
         (
             "diff(sqrt(arctan(x)), x)",
@@ -220,6 +338,27 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
             Some("arctan(2·x + 1)"),
         ),
         (
+            "diff(sqrt(atanh(x)), x)",
+            "1 / (2·(1 - x^2)·sqrt(atanh(x)))",
+            "atanh(x)^(-1/2)",
+            ["1 - x^2", "sqrt(atanh(x))"],
+            Some("1 - x^2"),
+        ),
+        (
+            "diff(sqrt(arcsin(x)), x)",
+            "1 / (2·sqrt(1 - x^2)·sqrt(arcsin(x)))",
+            "arcsin(x)^(-1/2)",
+            ["sqrt(arcsin(x))", "sqrt(1 - x^2)"],
+            Some("arcsin(x)"),
+        ),
+        (
+            "diff(sqrt(arccos(x)), x)",
+            "-1 / (2·sqrt(1 - x^2)·sqrt(arccos(x)))",
+            "arccos(x)^(-1/2)",
+            ["sqrt(arccos(x))", "sqrt(1 - x^2)"],
+            Some("arccos(x)"),
+        ),
+        (
             "diff(sqrt(asinh(x)), x)",
             "1 / (2·sqrt(x^2 + 1)·sqrt(asinh(x)))",
             "asinh(x)^(-1/2)",
@@ -232,6 +371,20 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
             "asinh(2 · x + 1)",
             ["sqrt(asinh(2 · x + 1))", "sqrt(((2 · x + 1))^2 + 1)"],
             Some("asinh(2·x + 1)"),
+        ),
+        (
+            "diff(sqrt(acosh(x)), x)",
+            "1 / (2·sqrt(x - 1)·sqrt(x + 1)·sqrt(acosh(x)))",
+            "acosh(x)^(-1/2)",
+            ["sqrt(x - 1)", "sqrt(x + 1)"],
+            Some("acosh(x)"),
+        ),
+        (
+            "diff(sqrt(acosh(2*x+3)), x)",
+            "1 / (sqrt(2·x + 2)·sqrt(2·x + 4)·sqrt(acosh(2·x + 3)))",
+            "acosh(2 · x + 3)",
+            ["sqrt(2 · x + 2)", "sqrt(2 · x + 4)"],
+            Some("acosh(2·x + 3)"),
         ),
     ];
 
@@ -280,6 +433,81 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
 }
 
 #[test]
+fn test_eval_json_post_calculus_required_conditions_follow_input_inverse_trig_alias() {
+    let short = eval_json_with_args("diff(sqrt(atan(2*x+1)), x)", &[]);
+    assert_eq!(short["ok"], true);
+    assert_eq!(
+        short["result"],
+        "1 / (((2·x + 1)^2 + 1)·sqrt(atan(2·x + 1)))"
+    );
+
+    let short_required = short["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    let short_positive = short_required
+        .iter()
+        .find(|condition| condition["kind"] == "Positive")
+        .expect("expected positive sqrt-domain guard");
+    assert_eq!(short_positive["expr_display"], "atan(2·x + 1)");
+    assert_eq!(short_positive["expr_canonical"], "atan(2·x + 1)");
+
+    let parenthesized = eval_json_with_args("diff(sqrt(atan((2*x+1))), x)", &[]);
+    assert_eq!(parenthesized["ok"], true);
+    assert_eq!(
+        parenthesized["result"],
+        "1 / (((2·x + 1)^2 + 1)·sqrt(atan(2·x + 1)))"
+    );
+    let parenthesized_required = parenthesized["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    let parenthesized_positive = parenthesized_required
+        .iter()
+        .find(|condition| condition["kind"] == "Positive")
+        .expect("expected positive sqrt-domain guard");
+    assert_eq!(parenthesized_positive["expr_display"], "atan(2·x + 1)");
+    assert_eq!(parenthesized_positive["expr_canonical"], "atan(2·x + 1)");
+
+    let long = eval_json_with_args("diff(sqrt(arctan(2*x+1)), x)", &[]);
+    assert_eq!(long["ok"], true);
+    let long_required = long["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    let long_positive = long_required
+        .iter()
+        .find(|condition| condition["kind"] == "Positive")
+        .expect("expected positive sqrt-domain guard");
+    assert_eq!(long_positive["expr_display"], "arctan(2·x + 1)");
+    assert_eq!(long_positive["expr_canonical"], "arctan(2·x + 1)");
+
+    let mixed = eval_json_with_args("diff(sqrt(arctan(2*x+1)), x) + atan(y)-atan(y)", &[]);
+    assert_eq!(mixed["ok"], true);
+    let mixed_required = mixed["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    let mixed_positive = mixed_required
+        .iter()
+        .find(|condition| condition["kind"] == "Positive")
+        .expect("expected positive sqrt-domain guard");
+    assert_eq!(mixed_positive["expr_display"], "arctan(2·x + 1)");
+    assert_eq!(mixed_positive["expr_canonical"], "arctan(2·x + 1)");
+
+    let same_arg_noise = eval_json_with_args(
+        "diff(sqrt(arctan(2*x+1)), x) + atan(2*x+1)-atan(2*x+1)",
+        &[],
+    );
+    assert_eq!(same_arg_noise["ok"], true);
+    let same_arg_noise_required = same_arg_noise["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    let same_arg_noise_positive = same_arg_noise_required
+        .iter()
+        .find(|condition| condition["kind"] == "Positive")
+        .expect("expected positive sqrt-domain guard");
+    assert_eq!(same_arg_noise_positive["expr_display"], "arctan(2·x + 1)");
+    assert_eq!(same_arg_noise_positive["expr_canonical"], "arctan(2·x + 1)");
+}
+
+#[test]
 fn test_eval_json_post_calculus_sqrt_elementary_derivative_verifies() {
     let cases = [
         (
@@ -288,8 +516,36 @@ fn test_eval_json_post_calculus_sqrt_elementary_derivative_verifies() {
         ),
         ("diff(sqrt(ln(x)), x) - 1/(2*x*sqrt(ln(x)))", ["ln(x)", "x"]),
         (
+            "diff(sqrt(log10(x)), x) - 1/(2*x*ln(10)*sqrt(log10(x)))",
+            ["log10(x)", "x"],
+        ),
+        (
             "diff(sqrt(tan(x)), x) - 1/(2*cos(x)^2*sqrt(tan(x)))",
             ["sin(x) / cos(x)", ""],
+        ),
+        (
+            "diff(sqrt(cot(x)), x) + 1/(2*sin(x)^2*sqrt(cot(x)))",
+            ["cos(x) / sin(x)", ""],
+        ),
+        (
+            "diff(sqrt(tanh(x)), x) - 1/(2*cosh(x)^2*sqrt(tanh(x)))",
+            ["tanh(x)", ""],
+        ),
+        (
+            "diff(sqrt(sinh(x)), x) - cosh(x)/(2*sqrt(sinh(x)))",
+            ["sinh(x)", ""],
+        ),
+        (
+            "diff(sqrt(cosh(x)), x) - sinh(x)/(2*sqrt(cosh(x)))",
+            ["", ""],
+        ),
+        (
+            "diff(sqrt(sec(x)), x) - sqrt(sec(x))*tan(x)/2",
+            ["cos(x)", ""],
+        ),
+        (
+            "diff(sqrt(csc(x)), x) + sqrt(csc(x))*cot(x)/2",
+            ["sin(x)", ""],
         ),
         (
             "diff(sqrt(arctan(x)), x) - 1/(2*(x^2+1)*sqrt(arctan(x)))",
@@ -300,12 +556,32 @@ fn test_eval_json_post_calculus_sqrt_elementary_derivative_verifies() {
             ["arctan(2·x + 1)", ""],
         ),
         (
+            "diff(sqrt(atanh(x)), x) - 1/(2*(1-x^2)*sqrt(atanh(x)))",
+            ["1 - x^2", "atanh(x)"],
+        ),
+        (
+            "diff(sqrt(arcsin(x)), x) - 1/(2*sqrt(1-x^2)*sqrt(arcsin(x)))",
+            ["1 - x^2", "arcsin(x)"],
+        ),
+        (
+            "diff(sqrt(arccos(x)), x) + 1/(2*sqrt(1-x^2)*sqrt(arccos(x)))",
+            ["1 - x^2", "arccos(x)"],
+        ),
+        (
             "diff(sqrt(asinh(x)), x) - 1/(2*sqrt(x^2+1)*sqrt(asinh(x)))",
             ["asinh(x)", ""],
         ),
         (
             "diff(sqrt(asinh(2*x+1)), x) - 1/(sqrt((2*x+1)^2+1)*sqrt(asinh(2*x+1)))",
             ["asinh(2·x + 1)", ""],
+        ),
+        (
+            "diff(sqrt(acosh(x)), x) - 1/(2*sqrt(x-1)*sqrt(x+1)*sqrt(acosh(x)))",
+            ["acosh(x)", "x - 1"],
+        ),
+        (
+            "diff(sqrt(acosh(2*x+3)), x) - 1/(sqrt(2*x+2)*sqrt(2*x+4)*sqrt(acosh(2*x+3)))",
+            ["acosh(2·x + 3)", "x + 1"],
         ),
     ];
 
@@ -338,6 +614,8 @@ fn test_eval_json_reciprocal_half_power_shared_denominator_verifies() {
     let cases = [
         "tan(x)^(-1/2)/(2*cos(x)^2) - 1/(2*cos(x)^2*sqrt(tan(x)))",
         "equiv(diff(sqrt(tan(x)), x), 1/(2*cos(x)^2*sqrt(tan(x))))",
+        "(-cot(x)^(-1/2))/(2*sin(x)^2) + 1/(2*sin(x)^2*sqrt(cot(x)))",
+        "equiv(diff(sqrt(cot(x)), x), -1/(2*sin(x)^2*sqrt(cot(x))))",
     ];
 
     for expr in cases {
@@ -353,11 +631,16 @@ fn test_eval_json_reciprocal_half_power_shared_denominator_verifies() {
         let required = json["required_conditions"]
             .as_array()
             .expect("required_conditions should be an array");
+        let expected_positive = if expr.contains("cot") {
+            "cos(x) / sin(x)"
+        } else {
+            "sin(x) / cos(x)"
+        };
         assert!(
             required.iter().any(|condition| {
-                condition["kind"] == "Positive" && condition["expr_canonical"] == "sin(x) / cos(x)"
+                condition["kind"] == "Positive" && condition["expr_canonical"] == expected_positive
             }),
-            "expected Positive(sin(x) / cos(x)) for {expr}: {required:?}"
+            "expected Positive({expected_positive}) for {expr}: {required:?}"
         );
         assert!(
             json["blocked_hints"]
@@ -365,6 +648,102 @@ fn test_eval_json_reciprocal_half_power_shared_denominator_verifies() {
                 .is_none_or(|blocked| blocked.is_empty()),
             "direct cancellation should avoid blocked hints for {expr}: {:?}",
             json["blocked_hints"]
+        );
+    }
+}
+
+#[test]
+fn test_eval_json_reciprocal_half_power_scaled_product_content_residual_verifies() {
+    let expr = "1/2*(acosh(x)*(x^2-1))^(-1/2) - sqrt(acosh(x)*(x^2-1))/(2*acosh(x)*(x^2-1))";
+    let json = eval_json(expr);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "0", "expr: {expr}");
+    assert!(
+        json["blocked_hints"]
+            .as_array()
+            .is_none_or(|blocked| blocked.is_empty()),
+        "scaled product-content half-power residual should avoid blocked hints for {expr}: {:?}",
+        json["blocked_hints"]
+    );
+}
+
+#[test]
+fn test_eval_json_reciprocal_trig_sqrt_derivative_equiv_verifies() {
+    let cases = [
+        (
+            "equiv(diff(sqrt(sec(x)), x), sqrt(sec(x))*tan(x)/2)",
+            "sec(x)",
+        ),
+        (
+            "equiv(diff(sqrt(csc(x)), x), -sqrt(csc(x))*cot(x)/2)",
+            "csc(x)",
+        ),
+        (
+            "equiv(diff(sqrt(sec(3-2*x)), x), -sqrt(sec(3-2*x))*tan(3-2*x))",
+            "sec(3 - 2·x)",
+        ),
+        (
+            "equiv(diff(sqrt(csc(3-2*x)), x), sqrt(csc(3-2*x))*cot(3-2*x))",
+            "csc(3 - 2·x)",
+        ),
+    ];
+
+    for (expr, required_nonnegative) in cases {
+        let json = eval_json(expr);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(json["result"], "true", "expr: {expr}");
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "NonNegative"
+                    && condition["expr_canonical"] == required_nonnegative
+            }),
+            "expected NonNegative({required_nonnegative}) for {expr}: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_json_reciprocal_trig_sqrt_derivative_residuals_collapse() {
+    let cases = [
+        (
+            "diff(sqrt(sec(3-2*x)), x) + tan(3-2*x)*sqrt(sec(3-2*x))",
+            "cos(3 - 2·x)",
+            "sec(3 - 2·x)",
+        ),
+        (
+            "diff(sqrt(csc(3-2*x)), x) - cot(3-2*x)*sqrt(csc(3-2*x))",
+            "sin(3 - 2·x)",
+            "csc(3 - 2·x)",
+        ),
+    ];
+
+    for (expr, required_positive, required_nonnegative) in cases {
+        let json = eval_json(expr);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(json["result"], "0", "expr: {expr}");
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == required_positive
+            }),
+            "expected Positive({required_positive}) for {expr}: {required:?}"
+        );
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "NonNegative"
+                    && condition["expr_canonical"] == required_nonnegative
+            }),
+            "expected NonNegative({required_nonnegative}) for {expr}: {required:?}"
         );
     }
 }

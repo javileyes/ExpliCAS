@@ -2,6 +2,7 @@ use cas_api_models::{
     AssumptionDto, EquivalenceDiagnosticsWire, RequiredConditionWire, SolveStepWire, StepWire,
     TimingsWire, WarningWire,
 };
+use cas_formatter::DisplayExpr;
 use cas_solver_core::engine_events::EngineEvent;
 
 use crate::eval_output_presentation::{
@@ -92,10 +93,21 @@ where
     let warnings =
         collect_output_warnings(&prepared.output_view.domain_warnings, &assumptions_used);
     let required_conditions_raw = prepared.output_view.required_conditions.as_slice();
-    let required_conditions =
-        collect_output_required_conditions(required_conditions_raw, ctx, &assumptions_used);
-    let required_display =
-        collect_output_required_display(required_conditions_raw, ctx, &assumptions_used);
+    let result_display = result_display_for_alias_context(ctx, &prepared.output_view.result);
+    let required_conditions = collect_output_required_conditions(
+        required_conditions_raw,
+        ctx,
+        &assumptions_used,
+        raw_input,
+        result_display.as_deref(),
+    );
+    let required_display = collect_output_required_display(
+        required_conditions_raw,
+        ctx,
+        &assumptions_used,
+        raw_input,
+        result_display.as_deref(),
+    );
     let blocked_hint_result = match prepared.output_view.result {
         crate::EvalResult::Expr(expr) => expr,
         _ => prepared.output_view.resolved,
@@ -122,6 +134,29 @@ where
         blocked_hints,
         equivalence_diagnostics: prepared.equivalence_diagnostics.clone(),
         timings_us,
+    }
+}
+
+fn result_display_for_alias_context(
+    ctx: &cas_ast::Context,
+    result: &crate::EvalResult,
+) -> Option<String> {
+    match result {
+        crate::EvalResult::Expr(expr) => Some(format!(
+            "{}",
+            DisplayExpr {
+                context: ctx,
+                id: *expr
+            }
+        )),
+        crate::EvalResult::Set(values) if !values.is_empty() => Some(format!(
+            "{}",
+            DisplayExpr {
+                context: ctx,
+                id: values[0]
+            }
+        )),
+        _ => None,
     }
 }
 

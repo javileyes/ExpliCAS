@@ -54,10 +54,6 @@ fn binomial_cancel_via_context_expansion() {
 // ── Test 2: Multinomial cancel ────────────────────────────────────────
 // (a+b+c)^2 - (a² + b² + c² + 2ab + 2ac + 2bc) should simplify to 0
 #[test]
-#[cfg_attr(
-    debug_assertions,
-    ignore = "Debug builds are not performance-representative for broad trinomial contextual-cancel smoke; scanner coverage remains in auto_expand_contract_tests"
-)]
 fn multinomial_cancel_via_context_expansion() {
     let result = simplify_str("(a + b + c)^2 - (a^2 + b^2 + c^2 + 2*a*b + 2*a*c + 2*b*c)");
     assert_eq!(

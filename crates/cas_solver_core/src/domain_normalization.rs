@@ -1165,7 +1165,47 @@ fn exprs_equivalent_or_same_sqrt_like_base(ctx: &Context, left: ExprId, right: E
 }
 
 fn positive_ordered_exprs_equivalent(ctx: &Context, left: ExprId, right: ExprId) -> bool {
-    is_positive_multiple_of(ctx, left, right) || is_positive_multiple_of(ctx, right, left)
+    is_positive_multiple_of(ctx, left, right)
+        || is_positive_multiple_of(ctx, right, left)
+        || inverse_trig_alias_calls_equivalent(ctx, left, right)
+}
+
+fn inverse_trig_alias_calls_equivalent(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let (Expr::Function(left_fn, left_args), Expr::Function(right_fn, right_args)) =
+        (ctx.get(left), ctx.get(right))
+    else {
+        return false;
+    };
+    let (Some(left_builtin), Some(right_builtin)) =
+        (ctx.builtin_of(*left_fn), ctx.builtin_of(*right_fn))
+    else {
+        return false;
+    };
+
+    inverse_trig_alias_builtins_equivalent(left_builtin, right_builtin)
+        && left_args.len() == right_args.len()
+        && left_args
+            .iter()
+            .zip(right_args)
+            .all(|(left_arg, right_arg)| exprs_equivalent(ctx, *left_arg, *right_arg))
+}
+
+fn inverse_trig_alias_builtins_equivalent(left: BuiltinFn, right: BuiltinFn) -> bool {
+    matches!(
+        (left, right),
+        (BuiltinFn::Asin, BuiltinFn::Arcsin)
+            | (BuiltinFn::Arcsin, BuiltinFn::Asin)
+            | (BuiltinFn::Acos, BuiltinFn::Arccos)
+            | (BuiltinFn::Arccos, BuiltinFn::Acos)
+            | (BuiltinFn::Atan, BuiltinFn::Arctan)
+            | (BuiltinFn::Arctan, BuiltinFn::Atan)
+            | (BuiltinFn::Asec, BuiltinFn::Arcsec)
+            | (BuiltinFn::Arcsec, BuiltinFn::Asec)
+            | (BuiltinFn::Acsc, BuiltinFn::Arccsc)
+            | (BuiltinFn::Arccsc, BuiltinFn::Acsc)
+            | (BuiltinFn::Acot, BuiltinFn::Arccot)
+            | (BuiltinFn::Arccot, BuiltinFn::Acot)
+    )
 }
 
 fn positive_exprs_equivalent_or_same_sqrt_like_base(
@@ -1503,6 +1543,25 @@ fn is_positive_under_display_conditions_or_factored(
     let factored = factor(ctx, expr);
     factored != expr
         && is_positive_under_display_conditions(ctx, conditions, skip_index, factored, depth - 1)
+}
+
+fn nonzero_expansion_has_uncovered_condition(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+    skip_index: usize,
+    expr: ExprId,
+) -> bool {
+    let original = ImplicitCondition::NonZero(expr);
+    expand_condition_for_display(ctx, &original)
+        .into_iter()
+        .filter(|expanded| !conditions_equivalent(ctx, expanded, &original))
+        .any(|expanded| {
+            !conditions.iter().enumerate().any(|(idx, condition)| {
+                idx != skip_index
+                    && (conditions_equivalent(ctx, condition, &expanded)
+                        || conditions_same_display(ctx, condition, &expanded))
+            })
+        })
 }
 
 fn nonzero_is_dominated_by_positive_condition(
@@ -2711,6 +2770,74 @@ fn conditions_same_display(ctx: &Context, c1: &ImplicitCondition, c2: &ImplicitC
     c1.display(ctx) == c2.display(ctx)
 }
 
+fn should_prefer_condition_display(
+    ctx: &Context,
+    existing: &ImplicitCondition,
+    candidate: &ImplicitCondition,
+) -> bool {
+    match (existing, candidate) {
+        (
+            ImplicitCondition::Positive(existing_expr),
+            ImplicitCondition::Positive(candidate_expr),
+        )
+        | (
+            ImplicitCondition::NonNegative(existing_expr),
+            ImplicitCondition::NonNegative(candidate_expr),
+        ) => should_prefer_inverse_trig_alias_display(ctx, *existing_expr, *candidate_expr),
+        _ => false,
+    }
+}
+
+fn should_prefer_inverse_trig_alias_display(
+    ctx: &Context,
+    existing: ExprId,
+    candidate: ExprId,
+) -> bool {
+    if !inverse_trig_alias_calls_equivalent(ctx, existing, candidate) {
+        return false;
+    }
+
+    let Some(existing_builtin) = function_builtin(ctx, existing) else {
+        return false;
+    };
+    let Some(candidate_builtin) = function_builtin(ctx, candidate) else {
+        return false;
+    };
+
+    is_long_inverse_trig_alias(existing_builtin) && is_short_inverse_trig_alias(candidate_builtin)
+}
+
+fn function_builtin(ctx: &Context, expr: ExprId) -> Option<BuiltinFn> {
+    let Expr::Function(fn_id, _) = ctx.get(expr) else {
+        return None;
+    };
+    ctx.builtin_of(*fn_id)
+}
+
+fn is_short_inverse_trig_alias(builtin: BuiltinFn) -> bool {
+    matches!(
+        builtin,
+        BuiltinFn::Asin
+            | BuiltinFn::Acos
+            | BuiltinFn::Atan
+            | BuiltinFn::Asec
+            | BuiltinFn::Acsc
+            | BuiltinFn::Acot
+    )
+}
+
+fn is_long_inverse_trig_alias(builtin: BuiltinFn) -> bool {
+    matches!(
+        builtin,
+        BuiltinFn::Arcsin
+            | BuiltinFn::Arccos
+            | BuiltinFn::Arctan
+            | BuiltinFn::Arcsec
+            | BuiltinFn::Arccsc
+            | BuiltinFn::Arccot
+    )
+}
+
 /// Normalize and deduplicate a list of conditions for display.
 pub fn normalize_and_dedupe_conditions(
     ctx: &mut Context,
@@ -2724,25 +2851,30 @@ pub fn normalize_and_dedupe_conditions(
         }
 
         if let ImplicitCondition::NonZero(expr) = cond {
-            if is_positive_under_display_conditions_or_factored(
+            let dominated = is_positive_under_display_conditions_or_factored(
                 ctx,
                 conditions,
                 idx,
                 *expr,
                 DISPLAY_SIGN_PROOF_DEPTH,
-            ) || nonzero_is_dominated_by_positive_condition(ctx, conditions, *expr)
+            ) || nonzero_is_dominated_by_positive_condition(ctx, conditions, *expr);
+            if dominated && !nonzero_expansion_has_uncovered_condition(ctx, conditions, idx, *expr)
             {
                 continue;
             }
         }
 
         for normalized in expand_condition_for_display(ctx, cond) {
-            let is_duplicate = result.iter().any(|existing| {
+            let duplicate_index = result.iter().position(|existing| {
                 conditions_equivalent(ctx, existing, &normalized)
                     || conditions_same_display(ctx, existing, &normalized)
             });
 
-            if !is_duplicate {
+            if let Some(duplicate_index) = duplicate_index {
+                if should_prefer_condition_display(ctx, &result[duplicate_index], &normalized) {
+                    result[duplicate_index] = normalized;
+                }
+            } else {
                 result.push(normalized);
             }
         }
@@ -3257,6 +3389,10 @@ fn expand_common_factor_sum_nonzero_for_display(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<Vec<ImplicitCondition>> {
+    if let Some(expanded) = expand_nary_common_factor_sum_nonzero_for_display(ctx, expr) {
+        return Some(expanded);
+    }
+
     let (left, right, is_subtraction) = additive_common_factor_terms(ctx, expr)?;
 
     let left_factors: Vec<_> = mul_leaves(ctx, left).into_iter().collect();
@@ -3288,6 +3424,87 @@ fn expand_common_factor_sum_nonzero_for_display(
     } else {
         ctx.add(Expr::Add(left_residual, right_residual))
     };
+
+    let mut expanded = Vec::new();
+    for factor_expr in [common_expr, residual_expr] {
+        if as_rational_const(ctx, factor_expr).is_some_and(|constant| !constant.is_zero()) {
+            continue;
+        }
+
+        for cond in expand_nonzero_condition_for_display(ctx, factor_expr) {
+            if !expanded
+                .iter()
+                .any(|existing| conditions_equivalent(ctx, existing, &cond))
+            {
+                expanded.push(cond);
+            }
+        }
+    }
+
+    (!expanded.is_empty()).then_some(expanded)
+}
+
+fn expand_nary_common_factor_sum_nonzero_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<ImplicitCondition>> {
+    let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() < 3 {
+        return None;
+    }
+
+    let mut term_factors: Vec<(Vec<ExprId>, Sign)> = view
+        .terms
+        .iter()
+        .map(|(term, sign)| (mul_leaves(ctx, *term).into_iter().collect(), *sign))
+        .collect();
+
+    if term_factors.iter().any(|(factors, _)| factors.is_empty()) {
+        return None;
+    }
+
+    let mut common_factors = Vec::new();
+    for candidate in term_factors[0].0.clone() {
+        if as_rational_const(ctx, candidate).is_some_and(|constant| !constant.is_zero()) {
+            continue;
+        }
+
+        let mut matched_indices = Vec::with_capacity(term_factors.len());
+        for (factors, _) in &term_factors {
+            let Some(index) = factors
+                .iter()
+                .position(|factor| exprs_equivalent(ctx, candidate, *factor))
+            else {
+                matched_indices.clear();
+                break;
+            };
+            matched_indices.push(index);
+        }
+
+        if matched_indices.len() != term_factors.len() {
+            continue;
+        }
+
+        for ((factors, _), index) in term_factors.iter_mut().zip(matched_indices.into_iter()) {
+            factors.remove(index);
+        }
+        common_factors.push(candidate);
+    }
+
+    if common_factors.is_empty() {
+        return None;
+    }
+
+    let common_expr = build_mul_or_one(ctx, &common_factors);
+    let mut residual_terms = Vec::with_capacity(term_factors.len());
+    for (factors, sign) in term_factors {
+        let term = build_mul_or_one(ctx, &factors);
+        residual_terms.push(match sign {
+            Sign::Pos => term,
+            Sign::Neg => ctx.add(Expr::Neg(term)),
+        });
+    }
+    let residual_expr = build_balanced_add(ctx, &residual_terms);
 
     let mut expanded = Vec::new();
     for factor_expr in [common_expr, residual_expr] {
@@ -3877,6 +4094,53 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                     to_remove.push(i);
                     continue;
                 }
+
+                let other_positive_exprs: Vec<ExprId> = conditions
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(idx, condition)| {
+                        if idx == i {
+                            return None;
+                        }
+                        match condition {
+                            ImplicitCondition::Positive(e) => Some(*e),
+                            _ => None,
+                        }
+                    })
+                    .collect();
+
+                if is_product_dominated_by_positives(ctx, *nn_expr, &other_positive_exprs) {
+                    to_remove.push(i);
+                    continue;
+                }
+
+                if positive_product_is_dominated_by_known_or_intrinsic_positive_factors(
+                    ctx,
+                    *nn_expr,
+                    &other_positive_exprs,
+                ) {
+                    to_remove.push(i);
+                    continue;
+                }
+
+                let factored = factor(ctx, *nn_expr);
+                if factored != *nn_expr
+                    && is_product_dominated_by_positives(ctx, factored, &other_positive_exprs)
+                {
+                    to_remove.push(i);
+                    continue;
+                }
+
+                if factored != *nn_expr
+                    && positive_product_is_dominated_by_known_or_intrinsic_positive_factors(
+                        ctx,
+                        factored,
+                        &other_positive_exprs,
+                    )
+                {
+                    to_remove.push(i);
+                    continue;
+                }
             }
 
             if let ImplicitCondition::NonZero(nz_expr) = cond {
@@ -4108,22 +4372,44 @@ fn positive_product_is_dominated_by_known_or_intrinsic_positive_factors(
     }
 
     let mut saw_known_positive_factor = false;
-    for factor in factors {
-        if as_rational_const(ctx, factor).is_some_and(|value| value.is_positive()) {
+    for factor_expr in factors {
+        if factor_is_known_or_intrinsic_positive(ctx, factor_expr, known_positive_exprs) {
+            saw_known_positive_factor |= known_positive_exprs.iter().any(|known| {
+                exprs_equivalent(ctx, factor_expr, *known)
+                    || is_positive_power_of_base(ctx, factor_expr, *known)
+                    || is_abs_of(ctx, factor_expr, *known)
+                    || positive_condition_dominates_affine_positive_offset(ctx, *known, factor_expr)
+            });
             continue;
         }
 
-        if known_positive_exprs.iter().any(|known| {
-            exprs_equivalent(ctx, factor, *known)
-                || is_positive_power_of_base(ctx, factor, *known)
-                || is_abs_of(ctx, factor, *known)
-        }) {
-            saw_known_positive_factor = true;
-            continue;
+        let factored_factor = factor(ctx, factor_expr);
+        if factored_factor != factor_expr {
+            let mut factored_saw_known = false;
+            let all_factored_parts_positive =
+                mul_leaves(ctx, factored_factor).into_iter().all(|part| {
+                    let part_is_known = known_positive_exprs.iter().any(|known| {
+                        exprs_equivalent(ctx, part, *known)
+                            || is_positive_power_of_base(ctx, part, *known)
+                            || is_abs_of(ctx, part, *known)
+                            || positive_condition_dominates_affine_positive_offset(
+                                ctx, *known, part,
+                            )
+                    });
+                    factored_saw_known |= part_is_known;
+                    part_is_known
+                        || as_rational_const(ctx, part).is_some_and(|value| value.is_positive())
+                        || is_intrinsically_positive_real(ctx, part)
+                        || positive_quadratic_power_gap_is_intrinsic(ctx, part)
+                });
+            if all_factored_parts_positive {
+                saw_known_positive_factor |= factored_saw_known;
+                continue;
+            }
         }
 
-        if is_intrinsically_positive_real(ctx, factor)
-            || positive_quadratic_power_gap_is_intrinsic(ctx, factor)
+        if is_intrinsically_positive_real(ctx, factor_expr)
+            || positive_quadratic_power_gap_is_intrinsic(ctx, factor_expr)
         {
             continue;
         }
@@ -4132,6 +4418,22 @@ fn positive_product_is_dominated_by_known_or_intrinsic_positive_factors(
     }
 
     saw_known_positive_factor
+}
+
+fn factor_is_known_or_intrinsic_positive(
+    ctx: &Context,
+    factor: ExprId,
+    known_positive_exprs: &[ExprId],
+) -> bool {
+    as_rational_const(ctx, factor).is_some_and(|value| value.is_positive())
+        || known_positive_exprs.iter().any(|known| {
+            exprs_equivalent(ctx, factor, *known)
+                || is_positive_power_of_base(ctx, factor, *known)
+                || is_abs_of(ctx, factor, *known)
+                || positive_condition_dominates_affine_positive_offset(ctx, *known, factor)
+        })
+        || is_intrinsically_positive_real(ctx, factor)
+        || positive_quadratic_power_gap_is_intrinsic(ctx, factor)
 }
 
 fn positive_even_power_gap_is_dominated_by_surd_lower_gap(
@@ -5283,6 +5585,31 @@ mod tests {
     }
 
     #[test]
+    fn positive_acosh_and_gap_dominate_split_radical_product_nonnegative() {
+        let mut ctx = Context::new();
+        let acosh_x = parse("acosh(x)", &mut ctx).expect("parse acosh(x)");
+        let gap = parse("x - 1", &mut ctx).expect("parse x - 1");
+        let product = parse("acosh(x)*(x^2 - 1)", &mut ctx).expect("parse acosh product gap");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(gap),
+                ImplicitCondition::Positive(acosh_x),
+                ImplicitCondition::NonNegative(product),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 2);
+        assert!(normalized
+            .iter()
+            .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(gap)) }));
+        assert!(normalized.iter().any(|cond| {
+            conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(acosh_x))
+        }));
+    }
+
+    #[test]
     fn nonzero_sqrt_and_nonnegative_base_combine_into_positive_base() {
         let mut ctx = Context::new();
         let sqrt_u = parse("sqrt(u)", &mut ctx).expect("parse sqrt(u)");
@@ -5451,6 +5778,47 @@ mod tests {
             rendered,
             vec!["x > 0".to_string(), "sqrt(2 * x) - 2 * x > 0".to_string()]
         );
+    }
+
+    #[test]
+    fn inverse_trig_alias_positive_conditions_dedupe() {
+        let mut ctx = Context::new();
+        let short = parse("asin(2*x+1)", &mut ctx).expect("parse short alias");
+        let long = parse("arcsin(2*x+1)", &mut ctx).expect("parse long alias");
+        let gap = parse("-x^2-x", &mut ctx).expect("parse interval gap");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(long),
+                ImplicitCondition::Positive(gap),
+                ImplicitCondition::Positive(short),
+            ],
+        );
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(
+            normalized
+                .iter()
+                .filter(|condition| matches!(condition, ImplicitCondition::Positive(expr) if inverse_trig_alias_calls_equivalent(&ctx, *expr, short) || exprs_equivalent(&ctx, *expr, short)))
+                .count(),
+            1,
+            "expected a single asin/arcsin positivity guard, got: {rendered:?}"
+        );
+        assert!(
+            normalized.iter().any(
+                |condition| matches!(condition, ImplicitCondition::Positive(expr) if exprs_equivalent(&ctx, *expr, short))
+            ),
+            "expected the retained alias display to prefer asin(...), got: {rendered:?}"
+        );
+        assert!(normalized.iter().any(|condition| conditions_equivalent(
+            &ctx,
+            condition,
+            &ImplicitCondition::Positive(gap)
+        )));
     }
 
     #[test]
@@ -6201,5 +6569,37 @@ mod tests {
         assert!(normalized
             .iter()
             .any(|cond| { conditions_equivalent(&ctx, cond, &ImplicitCondition::Positive(y)) }));
+    }
+
+    #[test]
+    fn nonzero_common_log_power_sum_uses_atomic_guards_and_positive_base() {
+        let mut ctx = Context::new();
+        let base = parse("x^2+x-1", &mut ctx).expect("parse base");
+        let composite = parse(
+            "x*ln(x^2+x-1)^2 + x^2*ln(x^2+x-1)^2 - ln(x^2+x-1)^2",
+            &mut ctx,
+        )
+        .expect("parse composite");
+        let x_minus_one = parse("x - 1", &mut ctx).expect("parse x - 1");
+        let x_plus_two = parse("x + 2", &mut ctx).expect("parse x + 2");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(composite),
+                ImplicitCondition::NonZero(x_minus_one),
+                ImplicitCondition::NonZero(x_plus_two),
+                ImplicitCondition::Positive(base),
+            ],
+        );
+
+        assert_eq!(
+            rendered,
+            vec![
+                "x - 1 ≠ 0".to_string(),
+                "x + 2 ≠ 0".to_string(),
+                "x^2 + x - 1 > 0".to_string(),
+            ]
+        );
     }
 }

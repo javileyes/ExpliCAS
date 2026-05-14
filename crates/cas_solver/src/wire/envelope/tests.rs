@@ -284,6 +284,146 @@ fn evaluate_envelope_wire_diff_atanh_empty_real_domain_surfaces_specific_blocked
 }
 
 #[test]
+fn evaluate_envelope_wire_required_conditions_follow_input_inverse_trig_alias() {
+    let short_payload = evaluate_envelope_wire_command(
+        "diff(sqrt(atan(2*x+1)), x)",
+        EvalDomainMode::Generic,
+        EvalValueDomain::Real,
+    );
+    let short_wire = parse_envelope(&short_payload);
+    assert_display_is_one_of(
+        &short_wire["result"]["value"]["display"],
+        &[
+            "1 / (((2·x + 1)^2 + 1)·sqrt(atan(2·x + 1)))",
+            "1 / (((2 * x + 1)^2 + 1) * sqrt(atan(2 * x + 1)))",
+        ],
+    );
+    let short_required = short_wire["transparency"]["required_conditions"]
+        .as_array()
+        .expect("required_conditions array");
+    let short_positive = short_required
+        .iter()
+        .find(|condition| condition["kind"] == "Positive")
+        .expect("positive sqrt-domain condition");
+    assert_display_is_one_of(
+        &short_positive["display"],
+        &["atan(2·x + 1) > 0", "atan(2 * x + 1) > 0"],
+    );
+    assert_display_is_one_of(
+        &short_positive["expr_display"],
+        &["atan(2·x + 1)", "atan(2 * x + 1)"],
+    );
+    assert_display_is_one_of(
+        &short_positive["expr_canonical"],
+        &["atan(2·x + 1)", "atan(2 * x + 1)"],
+    );
+
+    let parenthesized_payload = evaluate_envelope_wire_command(
+        "diff(sqrt(atan((2*x+1))), x)",
+        EvalDomainMode::Generic,
+        EvalValueDomain::Real,
+    );
+    let parenthesized_wire = parse_envelope(&parenthesized_payload);
+    let parenthesized_required = parenthesized_wire["transparency"]["required_conditions"]
+        .as_array()
+        .expect("required_conditions array");
+    let parenthesized_positive = parenthesized_required
+        .iter()
+        .find(|condition| condition["kind"] == "Positive")
+        .expect("positive sqrt-domain condition");
+    assert_display_is_one_of(
+        &parenthesized_positive["display"],
+        &["atan(2·x + 1) > 0", "atan(2 * x + 1) > 0"],
+    );
+    assert_display_is_one_of(
+        &parenthesized_positive["expr_display"],
+        &["atan(2·x + 1)", "atan(2 * x + 1)"],
+    );
+    assert_display_is_one_of(
+        &parenthesized_positive["expr_canonical"],
+        &["atan(2·x + 1)", "atan(2 * x + 1)"],
+    );
+
+    let long_payload = evaluate_envelope_wire_command(
+        "diff(sqrt(arctan(2*x+1)), x)",
+        EvalDomainMode::Generic,
+        EvalValueDomain::Real,
+    );
+    let long_wire = parse_envelope(&long_payload);
+    let long_required = long_wire["transparency"]["required_conditions"]
+        .as_array()
+        .expect("required_conditions array");
+    let long_positive = long_required
+        .iter()
+        .find(|condition| condition["kind"] == "Positive")
+        .expect("positive sqrt-domain condition");
+    assert_display_is_one_of(
+        &long_positive["display"],
+        &["arctan(2·x + 1) > 0", "arctan(2 * x + 1) > 0"],
+    );
+    assert_display_is_one_of(
+        &long_positive["expr_display"],
+        &["arctan(2·x + 1)", "arctan(2 * x + 1)"],
+    );
+    assert_display_is_one_of(
+        &long_positive["expr_canonical"],
+        &["arctan(2·x + 1)", "arctan(2 * x + 1)"],
+    );
+
+    let mixed_payload = evaluate_envelope_wire_command(
+        "diff(sqrt(arctan(2*x+1)), x) + atan(y)-atan(y)",
+        EvalDomainMode::Generic,
+        EvalValueDomain::Real,
+    );
+    let mixed_wire = parse_envelope(&mixed_payload);
+    let mixed_required = mixed_wire["transparency"]["required_conditions"]
+        .as_array()
+        .expect("required_conditions array");
+    let mixed_positive = mixed_required
+        .iter()
+        .find(|condition| condition["kind"] == "Positive")
+        .expect("positive sqrt-domain condition");
+    assert_display_is_one_of(
+        &mixed_positive["display"],
+        &["arctan(2·x + 1) > 0", "arctan(2 * x + 1) > 0"],
+    );
+    assert_display_is_one_of(
+        &mixed_positive["expr_display"],
+        &["arctan(2·x + 1)", "arctan(2 * x + 1)"],
+    );
+    assert_display_is_one_of(
+        &mixed_positive["expr_canonical"],
+        &["arctan(2·x + 1)", "arctan(2 * x + 1)"],
+    );
+
+    let same_arg_noise_payload = evaluate_envelope_wire_command(
+        "diff(sqrt(arctan(2*x+1)), x) + atan(2*x+1)-atan(2*x+1)",
+        EvalDomainMode::Generic,
+        EvalValueDomain::Real,
+    );
+    let same_arg_noise_wire = parse_envelope(&same_arg_noise_payload);
+    let same_arg_noise_required = same_arg_noise_wire["transparency"]["required_conditions"]
+        .as_array()
+        .expect("required_conditions array");
+    let same_arg_noise_positive = same_arg_noise_required
+        .iter()
+        .find(|condition| condition["kind"] == "Positive")
+        .expect("positive sqrt-domain condition");
+    assert_display_is_one_of(
+        &same_arg_noise_positive["display"],
+        &["arctan(2·x + 1) > 0", "arctan(2 * x + 1) > 0"],
+    );
+    assert_display_is_one_of(
+        &same_arg_noise_positive["expr_display"],
+        &["arctan(2·x + 1)", "arctan(2 * x + 1)"],
+    );
+    assert_display_is_one_of(
+        &same_arg_noise_positive["expr_canonical"],
+        &["arctan(2·x + 1)", "arctan(2 * x + 1)"],
+    );
+}
+
+#[test]
 fn evaluate_envelope_wire_command_generic_simplifies_x_over_x_without_blocked_hints() {
     let payload =
         evaluate_envelope_wire_command("x/x", EvalDomainMode::Generic, EvalValueDomain::Real);

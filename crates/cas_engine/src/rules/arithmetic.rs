@@ -19868,15 +19868,25 @@ fn positive_even_root_power_parts(
     ctx: &cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<(cas_ast::ExprId, BigRational)> {
-    let Expr::Pow(base, exp) = ctx.get(expr) else {
-        return None;
-    };
-    let exponent = cas_ast::views::as_rational_const(ctx, *exp, 8)?;
-    if !exponent.is_positive() || !exponent.denom().is_even() {
-        return None;
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        let exponent = cas_ast::views::as_rational_const(ctx, *exp, 8)?;
+        if !exponent.is_positive() || !exponent.denom().is_even() {
+            return None;
+        }
+
+        return Some((*base, exponent));
     }
 
-    Some((*base, exponent))
+    let radicand = extract_square_root_base(ctx, expr)?;
+    if let Expr::Pow(base, exp) = ctx.get(radicand) {
+        let exponent = cas_ast::views::as_rational_const(ctx, *exp, 8)?;
+        if !exponent.is_positive() || !exponent.is_integer() {
+            return None;
+        }
+        return Some((*base, exponent / BigRational::from_integer(2.into())));
+    }
+
+    Some((radicand, BigRational::new(1.into(), 2.into())))
 }
 
 fn split_negative_even_root_power_factor_from_product(
@@ -19933,7 +19943,24 @@ fn try_match_negative_even_root_power_reciprocal_equivalence(
         || !exprs_match_for_cancellation(ctx, source_base, target_base)
         || !exprs_match_for_cancellation(ctx, source_cofactor, target_cofactor)
     {
-        return None;
+        let shifted_source_exponent = source_exponent.clone() + BigRational::one();
+        if shifted_source_exponent != target_exponent
+            || !exprs_match_for_cancellation(ctx, source_base, target_base)
+        {
+            return None;
+        }
+
+        let target_cofactor_over_base = ctx.add(Expr::Div(target_cofactor, source_base));
+        if !exprs_match_for_cancellation(ctx, source_cofactor, target_cofactor_over_base)
+            && try_match_direct_trig_ratio_equivalence(
+                ctx,
+                target_cofactor_over_base,
+                source_cofactor,
+            )
+            .is_none()
+        {
+            return None;
+        }
     }
 
     Some(source_base)
@@ -27833,6 +27860,22 @@ define_rule!(
                 try_match_symbolic_root_denesting_pair(ctx, lhs_core).is_some()
                     || try_match_symbolic_root_denesting_pair(ctx, rhs_core).is_some()
             });
+        if term_count == 2 {
+            if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
+                if let Some(rewrite) =
+                    try_build_direct_negative_even_root_power_reciprocal_rewrite(
+                        ctx, lhs_core, rhs_core,
+                    )
+                {
+                    return Some(rewrite);
+                }
+                if let Some(rewrite) =
+                    try_build_direct_reciprocal_half_power_product_rewrite(ctx, lhs_core, rhs_core)
+                {
+                    return Some(rewrite);
+                }
+            }
+        }
         let maybe_small_trig_direct_identity = (2..=3).contains(&term_count)
             && !has_nontrivial_common_scale
             && expr_contains_any_builtin(
@@ -27865,24 +27908,28 @@ define_rule!(
             return Some(rewrite);
         }
 
-        if term_count == 2 {
-            if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
-                if let Some(rewrite) =
-                    try_build_direct_negative_even_root_power_reciprocal_rewrite(
-                        ctx, lhs_core, rhs_core,
-                    )
+        if has_nontrivial_common_scale {
+            if let Some((common_factor, residual_expr)) =
+                extract_common_multiplicative_residual_sum(ctx, expr)
+            {
+                if let Some((lhs_core, rhs_core)) =
+                    extract_two_term_core_difference(ctx, residual_expr)
                 {
-                    return Some(rewrite);
-                }
-                if let Some(rewrite) =
-                    try_build_direct_reciprocal_half_power_product_rewrite(ctx, lhs_core, rhs_core)
-                {
-                    return Some(rewrite);
+                    if let Some(child_rewrite) =
+                        try_build_direct_negative_even_root_power_reciprocal_rewrite(
+                            ctx, lhs_core, rhs_core,
+                        )
+                    {
+                        return Some(build_common_scale_exact_zero_rewrite(
+                            ctx,
+                            expr,
+                            common_factor,
+                            residual_expr,
+                            child_rewrite,
+                        ));
+                    }
                 }
             }
-        }
-
-        if has_nontrivial_common_scale {
             return None;
         }
 
@@ -32330,6 +32377,66 @@ mod tests {
             .unwrap_or_else(|err| panic!("lhs: {err}"));
         let rhs = parse("(4*x+2)/(2*x^2+2*x-3)^(3/2)", &mut ctx)
             .unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_direct_negative_even_root_power_reciprocal_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Negative Even-Root Power Reciprocal Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_negative_even_root_power_reciprocal_rewrite_matches_sqrt_power_denominator() {
+        let mut ctx = Context::new();
+        let lhs =
+            parse("cos(x)*sin(x)^(-3/2)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs =
+            parse("cos(x)/sqrt(sin(x)^3)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite =
+            super::try_build_direct_negative_even_root_power_reciprocal_rewrite(&mut ctx, lhs, rhs)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Negative Even-Root Power Reciprocal Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_negative_even_root_power_reciprocal_rewrite_matches_shifted_trig_ratio_cofactor() {
+        let mut ctx = Context::new();
+        let lhs =
+            parse("tan(x)*cos(x)^(-1/2)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs =
+            parse("sin(x)/sqrt(cos(x)^3)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
 
         let rewrite =
             super::try_build_direct_negative_even_root_power_reciprocal_rewrite(&mut ctx, lhs, rhs)

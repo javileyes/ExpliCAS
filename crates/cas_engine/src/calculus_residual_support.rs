@@ -139,6 +139,14 @@ fn antiderivative_term_matches(ctx: &Context, left: ExprId, right: ExprId, var_n
         return true;
     }
 
+    if multiplicative_factor_multiset_matches(ctx, left, right) {
+        return true;
+    }
+
+    if quotient_term_matches(ctx, left, right) {
+        return true;
+    }
+
     for builtin in [BuiltinFn::Arctan, BuiltinFn::Atan] {
         let Some((left_scale, left_arg)) = scaled_unary_builtin_rational_target(ctx, left, builtin)
         else {
@@ -157,26 +165,46 @@ fn antiderivative_term_matches(ctx: &Context, left: ExprId, right: ExprId, var_n
     false
 }
 
-fn additive_term_multiset_matches(
-    ctx: &Context,
-    left: ExprId,
-    right: ExprId,
-    var_name: &str,
-) -> bool {
-    if antiderivative_term_matches(ctx, left, right, var_name) {
-        return true;
-    }
+fn quotient_term_matches(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let Some((left_num, left_den)) = quotient_numerator_denominator(ctx, left) else {
+        return false;
+    };
+    let Some((right_num, right_den)) = quotient_numerator_denominator(ctx, right) else {
+        return false;
+    };
 
-    let left_terms = cas_math::expr_nary::add_leaves(ctx, left);
-    let right_terms = cas_math::expr_nary::add_leaves(ctx, right);
-    if left_terms.len() != right_terms.len() || left_terms.len() < 2 {
+    term_shape_matches(ctx, left_num, right_num) && term_shape_matches(ctx, left_den, right_den)
+}
+
+fn term_shape_matches(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    exprs_match(ctx, left, right)
+        || multiplicative_factor_multiset_matches(ctx, left, right)
+        || format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: ctx,
+                id: left
+            }
+        ) == format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: ctx,
+                id: right
+            }
+        )
+}
+
+fn multiplicative_factor_multiset_matches(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let left_factors = cas_math::expr_nary::mul_leaves(ctx, left);
+    let right_factors = cas_math::expr_nary::mul_leaves(ctx, right);
+    if left_factors.len() != right_factors.len() || left_factors.len() < 2 {
         return false;
     }
 
-    let mut used = vec![false; right_terms.len()];
-    'outer: for left_term in left_terms {
-        for (index, right_term) in right_terms.iter().enumerate() {
-            if !used[index] && antiderivative_term_matches(ctx, left_term, *right_term, var_name) {
+    let mut used = vec![false; right_factors.len()];
+    'outer: for left_factor in left_factors {
+        for (index, right_factor) in right_factors.iter().enumerate() {
+            if !used[index] && exprs_match(ctx, left_factor, *right_factor) {
                 used[index] = true;
                 continue 'outer;
             }
@@ -185,6 +213,230 @@ fn additive_term_multiset_matches(
     }
 
     true
+}
+
+fn additive_term_multiset_matches(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    if antiderivative_term_matches(ctx, left, right, var_name) {
+        return true;
+    }
+
+    let left_terms = cas_math::expr_nary::add_terms_signed(ctx, left);
+    let right_terms = cas_math::expr_nary::add_terms_signed(ctx, right);
+    if left_terms.len() != right_terms.len() || left_terms.len() < 2 {
+        return false;
+    }
+
+    let mut used = vec![false; right_terms.len()];
+    'outer: for (left_term, left_sign) in left_terms {
+        for (index, (right_term, right_sign)) in right_terms.iter().copied().enumerate() {
+            if !used[index]
+                && signed_antiderivative_term_matches(
+                    ctx, left_term, left_sign, right_term, right_sign, var_name,
+                )
+            {
+                used[index] = true;
+                continue 'outer;
+            }
+        }
+        return false;
+    }
+
+    true
+}
+
+fn hyperbolic_polynomial_term_parts(
+    ctx: &mut Context,
+    term: ExprId,
+    sign: cas_math::expr_nary::Sign,
+    var_name: &str,
+) -> Option<(BuiltinFn, ExprId, Polynomial)> {
+    let (scale, core) = signed_rational_scaled_term(ctx, term, sign);
+    if scale.is_zero() {
+        return None;
+    }
+
+    let factors = cas_math::expr_nary::mul_leaves(ctx, core);
+    let mut hyperbolic_index = None;
+    let mut hyperbolic_builtin = None;
+    let mut hyperbolic_arg = None;
+    for (index, factor) in factors.iter().copied().enumerate() {
+        let Expr::Function(fn_id, args) = ctx.get(factor) else {
+            continue;
+        };
+        if args.len() != 1 {
+            continue;
+        }
+        let Some(builtin @ (BuiltinFn::Sinh | BuiltinFn::Cosh)) = ctx.builtin_of(*fn_id) else {
+            continue;
+        };
+        if hyperbolic_index.is_some() {
+            return None;
+        }
+        hyperbolic_index = Some(index);
+        hyperbolic_builtin = Some(builtin);
+        hyperbolic_arg = Some(args[0]);
+    }
+
+    let cofactor_factors: Vec<_> = factors
+        .iter()
+        .copied()
+        .enumerate()
+        .filter_map(|(index, factor)| (Some(index) != hyperbolic_index).then_some(factor))
+        .collect();
+    let cofactor_expr = match cofactor_factors.as_slice() {
+        [] => ctx.num(1),
+        [single] => *single,
+        _ => cas_math::expr_nary::build_balanced_mul(ctx, &cofactor_factors),
+    };
+    let cofactor_poly = Polynomial::from_expr(ctx, cofactor_expr, var_name).ok()?;
+    let scale_poly = Polynomial::new(vec![scale], var_name.to_string());
+    Some((
+        hyperbolic_builtin?,
+        hyperbolic_arg?,
+        scale_poly.mul(&cofactor_poly),
+    ))
+}
+
+fn add_hyperbolic_polynomial_part(
+    ctx: &Context,
+    parts: &mut Vec<(BuiltinFn, ExprId, Polynomial)>,
+    builtin: BuiltinFn,
+    arg: ExprId,
+    polynomial: Polynomial,
+) {
+    for (existing_builtin, existing_arg, existing_polynomial) in parts.iter_mut() {
+        if *existing_builtin == builtin && expr_eq(ctx, *existing_arg, arg) {
+            *existing_polynomial = existing_polynomial.add(&polynomial);
+            return;
+        }
+    }
+    parts.push((builtin, arg, polynomial));
+}
+
+fn hyperbolic_polynomial_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<Vec<(BuiltinFn, ExprId, Polynomial)>> {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+    if terms.is_empty() || terms.len() > 6 {
+        return None;
+    }
+
+    let mut parts = Vec::new();
+    for (term, sign) in terms {
+        let (builtin, arg, polynomial) =
+            hyperbolic_polynomial_term_parts(ctx, term, sign, var_name)?;
+        add_hyperbolic_polynomial_part(ctx, &mut parts, builtin, arg, polynomial);
+    }
+    parts.retain(|(_, _, polynomial)| !polynomial.is_zero());
+    Some(parts)
+}
+
+fn hyperbolic_polynomial_additive_matches(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    let Some(left_parts) = hyperbolic_polynomial_parts(ctx, left, var_name) else {
+        return false;
+    };
+    let Some(right_parts) = hyperbolic_polynomial_parts(ctx, right, var_name) else {
+        return false;
+    };
+    if left_parts.len() != right_parts.len() {
+        return false;
+    }
+
+    let mut used = vec![false; right_parts.len()];
+    'outer: for (left_builtin, left_arg, left_poly) in left_parts {
+        for (index, (right_builtin, right_arg, right_poly)) in right_parts.iter().enumerate() {
+            if !used[index]
+                && left_builtin == *right_builtin
+                && expr_eq(ctx, left_arg, *right_arg)
+                && left_poly == *right_poly
+            {
+                used[index] = true;
+                continue 'outer;
+            }
+        }
+        return false;
+    }
+
+    true
+}
+
+fn signed_antiderivative_term_matches(
+    ctx: &mut Context,
+    left_term: ExprId,
+    left_sign: cas_math::expr_nary::Sign,
+    right_term: ExprId,
+    right_sign: cas_math::expr_nary::Sign,
+    var_name: &str,
+) -> bool {
+    let (left_scale, left_core) = signed_rational_scaled_term(ctx, left_term, left_sign);
+    let (right_scale, right_core) = signed_rational_scaled_term(ctx, right_term, right_sign);
+    left_scale == right_scale && antiderivative_term_matches(ctx, left_core, right_core, var_name)
+}
+
+fn signed_rational_scaled_term(
+    ctx: &mut Context,
+    term: ExprId,
+    sign: cas_math::expr_nary::Sign,
+) -> (BigRational, ExprId) {
+    let (scale, core) = rational_scaled_term(ctx, term);
+    match sign {
+        cas_math::expr_nary::Sign::Pos => (scale, core),
+        cas_math::expr_nary::Sign::Neg => (-scale, core),
+    }
+}
+
+fn rational_scaled_term(ctx: &mut Context, expr: ExprId) -> (BigRational, ExprId) {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let (scale, core) = rational_scaled_term(ctx, inner);
+            (-scale, core)
+        }
+        Expr::Div(num, den) => {
+            let (num_scale, num_core) = rational_scaled_term(ctx, num);
+            if let Some(den_scale) = cas_math::numeric_eval::as_rational_const(ctx, den) {
+                if !den_scale.is_zero() {
+                    return (num_scale / den_scale, num_core);
+                }
+            }
+            (num_scale, ctx.add(Expr::Div(num_core, den)))
+        }
+        Expr::Mul(_, _) => {
+            let mut scale = BigRational::one();
+            let mut cores = Vec::new();
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                let (factor_scale, factor_core) = rational_scaled_term(ctx, factor);
+                scale *= factor_scale;
+                if !expr_is_one(ctx, factor_core) {
+                    cores.push(factor_core);
+                }
+            }
+            let core = match cores.as_slice() {
+                [] => ctx.num(1),
+                [single] => *single,
+                _ => cas_math::expr_nary::build_balanced_mul(ctx, &cores),
+            };
+            (scale, core)
+        }
+        _ => {
+            if let Some(scale) = cas_math::numeric_eval::as_rational_const(ctx, expr) {
+                (scale, ctx.num(1))
+            } else {
+                (BigRational::one(), expr)
+            }
+        }
+    }
 }
 
 fn remove_denominator_factor_matching_base(
@@ -211,13 +463,94 @@ fn quotient_numerator_denominator(ctx: &Context, expr: ExprId) -> Option<(ExprId
     }
 }
 
+fn quotient_or_term_numerator_denominator(ctx: &mut Context, expr: ExprId) -> (ExprId, ExprId) {
+    match ctx.get(expr) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => (expr, ctx.num(1)),
+    }
+}
+
+fn denominator_factors_without_one(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
+    if expr_is_one(ctx, expr) {
+        Vec::new()
+    } else {
+        cas_math::expr_nary::mul_leaves(ctx, expr).to_vec()
+    }
+}
+
+fn denominator_product_matches_with_rational_content(
+    ctx: &mut Context,
+    expected: ExprId,
+    actual: ExprId,
+) -> bool {
+    if exprs_match(ctx, expected, actual) || term_shape_matches(ctx, expected, actual) {
+        return true;
+    }
+
+    let mut expected_scale = BigRational::one();
+    let mut expected_factors = Vec::new();
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expected) {
+        if let Some(scale) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+            expected_scale *= scale;
+        } else {
+            expected_factors.push(factor);
+        }
+    }
+
+    let mut actual_factors = cas_math::expr_nary::mul_leaves(ctx, actual).to_vec();
+    let mut index = 0;
+    while index < expected_factors.len() {
+        if let Some(pos) = actual_factors
+            .iter()
+            .position(|actual_factor| exprs_match(ctx, expected_factors[index], *actual_factor))
+        {
+            expected_factors.remove(index);
+            actual_factors.remove(pos);
+        } else {
+            index += 1;
+        }
+    }
+
+    match (expected_factors.as_slice(), actual_factors.as_slice()) {
+        ([], []) => expected_scale.is_one(),
+        ([expected_factor], [actual_factor]) => {
+            let scaled_expected =
+                scale_expr_by_rational(ctx, *expected_factor, expected_scale.clone());
+            exprs_match(ctx, scaled_expected, *actual_factor)
+                || term_shape_matches(ctx, scaled_expected, *actual_factor)
+        }
+        ([], [actual_factor]) => {
+            let expected_constant = ctx.add(Expr::Number(expected_scale));
+            exprs_match(ctx, expected_constant, *actual_factor)
+        }
+        _ => false,
+    }
+}
+
+fn signed_quotient_numerator_denominator(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let (numerator, denominator) = quotient_numerator_denominator(ctx, inner)?;
+            let numerator = ctx.add(Expr::Neg(numerator));
+            Some((numerator, denominator))
+        }
+        _ => quotient_numerator_denominator(ctx, expr),
+    }
+}
+
 fn reciprocal_half_power_shared_denominator_terms_cancel(
     ctx: &mut Context,
     reciprocal_term: ExprId,
     expanded_term: ExprId,
 ) -> Option<()> {
-    let (reciprocal_num, reciprocal_den) = quotient_numerator_denominator(ctx, reciprocal_term)?;
-    let (expanded_num, expanded_den) = quotient_numerator_denominator(ctx, expanded_term)?;
+    let (reciprocal_scale, reciprocal_core) = rational_scaled_term(ctx, reciprocal_term);
+    let (expanded_scale, expanded_core) = rational_scaled_term(ctx, expanded_term);
+    let (reciprocal_num, reciprocal_den) =
+        quotient_or_term_numerator_denominator(ctx, reciprocal_core);
+    let (expanded_num, expanded_den) = quotient_or_term_numerator_denominator(ctx, expanded_core);
 
     let base = reciprocal_sqrt_like_base(ctx, reciprocal_num)?;
     let expanded_base = sqrt_like_base(ctx, expanded_num)?;
@@ -225,19 +558,170 @@ fn reciprocal_half_power_shared_denominator_terms_cancel(
         return None;
     }
 
-    let reciprocal_den_factors = cas_math::expr_nary::mul_leaves(ctx, reciprocal_den);
-    let expanded_den_factors = cas_math::expr_nary::mul_leaves(ctx, expanded_den);
-    let expanded_without_base =
-        remove_denominator_factor_matching_base(ctx, &expanded_den_factors, base)?;
+    if reciprocal_scale == expanded_scale {
+        let reciprocal_den_factors = denominator_factors_without_one(ctx, reciprocal_den);
+        let expanded_den_factors = denominator_factors_without_one(ctx, expanded_den);
+        if let Some(expanded_without_base) =
+            remove_denominator_factor_matching_base(ctx, &expanded_den_factors, base)
+        {
+            if denominator_factor_multiset_matches(
+                ctx,
+                &reciprocal_den_factors,
+                &expanded_without_base,
+            ) {
+                return Some(());
+            }
+        }
+    }
 
-    denominator_factor_multiset_matches(ctx, &reciprocal_den_factors, &expanded_without_base)
-        .then_some(())
+    if reciprocal_scale.is_zero() {
+        return None;
+    }
+    let expected_den_core = if expr_is_one(ctx, reciprocal_den) {
+        base
+    } else {
+        cas_math::expr_nary::build_balanced_mul(ctx, &[base, reciprocal_den])
+    };
+    let expected_den =
+        scale_expr_by_rational(ctx, expected_den_core, expanded_scale / reciprocal_scale);
+    denominator_product_matches_with_rational_content(ctx, expected_den, expanded_den).then_some(())
+}
+
+fn strictly_positive_quadratic_base(ctx: &Context, base: ExprId) -> bool {
+    let vars = cas_ast::collect_variables(ctx, base);
+    if vars.len() != 1 {
+        return false;
+    }
+    let Some(var_name) = vars.iter().next() else {
+        return false;
+    };
+    let Ok(poly) = Polynomial::from_expr(ctx, base, var_name) else {
+        return false;
+    };
+    if poly.degree() != 2 || poly.coeffs.len() < 3 || poly.coeffs[2] <= BigRational::zero() {
+        return false;
+    }
+
+    let four = BigRational::from_integer(4.into());
+    let discriminant = poly.coeffs[1].clone() * poly.coeffs[1].clone()
+        - four * poly.coeffs[2].clone() * poly.coeffs[0].clone();
+    discriminant < BigRational::zero()
+}
+
+fn positive_denominator_power_parts(
+    ctx: &Context,
+    denominator: ExprId,
+) -> Option<(ExprId, BigRational)> {
+    positive_power_factor_parts(ctx, denominator)
+}
+
+fn positive_power_factor_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
+    if let Some(base) = sqrt_like_base(ctx, expr) {
+        return Some((base, BigRational::new(1.into(), 2.into())));
+    }
+
+    let Expr::Pow(base, exponent) = ctx.get(expr) else {
+        return None;
+    };
+    let exponent = cas_math::numeric_eval::as_rational_const(ctx, *exponent)?;
+    (exponent > BigRational::zero()).then_some((*base, exponent))
+}
+
+fn split_positive_power_factor_from_product(
+    ctx: &mut Context,
+    product: ExprId,
+) -> Option<(ExprId, BigRational, ExprId)> {
+    if let Some((base, exponent)) = positive_power_factor_parts(ctx, product) {
+        return Some((base, exponent, ctx.num(1)));
+    }
+
+    let factors = cas_math::expr_nary::mul_leaves(ctx, product).to_vec();
+    for (index, factor) in factors.iter().copied().enumerate() {
+        let Some((base, exponent)) = positive_power_factor_parts(ctx, factor) else {
+            continue;
+        };
+        let remaining: Vec<_> = factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(factor_index, factor)| (factor_index != index).then_some(factor))
+            .collect();
+        return Some((
+            base,
+            exponent,
+            cas_math::expr_nary::build_balanced_mul(ctx, &remaining),
+        ));
+    }
+
+    None
+}
+
+fn power_numerator_over_power_denominator_term(
+    ctx: &mut Context,
+    term: ExprId,
+) -> Option<(BigRational, ExprId, ExprId, BigRational, BigRational)> {
+    let (scale, core) = rational_scaled_term(ctx, term);
+    let (numerator, denominator) = quotient_numerator_denominator(ctx, core)?;
+    let (power_base, numerator_exponent, remaining_numerator) =
+        split_positive_power_factor_from_product(ctx, numerator)?;
+    let (denominator_base, denominator_exponent) =
+        positive_denominator_power_parts(ctx, denominator)?;
+    if !exprs_match(ctx, power_base, denominator_base) {
+        return None;
+    }
+
+    Some((
+        scale,
+        remaining_numerator,
+        denominator_base,
+        numerator_exponent,
+        denominator_exponent,
+    ))
+}
+
+fn numerator_over_power_denominator_term(
+    ctx: &mut Context,
+    term: ExprId,
+) -> Option<(BigRational, ExprId, ExprId, BigRational)> {
+    let (scale, core) = rational_scaled_term(ctx, term);
+    let (numerator, denominator) = quotient_numerator_denominator(ctx, core)?;
+    let (denominator_base, denominator_exponent) =
+        positive_denominator_power_parts(ctx, denominator)?;
+    Some((scale, numerator, denominator_base, denominator_exponent))
+}
+
+fn power_numerator_shifted_power_denominator_terms_required_conditions(
+    ctx: &mut Context,
+    power_term: ExprId,
+    plain_term: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (power_scale, power_numerator, power_base, numerator_exponent, power_denominator_exponent) =
+        power_numerator_over_power_denominator_term(ctx, power_term)?;
+    let (plain_scale, plain_numerator, plain_base, plain_denominator_exponent) =
+        numerator_over_power_denominator_term(ctx, plain_term)?;
+    if power_scale != plain_scale
+        || !exprs_match(ctx, power_numerator, plain_numerator)
+        || !exprs_match(ctx, power_base, plain_base)
+    {
+        return None;
+    }
+
+    if power_denominator_exponent - numerator_exponent != plain_denominator_exponent {
+        return None;
+    }
+
+    let required_conditions = if strictly_positive_quadratic_base(ctx, power_base) {
+        Vec::new()
+    } else {
+        vec![crate::ImplicitCondition::Positive(power_base)]
+    };
+    Some(required_conditions)
 }
 
 pub(crate) fn try_reciprocal_half_power_shared_denominator_residual_root_zero(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<ExprId> {
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let (left, right) = match ctx.get(expr) {
         Expr::Sub(left, right) => (*left, *right),
         Expr::Add(left, right) => {
@@ -251,7 +735,14 @@ pub(crate) fn try_reciprocal_half_power_shared_denominator_residual_root_zero(
 
     reciprocal_half_power_shared_denominator_terms_cancel(ctx, left, right)
         .or_else(|| reciprocal_half_power_shared_denominator_terms_cancel(ctx, right, left))
-        .map(|_| ctx.num(0))
+        .map(|_| Vec::new())
+        .or_else(|| {
+            power_numerator_shifted_power_denominator_terms_required_conditions(ctx, left, right)
+        })
+        .or_else(|| {
+            power_numerator_shifted_power_denominator_terms_required_conditions(ctx, right, left)
+        })
+        .map(|required_conditions| (ctx.num(0), required_conditions))
 }
 
 fn expr_is_variable_named(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
@@ -2318,6 +2809,66 @@ fn explicit_high_log_power_product_antiderivative_diff_matches(
     ))
 }
 
+fn explicit_quadratic_positive_quadratic_log_antiderivative_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_positive_quadratic_ln_by_parts_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+        return Some(integral_required_conditions(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ));
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_positive_quadratic_ln_by_parts_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = cas_ast::hold::strip_all_holds(ctx, diff_call.target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
 fn collect_log_abs_nonzero_conditions(
     ctx: &mut Context,
     expr: ExprId,
@@ -2876,6 +3427,77 @@ fn integrated_quadratic_exp_linear_diff_matches(
     Some(Vec::new())
 }
 
+fn integrated_polynomial_log_reciprocal_derivative_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)?;
+    if diff_call.var_name != integrate_call.var_name {
+        return None;
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_log_reciprocal_derivative_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        return None;
+    }
+
+    if !exprs_match(ctx, integrate_call.target, right) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ))
+}
+
+fn explicit_polynomial_log_reciprocal_derivative_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_log_reciprocal_derivative_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    if !exprs_match(ctx, diff_call.target, expected_antiderivative) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
 fn integrated_polynomial_trig_linear_diff_matches(
     ctx: &mut Context,
     diff_expr: ExprId,
@@ -2944,6 +3566,74 @@ fn integrated_polynomial_arctan_affine_diff_matches(
     Some(Vec::new())
 }
 
+fn integrated_asinh_polynomial_substitution_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)?;
+    if diff_call.var_name != integrate_call.var_name {
+        return None;
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_asinh_polynomial_substitution_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        return None;
+    }
+
+    if !exprs_match(ctx, integrate_call.target, right) {
+        return None;
+    }
+
+    Some(Vec::new())
+}
+
+fn integrated_arcsin_polynomial_substitution_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)?;
+    if diff_call.var_name != integrate_call.var_name {
+        return None;
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_arcsin_polynomial_substitution_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        return None;
+    }
+
+    if !exprs_match(ctx, integrate_call.target, right) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ))
+}
+
 fn integrated_polynomial_hyperbolic_linear_diff_matches(
     ctx: &mut Context,
     diff_expr: ExprId,
@@ -2974,6 +3664,428 @@ fn integrated_polynomial_hyperbolic_linear_diff_matches(
     }
 
     Some(Vec::new())
+}
+
+fn integrated_affine_hyperbolic_square_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)?;
+    if diff_call.var_name != integrate_call.var_name {
+        return None;
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_affine_hyperbolic_square_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        return None;
+    }
+
+    if !exprs_match(ctx, integrate_call.target, right) {
+        return None;
+    }
+
+    Some(Vec::new())
+}
+
+fn integrated_hyperbolic_square_product_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)?;
+    if diff_call.var_name != integrate_call.var_name {
+        return None;
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_hyperbolic_square_product_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        return None;
+    }
+
+    if !exprs_match(ctx, integrate_call.target, right) {
+        return None;
+    }
+
+    Some(Vec::new())
+}
+
+fn affine_hyperbolic_cubic_primitive_target(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(BuiltinFn, ExprId, BigRational, BigRational)> {
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let (target_scale, target_core) = rational_scaled_term(ctx, target);
+    if target_scale.is_zero() {
+        return None;
+    }
+
+    let Expr::Pow(base, exp) = ctx.get(target_core).clone() else {
+        return None;
+    };
+    let Expr::Number(power) = ctx.get(exp) else {
+        return None;
+    };
+    if *power != BigRational::from_integer(3.into()) {
+        return None;
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(base).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !matches!(builtin, BuiltinFn::Sinh | BuiltinFn::Cosh) {
+        return None;
+    }
+
+    let arg_poly = Polynomial::from_expr(ctx, args[0], var_name).ok()?;
+    if arg_poly.degree() != 1 {
+        return None;
+    }
+    let slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if slope.is_zero() {
+        return None;
+    }
+
+    Some((builtin, args[0], slope, target_scale))
+}
+
+fn derivative_companion_for_hyperbolic_cubic_primitive(builtin: BuiltinFn) -> Option<BuiltinFn> {
+    match builtin {
+        BuiltinFn::Sinh => Some(BuiltinFn::Cosh),
+        BuiltinFn::Cosh => Some(BuiltinFn::Sinh),
+        _ => None,
+    }
+}
+
+fn hyperbolic_square_factor_matches(
+    ctx: &mut Context,
+    factor: ExprId,
+    builtin: BuiltinFn,
+    arg: ExprId,
+) -> bool {
+    let factor = cas_ast::hold::strip_all_holds(ctx, factor);
+    let Expr::Pow(base, exp) = ctx.get(factor).clone() else {
+        return false;
+    };
+    let Expr::Number(power) = ctx.get(exp) else {
+        return false;
+    };
+    if *power != BigRational::from_integer(2.into()) {
+        return false;
+    }
+
+    unary_builtin_arg(ctx, base, builtin).is_some_and(|base_arg| exprs_match(ctx, base_arg, arg))
+}
+
+fn hyperbolic_cubic_derivative_product_matches(
+    ctx: &mut Context,
+    expr: ExprId,
+    source_builtin: BuiltinFn,
+    arg: ExprId,
+    expected_scale: BigRational,
+) -> bool {
+    let (scale, core) = rational_scaled_term(ctx, expr);
+    if scale != expected_scale {
+        return false;
+    }
+
+    let Some(companion_builtin) =
+        derivative_companion_for_hyperbolic_cubic_primitive(source_builtin)
+    else {
+        return false;
+    };
+    let factors = cas_math::expr_nary::mul_leaves(ctx, core);
+    if factors.len() != 2 {
+        return false;
+    }
+
+    let mut matched_companion = false;
+    let mut matched_square = false;
+    for factor in factors {
+        if !matched_companion {
+            if let Some(factor_arg) = unary_builtin_arg(ctx, factor, companion_builtin) {
+                if exprs_match(ctx, factor_arg, arg) {
+                    matched_companion = true;
+                    continue;
+                }
+            }
+        }
+
+        if !matched_square && hyperbolic_square_factor_matches(ctx, factor, source_builtin, arg) {
+            matched_square = true;
+            continue;
+        }
+
+        return false;
+    }
+
+    matched_companion && matched_square
+}
+
+fn explicit_hyperbolic_cubic_primitive_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<()> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (builtin, arg, slope, target_scale) =
+        affine_hyperbolic_cubic_primitive_target(ctx, call.target, &call.var_name)?;
+    let expected_scale = target_scale * BigRational::from_integer(3.into()) * slope;
+    hyperbolic_cubic_derivative_product_matches(ctx, right, builtin, arg, expected_scale)
+        .then_some(())
+}
+
+fn hyperbolic_square_power_reduction_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<(BuiltinFn, Polynomial)> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let Expr::Number(power) = ctx.get(exp) else {
+        return None;
+    };
+    if *power != BigRational::from_integer(2.into()) {
+        return None;
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(base).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !matches!(builtin, BuiltinFn::Sinh | BuiltinFn::Cosh) {
+        return None;
+    }
+
+    let arg_poly = Polynomial::from_expr(ctx, args[0], var_name).ok()?;
+    if arg_poly.degree() != 1 {
+        return None;
+    }
+    let slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    (!slope.is_zero()).then_some((builtin, arg_poly))
+}
+
+fn squared_hyperbolic_builtin_arg(
+    ctx: &mut Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let Expr::Number(power) = ctx.get(exp) else {
+        return None;
+    };
+    if *power != BigRational::from_integer(2.into()) {
+        return None;
+    }
+
+    unary_builtin_arg(ctx, base, builtin)
+}
+
+fn hyperbolic_square_product_power_reduction_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<(BigRational, Polynomial)> {
+    let (scale, core) = rational_scaled_term(ctx, expr);
+    let factors = cas_math::expr_nary::mul_leaves(ctx, core);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    let mut sinh_arg = None;
+    let mut cosh_arg = None;
+    for factor in factors {
+        if sinh_arg.is_none() {
+            if let Some(arg) = squared_hyperbolic_builtin_arg(ctx, factor, BuiltinFn::Sinh) {
+                sinh_arg = Some(arg);
+                continue;
+            }
+        }
+
+        if cosh_arg.is_none() {
+            if let Some(arg) = squared_hyperbolic_builtin_arg(ctx, factor, BuiltinFn::Cosh) {
+                cosh_arg = Some(arg);
+                continue;
+            }
+        }
+
+        return None;
+    }
+
+    let sinh_arg = sinh_arg?;
+    let cosh_arg = cosh_arg?;
+    if !exprs_match(ctx, sinh_arg, cosh_arg) {
+        return None;
+    }
+
+    let arg_poly = Polynomial::from_expr(ctx, sinh_arg, var_name).ok()?;
+    if arg_poly.degree() != 1 {
+        return None;
+    }
+    let slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    (!slope.is_zero()).then_some((scale, arg_poly))
+}
+
+fn hyperbolic_square_power_reduction_primitive_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<()> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    let (right_builtin, right_arg_poly) =
+        hyperbolic_square_power_reduction_target(ctx, right, &call.var_name)?;
+
+    let mut sinh_term = None;
+    let mut linear_coeff = BigRational::zero();
+    for (term, sign) in cas_math::expr_nary::add_terms_signed(ctx, target) {
+        let (scale, core) = signed_rational_scaled_term(ctx, term, sign);
+        if let Some(arg) = unary_builtin_arg(ctx, core, BuiltinFn::Sinh) {
+            if sinh_term.replace((scale, arg)).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        if matches!(ctx.get(core), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == call.var_name)
+        {
+            linear_coeff += scale;
+            continue;
+        }
+
+        return None;
+    }
+
+    let (sinh_coeff, sinh_arg) = sinh_term?;
+    let sinh_arg_poly = Polynomial::from_expr(ctx, sinh_arg, &call.var_name).ok()?;
+    if sinh_arg_poly != scale_polynomial(&right_arg_poly, &BigRational::from_integer(2.into())) {
+        return None;
+    }
+
+    let sinh_slope = sinh_arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if sinh_coeff * sinh_slope != BigRational::new(1.into(), 2.into()) {
+        return None;
+    }
+
+    let expected_linear = match right_builtin {
+        BuiltinFn::Sinh => BigRational::new((-1).into(), 2.into()),
+        BuiltinFn::Cosh => BigRational::new(1.into(), 2.into()),
+        _ => return None,
+    };
+    (linear_coeff == expected_linear).then_some(())
+}
+
+fn hyperbolic_square_product_power_reduction_primitive_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<()> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    let (right_scale, right_arg_poly) =
+        hyperbolic_square_product_power_reduction_target(ctx, right, &call.var_name)?;
+
+    let mut sinh_term = None;
+    let mut linear_coeff = BigRational::zero();
+    for (term, sign) in cas_math::expr_nary::add_terms_signed(ctx, target) {
+        let (scale, core) = signed_rational_scaled_term(ctx, term, sign);
+        if let Some(arg) = unary_builtin_arg(ctx, core, BuiltinFn::Sinh) {
+            if sinh_term.replace((scale, arg)).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        if matches!(ctx.get(core), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == call.var_name)
+        {
+            linear_coeff += scale;
+            continue;
+        }
+
+        return None;
+    }
+
+    let (sinh_coeff, sinh_arg) = sinh_term?;
+    let sinh_arg_poly = Polynomial::from_expr(ctx, sinh_arg, &call.var_name).ok()?;
+    if sinh_arg_poly != scale_polynomial(&right_arg_poly, &BigRational::from_integer(4.into())) {
+        return None;
+    }
+
+    let sinh_slope = sinh_arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let expected_scale = right_scale / BigRational::from_integer(8.into());
+    if sinh_coeff * sinh_slope != expected_scale {
+        return None;
+    }
+
+    (linear_coeff == -expected_scale).then_some(())
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -3283,6 +4395,166 @@ fn unit_interval_bounded_inverse_trig_derivative_presentation_conditions(
         crate::ImplicitCondition::Positive(var),
         crate::ImplicitCondition::Positive(one_minus_var),
     ])
+}
+
+fn scaled_arcsin_target(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(
+                    ctx.builtin_of(*fn_id),
+                    Some(BuiltinFn::Arcsin | BuiltinFn::Asin)
+                ) =>
+        {
+            Some((args[0], BigRational::one()))
+        }
+        Expr::Neg(inner) => {
+            let (arg, scale) = scaled_arcsin_target(ctx, *inner)?;
+            Some((arg, -scale))
+        }
+        Expr::Div(num, den) => {
+            let den_scale = cas_math::numeric_eval::as_rational_const(ctx, *den)?;
+            if den_scale.is_zero() {
+                return None;
+            }
+            let (arg, scale) = scaled_arcsin_target(ctx, *num)?;
+            Some((arg, scale / den_scale))
+        }
+        Expr::Mul(_, _) => {
+            let mut scale = BigRational::one();
+            let mut matched_arg = None;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if let Some(value) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+                    scale *= value;
+                    continue;
+                }
+
+                let (arg, factor_scale) = scaled_arcsin_target(ctx, factor)?;
+                if matched_arg.replace(arg).is_some() {
+                    return None;
+                }
+                scale *= factor_scale;
+            }
+
+            Some((matched_arg?, scale))
+        }
+        _ => None,
+    }
+}
+
+fn scaled_asinh_target(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
+    scaled_unary_builtin_rational_target(ctx, expr, BuiltinFn::Asinh)
+        .map(|(scale, arg)| (arg, scale))
+}
+
+fn asinh_scaled_surd_polynomial_derivative_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    let (arg, target_scale) = scaled_asinh_target(ctx, target)?;
+    if target_scale.is_zero() {
+        return None;
+    }
+
+    let Expr::Div(arg_num, arg_den) = ctx.get(arg).clone() else {
+        return None;
+    };
+    let arg_den_base = sqrt_like_base(ctx, arg_den)?;
+    let offset_square = cas_math::numeric_eval::as_rational_const(ctx, arg_den_base)?;
+    if offset_square <= BigRational::zero() {
+        return None;
+    }
+
+    let arg_poly = Polynomial::from_expr(ctx, arg_num, &call.var_name).ok()?;
+    let derivative = arg_poly.derivative();
+    if derivative.is_zero() {
+        return None;
+    }
+
+    let (right_num, right_den) = signed_quotient_numerator_denominator(ctx, right)?;
+    let right_num_poly = Polynomial::from_expr(ctx, right_num, &call.var_name).ok()?;
+    let derivative_to_right_scale = polynomial_scale_factor(&right_num_poly, &derivative)?;
+    let denominator_scale = derivative_to_right_scale * target_scale;
+    if denominator_scale <= BigRational::zero() {
+        return None;
+    }
+
+    let right_base = sqrt_like_base(ctx, right_den)?;
+    let right_base_poly = Polynomial::from_expr(ctx, right_base, &call.var_name).ok()?;
+    let expected_base =
+        Polynomial::new(vec![offset_square], call.var_name.clone()).add(&arg_poly.mul(&arg_poly));
+    let scaled_right_base = scale_polynomial(
+        &right_base_poly,
+        &(denominator_scale.clone() * denominator_scale),
+    );
+    if expected_base != scaled_right_base {
+        return None;
+    }
+
+    Some(Vec::new())
+}
+
+fn arcsin_scaled_surd_polynomial_derivative_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    let (arg, target_scale) = scaled_arcsin_target(ctx, target)?;
+    if target_scale.is_zero() {
+        return None;
+    }
+
+    let Expr::Div(arg_num, arg_den) = ctx.get(arg).clone() else {
+        return None;
+    };
+    let arg_den_base = sqrt_like_base(ctx, arg_den)?;
+    let offset_square = cas_math::numeric_eval::as_rational_const(ctx, arg_den_base)?;
+    if offset_square <= BigRational::zero() {
+        return None;
+    }
+
+    let arg_poly = Polynomial::from_expr(ctx, arg_num, &call.var_name).ok()?;
+    let derivative = arg_poly.derivative();
+    if derivative.is_zero() {
+        return None;
+    }
+
+    let (right_num, right_den) = signed_quotient_numerator_denominator(ctx, right)?;
+    let right_num_poly = Polynomial::from_expr(ctx, right_num, &call.var_name).ok()?;
+    let derivative_to_right_scale = polynomial_scale_factor(&right_num_poly, &derivative)?;
+    let denominator_scale = derivative_to_right_scale * target_scale;
+    if denominator_scale <= BigRational::zero() {
+        return None;
+    }
+
+    let right_base = sqrt_like_base(ctx, right_den)?;
+    let right_base_poly = Polynomial::from_expr(ctx, right_base, &call.var_name).ok()?;
+    let expected_base =
+        Polynomial::new(vec![offset_square], call.var_name.clone()).sub(&arg_poly.mul(&arg_poly));
+    let scaled_right_base = scale_polynomial(
+        &right_base_poly,
+        &(denominator_scale.clone() * denominator_scale),
+    );
+    if expected_base != scaled_right_base {
+        return None;
+    }
+
+    Some(vec![crate::ImplicitCondition::Positive(right_base)])
 }
 
 fn arctan_sqrt_radicand_arg(ctx: &Context, target: ExprId) -> Option<ExprId> {
@@ -3761,6 +5033,11 @@ pub(crate) fn try_diff_inverse_reciprocal_trig_residual_zero_preorder(
             })
             .or_else(|| {
                 inverse_reciprocal_trig_sqrt_polynomial_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                arcsin_scaled_surd_polynomial_derivative_diff_matches(
+                    ctx, diff_expr, divisor, right,
+                )
             })?;
     Some((ctx.num(0), required_conditions))
 }
@@ -3827,7 +5104,17 @@ fn try_diff_integral_quadratic_exp_residual_zero_preorder(
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
     let required_conditions =
-        integrated_quadratic_exp_linear_diff_matches(ctx, diff_expr, divisor, right)?;
+        integrated_quadratic_exp_linear_diff_matches(ctx, diff_expr, divisor, right)
+            .or_else(|| {
+                integrated_polynomial_log_reciprocal_derivative_diff_matches(
+                    ctx, diff_expr, divisor, right,
+                )
+            })
+            .or_else(|| {
+                explicit_polynomial_log_reciprocal_derivative_diff_matches(
+                    ctx, diff_expr, divisor, right,
+                )
+            })?;
     Some((ctx.num(0), required_conditions))
 }
 
@@ -3874,7 +5161,18 @@ fn try_diff_integral_hyperbolic_residual_zero_preorder(
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
     let required_conditions =
-        integrated_polynomial_hyperbolic_linear_diff_matches(ctx, diff_expr, divisor, right)?;
+        integrated_polynomial_hyperbolic_linear_diff_matches(ctx, diff_expr, divisor, right)
+            .or_else(|| {
+                integrated_affine_hyperbolic_square_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_hyperbolic_square_product_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_asinh_polynomial_substitution_diff_matches(
+                    ctx, diff_expr, divisor, right,
+                )
+            })?;
     Some((ctx.num(0), required_conditions))
 }
 
@@ -3900,6 +5198,240 @@ fn try_diff_integral_rational_quadratic_residual_direct_root_zero(
     };
     try_diff_integral_rational_quadratic_residual_zero_preorder(ctx, left, right)
         .or_else(|| try_diff_integral_rational_quadratic_residual_zero_preorder(ctx, right, left))
+}
+
+fn unit_reciprocal_denominator(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let (numerator, denominator) = match ctx.get(expr) {
+        Expr::Div(numerator, denominator) => (*numerator, *denominator),
+        _ => return None,
+    };
+    if !expr_is_one(ctx, numerator) {
+        return None;
+    }
+    Some(denominator)
+}
+
+fn extract_shared_additive_shift_cores(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let left_terms = cas_math::expr_nary::AddView::from_expr(ctx, left).terms;
+    let right_terms = cas_math::expr_nary::AddView::from_expr(ctx, right).terms;
+    if left_terms.len() != 2 || right_terms.len() != 2 {
+        return None;
+    }
+
+    for (left_shift_index, (left_shift, left_shift_sign)) in left_terms.iter().copied().enumerate()
+    {
+        for (right_shift_index, (right_shift, right_shift_sign)) in
+            right_terms.iter().copied().enumerate()
+        {
+            if left_shift_sign != right_shift_sign || !expr_eq(ctx, left_shift, right_shift) {
+                continue;
+            }
+
+            let left_core = left_terms[1 - left_shift_index];
+            let right_core = right_terms[1 - right_shift_index];
+            if left_core.1 != right_core.1 {
+                return None;
+            }
+
+            let left_core = cas_math::expr_nary::AddView {
+                root: left,
+                terms: smallvec::smallvec![left_core],
+            }
+            .rebuild(ctx);
+            let right_core = cas_math::expr_nary::AddView {
+                root: right,
+                terms: smallvec::smallvec![right_core],
+            }
+            .rebuild(ctx);
+            return Some((left_core, right_core));
+        }
+    }
+
+    None
+}
+
+fn extract_one_shared_additive_shift_remaining_cores(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    max_terms: usize,
+) -> Option<(ExprId, ExprId)> {
+    let left_terms = cas_math::expr_nary::AddView::from_expr(ctx, left).terms;
+    let right_terms = cas_math::expr_nary::AddView::from_expr(ctx, right).terms;
+    if !(2..=max_terms).contains(&left_terms.len()) || !(2..=max_terms).contains(&right_terms.len())
+    {
+        return None;
+    }
+
+    for (left_shift_index, (left_shift, left_shift_sign)) in left_terms.iter().copied().enumerate()
+    {
+        for (right_shift_index, (right_shift, right_shift_sign)) in
+            right_terms.iter().copied().enumerate()
+        {
+            if left_shift_sign != right_shift_sign || !expr_eq(ctx, left_shift, right_shift) {
+                continue;
+            }
+
+            let left_core_terms = left_terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(idx, term)| (idx != left_shift_index).then_some(term))
+                .collect();
+            let right_core_terms = right_terms
+                .iter()
+                .copied()
+                .enumerate()
+                .filter_map(|(idx, term)| (idx != right_shift_index).then_some(term))
+                .collect();
+            let left_core = cas_math::expr_nary::AddView {
+                root: left,
+                terms: left_core_terms,
+            }
+            .rebuild(ctx);
+            let right_core = cas_math::expr_nary::AddView {
+                root: right,
+                terms: right_core_terms,
+            }
+            .rebuild(ctx);
+            return Some((left_core, right_core));
+        }
+    }
+
+    None
+}
+
+fn rational_diff_integral_shared_shift_reciprocal_conditions(
+    ctx: &mut Context,
+    diff_denominator: ExprId,
+    target_denominator: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (diff_core, target_core) =
+        extract_shared_additive_shift_cores(ctx, diff_denominator, target_denominator)?;
+    let (_zero, mut required_conditions) =
+        try_diff_integral_rational_quadratic_residual_zero_preorder(ctx, diff_core, target_core)?;
+    required_conditions.push(crate::ImplicitCondition::NonZero(target_denominator));
+    Some(required_conditions)
+}
+
+fn hyperbolic_integral_antiderivative_matches(
+    ctx: &mut Context,
+    integrate_expr: ExprId,
+    target_antiderivative: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, integrate_expr)?;
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_hyperbolic_linear_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        return None;
+    }
+
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    )?;
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    let target_antiderivative = cas_ast::hold::strip_all_holds(ctx, target_antiderivative);
+    if !additive_term_multiset_matches(
+        ctx,
+        target_antiderivative,
+        expected_antiderivative,
+        &integrate_call.var_name,
+    ) && !hyperbolic_polynomial_additive_matches(
+        ctx,
+        target_antiderivative,
+        expected_antiderivative,
+        &integrate_call.var_name,
+    ) {
+        return None;
+    }
+
+    Some(Vec::new())
+}
+
+fn hyperbolic_integral_shared_shift_reciprocal_conditions(
+    ctx: &mut Context,
+    integrate_denominator: ExprId,
+    target_denominator: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (integrate_core, target_core) = extract_one_shared_additive_shift_remaining_cores(
+        ctx,
+        integrate_denominator,
+        target_denominator,
+        5,
+    )?;
+    let mut required_conditions =
+        hyperbolic_integral_antiderivative_matches(ctx, integrate_core, target_core)?;
+    required_conditions.push(crate::ImplicitCondition::NonZero(target_denominator));
+    Some(required_conditions)
+}
+
+pub(crate) fn try_integral_hyperbolic_reciprocal_shifted_difference_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        Expr::Add(left, right) => match ctx.get(*right) {
+            Expr::Neg(right_inner) => (*left, *right_inner),
+            _ => return None,
+        },
+        _ => return None,
+    };
+
+    let left_denominator = unit_reciprocal_denominator(ctx, left)?;
+    let right_denominator = unit_reciprocal_denominator(ctx, right)?;
+    let required_conditions = hyperbolic_integral_shared_shift_reciprocal_conditions(
+        ctx,
+        left_denominator,
+        right_denominator,
+    )
+    .or_else(|| {
+        hyperbolic_integral_shared_shift_reciprocal_conditions(
+            ctx,
+            right_denominator,
+            left_denominator,
+        )
+    })?;
+    Some((ctx.num(0), required_conditions))
+}
+
+pub(crate) fn try_diff_integral_rational_quadratic_residual_reciprocal_shifted_difference_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        Expr::Add(left, right) => match ctx.get(*right) {
+            Expr::Neg(right_inner) => (*left, *right_inner),
+            _ => return None,
+        },
+        _ => return None,
+    };
+
+    let left_denominator = unit_reciprocal_denominator(ctx, left)?;
+    let right_denominator = unit_reciprocal_denominator(ctx, right)?;
+    let required_conditions = rational_diff_integral_shared_shift_reciprocal_conditions(
+        ctx,
+        left_denominator,
+        right_denominator,
+    )
+    .or_else(|| {
+        rational_diff_integral_shared_shift_reciprocal_conditions(
+            ctx,
+            right_denominator,
+            left_denominator,
+        )
+    })?;
+    Some((ctx.num(0), required_conditions))
 }
 
 fn try_diff_integral_rational_quadratic_residual_zero_preorder(
@@ -4081,6 +5613,49 @@ pub(crate) fn try_explicit_high_log_power_product_antiderivative_residual_consta
     )
 }
 
+pub(crate) fn try_explicit_quadratic_positive_quadratic_log_antiderivative_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_wrapped_root_zero(
+        ctx,
+        expr,
+        3,
+        try_explicit_quadratic_positive_quadratic_log_antiderivative_residual_direct_root_zero,
+    )
+}
+
+fn try_explicit_quadratic_positive_quadratic_log_antiderivative_residual_direct_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        _ => return None,
+    };
+    try_explicit_quadratic_positive_quadratic_log_antiderivative_residual_zero_preorder(
+        ctx, left, right,
+    )
+    .or_else(|| {
+        try_explicit_quadratic_positive_quadratic_log_antiderivative_residual_zero_preorder(
+            ctx, right, left,
+        )
+    })
+}
+
+fn try_explicit_quadratic_positive_quadratic_log_antiderivative_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    let required_conditions =
+        explicit_quadratic_positive_quadratic_log_antiderivative_diff_matches(
+            ctx, diff_expr, divisor, right,
+        )?;
+    Some((ctx.num(0), required_conditions))
+}
+
 fn constant_scaled_hyperbolic_reciprocal_diff_matches(
     ctx: &mut Context,
     diff_expr: ExprId,
@@ -4106,6 +5681,126 @@ fn constant_scaled_hyperbolic_reciprocal_diff_matches(
     Some(expr_eq(ctx, expected, right))
 }
 
+fn sqrt_or_exact_factor_matches(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    if exprs_match(ctx, left, right) {
+        return true;
+    }
+
+    let (Some(left_base), Some(right_base)) =
+        (sqrt_like_base(ctx, left), sqrt_like_base(ctx, right))
+    else {
+        return false;
+    };
+    if exprs_match(ctx, left_base, right_base) {
+        return true;
+    }
+
+    let Ok(left_poly) = Polynomial::from_expr(ctx, left_base, var_name) else {
+        return false;
+    };
+    let Ok(right_poly) = Polynomial::from_expr(ctx, right_base, var_name) else {
+        return false;
+    };
+    left_poly == right_poly
+}
+
+fn quotient_sqrt_denominator_factors_match(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    let Some((left_num, left_den)) = quotient_numerator_denominator(ctx, left) else {
+        return false;
+    };
+    let Some((right_num, right_den)) = quotient_numerator_denominator(ctx, right) else {
+        return false;
+    };
+    if !exprs_match(ctx, left_num, right_num) {
+        return false;
+    }
+
+    let left_factors = cas_math::expr_nary::mul_leaves(ctx, left_den);
+    let mut right_factors = cas_math::expr_nary::mul_leaves(ctx, right_den);
+    if left_factors.len() != right_factors.len() {
+        return false;
+    }
+
+    for left_factor in left_factors {
+        let Some(pos) = right_factors.iter().position(|right_factor| {
+            sqrt_or_exact_factor_matches(ctx, left_factor, *right_factor, var_name)
+        }) else {
+            return false;
+        };
+        right_factors.remove(pos);
+    }
+    true
+}
+
+fn diff_sqrt_acosh_split_radical_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    let acosh_expr = sqrt_like_base(ctx, target)?;
+    let acosh_arg = unary_builtin_arg(ctx, acosh_expr, BuiltinFn::Acosh)?;
+    let Ok(arg_poly) = Polynomial::from_expr(ctx, acosh_arg, &call.var_name) else {
+        return None;
+    };
+    let derivative = arg_poly.derivative();
+    if derivative.coeffs.len() != 1 {
+        return None;
+    }
+    let coefficient = derivative.coeffs[0].clone() / BigRational::from_integer(2.into());
+    if coefficient.is_zero() {
+        return None;
+    }
+
+    let one_poly = Polynomial::one(call.var_name.clone());
+    let arg_minus_one = arg_poly.sub(&one_poly).to_expr(ctx);
+    let arg_plus_one = arg_poly.add(&one_poly).to_expr(ctx);
+    let sqrt_arg_minus_one = ctx.call_builtin(BuiltinFn::Sqrt, vec![arg_minus_one]);
+    let sqrt_arg_plus_one = ctx.call_builtin(BuiltinFn::Sqrt, vec![arg_plus_one]);
+    let sqrt_acosh = ctx.call_builtin(BuiltinFn::Sqrt, vec![acosh_expr]);
+    let denominator = cas_math::expr_nary::build_balanced_mul(
+        ctx,
+        &[sqrt_arg_minus_one, sqrt_arg_plus_one, sqrt_acosh],
+    );
+    let numerator = rational_expr(ctx, &coefficient);
+    let expected = ctx.add(Expr::Div(numerator, denominator));
+
+    if !(exprs_match(ctx, expected, right)
+        || antiderivative_term_matches(ctx, expected, right, &call.var_name)
+        || quotient_matches_with_unordered_products(ctx, expected, right)
+        || quotient_sqrt_denominator_factors_match(ctx, expected, right, &call.var_name)
+        || quotient_matches_with_polynomial_content_denominators(
+            ctx,
+            expected,
+            right,
+            &call.var_name,
+        ))
+    {
+        return None;
+    }
+
+    Some(vec![
+        crate::ImplicitCondition::Positive(acosh_expr),
+        crate::ImplicitCondition::Positive(arg_minus_one),
+    ])
+}
+
 pub(crate) fn try_diff_hyperbolic_reciprocal_residual_zero_preorder(
     ctx: &mut Context,
     left: ExprId,
@@ -4117,6 +5812,52 @@ pub(crate) fn try_diff_hyperbolic_reciprocal_residual_zero_preorder(
         .map(|_| ctx.num(0))
 }
 
+fn try_diff_sqrt_acosh_split_radical_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    let required_conditions =
+        diff_sqrt_acosh_split_radical_diff_matches(ctx, diff_expr, divisor, right)?;
+    Some((ctx.num(0), required_conditions))
+}
+
+pub(crate) fn try_diff_sqrt_acosh_split_radical_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            let left = *left;
+            let right = *right;
+            try_diff_sqrt_acosh_split_radical_residual_zero_preorder(ctx, left, right).or_else(
+                || try_diff_sqrt_acosh_split_radical_residual_zero_preorder(ctx, right, left),
+            )
+        }
+        Expr::Add(left, right) => {
+            let left = *left;
+            let right = *right;
+            let neg_right = ctx.add(Expr::Neg(right));
+            let neg_left = ctx.add(Expr::Neg(left));
+            try_diff_sqrt_acosh_split_radical_residual_zero_preorder(ctx, left, neg_right).or_else(
+                || try_diff_sqrt_acosh_split_radical_residual_zero_preorder(ctx, right, neg_left),
+            )
+        }
+        _ => None,
+    }
+}
+
+fn try_diff_asinh_scaled_surd_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<ExprId> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    asinh_scaled_surd_polynomial_derivative_diff_matches(ctx, diff_expr, divisor, right)?;
+    Some(ctx.num(0))
+}
+
 pub(crate) fn try_diff_hyperbolic_residual_zero_preorder(
     ctx: &mut Context,
     left: ExprId,
@@ -4124,6 +5865,24 @@ pub(crate) fn try_diff_hyperbolic_residual_zero_preorder(
 ) -> Option<ExprId> {
     try_diff_log_abs_hyperbolic_residual_zero_preorder(ctx, left, right)
         .or_else(|| try_diff_hyperbolic_reciprocal_residual_zero_preorder(ctx, left, right))
+        .or_else(|| {
+            let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+            explicit_hyperbolic_cubic_primitive_diff_matches(ctx, diff_expr, divisor, right)
+                .map(|_| ctx.num(0))
+        })
+        .or_else(|| {
+            let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+            hyperbolic_square_power_reduction_primitive_diff_matches(ctx, diff_expr, divisor, right)
+                .map(|_| ctx.num(0))
+        })
+        .or_else(|| {
+            let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+            hyperbolic_square_product_power_reduction_primitive_diff_matches(
+                ctx, diff_expr, divisor, right,
+            )
+            .map(|_| ctx.num(0))
+        })
+        .or_else(|| try_diff_asinh_scaled_surd_residual_zero_preorder(ctx, left, right))
         .or_else(|| try_hyperbolic_tanh_common_factor_residual_zero_preorder(ctx, left, right))
 }
 
@@ -4131,12 +5890,23 @@ pub(crate) fn try_diff_hyperbolic_residual_root_zero(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<ExprId> {
-    let (left, right) = match ctx.get(expr) {
-        Expr::Sub(left, right) => (*left, *right),
-        _ => return None,
-    };
-    try_diff_hyperbolic_residual_zero_preorder(ctx, left, right)
-        .or_else(|| try_diff_hyperbolic_residual_zero_preorder(ctx, right, left))
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            let left = *left;
+            let right = *right;
+            try_diff_hyperbolic_residual_zero_preorder(ctx, left, right)
+                .or_else(|| try_diff_hyperbolic_residual_zero_preorder(ctx, right, left))
+        }
+        Expr::Add(left, right) => {
+            let left = *left;
+            let right = *right;
+            let neg_right = ctx.add(Expr::Neg(right));
+            let neg_left = ctx.add(Expr::Neg(left));
+            try_diff_hyperbolic_residual_zero_preorder(ctx, left, neg_right)
+                .or_else(|| try_diff_hyperbolic_residual_zero_preorder(ctx, right, neg_left))
+        }
+        _ => None,
+    }
 }
 
 pub(crate) fn try_diff_reciprocal_trig_residual_root_zero(
@@ -4931,8 +6701,12 @@ fn try_diff_integral_inverse_trig_residual_zero_preorder(
     right: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
-    let required_conditions =
-        integrated_polynomial_arctan_affine_diff_matches(ctx, diff_expr, divisor, right)?;
+    let required_conditions = integrated_polynomial_arctan_affine_diff_matches(
+        ctx, diff_expr, divisor, right,
+    )
+    .or_else(|| {
+        integrated_arcsin_polynomial_substitution_diff_matches(ctx, diff_expr, divisor, right)
+    })?;
     Some((ctx.num(0), required_conditions))
 }
 
@@ -4960,6 +6734,23 @@ mod tests {
         try_diff_hyperbolic_residual_root_zero(&mut ctx, expr).map(|result| render(&ctx, result))
     }
 
+    fn sqrt_acosh_split_radical_residual_result(input: &str) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_sqrt_acosh_split_radical_residual_root_zero(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
     fn reciprocal_trig_root_residual_result(input: &str) -> Option<String> {
         let mut ctx = Context::new();
         let expr = parse(input, &mut ctx)
@@ -4968,12 +6759,23 @@ mod tests {
             .map(|result| render(&ctx, result))
     }
 
-    fn reciprocal_half_power_shared_denominator_result(input: &str) -> Option<String> {
+    fn reciprocal_half_power_shared_denominator_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
         let mut ctx = Context::new();
         let expr = parse(input, &mut ctx)
             .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
-        try_reciprocal_half_power_shared_denominator_residual_root_zero(&mut ctx, expr)
-            .map(|result| render(&ctx, result))
+        try_reciprocal_half_power_shared_denominator_residual_root_zero(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
     }
 
     fn explicit_log_abs_antiderivative_residual_result(input: &str) -> Option<String> {
@@ -4990,7 +6792,35 @@ mod tests {
             reciprocal_half_power_shared_denominator_result(
                 "ln(x)^(-1/2)/(2*x) - ln(x)^(1/2)/(2*x*ln(x))"
             ),
-            Some("0".to_string())
+            Some(("0".to_string(), vec![]))
+        );
+    }
+
+    #[test]
+    fn reciprocal_half_power_shared_denominator_residual_cancels_shifted_power_denominator() {
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "(x^2+x+1)^(1/2)*(2*x+1)/(x^2+x+1)^3 - (2*x+1)/(x^2+x+1)^(5/2)"
+            ),
+            Some(("0".to_string(), vec![]))
+        );
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "(x^2-1)^(1/2)*2*x/(x^2-1)^3 - 2*x/(x^2-1)^(5/2)"
+            ),
+            Some(("0".to_string(), vec!["x^2 - 1 > 0".to_string()]))
+        );
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "(2*x^2+2*x-3)^(1/2)*(4*x+2)/(2*x^2+2*x-3)^3 - (4*x+2)/(2*x^2+2*x-3)^(5/2)"
+            ),
+            Some(("0".to_string(), vec!["2 * x^2 + 2 * x - 3 > 0".to_string()]))
+        );
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "(2*x^2+2*x-3)^(3/2)*(4*x+2)/(2*x^2+2*x-3)^5 - (4*x+2)/(2*x^2+2*x-3)^(7/2)"
+            ),
+            Some(("0".to_string(), vec!["2 * x^2 + 2 * x - 3 > 0".to_string()]))
         );
     }
 
@@ -5163,6 +6993,23 @@ mod tests {
         )
     }
 
+    fn integral_hyperbolic_reciprocal_shifted_result(input: &str) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_integral_hyperbolic_reciprocal_shifted_difference_root_zero(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
     fn integral_rational_root_residual_result(input: &str) -> Option<String> {
         let mut ctx = Context::new();
         let expr = parse(input, &mut ctx)
@@ -5185,6 +7032,24 @@ mod tests {
                         .collect(),
                 )
             })
+    }
+
+    fn integral_rational_reciprocal_shifted_result(input: &str) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_integral_rational_quadratic_residual_reciprocal_shifted_difference_root_zero(
+            &mut ctx, expr,
+        )
+        .map(|(result, required_conditions)| {
+            (
+                render(&ctx, result),
+                required_conditions
+                    .into_iter()
+                    .map(|condition| condition.display(&ctx))
+                    .collect(),
+            )
+        })
     }
 
     fn explicit_positive_quadratic_cube_antiderivative_residual_result(
@@ -5264,6 +7129,26 @@ mod tests {
                 )
             },
         )
+    }
+
+    fn explicit_quadratic_positive_quadratic_log_antiderivative_residual_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_explicit_quadratic_positive_quadratic_log_antiderivative_residual_root_zero(
+            &mut ctx, expr,
+        )
+        .map(|(result, required_conditions)| {
+            (
+                render(&ctx, result),
+                required_conditions
+                    .into_iter()
+                    .map(|condition| condition.display(&ctx))
+                    .collect(),
+            )
+        })
     }
 
     #[test]
@@ -5368,6 +7253,27 @@ mod tests {
         let residual = "diff(integrate((2*x+1)*ln(x^2+x+1)^4, x), x) - (2*x+1)*ln(x^2+x+1)^4";
         assert_eq!(
             explicit_high_log_power_product_antiderivative_residual_result(residual),
+            Some(("0".to_string(), vec![]))
+        );
+        assert_eq!(simplify_text(residual), "0");
+    }
+
+    #[test]
+    fn explicit_quadratic_positive_quadratic_log_antiderivative_residual_cancels_shifted_argument()
+    {
+        let residual = "diff(integrate(x^2*ln(x^2+x+1), x), x) - x^2*ln(x^2+x+1)";
+        assert_eq!(
+            explicit_quadratic_positive_quadratic_log_antiderivative_residual_result(residual),
+            Some(("0".to_string(), vec![]))
+        );
+        assert_eq!(simplify_text(residual), "0");
+    }
+
+    #[test]
+    fn explicit_quadratic_positive_quadratic_log_antiderivative_residual_cancels_rendered_linear() {
+        let residual = "diff(1/2*x^2*ln(x^2+x+1) - 3/2*arctan((2*x+1)/sqrt(3))/sqrt(3) - 1/2*x^2 + 1/4*ln(x^2+x+1) + 1/2*x, x) - x*ln(x^2+x+1)";
+        assert_eq!(
+            explicit_quadratic_positive_quadratic_log_antiderivative_residual_result(residual),
             Some(("0".to_string(), vec![]))
         );
         assert_eq!(simplify_text(residual), "0");
@@ -5500,6 +7406,63 @@ mod tests {
                 "{input}"
             );
             assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_hyperbolic_cubic_residual_root_cancels_negative_targets() {
+        let cases = [
+            "diff(-1/3*sinh(2*x+1)^3, x) - (-2*cosh(2*x+1)*sinh(2*x+1)^2)",
+            "diff(1/3*cosh(2*x+1)^3, x) - 2*sinh(2*x+1)*cosh(2*x+1)^2",
+            "diff(-1/3*cosh(x)^3, x) - (-sinh(x)*cosh(x)^2)",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+            assert_eq!(simplify_text_with_default_rules(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_hyperbolic_square_power_reduction_residual_root_cancels_compact_primitives() {
+        let cases = [
+            "diff(1/8*sinh(4*x)-x/2, x) - sinh(2*x)^2",
+            "diff(1/8*sinh(4*x)+x/2, x) - cosh(2*x)^2",
+            "diff(1/4*sinh(2*x)-x/2, x) - sinh(x)^2",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+            assert_eq!(simplify_text_with_default_rules(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_hyperbolic_square_product_power_reduction_residual_root_cancels_compact_primitives() {
+        let cases = [
+            "diff(1/32*sinh(4*x)-x/8, x) - sinh(x)^2*cosh(x)^2",
+            "diff(1/8*sinh(4*x)-x/2, x) - 4*sinh(x)^2*cosh(x)^2",
+            "diff(1/64*sinh(4*(2*x+1))-x/8, x) - sinh(2*x+1)^2*cosh(2*x+1)^2",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+            assert_eq!(simplify_text_with_default_rules(input), "0", "{input}");
         }
     }
 
@@ -5807,6 +7770,24 @@ mod tests {
     }
 
     #[test]
+    fn diff_integral_log_reciprocal_power_residual_root_cancels_shifted_quadratic() {
+        let input = "diff(integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^3), x), x) - (2*x+1)/((x^2+x-1)*ln(x^2+x-1)^3)";
+        assert_eq!(
+            integral_quadratic_exp_root_residual_result(input),
+            Some("0".to_string())
+        );
+        assert_eq!(simplify_text(input), "0");
+
+        let rendered_primitive =
+            "diff(-1/(2*ln(x^2+x-1)^2), x) - (2*x+1)/((x^2+x-1)*ln(x^2+x-1)^3)";
+        assert_eq!(
+            integral_quadratic_exp_root_residual_result(rendered_primitive),
+            Some("0".to_string())
+        );
+        assert_eq!(simplify_text(rendered_primitive), "0");
+    }
+
+    #[test]
     fn diff_integral_hyperbolic_residual_root_cancels_supported_target() {
         let input = "diff(integrate((x^2+x)*sinh(2*x+1), x), x) - (x^2+x)*sinh(2*x+1)";
         assert_eq!(
@@ -5972,6 +7953,26 @@ mod tests {
     }
 
     #[test]
+    fn integral_hyperbolic_residual_cancels_reciprocal_shifted_difference() {
+        let input = "1/((integrate(x^2*sinh(x),x))+c) - 1/((x^2*cosh(x)-2*x*sinh(x)+2*cosh(x))+c)";
+        assert_eq!(
+            integral_hyperbolic_reciprocal_shifted_result(input),
+            Some((
+                "0".to_string(),
+                vec!["2 * cosh(x) + cosh(x) * x^2 - 2 * x * sinh(x) + c ≠ 0".to_string()]
+            ))
+        );
+        assert_eq!(simplify_text(input), "0");
+
+        assert_eq!(
+            integral_hyperbolic_reciprocal_shifted_result(
+                "1/((integrate(x^2*sinh(x),y))+c) - 1/((x^2*cosh(x)-2*x*sinh(x)+2*cosh(x))+c)"
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn shifted_integral_residual_condition_filter_handles_product_denominator_factor() {
         let mut ctx = Context::new();
         let input = "(diff(integrate(x^4*cosh(2*x+1), x), x) - x^4*cosh(2*x+1) + 1)*(x+2)";
@@ -6070,6 +8071,31 @@ mod tests {
             Some(("1".to_string(), vec!["x + 1 ≠ 0".to_string()]))
         );
         assert_eq!(simplify_text(&input), "1");
+    }
+
+    #[test]
+    fn diff_integral_rational_residual_cancels_reciprocal_shifted_difference() {
+        let input =
+            "1/((diff(integrate((3*x+5)/(x^3-x^2-x+1),x),x))+c) - 1/(((3*x+5)/(x^3-x^2-x+1))+c)";
+        assert_eq!(
+            integral_rational_reciprocal_shifted_result(input),
+            Some((
+                "0".to_string(),
+                vec![
+                    "x - 1 ≠ 0".to_string(),
+                    "x + 1 ≠ 0".to_string(),
+                    "(3 * x + 5) / (x^3 - x^2 - x + 1) + c ≠ 0".to_string()
+                ]
+            ))
+        );
+        assert_eq!(simplify_text(input), "0");
+
+        assert_eq!(
+            integral_rational_reciprocal_shifted_result(
+                "1/((diff(integrate((3*x+5)/(x^3-x^2-x+1),x),y))+c) - 1/(((3*x+5)/(x^3-x^2-x+1))+c)"
+            ),
+            None
+        );
     }
 
     #[test]
@@ -6413,5 +8439,21 @@ mod tests {
             );
             assert_eq!(simplify_text(input), "0", "{input}");
         }
+    }
+
+    #[test]
+    fn diff_sqrt_acosh_split_radical_residual_cancels_affine_chain() {
+        let input = "diff(sqrt(acosh(2*x+3)), x) - 1/(sqrt(2*x+2)*sqrt(2*x+4)*sqrt(acosh(2*x+3)))";
+        assert_eq!(
+            sqrt_acosh_split_radical_residual_result(input),
+            Some((
+                "0".to_string(),
+                vec![
+                    "acosh(2 * x + 3) > 0".to_string(),
+                    "2 * x + 2 > 0".to_string()
+                ]
+            ))
+        );
+        assert_eq!(simplify_text(input), "0");
     }
 }
