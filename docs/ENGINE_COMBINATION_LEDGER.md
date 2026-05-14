@@ -11706,3 +11706,187 @@ The burden of proof stays the same:
   - focal public wire residual tests, public CLI probes, and
     `calculus_diff_contract`, `make engine-fast`, and `make engine-scorecard`
     passed with `failed = 0`
+
+## 2026-05-14 - Discovery observe-only: trig fourth-power integration
+
+- area:
+  - calculus / integrate / trig power reduction / antiderivative verification
+- status:
+  - `observe-only`
+- candidate:
+  - add direct support for `integrate(sin(linear)^4, x)` and
+    `integrate(cos(linear)^4, x)` using the standard fourth-power reduction
+    primitive
+- local signal:
+  - the primitive is easy to construct and can render compactly as combinations
+    of `x`, `sin(2*u)`, and `sin(4*u)`
+  - wrapping the primitive can avoid public result simplification cost for the
+    direct `integrate(...)` command
+- rejection reason:
+  - public antiderivative verification by differentiating the rendered
+    primitive is not yet robust enough for this family
+  - unprotected `sin(4*x)` triggers angle-doubling simplification and can emit
+    debug `depth_overflow` warnings
+  - the alternative `sin(2*x)*cos(2*x)` primitive avoids the quadruple-angle
+    display, but still makes public verification too slow
+- reusable structural signature:
+  - before promoting even trig powers beyond square power reduction, harden a
+    bounded residual/presentation path that verifies
+    `d/dx(3*x/8 +/- sin(2*x)/4 + sin(4*x)/32) = sin(x)^4|cos(x)^4`
+    without expanding into a costly double-angle route
+- next candidate:
+  - add a focused calculus residual verifier for trig fourth-power reduction, or
+    a post-calculus presentation guard that preserves quadruple-angle terms only
+    when the corresponding derivative residual can be checked cheaply
+
+## 2026-05-14 - Retained robustness: trig fourth-power primitive residual
+
+- area:
+  - robustness / calculus residual verification / trig fourth-power reduction
+- status:
+  - `retained`
+- retained result:
+  - explicit fourth-power antiderivative residuals now collapse through the
+    bounded calculus residual path:
+    `diff(3*x/8 - sin(2*x)/4 + sin(4*x)/32, x) - sin(x)^4`
+  - the matching cosine residual also collapses:
+    `diff(3*x/8 + sin(2*x)/4 + sin(4*x)/32, x) - cos(x)^4`
+  - affine variants such as `sin(2*x+1)^4` and `cos(2*x+1)^4` are covered by
+    the same matcher
+  - public probes return `0` without required conditions or `depth_overflow`
+- implementation note:
+  - added a narrow primitive-shape matcher for
+    `3*x/8 +/- sin(2*u)/(4*a) + sin(4*u)/(32*a)`, where `u` is affine with
+    slope `a`
+  - the matcher verifies the residual without expanding `sin(4*u)` into a
+    costly double-angle route
+  - this does not yet promote `integrate(sin(linear)^4, x)` or
+    `integrate(cos(linear)^4, x)`; it only hardens the verifier needed before
+    that promotion
+- validation:
+  - focal residual helper unit, public CLI residual contract,
+    `calculus_integrate_contract`, `make engine-fast`, and
+    `make engine-scorecard` passed with `failed = 0`
+- next candidate:
+  - retry the conservative integration rule for `sin(linear)^4` and
+    `cos(linear)^4`, using this residual verifier as the promotion guard
+
+## 2026-05-14 - Retained calculus: trig fourth-power integration
+
+- area:
+  - calculus / integrate / trig power reduction / antiderivative verification
+- status:
+  - `retained`
+- retained result:
+  - `integrate(sin(x)^4, x)` now returns
+    `1/32*sin(4*x) + 3/8*x - 1/4*sin(2*x)`
+  - `integrate(cos(x)^4, x)` now returns
+    `1/32*sin(4*x) + 1/4*sin(2*x) + 3/8*x`
+  - affine variants such as `integrate(sin(2*x+1)^4, x)` and
+    `integrate(cos(2*x+1)^4, x)` are covered by the same rule
+  - nested verification residuals such as
+    `diff(integrate(sin(x)^4, x), x) - sin(x)^4` collapse to `0` without
+    required conditions or `depth_overflow`
+- implementation note:
+  - promoted the previous observe-only discovery after the bounded residual
+    verifier was available
+  - the primitive is constructed by fourth-power trig reduction for affine
+    arguments and held through public presentation so `sin(4*u)` stays compact
+    instead of triggering a costly double-angle expansion
+  - the residual verifier also recognizes `diff(integrate(f, x), x) - f`
+    directly for this family, avoiding a slow rendered-primitive round trip
+- validation:
+  - symbolic integration unit, public integration contract, public CLI probes,
+    `make engine-fast`, and `make engine-scorecard` passed with `failed = 0`
+- next candidate:
+  - consider the same conservative promotion pattern for sixth even trig powers
+    only if the primitive can be kept compact and antiderivative verification
+    stays bounded
+
+## 2026-05-14 - Retained calculus: trig sixth-power integration
+
+- area:
+  - calculus / integrate / trig power reduction / antiderivative verification
+- status:
+  - `retained`
+- retained result:
+  - `integrate(sin(x)^6, x)` now returns
+    `3/64*sin(4*x) + 5/16*x - 15/64*sin(2*x) - 1/192*sin(6*x)`
+  - `integrate(cos(x)^6, x)` now returns
+    `1/192*sin(6*x) + 3/64*sin(4*x) + 15/64*sin(2*x) + 5/16*x`
+  - affine variants such as `integrate(sin(2*x+1)^6, x)` and
+    `integrate(cos(2*x+1)^6, x)` are covered by the same rule
+  - nested and rendered-primitive residuals collapse to `0` without required
+    conditions or `depth_overflow`
+- implementation note:
+  - a pre-promotion probe showed that the explicit sixth-power residual route
+    was not cheap enough through generic public simplification
+  - promotion therefore included both the direct sixth-power table rule and a
+    bounded residual verifier for
+    `5*x/16 +/- 15*sin(2*u)/(64*a) + 3*sin(4*u)/(64*a) +/- sin(6*u)/(192*a)`
+  - the primitive is held through public presentation so the multiple-angle
+    terms remain compact instead of triggering broad trig expansion
+- validation:
+  - symbolic integration unit, residual helper unit, public integration
+    contract, public CLI probes, `make engine-fast`, and
+    `make engine-scorecard` passed with `failed = 0`
+- next candidate:
+  - before promoting higher even powers, consider extracting a shared bounded
+    even-trig-power residual helper so eighth-power support does not duplicate
+    the fourth/sixth matcher shape
+
+## 2026-05-14 - Retained robustness: shared even trig residual collector
+
+- area:
+  - robustness / calculus residual verification / cohesion
+- status:
+  - `retained`
+- retained result:
+  - fourth- and sixth-power trig antiderivative residuals now share one bounded
+    collector for the linear term and `sin(k*u)` harmonic terms
+  - public behavior is unchanged: existing fourth/sixth integration results and
+    residuals still verify without required conditions or `depth_overflow`
+- implementation note:
+  - replaced separate fourth- and sixth-power term collectors with a single
+    harmonic-driven helper
+  - kept the family-specific coefficient tables at the call sites so route
+    priority and mathematical intent remain explicit
+  - this is a behavior-preserving refactor; no new calculus family was promoted
+- validation:
+  - focal fourth/sixth residual helper tests, full public integration contract,
+    `make engine-fast`, and `make engine-scorecard` passed with `failed = 0`
+- next candidate:
+  - probe eighth even trig powers against the shared residual helper before
+    adding any public `integrate` rule, and reject if compact presentation or
+    derivative verification becomes slow
+
+## 2026-05-14 - Retained calculus: trig eighth-power integration
+
+- area:
+  - calculus / integrate / trig power reduction / antiderivative verification
+- status:
+  - `retained`
+- retained result:
+  - `integrate(sin(x)^8, x)` now returns
+    `sin(8*x)/1024 + 7*sin(4*x)/128 + 35*x/128 - 7*sin(2*x)/32 - sin(6*x)/96`
+  - `integrate(cos(x)^8, x)` now returns
+    `sin(8*x)/1024 + sin(6*x)/96 + 7*sin(4*x)/128 + 7*sin(2*x)/32 + 35*x/128`
+  - affine variants such as `integrate(sin(2*x+1)^8, x)` and
+    `integrate(cos(2*x+1)^8, x)` are covered by the same rule
+  - nested and rendered-primitive residuals collapse to `0` without required
+    conditions or `depth_overflow`
+- implementation note:
+  - the pre-promotion probe showed `integrate(sin(x)^8, x)` was unsupported and
+    the explicit residual route was not cheap through generic simplification
+  - promotion reused the shared even-trig residual collector by adding only the
+    eighth-power coefficient table
+  - the primitive is held through public presentation so multiple-angle terms
+    remain compact and do not trigger broad trig expansion
+- validation:
+  - symbolic integration unit, residual helper unit, explicit public residual
+    contract, full public integration contract, `make engine-fast`, and
+    `make engine-scorecard` passed with `failed = 0`
+- next candidate:
+  - pause even-power promotion and look for a different high-ROI integration
+    family, preferably one that reuses antiderivative verification without
+    adding another long fixed table

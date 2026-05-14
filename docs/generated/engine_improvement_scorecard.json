@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-14T08:19:21.406355+00:00",
+  "generated_at": "2026-05-14T14:37:35.237845+00:00",
   "generated_discovery": {
     "families": {},
     "observe_only_discoveries": 0,
@@ -14,7 +14,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "5eb6fee492a842dcde1a35c34a0a7c03fe1ca14c"
+    "commit": "b438ff94a7a825d5087cc1163675cde420a2d8bb"
   },
   "orchestrator_profile_filter": null,
   "orchestrator_profile_limit": null,
@@ -36,7 +36,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 4.528,
+      "elapsed_seconds": 5.09,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -48,7 +48,7 @@
         "passed": 169,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 4.528,
+      "process_elapsed_seconds": 5.09,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -69,7 +69,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 5.482,
+      "elapsed_seconds": 6.032,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -78,10 +78,10 @@
         "filtered_out": 0,
         "ignored": 1,
         "measured": 0,
-        "passed": 224,
+        "passed": 230,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 5.482,
+      "process_elapsed_seconds": 6.032,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -102,7 +102,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.879,
+      "elapsed_seconds": 0.941,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -114,7 +114,7 @@
         "passed": 67,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 0.879,
+      "process_elapsed_seconds": 0.941,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -135,7 +135,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.623,
+      "elapsed_seconds": 0.66,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -147,7 +147,7 @@
         "passed": 8,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 0.623,
+      "process_elapsed_seconds": 0.66,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -170,7 +170,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 4.811,
+      "elapsed_seconds": 5.234,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -184,7 +184,7 @@
         "supported_equiv_rate": 1.0,
         "unsupported": 0
       },
-      "process_elapsed_seconds": 4.811,
+      "process_elapsed_seconds": 5.234,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -208,7 +208,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 28.452,
+      "elapsed_seconds": 37.449,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -220,7 +220,7 @@
         "no_web_substeps": 0,
         "total_web_substeps": 482
       },
-      "process_elapsed_seconds": 28.452,
+      "process_elapsed_seconds": 37.449,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -243,7 +243,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.271,
+      "elapsed_seconds": 0.307,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -366,7 +366,7 @@
         "unsupported": 0,
         "unsupported_by_family": {}
       },
-      "process_elapsed_seconds": 0.271,
+      "process_elapsed_seconds": 0.307,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -386,7 +386,7 @@
         "--"
       ],
       "delta": {},
-      "elapsed_seconds": 6.99,
+      "elapsed_seconds": 7.78,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -556,9 +556,9 @@
         "max_expression_depth": 18,
         "max_shell_depth": 5,
         "passed": 1487,
-        "reported_elapsed": "6.99s",
-        "reported_elapsed_per_case_ms": 4.7007,
-        "reported_elapsed_seconds": 6.99,
+        "reported_elapsed": "7.78s",
+        "reported_elapsed_per_case_ms": 5.232,
+        "reported_elapsed_seconds": 7.78,
         "shell_depth_count": 6,
         "shell_depth_rows": {
           "0": {
@@ -1679,7 +1679,7 @@
           }
         ]
       },
-      "process_elapsed_seconds": 8.173,
+      "process_elapsed_seconds": 9.143,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1703,7 +1703,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.94,
+      "elapsed_seconds": 0.984,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1716,7 +1716,7 @@
         "single_step_no_substeps": 0,
         "total_wire_substeps": 24
       },
-      "process_elapsed_seconds": 0.94,
+      "process_elapsed_seconds": 0.984,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1739,7 +1739,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 19.296,
+      "elapsed_seconds": 20.089,
       "env": {
         "METATEST_MAX_EXAMPLES": "20",
         "METATEST_PROGRESS_EVERY": "1000",
@@ -1998,7 +1998,7 @@
         "timeouts": 0,
         "total_combos": 16519
       },
-      "process_elapsed_seconds": 19.296,
+      "process_elapsed_seconds": 20.089,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,

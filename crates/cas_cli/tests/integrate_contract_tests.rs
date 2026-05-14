@@ -1856,6 +1856,195 @@ fn integrate_contract_affine_trig_fifth_power_reduction() {
 }
 
 #[test]
+fn integrate_contract_affine_trig_fourth_power_reduction() {
+    let cases = [
+        (
+            "integrate(sin(x)^4, x)",
+            "sin(x)^4",
+            "1/32 * sin(4 * x) + 3/8 * x - 1/4 * sin(2 * x)",
+        ),
+        (
+            "integrate(cos(x)^4, x)",
+            "cos(x)^4",
+            "1/32 * sin(4 * x) + 1/4 * sin(2 * x) + 3/8 * x",
+        ),
+        (
+            "integrate(sin(2*x + 1)^4, x)",
+            "sin(2*x + 1)^4",
+            "1/64 * sin(4 * (2 * x + 1)) + 3/8 * x - 1/8 * sin(2 * (2 * x + 1))",
+        ),
+        (
+            "integrate(cos(2*x + 1)^4, x)",
+            "cos(2*x + 1)^4",
+            "1/64 * sin(4 * (2 * x + 1)) + 1/8 * sin(2 * (2 * x + 1)) + 3/8 * x",
+        ),
+    ];
+
+    for (input, integrand, expected) in cases {
+        let (antiderivative, required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            required.is_empty(),
+            "trig fourth primitive should not add domain conditions for {input}: {required:?}"
+        );
+        assert_eq!(antiderivative, expected, "{input}");
+        assert_rendered_antiderivative_verifies(input, &antiderivative);
+
+        let residual = format!("diff({input}, x) - {integrand}");
+        let (wire, stderr) = cli_eval_json_with_stderr(&residual);
+        assert_eq!(wire["result"], "0", "{residual}");
+        assert_eq!(wire["required_display"], serde_json::json!([]));
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "trig fourth nested residual should not emit depth_overflow for {residual}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_affine_trig_sixth_power_reduction() {
+    let cases = [
+        (
+            "integrate(sin(x)^6, x)",
+            "sin(x)^6",
+            "3/64 * sin(4 * x) + 5/16 * x - 15/64 * sin(2 * x) - 1/192 * sin(6 * x)",
+        ),
+        (
+            "integrate(cos(x)^6, x)",
+            "cos(x)^6",
+            "1/192 * sin(6 * x) + 3/64 * sin(4 * x) + 15/64 * sin(2 * x) + 5/16 * x",
+        ),
+        (
+            "integrate(sin(2*x + 1)^6, x)",
+            "sin(2*x + 1)^6",
+            "3/128 * sin(4 * (2 * x + 1)) + 5/16 * x - 15/128 * sin(2 * (2 * x + 1)) - 1/384 * sin(6 * (2 * x + 1))",
+        ),
+        (
+            "integrate(cos(2*x + 1)^6, x)",
+            "cos(2*x + 1)^6",
+            "1/384 * sin(6 * (2 * x + 1)) + 3/128 * sin(4 * (2 * x + 1)) + 15/128 * sin(2 * (2 * x + 1)) + 5/16 * x",
+        ),
+    ];
+
+    for (input, integrand, expected) in cases {
+        let (antiderivative, required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            required.is_empty(),
+            "trig sixth primitive should not add domain conditions for {input}: {required:?}"
+        );
+        assert_eq!(antiderivative, expected, "{input}");
+        assert_rendered_antiderivative_verifies(input, &antiderivative);
+
+        let residual = format!("diff({input}, x) - {integrand}");
+        let (wire, stderr) = cli_eval_json_with_stderr(&residual);
+        assert_eq!(wire["result"], "0", "{residual}");
+        assert_eq!(wire["required_display"], serde_json::json!([]));
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "trig sixth nested residual should not emit depth_overflow for {residual}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_affine_trig_eighth_power_reduction() {
+    let cases = [
+        (
+            "integrate(sin(x)^8, x)",
+            "sin(x)^8",
+            "1/1024 * sin(8 * x) + 7/128 * sin(4 * x) + 35/128 * x - 7/32 * sin(2 * x) - 1/96 * sin(6 * x)",
+        ),
+        (
+            "integrate(cos(x)^8, x)",
+            "cos(x)^8",
+            "1/1024 * sin(8 * x) + 1/96 * sin(6 * x) + 7/128 * sin(4 * x) + 7/32 * sin(2 * x) + 35/128 * x",
+        ),
+        (
+            "integrate(sin(2*x + 1)^8, x)",
+            "sin(2*x + 1)^8",
+            "1/2048 * sin(8 * (2 * x + 1)) + 7/256 * sin(4 * (2 * x + 1)) + 35/128 * x - 7/64 * sin(2 * (2 * x + 1)) - 1/192 * sin(6 * (2 * x + 1))",
+        ),
+        (
+            "integrate(cos(2*x + 1)^8, x)",
+            "cos(2*x + 1)^8",
+            "1/2048 * sin(8 * (2 * x + 1)) + 1/192 * sin(6 * (2 * x + 1)) + 7/256 * sin(4 * (2 * x + 1)) + 7/64 * sin(2 * (2 * x + 1)) + 35/128 * x",
+        ),
+    ];
+
+    for (input, integrand, expected) in cases {
+        let (antiderivative, required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            required.is_empty(),
+            "trig eighth primitive should not add domain conditions for {input}: {required:?}"
+        );
+        assert_eq!(antiderivative, expected, "{input}");
+        assert_rendered_antiderivative_verifies(input, &antiderivative);
+
+        let residual = format!("diff({input}, x) - {integrand}");
+        let (wire, stderr) = cli_eval_json_with_stderr(&residual);
+        assert_eq!(wire["result"], "0", "{residual}");
+        assert_eq!(wire["required_display"], serde_json::json!([]));
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "trig eighth nested residual should not emit depth_overflow for {residual}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_explicit_trig_fourth_power_antiderivative_residual_verifies() {
+    for residual in [
+        "diff(3*x/8 - sin(2*x)/4 + sin(4*x)/32, x) - sin(x)^4",
+        "diff(3*x/8 + sin(2*x)/4 + sin(4*x)/32, x) - cos(x)^4",
+        "diff(3*x/8 - sin(2*(2*x+1))/8 + sin(4*(2*x+1))/64, x) - sin(2*x+1)^4",
+        "diff(3*x/8 + sin(2*(2*x+1))/8 + sin(4*(2*x+1))/64, x) - cos(2*x+1)^4",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(residual);
+        assert_eq!(wire["result"], "0", "{residual}");
+        assert_eq!(wire["required_display"], serde_json::json!([]));
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "fourth-power trig residual should not emit depth_overflow for {residual}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_explicit_trig_sixth_power_antiderivative_residual_verifies() {
+    for residual in [
+        "diff(5*x/16 - 15*sin(2*x)/64 + 3*sin(4*x)/64 - sin(6*x)/192, x) - sin(x)^6",
+        "diff(5*x/16 + 15*sin(2*x)/64 + 3*sin(4*x)/64 + sin(6*x)/192, x) - cos(x)^6",
+        "diff(5*x/16 - 15*sin(2*(2*x+1))/128 + 3*sin(4*(2*x+1))/128 - sin(6*(2*x+1))/384, x) - sin(2*x+1)^6",
+        "diff(5*x/16 + 15*sin(2*(2*x+1))/128 + 3*sin(4*(2*x+1))/128 + sin(6*(2*x+1))/384, x) - cos(2*x+1)^6",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(residual);
+        assert_eq!(wire["result"], "0", "{residual}");
+        assert_eq!(wire["required_display"], serde_json::json!([]));
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "sixth-power trig residual should not emit depth_overflow for {residual}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_explicit_trig_eighth_power_antiderivative_residual_verifies() {
+    for residual in [
+        "diff(35*x/128 - 7*sin(2*x)/32 + 7*sin(4*x)/128 - sin(6*x)/96 + sin(8*x)/1024, x) - sin(x)^8",
+        "diff(35*x/128 + 7*sin(2*x)/32 + 7*sin(4*x)/128 + sin(6*x)/96 + sin(8*x)/1024, x) - cos(x)^8",
+        "diff(35*x/128 - 7*sin(2*(2*x+1))/64 + 7*sin(4*(2*x+1))/256 - sin(6*(2*x+1))/192 + sin(8*(2*x+1))/2048, x) - sin(2*x+1)^8",
+        "diff(35*x/128 + 7*sin(2*(2*x+1))/64 + 7*sin(4*(2*x+1))/256 + sin(6*(2*x+1))/192 + sin(8*(2*x+1))/2048, x) - cos(2*x+1)^8",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(residual);
+        assert_eq!(wire["result"], "0", "{residual}");
+        assert_eq!(wire["required_display"], serde_json::json!([]));
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "eighth-power trig residual should not emit depth_overflow for {residual}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_explicit_negated_sine_uses_linearity() {
     assert_eq!(simplified_integral("integrate(-(sin(x)), x)"), "cos(x)");
 }
@@ -2920,6 +3109,42 @@ fn integrate_contract_quadratic_times_positive_quadratic_log_by_parts_verifies_s
             "diff(integrate(x^2*ln(x^2+x+1), x), x) - x^2*ln(x^2+x+1)",
             true,
         ),
+        (
+            "integrate(x^3*ln(x^2+1), x)",
+            "1/4·x^4·ln(x^2 + 1) - 1/4·ln(x^2 + 1) - 1/8·x^4 + 1/4·x^2",
+            "diff(integrate(x^3*ln(x^2+1), x), x) - x^3*ln(x^2+1)",
+            true,
+        ),
+        (
+            "integrate(x^4*ln(x^2+1), x)",
+            "1/5·x^5·ln(x^2 + 1) - 2/25·x^5 - 2/5·x + 2/5·arctan(x) + 2/15·x^3",
+            "diff(integrate(x^4*ln(x^2+1), x), x) - x^4*ln(x^2+1)",
+            true,
+        ),
+        (
+            "integrate(x^5*ln(x^2+1), x)",
+            "1/6·x^6·ln(x^2 + 1) - 1/18·x^6 - 1/6·x^2 + 1/6·ln(x^2 + 1) + 1/12·x^4",
+            "diff(integrate(x^5*ln(x^2+1), x), x) - x^5*ln(x^2+1)",
+            true,
+        ),
+        (
+            "integrate(x^6*ln(x^2+1), x)",
+            "1/7·x^7·ln(x^2 + 1) - 2/7·arctan(x) - 2/49·x^7 - 2/21·x^3 + 2/35·x^5 + 2/7·x",
+            "diff(integrate(x^6*ln(x^2+1), x), x) - x^6*ln(x^2+1)",
+            true,
+        ),
+        (
+            "integrate(x^7*ln(x^2+1), x)",
+            "1/8·x^8·ln(x^2 + 1) - 1/8·ln(x^2 + 1) - 1/32·x^8 - 1/16·x^4 + 1/24·x^6 + 1/8·x^2",
+            "diff(integrate(x^7*ln(x^2+1), x), x) - x^7*ln(x^2+1)",
+            true,
+        ),
+        (
+            "integrate(x^8*ln(x^2+1), x)",
+            "1/9·x^9·ln(x^2 + 1) - 2/81·x^9 - 2/45·x^5 - 2/9·x + 2/9·arctan(x) + 2/63·x^7 + 2/27·x^3",
+            "diff(integrate(x^8*ln(x^2+1), x), x) - x^8*ln(x^2+1)",
+            true,
+        ),
     ];
 
     for (input, expected, residual, verify_rendered) in cases {
@@ -2945,6 +3170,50 @@ fn integrate_contract_quadratic_times_positive_quadratic_log_by_parts_verifies_s
         assert_eq!(residual_wire["result"], "0", "input: {input}");
         assert_eq!(residual_wire["required_display"], serde_json::json!([]));
     }
+
+    let explicit_quintic_residual = "diff(1/6*x^6*ln(x^2+1) - 1/18*x^6 - 1/6*x^2 + 1/6*ln(x^2+1) + 1/12*x^4, x) - x^5*ln(x^2+1)";
+    let (wire, stderr) = cli_eval_json_with_stderr(explicit_quintic_residual);
+    assert!(
+        stderr.is_empty(),
+        "positive-quadratic log rendered quintic residual should stay quiet\nstderr:\n{stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!([]));
+
+    let explicit_sextic_residual = "diff(1/7*x^7*ln(x^2+1) - 2/7*arctan(x) - 2/49*x^7 - 2/21*x^3 + 2/35*x^5 + 2/7*x, x) - x^6*ln(x^2+1)";
+    let (wire, stderr) = cli_eval_json_with_stderr(explicit_sextic_residual);
+    assert!(
+        stderr.is_empty(),
+        "positive-quadratic log rendered sextic residual should stay quiet\nstderr:\n{stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!([]));
+
+    let explicit_septic_residual = "diff(1/8*x^8*ln(x^2+1) - 1/8*ln(x^2+1) - 1/32*x^8 - 1/16*x^4 + 1/24*x^6 + 1/8*x^2, x) - x^7*ln(x^2+1)";
+    let (wire, stderr) = cli_eval_json_with_stderr(explicit_septic_residual);
+    assert!(
+        stderr.is_empty(),
+        "positive-quadratic log rendered septic residual should stay quiet\nstderr:\n{stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!([]));
+
+    let explicit_octic_residual = "diff(1/9*x^9*ln(x^2+1) - 2/81*x^9 - 2/45*x^5 - 2/9*x + 2/9*arctan(x) + 2/63*x^7 + 2/27*x^3, x) - x^8*ln(x^2+1)";
+    let (wire, stderr) = cli_eval_json_with_stderr(explicit_octic_residual);
+    assert!(
+        stderr.is_empty(),
+        "positive-quadratic log rendered octic residual should stay quiet\nstderr:\n{stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!([]));
+
+    let (wire, stderr) = cli_eval_json_with_stderr("integrate(x^9*ln(x^2+1), x)");
+    assert!(
+        stderr.is_empty(),
+        "positive-quadratic log by-parts budget boundary should stay quiet\nstderr:\n{stderr}"
+    );
+    assert_eq!(wire["result"], "integrate(ln(x^2 + 1)·x^9, x)");
+    assert_eq!(wire["required_display"], serde_json::json!([]));
 }
 
 #[test]

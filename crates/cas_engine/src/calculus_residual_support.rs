@@ -3395,6 +3395,311 @@ fn integrated_affine_trig_fifth_power_diff_matches(
         .map(|_| Vec::new())
 }
 
+struct EvenPowerPrimitiveTerms {
+    linear_slope: BigRational,
+    sin_coeffs: Vec<BigRational>,
+}
+
+impl EvenPowerPrimitiveTerms {
+    fn new(harmonic_count: usize) -> Self {
+        Self {
+            linear_slope: BigRational::zero(),
+            sin_coeffs: vec![BigRational::zero(); harmonic_count],
+        }
+    }
+}
+
+fn collect_even_power_primitive_terms(
+    ctx: &mut Context,
+    expr: ExprId,
+    arg: ExprId,
+    var_name: &str,
+    harmonics: &[i64],
+    scale: BigRational,
+    terms: &mut EvenPowerPrimitiveTerms,
+) -> Option<()> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Number(value) if value.is_zero() => Some(()),
+        Expr::Add(left, right) => {
+            collect_even_power_primitive_terms(
+                ctx,
+                left,
+                arg,
+                var_name,
+                harmonics,
+                scale.clone(),
+                terms,
+            )?;
+            collect_even_power_primitive_terms(ctx, right, arg, var_name, harmonics, scale, terms)
+        }
+        Expr::Sub(left, right) => {
+            collect_even_power_primitive_terms(
+                ctx,
+                left,
+                arg,
+                var_name,
+                harmonics,
+                scale.clone(),
+                terms,
+            )?;
+            collect_even_power_primitive_terms(ctx, right, arg, var_name, harmonics, -scale, terms)
+        }
+        Expr::Neg(inner) => {
+            collect_even_power_primitive_terms(ctx, inner, arg, var_name, harmonics, -scale, terms)
+        }
+        _ => {
+            let (term_scale, core) = rational_scaled_term(ctx, expr);
+            let term_scale = scale * term_scale;
+
+            if let Ok(poly) = Polynomial::from_expr(ctx, core, var_name) {
+                if poly.degree() <= 1 {
+                    let slope = poly
+                        .coeffs
+                        .get(1)
+                        .cloned()
+                        .unwrap_or_else(BigRational::zero);
+                    terms.linear_slope += term_scale * slope;
+                    return Some(());
+                }
+            }
+
+            let (sin_scale, sin_arg) =
+                scaled_unary_builtin_rational_target(ctx, core, BuiltinFn::Sin)?;
+            for (index, harmonic) in harmonics.iter().enumerate() {
+                let harmonic_arg =
+                    scale_expr_by_rational(ctx, arg, BigRational::from_integer((*harmonic).into()));
+                if exprs_match(ctx, sin_arg, harmonic_arg) {
+                    terms.sin_coeffs[index] += term_scale * sin_scale;
+                    return Some(());
+                }
+            }
+
+            None
+        }
+    }
+}
+
+fn expected_harmonic_coeffs(
+    builtin: BuiltinFn,
+    sin_coeffs: &'static [(i64, i64, i64)],
+    cos_coeffs: &'static [(i64, i64, i64)],
+) -> Option<&'static [(i64, i64, i64)]> {
+    match builtin {
+        BuiltinFn::Sin => Some(sin_coeffs),
+        BuiltinFn::Cos => Some(cos_coeffs),
+        _ => None,
+    }
+}
+
+struct EvenPowerPrimitiveSpec {
+    expected_power: i64,
+    expected_linear: BigRational,
+    sin_coeffs: &'static [(i64, i64, i64)],
+    cos_coeffs: &'static [(i64, i64, i64)],
+}
+
+fn even_power_primitive_target_diff_matches(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+    right: ExprId,
+    spec: EvenPowerPrimitiveSpec,
+) -> Option<bool> {
+    let (builtin, arg, slope) =
+        affine_trig_power_target(ctx, right, var_name, spec.expected_power)?;
+    let harmonic_coeffs = expected_harmonic_coeffs(builtin, spec.sin_coeffs, spec.cos_coeffs)?;
+    let harmonics: Vec<i64> = harmonic_coeffs
+        .iter()
+        .map(|(harmonic, _, _)| *harmonic)
+        .collect();
+    let mut terms = EvenPowerPrimitiveTerms::new(harmonics.len());
+    collect_even_power_primitive_terms(
+        ctx,
+        target,
+        arg,
+        var_name,
+        &harmonics,
+        BigRational::one(),
+        &mut terms,
+    )?;
+
+    if terms.linear_slope != spec.expected_linear {
+        return Some(false);
+    }
+
+    for ((_, numerator, denominator), actual) in harmonic_coeffs.iter().zip(&terms.sin_coeffs) {
+        let expected = BigRational::new((*numerator).into(), (*denominator).into()) / slope.clone();
+        if *actual != expected {
+            return Some(false);
+        }
+    }
+
+    Some(true)
+}
+
+fn fourth_power_primitive_target_diff_matches(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+    right: ExprId,
+) -> Option<bool> {
+    even_power_primitive_target_diff_matches(
+        ctx,
+        target,
+        var_name,
+        right,
+        EvenPowerPrimitiveSpec {
+            expected_power: 4,
+            expected_linear: BigRational::new(3.into(), 8.into()),
+            sin_coeffs: &[(2, -1, 4), (4, 1, 32)],
+            cos_coeffs: &[(2, 1, 4), (4, 1, 32)],
+        },
+    )
+}
+
+fn integrated_affine_trig_fourth_power_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        affine_trig_power_target(ctx, integrate_call.target, &integrate_call.var_name, 4)?;
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(Vec::new());
+    }
+
+    fourth_power_primitive_target_diff_matches(ctx, diff_call.target, &diff_call.var_name, right)
+        .filter(|matched| *matched)
+        .map(|_| Vec::new())
+}
+
+fn sixth_power_primitive_target_diff_matches(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+    right: ExprId,
+) -> Option<bool> {
+    even_power_primitive_target_diff_matches(
+        ctx,
+        target,
+        var_name,
+        right,
+        EvenPowerPrimitiveSpec {
+            expected_power: 6,
+            expected_linear: BigRational::new(5.into(), 16.into()),
+            sin_coeffs: &[(2, -15, 64), (4, 3, 64), (6, -1, 192)],
+            cos_coeffs: &[(2, 15, 64), (4, 3, 64), (6, 1, 192)],
+        },
+    )
+}
+
+fn eighth_power_primitive_target_diff_matches(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+    right: ExprId,
+) -> Option<bool> {
+    even_power_primitive_target_diff_matches(
+        ctx,
+        target,
+        var_name,
+        right,
+        EvenPowerPrimitiveSpec {
+            expected_power: 8,
+            expected_linear: BigRational::new(35.into(), 128.into()),
+            sin_coeffs: &[(2, -7, 32), (4, 7, 128), (6, -1, 96), (8, 1, 1024)],
+            cos_coeffs: &[(2, 7, 32), (4, 7, 128), (6, 1, 96), (8, 1, 1024)],
+        },
+    )
+}
+
+fn integrated_affine_trig_sixth_power_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        affine_trig_power_target(ctx, integrate_call.target, &integrate_call.var_name, 6)?;
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(Vec::new());
+    }
+
+    sixth_power_primitive_target_diff_matches(ctx, diff_call.target, &diff_call.var_name, right)
+        .filter(|matched| *matched)
+        .map(|_| Vec::new())
+}
+
+fn integrated_affine_trig_eighth_power_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        affine_trig_power_target(ctx, integrate_call.target, &integrate_call.var_name, 8)?;
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(Vec::new());
+    }
+
+    eighth_power_primitive_target_diff_matches(ctx, diff_call.target, &diff_call.var_name, right)
+        .filter(|matched| *matched)
+        .map(|_| Vec::new())
+}
+
 fn integrated_quadratic_exp_linear_diff_matches(
     ctx: &mut Context,
     diff_expr: ExprId,
@@ -5064,6 +5369,15 @@ pub(crate) fn try_diff_integral_plain_trig_residual_zero_preorder(
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
     let required_conditions =
         integrated_log_abs_plain_trig_diff_matches(ctx, diff_expr, divisor, right)
+            .or_else(|| {
+                integrated_affine_trig_fourth_power_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_affine_trig_sixth_power_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_affine_trig_eighth_power_diff_matches(ctx, diff_expr, divisor, right)
+            })
             .or_else(|| {
                 integrated_affine_trig_fifth_power_diff_matches(ctx, diff_expr, divisor, right)
             })
@@ -7623,6 +7937,85 @@ mod tests {
         assert_eq!(
             integral_plain_trig_root_residual_result(
                 "diff(integrate(sin(2*x+1)^5, x), y) - sin(2*x+1)^5"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_explicit_fourth_power_primitive() {
+        let cases = [
+            "diff(3*x/8 - sin(2*x)/4 + sin(4*x)/32, x) - sin(x)^4",
+            "diff(3*x/8 + sin(2*x)/4 + sin(4*x)/32, x) - cos(x)^4",
+            "diff(3*x/8 - sin(2*(2*x+1))/8 + sin(4*(2*x+1))/64, x) - sin(2*x+1)^4",
+            "diff(3*x/8 + sin(2*(2*x+1))/8 + sin(4*(2*x+1))/64, x) - cos(2*x+1)^4",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_sixth_power_reduction() {
+        let cases = [
+            "diff(integrate(sin(x)^6, x), x) - sin(x)^6",
+            "diff(integrate(cos(x)^6, x), x) - cos(x)^6",
+            "diff(integrate(sin(2*x+1)^6, x), x) - sin(2*x+1)^6",
+            "diff(integrate(cos(2*x+1)^6, x), x) - cos(2*x+1)^6",
+            "diff(5*x/16 - 15*sin(2*x)/64 + 3*sin(4*x)/64 - sin(6*x)/192, x) - sin(x)^6",
+            "diff(5*x/16 + 15*sin(2*x)/64 + 3*sin(4*x)/64 + sin(6*x)/192, x) - cos(x)^6",
+            "diff(5*x/16 - 15*sin(2*(2*x+1))/128 + 3*sin(4*(2*x+1))/128 - sin(6*(2*x+1))/384, x) - sin(2*x+1)^6",
+            "diff(5*x/16 + 15*sin(2*(2*x+1))/128 + 3*sin(4*(2*x+1))/128 + sin(6*(2*x+1))/384, x) - cos(2*x+1)^6",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+
+        assert_eq!(
+            integral_plain_trig_root_residual_result(
+                "diff(integrate(sin(2*x+1)^6, x), y) - sin(2*x+1)^6"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_eighth_power_reduction() {
+        let cases = [
+            "diff(integrate(sin(x)^8, x), x) - sin(x)^8",
+            "diff(integrate(cos(x)^8, x), x) - cos(x)^8",
+            "diff(integrate(sin(2*x+1)^8, x), x) - sin(2*x+1)^8",
+            "diff(integrate(cos(2*x+1)^8, x), x) - cos(2*x+1)^8",
+            "diff(35*x/128 - 7*sin(2*x)/32 + 7*sin(4*x)/128 - sin(6*x)/96 + sin(8*x)/1024, x) - sin(x)^8",
+            "diff(35*x/128 + 7*sin(2*x)/32 + 7*sin(4*x)/128 + sin(6*x)/96 + sin(8*x)/1024, x) - cos(x)^8",
+            "diff(35*x/128 - 7*sin(2*(2*x+1))/64 + 7*sin(4*(2*x+1))/256 - sin(6*(2*x+1))/192 + sin(8*(2*x+1))/2048, x) - sin(2*x+1)^8",
+            "diff(35*x/128 + 7*sin(2*(2*x+1))/64 + 7*sin(4*(2*x+1))/256 + sin(6*(2*x+1))/192 + sin(8*(2*x+1))/2048, x) - cos(2*x+1)^8",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+
+        assert_eq!(
+            integral_plain_trig_root_residual_result(
+                "diff(integrate(sin(2*x+1)^8, x), y) - sin(2*x+1)^8"
             ),
             None
         );

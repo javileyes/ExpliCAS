@@ -1529,6 +1529,171 @@ fn trig_power_times_derivative_antiderivative(
     ))
 }
 
+fn trig_fourth_power_affine_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (builtin, arg, power) = trig_power_base(ctx, expr, 4, 4)?;
+    if power != 4 {
+        return None;
+    }
+
+    let (a, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    if a.is_zero() {
+        return None;
+    }
+
+    let var_expr = ctx.var(var);
+    let var_term = scale_rational_term(ctx, BigRational::new(3.into(), 8.into()), var_expr);
+
+    let two = ctx.num(2);
+    let four = ctx.num(4);
+    let double_arg = mul2_raw(ctx, two, arg);
+    let quadruple_arg = mul2_raw(ctx, four, arg);
+    let sin_double = ctx.call_builtin(BuiltinFn::Sin, vec![double_arg]);
+    let sin_quadruple = ctx.call_builtin(BuiltinFn::Sin, vec![quadruple_arg]);
+
+    let double_scale = BigRational::new(1.into(), 4.into()) / a.clone();
+    let signed_double_scale = match builtin {
+        BuiltinFn::Sin => -double_scale,
+        BuiltinFn::Cos => double_scale,
+        _ => return None,
+    };
+    let double_term = scale_rational_term(ctx, signed_double_scale, sin_double);
+    let quadruple_term = scale_rational_term(
+        ctx,
+        BigRational::new(1.into(), 32.into()) / a,
+        sin_quadruple,
+    );
+
+    let first = ctx.add(Expr::Add(var_term, double_term));
+    let primitive = ctx.add(Expr::Add(first, quadruple_term));
+    Some(cas_ast::hold::wrap_hold(ctx, primitive))
+}
+
+fn trig_sixth_power_affine_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (builtin, arg, power) = trig_power_base(ctx, expr, 6, 6)?;
+    if power != 6 {
+        return None;
+    }
+
+    let (a, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    if a.is_zero() {
+        return None;
+    }
+
+    let var_expr = ctx.var(var);
+    let var_term = scale_rational_term(ctx, BigRational::new(5.into(), 16.into()), var_expr);
+
+    let two = ctx.num(2);
+    let four = ctx.num(4);
+    let six = ctx.num(6);
+    let double_arg = mul2_raw(ctx, two, arg);
+    let quadruple_arg = mul2_raw(ctx, four, arg);
+    let sextuple_arg = mul2_raw(ctx, six, arg);
+    let sin_double = ctx.call_builtin(BuiltinFn::Sin, vec![double_arg]);
+    let sin_quadruple = ctx.call_builtin(BuiltinFn::Sin, vec![quadruple_arg]);
+    let sin_sextuple = ctx.call_builtin(BuiltinFn::Sin, vec![sextuple_arg]);
+
+    let double_scale = BigRational::new(15.into(), 64.into()) / a.clone();
+    let signed_double_scale = match builtin {
+        BuiltinFn::Sin => -double_scale,
+        BuiltinFn::Cos => double_scale,
+        _ => return None,
+    };
+    let sextuple_scale = BigRational::new(1.into(), 192.into()) / a.clone();
+    let signed_sextuple_scale = match builtin {
+        BuiltinFn::Sin => -sextuple_scale,
+        BuiltinFn::Cos => sextuple_scale,
+        _ => return None,
+    };
+
+    let double_term = scale_rational_term(ctx, signed_double_scale, sin_double);
+    let quadruple_term = scale_rational_term(
+        ctx,
+        BigRational::new(3.into(), 64.into()) / a,
+        sin_quadruple,
+    );
+    let sextuple_term = scale_rational_term(ctx, signed_sextuple_scale, sin_sextuple);
+
+    let first = ctx.add(Expr::Add(var_term, double_term));
+    let second = ctx.add(Expr::Add(first, quadruple_term));
+    let primitive = ctx.add(Expr::Add(second, sextuple_term));
+    Some(cas_ast::hold::wrap_hold(ctx, primitive))
+}
+
+fn trig_eighth_power_affine_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (builtin, arg, power) = trig_power_base(ctx, expr, 8, 8)?;
+    if power != 8 {
+        return None;
+    }
+
+    let (a, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    if a.is_zero() {
+        return None;
+    }
+
+    let var_expr = ctx.var(var);
+    let var_term = scale_rational_term(ctx, BigRational::new(35.into(), 128.into()), var_expr);
+
+    let two = ctx.num(2);
+    let four = ctx.num(4);
+    let six = ctx.num(6);
+    let eight = ctx.num(8);
+    let double_arg = mul2_raw(ctx, two, arg);
+    let quadruple_arg = mul2_raw(ctx, four, arg);
+    let sextuple_arg = mul2_raw(ctx, six, arg);
+    let octuple_arg = mul2_raw(ctx, eight, arg);
+    let sin_double = ctx.call_builtin(BuiltinFn::Sin, vec![double_arg]);
+    let sin_quadruple = ctx.call_builtin(BuiltinFn::Sin, vec![quadruple_arg]);
+    let sin_sextuple = ctx.call_builtin(BuiltinFn::Sin, vec![sextuple_arg]);
+    let sin_octuple = ctx.call_builtin(BuiltinFn::Sin, vec![octuple_arg]);
+
+    let double_scale = BigRational::new(7.into(), 32.into()) / a.clone();
+    let signed_double_scale = match builtin {
+        BuiltinFn::Sin => -double_scale,
+        BuiltinFn::Cos => double_scale,
+        _ => return None,
+    };
+    let sextuple_scale = BigRational::new(1.into(), 96.into()) / a.clone();
+    let signed_sextuple_scale = match builtin {
+        BuiltinFn::Sin => -sextuple_scale,
+        BuiltinFn::Cos => sextuple_scale,
+        _ => return None,
+    };
+
+    let double_term = scale_rational_term(ctx, signed_double_scale, sin_double);
+    let quadruple_term = scale_rational_term(
+        ctx,
+        BigRational::new(7.into(), 128.into()) / a.clone(),
+        sin_quadruple,
+    );
+    let sextuple_term = scale_rational_term(ctx, signed_sextuple_scale, sin_sextuple);
+    let octuple_term = scale_rational_term(
+        ctx,
+        BigRational::new(1.into(), 1024.into()) / a,
+        sin_octuple,
+    );
+
+    let first = ctx.add(Expr::Add(var_term, double_term));
+    let second = ctx.add(Expr::Add(first, quadruple_term));
+    let third = ctx.add(Expr::Add(second, sextuple_term));
+    let primitive = ctx.add(Expr::Add(third, octuple_term));
+    Some(cas_ast::hold::wrap_hold(ctx, primitive))
+}
+
 fn trig_ratio_power_factor(
     ctx: &Context,
     expr: ExprId,
@@ -6279,6 +6444,8 @@ fn is_positive_quadratic_polynomial(poly: &Polynomial) -> bool {
     four * a * c - b.clone() * b > BigRational::zero()
 }
 
+const POSITIVE_QUADRATIC_LN_BY_PARTS_MAX_COFACTOR_DEGREE: usize = 8;
+
 fn low_degree_times_positive_quadratic_ln_by_parts_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
@@ -6314,7 +6481,7 @@ fn low_degree_times_positive_quadratic_ln_by_parts_antiderivative(
         }
         let cofactor = build_balanced_mul(ctx, &cofactor_factors);
         let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
-        if cofactor_poly.degree() > 2 {
+        if cofactor_poly.degree() > POSITIVE_QUADRATIC_LN_BY_PARTS_MAX_COFACTOR_DEGREE {
             continue;
         }
 
@@ -11636,6 +11803,18 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         return Some(integral);
     }
 
+    if let Some(integral) = trig_fourth_power_affine_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
+    if let Some(integral) = trig_sixth_power_affine_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
+    if let Some(integral) = trig_eighth_power_affine_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
     if let Some(integral) = trig_ratio_power_reciprocal_square_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
@@ -12418,8 +12597,57 @@ mod tests {
             "1/3 * x^3 * ln(x^2 + x + 1) - (1/3 * ln(x^2 + x + 1) + 2/9 * x^3 - 1/6 * x^2 - 1/3 * x)"
         );
 
+        let expr = parse("x^3*ln(x^2+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/4 * x^4 * ln(x^2 + 1) - (1/4 * ln(x^2 + 1) + 1/8 * x^4 - 1/4 * x^2)"
+        );
+
+        let expr = parse("x^4*ln(x^2+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/5 * x^5 * ln(x^2 + 1) - (2/25 * x^5 + 2/5 * x - 2/5 * arctan(x) - 2/15 * x^3)"
+        );
+
+        let expr = parse("x^5*ln(x^2+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/6 * x^6 * ln(x^2 + 1) - (1/18 * x^6 + 1/6 * x^2 - 1/6 * ln(x^2 + 1) - 1/12 * x^4)"
+        );
+
+        let expr = parse("x^6*ln(x^2+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/7 * x^7 * ln(x^2 + 1) - (2/7 * arctan(x) + 2/49 * x^7 + 2/21 * x^3 - 2/35 * x^5 - 2/7 * x)"
+        );
+
+        let expr = parse("x^7*ln(x^2+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/8 * x^8 * ln(x^2 + 1) - (1/8 * ln(x^2 + 1) + 1/32 * x^8 + 1/16 * x^4 - 1/24 * x^6 - 1/8 * x^2)"
+        );
+
+        let expr = parse("x^8*ln(x^2+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/9 * x^9 * ln(x^2 + 1) - (2/81 * x^9 + 2/45 * x^5 + 2/9 * x - 2/9 * arctan(x) - 2/63 * x^7 - 2/27 * x^3)"
+        );
+
         let expr = parse("x^2*ln(x^2-1)", &mut ctx).expect("parse");
         assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+
+        let expr = parse("x^9*ln(x^2+1)", &mut ctx).expect("parse");
+        assert!(
+            integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+            "positive-quadratic ln by-parts budget should stop above degree {}",
+            super::POSITIVE_QUADRATIC_LN_BY_PARTS_MAX_COFACTOR_DEGREE
+        );
     }
 
     #[test]
@@ -14348,6 +14576,102 @@ mod tests {
         assert_eq!(
             rendered(&ctx, out),
             "1/2 * (sin(2 * x + 1) - 1/3 * sin(2 * x + 1)^3)"
+        );
+    }
+
+    #[test]
+    fn integrates_affine_trig_fourth_power_reduction() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/32 * sin(4 * x) + 3/8 * x - 1/4 * sin(2 * x)"
+        );
+
+        let expr = parse("cos(x)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/32 * sin(4 * x) + 1/4 * sin(2 * x) + 3/8 * x"
+        );
+
+        let expr = parse("sin(2*x + 1)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/64 * sin(4 * (2 * x + 1)) + 3/8 * x - 1/8 * sin(2 * (2 * x + 1))"
+        );
+
+        let expr = parse("cos(2*x + 1)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/64 * sin(4 * (2 * x + 1)) + 1/8 * sin(2 * (2 * x + 1)) + 3/8 * x"
+        );
+    }
+
+    #[test]
+    fn integrates_affine_trig_sixth_power_reduction() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x)^6", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "3/64 * sin(4 * x) + 5/16 * x - 15/64 * sin(2 * x) - 1/192 * sin(6 * x)"
+        );
+
+        let expr = parse("cos(x)^6", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/192 * sin(6 * x) + 3/64 * sin(4 * x) + 15/64 * sin(2 * x) + 5/16 * x"
+        );
+
+        let expr = parse("sin(2*x + 1)^6", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "3/128 * sin(4 * (2 * x + 1)) + 5/16 * x - 15/128 * sin(2 * (2 * x + 1)) - 1/384 * sin(6 * (2 * x + 1))"
+        );
+
+        let expr = parse("cos(2*x + 1)^6", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/384 * sin(6 * (2 * x + 1)) + 3/128 * sin(4 * (2 * x + 1)) + 15/128 * sin(2 * (2 * x + 1)) + 5/16 * x"
+        );
+    }
+
+    #[test]
+    fn integrates_affine_trig_eighth_power_reduction() {
+        let mut ctx = Context::new();
+        let expr = parse("sin(x)^8", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/1024 * sin(8 * x) + 7/128 * sin(4 * x) + 35/128 * x - 7/32 * sin(2 * x) - 1/96 * sin(6 * x)"
+        );
+
+        let expr = parse("cos(x)^8", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/1024 * sin(8 * x) + 1/96 * sin(6 * x) + 7/128 * sin(4 * x) + 7/32 * sin(2 * x) + 35/128 * x"
+        );
+
+        let expr = parse("sin(2*x + 1)^8", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/2048 * sin(8 * (2 * x + 1)) + 7/256 * sin(4 * (2 * x + 1)) + 35/128 * x - 7/64 * sin(2 * (2 * x + 1)) - 1/192 * sin(6 * (2 * x + 1))"
+        );
+
+        let expr = parse("cos(2*x + 1)^8", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/2048 * sin(8 * (2 * x + 1)) + 1/192 * sin(6 * (2 * x + 1)) + 7/256 * sin(4 * (2 * x + 1)) + 7/64 * sin(2 * (2 * x + 1)) + 35/128 * x"
         );
     }
 
