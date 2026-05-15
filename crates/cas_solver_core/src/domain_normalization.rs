@@ -6602,7 +6602,7 @@ mod tests {
             vec![
                 "x ≠ 1".to_string(),
                 "x ≠ -2".to_string(),
-                "x < -1/2 - sqrt(5/4) or x > -1/2 + sqrt(5/4)".to_string(),
+                "x < -1/2 - sqrt(5)/2 or x > -1/2 + sqrt(5)/2".to_string(),
             ]
         );
     }

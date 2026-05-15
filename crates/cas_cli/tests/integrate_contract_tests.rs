@@ -3955,26 +3955,30 @@ fn integrate_contract_direct_sec_csc_derivative_quotients_expose_didactic_subste
 
 #[test]
 fn integrate_contract_direct_trig_log_substitution_exposes_didactic_substep() {
-    for (input, expected_result, expected_required_display) in [
+    for (input, expected_result, expected_required_display, expected_substep_title) in [
         (
             "integrate(tan(2*x+1), x)",
             "-1/2·ln(|cos(2·x + 1)|)",
             serde_json::json!(["cos(2·x + 1) ≠ 0"]),
+            "Usar la regla de tan(u) -> -ln|cos(u)|",
         ),
         (
             "integrate(cot(2*x+1), x)",
             "1/2·ln(|sin(2·x + 1)|)",
             serde_json::json!(["sin(2·x + 1) ≠ 0"]),
+            "Usar la regla de cot(u) -> ln|sin(u)|",
         ),
         (
             "integrate(sec(2*x+1), x)",
             "1/2·ln(|(sin(2·x + 1) + 1) / cos(2·x + 1)|)",
             serde_json::json!(["cos(2·x + 1) ≠ 0"]),
+            "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
         ),
         (
             "integrate(csc(2*x+1), x)",
             "1/2·ln(|(cos(2·x + 1) - 1) / sin(2·x + 1)|)",
             serde_json::json!(["sin(2·x + 1) ≠ 0"]),
+            "Usar la regla de csc(u) -> ln|csc(u)-cot(u)|",
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -4003,9 +4007,23 @@ fn integrate_contract_direct_trig_log_substitution_exposes_didactic_substep() {
         assert!(
             substeps
                 .iter()
-                .any(|substep| substep["title"] == "Usar sustitución"),
-            "expected substitution substep for {input}, got {substeps:?}"
+                .any(|substep| substep["title"] == expected_substep_title),
+            "expected {expected_substep_title} substep for {input}, got {substeps:?}"
         );
+        if expected_substep_title != "Usar sustitución" {
+            assert!(
+                substeps
+                    .iter()
+                    .all(|substep| substep["title"] != "Usar sustitución"),
+                "direct trig log table case should not use the generic substitution substep for {input}: {substeps:?}"
+            );
+            assert!(
+                substeps
+                    .iter()
+                    .any(|substep| substep["title"] == "Identificar el argumento afín"),
+                "expected affine argument substep for {input}, got {substeps:?}"
+            );
+        }
         assert!(
             steps.iter().filter(|step| step["rule"] != "Calcular la integral").all(|step| {
                 step["substeps"]
@@ -4217,6 +4235,191 @@ fn integrate_contract_nested_inverse_polynomial_substitution_exposes_didactic_su
             "table or linear inverse primitive should not emit a fake substitution substep for {input}: {steps:?}"
         );
     }
+}
+
+#[test]
+fn integrate_contract_linear_inverse_table_explains_internal_derivative_without_substitution() {
+    for (input, expected_result, expected_required_display, expected_substep_title) in [
+        (
+            "integrate(1/(1+(2*x+1)^2), x)",
+            "1/2·arctan(2·x + 1)",
+            serde_json::json!([]),
+            "Usar la regla de arctan con derivada interna",
+        ),
+        (
+            "integrate(2/(4-(2*x+1)^2), x)",
+            "1/2·atanh((2·x + 1) / 2)",
+            serde_json::json!(["-3/2 < x < 1/2"]),
+            "Usar la regla de atanh con derivada interna",
+        ),
+        (
+            "integrate(1/sqrt((2*x+1)^2+1), x)",
+            "1/2·asinh(2·x + 1)",
+            serde_json::json!([]),
+            "Usar la regla de asinh con derivada interna",
+        ),
+        (
+            "integrate(2/(sqrt(2*x)*sqrt(2*x+2)), x)",
+            "acosh(2·x + 1)",
+            serde_json::json!(["x > 0"]),
+            "Usar la regla de acosh con derivada interna",
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "linear inverse table trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == expected_substep_title),
+            "expected {expected_substep_title} substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "linear inverse table case should not use the polynomial-substitution substep for {input}: {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_linear_elementary_table_explains_internal_derivative_without_substitution() {
+    for (input, expected_result, expected_substep_title) in [
+        (
+            "integrate(sin(2*x+1), x)",
+            "-1/2·cos(2·x + 1)",
+            "Usar la regla de sin con derivada interna",
+        ),
+        (
+            "integrate(cos(2*x+1), x)",
+            "1/2·sin(2·x + 1)",
+            "Usar la regla de cos con derivada interna",
+        ),
+        (
+            "integrate(exp(2*x+1), x)",
+            "1/2·e^(2·x + 1)",
+            "Usar la regla de exp con derivada interna",
+        ),
+        (
+            "integrate(sinh(2*x+1), x)",
+            "1/2·cosh(2·x + 1)",
+            "Usar la regla de sinh con derivada interna",
+        ),
+        (
+            "integrate(cosh(2*x+1), x)",
+            "1/2·sinh(2·x + 1)",
+            "Usar la regla de cosh con derivada interna",
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"],
+            serde_json::json!([]),
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "linear elementary table trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == expected_substep_title),
+            "expected {expected_substep_title} substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "linear elementary table case should not use the polynomial-substitution substep for {input}: {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_reciprocal_linear_log_table_explains_internal_derivative_without_substitution(
+) {
+    let input = "integrate(1/(2*x+1), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+    assert_eq!(wire["result"], "1/2·ln(|2·x + 1|)");
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!(["x ≠ -1/2"]),
+        "unexpected required_display for {input}: {:?}",
+        wire["required_display"]
+    );
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "linear log table trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+    );
+
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    let integration_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .expect("expected public symbolic integration step");
+    let substeps = integration_step["substeps"]
+        .as_array()
+        .expect("integration step should expose didactic substeps");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar la regla de ln|u| con derivada interna"),
+        "expected ln|u| substep for {input}, got {substeps:?}"
+    );
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Identificar el denominador afín"),
+        "expected affine denominator substep for {input}, got {substeps:?}"
+    );
+    assert!(
+        substeps
+            .iter()
+            .all(|substep| substep["title"] != "Usar sustitución"),
+        "linear log table case should not use the polynomial-substitution substep for {input}: {substeps:?}"
+    );
+    assert_antiderivative_verifies(input);
 }
 
 #[test]
@@ -4440,7 +4643,7 @@ fn integrate_contract_log_reciprocal_derivative_preserves_real_domain() {
             "-1 / ln(x^2 + x - 1)",
             "diff(integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^2), x), x) - (2*x+1)/((x^2+x-1)*ln(x^2+x-1)^2)",
             vec![
-                "x < -1/2 - sqrt(5/4) or x > -1/2 + sqrt(5/4)".to_string(),
+                "x < -1/2 - sqrt(5)/2 or x > -1/2 + sqrt(5)/2".to_string(),
                 "x ≠ -2".to_string(),
                 "x ≠ 1".to_string(),
             ],
@@ -4450,7 +4653,7 @@ fn integrate_contract_log_reciprocal_derivative_preserves_real_domain() {
             "-1 / (2 * ln(x^2 + x - 1)^2)",
             "diff(integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^3), x), x) - (2*x+1)/((x^2+x-1)*ln(x^2+x-1)^3)",
             vec![
-                "x < -1/2 - sqrt(5/4) or x > -1/2 + sqrt(5/4)".to_string(),
+                "x < -1/2 - sqrt(5)/2 or x > -1/2 + sqrt(5)/2".to_string(),
                 "x ≠ -2".to_string(),
                 "x ≠ 1".to_string(),
             ],
@@ -7733,7 +7936,7 @@ fn integrate_contract_atanh_quadratic_kernel_with_surd_width_preserves_positive_
     );
     assert_eq!(
         required,
-        vec!["-1/2 - sqrt(3/4) < x < -1/2 + sqrt(3/4)".to_string()],
+        vec!["-1/2 - sqrt(3)/2 < x < -1/2 + sqrt(3)/2".to_string()],
         "shifted atanh quadratic should preserve its positive-domain condition"
     );
 
@@ -7742,7 +7945,7 @@ fn integrate_contract_atanh_quadratic_kernel_with_surd_width_preserves_positive_
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["-1/2 - sqrt(3/4) < x < -1/2 + sqrt(3/4)".to_string()],
+        vec!["-1/2 - sqrt(3)/2 < x < -1/2 + sqrt(3)/2".to_string()],
         "nested shifted atanh verification should preserve the positive-domain condition"
     );
 }
@@ -8577,7 +8780,7 @@ fn integrate_contract_conditional_quadratic_log_square_product_by_parts_verifies
     );
     assert_eq!(
         required,
-        vec!["x < -1/2 - sqrt(5/4) or x > -1/2 + sqrt(5/4)".to_string()],
+        vec!["x < -1/2 - sqrt(5)/2 or x > -1/2 + sqrt(5)/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -9322,7 +9525,7 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(result, "-2 / sqrt(2 * x^2 + 2 * x - 3)");
     assert_eq!(
         required,
-        vec!["x < -1/2 - sqrt(7/4) or x > -1/2 + sqrt(7/4)".to_string()],
+        vec!["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2".to_string()],
         "scaled shifted fractional denominator power should preserve the positive-base condition"
     );
     assert_antiderivative_verifies(input);
@@ -9336,7 +9539,7 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(residual_wire["result"], "0");
     assert_eq!(
         residual_wire["required_display"],
-        serde_json::json!(["x < -1/2 - sqrt(7/4) or x > -1/2 + sqrt(7/4)"])
+        serde_json::json!(["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2"])
     );
     let residual =
         "diff(integrate((4*x+2)/(2*x^2+2*x-3)^(7/2), x), x) - (4*x+2)/(2*x^2+2*x-3)^(7/2)";
@@ -9348,7 +9551,7 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(residual_wire["result"], "0");
     assert_eq!(
         residual_wire["required_display"],
-        serde_json::json!(["x < -1/2 - sqrt(7/4) or x > -1/2 + sqrt(7/4)"])
+        serde_json::json!(["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2"])
     );
     assert_eq!(
         rationalize_rewrites_for_simplify(input),
@@ -9770,6 +9973,14 @@ fn integrate_contract_nested_tangent_cotangent_residual_verifies_antiderivative(
             "diff(integrate((4*x^3-2*x)*cot(x^4-x^2), x), x) - (4*x^3-2*x)*cot(x^4-x^2)",
             "sin(x^4 - x^2) ≠ 0",
         ),
+        (
+            "diff(integrate(2*x*sec(x^2), x), x) - 2*x*sec(x^2)",
+            "cos(x^2) ≠ 0",
+        ),
+        (
+            "diff(integrate(2*x*csc(x^2), x), x) - 2*x*csc(x^2)",
+            "sin(x^2) ≠ 0",
+        ),
     ];
 
     for (input, expected_condition) in cases {
@@ -9834,6 +10045,224 @@ fn integrate_contract_polynomial_cotangent_uses_abs_log_and_nonzero_domain() {
         vec!["sin(x^3) ≠ 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+}
+
+#[test]
+fn integrate_contract_polynomial_secant_uses_abs_log_and_nonzero_domain() {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(2*x*sec(x^2), x)");
+
+    assert_eq!(result, "ln(|(sin(x^2) + 1) / cos(x^2)|)");
+    assert_eq!(
+        required,
+        vec!["cos(x^2) ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_polynomial_cosecant_uses_abs_log_and_nonzero_domain() {
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate(2*x*csc(x^2), x)");
+
+    assert_eq!(result, "ln(|(cos(x^2) - 1) / sin(x^2)|)");
+    assert_eq!(
+        required,
+        vec!["sin(x^2) ≠ 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_polynomial_trig_log_substitution_explains_u_and_du() {
+    for (
+        input,
+        expected_result,
+        expected_required_display,
+        expected_rule_title,
+        expects_constant_adjustment,
+    ) in [
+        (
+            "integrate(x*tan(x^2), x)",
+            "-1/2·ln(|cos(x^2)|)",
+            serde_json::json!(["cos(x^2) ≠ 0"]),
+            "Usar la regla de tan(u) -> -ln|cos(u)|",
+            true,
+        ),
+        (
+            "integrate(x*cot(x^2), x)",
+            "1/2·ln(|sin(x^2)|)",
+            serde_json::json!(["sin(x^2) ≠ 0"]),
+            "Usar la regla de cot(u) -> ln|sin(u)|",
+            true,
+        ),
+        (
+            "integrate(2*x*sec(x^2), x)",
+            "ln(|(sin(x^2) + 1) / cos(x^2)|)",
+            serde_json::json!(["cos(x^2) ≠ 0"]),
+            "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
+            false,
+        ),
+        (
+            "integrate(x*sec(x^2), x)",
+            "1/2·ln(|(sin(x^2) + 1) / cos(x^2)|)",
+            serde_json::json!(["cos(x^2) ≠ 0"]),
+            "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
+            true,
+        ),
+        (
+            "integrate(2*x*csc(x^2), x)",
+            "ln(|(cos(x^2) - 1) / sin(x^2)|)",
+            serde_json::json!(["sin(x^2) ≠ 0"]),
+            "Usar la regla de csc(u) -> ln|csc(u)-cot(u)|",
+            false,
+        ),
+        (
+            "integrate(x*csc(x^2), x)",
+            "1/2·ln(|(cos(x^2) - 1) / sin(x^2)|)",
+            serde_json::json!(["sin(x^2) ≠ 0"]),
+            "Usar la regla de csc(u) -> ln|csc(u)-cot(u)|",
+            true,
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "polynomial trig log trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == expected_rule_title),
+            "expected {expected_rule_title} substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert_eq!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Ajustar el factor constante"),
+            expects_constant_adjustment,
+            "unexpected constant adjustment substep presence for {input}: {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "polynomial trig log table case should not use the generic substitution substep for {input}: {substeps:?}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_reciprocal_trig_derivative_product_explains_u_and_du() {
+    for (
+        input,
+        expected_result,
+        expected_required_display,
+        expected_rule_title,
+        expects_constant_adjustment,
+    ) in [
+        (
+            "integrate(x*sec(x^2)*tan(x^2), x)",
+            "sec(x^2) / 2",
+            serde_json::json!(["cos(x^2) ≠ 0"]),
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            true,
+        ),
+        (
+            "integrate(2*x*sec(x^2)*tan(x^2), x)",
+            "sec(x^2)",
+            serde_json::json!(["cos(x^2) ≠ 0"]),
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            false,
+        ),
+        (
+            "integrate(x*csc(x^2)*cot(x^2), x)",
+            "-csc(x^2) / 2",
+            serde_json::json!(["sin(x^2) ≠ 0"]),
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            true,
+        ),
+        (
+            "integrate(3*x^2*csc(x^3)*cot(x^3), x)",
+            "-csc(x^3)",
+            serde_json::json!(["sin(x^3) ≠ 0"]),
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            false,
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "reciprocal trig derivative product trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == expected_rule_title),
+            "expected {expected_rule_title} substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert_eq!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Ajustar el factor constante"),
+            expects_constant_adjustment,
+            "unexpected constant adjustment substep presence for {input}: {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "reciprocal trig derivative product should not use the generic substitution substep for {input}: {substeps:?}"
+        );
+    }
 }
 
 #[test]
@@ -10109,32 +10538,155 @@ fn integrate_contract_sqrt_chain_raw_reciprocal_trig_derivative_quotients_render
 }
 
 #[test]
+fn integrate_contract_sqrt_chain_reciprocal_trig_products_explain_u_and_du() {
+    for (
+        input,
+        expected_result,
+        expected_required_display,
+        expected_rule_title,
+        expects_constant_adjustment,
+    ) in [
+        (
+            "integrate(sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)",
+            "sec(sqrt(x))",
+            serde_json::json!(["cos(sqrt(x)) ≠ 0", "x > 0"]),
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            false,
+        ),
+        (
+            "integrate(csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x)",
+            "-csc(sqrt(x))",
+            serde_json::json!(["sin(sqrt(x)) ≠ 0", "x > 0"]),
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            false,
+        ),
+        (
+            "integrate(sec(sqrt(2*x))*tan(sqrt(2*x))/sqrt(2*x), x)",
+            "sec(sqrt(2·x))",
+            serde_json::json!(["cos(sqrt(2·x)) ≠ 0", "x > 0"]),
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            false,
+        ),
+        (
+            "integrate(sin(sqrt(x))*sqrt(x)/(2*x*cos(sqrt(x))^2), x)",
+            "sec(sqrt(x))",
+            serde_json::json!(["cos(sqrt(x)) ≠ 0", "x > 0"]),
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            false,
+        ),
+        (
+            "integrate(-sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)",
+            "-sec(sqrt(x))",
+            serde_json::json!(["cos(sqrt(x)) ≠ 0", "x > 0"]),
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            true,
+        ),
+        (
+            "integrate(-csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x)",
+            "csc(sqrt(x))",
+            serde_json::json!(["sin(sqrt(x)) ≠ 0", "x > 0"]),
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            true,
+        ),
+        (
+            "integrate(-3*sec(sqrt(3*x+1))*tan(sqrt(3*x+1))/(2*sqrt(3*x+1)), x)",
+            "-sec(sqrt(3·x + 1))",
+            serde_json::json!(["cos(sqrt(3·x + 1)) ≠ 0", "x > -1/3"]),
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            true,
+        ),
+        (
+            "integrate(-3*csc(sqrt(3*x+1))*cot(sqrt(3*x+1))/(2*sqrt(3*x+1)), x)",
+            "csc(sqrt(3·x + 1))",
+            serde_json::json!(["sin(sqrt(3·x + 1)) ≠ 0", "x > -1/3"]),
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            true,
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "sqrt-chain reciprocal trig product trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == expected_rule_title),
+            "expected {expected_rule_title} substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert_eq!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Ajustar el factor constante"),
+            expects_constant_adjustment,
+            "unexpected constant adjustment substep presence for {input}: {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "sqrt-chain reciprocal trig product should not use the generic substitution substep for {input}: {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
 fn integrate_contract_sqrt_chain_substitutions_expose_didactic_substep() {
-    for (input, expected_result, expected_required_display) in [
+    for (input, expected_result, expected_required_display, expected_substep_title) in [
         (
             "integrate(sin(sqrt(x))/(sqrt(x)*cos(sqrt(x))^2), x)",
             "2·sec(sqrt(x))",
             serde_json::json!(["cos(sqrt(x)) ≠ 0", "x > 0"]),
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
         ),
         (
             "integrate(tan(sqrt(x))/sqrt(x), x)",
             "-2·ln(|cos(sqrt(x))|)",
             serde_json::json!(["cos(sqrt(x)) ≠ 0", "x > 0"]),
+            "Usar la regla de tan(u) -> -ln|cos(u)|",
         ),
         (
             "integrate(tanh(sqrt(x))/sqrt(x), x)",
             "2·ln(cosh(sqrt(x)))",
             serde_json::json!(["x > 0"]),
+            "Usar sustitución",
         ),
         (
             "integrate(1/(sqrt(x)*cosh(sqrt(x))^2), x)",
             "2·tanh(sqrt(x))",
             serde_json::json!(["x > 0"]),
+            "Usar sustitución",
         ),
         (
             "integrate(sinh(sqrt(x))/(sqrt(x)*cosh(sqrt(x))^2), x)",
             "-2 / cosh(sqrt(x))",
             serde_json::json!(["x > 0"]),
+            "Usar sustitución",
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -10168,8 +10720,8 @@ fn integrate_contract_sqrt_chain_substitutions_expose_didactic_substep() {
         assert!(
             substeps
                 .iter()
-                .any(|substep| substep["title"] == "Usar sustitución"),
-            "expected substitution substep for {input}, got {substeps:?}"
+                .any(|substep| substep["title"] == expected_substep_title),
+            "expected {expected_substep_title} substep for {input}, got {substeps:?}"
         );
         assert_antiderivative_verifies(input);
     }
@@ -10273,6 +10825,103 @@ fn integrate_contract_sqrt_chain_tangent_cotangent_logs_integrate_directly() {
             step_rules,
             vec!["Symbolic Integration".to_string()],
             "sqrt-chain trig log derivatives should integrate directly: {step_rules:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_sqrt_chain_tangent_cotangent_logs_explain_u_and_du() {
+    for (
+        input,
+        expected_result,
+        expected_required_display,
+        expected_rule_title,
+        expects_adjustment,
+    ) in [
+        (
+            "integrate(tan(sqrt(x))/(2*sqrt(x)), x)",
+            "-ln(|cos(sqrt(x))|)",
+            serde_json::json!(["cos(sqrt(x)) ≠ 0", "x > 0"]),
+            "Usar la regla de tan(u) -> -ln|cos(u)|",
+            false,
+        ),
+        (
+            "integrate(cot(sqrt(x))/(2*sqrt(x)), x)",
+            "ln(|sin(sqrt(x))|)",
+            serde_json::json!(["sin(sqrt(x)) ≠ 0", "x > 0"]),
+            "Usar la regla de cot(u) -> ln|sin(u)|",
+            false,
+        ),
+        (
+            "integrate(tan(sqrt(x))/sqrt(x), x)",
+            "-2·ln(|cos(sqrt(x))|)",
+            serde_json::json!(["cos(sqrt(x)) ≠ 0", "x > 0"]),
+            "Usar la regla de tan(u) -> -ln|cos(u)|",
+            true,
+        ),
+        (
+            "integrate(cot(sqrt(x))/sqrt(x), x)",
+            "2·ln(|sin(sqrt(x))|)",
+            serde_json::json!(["sin(sqrt(x)) ≠ 0", "x > 0"]),
+            "Usar la regla de cot(u) -> ln|sin(u)|",
+            true,
+        ),
+        (
+            "integrate(tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+            "-ln(|cos(sqrt(3·x + 1))|)",
+            serde_json::json!(["cos(sqrt(3·x + 1)) ≠ 0", "x > -1/3"]),
+            "Usar la regla de tan(u) -> -ln|cos(u)|",
+            false,
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "sqrt-chain trig log trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == expected_rule_title),
+            "expected {expected_rule_title} substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert_eq!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Ajustar el factor constante"),
+            expects_adjustment,
+            "unexpected constant adjustment substep presence for {input}: {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "sqrt-chain trig log table should not use the generic substitution substep for {input}: {substeps:?}"
         );
         assert_antiderivative_verifies(input);
     }

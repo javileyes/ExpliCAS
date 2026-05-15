@@ -799,13 +799,53 @@ fn display_sqrt_bound(value: &BigRational) -> Option<String> {
         return None;
     }
 
-    let radicand = if value.denom() == &BigInt::one() {
-        value.numer().to_string()
+    if value.denom() == &BigInt::one() {
+        return Some(display_sqrt_quotient(value.numer(), &BigInt::one()));
+    }
+
+    let den_root = value.denom().sqrt();
+    if den_root.pow(2) == *value.denom() {
+        Some(display_sqrt_quotient(value.numer(), &den_root))
     } else {
-        format!("{}/{}", value.numer(), value.denom())
+        Some(display_sqrt_quotient(
+            &(value.numer() * value.denom()),
+            value.denom(),
+        ))
+    }
+}
+
+fn display_sqrt_quotient(numer: &BigInt, denom: &BigInt) -> String {
+    let (outside, inside) = split_small_square_factor(numer);
+    let numerator = if inside == BigInt::one() {
+        outside.to_string()
+    } else if outside == BigInt::one() {
+        format!("sqrt({inside})")
+    } else {
+        format!("{outside}*sqrt({inside})")
     };
 
-    Some(format!("sqrt({radicand})"))
+    if denom == &BigInt::one() {
+        numerator
+    } else {
+        format!("{numerator}/{denom}")
+    }
+}
+
+fn split_small_square_factor(value: &BigInt) -> (BigInt, BigInt) {
+    let mut outside = BigInt::one();
+    let mut inside = value.clone();
+    for factor in 2_i64..=97 {
+        let factor_big = BigInt::from(factor);
+        let square = &factor_big * &factor_big;
+        while (&inside % &square).is_zero() {
+            inside /= &square;
+            outside *= &factor_big;
+        }
+        if inside == BigInt::one() {
+            break;
+        }
+    }
+    (outside, inside)
 }
 
 fn display_center_minus_offset(center: &str, offset: &str) -> String {

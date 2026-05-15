@@ -95,6 +95,44 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-15 - Observe-only discovery: negative sqrt reciprocal-trig trace
+
+- area:
+  - calculus / integrate / didactic trace / post-calculus presentation
+- status:
+  - `superseded`
+- observed result:
+  - direct positive sqrt-chain products such as
+    `integrate(sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)` now receive a
+    specific `sec(u)·tan(u)` trace with concrete `u` and `du`
+  - the normalized negative sibling
+    `integrate(-sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)` still reaches the
+    final integration step as a raw
+    `-sin(sqrt(x))/(2*sqrt(x)*cos(sqrt(x))^2)`-shaped quotient and falls back
+    to the generic `Usar sustitución` substep
+- decision:
+  - retain only the direct positive/product-shaped trace in this iteration
+  - do not broaden the matcher to raw negative quotients without a separate,
+    focused trace-normalization hypothesis
+- reusable weakness:
+  - sign-pulled reciprocal-trig derivative products can cross from the public
+    `sec/csc * tan/cot` surface into a raw `sin/cos^2` quotient before
+    didactic substeps are generated, so trace recognition needs a narrow
+    normalized-form bridge if we want parity for negative variants
+- next candidate:
+  - add a focused didactic bridge for raw reciprocal-trig derivative quotients
+    with sqrt-chain cofactors, then require rule-specific substeps for the
+    negative `sec/csc` siblings without changing integration semantics
+- superseded by:
+  - a retained didactic bridge for raw sqrt-chain reciprocal-trig derivative
+    quotients
+  - `integrate(-sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)` now exposes
+    `Usar la regla de sec(u)·tan(u) -> sec(u)`, `Identificar u y du`, and
+    `Ajustar el factor constante`
+  - `integrate(-csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x)` now exposes the
+    analogous `csc(u)·cot(u)` trace
+  - guardrails passed with `failed = 0`
+
 ### 2026-05-15: Cross-Family Csc Residual Quotient Discovery
 
 - area:

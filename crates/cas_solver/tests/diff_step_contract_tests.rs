@@ -10469,32 +10469,32 @@ fn acosh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
     for (input, expected_render, expected_required) in [
         (
             "diff(acosh(sqrt(x)), x)",
-            "1 / (2 * sqrt(x) * sqrt(sqrt(x) - 1) * sqrt(sqrt(x) + 1))",
+            "1 / (2 * sqrt(x) * sqrt(x - 1))",
             vec!["x > 1".to_string()],
         ),
         (
             "diff(acosh(sqrt(x+1)), x)",
-            "1 / (2 * sqrt(x + 1) * sqrt(sqrt(x + 1) - 1) * sqrt(sqrt(x + 1) + 1))",
+            "1 / (2 * sqrt(x + 1) * sqrt(x))",
             vec!["x > 0".to_string()],
         ),
         (
             "diff(acosh(sqrt(x^2+1)), x)",
-            "x / (sqrt(x^2 + 1) * sqrt(sqrt(x^2 + 1) - 1) * sqrt(sqrt(x^2 + 1) + 1))",
+            "x / (sqrt(x^2 + 1) * |x|)",
             vec!["x ≠ 0".to_string()],
         ),
         (
             "diff(acosh(sqrt((x+1)^2+1)), x)",
-            "(x + 1) / (sqrt((x + 1)^2 + 1) * sqrt(sqrt((x + 1)^2 + 1) - 1) * sqrt(sqrt((x + 1)^2 + 1) + 1))",
+            "(x + 1) / (sqrt((x + 1)^2 + 1) * |x + 1|)",
             vec!["x ≠ -1".to_string()],
         ),
         (
             "diff(acosh(sqrt(x^2+2*x+2)), x)",
-            "(x + 1) / (sqrt(x^2 + 2 * x + 2) * sqrt(sqrt(x^2 + 2 * x + 2) - 1) * sqrt(sqrt(x^2 + 2 * x + 2) + 1))",
+            "(x + 1) / (sqrt(x^2 + 2 * x + 2) * |x + 1|)",
             vec!["x ≠ -1".to_string()],
         ),
         (
             "diff(acosh(sqrt(x^2-2*x+2)), x)",
-            "(x - 1) / (sqrt(x^2 - 2 * x + 2) * sqrt(sqrt(x^2 - 2 * x + 2) - 1) * sqrt(sqrt(x^2 - 2 * x + 2) + 1))",
+            "(x - 1) / (sqrt(x^2 - 2 * x + 2) * |x - 1|)",
             vec!["x ≠ 1".to_string()],
         ),
     ] {
@@ -10550,6 +10550,62 @@ fn acosh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
                 .iter()
                 .any(|step| step.rule_name == "Symbolic Differentiation"),
             "expected the derivative to keep the ordinary symbolic differentiation trace"
+        );
+    }
+}
+
+#[test]
+fn acosh_sqrt_abs_safe_diff_residual_collapses_with_required_nonzero() {
+    for (input, expected_required) in [
+        (
+            "diff(acosh(sqrt(x^2+1)), x)-x/(abs(x)*sqrt(x^2+1))",
+            vec!["x ≠ 0".to_string()],
+        ),
+        (
+            "diff(acosh(sqrt(x^2+2*x+2)), x)-(x+1)/(abs(x+1)*sqrt(x^2+2*x+2))",
+            vec!["x ≠ -1".to_string()],
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, "0", "input: {input}");
+
+        let mut required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+        required.sort();
+
+        let mut expected_required = expected_required;
+        expected_required.sort();
+        assert_eq!(
+            required, expected_required,
+            "unexpected required_conditions for {input}: {required:?}"
         );
     }
 }
@@ -12256,7 +12312,7 @@ fn surd_quotient_diff_preserves_rational_content_scale() {
             "diff(arcsin(x/sqrt(1/2)), x)",
             "sqrt(2) / sqrt(1 - 2 * x^2)",
             "1/(sqrt(1/2)*sqrt(1-(x/sqrt(1/2))^2))",
-            vec!["-sqrt(1/2) < x < sqrt(1/2)"],
+            vec!["-sqrt(2)/2 < x < sqrt(2)/2"],
         ),
         (
             "diff(asinh(x/sqrt(1/2)), x)",
@@ -12268,7 +12324,19 @@ fn surd_quotient_diff_preserves_rational_content_scale() {
             "diff(atanh(x/sqrt(1/2)), x)",
             "sqrt(2) / (1 - 2 * x^2)",
             "1/(sqrt(1/2)*(1-(x/sqrt(1/2))^2))",
-            vec!["-sqrt(1/2) < x < sqrt(1/2)"],
+            vec!["-sqrt(2)/2 < x < sqrt(2)/2"],
+        ),
+        (
+            "diff(arcsin(x/sqrt(8/9)), x)",
+            "3 / sqrt(8 - 9 * x^2)",
+            "1/(sqrt(8/9)*sqrt(1-(x/sqrt(8/9))^2))",
+            vec!["-2*sqrt(2)/3 < x < 2*sqrt(2)/3"],
+        ),
+        (
+            "diff(atanh(x/sqrt(12/25)), x)",
+            "10 * sqrt(3) / (12 - 25 * x^2)",
+            "1/(sqrt(12/25)*(1-(x/sqrt(12/25))^2))",
+            vec!["-2*sqrt(3)/5 < x < 2*sqrt(3)/5"],
         ),
     ];
 
@@ -12299,10 +12367,12 @@ fn surd_quotient_diff_preserves_rational_content_scale() {
         );
 
         assert_eq!(result, expected_result, "input: {input}");
-        assert!(
-            result.contains("sqrt(2)") || result.contains("2^(1/2)"),
-            "input: {input}, expected retained sqrt(2) scale, got: {result}"
-        );
+        if expected_result.contains("sqrt(2)") {
+            assert!(
+                result.contains("sqrt(2)") || result.contains("2^(1/2)"),
+                "input: {input}, expected retained sqrt(2) scale, got: {result}"
+            );
+        }
 
         let expected =
             parse(expected_chain_rule, &mut engine.simplifier.context).expect("parse expected");

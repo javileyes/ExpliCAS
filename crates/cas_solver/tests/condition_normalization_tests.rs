@@ -171,7 +171,12 @@ fn test_quadratic_exterior_conditions_display_solved_intervals() {
         (
             "nonnegative",
             "2*x^2 - 1",
-            "x ≤ -sqrt(1/2) or x ≥ sqrt(1/2)",
+            "x ≤ -sqrt(2)/2 or x ≥ sqrt(2)/2",
+        ),
+        (
+            "nonnegative",
+            "9*x^2 - 8",
+            "x ≤ -2*sqrt(2)/3 or x ≥ 2*sqrt(2)/3",
         ),
         (
             "nonnegative",

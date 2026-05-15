@@ -4085,6 +4085,35 @@ fn reciprocal_trig_log_antiderivative(
     sec_csc_log_antiderivative(ctx, builtin, arg, a)
 }
 
+fn polynomial_reciprocal_trig_log_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (builtin, arg) = unary_builtin_arg(ctx, den, BuiltinFn::Cos)
+        .map(|arg| (BuiltinFn::Sec, arg))
+        .or_else(|| unary_builtin_arg(ctx, den, BuiltinFn::Sin).map(|arg| (BuiltinFn::Csc, arg)))?;
+    if !contains_named_var(ctx, arg, var) {
+        return None;
+    }
+
+    let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    if arg_poly.degree() <= 1 {
+        return None;
+    }
+    let derivative = arg_poly.derivative();
+    let scale = constant_polynomial_ratio(&numerator, &derivative)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let one = ctx.num(1);
+    let primitive = sec_csc_log_antiderivative(ctx, builtin, arg, one)?;
+    Some(scale_rational_term(ctx, scale, primitive))
+}
+
 pub fn integrate_symbolic_is_trig_log_substitution_target(
     ctx: &mut Context,
     expr: ExprId,
@@ -4101,7 +4130,10 @@ pub fn integrate_symbolic_is_trig_log_substitution_target(
             };
             trig_log_antiderivative(ctx, builtin, args[0], var).is_some()
         }
-        Expr::Div(num, den) => reciprocal_trig_log_antiderivative(ctx, num, den, var).is_some(),
+        Expr::Div(num, den) => {
+            polynomial_reciprocal_trig_log_antiderivative(ctx, num, den, var).is_some()
+                || reciprocal_trig_log_antiderivative(ctx, num, den, var).is_some()
+        }
         _ => false,
     }
 }
@@ -4135,8 +4167,11 @@ fn polynomial_trig_log_required_nonzero(
             .find_map(|(idx, factor)| match ctx.get(*factor) {
                 Expr::Function(fn_id, args) if args.len() == 1 => {
                     let builtin = ctx.builtin_of(*fn_id)?;
-                    matches!(builtin, BuiltinFn::Tan | BuiltinFn::Cot)
-                        .then_some((idx, builtin, args[0]))
+                    matches!(
+                        builtin,
+                        BuiltinFn::Tan | BuiltinFn::Cot | BuiltinFn::Sec | BuiltinFn::Csc
+                    )
+                    .then_some((idx, builtin, args[0]))
                 }
                 _ => None,
             })?;
@@ -4149,7 +4184,15 @@ fn polynomial_trig_log_required_nonzero(
                     if args.len() == 1
                         && ctx
                             .builtin_of(*fn_id)
-                            .is_some_and(|builtin| matches!(builtin, BuiltinFn::Tan | BuiltinFn::Cot))
+                            .is_some_and(|builtin| {
+                                matches!(
+                                    builtin,
+                                    BuiltinFn::Tan
+                                        | BuiltinFn::Cot
+                                        | BuiltinFn::Sec
+                                        | BuiltinFn::Csc
+                                )
+                            })
             )
     }) {
         return None;
@@ -4181,6 +4224,8 @@ fn polynomial_trig_log_required_nonzero(
     let nonzero_builtin = match builtin {
         BuiltinFn::Tan => BuiltinFn::Cos,
         BuiltinFn::Cot => BuiltinFn::Sin,
+        BuiltinFn::Sec => BuiltinFn::Cos,
+        BuiltinFn::Csc => BuiltinFn::Sin,
         _ => return None,
     };
     Some(ctx.call_builtin(nonzero_builtin, vec![arg]))
@@ -4195,14 +4240,19 @@ fn reciprocal_trig_log_required_nonzero(
         Expr::Div(num, den) => (num, den),
         _ => return None,
     };
-    if !is_number(ctx, num, 1) {
-        return None;
-    }
 
     let (nonzero_builtin, arg) = unary_builtin_arg(ctx, den, BuiltinFn::Cos)
         .map(|arg| (BuiltinFn::Cos, arg))
         .or_else(|| unary_builtin_arg(ctx, den, BuiltinFn::Sin).map(|arg| (BuiltinFn::Sin, arg)))?;
-    get_linear_coeffs(ctx, arg, var)?;
+
+    let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    let derivative = arg_poly.derivative();
+    let scale = constant_polynomial_ratio(&numerator, &derivative)?;
+    if scale.is_zero() {
+        return None;
+    }
+
     Some(ctx.call_builtin(nonzero_builtin, vec![arg]))
 }
 
@@ -5310,6 +5360,8 @@ enum PolynomialSubstitutionKernel {
     Tanh,
     Tan,
     Cot,
+    Sec,
+    Csc,
 }
 
 fn polynomial_substitution_kernel(
@@ -5327,6 +5379,8 @@ fn polynomial_substitution_kernel(
                 BuiltinFn::Tanh => PolynomialSubstitutionKernel::Tanh,
                 BuiltinFn::Tan => PolynomialSubstitutionKernel::Tan,
                 BuiltinFn::Cot => PolynomialSubstitutionKernel::Cot,
+                BuiltinFn::Sec => PolynomialSubstitutionKernel::Sec,
+                BuiltinFn::Csc => PolynomialSubstitutionKernel::Csc,
                 _ => return None,
             };
             Some((kernel, args[0]))
@@ -5365,6 +5419,14 @@ fn polynomial_substitution_kernel_antiderivative(
         PolynomialSubstitutionKernel::Cot => {
             let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![arg]);
             ln_abs(ctx, sin_arg)
+        }
+        PolynomialSubstitutionKernel::Sec => {
+            let one = ctx.num(1);
+            sec_csc_log_antiderivative(ctx, BuiltinFn::Sec, arg, one).unwrap_or(kernel_factor)
+        }
+        PolynomialSubstitutionKernel::Csc => {
+            let one = ctx.num(1);
+            sec_csc_log_antiderivative(ctx, BuiltinFn::Csc, arg, one).unwrap_or(kernel_factor)
         }
     }
 }
@@ -9083,6 +9145,13 @@ fn polynomial_substitution_antiderivative(
 
     let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
     let arg_poly = Polynomial::from_expr(ctx, kernel_arg, var).ok()?;
+    if matches!(
+        kernel,
+        PolynomialSubstitutionKernel::Sec | PolynomialSubstitutionKernel::Csc
+    ) && arg_poly.degree() <= 1
+    {
+        return None;
+    }
     let derivative_poly = arg_poly.derivative();
     let scale = constant_polynomial_ratio(&cofactor_poly, &derivative_poly)?;
     if scale.is_zero() {
@@ -9122,6 +9191,8 @@ fn has_trig_polynomial_substitution_kernel(ctx: &Context, expr: ExprId, var: &st
                 | PolynomialSubstitutionKernel::Cos
                 | PolynomialSubstitutionKernel::Tan
                 | PolynomialSubstitutionKernel::Cot
+                | PolynomialSubstitutionKernel::Sec
+                | PolynomialSubstitutionKernel::Csc
         ) && contains_named_var(ctx, arg, var)
     })
 }
@@ -12872,6 +12943,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
             return Some(integral);
         }
 
+        if let Some(integral) = polynomial_reciprocal_trig_log_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = reciprocal_trig_log_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
@@ -15916,6 +15991,20 @@ mod tests {
         let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
         assert_eq!(conditions.len(), 1);
         assert_eq!(rendered(&ctx, conditions[0]), "sin(x^3)");
+
+        let expr = parse("2*x/cos(x^2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "ln(|tan(x^2) + sec(x^2)|)");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "cos(x^2)");
+
+        let expr = parse("2*x/sin(x^2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "ln(|(cos(x^2) - 1) / sin(x^2)|)");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "sin(x^2)");
     }
 
     #[test]

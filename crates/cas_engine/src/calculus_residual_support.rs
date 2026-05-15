@@ -2,6 +2,7 @@ use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_domain::exprs_equivalent;
 use cas_math::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
 use cas_math::polynomial::Polynomial;
+use cas_math::root_forms::try_rewrite_simplify_square_root_expr;
 use num_rational::BigRational;
 use num_traits::{One, Zero};
 
@@ -6312,6 +6313,65 @@ fn diff_sqrt_acosh_split_radical_diff_matches(
     ])
 }
 
+fn diff_acosh_sqrt_abs_safe_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    let acosh_arg = unary_builtin_arg(ctx, target, BuiltinFn::Acosh)?;
+    let radicand = sqrt_like_base(ctx, acosh_arg)?;
+    let radicand_poly = Polynomial::from_expr(ctx, radicand, &call.var_name).ok()?;
+    if radicand_poly.degree() > 2 {
+        return None;
+    }
+
+    let numerator_poly = scale_polynomial(
+        &radicand_poly.derivative(),
+        &BigRational::new(1.into(), 2.into()),
+    );
+    if numerator_poly.is_zero() {
+        return None;
+    }
+    let numerator = numerator_poly.to_expr(ctx);
+
+    let one_poly = Polynomial::one(call.var_name.clone());
+    let radicand_minus_one = radicand_poly.sub(&one_poly).to_expr(ctx);
+    let raw_sqrt_radicand_minus_one = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand_minus_one]);
+    let sqrt_radicand_minus_one =
+        try_rewrite_simplify_square_root_expr(ctx, raw_sqrt_radicand_minus_one)
+            .map(|rewrite| rewrite.rewritten)
+            .unwrap_or(raw_sqrt_radicand_minus_one);
+    let required_nonzero = unary_builtin_arg(ctx, sqrt_radicand_minus_one, BuiltinFn::Abs)?;
+
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let denominator =
+        cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, sqrt_radicand_minus_one]);
+    let expected = ctx.add(Expr::Div(numerator, denominator));
+
+    if !(exprs_match(ctx, expected, right)
+        || antiderivative_term_matches(ctx, expected, right, &call.var_name)
+        || quotient_matches_with_unordered_products(ctx, expected, right)
+        || quotient_sqrt_denominator_factors_match(ctx, expected, right, &call.var_name)
+        || quotient_matches_with_polynomial_content_denominators(
+            ctx,
+            expected,
+            right,
+            &call.var_name,
+        ))
+    {
+        return None;
+    }
+
+    Some(vec![crate::ImplicitCondition::NonZero(required_nonzero)])
+}
+
 pub(crate) fn try_diff_hyperbolic_reciprocal_residual_zero_preorder(
     ctx: &mut Context,
     left: ExprId,
@@ -6330,7 +6390,8 @@ fn try_diff_sqrt_acosh_split_radical_residual_zero_preorder(
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
     let required_conditions =
-        diff_sqrt_acosh_split_radical_diff_matches(ctx, diff_expr, divisor, right)?;
+        diff_sqrt_acosh_split_radical_diff_matches(ctx, diff_expr, divisor, right)
+            .or_else(|| diff_acosh_sqrt_abs_safe_diff_matches(ctx, diff_expr, divisor, right))?;
     Some((ctx.num(0), required_conditions))
 }
 
@@ -7592,7 +7653,7 @@ mod tests {
             ),
             Some((
                 "0".to_string(),
-                vec!["x < -1/2 - sqrt(7/4) or x > -1/2 + sqrt(7/4)".to_string()]
+                vec!["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2".to_string()]
             ))
         );
         assert_eq!(
@@ -7601,7 +7662,7 @@ mod tests {
             ),
             Some((
                 "0".to_string(),
-                vec!["x < -1/2 - sqrt(7/4) or x > -1/2 + sqrt(7/4)".to_string()]
+                vec!["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2".to_string()]
             ))
         );
     }

@@ -110,6 +110,32 @@ fn test_eval_wire_surfaces_blocked_diff_domain_hint() {
 }
 
 #[test]
+fn test_eval_scaled_arctan_surd_diff_stays_off_rationalize_overflow_route() {
+    let output = cli()
+        .args([
+            "eval",
+            "diff(7*arctan((2*x+1)/sqrt(3))/sqrt(3), x)",
+            "--format",
+            "json",
+        ])
+        .output()
+        .expect("Failed to run CLI");
+
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "7 / (2\u{00b7}(x^2 + x + 1))");
+    assert!(
+        !stderr.contains("depth_overflow") && !stderr.contains("WARN"),
+        "scaled arctan-surd diff should use the compact route, got stderr:\n{stderr}"
+    );
+}
+
+#[test]
 fn test_eval_text_surfaces_blocked_diff_domain_hint_on_stderr() {
     cli()
         .args(["eval", "diff(atanh(sqrt(x^2+2)), x)"])

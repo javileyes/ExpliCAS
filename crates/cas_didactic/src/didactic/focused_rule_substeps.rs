@@ -42,6 +42,36 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return integration_by_parts_substeps;
     }
 
+    let integration_linear_inverse_table_substeps =
+        generate_linear_inverse_table_integration_substeps(ctx, step);
+    if !integration_linear_inverse_table_substeps.is_empty() {
+        return integration_linear_inverse_table_substeps;
+    }
+
+    let integration_linear_elementary_table_substeps =
+        generate_linear_elementary_table_integration_substeps(ctx, step);
+    if !integration_linear_elementary_table_substeps.is_empty() {
+        return integration_linear_elementary_table_substeps;
+    }
+
+    let integration_linear_log_table_substeps =
+        generate_linear_log_table_integration_substeps(ctx, step);
+    if !integration_linear_log_table_substeps.is_empty() {
+        return integration_linear_log_table_substeps;
+    }
+
+    let integration_trig_log_table_substeps =
+        generate_trig_log_table_integration_substeps(ctx, step);
+    if !integration_trig_log_table_substeps.is_empty() {
+        return integration_trig_log_table_substeps;
+    }
+
+    let integration_reciprocal_trig_derivative_product_substeps =
+        generate_reciprocal_trig_derivative_product_integration_substeps(ctx, step);
+    if !integration_reciprocal_trig_derivative_product_substeps.is_empty() {
+        return integration_reciprocal_trig_derivative_product_substeps;
+    }
+
     let integration_substitution_substeps = generate_integration_substitution_substeps(ctx, step);
     if !integration_substitution_substeps.is_empty() {
         return integration_substitution_substeps;
@@ -11535,6 +11565,1397 @@ fn contains_linear_integration_by_parts_target(
         Expr::Neg(inner) => contains_linear_integration_by_parts_target(ctx, *inner, var_name),
         _ => false,
     }
+}
+
+fn generate_linear_inverse_table_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if let Expr::Function(after_fn_id, _) = ctx.get(after) {
+        if ctx.sym_name(*after_fn_id) == "integrate" {
+            return Vec::new();
+        }
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    let Some((builtin, arg)) = linear_inverse_table_result_arg(ctx, after, var_name) else {
+        return Vec::new();
+    };
+
+    let title = match builtin {
+        BuiltinFn::Arctan | BuiltinFn::Atan => "Usar la regla de arctan con derivada interna",
+        BuiltinFn::Asinh => "Usar la regla de asinh con derivada interna",
+        BuiltinFn::Acosh => "Usar la regla de acosh con derivada interna",
+        BuiltinFn::Atanh => "Usar la regla de atanh con derivada interna",
+        _ => return Vec::new(),
+    };
+
+    vec![
+        SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(latex_expr(ctx, after)),
+        SubStep::new(
+            "Identificar el argumento afín",
+            display_expr(ctx, arg),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, arg))
+        .with_after_latex(latex_expr(ctx, after)),
+    ]
+}
+
+fn linear_inverse_table_result_arg(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<(BuiltinFn, ExprId)> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) if args.len() == 1 => {
+            let builtin = ctx.builtin_of(*fn_id)?;
+            if !matches!(
+                builtin,
+                BuiltinFn::Arctan
+                    | BuiltinFn::Atan
+                    | BuiltinFn::Asinh
+                    | BuiltinFn::Acosh
+                    | BuiltinFn::Atanh
+            ) {
+                return None;
+            }
+            nontrivial_affine_argument(ctx, args[0], var_name).then_some((builtin, args[0]))
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            linear_inverse_table_result_arg(ctx, *inner, var_name)
+        }
+        Expr::Mul(left, right) => linear_inverse_table_result_arg(ctx, *left, var_name)
+            .or_else(|| linear_inverse_table_result_arg(ctx, *right, var_name)),
+        Expr::Div(num, den) if as_rational_const(ctx, *den, 8).is_some() => {
+            linear_inverse_table_result_arg(ctx, *num, var_name)
+        }
+        _ => None,
+    }
+}
+
+fn nontrivial_affine_argument(ctx: &Context, arg: ExprId, var_name: &str) -> bool {
+    let Ok(poly) = Polynomial::from_expr(ctx, arg, var_name) else {
+        return false;
+    };
+    if poly.degree() != 1 {
+        return false;
+    }
+
+    let slope = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let offset = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    !slope.is_zero() && (slope != BigRational::one() || !offset.is_zero())
+}
+
+fn generate_linear_elementary_table_integration_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if let Expr::Function(after_fn_id, _) = ctx.get(after) {
+        if ctx.sym_name(*after_fn_id) == "integrate" {
+            return Vec::new();
+        }
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    let Some((builtin, arg)) = linear_elementary_integrand_arg(ctx, args[0]) else {
+        return Vec::new();
+    };
+    if !nontrivial_affine_argument(ctx, arg, var_name) {
+        return Vec::new();
+    };
+
+    let title = match builtin {
+        BuiltinFn::Exp => "Usar la regla de exp con derivada interna",
+        BuiltinFn::Sin => "Usar la regla de sin con derivada interna",
+        BuiltinFn::Cos => "Usar la regla de cos con derivada interna",
+        BuiltinFn::Sinh => "Usar la regla de sinh con derivada interna",
+        BuiltinFn::Cosh => "Usar la regla de cosh con derivada interna",
+        _ => return Vec::new(),
+    };
+
+    vec![
+        SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(latex_expr(ctx, after)),
+        SubStep::new(
+            "Identificar el argumento afín",
+            display_expr(ctx, arg),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, arg))
+        .with_after_latex(latex_expr(ctx, after)),
+    ]
+}
+
+fn linear_elementary_integrand_arg(
+    ctx: &Context,
+    integrand: ExprId,
+) -> Option<(BuiltinFn, ExprId)> {
+    if let Some(arg) = extract_exp_argument(ctx, integrand) {
+        return Some((BuiltinFn::Exp, arg));
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(integrand) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(*fn_id)?;
+    match builtin {
+        BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Sinh | BuiltinFn::Cosh => {
+            Some((builtin, args[0]))
+        }
+        _ => None,
+    }
+}
+
+fn generate_linear_log_table_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if let Expr::Function(after_fn_id, _) = ctx.get(after) {
+        if ctx.sym_name(*after_fn_id) == "integrate" {
+            return Vec::new();
+        }
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    let Some(denominator) = linear_log_table_denominator_arg(ctx, args[0], var_name) else {
+        return Vec::new();
+    };
+
+    vec![
+        SubStep::new(
+            "Usar la regla de ln|u| con derivada interna",
+            display_expr(ctx, args[0]),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, args[0]))
+        .with_after_latex(latex_expr(ctx, after)),
+        SubStep::new(
+            "Identificar el denominador afín",
+            display_expr(ctx, denominator),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, denominator))
+        .with_after_latex(latex_expr(ctx, after)),
+    ]
+}
+
+fn linear_log_table_denominator_arg(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    if let Some((numerator, denominator)) = as_div(ctx, integrand) {
+        let coefficient = as_rational_const(ctx, numerator, 8)?;
+        if coefficient.is_zero() || !nontrivial_affine_argument(ctx, denominator, var_name) {
+            return None;
+        }
+        return Some(denominator);
+    }
+
+    let (base, exponent) = as_pow(ctx, integrand)?;
+    let exponent = as_rational_const(ctx, exponent, 8)?;
+    if exponent != -BigRational::one() || !nontrivial_affine_argument(ctx, base, var_name) {
+        return None;
+    }
+    Some(base)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TrigLogTableKind {
+    Tangent,
+    Cotangent,
+    Secant,
+    Cosecant,
+}
+
+struct TrigLogTableMatch {
+    kind: TrigLogTableKind,
+    arg: ExprId,
+    trace: TrigLogTableTrace,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum TrigLogTableTrace {
+    AffineArgument,
+    PolynomialCofactor {
+        cofactor_display: String,
+        cofactor_latex: String,
+        derivative_display: String,
+        derivative_latex: String,
+        scale: BigRational,
+    },
+}
+
+fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if let Expr::Function(after_fn_id, _) = ctx.get(after) {
+        if ctx.sym_name(*after_fn_id) == "integrate" {
+            return Vec::new();
+        }
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    let Some(table_match) = trig_log_table_integrand_arg(ctx, args[0], var_name) else {
+        return Vec::new();
+    };
+
+    let title = match table_match.kind {
+        TrigLogTableKind::Tangent => "Usar la regla de tan(u) -> -ln|cos(u)|",
+        TrigLogTableKind::Cotangent => "Usar la regla de cot(u) -> ln|sin(u)|",
+        TrigLogTableKind::Secant => "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
+        TrigLogTableKind::Cosecant => "Usar la regla de csc(u) -> ln|csc(u)-cot(u)|",
+    };
+
+    let mut substeps =
+        vec![
+            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
+                .with_before_latex(latex_expr(ctx, args[0]))
+                .with_after_latex(latex_expr(ctx, after)),
+        ];
+
+    match table_match.trace {
+        TrigLogTableTrace::AffineArgument => {
+            substeps.push(
+                SubStep::new(
+                    "Identificar el argumento afín",
+                    display_expr(ctx, table_match.arg),
+                    display_expr(ctx, after),
+                )
+                .with_before_latex(latex_expr(ctx, table_match.arg))
+                .with_after_latex(latex_expr(ctx, after)),
+            );
+        }
+        TrigLogTableTrace::PolynomialCofactor {
+            cofactor_display,
+            cofactor_latex,
+            derivative_display,
+            derivative_latex,
+            scale,
+        } => {
+            substeps.push(
+                SubStep::new(
+                    "Identificar u y du",
+                    display_expr(ctx, table_match.arg),
+                    derivative_display.clone(),
+                )
+                .with_before_latex(latex_expr(ctx, table_match.arg))
+                .with_after_latex(derivative_latex.clone()),
+            );
+            if !scale.is_one() {
+                substeps.push(
+                    SubStep::new(
+                        "Ajustar el factor constante",
+                        cofactor_display,
+                        format!("{} · {}", rational_display(&scale), derivative_display),
+                    )
+                    .with_before_latex(cofactor_latex)
+                    .with_after_latex(format!(
+                        "{}\\cdot {}",
+                        rational_latex(&scale),
+                        derivative_latex
+                    )),
+                );
+            }
+        }
+    }
+
+    substeps
+}
+
+fn trig_log_table_integrand_arg(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    if let Expr::Function(fn_id, args) = ctx.get(integrand) {
+        if args.len() == 1 {
+            let kind = match ctx.builtin_of(*fn_id)? {
+                BuiltinFn::Tan => TrigLogTableKind::Tangent,
+                BuiltinFn::Cot => TrigLogTableKind::Cotangent,
+                BuiltinFn::Sec => TrigLogTableKind::Secant,
+                BuiltinFn::Csc => TrigLogTableKind::Cosecant,
+                _ => return None,
+            };
+            return nontrivial_affine_argument(ctx, args[0], var_name).then_some(
+                TrigLogTableMatch {
+                    kind,
+                    arg: args[0],
+                    trace: TrigLogTableTrace::AffineArgument,
+                },
+            );
+        }
+    }
+
+    if let Some(table_match) = trig_log_polynomial_reciprocal_integrand(ctx, integrand, var_name) {
+        return Some(table_match);
+    }
+
+    if let Some(table_match) = trig_log_sqrt_chain_integrand(ctx, integrand, var_name) {
+        return Some(table_match);
+    }
+
+    let (num, den) = as_div(ctx, integrand)?;
+    if let Some(table_match) = trig_log_polynomial_quotient_integrand(ctx, num, den, var_name) {
+        return Some(table_match);
+    }
+
+    if let Some(coefficient) = as_rational_const(ctx, num, 8) {
+        if coefficient != BigRational::one() {
+            return None;
+        }
+        let (den_builtin, den_arg) = unary_builtin_arg(ctx, den)?;
+        if !nontrivial_affine_argument(ctx, den_arg, var_name) {
+            return None;
+        }
+        let kind = match den_builtin {
+            BuiltinFn::Cos => TrigLogTableKind::Secant,
+            BuiltinFn::Sin => TrigLogTableKind::Cosecant,
+            _ => return None,
+        };
+        return Some(TrigLogTableMatch {
+            kind,
+            arg: den_arg,
+            trace: TrigLogTableTrace::AffineArgument,
+        });
+    }
+
+    let (num_builtin, num_arg) = unary_builtin_arg(ctx, num)?;
+    let (den_builtin, den_arg) = unary_builtin_arg(ctx, den)?;
+    if compare_expr(ctx, num_arg, den_arg) != Ordering::Equal
+        || !nontrivial_affine_argument(ctx, num_arg, var_name)
+    {
+        return None;
+    }
+
+    match (num_builtin, den_builtin) {
+        (BuiltinFn::Sin, BuiltinFn::Cos) => Some(TrigLogTableMatch {
+            kind: TrigLogTableKind::Tangent,
+            arg: num_arg,
+            trace: TrigLogTableTrace::AffineArgument,
+        }),
+        (BuiltinFn::Cos, BuiltinFn::Sin) => Some(TrigLogTableMatch {
+            kind: TrigLogTableKind::Cotangent,
+            arg: num_arg,
+            trace: TrigLogTableTrace::AffineArgument,
+        }),
+        _ => None,
+    }
+}
+
+fn trig_log_sqrt_chain_integrand(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    match ctx.get(integrand) {
+        Expr::Div(num, den) => {
+            let (numerator_negative, numerator_factors) = signed_mul_factors(ctx, *num);
+            trig_log_sqrt_chain_from_factors(
+                ctx,
+                numerator_negative,
+                &numerator_factors,
+                *den,
+                var_name,
+            )
+        }
+        Expr::Mul(left, right) => trig_log_sqrt_chain_scaled_div(ctx, *left, *right, var_name)
+            .or_else(|| trig_log_sqrt_chain_scaled_div(ctx, *right, *left, var_name)),
+        Expr::Neg(inner) => {
+            let Expr::Div(num, den) = ctx.get(*inner) else {
+                return None;
+            };
+            let (numerator_negative, numerator_factors) = signed_mul_factors(ctx, *num);
+            trig_log_sqrt_chain_from_factors(
+                ctx,
+                !numerator_negative,
+                &numerator_factors,
+                *den,
+                var_name,
+            )
+        }
+        _ => None,
+    }
+}
+
+fn trig_log_sqrt_chain_scaled_div(
+    ctx: &Context,
+    scale_expr: ExprId,
+    div_expr: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    let Expr::Div(num, den) = ctx.get(div_expr) else {
+        return None;
+    };
+    let (scale_negative, mut numerator_factors) = signed_mul_factors(ctx, scale_expr);
+    let (num_negative, num_factors) = signed_mul_factors(ctx, *num);
+    numerator_factors.extend(num_factors);
+    trig_log_sqrt_chain_from_factors(
+        ctx,
+        scale_negative != num_negative,
+        &numerator_factors,
+        *den,
+        var_name,
+    )
+}
+
+fn trig_log_sqrt_chain_from_factors(
+    ctx: &Context,
+    numerator_negative: bool,
+    numerator_factors: &[ExprId],
+    den: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    let denominator_factors = collect_mul_chain_factors_readonly(ctx, den);
+
+    for (trig_index, factor) in numerator_factors.iter().enumerate() {
+        let Some((builtin, arg)) = unary_builtin_arg(ctx, *factor) else {
+            continue;
+        };
+        let kind = match builtin {
+            BuiltinFn::Tan => TrigLogTableKind::Tangent,
+            BuiltinFn::Cot => TrigLogTableKind::Cotangent,
+            _ => continue,
+        };
+
+        let remaining_numerator = numerator_factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != trig_index).then_some(*factor))
+            .collect::<Vec<_>>();
+        let (derivative_display, derivative_latex, scale, cofactor_display, cofactor_latex) =
+            sqrt_chain_cofactor_derivative_trace(
+                ctx,
+                arg,
+                numerator_negative,
+                &remaining_numerator,
+                &denominator_factors,
+                var_name,
+            )?;
+
+        return Some(TrigLogTableMatch {
+            kind,
+            arg,
+            trace: TrigLogTableTrace::PolynomialCofactor {
+                cofactor_display,
+                cofactor_latex,
+                derivative_display,
+                derivative_latex,
+                scale,
+            },
+        });
+    }
+
+    None
+}
+
+fn trig_log_polynomial_quotient_integrand(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    let (num_builtin, num_arg, cofactor_expr, cofactor_poly) =
+        trig_factor_with_polynomial_cofactor(ctx, num, var_name)?;
+    let (den_builtin, den_arg) = unary_builtin_arg(ctx, den)?;
+    if compare_expr(ctx, num_arg, den_arg) != Ordering::Equal {
+        return None;
+    }
+
+    let kind = match (num_builtin, den_builtin) {
+        (BuiltinFn::Sin, BuiltinFn::Cos) => TrigLogTableKind::Tangent,
+        (BuiltinFn::Cos, BuiltinFn::Sin) => TrigLogTableKind::Cotangent,
+        _ => return None,
+    };
+
+    let arg_poly = Polynomial::from_expr(ctx, num_arg, var_name).ok()?;
+    if arg_poly.degree() <= 1 {
+        return None;
+    }
+    let derivative = arg_poly.derivative();
+    let scale = constant_polynomial_ratio(&cofactor_poly, &derivative)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let (derivative_display, derivative_latex) = polynomial_display_and_latex(ctx, &derivative);
+    Some(TrigLogTableMatch {
+        kind,
+        arg: num_arg,
+        trace: TrigLogTableTrace::PolynomialCofactor {
+            cofactor_display: display_expr(ctx, cofactor_expr),
+            cofactor_latex: latex_expr(ctx, cofactor_expr),
+            derivative_display,
+            derivative_latex,
+            scale,
+        },
+    })
+}
+
+fn trig_factor_with_polynomial_cofactor(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<(BuiltinFn, ExprId, ExprId, Polynomial)> {
+    let Expr::Mul(left, right) = ctx.get(expr) else {
+        return None;
+    };
+
+    if let Some((builtin, arg)) = unary_builtin_arg(ctx, *left) {
+        if matches!(builtin, BuiltinFn::Sin | BuiltinFn::Cos) {
+            let cofactor_poly = Polynomial::from_expr(ctx, *right, var_name).ok()?;
+            return Some((builtin, arg, *right, cofactor_poly));
+        }
+    }
+
+    let (builtin, arg) = unary_builtin_arg(ctx, *right)?;
+    if !matches!(builtin, BuiltinFn::Sin | BuiltinFn::Cos) {
+        return None;
+    }
+    let cofactor_poly = Polynomial::from_expr(ctx, *left, var_name).ok()?;
+    Some((builtin, arg, *left, cofactor_poly))
+}
+
+fn trig_log_polynomial_reciprocal_integrand(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    match ctx.get(integrand) {
+        Expr::Div(num, den) => {
+            let numerator = Polynomial::from_expr(ctx, *num, var_name).ok()?;
+            trig_log_polynomial_reciprocal_arg(ctx, numerator, *den, var_name).map(
+                |(kind, arg, derivative, scale)| {
+                    let (derivative_display, derivative_latex) =
+                        polynomial_display_and_latex(ctx, &derivative);
+                    TrigLogTableMatch {
+                        kind,
+                        arg,
+                        trace: TrigLogTableTrace::PolynomialCofactor {
+                            cofactor_display: display_expr(ctx, *num),
+                            cofactor_latex: latex_expr(ctx, *num),
+                            derivative_display,
+                            derivative_latex,
+                            scale,
+                        },
+                    }
+                },
+            )
+        }
+        Expr::Mul(left, right) => trig_log_scaled_polynomial_reciprocal_integrand(
+            ctx, *left, *right, var_name,
+        )
+        .or_else(|| trig_log_scaled_polynomial_reciprocal_integrand(ctx, *right, *left, var_name)),
+        _ => None,
+    }
+}
+
+fn trig_log_scaled_polynomial_reciprocal_integrand(
+    ctx: &Context,
+    scale_expr: ExprId,
+    div_expr: ExprId,
+    var_name: &str,
+) -> Option<TrigLogTableMatch> {
+    let scale = as_rational_const(ctx, scale_expr, 8)?;
+    if scale.is_zero() {
+        return None;
+    }
+    let Expr::Div(num, den) = ctx.get(div_expr) else {
+        return None;
+    };
+    let numerator = Polynomial::from_expr(ctx, *num, var_name).ok()?;
+    let numerator = scale_polynomial(&numerator, &scale);
+    trig_log_polynomial_reciprocal_arg(ctx, numerator, *den, var_name).map(
+        |(kind, arg, derivative, scale)| {
+            let (derivative_display, derivative_latex) =
+                polynomial_display_and_latex(ctx, &derivative);
+            TrigLogTableMatch {
+                kind,
+                arg,
+                trace: TrigLogTableTrace::PolynomialCofactor {
+                    cofactor_display: format!(
+                        "{} · {}",
+                        display_expr(ctx, scale_expr),
+                        display_expr(ctx, *num)
+                    ),
+                    cofactor_latex: format!(
+                        "{}\\cdot {}",
+                        latex_expr(ctx, scale_expr),
+                        latex_expr(ctx, *num)
+                    ),
+                    derivative_display,
+                    derivative_latex,
+                    scale,
+                },
+            }
+        },
+    )
+}
+
+fn trig_log_polynomial_reciprocal_arg(
+    ctx: &Context,
+    numerator: Polynomial,
+    den: ExprId,
+    var_name: &str,
+) -> Option<(TrigLogTableKind, ExprId, Polynomial, BigRational)> {
+    let (den_builtin, den_arg) = unary_builtin_arg(ctx, den)?;
+    let kind = match den_builtin {
+        BuiltinFn::Cos => TrigLogTableKind::Secant,
+        BuiltinFn::Sin => TrigLogTableKind::Cosecant,
+        _ => return None,
+    };
+
+    let arg_poly = Polynomial::from_expr(ctx, den_arg, var_name).ok()?;
+    if arg_poly.degree() <= 1 {
+        return None;
+    }
+    let derivative = arg_poly.derivative();
+    let scale = constant_polynomial_ratio(&numerator, &derivative)?;
+    (!scale.is_zero()).then_some((kind, den_arg, derivative, scale))
+}
+
+fn constant_polynomial_ratio(
+    numerator: &Polynomial,
+    denominator: &Polynomial,
+) -> Option<BigRational> {
+    if denominator.is_zero() {
+        return None;
+    }
+
+    let pivot = denominator
+        .coeffs
+        .iter()
+        .position(|coeff| !coeff.is_zero())?;
+    let numerator_pivot = numerator
+        .coeffs
+        .get(pivot)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let scale = numerator_pivot / denominator.coeffs[pivot].clone();
+    let len = numerator.coeffs.len().max(denominator.coeffs.len());
+
+    for idx in 0..len {
+        let left = numerator
+            .coeffs
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        let right = denominator
+            .coeffs
+            .get(idx)
+            .cloned()
+            .unwrap_or_else(BigRational::zero)
+            * scale.clone();
+        if left != right {
+            return None;
+        }
+    }
+
+    Some(scale)
+}
+
+fn scale_polynomial(poly: &Polynomial, scale: &BigRational) -> Polynomial {
+    Polynomial::new(
+        poly.coeffs.iter().map(|coeff| coeff * scale).collect(),
+        poly.var.clone(),
+    )
+}
+
+fn polynomial_display_and_latex(ctx: &Context, poly: &Polynomial) -> (String, String) {
+    let mut scratch = ctx.clone();
+    let expr = poly.to_expr(&mut scratch);
+    (display_expr(&scratch, expr), latex_expr(&scratch, expr))
+}
+
+fn rational_display(value: &BigRational) -> String {
+    if value.denom().is_one() {
+        value.numer().to_string()
+    } else {
+        format!("{}/{}", value.numer(), value.denom())
+    }
+}
+
+fn rational_latex(value: &BigRational) -> String {
+    if value.denom().is_one() {
+        value.numer().to_string()
+    } else {
+        format!("\\frac{{{}}}{{{}}}", value.numer(), value.denom())
+    }
+}
+
+fn unary_builtin_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    Some((ctx.builtin_of(*fn_id)?, args[0]))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReciprocalTrigDerivativeProductKind {
+    SecantTangent,
+    CosecantCotangent,
+}
+
+struct ReciprocalTrigDerivativeProductMatch {
+    kind: ReciprocalTrigDerivativeProductKind,
+    arg: ExprId,
+    cofactor_display: String,
+    cofactor_latex: String,
+    derivative_display: String,
+    derivative_latex: String,
+    scale: BigRational,
+}
+
+fn generate_reciprocal_trig_derivative_product_integration_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if let Expr::Function(after_fn_id, _) = ctx.get(after) {
+        if ctx.sym_name(*after_fn_id) == "integrate" {
+            return Vec::new();
+        }
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    let Some(table_match) = reciprocal_trig_derivative_product_integrand(ctx, args[0], var_name)
+    else {
+        return Vec::new();
+    };
+
+    let title = match table_match.kind {
+        ReciprocalTrigDerivativeProductKind::SecantTangent => {
+            "Usar la regla de sec(u)·tan(u) -> sec(u)"
+        }
+        ReciprocalTrigDerivativeProductKind::CosecantCotangent => {
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)"
+        }
+    };
+
+    let mut substeps =
+        vec![
+            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
+                .with_before_latex(latex_expr(ctx, args[0]))
+                .with_after_latex(latex_expr(ctx, after)),
+        ];
+    substeps.push(
+        SubStep::new(
+            "Identificar u y du",
+            display_expr(ctx, table_match.arg),
+            table_match.derivative_display.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, table_match.arg))
+        .with_after_latex(table_match.derivative_latex.clone()),
+    );
+    if !table_match.scale.is_one() {
+        substeps.push(
+            SubStep::new(
+                "Ajustar el factor constante",
+                table_match.cofactor_display,
+                format!(
+                    "{} · {}",
+                    rational_display(&table_match.scale),
+                    table_match.derivative_display
+                ),
+            )
+            .with_before_latex(table_match.cofactor_latex)
+            .with_after_latex(format!(
+                "{}\\cdot {}",
+                rational_latex(&table_match.scale),
+                table_match.derivative_latex
+            )),
+        );
+    }
+
+    substeps
+}
+
+fn reciprocal_trig_derivative_product_integrand(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<ReciprocalTrigDerivativeProductMatch> {
+    if let Some(table_match) =
+        sqrt_chain_reciprocal_trig_derivative_product_integrand(ctx, integrand, var_name)
+    {
+        return Some(table_match);
+    }
+
+    match ctx.get(integrand) {
+        Expr::Div(num, den) => {
+            reciprocal_trig_derivative_product_div(ctx, *num, *den, var_name, None)
+        }
+        Expr::Mul(left, right) => reciprocal_trig_derivative_product_scaled_div(
+            ctx, *left, *right, var_name,
+        )
+        .or_else(|| reciprocal_trig_derivative_product_scaled_div(ctx, *right, *left, var_name)),
+        _ => None,
+    }
+}
+
+fn reciprocal_trig_derivative_product_scaled_div(
+    ctx: &Context,
+    scale_expr: ExprId,
+    div_expr: ExprId,
+    var_name: &str,
+) -> Option<ReciprocalTrigDerivativeProductMatch> {
+    let scale = as_rational_const(ctx, scale_expr, 8)?;
+    if scale.is_zero() {
+        return None;
+    }
+    let Expr::Div(num, den) = ctx.get(div_expr) else {
+        return None;
+    };
+    reciprocal_trig_derivative_product_div(ctx, *num, *den, var_name, Some((scale_expr, scale)))
+}
+
+fn reciprocal_trig_derivative_product_div(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+    var_name: &str,
+    outer_scale: Option<(ExprId, BigRational)>,
+) -> Option<ReciprocalTrigDerivativeProductMatch> {
+    let (num_builtin, num_arg, cofactor_expr, mut cofactor_poly) =
+        trig_factor_with_polynomial_cofactor(ctx, num, var_name)?;
+    let (den_builtin, den_arg) = trig_square_denominator_arg(ctx, den)?;
+    if compare_expr(ctx, num_arg, den_arg) != Ordering::Equal {
+        return None;
+    }
+
+    let kind = match (num_builtin, den_builtin) {
+        (BuiltinFn::Sin, BuiltinFn::Cos) => ReciprocalTrigDerivativeProductKind::SecantTangent,
+        (BuiltinFn::Cos, BuiltinFn::Sin) => ReciprocalTrigDerivativeProductKind::CosecantCotangent,
+        _ => return None,
+    };
+
+    let arg_poly = Polynomial::from_expr(ctx, num_arg, var_name).ok()?;
+    if arg_poly.degree() == 0 {
+        return None;
+    }
+    let derivative = arg_poly.derivative();
+    let (cofactor_display, cofactor_latex) = if let Some((scale_expr, scale)) = outer_scale {
+        cofactor_poly = scale_polynomial(&cofactor_poly, &scale);
+        (
+            format!(
+                "{} · {}",
+                display_expr(ctx, scale_expr),
+                display_expr(ctx, cofactor_expr)
+            ),
+            format!(
+                "{}\\cdot {}",
+                latex_expr(ctx, scale_expr),
+                latex_expr(ctx, cofactor_expr)
+            ),
+        )
+    } else {
+        (
+            display_expr(ctx, cofactor_expr),
+            latex_expr(ctx, cofactor_expr),
+        )
+    };
+    let scale = constant_polynomial_ratio(&cofactor_poly, &derivative)?;
+    if scale.is_zero() {
+        return None;
+    }
+    let (derivative_display, derivative_latex) = polynomial_display_and_latex(ctx, &derivative);
+
+    Some(ReciprocalTrigDerivativeProductMatch {
+        kind,
+        arg: num_arg,
+        cofactor_display,
+        cofactor_latex,
+        derivative_display,
+        derivative_latex,
+        scale,
+    })
+}
+
+fn sqrt_chain_reciprocal_trig_derivative_product_integrand(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<ReciprocalTrigDerivativeProductMatch> {
+    match ctx.get(integrand) {
+        Expr::Div(num, den) => {
+            sqrt_chain_reciprocal_trig_derivative_product_div(ctx, *num, *den, var_name)
+        }
+        Expr::Mul(left, right) => {
+            sqrt_chain_reciprocal_trig_derivative_product_scaled_div(ctx, *left, *right, var_name)
+                .or_else(|| {
+                    sqrt_chain_reciprocal_trig_derivative_product_scaled_div(
+                        ctx, *right, *left, var_name,
+                    )
+                })
+        }
+        Expr::Neg(inner) => {
+            sqrt_chain_reciprocal_trig_derivative_product_negated(ctx, *inner, var_name)
+        }
+        _ => None,
+    }
+}
+
+fn sqrt_chain_reciprocal_trig_derivative_product_negated(
+    ctx: &Context,
+    inner: ExprId,
+    var_name: &str,
+) -> Option<ReciprocalTrigDerivativeProductMatch> {
+    let Expr::Div(num, den) = ctx.get(inner) else {
+        return None;
+    };
+    let (num_negative, numerator_factors) = signed_mul_factors(ctx, *num);
+    sqrt_chain_reciprocal_trig_derivative_product_from_factors(
+        ctx,
+        !num_negative,
+        &numerator_factors,
+        *den,
+        var_name,
+    )
+}
+
+fn sqrt_chain_reciprocal_trig_derivative_product_scaled_div(
+    ctx: &Context,
+    scale_expr: ExprId,
+    div_expr: ExprId,
+    var_name: &str,
+) -> Option<ReciprocalTrigDerivativeProductMatch> {
+    let scale = as_rational_const(ctx, scale_expr, 8)?;
+    if scale.is_zero() {
+        return None;
+    }
+    let Expr::Div(num, den) = ctx.get(div_expr) else {
+        return None;
+    };
+
+    let (scale_negative, mut numerator_factors) = signed_mul_factors(ctx, scale_expr);
+    let (num_negative, num_factors) = signed_mul_factors(ctx, *num);
+    numerator_factors.extend(num_factors);
+    sqrt_chain_reciprocal_trig_derivative_product_from_factors(
+        ctx,
+        scale_negative != num_negative,
+        &numerator_factors,
+        *den,
+        var_name,
+    )
+}
+
+fn sqrt_chain_reciprocal_trig_derivative_product_div(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+    var_name: &str,
+) -> Option<ReciprocalTrigDerivativeProductMatch> {
+    let (numerator_negative, numerator_factors) = signed_mul_factors(ctx, num);
+    sqrt_chain_reciprocal_trig_derivative_product_from_factors(
+        ctx,
+        numerator_negative,
+        &numerator_factors,
+        den,
+        var_name,
+    )
+}
+
+fn sqrt_chain_reciprocal_trig_derivative_product_from_factors(
+    ctx: &Context,
+    numerator_negative: bool,
+    numerator_factors: &[ExprId],
+    den: ExprId,
+    var_name: &str,
+) -> Option<ReciprocalTrigDerivativeProductMatch> {
+    let denominator_factors = collect_mul_chain_factors_readonly(ctx, den);
+
+    sqrt_chain_reciprocal_trig_direct_product(
+        ctx,
+        numerator_negative,
+        numerator_factors,
+        &denominator_factors,
+        var_name,
+    )
+    .or_else(|| {
+        sqrt_chain_reciprocal_trig_raw_quotient(
+            ctx,
+            numerator_negative,
+            numerator_factors,
+            &denominator_factors,
+            var_name,
+        )
+    })
+}
+
+fn sqrt_chain_reciprocal_trig_direct_product(
+    ctx: &Context,
+    numerator_negative: bool,
+    numerator_factors: &[ExprId],
+    denominator_factors: &[ExprId],
+    var_name: &str,
+) -> Option<ReciprocalTrigDerivativeProductMatch> {
+    for (reciprocal_index, factor) in numerator_factors.iter().enumerate() {
+        let Some((factor_builtin, factor_arg)) = unary_builtin_arg(ctx, *factor) else {
+            continue;
+        };
+        let (kind, derivative_builtin, arg) = match (factor_builtin, factor_arg) {
+            (BuiltinFn::Sec, arg) => (
+                ReciprocalTrigDerivativeProductKind::SecantTangent,
+                BuiltinFn::Tan,
+                arg,
+            ),
+            (BuiltinFn::Csc, arg) => (
+                ReciprocalTrigDerivativeProductKind::CosecantCotangent,
+                BuiltinFn::Cot,
+                arg,
+            ),
+            _ => continue,
+        };
+
+        for (derivative_index, factor) in numerator_factors.iter().enumerate() {
+            if derivative_index == reciprocal_index {
+                continue;
+            }
+            let Some((candidate_builtin, candidate_arg)) = unary_builtin_arg(ctx, *factor) else {
+                continue;
+            };
+            if candidate_builtin != derivative_builtin
+                || !same_sqrt_chain_arg(ctx, candidate_arg, arg)
+            {
+                continue;
+            }
+
+            let remaining_numerator = numerator_factors
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, factor)| {
+                    (idx != reciprocal_index && idx != derivative_index).then_some(*factor)
+                })
+                .collect::<Vec<_>>();
+
+            if let Some(table_match) = sqrt_chain_reciprocal_trig_match_from_cofactor(
+                ctx,
+                kind,
+                arg,
+                numerator_negative,
+                &remaining_numerator,
+                denominator_factors,
+                var_name,
+            ) {
+                return Some(table_match);
+            }
+        }
+    }
+
+    None
+}
+
+fn sqrt_chain_reciprocal_trig_raw_quotient(
+    ctx: &Context,
+    numerator_negative: bool,
+    numerator_factors: &[ExprId],
+    denominator_factors: &[ExprId],
+    var_name: &str,
+) -> Option<ReciprocalTrigDerivativeProductMatch> {
+    for (denominator_index, factor) in denominator_factors.iter().enumerate() {
+        let Some((den_builtin, arg)) = trig_square_denominator_arg(ctx, *factor) else {
+            continue;
+        };
+        let (kind, numerator_builtin) = match den_builtin {
+            BuiltinFn::Cos => (
+                ReciprocalTrigDerivativeProductKind::SecantTangent,
+                BuiltinFn::Sin,
+            ),
+            BuiltinFn::Sin => (
+                ReciprocalTrigDerivativeProductKind::CosecantCotangent,
+                BuiltinFn::Cos,
+            ),
+            _ => continue,
+        };
+
+        for (numerator_index, factor) in numerator_factors.iter().enumerate() {
+            let Some((candidate_builtin, candidate_arg)) = unary_builtin_arg(ctx, *factor) else {
+                continue;
+            };
+            if candidate_builtin != numerator_builtin
+                || !same_sqrt_chain_arg(ctx, candidate_arg, arg)
+            {
+                continue;
+            }
+
+            let remaining_numerator = numerator_factors
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, factor)| (idx != numerator_index).then_some(*factor))
+                .collect::<Vec<_>>();
+            let remaining_denominator = denominator_factors
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, factor)| (idx != denominator_index).then_some(*factor))
+                .collect::<Vec<_>>();
+
+            if let Some(table_match) = sqrt_chain_reciprocal_trig_match_from_cofactor(
+                ctx,
+                kind,
+                arg,
+                numerator_negative,
+                &remaining_numerator,
+                &remaining_denominator,
+                var_name,
+            ) {
+                return Some(table_match);
+            }
+        }
+    }
+
+    None
+}
+
+fn sqrt_chain_reciprocal_trig_match_from_cofactor(
+    ctx: &Context,
+    kind: ReciprocalTrigDerivativeProductKind,
+    arg: ExprId,
+    numerator_negative: bool,
+    numerator_factors: &[ExprId],
+    denominator_factors: &[ExprId],
+    var_name: &str,
+) -> Option<ReciprocalTrigDerivativeProductMatch> {
+    let (derivative_display, derivative_latex, scale, cofactor_display, cofactor_latex) =
+        sqrt_chain_cofactor_derivative_trace(
+            ctx,
+            arg,
+            numerator_negative,
+            numerator_factors,
+            denominator_factors,
+            var_name,
+        )?;
+
+    Some(ReciprocalTrigDerivativeProductMatch {
+        kind,
+        arg,
+        cofactor_display,
+        cofactor_latex,
+        derivative_display,
+        derivative_latex,
+        scale,
+    })
+}
+
+fn sqrt_chain_cofactor_derivative_trace(
+    ctx: &Context,
+    arg: ExprId,
+    numerator_negative: bool,
+    numerator_factors: &[ExprId],
+    denominator_factors: &[ExprId],
+    var_name: &str,
+) -> Option<(String, String, BigRational, String, String)> {
+    let radicand = sqrt_chain_arg_radicand(ctx, arg)?;
+    let radicand_poly = Polynomial::from_expr(ctx, radicand, var_name).ok()?;
+    if radicand_poly.degree() != 1 {
+        return None;
+    }
+    let radicand_derivative = radicand_poly.derivative();
+    if radicand_derivative.is_zero() {
+        return None;
+    }
+
+    let mut scratch = ctx.clone();
+    let mut cofactor_numerator_factors = Vec::new();
+    if numerator_negative {
+        cofactor_numerator_factors
+            .push(scratch.add(Expr::Number(BigRational::from_integer((-1).into()))));
+    }
+    cofactor_numerator_factors.extend_from_slice(numerator_factors);
+    let cofactor_expr = build_quotient_from_factors(
+        &mut scratch,
+        &cofactor_numerator_factors,
+        denominator_factors,
+    );
+    let cofactor_simplified = simplify_expr_in_context(&mut scratch, cofactor_expr);
+
+    let derivative_expr = sqrt_chain_derivative_expr(&mut scratch, arg, &radicand_derivative);
+    let derivative_simplified = simplify_expr_in_context(&mut scratch, derivative_expr);
+    let ratio = scratch.add(Expr::Div(cofactor_simplified, derivative_simplified));
+    let ratio_simplified = simplify_expr_in_context(&mut scratch, ratio);
+    let scale = as_rational_const(&scratch, ratio_simplified, 8)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    Some((
+        display_expr(&scratch, derivative_simplified),
+        latex_expr(&scratch, derivative_simplified),
+        scale,
+        display_expr(&scratch, cofactor_simplified),
+        latex_expr(&scratch, cofactor_simplified),
+    ))
+}
+
+fn sqrt_chain_arg_radicand(ctx: &Context, arg: ExprId) -> Option<ExprId> {
+    if let Some((BuiltinFn::Sqrt, radicand)) = unary_builtin_arg(ctx, arg) {
+        return Some(radicand);
+    }
+
+    let (base, exponent) = as_pow(ctx, arg)?;
+    let exponent = as_rational_const(ctx, exponent, 8)?;
+    (exponent == BigRational::new(1.into(), 2.into())).then_some(base)
+}
+
+fn same_sqrt_chain_arg(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    if compare_expr(ctx, left, right) == Ordering::Equal {
+        return true;
+    }
+    let Some(left_radicand) = sqrt_chain_arg_radicand(ctx, left) else {
+        return false;
+    };
+    let Some(right_radicand) = sqrt_chain_arg_radicand(ctx, right) else {
+        return false;
+    };
+    compare_expr(ctx, left_radicand, right_radicand) == Ordering::Equal
+}
+
+fn sqrt_chain_derivative_expr(
+    ctx: &mut Context,
+    sqrt_arg: ExprId,
+    radicand_derivative: &Polynomial,
+) -> ExprId {
+    let derivative = radicand_derivative.to_expr(ctx);
+    let two = ctx.add(Expr::Number(BigRational::from_integer(2.into())));
+    let denominator = ctx.add(Expr::Mul(two, sqrt_arg));
+    ctx.add(Expr::Div(derivative, denominator))
+}
+
+fn signed_mul_factors(ctx: &Context, expr: ExprId) -> (bool, Vec<ExprId>) {
+    let mut factors = Vec::new();
+    let mut negative = false;
+    signed_mul_factors_into(ctx, expr, &mut negative, &mut factors);
+    (negative, factors)
+}
+
+fn signed_mul_factors_into(
+    ctx: &Context,
+    expr: ExprId,
+    negative: &mut bool,
+    factors: &mut Vec<ExprId>,
+) {
+    match ctx.get(expr) {
+        Expr::Mul(left, right) => {
+            signed_mul_factors_into(ctx, *left, negative, factors);
+            signed_mul_factors_into(ctx, *right, negative, factors);
+        }
+        Expr::Neg(inner) => {
+            *negative = !*negative;
+            signed_mul_factors_into(ctx, *inner, negative, factors);
+        }
+        _ => factors.push(expr),
+    }
+}
+
+fn trig_square_denominator_arg(ctx: &Context, den: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    if let Some((base, exponent)) = as_pow(ctx, den) {
+        let exponent = as_rational_const(ctx, exponent, 8)?;
+        if exponent != BigRational::from_integer(2.into()) {
+            return None;
+        }
+        let (builtin, arg) = unary_builtin_arg(ctx, base)?;
+        if matches!(builtin, BuiltinFn::Sin | BuiltinFn::Cos) {
+            return Some((builtin, arg));
+        }
+        return None;
+    }
+
+    let Expr::Mul(left, right) = ctx.get(den) else {
+        return None;
+    };
+    let (left_builtin, left_arg) = unary_builtin_arg(ctx, *left)?;
+    let (right_builtin, right_arg) = unary_builtin_arg(ctx, *right)?;
+    if left_builtin == right_builtin
+        && matches!(left_builtin, BuiltinFn::Sin | BuiltinFn::Cos)
+        && compare_expr(ctx, left_arg, right_arg) == Ordering::Equal
+    {
+        return Some((left_builtin, left_arg));
+    }
+    None
 }
 
 fn generate_integration_substitution_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
