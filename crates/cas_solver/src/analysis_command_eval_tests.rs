@@ -4653,7 +4653,7 @@ mod tests {
         assert!(lines.iter().any(|line| {
             line.contains("Combine fractions with the same denominator into one subtraction")
         }));
-        assert!(lines.iter().any(|line| line.contains("x + 1 ≠ 0")));
+        assert!(lines.iter().any(|line| line.contains("x ≠ -1")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("(a - b) / (x + 1)") || line.contains("(-b + a) / (x + 1)"))

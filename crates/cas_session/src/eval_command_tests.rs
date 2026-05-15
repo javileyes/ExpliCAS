@@ -832,7 +832,7 @@ mod tests {
                 warning["rule"] == "Limit Domain Path"
                     && warning["assumption"].as_str().is_some_and(|message| {
                         message.contains("x -> -infinity")
-                            && message.contains("expression requires x + 1 > 0")
+                            && message.contains("expression requires x > -1")
                     })
             }),
             "expected negative-infinity lower affine path/domain warning, got: {warnings:?}"
@@ -858,7 +858,7 @@ mod tests {
                 warning["rule"] == "Limit Domain Path"
                     && warning["assumption"].as_str().is_some_and(|message| {
                         message.contains("x -> -infinity")
-                            && message.contains("expression requires x - 2 ≥ 0")
+                            && message.contains("expression requires x ≥ 2")
                     })
             }),
             "expected negative-infinity lower affine nonnegative path/domain warning, got: {warnings:?}"
@@ -884,7 +884,7 @@ mod tests {
                 warning["rule"] == "Limit Domain Path"
                     && warning["assumption"].as_str().is_some_and(|message| {
                         message.contains("x -> infinity")
-                            && message.contains("expression requires 1 - x > 0")
+                            && message.contains("expression requires x < 1")
                     })
             }),
             "expected positive-infinity upper-domain path warning, got: {warnings:?}"
@@ -910,7 +910,7 @@ mod tests {
                 warning["rule"] == "Limit Domain Path"
                     && warning["assumption"].as_str().is_some_and(|message| {
                         message.contains("x -> infinity")
-                            && message.contains("expression requires 1 - x ≥ 0")
+                            && message.contains("expression requires x ≤ 1")
                     })
             }),
             "expected positive-infinity upper nonnegative path warning, got: {warnings:?}"

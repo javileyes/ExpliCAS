@@ -7584,19 +7584,25 @@ mod tests {
             reciprocal_half_power_shared_denominator_result(
                 "(x^2-1)^(1/2)*2*x/(x^2-1)^3 - 2*x/(x^2-1)^(5/2)"
             ),
-            Some(("0".to_string(), vec!["x^2 - 1 > 0".to_string()]))
+            Some(("0".to_string(), vec!["x < -1 or x > 1".to_string()]))
         );
         assert_eq!(
             reciprocal_half_power_shared_denominator_result(
                 "(2*x^2+2*x-3)^(1/2)*(4*x+2)/(2*x^2+2*x-3)^3 - (4*x+2)/(2*x^2+2*x-3)^(5/2)"
             ),
-            Some(("0".to_string(), vec!["2 * x^2 + 2 * x - 3 > 0".to_string()]))
+            Some((
+                "0".to_string(),
+                vec!["x < -1/2 - sqrt(7/4) or x > -1/2 + sqrt(7/4)".to_string()]
+            ))
         );
         assert_eq!(
             reciprocal_half_power_shared_denominator_result(
                 "(2*x^2+2*x-3)^(3/2)*(4*x+2)/(2*x^2+2*x-3)^5 - (4*x+2)/(2*x^2+2*x-3)^(7/2)"
             ),
-            Some(("0".to_string(), vec!["2 * x^2 + 2 * x - 3 > 0".to_string()]))
+            Some((
+                "0".to_string(),
+                vec!["x < -1/2 - sqrt(7/4) or x > -1/2 + sqrt(7/4)".to_string()]
+            ))
         );
     }
 
@@ -8040,7 +8046,7 @@ mod tests {
         let input = format!("(({residual}) + 1)/(x+2)");
         assert_eq!(
             explicit_positive_quadratic_square_passthrough_quotient_result(&input),
-            Some(("1 / (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+            Some(("1 / (x + 2)".to_string(), vec!["x ≠ -2".to_string()]))
         );
         assert_eq!(simplify_text(&input), "1 / (x + 2)");
     }
@@ -8087,7 +8093,7 @@ mod tests {
         let input = format!("(1 - ({residual}))/(x+2)");
         assert_eq!(
             explicit_positive_quadratic_cube_passthrough_quotient_result(&input),
-            Some(("1 / (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+            Some(("1 / (x + 2)".to_string(), vec!["x ≠ -2".to_string()]))
         );
         assert_eq!(simplify_text(&input), "1 / (x + 2)");
     }
@@ -8611,7 +8617,7 @@ mod tests {
         let input = format!("(({residual}) + 1)/(x+2)");
         assert_eq!(
             integral_plain_trig_passthrough_quotient_result(&input),
-            Some(("1 / (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+            Some(("1 / (x + 2)".to_string(), vec!["x ≠ -2".to_string()]))
         );
         assert_eq!(simplify_text(&input), "1 / (x + 2)");
     }
@@ -8666,7 +8672,7 @@ mod tests {
         let input = format!("(({residual}) + 1)/(x+2)");
         assert_eq!(
             integral_inverse_trig_passthrough_quotient_result(&input),
-            Some(("1 / (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+            Some(("1 / (x + 2)".to_string(), vec!["x ≠ -2".to_string()]))
         );
         assert_eq!(simplify_text(&input), "1 / (x + 2)");
     }
@@ -8765,14 +8771,14 @@ mod tests {
             let (expected, required_conditions) = if input.contains("x+3") {
                 (
                     "1 / ((x + 2) * (x + 3))",
-                    vec!["x + 2 ≠ 0".to_string(), "x + 3 ≠ 0".to_string()],
+                    vec!["x ≠ -2".to_string(), "x ≠ -3".to_string()],
                 )
             } else if input.contains("*2") || input.starts_with("2*") {
-                ("2 / (x + 2)", vec!["x + 2 ≠ 0".to_string()])
+                ("2 / (x + 2)", vec!["x ≠ -2".to_string()])
             } else if input.contains("- 1") {
-                ("-1 / (x + 2)", vec!["x + 2 ≠ 0".to_string()])
+                ("-1 / (x + 2)", vec!["x ≠ -2".to_string()])
             } else {
-                ("1 / (x + 2)", vec!["x + 2 ≠ 0".to_string()])
+                ("1 / (x + 2)", vec!["x ≠ -2".to_string()])
             };
             assert_eq!(
                 integral_hyperbolic_passthrough_quotient_result(&input),
@@ -8853,7 +8859,7 @@ mod tests {
 
         assert_eq!(
             integral_hyperbolic_passthrough_quotient_result(&input),
-            Some(("3 / (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+            Some(("3 / (x + 2)".to_string(), vec!["x ≠ -2".to_string()]))
         );
         assert_eq!(simplify_text(&input), "3 / (x + 2)");
     }
@@ -8868,7 +8874,7 @@ mod tests {
             integral_hyperbolic_passthrough_quotient_result(&input),
             Some((
                 "-3 / ((x + 2) * (x + 3))".to_string(),
-                vec!["x + 2 ≠ 0".to_string(), "x + 3 ≠ 0".to_string()]
+                vec!["x ≠ -2".to_string(), "x ≠ -3".to_string()]
             ))
         );
         assert_eq!(simplify_text(&input), "-3 / ((x + 2) * (x + 3))");
@@ -8882,7 +8888,7 @@ mod tests {
 
         assert_eq!(
             integral_hyperbolic_passthrough_quotient_result(&input),
-            Some(("-3 * (x + 2)".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+            Some(("-3 * (x + 2)".to_string(), vec!["x ≠ -2".to_string()]))
         );
         assert_eq!(simplify_text(&input), "-3 * (x + 2)");
     }
@@ -8913,7 +8919,7 @@ mod tests {
             "1/((diff(integrate(1/sqrt(4+(x+1)^2), x), x) - 1/sqrt(4+(x+1)^2)) + x + 2) - 1/(x+2)";
         assert_eq!(
             integral_residual_reciprocal_shifted_result(input),
-            Some(("0".to_string(), vec!["x + 2 ≠ 0".to_string()]))
+            Some(("0".to_string(), vec!["x ≠ -2".to_string()]))
         );
         assert_eq!(simplify_text(input), "0");
     }
@@ -8925,7 +8931,7 @@ mod tests {
             integral_residual_reciprocal_shifted_result(input),
             Some((
                 "0".to_string(),
-                vec!["sin(2 * x + 1) ≠ 0".to_string(), "x + 2 ≠ 0".to_string()]
+                vec!["sin(2 * x + 1) ≠ 0".to_string(), "x ≠ -2".to_string()]
             ))
         );
         assert_eq!(simplify_text(input), "0");
@@ -8940,7 +8946,7 @@ mod tests {
         ] {
             assert_eq!(
                 integral_residual_shifted_quotient_result(&input),
-                Some(("0".to_string(), vec!["x + 2 ≠ 0".to_string()])),
+                Some(("0".to_string(), vec!["x ≠ -2".to_string()])),
                 "{input}"
             );
             assert_eq!(simplify_text(&input), "0", "{input}");
@@ -8958,7 +8964,7 @@ mod tests {
                 integral_residual_shifted_quotient_result(&input),
                 Some((
                     "0".to_string(),
-                    vec!["sin(2 * x + 1) ≠ 0".to_string(), "x + 2 ≠ 0".to_string()]
+                    vec!["sin(2 * x + 1) ≠ 0".to_string(), "x ≠ -2".to_string()]
                 )),
                 "{input}"
             );
@@ -8980,7 +8986,7 @@ mod tests {
             ),
             (
                 format!("(({numerator}) + 1)/(({repeated_pole_denominator}) + 1)"),
-                vec!["sin(2 * x + 1) ≠ 0", "x + 1 ≠ 0"]
+                vec!["sin(2 * x + 1) ≠ 0", "x ≠ -1"]
                     .into_iter()
                     .map(str::to_string)
                     .collect(),
@@ -9032,7 +9038,7 @@ mod tests {
             .map(|condition| condition.display(&ctx).to_string())
             .collect();
 
-        assert_eq!(rendered, vec!["x + 2 ≠ 0"]);
+        assert_eq!(rendered, vec!["x ≠ -2"]);
     }
 
     #[test]
@@ -9049,7 +9055,7 @@ mod tests {
             .map(|condition| condition.display(&ctx).to_string())
             .collect();
 
-        assert_eq!(rendered, vec!["x + 2 ≠ 0"]);
+        assert_eq!(rendered, vec!["x ≠ -2"]);
     }
 
     #[test]
@@ -9068,7 +9074,7 @@ mod tests {
             .map(|condition| condition.display(&ctx).to_string())
             .collect();
 
-        assert_eq!(rendered, vec!["x + 1 ≠ 0"]);
+        assert_eq!(rendered, vec!["x ≠ -1"]);
     }
 
     #[test]
@@ -9087,7 +9093,7 @@ mod tests {
             .map(|condition| condition.display(&ctx).to_string())
             .collect();
 
-        assert_eq!(rendered, vec!["x > 0", "x + 2 ≠ 0"]);
+        assert_eq!(rendered, vec!["x > 0", "x ≠ -2"]);
     }
 
     #[test]
@@ -9136,7 +9142,7 @@ mod tests {
                 integral_rational_passthrough_quotient_result(&input),
                 Some((
                     "1 / (x + 2)".to_string(),
-                    vec!["x + 1 ≠ 0".to_string(), "x + 2 ≠ 0".to_string()]
+                    vec!["x ≠ -1".to_string(), "x ≠ -2".to_string()]
                 )),
                 "{input}"
             );
@@ -9152,7 +9158,7 @@ mod tests {
 
         assert_eq!(
             integral_rational_passthrough_quotient_result(&input),
-            Some(("1".to_string(), vec!["x + 1 ≠ 0".to_string()]))
+            Some(("1".to_string(), vec!["x ≠ -1".to_string()]))
         );
         assert_eq!(simplify_text(&input), "1");
     }
@@ -9166,8 +9172,8 @@ mod tests {
             Some((
                 "0".to_string(),
                 vec![
-                    "x - 1 ≠ 0".to_string(),
-                    "x + 1 ≠ 0".to_string(),
+                    "x ≠ 1".to_string(),
+                    "x ≠ -1".to_string(),
                     "(3 * x + 5) / (x^3 - x^2 - x + 1) + c ≠ 0".to_string()
                 ]
             ))
@@ -9465,7 +9471,7 @@ mod tests {
         assert_eq!(
             arcsec_negative_affine_required_conditions,
             vec![
-                "4 - 3 * x > 0".to_string(),
+                "x < 4/3".to_string(),
                 "2 - 3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)) ≠ 0".to_string()
             ]
         );
@@ -9487,7 +9493,7 @@ mod tests {
         assert_eq!(
             arccsc_negative_affine_required_conditions,
             vec![
-                "4 - 3 * x > 0".to_string(),
+                "x < 4/3".to_string(),
                 "3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)) + 2 ≠ 0".to_string()
             ]
         );
@@ -9532,10 +9538,7 @@ mod tests {
             sqrt_acosh_split_radical_residual_result(input),
             Some((
                 "0".to_string(),
-                vec![
-                    "acosh(2 * x + 3) > 0".to_string(),
-                    "2 * x + 2 > 0".to_string()
-                ]
+                vec!["acosh(2 * x + 3) > 0".to_string(), "x > -1".to_string()]
             ))
         );
         assert_eq!(simplify_text(input), "0");

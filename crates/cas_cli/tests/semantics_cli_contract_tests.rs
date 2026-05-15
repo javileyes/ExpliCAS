@@ -176,7 +176,7 @@ fn log_even_power_minus_negative_log_uses_inferred_negative_domain_for_abs() {
 
     assert_eq!(wire["result"], "0");
     assert_eq!(wire["domain"]["mode"], "generic");
-    assert_eq!(wire["required_display"], json!(["-x > 0"]));
+    assert_eq!(wire["required_display"], json!(["x < 0"]));
 }
 
 #[test]
@@ -762,7 +762,7 @@ fn eval_general_base_log_abs_sqrt_of_intrinsically_positive_argument_keeps_only_
             .iter()
             .filter_map(|item| item.as_str())
             .collect::<Vec<_>>(),
-        vec!["b - 1 ≠ 0", "b > 0"]
+        vec!["b > 0", "b ≠ 1"]
     );
 }
 
@@ -783,7 +783,7 @@ fn eval_general_base_log_sqrt_keeps_nontrivial_positive_argument_warning() {
             .iter()
             .filter_map(|item| item.as_str())
             .collect::<Vec<_>>(),
-        vec!["b - 1 ≠ 0", "b > 0", "u > 0"]
+        vec!["b > 0", "b ≠ 1", "u > 0"]
     );
 }
 
@@ -3205,6 +3205,83 @@ fn inverse_reciprocal_trig_domains_hide_redundant_public_nonzero_guard() {
                 .iter()
                 .any(|condition| condition["kind"] == builtin
                     && condition["expr_canonical"] == "1 - (1 / x)^2"),
+            "structured bounded-domain guard should remain for {expr}: {required_conditions:?}"
+        );
+    }
+}
+
+#[test]
+fn inverse_reciprocal_trig_affine_domains_display_solved_exterior_interval() {
+    for (expr, result, display, nonzero, bounded) in [
+        (
+            "arcsec(x + 1)",
+            "arccos(1 / (x + 1))",
+            "x ≤ -2 or x ≥ 0",
+            "x + 1",
+            "1 - (1 / (x + 1))^2",
+        ),
+        (
+            "arccsc(2*x - 1)",
+            "arcsin(1 / (2·x - 1))",
+            "x ≤ 0 or x ≥ 1",
+            "2·x - 1",
+            "1 - (1 / (2·x - 1))^2",
+        ),
+    ] {
+        let (output, code) = run_cli(&["eval", expr, "--format", "json"]);
+        assert_eq!(
+            code, 0,
+            "expected successful CLI exit for {expr}, got {code}: {output}"
+        );
+        let wire = parse_wire(&output);
+
+        assert_eq!(wire["result"], result);
+        assert_eq!(wire["required_display"], json!([display]));
+
+        let required_conditions = wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions");
+        assert!(
+            required_conditions
+                .iter()
+                .any(|condition| condition["kind"] == "NonZero"
+                    && condition["expr_canonical"] == nonzero),
+            "structured nonzero guard should remain for {expr}: {required_conditions:?}"
+        );
+        assert!(
+            required_conditions
+                .iter()
+                .any(|condition| condition["kind"] == "NonNegative"
+                    && condition["expr_canonical"] == bounded),
+            "structured bounded-domain guard should remain for {expr}: {required_conditions:?}"
+        );
+    }
+}
+
+#[test]
+fn inverse_trig_affine_unit_interval_domains_display_solved_closed_interval() {
+    for (expr, result, display, bounded) in [
+        ("arcsin(2*x - 1)", "arcsin(2·x - 1)", "0 ≤ x ≤ 1", "x - x^2"),
+        ("arccos(1 - x)", "arccos(1 - x)", "0 ≤ x ≤ 2", "2·x - x^2"),
+    ] {
+        let (output, code) = run_cli(&["eval", expr, "--format", "json"]);
+        assert_eq!(
+            code, 0,
+            "expected successful CLI exit for {expr}, got {code}: {output}"
+        );
+        let wire = parse_wire(&output);
+
+        assert_eq!(wire["result"], result);
+        assert_eq!(wire["required_display"], json!([display]));
+
+        let required_conditions = wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions");
+        assert!(
+            required_conditions
+                .iter()
+                .any(|condition| condition["kind"] == "NonNegative"
+                    && condition["expr_canonical"] == bounded),
             "structured bounded-domain guard should remain for {expr}: {required_conditions:?}"
         );
     }
@@ -8958,7 +9035,7 @@ fn eval_abs_factored_product_denominator_expands_to_atomic_nonzero_guards() {
             .iter()
             .filter_map(|item| item.as_str())
             .collect::<Vec<_>>(),
-        vec!["x - 1 ≠ 0", "x + 1 ≠ 0"]
+        vec!["x ≠ 1", "x ≠ -1"]
     );
 }
 
@@ -8975,7 +9052,7 @@ fn eval_log_abs_factored_product_expands_to_atomic_nonzero_guards() {
             .iter()
             .filter_map(|item| item.as_str())
             .collect::<Vec<_>>(),
-        vec!["x - 1 ≠ 0", "x + 1 ≠ 0"]
+        vec!["x ≠ 1", "x ≠ -1"]
     );
 }
 
@@ -8990,7 +9067,7 @@ fn eval_abs_quotient_expands_to_atomic_numerator_and_denominator_guards() {
     let required: Vec<_> = required.iter().filter_map(|item| item.as_str()).collect();
     assert_eq!(required.len(), 2);
     assert!(required.contains(&"x ≠ 0"));
-    assert!(required.contains(&"x + 1 ≠ 0"));
+    assert!(required.contains(&"x ≠ -1"));
 }
 
 #[test]
@@ -9006,7 +9083,7 @@ fn eval_log_abs_quotient_expands_to_atomic_numerator_and_denominator_guards() {
             .iter()
             .filter_map(|item| item.as_str())
             .collect::<Vec<_>>(),
-        vec!["x - 1 ≠ 0", "x + 1 ≠ 0"]
+        vec!["x ≠ 1", "x ≠ -1"]
     );
 }
 
@@ -9036,7 +9113,7 @@ fn eval_general_base_log_surfaces_positive_base_and_argument_requires() {
         .as_array()
         .expect("required_display");
     assert_eq!(required.len(), 3);
-    assert!(required.iter().any(|item| item == "b - 1 ≠ 0"));
+    assert!(required.iter().any(|item| item == "b ≠ 1"));
     assert!(required.iter().any(|item| item == "b > 0"));
     assert!(required.iter().any(|item| item == "x > 0"));
 }
@@ -9055,7 +9132,7 @@ fn derive_general_base_log_expansion_surfaces_positive_factor_requires() {
         .as_array()
         .expect("required_display");
     assert_eq!(required.len(), 6);
-    assert!(required.iter().any(|item| item == "b - 1 ≠ 0"));
+    assert!(required.iter().any(|item| item == "b ≠ 1"));
     assert!(required.iter().any(|item| item == "b > 0"));
     assert!(required.iter().any(|item| item == "x > 0"));
     assert!(required.iter().any(|item| item == "y > 0"));

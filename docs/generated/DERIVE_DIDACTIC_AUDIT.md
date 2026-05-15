@@ -1555,8 +1555,8 @@ Steps (Aggressive Mode):
    After: 1 / ((2 * n + 1) * (2 * n + 3))
 Result: 1 / ((2 * n + 1) * (2 * n + 3))
 ℹ️ Requires:
-  • 2 * n + 1 ≠ 0
-  • 2 * n + 3 ≠ 0
+  • n ≠ -1/2
+  • n ≠ -3/2
 ```
 
 ### Web / JSON Steps
@@ -1632,7 +1632,7 @@ Steps (Aggressive Mode):
 Result: 1 / (n * (n + 1))
 ℹ️ Requires:
   • n ≠ 0
-  • n + 1 ≠ 0
+  • n ≠ -1
 ```
 
 ### Web / JSON Steps
@@ -1666,8 +1666,8 @@ Steps (Aggressive Mode):
    After: 1 / (x^2 - 1)
 Result: 1 / (x^(2) - 1)
 ℹ️ Requires:
-  • x + 1 ≠ 0
-  • x - 1 ≠ 0
+  • x ≠ -1
+  • x ≠ 1
 ```
 
 ### Web / JSON Steps
@@ -1702,7 +1702,7 @@ Steps (Aggressive Mode):
 Result: 1 / (n * (n + 2))
 ℹ️ Requires:
   • n ≠ 0
-  • n + 2 ≠ 0
+  • n ≠ -2
 ```
 
 ### Web / JSON Steps
@@ -1737,7 +1737,7 @@ Steps (Aggressive Mode):
 Result: 1 / (n * (n - 2))
 ℹ️ Requires:
   • n ≠ 0
-  • n - 2 ≠ 0
+  • n ≠ 2
 ```
 
 ### Web / JSON Steps
@@ -1806,8 +1806,8 @@ Steps (Aggressive Mode):
    After: 1 / (x^2 - a^2)
 Result: 1 / (x^(2) - a^(2))
 ℹ️ Requires:
-  • a ≠ 0
   • a + x ≠ 0
+  • a ≠ 0
   • a - x ≠ 0
 ```
 
@@ -1905,7 +1905,7 @@ Steps (Aggressive Mode):
    After: (x + 1) / (x - 1)
 Result: (x + 1) / (x - 1)
 ℹ️ Requires:
-  • x - 1 ≠ 0
+  • x ≠ 1
 ```
 
 ### Web / JSON Steps
@@ -11646,7 +11646,7 @@ Steps (Aggressive Mode):
 Result: (m + 1) * (n + 3) / ((m + 2) * (n + 2))
 ℹ️ Requires:
   • m * n + 2 * m + 2 * n + 4 ≠ 0
-  • k + 2 ≠ 0
+  • k ≠ -2
 ```
 
 ### Web / JSON Steps
@@ -11827,8 +11827,8 @@ Steps (Aggressive Mode):
 Result: 1 - 1 / (n + 1)
 ℹ️ Requires:
   • k ≠ 0
-  • k + 1 ≠ 0
-  • n + 1 ≠ 0
+  • k ≠ -1
+  • n ≠ -1
 ```
 
 ### Web / JSON Steps
@@ -13383,7 +13383,7 @@ Steps (Aggressive Mode):
    After: y
 Result: y
 ℹ️ Requires:
-  • x - 1 ≠ 0
+  • x ≠ 1
   • x > 0
   • y > 0
 ```
@@ -14534,7 +14534,7 @@ Steps (Aggressive Mode):
    After: (-x^(1 / 3) + x^(2 / 3) + 1) / (x + 1)
 Result: (-x^(1 / 3) + x^(2 / 3) + 1) / (x + 1)
 ℹ️ Requires:
-  • x + 1 ≠ 0
+  • x ≠ -1
   • x^(1 / 3) + 1 ≠ 0
 ```
 
@@ -14568,7 +14568,7 @@ Steps (Aggressive Mode):
    After: (sqrt(x) + 1) / (x - 1)
 Result: (sqrt(x) + 1) / (x - 1)
 ℹ️ Requires:
-  • x - 1 ≠ 0
+  • x ≠ 1
   • x ≥ 0
 ```
 
@@ -14603,7 +14603,7 @@ Steps (Aggressive Mode):
    After: (sqrt(x) - 1) / (x - 1)
 Result: (sqrt(x) - 1) / (x - 1)
 ℹ️ Requires:
-  • x - 1 ≠ 0
+  • x ≠ 1
   • x ≥ 0
 ```
 
@@ -14638,7 +14638,7 @@ Steps (Aggressive Mode):
    After: (sqrt(x) + 2) / (x - 4)
 Result: (sqrt(x) + 2) / (x - 4)
 ℹ️ Requires:
-  • x - 4 ≠ 0
+  • x ≠ 4
   • x ≥ 0
 ```
 
@@ -14807,7 +14807,7 @@ Steps (Aggressive Mode):
    After: 0
 Result: 0
 ℹ️ Requires:
-  • x - 1 ≠ 0
+  • x ≠ 1
   • x ≥ 0
 ```
 
@@ -15440,7 +15440,7 @@ Steps (Aggressive Mode):
    After: 2 / (x - 1) + 1
 Result: 2 / (x - 1) + 1
 ℹ️ Requires:
-  • x - 1 ≠ 0
+  • x ≠ 1
 ```
 
 ### Web / JSON Steps
@@ -15473,7 +15473,7 @@ Steps (Aggressive Mode):
    After: 5 / (2 * x + 1) + 2
 Result: 5 / (2 * x + 1) + 2
 ℹ️ Requires:
-  • 2 * x + 1 ≠ 0
+  • x ≠ -1/2
 ```
 
 ### Web / JSON Steps
@@ -15608,8 +15608,8 @@ Steps (Aggressive Mode):
    After: ((1 / (2 * n + 1) - 1 / (2 * n + 3)))/2
 Result: 1 / 2 * (1 / (2 * n + 1) - 1 / (2 * n + 3))
 ℹ️ Requires:
-  • 2 * n + 1 ≠ 0
-  • 2 * n + 3 ≠ 0
+  • n ≠ -1/2
+  • n ≠ -3/2
 ```
 
 ### Web / JSON Steps
@@ -15685,7 +15685,7 @@ Steps (Aggressive Mode):
 Result: 1 / n - 1 / (n + 1)
 ℹ️ Requires:
   • n ≠ 0
-  • n + 1 ≠ 0
+  • n ≠ -1
 ```
 
 ### Web / JSON Steps
@@ -15719,8 +15719,8 @@ Steps (Aggressive Mode):
    After: ((1 / (x - 1) - 1 / (x + 1)))/2
 Result: 1 / 2 * (1 / (x - 1) - 1 / (x + 1))
 ℹ️ Requires:
-  • x + 1 ≠ 0
-  • x - 1 ≠ 0
+  • x ≠ -1
+  • x ≠ 1
 ```
 
 ### Web / JSON Steps
@@ -15755,7 +15755,7 @@ Steps (Aggressive Mode):
 Result: 1 / 2 * (1 / n - 1 / (n + 2))
 ℹ️ Requires:
   • n ≠ 0
-  • n + 2 ≠ 0
+  • n ≠ -2
 ```
 
 ### Web / JSON Steps
@@ -15790,7 +15790,7 @@ Steps (Aggressive Mode):
 Result: 1 / 2 * (1 / (n - 2) - 1 / n)
 ℹ️ Requires:
   • n ≠ 0
-  • n - 2 ≠ 0
+  • n ≠ 2
 ```
 
 ### Web / JSON Steps
@@ -15824,8 +15824,8 @@ Steps (Aggressive Mode):
    After: ((1 / (x - a) - 1 / (a + x)))/(2 * a)
 Result: 1 / (2 * a) * (1 / (x - a) - 1 / (a + x))
 ℹ️ Requires:
-  • a ≠ 0
   • a + x ≠ 0
+  • a ≠ 0
   • a - x ≠ 0
 ```
 
@@ -15894,7 +15894,7 @@ Steps (Aggressive Mode):
    After: x / sqrt(1 - x^2)
 Result: x / sqrt(1 - x^(2))
 ℹ️ Requires:
-  • 1 - x^2 > 0
+  • -1 < x < 1
 ```
 
 ### Web / JSON Steps

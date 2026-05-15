@@ -1,7 +1,7 @@
 //! Tests for condition normalization in implicit domain
 //!
 //! These tests ensure that domain conditions are displayed consistently:
-//! 1. `1 + x ≠ 0` displays as `x + 1 ≠ 0` (canonical polynomial order)
+//! 1. `1 + x ≠ 0` displays as `x ≠ -1` (solved affine guard)
 //! 2. `2 - x ≠ 0` and `x - 2 ≠ 0` are unified (sign normalization)
 //! 3. Duplicate equivalent conditions are removed
 
@@ -12,7 +12,7 @@ use cas_solver::api::{
     ImplicitCondition,
 };
 
-/// Test that `1 + x` displays as `x + 1` (canonical polynomial order)
+/// Test that `1 + x ≠ 0` displays as a solved affine guard.
 #[test]
 fn test_condition_canonical_order() {
     let mut ctx = Context::new();
@@ -24,16 +24,11 @@ fn test_condition_canonical_order() {
 
     let cond = ImplicitCondition::NonZero(expr);
 
-    // Display should be in canonical order: x + 1 ≠ 0
+    // Display should solve the affine guard: x ≠ -1.
     let display = cond.display(&ctx);
     println!("Display: {}", display);
 
-    // DisplayExpr now applies canonical ordering, so it should be x + 1
-    assert!(
-        display.contains("x + 1") || display.contains("x+1"),
-        "Expected 'x + 1 ≠ 0' but got: {}",
-        display
-    );
+    assert_eq!(display, "x ≠ -1");
 }
 
 /// Test sign normalization: negative leading coefficient gets negated
@@ -49,17 +44,12 @@ fn test_condition_sign_normalization() {
     let cond = ImplicitCondition::NonZero(expr);
     let normalized = normalize_condition(&mut ctx, &cond);
 
-    // After normalization, leading coeff should be positive
-    // 2 - x has poly -x + 2, leading coeff -1, so it becomes x - 2
+    // After normalization and display, 2 - x ≠ 0 is solved as x ≠ 2.
     let display = normalized.display(&ctx);
     println!("Original: 2 - x ≠ 0");
     println!("Normalized: {}", display);
 
-    assert!(
-        display.contains("x - 2") || display.contains("x-2"),
-        "Expected 'x - 2 ≠ 0' after sign normalization, got: {}",
-        display
-    );
+    assert_eq!(display, "x ≠ 2");
 }
 
 #[test]
@@ -86,6 +76,133 @@ fn test_nonnegative_condition_preserves_polynomial_sign() {
 }
 
 #[test]
+fn test_affine_reciprocal_unit_interval_condition_displays_solved_exterior_interval() {
+    for (expr, expected) in [
+        ("1 - (1 / (x + 1))^2", "x ≤ -2 or x ≥ 0"),
+        ("1 - (1 / (2*x - 1))^2", "x ≤ 0 or x ≥ 1"),
+        ("1 - (1 / (1 - x))^2", "x ≤ 0 or x ≥ 2"),
+    ] {
+        let mut ctx = Context::new();
+        let parsed = cas_parser::parse(expr, &mut ctx).expect("parse affine reciprocal domain");
+        let rendered =
+            render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonNegative(parsed)]);
+
+        assert_eq!(rendered, vec![expected], "expr={expr}");
+    }
+}
+
+#[test]
+fn test_affine_domain_conditions_display_solved_bounds() {
+    for (condition, expected) in [
+        ("nonnegative:2*x+4", "x ≥ -2"),
+        ("nonnegative:1-2*x", "x ≤ 1/2"),
+        ("positive:x+1", "x > -1"),
+        ("positive:-x", "x < 0"),
+        ("lower_bound:2*x+1:1", "x ≥ 0"),
+        ("lower_bound:1-2*x:1", "x ≤ 0"),
+    ] {
+        let mut ctx = Context::new();
+        let parts: Vec<_> = condition.split(':').collect();
+        let expr = cas_parser::parse(parts[1], &mut ctx).expect("parse affine domain");
+        let condition = match parts[0] {
+            "nonnegative" => ImplicitCondition::NonNegative(expr),
+            "positive" => ImplicitCondition::Positive(expr),
+            "lower_bound" => ImplicitCondition::LowerBound(
+                expr,
+                parts[2].parse().expect("parse lower bound rational"),
+            ),
+            other => panic!("unknown condition kind: {other}"),
+        };
+
+        let rendered = render_conditions_normalized(&mut ctx, &[condition]);
+
+        assert_eq!(rendered, vec![expected], "condition={}", parts[1]);
+    }
+}
+
+#[test]
+fn test_quadratic_unit_interval_condition_displays_solved_closed_interval() {
+    for (expr, expected) in [
+        ("x - x^2", "0 ≤ x ≤ 1"),
+        ("2*x - x^2", "0 ≤ x ≤ 2"),
+        ("-x^2 - x + 2", "-2 ≤ x ≤ 1"),
+        ("2 - x^2", "-sqrt(2) ≤ x ≤ sqrt(2)"),
+        ("1 - x^2 - 2*x", "-1 - sqrt(2) ≤ x ≤ -1 + sqrt(2)"),
+    ] {
+        let mut ctx = Context::new();
+        let parsed = cas_parser::parse(expr, &mut ctx).expect("parse quadratic interval domain");
+        let rendered =
+            render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonNegative(parsed)]);
+
+        assert_eq!(rendered, vec![expected], "expr={expr}");
+    }
+}
+
+#[test]
+fn test_quadratic_unit_interval_positive_condition_displays_solved_open_interval() {
+    for (expr, expected) in [
+        ("x - x^2", "0 < x < 1"),
+        ("2*x - x^2", "0 < x < 2"),
+        ("-x^2 - x + 2", "-2 < x < 1"),
+        ("1 - 4*x^2", "-1/2 < x < 1/2"),
+        ("2 - x^2", "-sqrt(2) < x < sqrt(2)"),
+        ("1 - x^2 - 2*x", "-1 - sqrt(2) < x < -1 + sqrt(2)"),
+    ] {
+        let mut ctx = Context::new();
+        let parsed =
+            cas_parser::parse(expr, &mut ctx).expect("parse positive quadratic interval domain");
+        let rendered =
+            render_conditions_normalized(&mut ctx, &[ImplicitCondition::Positive(parsed)]);
+
+        assert_eq!(rendered, vec![expected], "expr={expr}");
+    }
+}
+
+#[test]
+fn test_quadratic_exterior_conditions_display_solved_intervals() {
+    for (kind, expr, expected) in [
+        ("nonnegative", "x^2 - 1", "x ≤ -1 or x ≥ 1"),
+        ("nonnegative", "x^2 + x - 2", "x ≤ -2 or x ≥ 1"),
+        ("positive", "x^2 - 1", "x < -1 or x > 1"),
+        ("positive", "x^2 + x - 2", "x < -2 or x > 1"),
+        ("positive", "(x - 1)^2", "x ≠ 1"),
+        ("nonnegative", "x^2 - 2", "x ≤ -sqrt(2) or x ≥ sqrt(2)"),
+        ("positive", "x^2 - 2", "x < -sqrt(2) or x > sqrt(2)"),
+        (
+            "nonnegative",
+            "2*x^2 - 1",
+            "x ≤ -sqrt(1/2) or x ≥ sqrt(1/2)",
+        ),
+        (
+            "nonnegative",
+            "x^2 + 2*x - 1",
+            "x ≤ -1 - sqrt(2) or x ≥ -1 + sqrt(2)",
+        ),
+        (
+            "positive",
+            "x^2 + 2*x - 1",
+            "x < -1 - sqrt(2) or x > -1 + sqrt(2)",
+        ),
+        (
+            "positive",
+            "x^2 - 2*x - 1",
+            "x < 1 - sqrt(2) or x > 1 + sqrt(2)",
+        ),
+    ] {
+        let mut ctx = Context::new();
+        let parsed = cas_parser::parse(expr, &mut ctx).expect("parse quadratic exterior domain");
+        let condition = match kind {
+            "nonnegative" => ImplicitCondition::NonNegative(parsed),
+            "positive" => ImplicitCondition::Positive(parsed),
+            other => panic!("unknown condition kind: {other}"),
+        };
+        let rendered = render_conditions_normalized(&mut ctx, &[condition]);
+
+        assert_eq!(rendered, vec![expected], "kind={kind}, expr={expr}");
+    }
+}
+
+#[test]
 fn test_positive_condition_preserves_polynomial_sign() {
     let mut ctx = Context::new();
     let expr = cas_parser::parse("1 - x^2", &mut ctx).expect("parse");
@@ -94,16 +211,16 @@ fn test_positive_condition_preserves_polynomial_sign() {
     let normalized = normalize_condition(&mut ctx, &cond);
     let display = normalized.display(&ctx);
 
-    assert_eq!(display, "1 - x^2 > 0");
+    assert_eq!(display, "-1 < x < 1");
 }
 
 #[test]
 fn positive_affine_condition_dominates_positive_shifted_offset() {
     for (known, derived, expected) in [
-        ("x + 1", "x + 2", vec!["x + 1 > 0"]),
-        ("2*x + 1", "2*x + 2", vec!["2 * x + 1 > 0"]),
-        ("1 - 2*x", "2 - 2*x", vec!["1 - 2 * x > 0"]),
-        ("x + 1", "1 - x", vec!["1 - x > 0", "x + 1 > 0"]),
+        ("x + 1", "x + 2", vec!["x > -1"]),
+        ("2*x + 1", "2*x + 2", vec!["x > -1/2"]),
+        ("1 - 2*x", "2 - 2*x", vec!["x < 1/2"]),
+        ("x + 1", "1 - x", vec!["x < 1", "x > -1"]),
     ] {
         let mut ctx = Context::new();
         let known_expr = cas_parser::parse(known, &mut ctx).expect("parse known");
@@ -140,7 +257,7 @@ fn test_positive_condition_dedupes_positive_scalar_multiple() {
     );
 
     let rendered: Vec<_> = normalized.iter().map(|cond| cond.display(&ctx)).collect();
-    assert_eq!(rendered, vec!["3 - x^2 - 2 * x > 0"]);
+    assert_eq!(rendered, vec!["-3 < x < 1"]);
 }
 
 #[test]
@@ -202,16 +319,16 @@ fn positive_gap_dominates_reciprocal_offset_nonnegative_condition() {
         ],
     );
 
-    assert_eq!(rendered, vec!["x - 1 > 0"]);
+    assert_eq!(rendered, vec!["x > 1"]);
 }
 
 #[test]
 fn positive_sqrt_unit_lower_bound_normalizes_to_algebraic_boundary() {
     for (input, expected) in [
-        ("sqrt(x) - 1", vec!["x - 1 > 0"]),
+        ("sqrt(x) - 1", vec!["x > 1"]),
         ("sqrt(x + 1) - 1", vec!["x > 0"]),
         ("sqrt(x^2 + 1) - 1", vec!["x ≠ 0"]),
-        ("sqrt((x + 1)^2 + 1) - 1", vec!["x + 1 ≠ 0"]),
+        ("sqrt((x + 1)^2 + 1) - 1", vec!["x ≠ -1"]),
     ] {
         let mut ctx = Context::new();
         let expr = cas_parser::parse(input, &mut ctx).expect("parse condition");
@@ -251,7 +368,7 @@ fn positive_sqrt_lower_bound_dominates_nonnegative_lower_bound() {
         ],
     );
 
-    assert_eq!(rendered, vec!["x - 1 > 0"]);
+    assert_eq!(rendered, vec!["x > 1"]);
 }
 
 #[test]
@@ -443,7 +560,7 @@ fn test_positive_affine_partition_quotient_expands_to_positive_parts() {
         ],
     );
 
-    assert_eq!(rendered, vec!["x > 0", "1 - x > 0"]);
+    assert_eq!(rendered, vec!["x > 0", "x < 1"]);
 }
 
 #[test]
@@ -463,7 +580,7 @@ fn test_expanded_shifted_square_product_nonzero_is_dominated_by_atomic_guards() 
         ],
     );
 
-    assert_eq!(rendered, vec!["y ≠ 0", "z + 1 ≠ 0"]);
+    assert_eq!(rendered, vec!["y ≠ 0", "z ≠ -1"]);
 }
 
 #[test]
@@ -481,7 +598,7 @@ fn test_expanded_shifted_square_product_nonzero_expands_missing_atomic_guard() {
         ],
     );
 
-    assert_eq!(rendered, vec!["y ≠ 0", "z + 1 ≠ 0"]);
+    assert_eq!(rendered, vec!["y ≠ 0", "z ≠ -1"]);
 }
 
 #[test]
@@ -522,7 +639,7 @@ fn test_positive_denominator_reduces_quotient_nonnegative_condition() {
         ],
     );
 
-    assert_eq!(rendered, vec!["x^2 - 1 > 0"]);
+    assert_eq!(rendered, vec!["x < -1 or x > 1"]);
 }
 
 #[test]
@@ -544,7 +661,7 @@ fn test_factored_expanded_square_denominator_reduces_quotient_nonnegative_condit
         ],
     );
 
-    assert_eq!(rendered, vec!["x^2 + 2 * x > 0"]);
+    assert_eq!(rendered, vec!["x < -2 or x > 0"]);
 }
 
 #[test]
@@ -581,7 +698,7 @@ fn test_even_power_gap_positive_condition_dominates_base_nonzero_condition() {
         ],
     );
 
-    assert_eq!(rendered, vec!["x^2 - 1 > 0"]);
+    assert_eq!(rendered, vec!["x < -1 or x > 1"]);
 }
 
 #[test]
@@ -598,7 +715,7 @@ fn test_scaled_even_power_gap_positive_condition_dominates_base_nonzero_conditio
         ],
     );
 
-    assert_eq!(rendered, vec!["4 * x^2 - 1 > 0"]);
+    assert_eq!(rendered, vec!["x < -1/2 or x > 1/2"]);
 }
 
 #[test]
@@ -615,7 +732,7 @@ fn test_shifted_even_power_gap_positive_condition_dominates_shifted_base_nonzero
         ],
     );
 
-    assert_eq!(rendered, vec!["x^2 + 2 * x > 0"]);
+    assert_eq!(rendered, vec!["x < -2 or x > 0"]);
 }
 
 #[test]
@@ -632,7 +749,7 @@ fn test_scaled_shifted_even_power_gap_positive_condition_dominates_scaled_base_n
         ],
     );
 
-    assert_eq!(rendered, vec!["x^2 + x > 0"]);
+    assert_eq!(rendered, vec!["x < -1 or x > 0"]);
 }
 
 #[test]
@@ -654,7 +771,7 @@ fn test_scaled_factor_guards_promote_nonnegative_gap_to_positive_condition() {
         ],
     );
 
-    assert_eq!(rendered, vec!["4 * x^2 - 1 > 0"]);
+    assert_eq!(rendered, vec!["x < -1/2 or x > 1/2"]);
 }
 
 #[test]
@@ -671,7 +788,7 @@ fn test_negative_scaled_even_power_gap_does_not_dominate_base_nonzero_condition(
         ],
     );
 
-    assert_eq!(rendered, vec!["x ≠ 0", "1 - 4 * x^2 > 0"]);
+    assert_eq!(rendered, vec!["x ≠ 0", "-1/2 < x < 1/2"]);
 }
 
 #[test]
@@ -688,7 +805,7 @@ fn test_negative_shifted_even_power_gap_does_not_dominate_shifted_base_nonzero_c
         ],
     );
 
-    assert_eq!(rendered, vec!["x + 1 ≠ 0", "-x^2 - 2 * x > 0"]);
+    assert_eq!(rendered, vec!["x ≠ -1", "-2 < x < 0"]);
 }
 
 #[test]
@@ -818,7 +935,7 @@ fn test_positive_condition_keeps_opposite_orientation_distinct() {
     );
 
     let rendered: Vec<_> = normalized.iter().map(|cond| cond.display(&ctx)).collect();
-    assert_eq!(rendered, vec!["x > 0", "-x > 0"]);
+    assert_eq!(rendered, vec!["x > 0", "x < 0"]);
 }
 
 /// Test that x - 2 and 2 - x are deduplicated as equivalent
@@ -933,8 +1050,8 @@ fn test_nonzero_polynomial_factorizes_to_atomic_guards() {
 
     assert_eq!(rendered.len(), 3);
     assert!(rendered.iter().any(|item| item == "x ≠ 0"));
-    assert!(rendered.iter().any(|item| item == "x - 1 ≠ 0"));
-    assert!(rendered.iter().any(|item| item == "x + 1 ≠ 0"));
+    assert!(rendered.iter().any(|item| item == "x ≠ 1"));
+    assert!(rendered.iter().any(|item| item == "x ≠ -1"));
 }
 
 #[test]
@@ -962,12 +1079,12 @@ fn test_nonzero_factorization_dedupes_explicit_subfactor() {
     assert_eq!(
         rendered
             .iter()
-            .filter(|item| item.as_str() == "x - 1 ≠ 0")
+            .filter(|item| item.as_str() == "x ≠ 1")
             .count(),
         1
     );
     assert!(rendered.iter().any(|item| item == "x ≠ 0"));
-    assert!(rendered.iter().any(|item| item == "x + 1 ≠ 0"));
+    assert!(rendered.iter().any(|item| item == "x ≠ -1"));
 }
 
 #[test]
@@ -987,7 +1104,7 @@ fn test_nonzero_perfect_square_trinomial_collapses_to_base_guard() {
     let rendered: Vec<_> = normalized.iter().map(|cond| cond.display(&ctx)).collect();
     println!("Rendered perfect-square guards: {:?}", rendered);
 
-    assert_eq!(rendered, vec!["x + 1 ≠ 0"]);
+    assert_eq!(rendered, vec!["x ≠ -1"]);
 }
 
 #[test]
@@ -1051,7 +1168,7 @@ fn test_positive_negative_even_power_condition_reduces_to_base_nonzero_guard() {
     let rendered =
         render_conditions_normalized(&mut ctx, &[ImplicitCondition::Positive(inverse_square)]);
 
-    assert_eq!(rendered, vec!["x + 1 ≠ 0"]);
+    assert_eq!(rendered, vec!["x ≠ -1"]);
 }
 
 #[test]
@@ -1063,7 +1180,7 @@ fn test_nonnegative_negative_even_power_condition_reduces_to_base_nonzero_guard(
     let rendered =
         render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonNegative(inverse_square)]);
 
-    assert_eq!(rendered, vec!["x + 1 ≠ 0"]);
+    assert_eq!(rendered, vec!["x ≠ -1"]);
 }
 
 #[test]
@@ -1077,5 +1194,5 @@ fn test_positive_sqrt_negative_even_power_condition_reduces_to_base_nonzero_guar
         &[ImplicitCondition::Positive(sqrt_inverse_square)],
     );
 
-    assert_eq!(rendered, vec!["x + 1 ≠ 0"]);
+    assert_eq!(rendered, vec!["x ≠ -1"]);
 }

@@ -193,6 +193,6 @@ fn cli_domain_generic_factor_cancellation_renders_atomic_requires_without_compos
         required
     );
     assert!(required.contains(&"x ≠ 0"));
-    assert!(required.contains(&"x - 1 ≠ 0"));
-    assert!(required.contains(&"x + 1 ≠ 0"));
+    assert!(required.contains(&"x ≠ 1"));
+    assert!(required.contains(&"x ≠ -1"));
 }

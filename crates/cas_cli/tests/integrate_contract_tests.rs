@@ -694,17 +694,17 @@ fn integrate_contract_nonlinear_hyperbolic_reciprocal_square_residual_survives_w
         (
             "(diff(integrate(2*x/sinh(x^2)^2, x), x) - 2*x/sinh(x^2)^2)/(x+1)",
             "0",
-            serde_json::json!(["sinh(x^2) ≠ 0", "x + 1 ≠ 0"]),
+            serde_json::json!(["sinh(x^2) ≠ 0", "x ≠ -1"]),
         ),
         (
             "((diff(integrate(2*x/sinh(x^2)^2, x), x) - 2*x/sinh(x^2)^2) + x + 1)/(x+1)",
             "1",
-            serde_json::json!(["sinh(x^2) ≠ 0", "x + 1 ≠ 0"]),
+            serde_json::json!(["sinh(x^2) ≠ 0", "x ≠ -1"]),
         ),
         (
             "1/((diff(integrate(2*x/sinh(x^2)^2, x), x) - 2*x/sinh(x^2)^2) + x + 1) - 1/(x+1)",
             "0",
-            serde_json::json!(["sinh(x^2) ≠ 0", "x + 1 ≠ 0"]),
+            serde_json::json!(["sinh(x^2) ≠ 0", "x ≠ -1"]),
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr(input);
@@ -731,7 +731,7 @@ fn integrate_contract_reciprocal_shifted_trig_by_parts_residual_keeps_compact_re
         "unexpected stderr for reciprocal shifted trig by-parts residual: {stderr}"
     );
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["required_display"], serde_json::json!(["x + 2 ≠ 0"]));
+    assert_eq!(wire["required_display"], serde_json::json!(["x ≠ -2"]));
 }
 
 #[test]
@@ -746,7 +746,7 @@ fn integrate_contract_reciprocal_shifted_log_reciprocal_residual_keeps_domain_re
     assert_eq!(wire["result"], "0");
     assert_eq!(
         wire["required_display"],
-        serde_json::json!(["x > 0", "x - 1 ≠ 0"])
+        serde_json::json!(["x > 0", "x ≠ 1"])
     );
 }
 
@@ -762,7 +762,7 @@ fn integrate_contract_reciprocal_shifted_arcsin_residual_keeps_radical_domain_re
     assert_eq!(wire["result"], "0");
     assert_eq!(
         wire["required_display"],
-        serde_json::json!(["1 - x^2 > 0", "x + 2 ≠ 0"])
+        serde_json::json!(["-1 < x < 1", "x ≠ -2"])
     );
 }
 
@@ -779,7 +779,7 @@ fn integrate_contract_reciprocal_shifted_affine_arcsin_residual_keeps_radical_do
     assert_eq!(wire["result"], "0");
     assert_eq!(
         wire["required_display"],
-        serde_json::json!(["3 - x^2 - 2·x > 0", "x + 2 ≠ 0"])
+        serde_json::json!(["-3 < x < 1", "x ≠ -2"])
     );
 }
 
@@ -808,7 +808,7 @@ fn integrate_contract_reciprocal_shifted_asinh_residual_compacts_without_timeout
         "unexpected stderr for reciprocal shifted asinh residual: {stderr}"
     );
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["required_display"], serde_json::json!(["x + 2 ≠ 0"]));
+    assert_eq!(wire["required_display"], serde_json::json!(["x ≠ -2"]));
 }
 
 #[test]
@@ -823,7 +823,7 @@ fn integrate_contract_reciprocal_shifted_csc_residual_compacts_without_timeout()
     assert_eq!(wire["result"], "0");
     assert_eq!(
         wire["required_display"],
-        serde_json::json!(["sin(2·x + 1) ≠ 0", "x + 2 ≠ 0"])
+        serde_json::json!(["sin(2·x + 1) ≠ 0", "x ≠ -2"])
     );
 }
 
@@ -838,7 +838,7 @@ fn integrate_contract_shifted_quotient_asinh_residual_compacts_without_timeout()
         "unexpected stderr for shifted quotient asinh residual: {stderr}"
     );
     assert_eq!(wire["result"], "0");
-    assert_eq!(wire["required_display"], serde_json::json!(["x + 2 ≠ 0"]));
+    assert_eq!(wire["required_display"], serde_json::json!(["x ≠ -2"]));
 }
 
 #[test]
@@ -853,7 +853,7 @@ fn integrate_contract_shifted_quotient_csc_residual_compacts_without_timeout() {
     assert_eq!(wire["result"], "0");
     assert_eq!(
         wire["required_display"],
-        serde_json::json!(["sin(2·x + 1) ≠ 0", "x + 2 ≠ 0"])
+        serde_json::json!(["sin(2·x + 1) ≠ 0", "x ≠ -2"])
     );
 }
 
@@ -2045,12 +2045,12 @@ fn integrate_contract_inverse_trig_by_parts_exposes_didactic_substep() {
         (
             "integrate(arcsin(x), x)",
             "sqrt(1 - x^2) + x·arcsin(x)",
-            serde_json::json!(["1 - x^2 > 0"]),
+            serde_json::json!(["-1 < x < 1"]),
         ),
         (
             "integrate(arccos(x), x)",
             "x·arccos(x) - sqrt(1 - x^2)",
-            serde_json::json!(["1 - x^2 > 0"]),
+            serde_json::json!(["-1 < x < 1"]),
         ),
         (
             "integrate(arctan(x), x)",
@@ -2060,7 +2060,7 @@ fn integrate_contract_inverse_trig_by_parts_exposes_didactic_substep() {
         (
             "integrate(arctan(1/(2*x+1)), x)",
             "1/4·ln((2·x + 1)^2 + 1) + 1/2·(2·x + 1)·arctan(1 / (2·x + 1))",
-            serde_json::json!(["2·x + 1 ≠ 0"]),
+            serde_json::json!(["x ≠ -1/2"]),
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -2112,7 +2112,7 @@ fn integrate_contract_inverse_hyperbolic_affine_by_parts_exposes_didactic_subste
         (
             "integrate(atanh(2*x+1), x)",
             "1/4·ln(1 - (2·x + 1)^2) + 1/2·(2·x + 1)·atanh(2·x + 1)",
-            serde_json::json!(["-x^2 - x > 0"]),
+            serde_json::json!(["-1 < x < 0"]),
         ),
         (
             "integrate(acosh(2*x+1), x)",
@@ -2203,7 +2203,7 @@ fn integrate_contract_symbolic_constant_verification_preserves_independent_domai
     assert_eq!(result, "x * ln(y) / (z + 1)^2");
     assert_eq!(
         required,
-        vec!["y > 0".to_string(), "z + 1 ≠ 0".to_string()],
+        vec!["y > 0".to_string(), "z ≠ -1".to_string()],
         "symbolic constant integration should publish independent domain conditions"
     );
 
@@ -2214,7 +2214,7 @@ fn integrate_contract_symbolic_constant_verification_preserves_independent_domai
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["y > 0".to_string(), "z + 1 ≠ 0".to_string()],
+        vec!["y > 0".to_string(), "z ≠ -1".to_string()],
         "nested antiderivative verification should preserve independent domain conditions"
     );
 }
@@ -4052,12 +4052,12 @@ fn integrate_contract_polynomial_base_substitution_exposes_didactic_substep() {
         (
             "integrate(2*x/sqrt(x^2-1), x)",
             "2·(x^2 - 1)^(1/2)",
-            serde_json::json!(["x^2 - 1 > 0"]),
+            serde_json::json!(["x < -1 or x > 1"]),
         ),
         (
             "integrate(2*x*(x^2-1)^(3/2), x)",
             "2/5·(x^2 - 1)^(5/2)",
-            serde_json::json!(["x^2 - 1 ≥ 0"]),
+            serde_json::json!(["x ≤ -1 or x ≥ 1"]),
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -4383,7 +4383,7 @@ fn integrate_contract_linear_log_table_preserves_positive_domain() {
     assert_eq!(result, "1/2 * (2 * x + 1) * (ln(2 * x + 1) - 1)");
     assert_eq!(
         required,
-        vec!["2 * x + 1 > 0".to_string()],
+        vec!["x > -1/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies("integrate(ln(2*x+1), x)");
@@ -4397,13 +4397,13 @@ fn integrate_contract_log_reciprocal_derivative_preserves_real_domain() {
             "integrate(1/(x*ln(x)), x)",
             "ln(|ln(x)|)",
             "diff(integrate(1/(x*ln(x)), x), x) - 1/(x*ln(x))",
-            vec!["x - 1 ≠ 0".to_string(), "x > 0".to_string()],
+            vec!["x > 0".to_string(), "x ≠ 1".to_string()],
         ),
         (
             "integrate(2/((2*x+1)*ln(2*x+1)), x)",
             "ln(|ln(2 * x + 1)|)",
             "diff(integrate(2/((2*x+1)*ln(2*x+1)), x), x) - 2/((2*x+1)*ln(2*x+1))",
-            vec!["2 * x + 1 > 0".to_string(), "x ≠ 0".to_string()],
+            vec!["x > -1/2".to_string(), "x ≠ 0".to_string()],
         ),
         (
             "integrate(2*x/((x^2+1)*ln(x^2+1)), x)",
@@ -4415,13 +4415,13 @@ fn integrate_contract_log_reciprocal_derivative_preserves_real_domain() {
             "integrate((2*x+1)/((x^2+x+1)*ln(x^2+x+1)), x)",
             "ln(|ln(x^2 + x + 1)|)",
             "diff(integrate((2*x+1)/((x^2+x+1)*ln(x^2+x+1)), x), x) - (2*x+1)/((x^2+x+1)*ln(x^2+x+1))",
-            vec!["x + 1 ≠ 0".to_string(), "x ≠ 0".to_string()],
+            vec!["x ≠ -1".to_string(), "x ≠ 0".to_string()],
         ),
         (
             "integrate(2*x/((x^2-1)*ln(x^2-1)), x)",
             "ln(|ln(x^2 - 1)|)",
             "diff(integrate(2*x/((x^2-1)*ln(x^2-1)), x), x) - 2*x/((x^2-1)*ln(x^2-1))",
-            vec!["x^2 - 1 > 0".to_string(), "x^2 - 2 ≠ 0".to_string()],
+            vec!["x < -1 or x > 1".to_string(), "x^2 - 2 ≠ 0".to_string()],
         ),
         (
             "integrate(2*x/((x^2+1)*ln(x^2+1)^2), x)",
@@ -4433,16 +4433,16 @@ fn integrate_contract_log_reciprocal_derivative_preserves_real_domain() {
             "integrate(2*x/((x^2-1)*ln(x^2-1)^2), x)",
             "-1 / ln(x^2 - 1)",
             "diff(integrate(2*x/((x^2-1)*ln(x^2-1)^2), x), x) - 2*x/((x^2-1)*ln(x^2-1)^2)",
-            vec!["x^2 - 1 > 0".to_string(), "x^2 - 2 ≠ 0".to_string()],
+            vec!["x < -1 or x > 1".to_string(), "x^2 - 2 ≠ 0".to_string()],
         ),
         (
             "integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^2), x)",
             "-1 / ln(x^2 + x - 1)",
             "diff(integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^2), x), x) - (2*x+1)/((x^2+x-1)*ln(x^2+x-1)^2)",
             vec![
-                "x + 2 ≠ 0".to_string(),
-                "x - 1 ≠ 0".to_string(),
-                "x^2 + x - 1 > 0".to_string(),
+                "x < -1/2 - sqrt(5/4) or x > -1/2 + sqrt(5/4)".to_string(),
+                "x ≠ -2".to_string(),
+                "x ≠ 1".to_string(),
             ],
         ),
         (
@@ -4450,9 +4450,9 @@ fn integrate_contract_log_reciprocal_derivative_preserves_real_domain() {
             "-1 / (2 * ln(x^2 + x - 1)^2)",
             "diff(integrate((2*x+1)/((x^2+x-1)*ln(x^2+x-1)^3), x), x) - (2*x+1)/((x^2+x-1)*ln(x^2+x-1)^3)",
             vec![
-                "x + 2 ≠ 0".to_string(),
-                "x - 1 ≠ 0".to_string(),
-                "x^2 + x - 1 > 0".to_string(),
+                "x < -1/2 - sqrt(5/4) or x > -1/2 + sqrt(5/4)".to_string(),
+                "x ≠ -2".to_string(),
+                "x ≠ 1".to_string(),
             ],
         ),
     ];
@@ -4547,12 +4547,12 @@ fn integrate_contract_log_by_parts_exposes_didactic_substep_and_keeps_compact_tr
         (
             "integrate((2*x+1)*ln(2*x+1), x)",
             "1/4·((2·x + 1)^2·ln(2·x + 1) - 2·x^2 - 2·x)",
-            "2·x + 1 > 0",
+            "x > -1/2",
         ),
         (
             "integrate((x^2+x+1)*ln(2*x+1), x)",
             "(1/3·x^3 + 1/2·x^2 + x)·ln(2·x + 1) - 1/9·x^3 - 1/6·x^2 - 5/6·x + 5/12·ln(2·x + 1)",
-            "2·x + 1 > 0",
+            "x > -1/2",
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -4712,32 +4712,32 @@ fn integrate_contract_linear_monomial_times_affine_log_by_parts_preserves_positi
         (
             "integrate(x*ln(2*x+1), x)",
             "(x^2 / 2 - 1/8) * ln(2 * x + 1) + 1/4 * x - 1/4 * x^2",
-            "2 * x + 1 > 0",
+            "x > -1/2",
         ),
         (
             "integrate(3*x*ln(2*x+1), x)",
             "3 * ((x^2 / 2 - 1/8) * ln(2 * x + 1) + 1/4 * x - 1/4 * x^2)",
-            "2 * x + 1 > 0",
+            "x > -1/2",
         ),
         (
             "integrate(x*ln(x+1), x)",
             "(x^2 / 2 - 1/2) * ln(x + 1) + 1/2 * x - 1/4 * x^2",
-            "x + 1 > 0",
+            "x > -1",
         ),
         (
             "integrate((x+1)*ln(2*x+1), x)",
             "1/8 * (ln(2 * x + 1) * (2 * x + 1) * (2 * x + 3) - 2 * x^2 - 6 * x)",
-            "2 * x + 1 > 0",
+            "x > -1/2",
         ),
         (
             "integrate((2*x+3)*ln(2*x+1), x)",
             "1/4 * (ln(2 * x + 1) * (2 * x + 1) * (2 * x + 5) - 2 * x^2 - 10 * x)",
-            "2 * x + 1 > 0",
+            "x > -1/2",
         ),
         (
             "integrate((1-2*x)*ln(1-2*x), x)",
             "1/4 * (2 * x^2 - ln(1 - 2 * x) * (1 - 2 * x)^2 - 2 * x)",
-            "1 - 2 * x > 0",
+            "x < 1/2",
         ),
     ];
 
@@ -4768,7 +4768,7 @@ fn integrate_contract_quadratic_monomial_times_affine_log_by_parts_verifies() {
         wire["result"],
         "1/3·x^3·ln(2·x + 1) - 1/9·x^3 - 1/12·x + 1/24·ln(2·x + 1) + 1/12·x^2"
     );
-    assert_eq!(wire["required_display"], serde_json::json!(["2·x + 1 > 0"]));
+    assert_eq!(wire["required_display"], serde_json::json!(["x > -1/2"]));
 
     let residual = "diff(integrate(x^2*ln(2*x+1), x), x) - x^2*ln(2*x+1)";
     let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
@@ -4780,7 +4780,7 @@ fn integrate_contract_quadratic_monomial_times_affine_log_by_parts_verifies() {
     assert_eq!(residual_wire["result"], "0");
     assert_eq!(
         residual_wire["required_display"],
-        serde_json::json!(["2·x + 1 > 0"])
+        serde_json::json!(["x > -1/2"])
     );
 }
 
@@ -5092,7 +5092,7 @@ fn integrate_contract_polynomial_log_product_preserves_source_domain() {
     assert_eq!(result, "(ln(x^2 - 1) - 1) * (x^2 - 1)");
     assert_eq!(
         required,
-        vec!["x^2 - 1 > 0".to_string()],
+        vec!["x < -1 or x > 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 
@@ -5144,7 +5144,7 @@ fn integrate_contract_reciprocal_linear_uses_abs_log() {
     assert_eq!(result, "1/2 * ln(|2 * x + 1|)");
     assert_eq!(
         required,
-        vec!["2 * x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_rendered_antiderivative_verifies("integrate(1/(2*x + 1), x)", &result);
@@ -5164,7 +5164,7 @@ fn integrate_contract_simple_linear_partial_fractions_normalize_negative_factor(
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected negative-factor simple-pole required_conditions: {required:?}"
     );
 
@@ -5175,7 +5175,7 @@ fn integrate_contract_simple_linear_partial_fractions_normalize_negative_factor(
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "negative-factor simple-pole verification should preserve the source denominator domain"
     );
 }
@@ -5204,7 +5204,7 @@ fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() 
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 
@@ -5215,7 +5215,7 @@ fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() 
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "nested verification should preserve the source denominator domain"
     );
     assert_rendered_antiderivative_verifies(input, &result);
@@ -5228,7 +5228,7 @@ fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() 
     assert_eq!(reordered_result, "0");
     assert_eq!(
         reordered_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "reordered rendered antiderivative verification should preserve the source denominator domain"
     );
 
@@ -5246,7 +5246,7 @@ fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() 
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected factored-orientation required_conditions: {required:?}"
     );
 
@@ -5257,7 +5257,7 @@ fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() 
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "factored-orientation nested verification should preserve the source denominator domain"
     );
 
@@ -5277,7 +5277,7 @@ fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() 
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected negative-factor required_conditions: {required:?}"
     );
 
@@ -5288,7 +5288,7 @@ fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() 
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "negative-factor nested verification should preserve the source denominator domain"
     );
 }
@@ -5309,7 +5309,7 @@ fn integrate_contract_scaled_repeated_linear_partial_fractions_normalize_log_arg
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 
@@ -5321,7 +5321,7 @@ fn integrate_contract_scaled_repeated_linear_partial_fractions_normalize_log_arg
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "nested verification should preserve the source denominator domain"
     );
 
@@ -5339,7 +5339,7 @@ fn integrate_contract_scaled_repeated_linear_partial_fractions_normalize_log_arg
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected fractional-scale required_conditions: {required:?}"
     );
 
@@ -5351,7 +5351,7 @@ fn integrate_contract_scaled_repeated_linear_partial_fractions_normalize_log_arg
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "fractional nested verification should preserve the source denominator domain"
     );
 
@@ -5373,7 +5373,7 @@ fn integrate_contract_scaled_repeated_linear_partial_fractions_normalize_log_arg
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected scaled repeated-factor required_conditions: {required:?}"
     );
 
@@ -5384,7 +5384,7 @@ fn integrate_contract_scaled_repeated_linear_partial_fractions_normalize_log_arg
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "scaled repeated-factor nested verification should preserve the source denominator domain"
     );
 }
@@ -5414,11 +5414,11 @@ fn integrate_contract_degree_five_linear_partial_fractions_verify_by_diff() {
     assert_eq!(
         required,
         vec![
-            "x + 1 ≠ 0".to_string(),
-            "x + 2 ≠ 0".to_string(),
-            "x - 1 ≠ 0".to_string(),
-            "x - 2 ≠ 0".to_string(),
+            "x ≠ -1".to_string(),
+            "x ≠ -2".to_string(),
             "x ≠ 0".to_string(),
+            "x ≠ 1".to_string(),
+            "x ≠ 2".to_string(),
         ],
         "unexpected five-factor partial-fraction required_conditions: {required:?}"
     );
@@ -5432,11 +5432,11 @@ fn integrate_contract_degree_five_linear_partial_fractions_verify_by_diff() {
     assert_eq!(
         residual_required,
         vec![
-            "x + 1 ≠ 0".to_string(),
-            "x + 2 ≠ 0".to_string(),
-            "x - 1 ≠ 0".to_string(),
-            "x - 2 ≠ 0".to_string(),
+            "x ≠ -1".to_string(),
+            "x ≠ -2".to_string(),
             "x ≠ 0".to_string(),
+            "x ≠ 1".to_string(),
+            "x ≠ 2".to_string(),
         ],
         "five-factor nested verification should preserve the source denominator domain"
     );
@@ -5450,7 +5450,7 @@ fn integrate_contract_degree_five_linear_partial_fractions_verify_by_diff() {
     assert_eq!(equiv_wire["result"], "true");
     assert_eq!(
         equiv_wire["required_display"],
-        serde_json::json!(["x ≠ 0", "x - 1 ≠ 0", "x + 1 ≠ 0", "x - 2 ≠ 0", "x + 2 ≠ 0"])
+        serde_json::json!(["x ≠ 0", "x ≠ 1", "x ≠ -1", "x ≠ 2", "x ≠ -2"])
     );
 
     let direct_diff = "diff(integrate(1/((x-2)*(x-1)*x*(x+1)*(x+2)), x), x)";
@@ -5465,7 +5465,7 @@ fn integrate_contract_degree_five_linear_partial_fractions_verify_by_diff() {
     );
     assert_eq!(
         direct_wire["required_display"],
-        serde_json::json!(["x + 1 ≠ 0", "x + 2 ≠ 0", "x - 1 ≠ 0", "x - 2 ≠ 0", "x ≠ 0"])
+        serde_json::json!(["x ≠ -1", "x ≠ -2", "x ≠ 0", "x ≠ 1", "x ≠ 2"])
     );
     assert_rendered_antiderivative_verifies(input, &result);
 }
@@ -5496,12 +5496,12 @@ fn integrate_contract_degree_six_linear_partial_fractions_verify_by_diff() {
     assert_eq!(
         required,
         vec![
-            "x + 1 ≠ 0".to_string(),
-            "x + 2 ≠ 0".to_string(),
-            "x - 1 ≠ 0".to_string(),
-            "x - 2 ≠ 0".to_string(),
-            "x - 3 ≠ 0".to_string(),
+            "x ≠ -1".to_string(),
+            "x ≠ -2".to_string(),
             "x ≠ 0".to_string(),
+            "x ≠ 1".to_string(),
+            "x ≠ 2".to_string(),
+            "x ≠ 3".to_string(),
         ],
         "unexpected six-factor partial-fraction required_conditions: {required:?}"
     );
@@ -5515,12 +5515,12 @@ fn integrate_contract_degree_six_linear_partial_fractions_verify_by_diff() {
     assert_eq!(
         residual_required,
         vec![
-            "x + 1 ≠ 0".to_string(),
-            "x + 2 ≠ 0".to_string(),
-            "x - 1 ≠ 0".to_string(),
-            "x - 2 ≠ 0".to_string(),
-            "x - 3 ≠ 0".to_string(),
+            "x ≠ -1".to_string(),
+            "x ≠ -2".to_string(),
             "x ≠ 0".to_string(),
+            "x ≠ 1".to_string(),
+            "x ≠ 2".to_string(),
+            "x ≠ 3".to_string(),
         ],
         "six-factor nested verification should preserve the source denominator domain"
     );
@@ -5545,7 +5545,7 @@ fn integrate_contract_linear_times_positive_quadratic_partial_fraction_verify_by
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "unexpected linear-positive-quadratic required_conditions: {required:?}"
     );
 
@@ -5556,7 +5556,7 @@ fn integrate_contract_linear_times_positive_quadratic_partial_fraction_verify_by
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "linear-positive-quadratic verification should keep only the linear-pole domain"
     );
     assert_rendered_antiderivative_verifies(input, &result);
@@ -5577,7 +5577,7 @@ fn integrate_contract_linear_times_positive_quadratic_partial_fraction_verify_by
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 2 ≠ 0".to_string()],
+        vec!["x ≠ -2".to_string()],
         "shifted positive-quadratic denominator should not add synthetic required conditions: {required:?}"
     );
 
@@ -5588,7 +5588,7 @@ fn integrate_contract_linear_times_positive_quadratic_partial_fraction_verify_by
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 2 ≠ 0".to_string()],
+        vec!["x ≠ -2".to_string()],
         "shifted linear-positive-quadratic verification should keep only the linear-pole domain"
     );
     let (equivalent, mut equiv_required) = evaluated_equiv_with_required_conditions(
@@ -5602,7 +5602,7 @@ fn integrate_contract_linear_times_positive_quadratic_partial_fraction_verify_by
     );
     assert_eq!(
         equiv_required,
-        vec!["x + 2 ≠ 0".to_string()],
+        vec!["x ≠ -2".to_string()],
         "public equivalence should keep only the shifted linear-pole domain"
     );
 
@@ -5619,7 +5619,7 @@ fn integrate_contract_linear_times_positive_quadratic_partial_fraction_verify_by
     );
     assert_eq!(
         direct_wire["required_display"],
-        serde_json::json!(["x + 2 ≠ 0"])
+        serde_json::json!(["x ≠ -2"])
     );
     assert_rendered_antiderivative_verifies(input, &result);
 
@@ -5639,7 +5639,7 @@ fn integrate_contract_linear_times_positive_quadratic_partial_fraction_verify_by
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "expanded cubic denominator should only require the real linear pole domain: {required:?}"
     );
 
@@ -5650,7 +5650,7 @@ fn integrate_contract_linear_times_positive_quadratic_partial_fraction_verify_by
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "expanded cubic verification should preserve only the real linear pole domain"
     );
 
@@ -5670,7 +5670,7 @@ fn integrate_contract_linear_times_positive_quadratic_partial_fraction_verify_by
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "expanded cubic quadratic numerator should only require the real linear pole domain: {required:?}"
     );
 
@@ -5681,7 +5681,7 @@ fn integrate_contract_linear_times_positive_quadratic_partial_fraction_verify_by
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "expanded cubic quadratic-numerator verification should preserve only the real linear pole domain"
     );
 }
@@ -5704,7 +5704,7 @@ fn integrate_contract_linear_times_definite_quadratic_handles_negative_orientati
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "unexpected negative-orientation linear-definite-quadratic required_conditions: {required:?}"
     );
 
@@ -5715,7 +5715,7 @@ fn integrate_contract_linear_times_definite_quadratic_handles_negative_orientati
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "negative-orientation verification should keep only the linear-pole domain"
     );
     assert_rendered_antiderivative_verifies(input, &result);
@@ -5740,7 +5740,7 @@ fn integrate_contract_repeated_linear_times_definite_quadratic_partial_fraction(
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "unexpected repeated-linear-definite-quadratic required_conditions: {required:?}"
     );
 
@@ -5751,7 +5751,7 @@ fn integrate_contract_repeated_linear_times_definite_quadratic_partial_fraction(
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "repeated-linear-definite-quadratic verification should keep only the linear-pole domain"
     );
     assert_rendered_antiderivative_verifies(input, &result);
@@ -5777,7 +5777,7 @@ fn integrate_contract_cubic_repeated_linear_times_definite_quadratic_partial_fra
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "unexpected cubic repeated-linear-definite-quadratic required_conditions: {required:?}"
     );
 
@@ -5803,7 +5803,7 @@ fn integrate_contract_shifted_definite_quadratic_cubic_repeated_pole_verifies_by
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "unexpected shifted-quadratic repeated-pole required_conditions: {required:?}"
     );
 
@@ -5814,7 +5814,7 @@ fn integrate_contract_shifted_definite_quadratic_cubic_repeated_pole_verifies_by
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "shifted-quadratic repeated-pole verification should keep only the linear-pole domain"
     );
     assert_rendered_antiderivative_verifies(input, &result);
@@ -5838,7 +5838,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     );
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "unexpected linear improper rational required_conditions: {required:?}"
     );
 
@@ -5847,7 +5847,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "linear improper rational nested verification should preserve the source denominator domain"
     );
 
@@ -5860,7 +5860,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     );
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "unexpected scaled linear improper rational required_conditions: {required:?}"
     );
 
@@ -5869,7 +5869,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "scaled linear improper rational nested verification should preserve the source denominator domain"
     );
 
@@ -5882,7 +5882,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     );
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "unexpected negative scaled linear improper rational required_conditions: {required:?}"
     );
 
@@ -5891,7 +5891,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "negative scaled linear improper rational nested verification should preserve the source denominator domain"
     );
 
@@ -5919,7 +5919,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 
@@ -5930,7 +5930,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "nested verification should preserve the source denominator domain"
     );
     let (equivalent, mut equiv_required) = evaluated_equiv_with_required_conditions(
@@ -5944,7 +5944,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     );
     assert_eq!(
         equiv_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "public equivalence should preserve the source denominator domain"
     );
 
@@ -5969,7 +5969,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected negative-orientation required_conditions: {required:?}"
     );
 
@@ -5980,7 +5980,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "negative-orientation nested verification should preserve the source denominator domain"
     );
 
@@ -5995,7 +5995,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     required.sort();
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected higher-degree quotient required_conditions: {required:?}"
     );
 
@@ -6006,7 +6006,7 @@ fn integrate_contract_improper_rational_partial_fractions_use_polynomial_divisio
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "higher-degree quotient nested verification should preserve the source denominator domain"
     );
 }
@@ -6620,7 +6620,7 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
     assert_eq!(result, "arctan(sqrt(4 * x + 1))");
     assert_eq!(
         required,
-        vec!["4 * x + 1 > 0".to_string()],
+        vec!["x > -1/4".to_string()],
         "unexpected affine required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -6632,7 +6632,7 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
     );
     assert_eq!(
         nested_required,
-        vec!["4 * x + 1 > 0".to_string()],
+        vec!["x > -1/4".to_string()],
         "affine nested derivative should preserve the positive radicand condition"
     );
     let (nested_residual, nested_required) = evaluated_expr_with_required_conditions(
@@ -6641,7 +6641,7 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["4 * x + 1 > 0".to_string()],
+        vec!["x > -1/4".to_string()],
         "affine verification should preserve the positive radicand condition"
     );
 
@@ -6650,7 +6650,7 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
     assert_eq!(result, "arctan(sqrt(5 - 3 * x))");
     assert_eq!(
         required,
-        vec!["5 - 3 * x > 0".to_string()],
+        vec!["x < 5/3".to_string()],
         "unexpected negative-slope affine required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -6661,7 +6661,7 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["5 - 3 * x > 0".to_string()],
+        vec!["x < 5/3".to_string()],
         "negative-slope affine residual verification should preserve the positive radicand condition"
     );
     let (nested_equiv, nested_required) = evaluated_equiv_with_required_conditions(
@@ -6671,7 +6671,7 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
     assert!(nested_equiv);
     assert_eq!(
         nested_required,
-        vec!["5 - 3 * x > 0".to_string()],
+        vec!["x < 5/3".to_string()],
         "negative-slope affine derivative equivalence should preserve the positive radicand condition"
     );
 
@@ -6685,7 +6685,7 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
     );
     assert_eq!(
         nested_required,
-        vec!["1 - x > 0".to_string()],
+        vec!["x < 1".to_string()],
         "unit-slope negative affine derivative equivalence should preserve the positive radicand condition"
     );
 }
@@ -6706,17 +6706,17 @@ fn integrate_contract_inverse_hyperbolic_sqrt_reciprocal_kernels_invert_diff_out
         (
             "integrate(-1/(2*(x+1)*sqrt(x+2)), x)",
             "asinh(sqrt(1 / (x + 1)))",
-            vec!["x + 1 > 0".to_string()],
+            vec!["x > -1".to_string()],
         ),
         (
             "integrate(-1/(2*sqrt(x)*(x-1)), x)",
             "atanh(sqrt(1 / x))",
-            vec!["x - 1 > 0".to_string()],
+            vec!["x > 1".to_string()],
         ),
         (
             "integrate(-1/(sqrt(x)*(x-4)), x)",
             "atanh(sqrt(4 / x))",
-            vec!["x - 4 > 0".to_string()],
+            vec!["x > 4".to_string()],
         ),
         (
             "integrate(-3/(2*sqrt(3*x+1)*(3*x)), x)",
@@ -6726,22 +6726,22 @@ fn integrate_contract_inverse_hyperbolic_sqrt_reciprocal_kernels_invert_diff_out
         (
             "integrate(-2/((2*x+1)*sqrt(2*x+5)), x)",
             "asinh(sqrt(4 / (2 * x + 1)))",
-            vec!["2 * x + 1 > 0".to_string()],
+            vec!["x > -1/2".to_string()],
         ),
         (
             "integrate(-1/(sqrt(2)*(x+3)*sqrt(x+5)), x)",
             "asinh(sqrt(2 / (x + 3)))",
-            vec!["x + 3 > 0".to_string()],
+            vec!["x > -3".to_string()],
         ),
         (
             "integrate(-2/(sqrt(2)*(2*x+1)*sqrt(2*x+3)), x)",
             "asinh(sqrt(2 / (2 * x + 1)))",
-            vec!["2 * x + 1 > 0".to_string()],
+            vec!["x > -1/2".to_string()],
         ),
         (
             "integrate(1/((6-2*x)*sqrt(8-2*x)), x)",
             "1/2 * asinh(sqrt(1 / (3 - x))) * sqrt(2)",
-            vec!["3 - x > 0".to_string()],
+            vec!["x < 3".to_string()],
         ),
         (
             "integrate(-1/(x*sqrt(2*x+4)), x)",
@@ -6798,7 +6798,7 @@ fn integrate_contract_scaled_asinh_residual_stays_quiet_on_stderr() {
     assert_eq!(wire["result"], "0");
     assert_eq!(
         wire["required_display"],
-        serde_json::json!(["3 - x > 0"]),
+        serde_json::json!(["x < 3"]),
         "scaled asinh residual should preserve the antiderivative domain condition"
     );
     assert!(
@@ -6815,7 +6815,7 @@ fn integrate_contract_ambiguous_inverse_hyperbolic_family_selection_verifies_by_
     assert_eq!(result, "asinh(sqrt(4 / (1 - 3 * x)))");
     assert_eq!(
         required,
-        vec!["1 - 3 * x > 0".to_string()],
+        vec!["x < 1/3".to_string()],
         "ambiguous inverse-hyperbolic primitive should keep the witnessed positive denominator"
     );
     assert_antiderivative_verifies(input);
@@ -6827,7 +6827,7 @@ fn integrate_contract_ambiguous_inverse_hyperbolic_family_selection_verifies_by_
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["1 - 3 * x > 0".to_string()],
+        vec!["x < 1/3".to_string()],
         "nested ambiguous primitive verification should preserve the selected-domain condition"
     );
 }
@@ -7140,7 +7140,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(result, "sqrt(1 - x^2) + x * arcsin(x)");
     assert_eq!(
         required,
-        vec!["1 - x^2 > 0".to_string()],
+        vec!["-1 < x < 1".to_string()],
         "arcsin integration should publish its open-domain condition"
     );
     assert_antiderivative_verifies("integrate(arcsin(x), x)");
@@ -7149,7 +7149,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["1 - x^2 > 0".to_string()],
+        vec!["-1 < x < 1".to_string()],
         "nested arcsin verification should preserve the open-domain condition"
     );
 
@@ -7157,7 +7157,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(result, "x * arccos(x) - sqrt(1 - x^2)");
     assert_eq!(
         required,
-        vec!["1 - x^2 > 0".to_string()],
+        vec!["-1 < x < 1".to_string()],
         "arccos integration should publish its open-domain condition"
     );
     assert_antiderivative_verifies("integrate(arccos(x), x)");
@@ -7166,7 +7166,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["1 - x^2 > 0".to_string()],
+        vec!["-1 < x < 1".to_string()],
         "nested arccos verification should preserve the open-domain condition"
     );
 
@@ -7175,7 +7175,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(result, "sqrt(1/4 - x^2) + x * arcsin(2 * x)");
     assert_eq!(
         required,
-        vec!["1 - 4 * x^2 > 0".to_string()],
+        vec!["-1/2 < x < 1/2".to_string()],
         "scaled arcsin integration should publish its open-domain condition"
     );
     assert_rendered_antiderivative_verifies("integrate(arcsin(2*x), x)", &result);
@@ -7184,7 +7184,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["1 - 4 * x^2 > 0".to_string()],
+        vec!["-1/2 < x < 1/2".to_string()],
         "nested scaled arcsin verification should preserve the open-domain condition"
     );
 
@@ -7193,7 +7193,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(result, "x * arccos(2 * x) - sqrt(1/4 - x^2)");
     assert_eq!(
         required,
-        vec!["1 - 4 * x^2 > 0".to_string()],
+        vec!["-1/2 < x < 1/2".to_string()],
         "scaled arccos integration should publish its open-domain condition"
     );
     assert_rendered_antiderivative_verifies("integrate(arccos(2*x), x)", &result);
@@ -7202,7 +7202,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["1 - 4 * x^2 > 0".to_string()],
+        vec!["-1/2 < x < 1/2".to_string()],
         "nested scaled arccos verification should preserve the open-domain condition"
     );
 
@@ -7211,7 +7211,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(result, "x * arcsin(-2 * x) - 1/2 * sqrt(1 - (-2 * x)^2)");
     assert_eq!(
         required,
-        vec!["1 - 4 * x^2 > 0".to_string()],
+        vec!["-1/2 < x < 1/2".to_string()],
         "negative-scale arcsin integration should publish its open-domain condition"
     );
     assert_rendered_antiderivative_verifies("integrate(arcsin(-2*x), x)", &result);
@@ -7221,7 +7221,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["1 - 4 * x^2 > 0".to_string()],
+        vec!["-1/2 < x < 1/2".to_string()],
         "nested negative-scale arcsin verification should preserve the open-domain condition"
     );
 
@@ -7233,7 +7233,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     );
     assert_eq!(
         required,
-        vec!["-x^2 - x > 0".to_string()],
+        vec!["-1 < x < 0".to_string()],
         "shifted positive-slope arcsin integration should publish its open-domain condition"
     );
     assert_antiderivative_verifies("integrate(arcsin(2*x+1), x)");
@@ -7244,7 +7244,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["-x^2 - x > 0".to_string()],
+        vec!["-1 < x < 0".to_string()],
         "nested shifted arcsin verification should preserve the open-domain condition"
     );
 
@@ -7256,7 +7256,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     );
     assert_eq!(
         required,
-        vec!["-x^2 - x > 0".to_string()],
+        vec!["-1 < x < 0".to_string()],
         "shifted positive-slope arccos integration should publish its open-domain condition"
     );
     assert_antiderivative_verifies("integrate(arccos(2*x+1), x)");
@@ -7267,7 +7267,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["-x^2 - x > 0".to_string()],
+        vec!["-1 < x < 0".to_string()],
         "nested shifted arccos verification should preserve the open-domain condition"
     );
 
@@ -7279,7 +7279,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     );
     assert_eq!(
         required,
-        vec!["x - x^2 > 0".to_string()],
+        vec!["0 < x < 1".to_string()],
         "opposite-offset positive-slope arcsin integration should publish its open-domain condition"
     );
     assert_antiderivative_verifies("integrate(arcsin(2*x-1), x)");
@@ -7293,7 +7293,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     );
     assert_eq!(
         required,
-        vec!["x - x^2 > 0".to_string()],
+        vec!["0 < x < 1".to_string()],
         "negative-slope shifted arcsin integration should publish its open-domain condition"
     );
     assert_antiderivative_verifies("integrate(arcsin(1-2*x), x)");
@@ -7304,7 +7304,7 @@ fn integrate_contract_bounded_inverse_trig_variable_by_parts() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["x - x^2 > 0".to_string()],
+        vec!["0 < x < 1".to_string()],
         "nested negative-slope arcsin verification should preserve the open-domain condition"
     );
 
@@ -7325,7 +7325,7 @@ fn integrate_contract_arccos_negative_slope_preserves_compact_by_parts_form() {
     );
     assert_eq!(
         required,
-        vec!["x - x^2 > 0".to_string()],
+        vec!["0 < x < 1".to_string()],
         "negative-slope shifted arccos integration should publish its open-domain condition"
     );
     assert_rendered_antiderivative_verifies("integrate(arccos(1-2*x), x)", &result);
@@ -7335,7 +7335,7 @@ fn integrate_contract_arccos_negative_slope_preserves_compact_by_parts_form() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["x - x^2 > 0".to_string()],
+        vec!["0 < x < 1".to_string()],
         "nested negative-slope arccos verification should preserve the open-domain condition"
     );
 }
@@ -7385,7 +7385,7 @@ fn integrate_contract_arctan_reciprocal_scaled_variable_by_parts() {
     );
     assert_eq!(
         required,
-        vec!["2 * x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1/2".to_string()],
         "shifted reciprocal arctan integration should preserve the affine reciprocal condition"
     );
     assert_antiderivative_verifies("integrate(arctan(1/(2*x+1)), x)");
@@ -7396,7 +7396,7 @@ fn integrate_contract_arctan_reciprocal_scaled_variable_by_parts() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["2 * x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1/2".to_string()],
         "nested integrate/diff verification should keep the affine reciprocal condition"
     );
 
@@ -7408,7 +7408,7 @@ fn integrate_contract_arctan_reciprocal_scaled_variable_by_parts() {
     );
     assert_eq!(
         required,
-        vec!["2 * x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1/2".to_string()],
         "shifted arccot canonicalization should keep the explicit affine reciprocal condition"
     );
     assert_antiderivative_verifies("integrate(arccot(2*x+1), x)");
@@ -7422,7 +7422,7 @@ fn integrate_contract_arctan_reciprocal_scaled_variable_by_parts() {
     );
     assert_eq!(
         required,
-        vec!["2 * x - 1 ≠ 0".to_string()],
+        vec!["x ≠ 1/2".to_string()],
         "negative-slope shifted arccot canonicalization should keep the explicit affine reciprocal condition"
     );
     assert_antiderivative_verifies("integrate(arccot(1-2*x), x)");
@@ -7499,7 +7499,7 @@ fn integrate_contract_atanh_affine_by_parts_preserves_open_interval_domain() {
     assert_eq!(result, "1/2 * ln(1 - x^2) + x * atanh(x)");
     assert_eq!(
         required,
-        vec!["1 - x^2 > 0".to_string()],
+        vec!["-1 < x < 1".to_string()],
         "atanh integration should publish its open-interval condition"
     );
     assert_antiderivative_verifies("integrate(atanh(x), x)");
@@ -7509,7 +7509,7 @@ fn integrate_contract_atanh_affine_by_parts_preserves_open_interval_domain() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["1 - x^2 > 0".to_string()],
+        vec!["-1 < x < 1".to_string()],
         "nested atanh verification should preserve the open-interval condition"
     );
 
@@ -7518,7 +7518,7 @@ fn integrate_contract_atanh_affine_by_parts_preserves_open_interval_domain() {
     assert_eq!(result, "1/4 * ln(1 - (2 * x)^2) + x * atanh(2 * x)");
     assert_eq!(
         required,
-        vec!["1 - 4 * x^2 > 0".to_string()],
+        vec!["-1/2 < x < 1/2".to_string()],
         "scaled atanh integration should publish its normalized open-interval condition"
     );
     assert_antiderivative_verifies("integrate(atanh(2*x), x)");
@@ -7532,7 +7532,7 @@ fn integrate_contract_atanh_affine_by_parts_preserves_open_interval_domain() {
     );
     assert_eq!(
         required,
-        vec!["-x^2 - x > 0".to_string()],
+        vec!["-1 < x < 0".to_string()],
         "shifted atanh integration should publish its normalized open-interval condition"
     );
     assert_antiderivative_verifies("integrate(atanh(2*x+1), x)");
@@ -7543,7 +7543,7 @@ fn integrate_contract_atanh_affine_by_parts_preserves_open_interval_domain() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["-x^2 - x > 0".to_string()],
+        vec!["-1 < x < 0".to_string()],
         "nested shifted atanh verification should preserve the normalized condition"
     );
 
@@ -7555,7 +7555,7 @@ fn integrate_contract_atanh_affine_by_parts_preserves_open_interval_domain() {
     );
     assert_eq!(
         required,
-        vec!["x - x^2 > 0".to_string()],
+        vec!["0 < x < 1".to_string()],
         "negative-slope atanh integration should publish its normalized open-interval condition"
     );
     let (wire, _stderr) = cli_eval_json_with_stderr("integrate(atanh(1-2*x), x)");
@@ -7579,7 +7579,7 @@ fn integrate_contract_atanh_affine_by_parts_preserves_open_interval_domain() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["x - x^2 > 0".to_string()],
+        vec!["0 < x < 1".to_string()],
         "nested negative-slope atanh verification should preserve the normalized condition"
     );
 }
@@ -7590,7 +7590,7 @@ fn integrate_contract_acosh_affine_by_parts_preserves_real_radical_domain() {
     assert_eq!(result, "x * acosh(x) - sqrt(x - 1) * sqrt(x + 1)");
     assert_eq!(
         required,
-        vec!["x - 1 > 0".to_string()],
+        vec!["x > 1".to_string()],
         "acosh integration should publish the real radical conditions"
     );
     assert_rendered_antiderivative_verifies("integrate(acosh(x), x)", &result);
@@ -7599,7 +7599,7 @@ fn integrate_contract_acosh_affine_by_parts_preserves_real_radical_domain() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["x - 1 > 0".to_string()],
+        vec!["x > 1".to_string()],
         "nested acosh verification should preserve the real radical conditions"
     );
 
@@ -7611,7 +7611,7 @@ fn integrate_contract_acosh_affine_by_parts_preserves_real_radical_domain() {
     );
     assert_eq!(
         required,
-        vec!["2 * x - 1 > 0".to_string()],
+        vec!["x > 1/2".to_string()],
         "scaled acosh integration should publish the real radical conditions"
     );
     assert_rendered_antiderivative_verifies("integrate(acosh(2*x), x)", &result);
@@ -7649,7 +7649,7 @@ fn integrate_contract_acosh_negative_slope_preserves_compact_by_parts_form() {
     );
     assert_eq!(
         required,
-        vec!["-x > 0".to_string()],
+        vec!["x < 0".to_string()],
         "negative-slope acosh integration should publish its normalized real-domain condition"
     );
     assert_rendered_antiderivative_verifies("integrate(acosh(1-2*x), x)", &result);
@@ -7659,7 +7659,7 @@ fn integrate_contract_acosh_negative_slope_preserves_compact_by_parts_form() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["-x > 0".to_string()],
+        vec!["x < 0".to_string()],
         "nested negative-slope acosh verification should preserve the normalized condition"
     );
 }
@@ -7718,7 +7718,7 @@ fn integrate_contract_atanh_quadratic_kernel_with_surd_width_preserves_positive_
     assert_eq!(result, "atanh(x / sqrt(3)) / sqrt(3)");
     assert_eq!(
         required,
-        vec!["3 - x^2 > 0".to_string()],
+        vec!["-sqrt(3) < x < sqrt(3)".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -7733,7 +7733,7 @@ fn integrate_contract_atanh_quadratic_kernel_with_surd_width_preserves_positive_
     );
     assert_eq!(
         required,
-        vec!["1 - 2 * x^2 - 2 * x > 0".to_string()],
+        vec!["-1/2 - sqrt(3/4) < x < -1/2 + sqrt(3/4)".to_string()],
         "shifted atanh quadratic should preserve its positive-domain condition"
     );
 
@@ -7742,7 +7742,7 @@ fn integrate_contract_atanh_quadratic_kernel_with_surd_width_preserves_positive_
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["1 - 2 * x^2 - 2 * x > 0".to_string()],
+        vec!["-1/2 - sqrt(3/4) < x < -1/2 + sqrt(3/4)".to_string()],
         "nested shifted atanh verification should preserve the positive-domain condition"
     );
 }
@@ -7755,7 +7755,7 @@ fn integrate_contract_scaled_atanh_quadratic_kernel_reduces_surd_width() {
     assert_eq!(result, "1/4 * atanh(x / sqrt(3)) / sqrt(3)");
     assert_eq!(
         required,
-        vec!["3 - x^2 > 0".to_string()],
+        vec!["-sqrt(3) < x < sqrt(3)".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -7819,7 +7819,7 @@ fn integrate_contract_polynomial_derivative_acosh_substitution_preserves_real_do
     assert_eq!(result, "acosh(x^2 / 2)");
     assert_eq!(
         required,
-        vec!["x^2 - 2 > 0".to_string()],
+        vec!["x < -sqrt(2) or x > sqrt(2)".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -7830,7 +7830,7 @@ fn integrate_contract_polynomial_derivative_acosh_substitution_preserves_real_do
     assert_eq!(result, "acosh((x^2 + x) / 2)");
     assert_eq!(
         required,
-        vec!["x^2 + x - 2 > 0".to_string()],
+        vec!["x < -2 or x > 1".to_string()],
         "unexpected shifted acosh required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -7841,7 +7841,7 @@ fn integrate_contract_polynomial_derivative_acosh_substitution_preserves_real_do
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["x^2 + x - 2 > 0".to_string()],
+        vec!["x < -2 or x > 1".to_string()],
         "nested acosh verification should preserve the real-domain conditions"
     );
 
@@ -7885,7 +7885,7 @@ fn integrate_contract_square_minus_constant_uses_abs_log_ratio_and_nonzero_domai
     assert_eq!(result, "1/2 * ln(|(x - 1) / (x + 1)|)");
     assert_eq!(
         required,
-        vec!["x - 1 ≠ 0".to_string(), "x + 1 ≠ 0".to_string()],
+        vec!["x ≠ 1".to_string(), "x ≠ -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -7901,7 +7901,7 @@ fn integrate_contract_repeated_linear_partial_fraction_preserves_nonzero_domain(
     );
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected repeated-linear partial fraction required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -7911,7 +7911,7 @@ fn integrate_contract_repeated_linear_partial_fraction_preserves_nonzero_domain(
     assert_eq!(residual_result, "0");
     assert_eq!(
         residual_required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected repeated-linear partial fraction residual conditions: {residual_required:?}"
     );
 }
@@ -7924,7 +7924,7 @@ fn integrate_contract_polynomial_derivative_over_denominator_power_preserves_non
     assert_eq!(result, "-1 / (x^2 - 1)");
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -8164,7 +8164,7 @@ fn integrate_contract_scaled_syntactic_denominator_power_preserves_full_nonzero_
     required.sort();
     assert_eq!(
         required,
-        vec!["2 * x - 1 ≠ 0".to_string(), "x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -8249,7 +8249,7 @@ fn integrate_contract_expanded_linear_denominator_fifth_power_recovers_compact_b
     assert_eq!(result, "-1 / (4 * (x + 1)^4)");
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -8439,7 +8439,7 @@ fn integrate_contract_conditional_log_cube_product_by_parts_verifies() {
     );
     assert_eq!(
         required,
-        vec!["x^2 - 1 > 0".to_string()],
+        vec!["x < -1 or x > 1".to_string()],
         "conditional log-cube product integration should publish its positive-domain condition"
     );
     assert_antiderivative_verifies(input);
@@ -8450,7 +8450,7 @@ fn integrate_contract_conditional_log_cube_product_by_parts_verifies() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["x^2 - 1 > 0".to_string()],
+        vec!["x < -1 or x > 1".to_string()],
         "nested conditional log-cube verification should preserve the positive-domain condition"
     );
 }
@@ -8514,7 +8514,7 @@ fn integrate_contract_conditional_high_log_power_stays_unsupported_until_residua
     assert_eq!(result, "integrate(2 * x * ln(x^2 - 1)^4, x)");
     assert_eq!(
         required,
-        vec!["x^2 - 1 > 0".to_string()],
+        vec!["x < -1 or x > 1".to_string()],
         "unsupported conditional high-log-power integration should still publish its source domain"
     );
 }
@@ -8530,7 +8530,7 @@ fn integrate_contract_linear_log_square_product_by_parts_preserves_positive_doma
     );
     assert_eq!(
         required,
-        vec!["2 * x + 1 > 0".to_string()],
+        vec!["x > -1/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -8560,7 +8560,7 @@ fn integrate_contract_conditional_monomial_log_square_product_by_parts_verifies(
     assert_eq!(result, "(x^2 - 1) * (ln(x^2 - 1)^2 - 2 * ln(x^2 - 1) + 2)");
     assert_eq!(
         required,
-        vec!["x^2 - 1 > 0".to_string()],
+        vec!["x < -1 or x > 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -8577,7 +8577,7 @@ fn integrate_contract_conditional_quadratic_log_square_product_by_parts_verifies
     );
     assert_eq!(
         required,
-        vec!["x^2 + x - 1 > 0".to_string()],
+        vec!["x < -1/2 - sqrt(5/4) or x > -1/2 + sqrt(5/4)".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -8689,7 +8689,7 @@ fn integrate_contract_quadratic_affine_log_by_parts_nested_residual_collapses() 
     );
     assert_eq!(
         required,
-        vec!["x + 1 > 0".to_string()],
+        vec!["x > -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -8700,7 +8700,7 @@ fn integrate_contract_quadratic_affine_log_by_parts_nested_residual_collapses() 
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["x + 1 > 0".to_string()],
+        vec!["x > -1".to_string()],
         "nested residual should preserve the log domain condition"
     );
 
@@ -8711,7 +8711,7 @@ fn integrate_contract_quadratic_affine_log_by_parts_nested_residual_collapses() 
     assert_eq!(expanded_nested_residual, "0");
     assert_eq!(
         expanded_nested_required,
-        vec!["x + 1 > 0".to_string()],
+        vec!["x > -1".to_string()],
         "expanded nested residual should preserve the log domain condition"
     );
 
@@ -8722,7 +8722,7 @@ fn integrate_contract_quadratic_affine_log_by_parts_nested_residual_collapses() 
     assert_eq!(negative_nested_residual, "0");
     assert_eq!(
         negative_nested_required,
-        vec!["x + 1 > 0".to_string()],
+        vec!["x > -1".to_string()],
         "negative nested residual should preserve the log domain condition"
     );
 }
@@ -8735,7 +8735,7 @@ fn integrate_contract_shifted_linear_scaled_arcsin_substitution() {
     assert_eq!(result, "arcsin((x + 1) / 2)");
     assert_eq!(
         required,
-        vec!["3 - x^2 - 2 * x > 0".to_string()],
+        vec!["-3 < x < 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies("integrate(1/sqrt(4-(x+1)^2), x)");
@@ -8745,7 +8745,7 @@ fn integrate_contract_shifted_linear_scaled_arcsin_substitution() {
     assert_eq!(nested_residual, "0");
     assert_eq!(
         nested_required,
-        vec!["3 - x^2 - 2 * x > 0".to_string()],
+        vec!["-3 < x < 1".to_string()],
         "nested shifted arcsin verification should preserve its positive radicand condition"
     );
 }
@@ -8765,7 +8765,7 @@ fn integrate_contract_beta_sqrt_product_kernel_preserves_open_domain_and_verifie
         ),
     ] {
         let (result, mut required) = evaluated_integral_with_required_conditions(input);
-        let mut expected_required = vec!["1 - x > 0".to_string(), "x > 0".to_string()];
+        let mut expected_required = vec!["x < 1".to_string(), "x > 0".to_string()];
         required.sort();
         expected_required.sort();
 
@@ -8800,8 +8800,7 @@ fn integrate_contract_beta_sqrt_product_kernel_preserves_open_domain_and_verifie
     let direct_affine = "diff(integrate(1/(sqrt(2*x+1)*sqrt(3-2*x)), x), x)";
     let (direct_affine_result, mut direct_affine_required) =
         evaluated_expr_with_required_conditions(direct_affine);
-    let mut expected_affine_required =
-        vec!["2 * x + 1 > 0".to_string(), "3 - 2 * x > 0".to_string()];
+    let mut expected_affine_required = vec!["x < 3/2".to_string(), "x > -1/2".to_string()];
     direct_affine_required.sort();
     expected_affine_required.sort();
     assert_eq!(
@@ -8816,7 +8815,7 @@ fn integrate_contract_beta_sqrt_product_kernel_preserves_open_domain_and_verifie
     let direct_symbolic = "diff(integrate(a/(2*sqrt(x)*sqrt(1-x)), x), x)";
     let (direct_symbolic_result, mut direct_symbolic_required) =
         evaluated_expr_with_required_conditions(direct_symbolic);
-    let mut expected_required = vec!["1 - x > 0".to_string(), "x > 0".to_string()];
+    let mut expected_required = vec!["x < 1".to_string(), "x > 0".to_string()];
     direct_symbolic_required.sort();
     expected_required.sort();
     assert_eq!(direct_symbolic_result, "a / (2 * sqrt(x) * sqrt(1 - x))");
@@ -9046,7 +9045,7 @@ fn integrate_contract_polynomial_derivative_over_square_root_substitution() {
     assert_eq!(result, "2 * (x^2 - 1)^(1/2)");
     assert_eq!(
         required,
-        vec!["x^2 - 1 > 0".to_string()],
+        vec!["x < -1 or x > 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 
@@ -9095,7 +9094,7 @@ fn integrate_contract_affine_sqrt_product_derivative_inverse() {
     assert_eq!(result, "sqrt(x + 2) * (x + 1)");
     assert_eq!(
         required,
-        vec!["x + 2 > 0".to_string()],
+        vec!["x > -2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -9129,7 +9128,7 @@ fn integrate_contract_affine_sqrt_product_derivative_inverse() {
     assert_eq!(result, "sqrt(3 - 2 * x) * (x + 1)");
     assert_eq!(
         required,
-        vec!["3 - 2 * x > 0".to_string()],
+        vec!["x < 3/2".to_string()],
         "unexpected negative-slope product-form required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -9153,7 +9152,7 @@ fn integrate_contract_polynomial_derivative_times_square_root_substitution() {
     assert_eq!(result, "2/3 * (x^2 - 1)^(3/2)");
     assert_eq!(
         required,
-        vec!["x^2 - 1 ≥ 0".to_string()],
+        vec!["x ≤ -1 or x ≥ 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -9164,7 +9163,7 @@ fn integrate_contract_polynomial_derivative_times_square_root_substitution() {
     assert_eq!(result, "-2/3 * (x^2 - 1)^(3/2)");
     assert_eq!(
         required,
-        vec!["x^2 - 1 ≥ 0".to_string()],
+        vec!["x ≤ -1 or x ≥ 1".to_string()],
         "negated square-root substitution should preserve the same nonnegative-base condition"
     );
     assert_antiderivative_verifies(input);
@@ -9188,7 +9187,7 @@ fn integrate_contract_polynomial_derivative_times_power_substitution() {
     assert_eq!(result, "2/5 * (x^2 - 1)^(5/2)");
     assert_eq!(
         required,
-        vec!["x^2 - 1 ≥ 0".to_string()],
+        vec!["x ≤ -1 or x ≥ 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies(input);
@@ -9199,7 +9198,7 @@ fn integrate_contract_polynomial_derivative_times_power_substitution() {
     assert_eq!(result, "-2/5 * (x^2 - 1)^(5/2)");
     assert_eq!(
         required,
-        vec!["x^2 - 1 ≥ 0".to_string()],
+        vec!["x ≤ -1 or x ≥ 1".to_string()],
         "negated power substitution should preserve the same nonnegative-base condition"
     );
     assert_antiderivative_verifies(input);
@@ -9285,7 +9284,7 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(result, "-2 / sqrt(x^2 - 1)");
     assert_eq!(
         required,
-        vec!["x^2 - 1 > 0".to_string()],
+        vec!["x < -1 or x > 1".to_string()],
         "fractional denominator power should require the base to be positive"
     );
     assert_antiderivative_verifies(input);
@@ -9303,7 +9302,7 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(direct_wire["result"], "2·x / (x^2 - 1)^(3 / 2)");
     assert_eq!(
         direct_wire["required_display"],
-        serde_json::json!(["x^2 - 1 > 0"])
+        serde_json::json!(["x < -1 or x > 1"])
     );
     let residual = "diff(integrate(2*x/(x^2-1)^(5/2), x), x) - 2*x/(x^2-1)^(5/2)";
     let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
@@ -9314,7 +9313,7 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(residual_wire["result"], "0");
     assert_eq!(
         residual_wire["required_display"],
-        serde_json::json!(["x^2 - 1 > 0"])
+        serde_json::json!(["x < -1 or x > 1"])
     );
 
     let input = "integrate((4*x+2)/(2*x^2+2*x-3)^(3/2), x)";
@@ -9323,7 +9322,7 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(result, "-2 / sqrt(2 * x^2 + 2 * x - 3)");
     assert_eq!(
         required,
-        vec!["2 * x^2 + 2 * x - 3 > 0".to_string()],
+        vec!["x < -1/2 - sqrt(7/4) or x > -1/2 + sqrt(7/4)".to_string()],
         "scaled shifted fractional denominator power should preserve the positive-base condition"
     );
     assert_antiderivative_verifies(input);
@@ -9337,7 +9336,7 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(residual_wire["result"], "0");
     assert_eq!(
         residual_wire["required_display"],
-        serde_json::json!(["2·x^2 + 2·x - 3 > 0"])
+        serde_json::json!(["x < -1/2 - sqrt(7/4) or x > -1/2 + sqrt(7/4)"])
     );
     let residual =
         "diff(integrate((4*x+2)/(2*x^2+2*x-3)^(7/2), x), x) - (4*x+2)/(2*x^2+2*x-3)^(7/2)";
@@ -9349,7 +9348,7 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(residual_wire["result"], "0");
     assert_eq!(
         residual_wire["required_display"],
-        serde_json::json!(["2·x^2 + 2·x - 3 > 0"])
+        serde_json::json!(["x < -1/2 - sqrt(7/4) or x > -1/2 + sqrt(7/4)"])
     );
     assert_eq!(
         rationalize_rewrites_for_simplify(input),
@@ -9363,7 +9362,7 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(result, "2 / sqrt(x^2 - 1)");
     assert_eq!(
         required,
-        vec!["x^2 - 1 > 0".to_string()],
+        vec!["x < -1 or x > 1".to_string()],
         "negated fractional denominator power should preserve the same positive-base condition"
     );
     assert_antiderivative_verifies(input);
@@ -9700,7 +9699,7 @@ fn integrate_contract_wrapped_nested_reciprocal_trig_residual_verifies_antideriv
         ),
         (
             "(diff(integrate((4*x^3-2*x)*sec(x^4-x^2)*tan(x^4-x^2), x), x) - (4*x^3-2*x)*sec(x^4-x^2)*tan(x^4-x^2))/(x+1)",
-            vec!["cos(x^4 - x^2) ≠ 0", "x + 1 ≠ 0"],
+            vec!["cos(x^4 - x^2) ≠ 0", "x ≠ -1"],
         ),
     ];
 
@@ -9797,7 +9796,7 @@ fn integrate_contract_wrapped_nested_tangent_cotangent_residual_verifies_antider
         ),
         (
             "(diff(integrate((4*x^3-2*x)*cot(x^4-x^2), x), x) - (4*x^3-2*x)*cot(x^4-x^2))/(x+1)",
-            vec!["sin(x^4 - x^2) ≠ 0", "x + 1 ≠ 0"],
+            vec!["sin(x^4 - x^2) ≠ 0", "x ≠ -1"],
         ),
     ];
 
@@ -9969,67 +9968,67 @@ fn integrate_contract_sqrt_chain_secant_cosecant_products_verify() {
             "integrate(sec(sqrt(2*x))*tan(sqrt(2*x))/sqrt(2*x), x)",
             "sec(sqrt(2 * x))",
             "tan(sqrt(2 * x)) * sec(sqrt(2 * x)) / sqrt(2 * x)",
-            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+            vec!["cos(sqrt(2 * x)) ≠ 0", "x > 0"],
         ),
         (
             "integrate(csc(sqrt(2*x))*cot(sqrt(2*x))/sqrt(2*x), x)",
             "-csc(sqrt(2 * x))",
             "csc(sqrt(2 * x)) * cot(sqrt(2 * x)) / sqrt(2 * x)",
-            vec!["x > 0", "sin(sqrt(2 * x)) ≠ 0"],
+            vec!["sin(sqrt(2 * x)) ≠ 0", "x > 0"],
         ),
         (
             "integrate(-sec(sqrt(2*x))*tan(sqrt(2*x))/sqrt(2*x), x)",
             "-sec(sqrt(2 * x))",
             "-tan(sqrt(2 * x)) * sec(sqrt(2 * x)) / sqrt(2 * x)",
-            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+            vec!["cos(sqrt(2 * x)) ≠ 0", "x > 0"],
         ),
         (
             "integrate(-csc(sqrt(2*x))*cot(sqrt(2*x))/sqrt(2*x), x)",
             "csc(sqrt(2 * x))",
             "-cot(sqrt(2 * x)) * csc(sqrt(2 * x)) / sqrt(2 * x)",
-            vec!["x > 0", "sin(sqrt(2 * x)) ≠ 0"],
+            vec!["sin(sqrt(2 * x)) ≠ 0", "x > 0"],
         ),
         (
             "integrate(sec(sqrt(3*x+1))*tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
             "sec(sqrt(3 * x + 1))",
             "3 * tan(sqrt(3 * x + 1)) * sec(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["cos(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
         ),
         (
             "integrate(-sec(sqrt(3-2*x))*tan(sqrt(3-2*x))/sqrt(3-2*x), x)",
             "sec(sqrt(3 - 2 * x))",
             "-tan(sqrt(3 - 2 * x)) * sec(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
-            vec!["3 - 2 * x > 0", "cos(sqrt(3 - 2 * x)) ≠ 0"],
+            vec!["cos(sqrt(3 - 2 * x)) ≠ 0", "x < 3/2"],
         ),
         (
             "integrate(sec(sqrt(3-2*x))*tan(sqrt(3-2*x))/sqrt(3-2*x), x)",
             "-sec(sqrt(3 - 2 * x))",
             "tan(sqrt(3 - 2 * x)) * sec(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
-            vec!["3 - 2 * x > 0", "cos(sqrt(3 - 2 * x)) ≠ 0"],
+            vec!["cos(sqrt(3 - 2 * x)) ≠ 0", "x < 3/2"],
         ),
         (
             "integrate(csc(sqrt(3*x+1))*cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
             "-csc(sqrt(3 * x + 1))",
             "3 * csc(sqrt(3 * x + 1)) * cot(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["sin(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
         ),
         (
             "integrate(-csc(sqrt(3-2*x))*cot(sqrt(3-2*x))/sqrt(3-2*x), x)",
             "-csc(sqrt(3 - 2 * x))",
             "-cot(sqrt(3 - 2 * x)) * csc(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
-            vec!["3 - 2 * x > 0", "sin(sqrt(3 - 2 * x)) ≠ 0"],
+            vec!["sin(sqrt(3 - 2 * x)) ≠ 0", "x < 3/2"],
         ),
         (
             "integrate(csc(sqrt(3-2*x))*cot(sqrt(3-2*x))/sqrt(3-2*x), x)",
             "csc(sqrt(3 - 2 * x))",
             "csc(sqrt(3 - 2 * x)) * cot(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
-            vec!["3 - 2 * x > 0", "sin(sqrt(3 - 2 * x)) ≠ 0"],
+            vec!["sin(sqrt(3 - 2 * x)) ≠ 0", "x < 3/2"],
         ),
         (
             "integrate(-csc(sqrt(3*x+1))*cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
             "csc(sqrt(3 * x + 1))",
             "-3 * cot(sqrt(3 * x + 1)) * csc(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["x > -1/3", "sin(sqrt(3 * x + 1)) ≠ 0"],
         ),
     ];
 
@@ -10069,19 +10068,19 @@ fn integrate_contract_sqrt_chain_raw_reciprocal_trig_derivative_quotients_render
         (
             "integrate(cos(sqrt(2*x))*(2*x)^(-1/2)/sin(sqrt(2*x))^2, x)",
             "-csc(sqrt(2 * x))",
-            vec!["x > 0", "sin(sqrt(2 * x)) ≠ 0"],
+            vec!["sin(sqrt(2 * x)) ≠ 0", "x > 0"],
             "diff(integrate(cos(sqrt(2*x))*(2*x)^(-1/2)/sin(sqrt(2*x))^2, x), x) - cos(sqrt(2*x))*(2*x)^(-1/2)/sin(sqrt(2*x))^2",
         ),
         (
             "integrate(3*sin(sqrt(3*x+1))/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))^2), x)",
             "sec(sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["cos(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
             "diff(integrate(3*sin(sqrt(3*x+1))/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))^2), x), x) - 3*sin(sqrt(3*x+1))/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))^2)",
         ),
         (
             "integrate(-2*cos(sqrt(3-2*x))/(sqrt(3-2*x)*sin(sqrt(3-2*x))^2), x)",
             "-2 * csc(sqrt(3 - 2 * x))",
-            vec!["3 - 2 * x > 0", "sin(sqrt(3 - 2 * x)) ≠ 0"],
+            vec!["sin(sqrt(3 - 2 * x)) ≠ 0", "x < 3/2"],
             "diff(integrate(-2*cos(sqrt(3-2*x))/(sqrt(3-2*x)*sin(sqrt(3-2*x))^2), x), x) + 2*cos(sqrt(3-2*x))/(sqrt(3-2*x)*sin(sqrt(3-2*x))^2)",
         ),
     ];
@@ -10314,57 +10313,57 @@ fn integrate_contract_sqrt_chain_tangent_cotangent_logs_verify() {
             "integrate(tan(sqrt(2*x))/sqrt(2*x), x)",
             "-ln(|cos(sqrt(2 * x))|)",
             "tan(sqrt(2 * x)) / sqrt(2 * x)",
-            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
-            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+            vec!["cos(sqrt(2 * x)) ≠ 0", "x > 0"],
+            vec!["cos(sqrt(2 * x)) ≠ 0", "x > 0"],
         ),
         (
             "integrate(-tan(sqrt(2*x))/sqrt(2*x), x)",
             "ln(|cos(sqrt(2 * x))|)",
             "-tan(sqrt(2 * x)) / sqrt(2 * x)",
-            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
-            vec!["x > 0", "cos(sqrt(2 * x)) ≠ 0"],
+            vec!["cos(sqrt(2 * x)) ≠ 0", "x > 0"],
+            vec!["cos(sqrt(2 * x)) ≠ 0", "x > 0"],
         ),
         (
             "integrate(-cot(sqrt(2*x))/sqrt(2*x), x)",
             "-ln(|sin(sqrt(2 * x))|)",
             "-cot(sqrt(2 * x)) / sqrt(2 * x)",
-            vec!["x > 0", "sin(sqrt(2 * x)) ≠ 0"],
-            vec!["x > 0", "sin(sqrt(2 * x)) ≠ 0"],
+            vec!["sin(sqrt(2 * x)) ≠ 0", "x > 0"],
+            vec!["sin(sqrt(2 * x)) ≠ 0", "x > 0"],
         ),
         (
             "integrate(tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
             "-ln(|cos(sqrt(3 * x + 1))|)",
             "3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
-            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["cos(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
+            vec!["cos(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
         ),
         (
             "integrate(cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
             "ln(|sin(sqrt(3 * x + 1))|)",
             "3 * cot(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
-            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["sin(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
+            vec!["sin(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
         ),
         (
             "integrate(-tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
             "ln(|cos(sqrt(3 * x + 1))|)",
             "-3 * tan(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
-            vec!["3 * x + 1 > 0", "cos(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["cos(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
+            vec!["cos(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
         ),
         (
             "integrate(-tan(sqrt(3-2*x))/sqrt(3-2*x), x)",
             "-ln(|cos(sqrt(3 - 2 * x))|)",
             "-tan(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
-            vec!["3 - 2 * x > 0", "cos(sqrt(3 - 2 * x)) ≠ 0"],
-            vec!["3 - 2 * x > 0", "cos(sqrt(3 - 2 * x)) ≠ 0"],
+            vec!["cos(sqrt(3 - 2 * x)) ≠ 0", "x < 3/2"],
+            vec!["cos(sqrt(3 - 2 * x)) ≠ 0", "x < 3/2"],
         ),
         (
             "integrate(-cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
             "-ln(|sin(sqrt(3 * x + 1))|)",
             "-3 * cot(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
-            vec!["3 * x + 1 > 0", "sin(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["sin(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
+            vec!["sin(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
         ),
     ];
 
@@ -10424,13 +10423,13 @@ fn integrate_contract_sqrt_chain_hyperbolic_tangent_logs_verify() {
             "integrate(tanh(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
             "ln(cosh(sqrt(3 * x + 1)))",
             "3 * tanh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0"],
+            vec!["x > -1/3"],
         ),
         (
             "integrate(3/(2*sqrt(3*x+1)*tanh(sqrt(3*x+1))), x)",
             "ln(|sinh(sqrt(3 * x + 1))|)",
             "3 / (2 * tanh(sqrt(3 * x + 1)) * sqrt(3 * x + 1))",
-            vec!["sinh(sqrt(3 * x + 1)) ≠ 0", "3 * x + 1 > 0"],
+            vec!["sinh(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
         ),
     ];
 
@@ -10480,12 +10479,12 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_squares_verify() {
         (
             "integrate(3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x)",
             "tanh(sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0"],
+            vec!["x > -1/3"],
         ),
         (
             "integrate(3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x)",
             "-1 / tanh(sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0", "sinh(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["sinh(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
         ),
     ];
 
@@ -10504,12 +10503,12 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_squares_verify() {
         (
             "diff(integrate(3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x), x)",
             "3 / (2 * sqrt(3 * x + 1) * cosh(sqrt(3 * x + 1))^2)",
-            vec!["3 * x + 1 > 0"],
+            vec!["x > -1/3"],
         ),
         (
             "diff(integrate(3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x), x)",
             "3 / (2 * sqrt(3 * x + 1) * sinh(sqrt(3 * x + 1))^2)",
-            vec!["3 * x + 1 > 0", "sinh(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["sinh(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
         ),
     ];
 
@@ -10572,12 +10571,12 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_derivatives_verify() {
         (
             "integrate(3*sinh(sqrt(3*x+1))/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x)",
             "-1 / cosh(sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0"],
+            vec!["x > -1/3"],
         ),
         (
             "integrate(3*cosh(sqrt(3*x+1))/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x)",
             "-1 / sinh(sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0", "sinh(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["x > -1/3", "sinh(sqrt(3 * x + 1)) ≠ 0"],
         ),
     ];
 
@@ -10596,12 +10595,12 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_derivatives_verify() {
         (
             "diff(integrate(3*sinh(sqrt(3*x+1))/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x), x)",
             "3 * sinh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1) * cosh(sqrt(3 * x + 1))^2)",
-            vec!["3 * x + 1 > 0"],
+            vec!["x > -1/3"],
         ),
         (
             "diff(integrate(3*cosh(sqrt(3*x+1))/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x), x)",
             "3 * cosh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1) * sinh(sqrt(3 * x + 1))^2)",
-            vec!["3 * x + 1 > 0", "sinh(sqrt(3 * x + 1)) ≠ 0"],
+            vec!["x > -1/3", "sinh(sqrt(3 * x + 1)) ≠ 0"],
         ),
     ];
 

@@ -287,9 +287,10 @@ fn strict_add_inverse_risky_stays_unchanged() {
     if result == "0" {
         assert!(
             required.iter().any(|cond| {
-                cond.contains("x + 1") && (cond.contains("≠ 0") || cond.contains("!= 0"))
+                cond == "x ≠ -1"
+                    || (cond.contains("x + 1") && (cond.contains("≠ 0") || cond.contains("!= 0")))
             }),
-            "If Strict mode collapses risky a+(-a) to 0, it must preserve x+1 != 0 in required_conditions. Got: {:?}",
+            "If Strict mode collapses risky a+(-a) to 0, it must preserve x != -1 in required_conditions. Got: {:?}",
             required
         );
     } else {

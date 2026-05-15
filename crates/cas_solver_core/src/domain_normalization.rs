@@ -44,6 +44,10 @@ pub fn normalize_condition(ctx: &mut Context, cond: &ImplicitCondition) -> Impli
     }
 
     if let ImplicitCondition::Positive(e) = cond {
+        if let Some(arg) = extract_abs_argument_view(ctx, *e) {
+            return normalize_condition(ctx, &ImplicitCondition::NonZero(arg));
+        }
+
         if let Some(equivalent) = positive_trig_condition_equivalent_expr(ctx, *e) {
             return normalize_condition(ctx, &ImplicitCondition::Positive(equivalent));
         }
@@ -6155,7 +6159,7 @@ mod tests {
             .map(|condition| condition.display(&ctx))
             .collect();
 
-        assert_eq!(rendered, vec!["-x^2 - x > 0".to_string()]);
+        assert_eq!(rendered, vec!["-1 < x < 0".to_string()]);
     }
 
     #[test]
@@ -6596,9 +6600,9 @@ mod tests {
         assert_eq!(
             rendered,
             vec![
-                "x - 1 ≠ 0".to_string(),
-                "x + 2 ≠ 0".to_string(),
-                "x^2 + x - 1 > 0".to_string(),
+                "x ≠ 1".to_string(),
+                "x ≠ -2".to_string(),
+                "x < -1/2 - sqrt(5/4) or x > -1/2 + sqrt(5/4)".to_string(),
             ]
         );
     }

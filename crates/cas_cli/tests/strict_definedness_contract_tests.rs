@@ -169,10 +169,10 @@ fn strict_subtraction_with_undefined_does_not_collapse() {
     let collapsed_with_guard = result.trim() == "0"
         && required
             .iter()
-            .any(|r| r.contains("x + 1") && r.contains("≠ 0"));
+            .any(|r| r == "x ≠ -1" || (r.contains("x + 1") && r.contains("≠ 0")));
     assert!(
         preserved_shape || collapsed_with_guard,
-        "Strict should preserve the risky subtraction or emit 0 with x + 1 ≠ 0, got result={result}, required={required:?}",
+        "Strict should preserve the risky subtraction or emit 0 with x ≠ -1, got result={result}, required={required:?}",
     );
 }
 

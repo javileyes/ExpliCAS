@@ -595,7 +595,7 @@ fn constant_diff_preserves_independent_input_domain_conditions() {
 
     assert_eq!(
         required,
-        vec!["y > 0".to_string(), "z + 1 ≠ 0".to_string()],
+        vec!["y > 0".to_string(), "z ≠ -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -836,28 +836,28 @@ fn scaled_bounded_inverse_trig_linear_diff_evaluates_to_reciprocal_root() {
             "diff(arcsin((x+1)/2), x)",
             "1 / sqrt(3 - x^2 - 2 * x)",
             "-",
-            "3 - x^2 - 2 * x > 0",
+            "-3 < x < 1",
             "1/sqrt(3-x^2-2*x)",
         ),
         (
             "diff(arccos((x+1)/2), x)",
             "-1 / sqrt(3 - x^2 - 2 * x)",
             "+",
-            "3 - x^2 - 2 * x > 0",
+            "-3 < x < 1",
             "1/sqrt(3-x^2-2*x)",
         ),
         (
             "diff(arcsin((2*x-1)/3), x)",
             "1 / sqrt(x + 2 - x^2)",
             "-",
-            "x + 2 - x^2 > 0",
+            "-1 < x < 2",
             "1/sqrt(x+2-x^2)",
         ),
         (
             "diff(arccos((2*x-1)/3), x)",
             "-1 / sqrt(x + 2 - x^2)",
             "+",
-            "x + 2 - x^2 > 0",
+            "-1 < x < 2",
             "1/sqrt(x+2-x^2)",
         ),
     ] {
@@ -982,7 +982,7 @@ fn scaled_arcsin_unit_interval_residual_collapses_inside_subtraction_context() {
 
     assert_eq!(
         required,
-        vec!["x > 0".to_string(), "1 - x > 0".to_string()],
+        vec!["x > 0".to_string(), "x < 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -1027,11 +1027,11 @@ fn shifted_arcsin_wrong_orientation_residual_does_not_collapse_across_domains() 
     .collect();
 
     assert!(
-        required.contains(&"-x^2 - x > 0".to_string()),
+        required.contains(&"-1 < x < 0".to_string()),
         "wrong-orientation derivative domain should remain visible: {required:?}"
     );
     assert!(
-        required.contains(&"x > 0".to_string()) && required.contains(&"1 - x > 0".to_string()),
+        required.contains(&"x > 0".to_string()) && required.contains(&"x < 1".to_string()),
         "comparison kernel domain should remain visible: {required:?}"
     );
 }
@@ -1108,11 +1108,11 @@ fn shifted_arccos_wrong_orientation_residual_does_not_collapse_across_domains() 
     .collect();
 
     assert!(
-        required.contains(&"-x^2 - x > 0".to_string()),
+        required.contains(&"-1 < x < 0".to_string()),
         "wrong-orientation derivative domain should remain visible: {required:?}"
     );
     assert!(
-        required.contains(&"x > 0".to_string()) && required.contains(&"1 - x > 0".to_string()),
+        required.contains(&"x > 0".to_string()) && required.contains(&"x < 1".to_string()),
         "comparison kernel domain should remain visible: {required:?}"
     );
 }
@@ -1333,7 +1333,7 @@ fn absolute_value_diff_evaluates_with_nonsmooth_point_condition() {
         (
             "diff(abs(2*x+1), x)",
             "((2 * x + 1) * 2)/|2 * x + 1|",
-            vec!["2 * x + 1 ≠ 0".to_string()],
+            vec!["x ≠ -1/2".to_string()],
         ),
     ];
 
@@ -1389,7 +1389,7 @@ fn absolute_value_diff_composite_arguments_preserve_nonsmooth_conditions() {
         (
             "diff(abs(x^2-1), x)",
             "((x^2 - 1) * x * 2)/|x^2 - 1|",
-            vec!["x - 1 ≠ 0".to_string(), "x + 1 ≠ 0".to_string()],
+            vec!["x ≠ 1".to_string(), "x ≠ -1".to_string()],
         ),
     ];
 
@@ -1477,7 +1477,7 @@ fn absolute_value_diff_quotient_argument_uses_compact_domain_safe_form() {
 
     assert_eq!(
         required,
-        vec!["x + 1 ≠ 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -1542,7 +1542,7 @@ fn log_abs_quotient_diff_uses_direct_domain_safe_log_rule() {
 
     assert_eq!(
         required,
-        vec!["x - 1 ≠ 0".to_string(), "x + 1 ≠ 0".to_string()],
+        vec!["x ≠ 1".to_string(), "x ≠ -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -1554,14 +1554,14 @@ fn log_power_diff_uses_compact_numeric_post_calculus_presentation() {
         (
             "diff(ln((x+1)^2), x)",
             "2 / (x + 1)",
-            vec!["x + 1 ≠ 0".to_string()],
+            vec!["x ≠ -1".to_string()],
         ),
         ("diff(ln(x^3), x)", "3 / x", vec!["x > 0".to_string()]),
         ("diff(ln(x^-2), x)", "-2 / x", vec!["x ≠ 0".to_string()]),
         (
             "diff(ln((x+1)^-2), x)",
             "-2 / (x + 1)",
-            vec!["x + 1 ≠ 0".to_string()],
+            vec!["x ≠ -1".to_string()],
         ),
         ("diff(ln(x^-3), x)", "-3 / x", vec!["x > 0".to_string()]),
     ] {
@@ -1620,7 +1620,7 @@ fn sqrt_negative_even_power_diff_uses_essential_domain_guard() {
         (
             "diff(sqrt((x+1)^-2), x)",
             "-1 / (|x + 1| * (x + 1))",
-            vec!["x + 1 ≠ 0".to_string()],
+            vec!["x ≠ -1".to_string()],
         ),
     ] {
         let mut engine = Engine::new();
@@ -1677,7 +1677,7 @@ fn log_sqrt_negative_even_power_diff_preserves_essential_domain_guard() {
         (
             "diff(ln(sqrt((x+1)^-2)), x)",
             "-1 / (x + 1)",
-            vec!["x + 1 ≠ 0".to_string()],
+            vec!["x ≠ -1".to_string()],
         ),
     ] {
         let mut engine = Engine::new();
@@ -1783,7 +1783,7 @@ fn log_abs_product_diff_uses_direct_domain_safe_log_rule() {
 
     assert_eq!(
         required,
-        vec!["x - 1 ≠ 0".to_string(), "x + 1 ≠ 0".to_string()],
+        vec!["x ≠ 1".to_string(), "x ≠ -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -1848,7 +1848,7 @@ fn generic_log_abs_composite_diff_uses_direct_domain_safe_log_rule() {
 
     assert_eq!(
         required,
-        vec!["x - 1 ≠ 0".to_string(), "x + 1 ≠ 0".to_string()],
+        vec!["x ≠ 1".to_string(), "x ≠ -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -2165,7 +2165,7 @@ fn shifted_polynomial_times_square_root_diff_preserves_shifted_domain_condition(
 
     assert_eq!(
         required,
-        vec!["x + 2 > 0".to_string()],
+        vec!["x > -2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert!(
@@ -2241,7 +2241,7 @@ fn reciprocal_positive_shifted_sqrt_diff_avoids_rationalized_domain_hole() {
 
     assert_eq!(
         required,
-        vec!["3 - 2 * x > 0".to_string()],
+        vec!["x < 3/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert!(
@@ -2310,7 +2310,7 @@ fn reciprocal_positive_shifted_sqrt_diff_keeps_nonunit_scale_and_shift_compact()
 
     assert_eq!(
         required,
-        vec!["3 - 2 * x > 0".to_string()],
+        vec!["x < 3/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert!(
@@ -2379,7 +2379,7 @@ fn reciprocal_positive_shifted_sqrt_diff_handles_commuted_shift_and_chain_sign()
 
     assert_eq!(
         required,
-        vec!["2 * x + 5 > 0".to_string()],
+        vec!["x > -5/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert!(
@@ -2529,7 +2529,7 @@ fn arctan_sqrt_affine_partition_quotient_diff_uses_compact_real_domain_presentat
 
     assert_eq!(
         required,
-        vec!["x > 0".to_string(), "1 - x > 0".to_string()],
+        vec!["x > 0".to_string(), "x < 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 
@@ -2582,7 +2582,7 @@ fn arctan_sqrt_affine_partition_quotient_diff_residual_collapses_to_zero() {
 
     assert_eq!(
         required,
-        vec!["1 - x > 0".to_string(), "x > 0".to_string()],
+        vec!["x < 1".to_string(), "x > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -2627,7 +2627,7 @@ fn arctan_sqrt_complement_partition_quotient_diff_residual_collapses_to_zero() {
 
     assert_eq!(
         required,
-        vec!["1 - x > 0".to_string(), "x > 0".to_string()],
+        vec!["x < 1".to_string(), "x > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -2672,7 +2672,7 @@ fn arctan_sqrt_scaled_affine_partition_quotient_diff_residual_collapses_to_zero(
 
     assert_eq!(
         required,
-        vec!["2 * x + 1 > 0".to_string(), "3 - 2 * x > 0".to_string()],
+        vec!["x < 3/2".to_string(), "x > -1/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -2717,7 +2717,7 @@ fn arctan_sqrt_scaled_complement_partition_quotient_diff_residual_collapses_to_z
 
     assert_eq!(
         required,
-        vec!["2 * x + 1 > 0".to_string(), "3 - 2 * x > 0".to_string()],
+        vec!["x < 3/2".to_string(), "x > -1/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -2772,8 +2772,8 @@ fn arctan_sqrt_affine_quotient_diff_keeps_domain_equivalent_compact_presentation
         required,
         vec![
             "(x + 1) / (x + 3) > 0".to_string(),
-            "x + 2 ≠ 0".to_string(),
-            "x + 3 ≠ 0".to_string(),
+            "x ≠ -2".to_string(),
+            "x ≠ -3".to_string(),
         ],
         "unexpected required_conditions: {required:?}"
     );
@@ -2913,7 +2913,7 @@ fn arccot_negative_affine_sqrt_shifted_quotient_compacts_contextual_diff() {
             "(1 + diff(arccot(sqrt(5-3*x)), x))/(2 + 3/(2*sqrt(5-3*x)*(6-3*x)))",
             "(3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)) + 1) / (3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)) + 2)",
             vec![
-                "5 - 3 * x > 0".to_string(),
+                "x < 5/3".to_string(),
                 "3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)) + 2 ≠ 0".to_string(),
             ],
         ),
@@ -2921,7 +2921,7 @@ fn arccot_negative_affine_sqrt_shifted_quotient_compacts_contextual_diff() {
             "(1 - diff(arccot(sqrt(5-3*x)), x))/(2 - 3/(2*sqrt(5-3*x)*(6-3*x)))",
             "(1 - 3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x))) / (2 - 3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)))",
             vec![
-                "5 - 3 * x > 0".to_string(),
+                "x < 5/3".to_string(),
                 "2 - 3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)) ≠ 0".to_string(),
             ],
         ),
@@ -2929,7 +2929,7 @@ fn arccot_negative_affine_sqrt_shifted_quotient_compacts_contextual_diff() {
             "(1 + diff(arccot(sqrt(5-3*x)), x))/(1 + 3/(2*sqrt(5-3*x)*(6-3*x)))",
             "1",
             vec![
-                "5 - 3 * x > 0".to_string(),
+                "x < 5/3".to_string(),
                 "3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)) + 1 ≠ 0".to_string(),
             ],
         ),
@@ -2987,21 +2987,21 @@ fn inverse_reciprocal_trig_negative_affine_sqrt_shifted_quotient_compacts_contex
             "(1 + diff(arcsec(sqrt(5-3*x)), x))/(2 - 3/(2*(5-3*x)*sqrt(4-3*x)))",
             "(1 - 3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x))) / (2 - 3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)))",
             vec![
-                "4 - 3 * x > 0".to_string(),
+                "x < 4/3".to_string(),
                 "2 - 3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)) ≠ 0".to_string(),
             ],
         ),
         (
             "(1 + diff(arccsc(sqrt(5-3*x)), x))/(2 + 3/(2*(5-3*x)*sqrt(4-3*x)))",
             "(3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)) + 1) / (3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)) + 2)",
-            vec!["4 - 3 * x > 0".to_string()],
+            vec!["x < 4/3".to_string()],
         ),
         (
             "(1 + diff(arcsec(sqrt(5-3*x)), x))/(1 - 3/(2*(5-3*x)*sqrt(4-3*x)))",
             "1",
             vec![
                 "1 - 3 / (2 * sqrt(4 - 3 * x) * (5 - 3 * x)) ≠ 0".to_string(),
-                "4 - 3 * x > 0".to_string(),
+                "x < 4/3".to_string(),
             ],
         ),
     ] {
@@ -3058,28 +3058,28 @@ fn unit_interval_bounded_inverse_trig_shifted_quotient_compacts_contextual_diff(
         (
             "(1 + diff(1/2*arcsin(2*x-1), x))/(1 + 1/(2*sqrt(x)*sqrt(1-x)))",
             "1",
-            vec!["1 - x > 0".to_string(), "x > 0".to_string()],
+            vec!["x < 1".to_string(), "x > 0".to_string()],
         ),
         (
             "(1 + diff(1/2*arccos(2*x-1), x))/(1 - 1/(2*sqrt(x)*sqrt(1-x)))",
             "1",
             vec![
                 "1 - 1 / (2 * sqrt(x) * sqrt(1 - x)) ≠ 0".to_string(),
-                "1 - x > 0".to_string(),
+                "x < 1".to_string(),
                 "x > 0".to_string(),
             ],
         ),
         (
             "(1 + diff(1/2*arcsin(2*x-1), x))/(2 + 1/(2*sqrt(x)*sqrt(1-x)))",
             "(1 / (2 * sqrt(x) * sqrt(1 - x)) + 1) / (1 / (2 * sqrt(x) * sqrt(1 - x)) + 2)",
-            vec!["1 - x > 0".to_string(), "x > 0".to_string()],
+            vec!["x < 1".to_string(), "x > 0".to_string()],
         ),
         (
             "(1 + diff(1/2*arccos(2*x-1), x))/(2 - 1/(2*sqrt(x)*sqrt(1-x)))",
             "(1 - 1 / (2 * sqrt(x) * sqrt(1 - x))) / (2 - 1 / (2 * sqrt(x) * sqrt(1 - x)))",
             vec![
-                "1 - x > 0".to_string(),
                 "2 - 1 / (2 * sqrt(x) * sqrt(1 - x)) ≠ 0".to_string(),
+                "x < 1".to_string(),
                 "x > 0".to_string(),
             ],
         ),
@@ -3142,28 +3142,28 @@ fn shifted_sqrt_inverse_tangent_unit_quotient_compacts_contextual_diff() {
             "(1 + diff(arctan(sqrt(x+1)), x))/(1 + 1/(2*sqrt(x+1)*(x+2)))",
             vec![
                 "1 / (2 * sqrt(x + 1) * (x + 2)) + 1 ≠ 0".to_string(),
-                "x + 1 > 0".to_string(),
+                "x > -1".to_string(),
             ],
         ),
         (
             "(1 + diff(arccot(sqrt(x+1)), x))/(1 - 1/(2*sqrt(x+1)*(x+2)))",
             vec![
                 "1 - 1 / (2 * sqrt(x + 1) * (x + 2)) ≠ 0".to_string(),
-                "x + 1 > 0".to_string(),
+                "x > -1".to_string(),
             ],
         ),
         (
             "(1 + diff(arctan(sqrt(2*x+3)), x))/(1 + 1/(2*sqrt(2*x+3)*(x+2)))",
             vec![
                 "1 / (2 * sqrt(2 * x + 3) * (x + 2)) + 1 ≠ 0".to_string(),
-                "2 * x + 3 > 0".to_string(),
+                "x > -3/2".to_string(),
             ],
         ),
         (
             "(1 + diff(arccot(sqrt(2*x+3)), x))/(1 - 1/(2*sqrt(2*x+3)*(x+2)))",
             vec![
                 "1 - 1 / (2 * sqrt(2 * x + 3) * (x + 2)) ≠ 0".to_string(),
-                "2 * x + 3 > 0".to_string(),
+                "x > -3/2".to_string(),
             ],
         ),
     ] {
@@ -3537,22 +3537,22 @@ fn acosh_fractional_affine_diff_absorbs_common_root_denominator() {
         (
             "diff(acosh((x+1)/2), x)",
             "1 / (sqrt(x - 1) * sqrt(x + 3))",
-            vec!["x - 1 > 0".to_string()],
+            vec!["x > 1".to_string()],
         ),
         (
             "diff(acosh(-(x+1)/2), x)",
             "-1 / (sqrt(-x - 3) * sqrt(1 - x))",
-            vec!["-x - 3 > 0".to_string()],
+            vec!["x < -3".to_string()],
         ),
         (
             "diff(acosh((2*x+1)/3), x)",
             "2 / (sqrt(2 * x - 2) * sqrt(2 * x + 4))",
-            vec!["x - 1 > 0".to_string()],
+            vec!["x > 1".to_string()],
         ),
         (
             "diff(acosh(-(2*x+1)/3), x)",
             "-2 / (sqrt(-2 * x - 4) * sqrt(2 - 2 * x))",
-            vec!["-x - 2 > 0".to_string()],
+            vec!["x < -2".to_string()],
         ),
     ];
 
@@ -3611,22 +3611,22 @@ fn inverse_reciprocal_trig_affine_scaled_diff_uses_abs_sqrt_presentation() {
         (
             "diff(arcsec(x)/2, x)",
             "1 / (|x| * sqrt(x^2 - 1) * 2)",
-            "x^2 - 1 > 0",
+            "x < -1 or x > 1",
         ),
         (
             "diff((1/2)*arcsec(x), x)",
             "1 / (|x| * sqrt(x^2 - 1) * 2)",
-            "x^2 - 1 > 0",
+            "x < -1 or x > 1",
         ),
         (
             "diff(arccsc(x)/2, x)",
             "-1 / (|x| * sqrt(x^2 - 1) * 2)",
-            "x^2 - 1 > 0",
+            "x < -1 or x > 1",
         ),
         (
             "diff(arcsec(2*x+1)/3, x)",
             "1 / (|2 * x + 1| * sqrt(x^2 + x) * 3)",
-            "x^2 + x > 0",
+            "x < -1 or x > 0",
         ),
     ];
 
@@ -3693,27 +3693,27 @@ fn inverse_reciprocal_trig_affine_scaled_diff_uses_abs_sqrt_presentation() {
     let residual_cases = [
         (
             "diff(arcsec(x)/2, x) - 1/(2*abs(x)*sqrt(x^2-1))",
-            "x^2 - 1 > 0",
+            "x < -1 or x > 1",
         ),
         (
             "1/(2*abs(x)*sqrt(x^2-1)) - diff(arcsec(x)/2, x)",
-            "x^2 - 1 > 0",
+            "x < -1 or x > 1",
         ),
         (
             "diff(arccsc(x)/2, x) + 1/(2*abs(x)*sqrt(x^2-1))",
-            "x^2 - 1 > 0",
+            "x < -1 or x > 1",
         ),
         (
             "diff(arcsec(x+1)/2, x) - 1/(2*abs(x+1)*sqrt((x+1)^2-1))",
-            "x^2 + 2 * x > 0",
+            "x < -2 or x > 0",
         ),
         (
             "diff(arccsc(2*x+1)/3, x) + 2/(3*abs(2*x+1)*sqrt((2*x+1)^2-1))",
-            "x^2 + x > 0",
+            "x < -1 or x > 0",
         ),
         (
             "diff(arcsec(1-2*x)/3, x) + 2/(3*abs(1-2*x)*sqrt((1-2*x)^2-1))",
-            "x^2 - x > 0",
+            "x < 0 or x > 1",
         ),
     ];
 
@@ -4063,7 +4063,7 @@ fn arctan_shifted_sqrt_diff_uses_post_calculus_reciprocal_root_presentation() {
 
         assert_eq!(
             required,
-            vec!["x + 1 > 0".to_string()],
+            vec!["x > -1".to_string()],
             "unexpected required_conditions for {input}: {required:?}"
         );
 
@@ -4105,7 +4105,7 @@ fn arctan_shifted_sqrt_diff_uses_post_calculus_reciprocal_root_presentation() {
         .collect();
         assert_eq!(
             residual_required,
-            vec!["x + 1 > 0".to_string()],
+            vec!["x > -1".to_string()],
             "unexpected residual required_conditions for {residual_input}: {residual_required:?}"
         );
 
@@ -4191,7 +4191,7 @@ fn arctan_positive_affine_sqrt_diff_cancels_external_post_calculus_coefficient()
 
         assert_eq!(
             required,
-            vec!["2 * x + 3 > 0".to_string()],
+            vec!["x > -3/2".to_string()],
             "unexpected required_conditions for {input}: {required:?}"
         );
 
@@ -4233,7 +4233,7 @@ fn arctan_positive_affine_sqrt_diff_cancels_external_post_calculus_coefficient()
         .collect();
         assert_eq!(
             residual_required,
-            vec!["2 * x + 3 > 0".to_string()],
+            vec!["x > -3/2".to_string()],
             "unexpected residual required_conditions for {residual_input}: {residual_required:?}"
         );
 
@@ -4299,7 +4299,7 @@ fn arctan_positive_affine_sqrt_shifted_quotient_compacts_equivalent_denominator_
         required,
         vec![
             "1 / (sqrt(2 * x + 3) * (2 * x + 4)) + 2 ≠ 0".to_string(),
-            "2 * x + 3 > 0".to_string(),
+            "x > -3/2".to_string(),
         ],
         "unexpected required_conditions: {required:?}"
     );
@@ -4356,7 +4356,7 @@ fn arctan_negative_affine_sqrt_shifted_quotient_compacts_opposite_orientation() 
     assert_eq!(
         required,
         vec![
-            "5 - 3 * x > 0".to_string(),
+            "x < 5/3".to_string(),
             "2 - 3 / (2 * sqrt(5 - 3 * x) * (6 - 3 * x)) ≠ 0".to_string(),
         ],
         "unexpected required_conditions: {required:?}"
@@ -4377,21 +4377,21 @@ fn arctan_affine_sqrt_diff_cancels_gap_content_in_post_calculus_presentation() {
             "1 / (sqrt(4 * x + 1) * (2 * x + 1))",
             "2*(4*x+1)^(-1/2)/(4*x+2)",
             "4 * x + 2",
-            "4 * x + 1 > 0",
+            "x > -1/4",
         ),
         (
             "diff(arctan(sqrt(5-3*x)), x)",
             "-1 / (2 * sqrt(5 - 3 * x) * (2 - x))",
             "-3*(5-3*x)^(-1/2)/(2*(6-3*x))",
             "6 - 3 * x",
-            "5 - 3 * x > 0",
+            "x < 5/3",
         ),
         (
             "diff(arccot(sqrt(4*x+1)), x)",
             "-1 / (sqrt(4 * x + 1) * (2 * x + 1))",
             "-2*(4*x+1)^(-1/2)/(4*x+2)",
             "4 * x + 2",
-            "4 * x + 1 > 0",
+            "x > -1/4",
         ),
     ] {
         let mut engine = Engine::new();
@@ -4511,7 +4511,7 @@ fn arctan_negative_affine_sqrt_diff_keeps_sign_and_minimal_domain() {
 
     assert_eq!(
         required,
-        vec!["3 - 2 * x > 0".to_string()],
+        vec!["x < 3/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 
@@ -5167,7 +5167,7 @@ fn inverse_tangent_reciprocal_sqrt_shifted_affine_diff_keeps_domain_conditions()
 
         assert_eq!(
             required,
-            vec!["x + 1 > 0".to_string()],
+            vec!["x > -1".to_string()],
             "unexpected required_conditions for {input}: {required:?}"
         );
         assert!(
@@ -5216,7 +5216,7 @@ fn inverse_tangent_reciprocal_sqrt_shifted_affine_diff_keeps_domain_conditions()
         .collect();
         assert_eq!(
             residual_required,
-            vec!["x + 1 > 0".to_string()],
+            vec!["x > -1".to_string()],
             "unexpected residual required_conditions for {residual_input}: {residual_required:?}"
         );
 
@@ -5301,7 +5301,7 @@ fn inverse_tangent_reciprocal_sqrt_scaled_affine_diff_keeps_domain_conditions() 
 
         assert_eq!(
             required,
-            vec!["2 * x + 3 > 0".to_string()],
+            vec!["x > -3/2".to_string()],
             "unexpected required_conditions for {input}: {required:?}"
         );
         assert!(
@@ -5350,7 +5350,7 @@ fn inverse_tangent_reciprocal_sqrt_scaled_affine_diff_keeps_domain_conditions() 
         .collect();
         assert_eq!(
             residual_required,
-            vec!["2 * x + 3 > 0".to_string()],
+            vec!["x > -3/2".to_string()],
             "unexpected residual required_conditions for {residual_input}: {residual_required:?}"
         );
     }
@@ -5428,7 +5428,7 @@ fn inverse_tangent_reciprocal_sqrt_negative_affine_diff_keeps_domain_conditions(
 
         assert_eq!(
             required,
-            vec!["3 - 2 * x > 0".to_string()],
+            vec!["x < 3/2".to_string()],
             "unexpected required_conditions for {input}: {required:?}"
         );
         assert!(
@@ -5477,7 +5477,7 @@ fn inverse_tangent_reciprocal_sqrt_negative_affine_diff_keeps_domain_conditions(
         .collect();
         assert_eq!(
             residual_required,
-            vec!["3 - 2 * x > 0".to_string()],
+            vec!["x < 3/2".to_string()],
             "unexpected residual required_conditions for {residual_input}: {residual_required:?}"
         );
     }
@@ -5613,7 +5613,7 @@ fn arctan_reciprocal_scaled_affine_sqrt_diff_compacts_gap_presentation() {
 
     assert_eq!(
         required,
-        vec!["x + 1 > 0".to_string()],
+        vec!["x > -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert!(
@@ -5683,7 +5683,7 @@ fn arctan_constant_over_affine_sqrt_diff_preserves_compact_denominator() {
 
     assert_eq!(
         required,
-        vec!["x + 1 > 0".to_string()],
+        vec!["x > -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert!(
@@ -5780,7 +5780,7 @@ fn arccot_constant_over_polynomial_sqrt_diff_preserves_compact_denominator() {
             "diff(arccot(sqrt(2/(x+1))), x)",
             "1 / (sqrt(2 / (x + 1)) * (x + 1) * (x + 3))",
             "(2/(x+1))^(-3/2)/(1/2*(x^3+5*x^2+7*x+3))",
-            vec!["x + 1 > 0".to_string()],
+            vec!["x > -1".to_string()],
         ),
         (
             "diff(arccot(sqrt(2/(x^2+1))), x)",
@@ -5792,7 +5792,7 @@ fn arccot_constant_over_polynomial_sqrt_diff_preserves_compact_denominator() {
             "diff(arccot(sqrt(2/(1-x))), x)",
             "-1 / (sqrt(2 / (1 - x)) * (1 - x) * (3 - x))",
             "-1/(sqrt(2/(1-x))*(1-x)*(3-x))",
-            vec!["1 - x > 0".to_string()],
+            vec!["x < 1".to_string()],
         ),
     ] {
         let mut engine = Engine::new();
@@ -5902,7 +5902,7 @@ fn square_root_affine_diff_evaluates_with_positive_radicand_condition() {
 
     assert_eq!(
         required,
-        vec!["x + 1 > 0".to_string()],
+        vec!["x > -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -5950,6 +5950,178 @@ fn square_root_quadratic_diff_evaluates_without_redundant_domain_condition() {
 }
 
 #[test]
+fn square_root_convex_quadratic_diff_displays_exterior_domain_interval() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let input = "diff(sqrt(x^2-1), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "x / sqrt(x^2 - 1)");
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["x < -1 or x > 1".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn square_root_convex_quadratic_diff_displays_surd_exterior_domain_interval() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let input = "diff(sqrt(x^2-2), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "x / sqrt(x^2 - 2)");
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["x < -sqrt(2) or x > sqrt(2)".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn square_root_shifted_convex_quadratic_diff_displays_surd_exterior_domain_interval() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let input = "diff(sqrt(x^2+2*x-1), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "(x + 1) / sqrt(x^2 + 2 * x - 1)");
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["x < -1 - sqrt(2) or x > -1 + sqrt(2)".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn shifted_arcsin_diff_displays_surd_interior_domain_interval() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let input = "diff(arcsin((x+1)/sqrt(2)), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "1 / sqrt(2 - (x + 1)^2)");
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["-1 - sqrt(2) < x < -1 + sqrt(2)".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
 fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation() {
     for (input, expected_render, expected_required) in [
         (
@@ -5960,7 +6132,7 @@ fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation()
         (
             "diff(exp(sqrt(x+1)), x)",
             "e^sqrt(x + 1) / (2 * sqrt(x + 1))",
-            vec!["x + 1 > 0".to_string()],
+            vec!["x > -1".to_string()],
         ),
         (
             "diff(sin(sqrt(x)), x)",
@@ -6000,7 +6172,7 @@ fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation()
         (
             "diff(sec(sqrt(x+1)), x)",
             "sec(sqrt(x + 1)) * tan(sqrt(x + 1)) / (2 * sqrt(x + 1))",
-            vec!["x + 1 > 0".to_string(), "cos(sqrt(x + 1)) ≠ 0".to_string()],
+            vec!["x > -1".to_string(), "cos(sqrt(x + 1)) ≠ 0".to_string()],
         ),
         (
             "diff(csc(sqrt(x)), x)",
@@ -6050,7 +6222,7 @@ fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation()
         (
             "diff(ln(cosh(sqrt(3*x+1))), x)",
             "3 * tanh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0".to_string()],
+            vec!["x > -1/3".to_string()],
         ),
         (
             "diff(ln(1/cosh(sqrt(x))), x)",
@@ -6060,7 +6232,7 @@ fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation()
         (
             "diff(ln(1/cosh(sqrt(3*x+1))), x)",
             "-3 * tanh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1))",
-            vec!["3 * x + 1 > 0".to_string()],
+            vec!["x > -1/3".to_string()],
         ),
         (
             "diff(ln(abs(sinh(sqrt(x)))), x)",
@@ -6072,7 +6244,7 @@ fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation()
             "3 / (2 * tanh(sqrt(3 * x + 1)) * sqrt(3 * x + 1))",
             vec![
                 "sinh(sqrt(3 * x + 1)) ≠ 0".to_string(),
-                "3 * x + 1 > 0".to_string(),
+                "x > -1/3".to_string(),
             ],
         ),
         (
@@ -6085,19 +6257,19 @@ fn elementary_sqrt_chain_rule_diff_uses_explicit_root_denominator_presentation()
             "-3 / (2 * tanh(sqrt(3 * x + 1)) * sqrt(3 * x + 1))",
             vec![
                 "sinh(sqrt(3 * x + 1)) > 0".to_string(),
-                "3 * x + 1 > 0".to_string(),
+                "x > -1/3".to_string(),
             ],
         ),
         (
             "diff(-1/cosh(sqrt(3*x+1)), x)",
             "3 * sinh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1) * cosh(sqrt(3 * x + 1))^2)",
-            vec!["3 * x + 1 > 0".to_string()],
+            vec!["x > -1/3".to_string()],
         ),
         (
             "diff(-1/sinh(sqrt(3*x+1)), x)",
             "3 * cosh(sqrt(3 * x + 1)) / (2 * sqrt(3 * x + 1) * sinh(sqrt(3 * x + 1))^2)",
             vec![
-                "3 * x + 1 > 0".to_string(),
+                "x > -1/3".to_string(),
                 "sinh(sqrt(3 * x + 1)) ≠ 0".to_string(),
             ],
         ),
@@ -6225,7 +6397,7 @@ fn square_root_negative_affine_diff_evaluates_with_positive_radicand_condition()
 
     assert_eq!(
         required,
-        vec!["2 - x > 0".to_string()],
+        vec!["x < 2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -6268,7 +6440,7 @@ fn square_root_bounded_quadratic_diff_evaluates_with_positive_radicand_condition
 
     assert_eq!(
         required,
-        vec!["1 - x^2 > 0".to_string()],
+        vec!["-1 < x < 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -6520,7 +6692,7 @@ fn constant_base_log_abs_diff_uses_direct_domain_safe_log_rule() {
 
     assert_eq!(
         required,
-        vec!["x - 1 ≠ 0".to_string(), "x + 1 ≠ 0".to_string()],
+        vec!["x ≠ 1".to_string(), "x ≠ -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 }
@@ -6567,7 +6739,7 @@ fn symbolic_base_log_diff_evaluates_without_redundant_ln_base_condition() {
         "unexpected required_conditions: {required:?}"
     );
     assert!(required.contains(&"x > 0".to_string()), "{required:?}");
-    assert!(required.contains(&"y - 1 ≠ 0".to_string()), "{required:?}");
+    assert!(required.contains(&"y ≠ 1".to_string()), "{required:?}");
     assert!(required.contains(&"y > 0".to_string()), "{required:?}");
     assert!(
         !required.iter().any(|cond| cond.contains("ln(y)")),
@@ -6731,32 +6903,32 @@ fn ln_negative_sqrt_shift_diff_keeps_stronger_log_domain_boundary() {
         (
             "diff(ln(sqrt(x)-1), x)",
             "1 / (2 * sqrt(x) * (sqrt(x) - 1))",
-            vec!["x - 1 > 0".to_string()],
+            vec!["x > 1".to_string()],
         ),
         (
             "diff(ln(-1+sqrt(x)), x)",
             "1 / (2 * sqrt(x) * (sqrt(x) - 1))",
-            vec!["x - 1 > 0".to_string()],
+            vec!["x > 1".to_string()],
         ),
         (
             "diff(ln(sqrt(2*x)-1), x)",
             "1 / (sqrt(2 * x) * (sqrt(2 * x) - 1))",
-            vec!["2 * x - 1 > 0".to_string()],
+            vec!["x > 1/2".to_string()],
         ),
         (
             "diff(ln(sqrt(x)-2), x)",
             "1 / (2 * sqrt(x) * (sqrt(x) - 2))",
-            vec!["x - 4 > 0".to_string()],
+            vec!["x > 4".to_string()],
         ),
         (
             "diff(ln(-2+sqrt(x)), x)",
             "1 / (2 * sqrt(x) * (sqrt(x) - 2))",
-            vec!["x - 4 > 0".to_string()],
+            vec!["x > 4".to_string()],
         ),
         (
             "diff(ln(sqrt(2*x)-2), x)",
             "1 / (sqrt(2 * x) * (sqrt(2 * x) - 2))",
-            vec!["x - 2 > 0".to_string()],
+            vec!["x > 2".to_string()],
         ),
         (
             "diff(ln(sqrt(x^2+4)-2), x)",
@@ -6766,7 +6938,7 @@ fn ln_negative_sqrt_shift_diff_keeps_stronger_log_domain_boundary() {
         (
             "diff(ln(sqrt((2*x+1)^2+4)-2), x)",
             "2 * (2 * x + 1) / (sqrt((2 * x + 1)^2 + 4) * (sqrt((2 * x + 1)^2 + 4) - 2))",
-            vec!["2 * x + 1 ≠ 0".to_string()],
+            vec!["x ≠ -1/2".to_string()],
         ),
     ];
 
@@ -6830,12 +7002,12 @@ fn variable_base_constant_argument_log_diff_evaluates_with_base_domain_condition
         (
             "diff(log(x, 2), x)",
             "-ln(2)/(x*ln(x)^2)",
-            vec!["x - 1 ≠ 0", "x > 0"],
+            vec!["x ≠ 1", "x > 0"],
         ),
         (
             "diff(log(x, y), x)",
             "-ln(y)/(x*ln(x)^2)",
-            vec!["x - 1 ≠ 0", "x > 0", "y > 0"],
+            vec!["x ≠ 1", "x > 0", "y > 0"],
         ),
     ];
 
@@ -7018,7 +7190,7 @@ fn variable_base_polynomial_constant_argument_log_diff_avoids_negative_unit_fact
 
     assert_eq!(
         required,
-        vec!["x ≠ 0".to_string(), "x + 1 ≠ 0".to_string()],
+        vec!["x ≠ 0".to_string(), "x ≠ -1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert!(
@@ -7091,7 +7263,7 @@ fn variable_base_variable_argument_log_diff_evaluates_with_domain_conditions() {
         "base positivity condition missing: {required:?}"
     );
     assert!(
-        required.contains(&"x - 1 ≠ 0".to_string()),
+        required.contains(&"x ≠ 1".to_string()),
         "argument/base boundary condition missing: {required:?}"
     );
     assert!(
@@ -7168,7 +7340,7 @@ fn variable_base_log_abs_diff_uses_direct_domain_safe_arg_rule() {
 
     assert_eq!(
         required,
-        vec!["x > 0".to_string(), "x - 1 ≠ 0".to_string()],
+        vec!["x > 0".to_string(), "x ≠ 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert!(
@@ -7248,8 +7420,8 @@ fn variable_abs_base_log_abs_diff_uses_direct_domain_safe_base_and_arg_rule() {
         required,
         vec![
             "x ≠ 0".to_string(),
-            "x - 1 ≠ 0".to_string(),
-            "x + 1 ≠ 0".to_string()
+            "x ≠ 1".to_string(),
+            "x ≠ -1".to_string()
         ],
         "unexpected required_conditions: {required:?}"
     );
@@ -7314,8 +7486,8 @@ fn variable_sqrt_square_base_log_abs_diff_normalizes_base_not_one_condition() {
         required,
         vec![
             "x ≠ 0".to_string(),
-            "x - 1 ≠ 0".to_string(),
-            "x + 1 ≠ 0".to_string()
+            "x ≠ 1".to_string(),
+            "x ≠ -1".to_string()
         ],
         "unexpected required_conditions: {required:?}"
     );
@@ -7375,8 +7547,8 @@ fn variable_sqrt_even_power_base_log_abs_diff_normalizes_positive_base_condition
     assert_eq!(
         required,
         vec![
-            "x - 1 ≠ 0".to_string(),
-            "x + 1 ≠ 0".to_string(),
+            "x ≠ 1".to_string(),
+            "x ≠ -1".to_string(),
             "x ≠ 0".to_string(),
             "x^2 - 2 ≠ 0".to_string()
         ],
@@ -7438,8 +7610,8 @@ fn variable_half_power_even_base_log_abs_diff_normalizes_sqrt_like_conditions() 
     assert_eq!(
         required,
         vec![
-            "x - 1 ≠ 0".to_string(),
-            "x + 1 ≠ 0".to_string(),
+            "x ≠ 1".to_string(),
+            "x ≠ -1".to_string(),
             "x ≠ 0".to_string(),
             "x^2 - 2 ≠ 0".to_string()
         ],
@@ -7503,8 +7675,8 @@ fn variable_abs_even_power_base_log_abs_diff_drops_impossible_base_not_one_condi
     assert_eq!(
         required,
         vec![
-            "x - 1 ≠ 0".to_string(),
-            "x + 1 ≠ 0".to_string(),
+            "x ≠ 1".to_string(),
+            "x ≠ -1".to_string(),
             "x ≠ 0".to_string(),
             "x^2 - 2 ≠ 0".to_string()
         ],
@@ -7566,8 +7738,8 @@ fn variable_abs_higher_even_power_base_log_abs_diff_drops_positive_factor_bounda
     assert_eq!(
         required,
         vec![
-            "x - 1 ≠ 0".to_string(),
-            "x + 1 ≠ 0".to_string(),
+            "x ≠ 1".to_string(),
+            "x ≠ -1".to_string(),
             "x ≠ 0".to_string(),
             "x^2 - 2 ≠ 0".to_string()
         ],
@@ -7620,13 +7792,13 @@ fn variable_base_power_log_diff_simplifies_constant_with_minimal_domain_conditio
 
     assert_eq!(
         required,
-        vec!["x - 1 ≠ 0".to_string(), "x > 0".to_string()],
+        vec!["x ≠ 1".to_string(), "x > 0".to_string()],
         "unexpected required_conditions: {required:?}"
     );
     assert!(
         !required
             .iter()
-            .any(|cond| cond == "x ≠ 0" || cond == "x + 1 ≠ 0" || cond.contains("x^3")),
+            .any(|cond| cond == "x ≠ 0" || cond == "x ≠ -1" || cond.contains("x^3")),
         "unexpected redundant power-domain condition: {required:?}"
     );
 }
@@ -7681,7 +7853,7 @@ fn variable_base_product_log_diff_normalizes_reciprocal_domain_conditions() {
         3,
         "unexpected required_conditions: {required:?}"
     );
-    for expected_condition in ["x - 1 ≠ 0", "x > 0", "y > 0"] {
+    for expected_condition in ["x ≠ 1", "x > 0", "y > 0"] {
         assert!(
             required.iter().any(|cond| cond == expected_condition),
             "missing {expected_condition}; required_conditions: {required:?}"
@@ -7743,7 +7915,7 @@ fn variable_base_quotient_log_diff_reduces_positive_numerator_domain_conditions(
         3,
         "unexpected required_conditions: {required:?}"
     );
-    for expected_condition in ["x - 1 ≠ 0", "x > 0", "y > 0"] {
+    for expected_condition in ["x ≠ 1", "x > 0", "y > 0"] {
         assert!(
             required.iter().any(|cond| cond == expected_condition),
             "missing {expected_condition}; required_conditions: {required:?}"
@@ -8074,7 +8246,7 @@ fn shifted_even_power_denominator_root_diff_drops_expanded_composite_nonzero_con
         3,
         "unexpected required_conditions: {required:?}"
     );
-    for expected_condition in ["x > 0", "y ≠ 0", "z + 1 ≠ 0"] {
+    for expected_condition in ["x > 0", "y ≠ 0", "z ≠ -1"] {
         assert!(
             required.iter().any(|cond| cond == expected_condition),
             "missing {expected_condition}; required_conditions: {required:?}"
@@ -9508,7 +9680,7 @@ fn generic_log_abs_diff_normalizes_nonzero_domain_conditions() {
         (
             "diff(ln(abs(2*x+1)), x)",
             "2 / (2 * x + 1)",
-            vec!["2 * x + 1 ≠ 0".to_string()],
+            vec!["x ≠ -1/2".to_string()],
         ),
         (
             "diff(ln(abs(x*y)), x)",
@@ -9518,7 +9690,7 @@ fn generic_log_abs_diff_normalizes_nonzero_domain_conditions() {
         (
             "diff(ln(abs(x^2-1)), x)",
             "(x * 2)/(x^2 - 1)",
-            vec!["x - 1 ≠ 0".to_string(), "x + 1 ≠ 0".to_string()],
+            vec!["x ≠ 1".to_string(), "x ≠ -1".to_string()],
         ),
     ];
 
@@ -9892,12 +10064,12 @@ fn asinh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
         (
             "diff(asinh(sqrt(x+1)), x)",
             "1 / (2 * sqrt(x + 1) * sqrt(x + 2))",
-            vec!["x + 1 > 0".to_string()],
+            vec!["x > -1".to_string()],
         ),
         (
             "diff(asinh(sqrt(1-2*x)), x)",
             "-1 / (sqrt(1 - 2 * x) * sqrt(2 - 2 * x))",
-            vec!["1 - 2 * x > 0".to_string()],
+            vec!["x < 1/2".to_string()],
         ),
         (
             "diff(asinh(sqrt(x^2+1)), x)",
@@ -9927,17 +10099,17 @@ fn asinh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
         (
             "diff(asinh(sqrt(1/(x+1))), x)",
             "-1 / (2 * (x + 1) * sqrt(x + 2))",
-            vec!["x + 1 > 0".to_string()],
+            vec!["x > -1".to_string()],
         ),
         (
             "diff(asinh(sqrt(4/(2*x+4))), x)",
             "-1 / ((x + 2) * sqrt(2 * x + 8))",
-            vec!["x + 2 > 0".to_string()],
+            vec!["x > -2".to_string()],
         ),
         (
             "diff(asinh(sqrt(2/(x+3))), x)",
             "-1 / (sqrt(2) * (x + 3) * sqrt(x + 5))",
-            vec!["x + 3 > 0".to_string()],
+            vec!["x > -3".to_string()],
         ),
     ] {
         let mut engine = Engine::new();
@@ -10059,7 +10231,7 @@ fn inverse_hyperbolic_acosh_diff_evaluates_with_domain_safe_conditions() {
         (
             "diff(acosh(x), x)",
             "1 / (sqrt(x - 1) * sqrt(x + 1))",
-            vec!["x - 1 > 0"],
+            vec!["x > 1"],
         ),
         (
             "diff(acosh(2*x+1), x)",
@@ -10069,7 +10241,7 @@ fn inverse_hyperbolic_acosh_diff_evaluates_with_domain_safe_conditions() {
         (
             "diff(acosh(1-2*x), x)",
             "-2 / (sqrt(-2 * x) * sqrt(2 - 2 * x))",
-            vec!["-x > 0"],
+            vec!["x < 0"],
         ),
         (
             "diff(acosh(x^2+1), x)",
@@ -10079,17 +10251,17 @@ fn inverse_hyperbolic_acosh_diff_evaluates_with_domain_safe_conditions() {
         (
             "diff(acosh((x+1)^2+1), x)",
             "(2*x+2)/(sqrt(x^2+2*x+1)*sqrt(x^2+2*x+3))",
-            vec!["x + 1 ≠ 0"],
+            vec!["x ≠ -1"],
         ),
         (
             "diff(acosh((2*x+1)^2+1), x)",
             "(8*x+4)/(sqrt(4*x^2+4*x+1)*sqrt(4*x^2+4*x+3))",
-            vec!["2 * x + 1 ≠ 0"],
+            vec!["x ≠ -1/2"],
         ),
         (
             "diff(acosh((1-2*x)^2+1), x)",
             "(8*x-4)/(sqrt(4*x^2+1-4*x)*sqrt(4*x^2+3-4*x))",
-            vec!["2 * x - 1 ≠ 0"],
+            vec!["x ≠ 1/2"],
         ),
     ];
 
@@ -10298,7 +10470,7 @@ fn acosh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
         (
             "diff(acosh(sqrt(x)), x)",
             "1 / (2 * sqrt(x) * sqrt(sqrt(x) - 1) * sqrt(sqrt(x) + 1))",
-            vec!["x - 1 > 0".to_string()],
+            vec!["x > 1".to_string()],
         ),
         (
             "diff(acosh(sqrt(x+1)), x)",
@@ -10313,17 +10485,17 @@ fn acosh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
         (
             "diff(acosh(sqrt((x+1)^2+1)), x)",
             "(x + 1) / (sqrt((x + 1)^2 + 1) * sqrt(sqrt((x + 1)^2 + 1) - 1) * sqrt(sqrt((x + 1)^2 + 1) + 1))",
-            vec!["x + 1 ≠ 0".to_string()],
+            vec!["x ≠ -1".to_string()],
         ),
         (
             "diff(acosh(sqrt(x^2+2*x+2)), x)",
             "(x + 1) / (sqrt(x^2 + 2 * x + 2) * sqrt(sqrt(x^2 + 2 * x + 2) - 1) * sqrt(sqrt(x^2 + 2 * x + 2) + 1))",
-            vec!["x + 1 ≠ 0".to_string()],
+            vec!["x ≠ -1".to_string()],
         ),
         (
             "diff(acosh(sqrt(x^2-2*x+2)), x)",
             "(x - 1) / (sqrt(x^2 - 2 * x + 2) * sqrt(sqrt(x^2 - 2 * x + 2) - 1) * sqrt(sqrt(x^2 - 2 * x + 2) + 1))",
-            vec!["x - 1 ≠ 0".to_string()],
+            vec!["x ≠ 1".to_string()],
         ),
     ] {
         let mut engine = Engine::new();
@@ -10427,7 +10599,7 @@ fn inverse_hyperbolic_atanh_diff_evaluates_with_open_unit_interval_condition() {
 
     assert_eq!(
         required,
-        vec!["1 - x^2 > 0".to_string()],
+        vec!["-1 < x < 1".to_string()],
         "input: {input}, unexpected required_conditions: {required:?}"
     );
 }
@@ -10438,22 +10610,22 @@ fn atanh_fractional_affine_diff_preserves_open_interval_gap_presentation() {
         (
             "diff(atanh((x+1)/2), x)",
             "2 / (4 - (x + 1)^2)",
-            vec!["3 - x^2 - 2 * x > 0".to_string()],
+            vec!["-3 < x < 1".to_string()],
         ),
         (
             "diff(atanh(-(x+1)/2), x)",
             "-2 / (4 - (x + 1)^2)",
-            vec!["3 - x^2 - 2 * x > 0".to_string()],
+            vec!["-3 < x < 1".to_string()],
         ),
         (
             "diff(atanh((2*x+1)/3), x)",
             "6 / (9 - (2 * x + 1)^2)",
-            vec!["2 - x^2 - x > 0".to_string()],
+            vec!["-2 < x < 1".to_string()],
         ),
         (
             "diff(atanh(-(2*x+1)/3), x)",
             "-6 / (9 - (2 * x + 1)^2)",
-            vec!["2 - x^2 - x > 0".to_string()],
+            vec!["-2 < x < 1".to_string()],
         ),
     ];
 
@@ -10581,37 +10753,37 @@ fn atanh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
         (
             "diff(atanh(sqrt(x)), x)",
             "-1 / (2 * sqrt(x) * (x - 1))",
-            vec!["1 - x > 0".to_string(), "x > 0".to_string()],
+            vec!["x < 1".to_string(), "x > 0".to_string()],
         ),
         (
             "diff(atanh(sqrt(2*x)), x)",
             "-1 / (sqrt(2 * x) * (2 * x - 1))",
-            vec!["1 - 2 * x > 0".to_string(), "x > 0".to_string()],
+            vec!["x < 1/2".to_string(), "x > 0".to_string()],
         ),
         (
             "diff(atanh(sqrt(x+1)), x)",
             "-1 / (2 * sqrt(x + 1) * x)",
-            vec!["-x > 0".to_string(), "x + 1 > 0".to_string()],
+            vec!["x < 0".to_string(), "x > -1".to_string()],
         ),
         (
             "diff(atanh(sqrt(1-2*x)), x)",
             "-1 / (2 * sqrt(1 - 2 * x) * x)",
-            vec!["1 - 2 * x > 0".to_string(), "x > 0".to_string()],
+            vec!["x < 1/2".to_string(), "x > 0".to_string()],
         ),
         (
             "diff(atanh(sqrt(3-2*x)), x)",
             "-1 / (2 * sqrt(3 - 2 * x) * (x - 1))",
-            vec!["3 - 2 * x > 0".to_string(), "x - 1 > 0".to_string()],
+            vec!["x < 3/2".to_string(), "x > 1".to_string()],
         ),
         (
             "diff(atanh(sqrt(1/x)), x)",
             "-1 / (2 * sqrt(x) * (x - 1))",
-            vec!["x - 1 > 0".to_string()],
+            vec!["x > 1".to_string()],
         ),
         (
             "diff(atanh(sqrt(4/x)), x)",
             "-1 / (sqrt(x) * (x - 4))",
-            vec!["x - 4 > 0".to_string()],
+            vec!["x > 4".to_string()],
         ),
         (
             "diff(atanh(sqrt(1/(x+1))), x)",
@@ -10631,12 +10803,12 @@ fn atanh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
         (
             "diff(atanh(sqrt(9/(3*x+6))), x)",
             "-3 / (2 * sqrt(3 * x + 6) * (x - 1))",
-            vec!["x - 1 > 0".to_string()],
+            vec!["x > 1".to_string()],
         ),
         (
             "diff(atanh(sqrt(2/(x+3))), x)",
             "-1 / (sqrt(2) * sqrt(x + 3) * (x + 1))",
-            vec!["x + 1 > 0".to_string()],
+            vec!["x > -1".to_string()],
         ),
     ] {
         let mut engine = Engine::new();
@@ -10912,7 +11084,7 @@ fn inverse_hyperbolic_atanh_affine_diff_preserves_open_interval_condition_withou
 
     assert_eq!(
         required,
-        vec!["-x^2 - 2 * x > 0".to_string()],
+        vec!["-2 < x < 0".to_string()],
         "input: {input}, unexpected required_conditions: {required:?}"
     );
 }
@@ -10968,7 +11140,7 @@ fn inverse_hyperbolic_atanh_scaled_affine_diff_dedupes_boundary_conditions_witho
 
     assert_eq!(
         required,
-        vec!["-x^2 - x > 0".to_string()],
+        vec!["-1 < x < 0".to_string()],
         "input: {input}, unexpected required_conditions: {required:?}"
     );
 }
@@ -11024,7 +11196,7 @@ fn inverse_hyperbolic_atanh_negative_affine_diff_preserves_open_interval_conditi
 
     assert_eq!(
         required,
-        vec!["3 * x - x^2 - 2 > 0".to_string()],
+        vec!["1 < x < 2".to_string()],
         "input: {input}, unexpected required_conditions: {required:?}"
     );
 }
@@ -11368,7 +11540,7 @@ fn bounded_inverse_trig_diff_evaluates_with_strict_required_domain_conditions() 
 
         assert_eq!(
             required,
-            vec!["1 - x^2 > 0".to_string()],
+            vec!["-1 < x < 1".to_string()],
             "input: {input}, required_conditions: {required:?}"
         );
     }
@@ -11500,13 +11672,13 @@ fn bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentati
         (
             "diff(arcsin(sqrt(x)), x)",
             "1 / (2 * sqrt(x) * sqrt(1 - x))",
-            vec!["x > 0".to_string(), "1 - x > 0".to_string()],
+            vec!["x > 0".to_string(), "x < 1".to_string()],
             None,
         ),
         (
             "diff(arccos(sqrt(x)), x)",
             "-1 / (2 * sqrt(x) * sqrt(1 - x))",
-            vec!["x > 0".to_string(), "1 - x > 0".to_string()],
+            vec!["x > 0".to_string(), "x < 1".to_string()],
             None,
         ),
         (
@@ -11560,37 +11732,37 @@ fn bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentati
         (
             "diff(arcsin(sqrt(2*x)), x)",
             "1 / (sqrt(2 * x) * sqrt(1 - 2 * x))",
-            vec!["1 - 2 * x > 0".to_string(), "x > 0".to_string()],
+            vec!["x < 1/2".to_string(), "x > 0".to_string()],
             None,
         ),
         (
             "diff(arcsin(sqrt(x+1)), x)",
             "1 / (2 * sqrt(x + 1) * sqrt(-x))",
-            vec!["x + 1 > 0".to_string(), "-x > 0".to_string()],
+            vec!["x > -1".to_string(), "x < 0".to_string()],
             None,
         ),
         (
             "diff(arcsin(sqrt(2*x+3)), x)",
             "1 / (sqrt(2 * x + 3) * sqrt(-2 * x - 2))",
-            vec!["2 * x + 3 > 0".to_string(), "-x - 1 > 0".to_string()],
+            vec!["x > -3/2".to_string(), "x < -1".to_string()],
             Some("1/(sqrt(2*x+3)*sqrt(-2*x-2))"),
         ),
         (
             "diff(arccos(sqrt(2*x+3)), x)",
             "-1 / (sqrt(2 * x + 3) * sqrt(-2 * x - 2))",
-            vec!["2 * x + 3 > 0".to_string(), "-x - 1 > 0".to_string()],
+            vec!["x > -3/2".to_string(), "x < -1".to_string()],
             Some("-1/(sqrt(2*x+3)*sqrt(-2*x-2))"),
         ),
         (
             "diff(arcsin(sqrt(5-3*x)), x)",
             "-3 / (2 * sqrt(5 - 3 * x) * sqrt(3 * x - 4))",
-            vec!["5 - 3 * x > 0".to_string(), "3 * x - 4 > 0".to_string()],
+            vec!["x < 5/3".to_string(), "x > 4/3".to_string()],
             None,
         ),
         (
             "diff(arccos(sqrt(5-3*x)), x)",
             "3 / (2 * sqrt(5 - 3 * x) * sqrt(3 * x - 4))",
-            vec!["5 - 3 * x > 0".to_string(), "3 * x - 4 > 0".to_string()],
+            vec!["x < 5/3".to_string(), "x > 4/3".to_string()],
             None,
         ),
     ] {
@@ -12084,7 +12256,7 @@ fn surd_quotient_diff_preserves_rational_content_scale() {
             "diff(arcsin(x/sqrt(1/2)), x)",
             "sqrt(2) / sqrt(1 - 2 * x^2)",
             "1/(sqrt(1/2)*sqrt(1-(x/sqrt(1/2))^2))",
-            vec!["1 - 2 * x^2 > 0"],
+            vec!["-sqrt(1/2) < x < sqrt(1/2)"],
         ),
         (
             "diff(asinh(x/sqrt(1/2)), x)",
@@ -12096,7 +12268,7 @@ fn surd_quotient_diff_preserves_rational_content_scale() {
             "diff(atanh(x/sqrt(1/2)), x)",
             "sqrt(2) / (1 - 2 * x^2)",
             "1/(sqrt(1/2)*(1-(x/sqrt(1/2))^2))",
-            vec!["1 - 2 * x^2 > 0"],
+            vec!["-sqrt(1/2) < x < sqrt(1/2)"],
         ),
     ];
 
@@ -12173,42 +12345,42 @@ fn inverse_reciprocal_trig_diff_exhaustive_cases() -> Vec<InverseReciprocalTrigD
         (
             "diff(arcsec(x), x)",
             "1 / (|x| * sqrt(x^2 - 1))",
-            vec!["x^2 - 1 > 0"],
+            vec!["x < -1 or x > 1"],
         ),
         (
             "diff(arccsc(x), x)",
             "-1 / (|x| * sqrt(x^2 - 1))",
-            vec!["x^2 - 1 > 0"],
+            vec!["x < -1 or x > 1"],
         ),
         (
             "diff(arcsec(2*x), x)",
             "2 / (|2 * x| * sqrt(4 * x^2 - 1))",
-            vec!["4 * x^2 - 1 > 0"],
+            vec!["x < -1/2 or x > 1/2"],
         ),
         (
             "diff(arccsc(2*x), x)",
             "-2 / (|2 * x| * sqrt(4 * x^2 - 1))",
-            vec!["4 * x^2 - 1 > 0"],
+            vec!["x < -1/2 or x > 1/2"],
         ),
         (
             "diff(arcsec(x+1), x)",
             "1 / (|x + 1| * sqrt(x^2 + 2 * x))",
-            vec!["x^2 + 2 * x > 0"],
+            vec!["x < -2 or x > 0"],
         ),
         (
             "diff(arccsc(x+1), x)",
             "-1 / (|x + 1| * sqrt(x^2 + 2 * x))",
-            vec!["x^2 + 2 * x > 0"],
+            vec!["x < -2 or x > 0"],
         ),
         (
             "diff(arcsec(sqrt(x)), x)",
             "1 / (2*x*sqrt(x-1))",
-            vec!["x - 1 > 0"],
+            vec!["x > 1"],
         ),
         (
             "diff(arccsc(sqrt(x)), x)",
             "-1 / (2*x*sqrt(x-1))",
-            vec!["x - 1 > 0"],
+            vec!["x > 1"],
         ),
         (
             "diff(arcsec(sqrt(x+1)), x)",
@@ -12223,32 +12395,32 @@ fn inverse_reciprocal_trig_diff_exhaustive_cases() -> Vec<InverseReciprocalTrigD
         (
             "diff(arcsec(sqrt(2*x)), x)",
             "1 / (2*x*sqrt(2*x-1))",
-            vec!["2 * x - 1 > 0"],
+            vec!["x > 1/2"],
         ),
         (
             "diff(arccsc(sqrt(2*x)), x)",
             "-1 / (2*x*sqrt(2*x-1))",
-            vec!["2 * x - 1 > 0"],
+            vec!["x > 1/2"],
         ),
         (
             "diff(arcsec(sqrt(3-2*x)), x)",
             "-1 / ((3-2*x)*sqrt(2-2*x))",
-            vec!["1 - x > 0"],
+            vec!["x < 1"],
         ),
         (
             "diff(arccsc(sqrt(3-2*x)), x)",
             "1 / ((3-2*x)*sqrt(2-2*x))",
-            vec!["1 - x > 0"],
+            vec!["x < 1"],
         ),
         (
             "diff(arcsec(sqrt(1-2*x)), x)",
             "-1 / ((1-2*x)*sqrt(-2*x))",
-            vec!["-x > 0"],
+            vec!["x < 0"],
         ),
         (
             "diff(arccsc(sqrt(1-2*x)), x)",
             "1 / ((1-2*x)*sqrt(-2*x))",
-            vec!["-x > 0"],
+            vec!["x < 0"],
         ),
         (
             "diff(arcsec(sqrt(x^2+1)), x)",
@@ -12273,22 +12445,22 @@ fn inverse_reciprocal_trig_diff_exhaustive_cases() -> Vec<InverseReciprocalTrigD
         (
             "diff(arcsec(sqrt(x^2+2*x+2)), x)",
             "(x+1)/((x^2+2*x+2)*abs(x+1))",
-            vec!["x + 1 ≠ 0"],
+            vec!["x ≠ -1"],
         ),
         (
             "diff(arccsc(sqrt(x^2+2*x+2)), x)",
             "-(x+1)/((x^2+2*x+2)*abs(x+1))",
-            vec!["x + 1 ≠ 0"],
+            vec!["x ≠ -1"],
         ),
         (
             "diff(arcsec(sqrt(x^2-2*x+2)), x)",
             "(x-1)/((x^2-2*x+2)*abs(x-1))",
-            vec!["x - 1 ≠ 0"],
+            vec!["x ≠ 1"],
         ),
         (
             "diff(arccsc(sqrt(x^2-2*x+2)), x)",
             "-(x-1)/((x^2-2*x+2)*abs(x-1))",
-            vec!["x - 1 ≠ 0"],
+            vec!["x ≠ 1"],
         ),
         (
             "diff(arcsec(x^2+1), x)",
@@ -12740,7 +12912,7 @@ fn affine_arcsin_diff_drops_scaled_nonnegative_domain_shadow() {
 
         assert_eq!(
             required,
-            vec!["-x^2 - x > 0".to_string()],
+            vec!["-1 < x < 0".to_string()],
             "input: {input}, unexpected required_conditions: {required:?}"
         );
     }
