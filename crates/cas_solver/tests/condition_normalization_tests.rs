@@ -6,6 +6,7 @@
 //! 3. Duplicate equivalent conditions are removed
 
 use cas_ast::{Context, Expr};
+use cas_formatter::DisplayExpr;
 use cas_solver::api::{
     normalize_and_dedupe_conditions, normalize_condition, render_conditions_normalized,
     ImplicitCondition,
@@ -70,7 +71,18 @@ fn test_nonnegative_condition_preserves_polynomial_sign() {
     let normalized = normalize_condition(&mut ctx, &cond);
     let display = normalized.display(&ctx);
 
-    assert_eq!(display, "1 - x^2 ≥ 0");
+    let ImplicitCondition::NonNegative(normalized_expr) = normalized else {
+        panic!("expected NonNegative condition");
+    };
+    assert_eq!(
+        DisplayExpr {
+            context: &ctx,
+            id: normalized_expr,
+        }
+        .to_string(),
+        "1 - x^2"
+    );
+    assert_eq!(display, "-1 ≤ x ≤ 1");
 }
 
 #[test]

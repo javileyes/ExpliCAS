@@ -29,13 +29,19 @@ impl ImplicitCondition {
         use cas_formatter::DisplayExpr;
 
         match self {
-            Self::NonNegative(e) => format!(
-                "{} ≥ 0",
-                DisplayExpr {
-                    context: ctx,
-                    id: *e
+            Self::NonNegative(e) => {
+                if let Some(bound) = display_unit_interval_nonnegative(ctx, *e) {
+                    bound
+                } else {
+                    format!(
+                        "{} ≥ 0",
+                        DisplayExpr {
+                            context: ctx,
+                            id: *e
+                        }
+                    )
                 }
-            ),
+            }
             Self::LowerBound(e, lower) => format!(
                 "{} ≥ {}",
                 DisplayExpr {
@@ -166,6 +172,84 @@ impl ImplicitCondition {
             Self::NonZero(e) => witness_survives(ctx, *e, output, WitnessKind::Division),
         }
     }
+}
+
+fn display_unit_interval_nonnegative(ctx: &Context, expr: ExprId) -> Option<String> {
+    use cas_formatter::DisplayExpr;
+
+    let base = unit_interval_base(ctx, expr)?;
+    if !cas_math::expr_predicates::contains_variable(ctx, base) {
+        return None;
+    }
+
+    if let Some(denominator) = reciprocal_denominator(ctx, base) {
+        return Some(format!(
+            "{} ≤ -1 or {} ≥ 1",
+            DisplayExpr {
+                context: ctx,
+                id: denominator
+            },
+            DisplayExpr {
+                context: ctx,
+                id: denominator
+            }
+        ));
+    }
+
+    Some(format!(
+        "-1 ≤ {} ≤ 1",
+        DisplayExpr {
+            context: ctx,
+            id: base
+        }
+    ))
+}
+
+fn unit_interval_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) if is_integer_literal(ctx, *left, 1) => squared_base(ctx, *right),
+        Expr::Add(left, right) if is_integer_literal(ctx, *left, 1) => {
+            negated_squared_base(ctx, *right)
+        }
+        Expr::Add(left, right) if is_integer_literal(ctx, *right, 1) => {
+            negated_squared_base(ctx, *left)
+        }
+        _ => None,
+    }
+}
+
+fn squared_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exponent) = ctx.get(expr) else {
+        return None;
+    };
+    if is_integer_literal(ctx, *exponent, 2) {
+        Some(*base)
+    } else {
+        None
+    }
+}
+
+fn negated_squared_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => squared_base(ctx, *inner),
+        Expr::Mul(left, right) if is_integer_literal(ctx, *left, -1) => squared_base(ctx, *right),
+        Expr::Mul(left, right) if is_integer_literal(ctx, *right, -1) => squared_base(ctx, *left),
+        _ => None,
+    }
+}
+
+fn reciprocal_denominator(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Div(numerator, denominator) if is_integer_literal(ctx, *numerator, 1) => {
+            Some(*denominator)
+        }
+        Expr::Pow(base, exponent) if is_integer_literal(ctx, *exponent, -1) => Some(*base),
+        _ => None,
+    }
+}
+
+fn is_integer_literal(ctx: &Context, expr: ExprId, value: i64) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if n == &BigRational::from_integer(value.into()))
 }
 
 /// Display level for required conditions.

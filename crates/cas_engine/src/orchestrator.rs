@@ -26174,6 +26174,28 @@ impl Orchestrator {
             return (zero, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
+        if let Some((compact, required_conditions)) = crate::calculus_residual_support::
+            try_diff_integral_reciprocal_trig_residual_constant_passthrough_quotient(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    compact,
+                    "Compact quotient with matching reciprocal trig antiderivative residual",
+                    "Reciprocal Trig Integral Residual Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (compact, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
         if let Some((zero, required_conditions)) =
             crate::calculus_residual_support::try_diff_integral_plain_trig_residual_root_zero(
                 &mut simplifier.context,
@@ -26348,6 +26370,72 @@ impl Orchestrator {
                 Vec::new()
             };
             return (compact, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) = crate::calculus_residual_support::
+            try_diff_integral_residual_reciprocal_shifted_difference_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify reciprocal wrapper with matching antiderivative residual",
+                    "Integral Residual Reciprocal Wrapper",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) = crate::calculus_residual_support::
+            try_diff_integral_residual_shifted_quotient_difference_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Verify shifted quotient with matching antiderivative residual",
+                    "Integral Residual Shifted Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some((zero, required_conditions)) = crate::calculus_residual_support::
+            try_diff_integral_residual_product_zero_factor_root_zero(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    zero,
+                    "Collapse product with zero factor around matching antiderivative residual",
+                    "Integral Residual Product Zero Wrapper",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
         if let Some((zero, required_conditions)) =

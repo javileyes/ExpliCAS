@@ -139,6 +139,10 @@ define_rule!(
             return None;
         }
 
+        if should_preserve_compact_polynomial_function_integrate_target(ctx, expr, parent_ctx) {
+            return None;
+        }
+
         // Multiplicative distribution uses cas_math helper that preserves
         // historical guard ordering and semantics.
         let parent_mul_terms =
@@ -199,6 +203,52 @@ fn should_preserve_compact_hyperbolic_additive_product(
 
     (left_additive && expr_contains_hyperbolic_function(ctx, right))
         || (right_additive && expr_contains_hyperbolic_function(ctx, left))
+}
+
+fn integrate_variable_name(ctx: &Context, expr: ExprId) -> Option<String> {
+    let Expr::Variable(sym_id) = ctx.get(expr) else {
+        return None;
+    };
+    Some(ctx.sym_name(*sym_id).to_string())
+}
+
+fn should_preserve_compact_polynomial_function_integrate_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    if parent_ctx.context_mode() != crate::options::ContextMode::IntegratePrep {
+        return false;
+    }
+
+    let integrate_call = parent_ctx.all_ancestors().iter().find_map(|ancestor| {
+        let Expr::Function(fn_id, args) = ctx.get(*ancestor) else {
+            return None;
+        };
+        if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+            return None;
+        }
+        let var_name = integrate_variable_name(ctx, args[1])?;
+        Some((args[0], var_name))
+    });
+
+    integrate_call.is_some_and(|(target, var_name)| {
+        (target == expr
+            && (cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_exp_linear_target(
+                ctx, expr, &var_name,
+            ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_trig_linear_target(
+                ctx, expr, &var_name,
+            ) || cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_affine_ln_by_parts_target(
+                ctx, expr, &var_name,
+            ) || cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_positive_quadratic_ln_by_parts_target(
+                ctx, expr, &var_name,
+            )))
+            || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_log_reciprocal_derivative_target(
+                ctx,
+                target,
+                &var_name,
+            )
+    })
 }
 
 fn expr_contains_hyperbolic_function(ctx: &Context, expr: ExprId) -> bool {

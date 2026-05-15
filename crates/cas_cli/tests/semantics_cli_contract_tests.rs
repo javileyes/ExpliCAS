@@ -3175,6 +3175,42 @@ fn derive_inverse_tan_reciprocal_identity_uses_named_inverse_trig_rewrite_and_ke
 }
 
 #[test]
+fn inverse_reciprocal_trig_domains_hide_redundant_public_nonzero_guard() {
+    for (expr, result, builtin) in [
+        ("arcsec(x)", "arccos(1 / x)", "NonNegative"),
+        ("arccsc(x)", "arcsin(1 / x)", "NonNegative"),
+    ] {
+        let (output, code) = run_cli(&["eval", expr, "--format", "json"]);
+        assert_eq!(
+            code, 0,
+            "expected successful CLI exit for {expr}, got {code}: {output}"
+        );
+        let wire = parse_wire(&output);
+
+        assert_eq!(wire["result"], result);
+        assert_eq!(wire["required_display"], json!(["x ≤ -1 or x ≥ 1"]));
+
+        let required_conditions = wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions");
+        assert!(
+            required_conditions
+                .iter()
+                .any(|condition| condition["kind"] == "NonZero"
+                    && condition["expr_canonical"] == "x"),
+            "structured nonzero guard should remain for {expr}: {required_conditions:?}"
+        );
+        assert!(
+            required_conditions
+                .iter()
+                .any(|condition| condition["kind"] == builtin
+                    && condition["expr_canonical"] == "1 - (1 / x)^2"),
+            "structured bounded-domain guard should remain for {expr}: {required_conditions:?}"
+        );
+    }
+}
+
+#[test]
 fn derive_expand_difference_square_delta_json_steps_does_not_panic() {
     let (output, code) = run_cli(&[
         "eval",

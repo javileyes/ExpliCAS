@@ -100,11 +100,25 @@ fn should_verify_antiderivative_with_public_integrate_residual(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_trig_linear_target(
         ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_hyperbolic_linear_target(
+        ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_hyperbolic_linear_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_hyperbolic_quotient_substitution_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_arctan_affine_target(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_positive_quadratic_cube_target(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_high_log_power_product_substitution_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_log_reciprocal_derivative_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_trig_log_substitution_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_monomial_times_ln_var_by_parts_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_affine_ln_by_parts_target(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_affine_ln_by_parts_target(
         ctx, integrand, var_name,
@@ -244,15 +258,34 @@ const REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES: &[&str] = &[
     "integrate(x^3*cos(x), x)",
     "integrate(x^5*sin(x), x)",
     "integrate(x^5*cos(x), x)",
+    "integrate(x^6*sin(x), x)",
+    "integrate(x^6*cos(x), x)",
+    "integrate((x^6+1)*sin(2*x+1), x)",
+    "integrate((x^6+1)*cos(2*x+1), x)",
+    "integrate(x^7*sin(x), x)",
+    "integrate(x^7*cos(x), x)",
+    "integrate((x^7+1)*sin(2*x+1), x)",
+    "integrate((x^7+1)*cos(2*x+1), x)",
     "integrate((2*x+3)*exp(2*x+1), x)",
     "integrate(x^2*exp(x), x)",
     "integrate(x^3*exp(x), x)",
     "integrate(x^5*exp(x), x)",
     "integrate((x^3+x)*exp(2*x+1), x)",
+    "integrate((x^6+1)*exp(2*x+1), x)",
+    "integrate(x^7*exp(x), x)",
+    "integrate((x^7+1)*exp(2*x+1), x)",
     "integrate(x^2*sinh(x), x)",
     "integrate(x^2*cosh(x), x)",
     "integrate((x^3+x)*sinh(2*x+1), x)",
     "integrate((x^3+x)*cosh(2*x+1), x)",
+    "integrate(x^6*sinh(x), x)",
+    "integrate(x^6*cosh(x), x)",
+    "integrate((x^6+1)*sinh(2*x+1), x)",
+    "integrate((x^6+1)*cosh(2*x+1), x)",
+    "integrate(x^7*sinh(x), x)",
+    "integrate(x^7*cosh(x), x)",
+    "integrate((x^7+1)*sinh(2*x+1), x)",
+    "integrate((x^7+1)*cosh(2*x+1), x)",
     "integrate(sinh(x)^2*cosh(x), x)",
     "integrate(2*x*exp(x^2), x)",
     "integrate(cosh(x)/(1+sinh(x)^2), x)",
@@ -490,6 +523,18 @@ fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_f
         "integrate(x^2*cosh(x), x)",
         "integrate((x^3+x)*sinh(2*x+1), x)",
         "integrate((x^3+x)*cosh(2*x+1), x)",
+        "integrate(x^6*sinh(x), x)",
+        "integrate(x^6*cosh(x), x)",
+        "integrate((x^6+1)*sinh(2*x+1), x)",
+        "integrate((x^6+1)*cosh(2*x+1), x)",
+        "integrate((x+1)*sinh((3*x+2)/2), x)",
+        "integrate((x+1)*cosh((3*x+2)/2), x)",
+        "integrate((x+1)*sinh((2-3*x)/2), x)",
+        "integrate((x+1)*cosh((2-3*x)/2), x)",
+        "integrate(x^7*sinh(x), x)",
+        "integrate(x^7*cosh(x), x)",
+        "integrate((x^7+1)*sinh(2*x+1), x)",
+        "integrate((x^7+1)*cosh(2*x+1), x)",
     ] {
         assert_eq!(
             assert_antiderivative_verifies(input),
@@ -506,6 +551,9 @@ fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_f
         "integrate(x^3*exp(x), x)",
         "integrate(x^5*exp(x), x)",
         "integrate((x^3+x)*exp(2*x+1), x)",
+        "integrate((x^6+1)*exp(2*x+1), x)",
+        "integrate(x^7*exp(x), x)",
+        "integrate((x^7+1)*exp(2*x+1), x)",
     ] {
         assert_eq!(
             assert_antiderivative_verifies(input),
@@ -524,6 +572,14 @@ fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_f
         "integrate(x^2*cos(x), x)",
         "integrate(x^5*sin(x), x)",
         "integrate(x^5*cos(x), x)",
+        "integrate(x^6*sin(x), x)",
+        "integrate(x^6*cos(x), x)",
+        "integrate((x^6+1)*sin(2*x+1), x)",
+        "integrate((x^6+1)*cos(2*x+1), x)",
+        "integrate(x^7*sin(x), x)",
+        "integrate(x^7*cos(x), x)",
+        "integrate((x^7+1)*sin(2*x+1), x)",
+        "integrate((x^7+1)*cos(2*x+1), x)",
         "integrate((2*x+3)*sin(2*x+1), x)",
         "integrate((2*x+3)*cos(2*x+1), x)",
     ] {
@@ -532,6 +588,310 @@ fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_f
             AntiderivativeVerificationRoute::PublicResidual,
             "{input} should verify through the bounded public residual route"
         );
+    }
+}
+
+#[test]
+fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_log_by_parts() {
+    for input in ["integrate(x*ln(x), x)", "integrate((2*x+1)*ln(2*x+1), x)"] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_log_reciprocal_derivative(
+) {
+    for input in [
+        "integrate(1/(x*ln(x)), x)",
+        "integrate(2*x/((x^2+1)*ln(x^2+1)^2), x)",
+    ] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_trig_log_substitution(
+) {
+    for input in [
+        "integrate(tan(2*x+1), x)",
+        "integrate(cot(2*x+1), x)",
+        "integrate(sec(2*x+1), x)",
+        "integrate(csc(2*x+1), x)",
+    ] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_hyperbolic_quotient_substitution(
+) {
+    for input in [
+        "integrate(sinh(2*x+1)/cosh(2*x+1), x)",
+        "integrate(cosh(2*x+1)/sinh(2*x+1), x)",
+    ] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_stable_hyperbolic_reciprocal_square_subset(
+) {
+    for input in [
+        "integrate(1/cosh(2*x+1)^2, x)",
+        "integrate(1/sinh(2*x+1)^2, x)",
+        "integrate(sinh(2*x+1)/cosh(2*x+1)^2, x)",
+        "integrate(cosh(2*x+1)/sinh(2*x+1)^2, x)",
+    ] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_nonlinear_hyperbolic_reciprocal_square_subset(
+) {
+    for input in [
+        "integrate(2*x/cosh(x^2)^2, x)",
+        "integrate(2*x/sinh(x^2)^2, x)",
+        "integrate(2*x*sinh(x^2)/cosh(x^2)^2, x)",
+        "integrate(2*x*cosh(x^2)/sinh(x^2)^2, x)",
+    ] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_nonlinear_hyperbolic_reciprocal_square_residual_survives_wrappers() {
+    for (input, expected_result, expected_required_display) in [
+        (
+            "(diff(integrate(2*x/sinh(x^2)^2, x), x) - 2*x/sinh(x^2)^2) + y - y",
+            "0",
+            serde_json::json!(["sinh(x^2) ≠ 0"]),
+        ),
+        (
+            "(diff(integrate(2*x/sinh(x^2)^2, x), x) - 2*x/sinh(x^2)^2)/(x+1)",
+            "0",
+            serde_json::json!(["sinh(x^2) ≠ 0", "x + 1 ≠ 0"]),
+        ),
+        (
+            "((diff(integrate(2*x/sinh(x^2)^2, x), x) - 2*x/sinh(x^2)^2) + x + 1)/(x+1)",
+            "1",
+            serde_json::json!(["sinh(x^2) ≠ 0", "x + 1 ≠ 0"]),
+        ),
+        (
+            "1/((diff(integrate(2*x/sinh(x^2)^2, x), x) - 2*x/sinh(x^2)^2) + x + 1) - 1/(x+1)",
+            "0",
+            serde_json::json!(["sinh(x^2) ≠ 0", "x + 1 ≠ 0"]),
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(
+            stderr.is_empty(),
+            "unexpected stderr for wrapped nonlinear hyperbolic reciprocal-square residual: {stderr}"
+        );
+        assert_eq!(wire["result"], expected_result);
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_reciprocal_shifted_trig_by_parts_residual_keeps_compact_requires() {
+    let input = "1/((diff(integrate(x^3*sin(x), x), x) - x^3*sin(x)) + x + 2) - 1/(x+2)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for reciprocal shifted trig by-parts residual: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!(["x + 2 ≠ 0"]));
+}
+
+#[test]
+fn integrate_contract_reciprocal_shifted_log_reciprocal_residual_keeps_domain_requires() {
+    let input = "1/((diff(integrate(1/(x*ln(x)), x), x) - 1/(x*ln(x))) + x + 2) - 1/(x+2)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for reciprocal shifted log reciprocal residual: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!(["x > 0", "x - 1 ≠ 0"])
+    );
+}
+
+#[test]
+fn integrate_contract_reciprocal_shifted_arcsin_residual_keeps_radical_domain_requires() {
+    let input = "1/((diff(integrate(1/sqrt(1-x^2), x), x) - 1/sqrt(1-x^2)) + x + 2) - 1/(x+2)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for reciprocal shifted arcsin residual: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!(["1 - x^2 > 0", "x + 2 ≠ 0"])
+    );
+}
+
+#[test]
+fn integrate_contract_reciprocal_shifted_affine_arcsin_residual_keeps_radical_domain_requires() {
+    let input =
+        "1/((diff(integrate(1/sqrt(4-(x+1)^2), x), x) - 1/sqrt(4-(x+1)^2)) + x + 2) - 1/(x+2)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for reciprocal shifted affine arcsin residual: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!(["3 - x^2 - 2·x > 0", "x + 2 ≠ 0"])
+    );
+}
+
+#[test]
+fn integrate_contract_reciprocal_shifted_arctan_sqrt_residual_keeps_positive_domain_requires() {
+    let input =
+        "1/((diff(integrate(1/(sqrt(x)*(x+1)), x), x) - 1/(sqrt(x)*(x+1))) + x + 2) - 1/(x+2)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for reciprocal shifted arctan sqrt residual: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!(["x > 0"]));
+}
+
+#[test]
+fn integrate_contract_reciprocal_shifted_asinh_residual_compacts_without_timeout() {
+    let input =
+        "1/((diff(integrate(1/sqrt(4+(x+1)^2), x), x) - 1/sqrt(4+(x+1)^2)) + x + 2) - 1/(x+2)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for reciprocal shifted asinh residual: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!(["x + 2 ≠ 0"]));
+}
+
+#[test]
+fn integrate_contract_reciprocal_shifted_csc_residual_compacts_without_timeout() {
+    let input = "1/((diff(integrate(csc(2*x+1), x), x) - csc(2*x+1)) + x + 2) - 1/(x+2)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for reciprocal shifted csc residual: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!(["sin(2·x + 1) ≠ 0", "x + 2 ≠ 0"])
+    );
+}
+
+#[test]
+fn integrate_contract_shifted_quotient_asinh_residual_compacts_without_timeout() {
+    let input =
+        "1 - (x+2)/((diff(integrate(1/sqrt(4+(x+1)^2), x), x) - 1/sqrt(4+(x+1)^2)) + x + 2)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for shifted quotient asinh residual: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!(["x + 2 ≠ 0"]));
+}
+
+#[test]
+fn integrate_contract_shifted_quotient_csc_residual_compacts_without_timeout() {
+    let input = "1 - (x+2)/((diff(integrate(csc(2*x+1), x), x) - csc(2*x+1)) + x + 2)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for shifted quotient csc residual: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!(["sin(2·x + 1) ≠ 0", "x + 2 ≠ 0"])
+    );
+}
+
+#[test]
+fn integrate_contract_product_zero_csc_residual_compacts_without_timeout() {
+    for input in [
+        "((diff(integrate(csc(2*x+1), x), x) - csc(2*x+1)) + x + 2)*(y-y)",
+        "(y-y)*((diff(integrate(csc(2*x+1), x), x) - csc(2*x+1)) + x + 2)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+        assert!(
+            stderr.is_empty(),
+            "unexpected stderr for product-zero csc residual: {stderr}"
+        );
+        assert_eq!(wire["result"], "0", "{input}");
+        assert_eq!(
+            wire["required_display"],
+            serde_json::json!(["sin(2·x + 1) ≠ 0"]),
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_product_zero_by_parts_residuals_compact_without_timeout() {
+    for input in [
+        "((diff(integrate(x^6*sin(x), x), x) - x^6*sin(x)) + x + 2)*(y-y)",
+        "((diff(integrate((x^3+x)*cosh(2*x+1), x), x) - ((x^3+x)*cosh(2*x+1))) + x + 2)*(y-y)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+        assert!(
+            stderr.is_empty(),
+            "unexpected stderr for product-zero by-parts residual: {stderr}"
+        );
+        assert_eq!(wire["result"], "0", "{input}");
+        assert_eq!(wire["required_display"], serde_json::json!([]), "{input}");
     }
 }
 
@@ -792,6 +1152,261 @@ fn integrate_contract_quintic_trig_by_parts_nested_residual_verifies_publicly() 
 }
 
 #[test]
+fn integrate_contract_sextic_trig_by_parts_verifies_publicly() {
+    let (sin_wire, sin_stderr) =
+        cli_eval_json_with_stderr_args("integrate(x^6*sin(x), x)", &["--steps", "on"]);
+    assert_eq!(
+        sin_wire["result"],
+        "(6·x^5 + 720·x - 120·x^3)·sin(x) + (30·x^4 + 720 - x^6 - 360·x^2)·cos(x)"
+    );
+    assert!(
+        sin_wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "unexpected required conditions for x^6*sin(x): {:?}",
+        sin_wire["required_conditions"]
+    );
+    assert!(
+        !sin_stderr.contains("depth_overflow"),
+        "sextic sin by-parts presentation should not emit depth_overflow warning\nstderr:\n{sin_stderr}"
+    );
+    let steps = sin_wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    let integration_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .expect("expected public symbolic integration step");
+    let substeps = integration_step["substeps"]
+        .as_array()
+        .expect("integration step should expose didactic substeps");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar integración por partes repetida"),
+        "expected repeated integration-by-parts substep for x^6*sin(x), got {substeps:?}"
+    );
+    assert_eq!(
+        assert_antiderivative_verifies("integrate(x^6*sin(x), x)"),
+        AntiderivativeVerificationRoute::PublicResidual
+    );
+
+    let (cos_wire, cos_stderr) =
+        cli_eval_json_with_stderr_args("integrate(x^6*cos(x), x)", &["--steps", "on"]);
+    assert_eq!(
+        cos_wire["result"],
+        "(6·x^5 + 720·x - 120·x^3)·cos(x) + (x^6 + 360·x^2 - 30·x^4 - 720)·sin(x)"
+    );
+    assert!(
+        cos_wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "unexpected required conditions for x^6*cos(x): {:?}",
+        cos_wire["required_conditions"]
+    );
+    assert!(
+        !cos_stderr.contains("depth_overflow"),
+        "sextic cos by-parts presentation should not emit depth_overflow warning\nstderr:\n{cos_stderr}"
+    );
+    assert_eq!(
+        assert_antiderivative_verifies("integrate(x^6*cos(x), x)"),
+        AntiderivativeVerificationRoute::PublicResidual
+    );
+
+    for residual in [
+        "diff(integrate(x^6*sin(x), x), x) - x^6*sin(x)",
+        "diff(integrate(x^6*cos(x), x), x) - x^6*cos(x)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(residual);
+        assert_eq!(wire["result"], "0");
+        assert!(
+            wire["required_conditions"]
+                .as_array()
+                .expect("required_conditions should be an array")
+                .is_empty(),
+            "unexpected required conditions for {residual}: {:?}",
+            wire["required_conditions"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "sextic trig by-parts nested residual should not emit depth_overflow warning\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_sparse_affine_sextic_trig_by_parts_verifies_publicly() {
+    for (input, expected_result) in [
+        (
+            "integrate((x^6+1)*sin(2*x+1), x)",
+            "(3/2·x^5 + 45/4·x - 15/2·x^3)·sin(2·x + 1) + (15/4·x^4 + 41/8 - 1/2·x^6 - 45/4·x^2)·cos(2·x + 1)",
+        ),
+        (
+            "integrate((x^6+1)*cos(2*x+1), x)",
+            "(3/2·x^5 + 45/4·x - 15/2·x^3)·cos(2·x + 1) + (1/2·x^6 + 45/4·x^2 - 15/4·x^4 - 41/8)·sin(2·x + 1)",
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result);
+        assert!(
+            wire["required_conditions"]
+                .as_array()
+                .expect("required_conditions should be an array")
+                .is_empty(),
+            "unexpected required conditions for {input}: {:?}",
+            wire["required_conditions"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "sparse affine sextic trig by-parts presentation should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        assert_eq!(
+            steps.len(),
+            1,
+            "expected direct integration trace without expansion noise for {input}, got {steps:?}"
+        );
+        assert!(
+            steps
+                .iter()
+                .all(|step| step["rule"] != "Expandir la expresión"),
+            "sparse affine sextic trig by-parts should not expand before integrating, got {steps:?}"
+        );
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar integración por partes repetida"),
+            "expected repeated integration-by-parts substep for {input}, got {substeps:?}"
+        );
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+
+    for residual in [
+        "diff(integrate((x^6+1)*sin(2*x+1), x), x) - (x^6+1)*sin(2*x+1)",
+        "diff(integrate((x^6+1)*cos(2*x+1), x), x) - (x^6+1)*cos(2*x+1)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(residual);
+        assert_eq!(wire["result"], "0");
+        assert!(
+            wire["required_conditions"]
+                .as_array()
+                .expect("required_conditions should be an array")
+                .is_empty(),
+            "unexpected required conditions for {residual}: {:?}",
+            wire["required_conditions"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "sparse affine sextic trig by-parts nested residual should not emit depth_overflow warning for {residual}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_septic_trig_by_parts_verifies_publicly() {
+    for (input, expected_result) in [
+        (
+            "integrate(x^7*sin(x), x)",
+            "(42·x^5 + 5040·x - x^7 - 840·x^3)·cos(x) + (7·x^6 + 2520·x^2 - 210·x^4 - 5040)·sin(x)",
+        ),
+        (
+            "integrate(x^7*cos(x), x)",
+            "(x^7 + 840·x^3 - 42·x^5 - 5040·x)·sin(x) + (7·x^6 + 2520·x^2 - 210·x^4 - 5040)·cos(x)",
+        ),
+        (
+            "integrate((x^7+1)*sin(2*x+1), x)",
+            "(7/4·x^6 + 315/8·x^2 - 105/8·x^4 - 315/16)·sin(2·x + 1) + (21/4·x^5 + 315/8·x - 1/2·x^7 - 105/4·x^3 - 1/2)·cos(2·x + 1)",
+        ),
+        (
+            "integrate((x^7+1)*cos(2*x+1), x)",
+            "(7/4·x^6 + 315/8·x^2 - 105/8·x^4 - 315/16)·cos(2·x + 1) + (1/2·x^7 + 105/4·x^3 + 1/2 - 21/4·x^5 - 315/8·x)·sin(2·x + 1)",
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result);
+        assert!(
+            wire["required_conditions"]
+                .as_array()
+                .expect("required_conditions should be an array")
+                .is_empty(),
+            "unexpected required conditions for {input}: {:?}",
+            wire["required_conditions"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "septic trig by-parts presentation should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        assert_eq!(
+            steps.len(),
+            1,
+            "expected direct integration trace without expansion noise for {input}, got {steps:?}"
+        );
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar integración por partes repetida"),
+            "expected repeated integration-by-parts substep for {input}, got {substeps:?}"
+        );
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+
+    for residual in [
+        "diff(integrate(x^7*sin(x), x), x) - x^7*sin(x)",
+        "diff(integrate(x^7*cos(x), x), x) - x^7*cos(x)",
+        "diff(integrate((x^7+1)*sin(2*x+1), x), x) - (x^7+1)*sin(2*x+1)",
+        "diff(integrate((x^7+1)*cos(2*x+1), x), x) - (x^7+1)*cos(2*x+1)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(residual);
+        assert_eq!(wire["result"], "0");
+        assert!(
+            wire["required_conditions"]
+                .as_array()
+                .expect("required_conditions should be an array")
+                .is_empty(),
+            "unexpected required conditions for {residual}: {:?}",
+            wire["required_conditions"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "septic trig by-parts nested residual should not emit depth_overflow warning for {residual}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_quadratic_exp_by_parts_presents_without_depth_overflow() {
     let input = "integrate((x^2+x+1)*exp(2*x+1), x)";
     let (wire, stderr) = cli_eval_json_with_stderr(input);
@@ -973,6 +1588,114 @@ fn integrate_contract_quintic_exp_by_parts_verifies() {
 }
 
 #[test]
+fn integrate_contract_sextic_exp_by_parts_verifies() {
+    let input = "integrate(x^6*exp(x), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+    assert_eq!(
+        wire["result"],
+        "e^x·(x^6 + 30·x^4 + 360·x^2 + 720 - 6·x^5 - 120·x^3 - 720·x)"
+    );
+    assert!(
+        wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "unexpected required conditions for x^6*exp(x): {:?}",
+        wire["required_conditions"]
+    );
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "sextic exp by-parts presentation should not emit depth_overflow warning\nstderr:\n{stderr}"
+    );
+
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    let integration_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .expect("expected public symbolic integration step");
+    let substeps = integration_step["substeps"]
+        .as_array()
+        .expect("integration step should expose didactic substeps");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar integración por partes repetida"),
+        "expected repeated integration-by-parts substep for {input}, got {substeps:?}"
+    );
+
+    let residual = "diff(integrate(x^6*exp(x), x), x) - x^6*exp(x)";
+    let (wire, stderr) = cli_eval_json_with_stderr(residual);
+    assert_eq!(wire["result"], "0");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "nested sextic exp verification should not emit depth_overflow warning\nstderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn integrate_contract_septic_exp_by_parts_verifies() {
+    let input = "integrate(x^7*exp(x), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+    assert_eq!(
+        wire["result"],
+        "e^x·(x^7 + 42·x^5 + 840·x^3 + 5040·x - 7·x^6 - 210·x^4 - 2520·x^2 - 5040)"
+    );
+    assert!(
+        wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "unexpected required conditions for x^7*exp(x): {:?}",
+        wire["required_conditions"]
+    );
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "septic exp by-parts presentation should not emit depth_overflow warning\nstderr:\n{stderr}"
+    );
+
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    let integration_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .expect("expected public symbolic integration step");
+    let substeps = integration_step["substeps"]
+        .as_array()
+        .expect("integration step should expose didactic substeps");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar integración por partes repetida"),
+        "expected repeated integration-by-parts substep for {input}, got {substeps:?}"
+    );
+
+    for residual in [
+        "diff(integrate(x^7*exp(x), x), x) - x^7*exp(x)",
+        "diff(integrate((x^7+1)*exp(2*x+1), x), x) - (x^7+1)*exp(2*x+1)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(residual);
+        assert_eq!(wire["result"], "0");
+        assert!(
+            wire["required_conditions"]
+                .as_array()
+                .expect("required_conditions should be an array")
+                .is_empty(),
+            "unexpected required conditions for {residual}: {:?}",
+            wire["required_conditions"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "nested septic exp verification should not emit depth_overflow warning for {residual}\nstderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_sparse_quartic_exp_by_parts_keeps_direct_trace() {
     let input = "integrate((x^4+x^2)*exp(2*x+1), x)";
     let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -1020,6 +1743,77 @@ fn integrate_contract_sparse_quartic_exp_by_parts_keeps_direct_trace() {
     assert!(
         !stderr.contains("depth_overflow"),
         "nested sparse quartic exp verification should not emit depth_overflow warning\nstderr:\n{stderr}"
+    );
+}
+
+#[test]
+fn integrate_contract_sparse_affine_sextic_exp_by_parts_keeps_direct_trace() {
+    let input = "integrate((x^6+1)*exp(2*x+1), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+    assert_eq!(
+        wire["result"],
+        "1/8·e^(2·x + 1)·(4·x^6 + 30·x^4 + 90·x^2 + 49 - 12·x^5 - 60·x^3 - 90·x)"
+    );
+    assert!(
+        wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "unexpected required conditions for {input}: {:?}",
+        wire["required_conditions"]
+    );
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "sparse affine sextic exp by-parts presentation should not emit depth_overflow warning\nstderr:\n{stderr}"
+    );
+
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    assert!(
+        steps.len() <= 2,
+        "expected compact integration trace without expansion noise for {input}, got {steps:?}"
+    );
+    assert!(
+        steps
+            .iter()
+            .all(|step| step["rule"] != "Expandir la expresión"),
+        "sparse affine sextic exp by-parts should not expand before integrating, got {steps:?}"
+    );
+    let integration_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .expect("expected public symbolic integration step");
+    let substeps = integration_step["substeps"]
+        .as_array()
+        .expect("integration step should expose didactic substeps");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar integración por partes repetida"),
+        "expected repeated integration-by-parts substep for {input}, got {substeps:?}"
+    );
+    assert_eq!(
+        assert_antiderivative_verifies(input),
+        AntiderivativeVerificationRoute::PublicResidual,
+        "{input} should verify through the bounded public residual route"
+    );
+
+    let residual = "diff(integrate((x^6+1)*exp(2*x+1), x), x) - (x^6+1)*exp(2*x+1)";
+    let (wire, stderr) = cli_eval_json_with_stderr(residual);
+    assert_eq!(wire["result"], "0");
+    assert!(
+        wire["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "unexpected required conditions for {residual}: {:?}",
+        wire["required_conditions"]
+    );
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "nested sparse affine sextic exp verification should not emit depth_overflow warning\nstderr:\n{stderr}"
     );
 }
 
@@ -1193,11 +1987,11 @@ fn integrate_contract_linear_by_parts_exposes_didactic_substep() {
         ),
         (
             "integrate((2*x+3)*sinh(2*x+1), x)",
-            "1/2·(cosh(2·x + 1)·(2·x + 3) - sinh(2·x + 1))",
+            "(cosh(2·x + 1)·(2·x + 3))/2 - 1/2·sinh(2·x + 1)",
         ),
         (
             "integrate((2*x+3)*cosh(2*x+1), x)",
-            "1/2·(sinh(2·x + 1)·(2·x + 3) - cosh(2·x + 1))",
+            "(sinh(2·x + 1)·(2·x + 3))/2 - 1/2·cosh(2·x + 1)",
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -1228,6 +2022,125 @@ fn integrate_contract_linear_by_parts_exposes_didactic_substep() {
                 "affine by-parts should preserve compact presentation for {input}, got {steps:?}"
             );
         }
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar integración por partes"),
+            "expected integration-by-parts substep for {input}, got {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_inverse_trig_by_parts_exposes_didactic_substep() {
+    for (input, expected_result, expected_required_display) in [
+        (
+            "integrate(arcsin(x), x)",
+            "sqrt(1 - x^2) + x·arcsin(x)",
+            serde_json::json!(["1 - x^2 > 0"]),
+        ),
+        (
+            "integrate(arccos(x), x)",
+            "x·arccos(x) - sqrt(1 - x^2)",
+            serde_json::json!(["1 - x^2 > 0"]),
+        ),
+        (
+            "integrate(arctan(x), x)",
+            "-1/2·ln(x^2 + 1) + x·arctan(x)",
+            serde_json::json!([]),
+        ),
+        (
+            "integrate(arctan(1/(2*x+1)), x)",
+            "1/4·ln((2·x + 1)^2 + 1) + 1/2·(2·x + 1)·arctan(1 / (2·x + 1))",
+            serde_json::json!(["2·x + 1 ≠ 0"]),
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "inverse-trig by-parts trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        assert_eq!(
+            steps.len(),
+            1,
+            "expected compact direct integration trace for {input}, got {steps:?}"
+        );
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar integración por partes"),
+            "expected integration-by-parts substep for {input}, got {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_inverse_hyperbolic_affine_by_parts_exposes_didactic_substep() {
+    for (input, expected_result, expected_required_display) in [
+        (
+            "integrate(asinh(2*x+1), x)",
+            "1/2·(2·x + 1)·asinh(2·x + 1) - 1/2·sqrt((2·x + 1)^2 + 1)",
+            serde_json::json!([]),
+        ),
+        (
+            "integrate(atanh(2*x+1), x)",
+            "1/4·ln(1 - (2·x + 1)^2) + 1/2·(2·x + 1)·atanh(2·x + 1)",
+            serde_json::json!(["-x^2 - x > 0"]),
+        ),
+        (
+            "integrate(acosh(2*x+1), x)",
+            "1/2·(2·x + 1)·acosh(2·x + 1) - 1/2·sqrt(2·x)·sqrt(2·x + 2)",
+            serde_json::json!(["x > 0"]),
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "inverse-hyperbolic by-parts trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        assert_eq!(
+            steps.len(),
+            1,
+            "expected compact direct integration trace for {input}, got {steps:?}"
+        );
         let integration_step = steps
             .iter()
             .find(|step| step["rule"] == "Calcular la integral")
@@ -2194,7 +3107,7 @@ fn integrate_contract_linear_times_hyperbolic_linear_by_parts() {
         evaluated_integral_with_required_conditions("integrate((2*x+3)*sinh(2*x+1), x)");
     assert_eq!(
         result,
-        "1/2 * (cosh(2 * x + 1) * (2 * x + 3) - sinh(2 * x + 1))"
+        "(cosh(2 * x + 1) * (2 * x + 3))/2 - 1/2 * sinh(2 * x + 1)"
     );
     assert!(
         required.is_empty(),
@@ -2205,11 +3118,30 @@ fn integrate_contract_linear_times_hyperbolic_linear_by_parts() {
         evaluated_integral_with_required_conditions("integrate((2*x+3)*cosh(2*x+1), x)");
     assert_eq!(
         result,
-        "1/2 * (sinh(2 * x + 1) * (2 * x + 3) - cosh(2 * x + 1))"
+        "(sinh(2 * x + 1) * (2 * x + 3))/2 - 1/2 * cosh(2 * x + 1)"
     );
     assert!(
         required.is_empty(),
         "unexpected required_conditions: {required:?}"
+    );
+
+    let (result, required) =
+        evaluated_integral_with_required_conditions("integrate((x+1)*sinh(2*x+1), x)");
+    assert_eq!(
+        result,
+        "(cosh(2 * x + 1) * (x + 1))/2 - 1/4 * sinh(2 * x + 1)"
+    );
+    assert!(
+        required.is_empty(),
+        "unexpected required_conditions: {required:?}"
+    );
+
+    let residual = "diff(integrate((x+1)*sinh(2*x+1), x), x) - (x+1)*sinh(2*x+1)";
+    let (residual_result, residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "linear hyperbolic residual should not add conditions: {residual_required:?}"
     );
 }
 
@@ -2250,6 +3182,46 @@ fn integrate_contract_polynomial_times_hyperbolic_linear_by_parts_verifies() {
             "integrate(x^2*cosh(2*x+1)+x*cosh(2*x+1), x)",
             "(1/2·x^2 + 1/2·x + 1/4)·sinh(2·x + 1) - (1/2·x + 1/4)·cosh(2·x + 1)",
             "diff(integrate(x^2*cosh(2*x+1)+x*cosh(2*x+1), x), x) - (x^2*cosh(2*x+1)+x*cosh(2*x+1))",
+        ),
+        (
+            "integrate(x^6*sinh(x), x)",
+            "(x^6 + 30·x^4 + 360·x^2 + 720)·cosh(x) - (6·x^5 + 120·x^3 + 720·x)·sinh(x)",
+            "diff(integrate(x^6*sinh(x), x), x) - x^6*sinh(x)",
+        ),
+        (
+            "integrate(x^6*cosh(x), x)",
+            "(x^6 + 30·x^4 + 360·x^2 + 720)·sinh(x) - (6·x^5 + 120·x^3 + 720·x)·cosh(x)",
+            "diff(integrate(x^6*cosh(x), x), x) - x^6*cosh(x)",
+        ),
+        (
+            "integrate((x^6+1)*sinh(2*x+1), x)",
+            "(1/2·x^6 + 15/4·x^4 + 45/4·x^2 + 49/8)·cosh(2·x + 1) - (3/2·x^5 + 15/2·x^3 + 45/4·x)·sinh(2·x + 1)",
+            "diff(integrate((x^6+1)*sinh(2*x+1), x), x) - (x^6+1)*sinh(2*x+1)",
+        ),
+        (
+            "integrate((x^6+1)*cosh(2*x+1), x)",
+            "(1/2·x^6 + 15/4·x^4 + 45/4·x^2 + 49/8)·sinh(2·x + 1) - (3/2·x^5 + 15/2·x^3 + 45/4·x)·cosh(2·x + 1)",
+            "diff(integrate((x^6+1)*cosh(2*x+1), x), x) - (x^6+1)*cosh(2*x+1)",
+        ),
+        (
+            "integrate(x^7*sinh(x), x)",
+            "(x^7 + 42·x^5 + 840·x^3 + 5040·x)·cosh(x) - (7·x^6 + 210·x^4 + 2520·x^2 + 5040)·sinh(x)",
+            "diff(integrate(x^7*sinh(x), x), x) - x^7*sinh(x)",
+        ),
+        (
+            "integrate(x^7*cosh(x), x)",
+            "(x^7 + 42·x^5 + 840·x^3 + 5040·x)·sinh(x) - (7·x^6 + 210·x^4 + 2520·x^2 + 5040)·cosh(x)",
+            "diff(integrate(x^7*cosh(x), x), x) - x^7*cosh(x)",
+        ),
+        (
+            "integrate((x^7+1)*sinh(2*x+1), x)",
+            "(1/2·x^7 + 21/4·x^5 + 105/4·x^3 + 315/8·x + 1/2)·cosh(2·x + 1) - (7/4·x^6 + 105/8·x^4 + 315/8·x^2 + 315/16)·sinh(2·x + 1)",
+            "diff(integrate((x^7+1)*sinh(2*x+1), x), x) - (x^7+1)*sinh(2*x+1)",
+        ),
+        (
+            "integrate((x^7+1)*cosh(2*x+1), x)",
+            "(1/2·x^7 + 21/4·x^5 + 105/4·x^3 + 315/8·x + 1/2)·sinh(2·x + 1) - (7/4·x^6 + 105/8·x^4 + 315/8·x^2 + 315/16)·cosh(2·x + 1)",
+            "diff(integrate((x^7+1)*cosh(2*x+1), x), x) - (x^7+1)*cosh(2*x+1)",
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -2310,54 +3282,156 @@ fn integrate_contract_polynomial_times_hyperbolic_linear_by_parts_verifies() {
 
 #[test]
 fn integrate_contract_linear_times_hyperbolic_rational_linear_by_parts() {
-    let (result, required) =
-        evaluated_integral_with_required_conditions("integrate((x+1)*sinh((3*x+2)/2), x)");
-    assert_eq!(
-        result,
-        "2/3 * cosh((3 * x + 2) / 2) * (x + 1) - 4/9 * sinh((3 * x + 2) / 2)"
-    );
-    assert!(
-        required.is_empty(),
-        "unexpected required_conditions: {required:?}"
-    );
+    for (input, expected_result, residual) in [
+        (
+            "integrate((x+1)*sinh((3*x+2)/2), x)",
+            "2/3 * cosh((3 * x + 2) / 2) * (x + 1) - 4/9 * sinh((3 * x + 2) / 2)",
+            "diff(integrate((x+1)*sinh((3*x+2)/2), x), x) - (x+1)*sinh((3*x+2)/2)",
+        ),
+        (
+            "integrate((x+1)*cosh((3*x+2)/2), x)",
+            "2/3 * sinh((3 * x + 2) / 2) * (x + 1) - 4/9 * cosh((3 * x + 2) / 2)",
+            "diff(integrate((x+1)*cosh((3*x+2)/2), x), x) - (x+1)*cosh((3*x+2)/2)",
+        ),
+        (
+            "integrate((x+1)*sinh((2-3*x)/2), x)",
+            "-2/3 * cosh((2 - 3 * x) / 2) * (x + 1) - 4/9 * sinh((2 - 3 * x) / 2)",
+            "diff(integrate((x+1)*sinh((2-3*x)/2), x), x) - (x+1)*sinh((2-3*x)/2)",
+        ),
+        (
+            "integrate((x+1)*cosh((2-3*x)/2), x)",
+            "-2/3 * sinh((2 - 3 * x) / 2) * (x + 1) - 4/9 * cosh((2 - 3 * x) / 2)",
+            "diff(integrate((x+1)*cosh((2-3*x)/2), x), x) - (x+1)*cosh((2-3*x)/2)",
+        ),
+    ] {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected_result);
+        assert!(
+            required.is_empty(),
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
 
-    let (result, required) =
-        evaluated_integral_with_required_conditions("integrate((x+1)*cosh((3*x+2)/2), x)");
-    assert_eq!(
-        result,
-        "2/3 * sinh((3 * x + 2) / 2) * (x + 1) - 4/9 * cosh((3 * x + 2) / 2)"
-    );
-    assert!(
-        required.is_empty(),
-        "unexpected required_conditions: {required:?}"
-    );
-
-    let (result, required) =
-        evaluated_integral_with_required_conditions("integrate((x+1)*sinh((2-3*x)/2), x)");
-    assert_eq!(
-        result,
-        "-2/3 * cosh((2 - 3 * x) / 2) * (x + 1) - 4/9 * sinh((2 - 3 * x) / 2)"
-    );
-    assert!(
-        required.is_empty(),
-        "unexpected required_conditions: {required:?}"
-    );
-
-    let (result, required) =
-        evaluated_integral_with_required_conditions("integrate((x+1)*cosh((2-3*x)/2), x)");
-    assert_eq!(
-        result,
-        "-2/3 * sinh((2 - 3 * x) / 2) * (x + 1) - 4/9 * cosh((2 - 3 * x) / 2)"
-    );
-    assert!(
-        required.is_empty(),
-        "unexpected required_conditions: {required:?}"
-    );
+        let (residual_result, residual_required) =
+            evaluated_expr_with_required_conditions(residual);
+        assert_eq!(residual_result, "0");
+        assert!(
+            residual_required.is_empty(),
+            "unexpected residual required_conditions for {input}: {residual_required:?}"
+        );
+    }
 }
 
 #[test]
 fn integrate_contract_polynomial_derivative_exp_substitution() {
     assert_eq!(simplified_integral("integrate(2*x*exp(x^2), x)"), "e^(x^2)");
+}
+
+#[test]
+fn integrate_contract_polynomial_derivative_substitution_exposes_didactic_substep() {
+    for (input, expected_result) in [
+        ("integrate(2*x*exp(x^2), x)", "e^(x^2)"),
+        ("integrate(2*x*cos(x^2), x)", "sin(x^2)"),
+        ("integrate(2*x*sin(x^2), x)", "-cos(x^2)"),
+        ("integrate(2*x*sinh(x^2), x)", "cosh(x^2)"),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert!(
+            wire["required_display"]
+                .as_array()
+                .expect("required_display should be an array")
+                .is_empty(),
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "polynomial derivative substitution trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        assert_eq!(
+            steps.len(),
+            1,
+            "expected compact direct substitution trace for {input}, got {steps:?}"
+        );
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar sustitución"),
+            "expected substitution substep for {input}, got {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_log_power_product_substitution_exposes_didactic_substep() {
+    for (input, expected_result) in [
+        ("integrate(2*x*ln(x^2+1), x)", "(ln(x^2 + 1) - 1)·(x^2 + 1)"),
+        (
+            "integrate(2*x*ln(x^2+1)^2, x)",
+            "(x^2 + 1)·(ln(x^2 + 1)^2 - 2·ln(x^2 + 1) + 2)",
+        ),
+        (
+            "integrate(2*x*ln(x^2+1)^3, x)",
+            "(ln(x^2 + 1)^3 - 3·ln(x^2 + 1)^2 + 6·ln(x^2 + 1) - 6)·(x^2 + 1)",
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert!(
+            wire["required_display"]
+                .as_array()
+                .expect("required_display should be an array")
+                .is_empty(),
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "log-power product substitution trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        assert_eq!(
+            steps.len(),
+            1,
+            "expected compact direct substitution trace for {input}, got {steps:?}"
+        );
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar sustitución"),
+            "expected substitution substep for {input}, got {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
 }
 
 #[test]
@@ -2705,6 +3779,447 @@ fn integrate_contract_polynomial_hyperbolic_tanh_derivative_square_substitution(
 }
 
 #[test]
+fn integrate_contract_hyperbolic_quotient_substitution_exposes_didactic_substep() {
+    for (input, expected_result, expected_required_display) in [
+        (
+            "integrate(2*x*cosh(x^2)/sinh(x^2), x)",
+            "ln(|sinh(x^2)|)",
+            serde_json::json!(["sinh(x^2) ≠ 0"]),
+        ),
+        (
+            "integrate(2*x/tanh(x^2), x)",
+            "ln(|sinh(x^2)|)",
+            serde_json::json!(["sinh(x^2) ≠ 0"]),
+        ),
+        (
+            "integrate(2*x/cosh(x^2)^2, x)",
+            "tanh(x^2)",
+            serde_json::json!([]),
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "hyperbolic quotient substitution trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar sustitución"),
+            "expected substitution substep for {input}, got {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_trig_quotient_substitution_exposes_didactic_substep() {
+    for (input, expected_result, expected_required_display) in [
+        (
+            "integrate(2*x*tan(x^2), x)",
+            "-ln(|cos(x^2)|)",
+            serde_json::json!(["cos(x^2) ≠ 0"]),
+        ),
+        (
+            "integrate(3*x^2*cot(x^3), x)",
+            "ln(|sin(x^3)|)",
+            serde_json::json!(["sin(x^3) ≠ 0"]),
+        ),
+        (
+            "integrate(2*x/cos(x^2)^2, x)",
+            "tan(x^2)",
+            serde_json::json!(["cos(x^2) ≠ 0"]),
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "trig quotient substitution trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar sustitución"),
+            "expected substitution substep for {input}, got {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+
+    let (wire, _stderr) =
+        cli_eval_json_with_stderr_args("integrate(tan(x^2), x)", &["--steps", "on"]);
+    assert_eq!(wire["result"], "integrate(tan(x^2), x)");
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    assert!(
+        !steps
+            .iter()
+            .any(|step| step["rule"] == "Calcular la integral"),
+        "unsupported missing-cofactor tan(x^2) should not emit a fake integration step: {steps:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_direct_sec_csc_derivative_quotients_expose_didactic_substep() {
+    for (input, expected_result, expected_required_display) in [
+        (
+            "integrate(2*x*sin(x^2)/cos(x^2)^2, x)",
+            "sec(x^2)",
+            serde_json::json!(["cos(x^2) ≠ 0"]),
+        ),
+        (
+            "integrate(3*x^2*cos(x^3)/sin(x^3)^2, x)",
+            "-csc(x^3)",
+            serde_json::json!(["sin(x^3) ≠ 0"]),
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "direct sec/csc derivative quotient trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        assert_eq!(
+            steps.len(),
+            1,
+            "expected direct public integration step for {input}, got {steps:?}"
+        );
+        let substeps = steps[0]["substeps"]
+            .as_array()
+            .expect("direct integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar sustitución"),
+            "expected substitution substep for {input}, got {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+
+    let (wire, _stderr) =
+        cli_eval_json_with_stderr_args("integrate(sin(x^2)/cos(x^2)^2, x)", &["--steps", "on"]);
+    assert_eq!(wire["result"], "integrate(sin(x^2) / cos(x^2)^2, x)");
+    if let Some(steps) = wire["steps"].as_array() {
+        assert!(
+            !steps.iter().any(|step| step["substeps"].is_array()),
+            "unsupported missing-cofactor sec derivative quotient should not emit a fake substep: {steps:?}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_direct_trig_log_substitution_exposes_didactic_substep() {
+    for (input, expected_result, expected_required_display) in [
+        (
+            "integrate(tan(2*x+1), x)",
+            "-1/2·ln(|cos(2·x + 1)|)",
+            serde_json::json!(["cos(2·x + 1) ≠ 0"]),
+        ),
+        (
+            "integrate(cot(2*x+1), x)",
+            "1/2·ln(|sin(2·x + 1)|)",
+            serde_json::json!(["sin(2·x + 1) ≠ 0"]),
+        ),
+        (
+            "integrate(sec(2*x+1), x)",
+            "1/2·ln(|(sin(2·x + 1) + 1) / cos(2·x + 1)|)",
+            serde_json::json!(["cos(2·x + 1) ≠ 0"]),
+        ),
+        (
+            "integrate(csc(2*x+1), x)",
+            "1/2·ln(|(cos(2·x + 1) - 1) / sin(2·x + 1)|)",
+            serde_json::json!(["sin(2·x + 1) ≠ 0"]),
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "trig log substitution trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar sustitución"),
+            "expected substitution substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            steps.iter().filter(|step| step["rule"] != "Calcular la integral").all(|step| {
+                step["substeps"]
+                    .as_array()
+                    .is_none_or(|substeps| {
+                        !substeps
+                            .iter()
+                            .any(|substep| substep["title"] == "Usar sustitución")
+                    })
+            }),
+            "non-integration prep steps should not get substitution substeps for {input}: {steps:?}"
+        );
+    }
+
+    let (wire, _stderr) =
+        cli_eval_json_with_stderr_args("integrate(tan(x^2), x)", &["--steps", "on"]);
+    assert_eq!(wire["result"], "integrate(tan(x^2), x)");
+    if let Some(steps) = wire["steps"].as_array() {
+        assert!(
+            !steps.iter().any(|step| step["substeps"].is_array()),
+            "unsupported nonlinear tan(x^2) should not emit a fake substitution substep: {steps:?}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_polynomial_base_substitution_exposes_didactic_substep() {
+    for (input, expected_result, expected_required_display) in [
+        (
+            "integrate((2*x+1)/(x^2+x-1), x)",
+            "ln(|x^2 + x - 1|)",
+            serde_json::json!(["x^2 + x - 1 ≠ 0"]),
+        ),
+        (
+            "integrate((2*x+1)/(x^2+x-1)^3, x)",
+            "-1 / (2·(x^2 + x - 1)^2)",
+            serde_json::json!(["x^2 + x - 1 ≠ 0"]),
+        ),
+        (
+            "integrate(x/sqrt(x^2+1), x)",
+            "(x^2 + 1)^(1/2)",
+            serde_json::json!([]),
+        ),
+        (
+            "integrate(2*x/sqrt(x^2-1), x)",
+            "2·(x^2 - 1)^(1/2)",
+            serde_json::json!(["x^2 - 1 > 0"]),
+        ),
+        (
+            "integrate(2*x*(x^2-1)^(3/2), x)",
+            "2/5·(x^2 - 1)^(5/2)",
+            serde_json::json!(["x^2 - 1 ≥ 0"]),
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "polynomial-base substitution trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar sustitución"),
+            "expected substitution substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            steps.iter().filter(|step| step["rule"] != "Calcular la integral").all(|step| {
+                step["substeps"]
+                    .as_array()
+                    .is_none_or(|substeps| {
+                        !substeps
+                            .iter()
+                            .any(|substep| substep["title"] == "Usar sustitución")
+                    })
+            }),
+            "non-integration prep steps should not get substitution substeps for {input}: {steps:?}"
+        );
+    }
+
+    for input in ["integrate(1/(x^2+1), x)", "integrate(1/sqrt(x^2+1), x)"] {
+        let (wire, _stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        assert!(
+            steps.iter().all(|step| {
+                step["substeps"]
+                    .as_array()
+                    .is_none_or(|substeps| {
+                        !substeps
+                            .iter()
+                            .any(|substep| substep["title"] == "Usar sustitución")
+                    })
+            }),
+            "table-form integral without polynomial cofactor should not emit a fake substitution substep for {input}: {steps:?}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_nested_inverse_polynomial_substitution_exposes_didactic_substep() {
+    for (input, expected_result, expected_required_display) in [
+        (
+            "integrate(2*x/sqrt(4-x^4), x)",
+            "arcsin(x^2 / 2)",
+            serde_json::json!(["4 - x^4 > 0"]),
+        ),
+        (
+            "integrate(2*x/sqrt(1+x^4), x)",
+            "asinh(x^2)",
+            serde_json::json!([]),
+        ),
+        (
+            "integrate(2*x/(1+x^4), x)",
+            "arctan(x^2)",
+            serde_json::json!([]),
+        ),
+        (
+            "integrate(2*x/(4-x^4), x)",
+            "1/2·atanh(x^2 / 2)",
+            serde_json::json!(["4 - x^4 > 0"]),
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "nested inverse polynomial substitution trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar sustitución"),
+            "expected substitution substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            steps.iter().filter(|step| step["rule"] != "Calcular la integral").all(|step| {
+                step["substeps"]
+                    .as_array()
+                    .is_none_or(|substeps| {
+                        !substeps
+                            .iter()
+                            .any(|substep| substep["title"] == "Usar sustitución")
+                    })
+            }),
+            "non-integration prep steps should not get substitution substeps for {input}: {steps:?}"
+        );
+    }
+
+    for input in [
+        "integrate(1/(x^2+1), x)",
+        "integrate(1/(1-x^2), x)",
+        "integrate(1/(4-x^2), x)",
+        "integrate(1/sqrt(x^2+1), x)",
+        "integrate(1/sqrt(1-x^2), x)",
+        "integrate(1/sqrt(4-(x+1)^2), x)",
+        "integrate(1/sqrt(4+(x+1)^2), x)",
+        "integrate(2/(1+(2*x+1)^2), x)",
+    ] {
+        let (wire, _stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        assert!(
+            steps.iter().all(|step| {
+                step["substeps"]
+                    .as_array()
+                    .is_none_or(|substeps| {
+                        !substeps
+                            .iter()
+                            .any(|substep| substep["title"] == "Usar sustitución")
+                    })
+            }),
+            "table or linear inverse primitive should not emit a fake substitution substep for {input}: {steps:?}"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_linear_hyperbolic_coth_derivative_square_substitution() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(1/sinh(2*x + 1)^2, x)");
@@ -2958,6 +4473,21 @@ fn integrate_contract_log_reciprocal_derivative_preserves_real_domain() {
 }
 
 #[test]
+fn integrate_contract_log_reciprocal_derivative_preserves_compact_prep_trace() {
+    let input = "integrate(2*x/((x^2+1)*ln(x^2+1)), x)";
+    let step_rules = evaluated_integral_step_rules(input);
+
+    assert_eq!(
+        step_rules,
+        vec![
+            "Pull Constant From Fraction".to_string(),
+            "Symbolic Integration".to_string(),
+        ],
+        "log-reciprocal substitution should not expand and refactor its compact denominator: {step_rules:?}"
+    );
+}
+
+#[test]
 fn integrate_contract_monomial_times_log_by_parts_preserves_positive_domain() {
     let cases = [
         ("integrate(x*ln(x), x)", "1/4 * x^2 * (2 * ln(x) - 1)"),
@@ -3008,6 +4538,172 @@ fn integrate_contract_monomial_times_log_by_parts_preserves_positive_domain() {
         assert_antiderivative_verifies(input);
         assert_rendered_antiderivative_verifies(input, &result);
     }
+}
+
+#[test]
+fn integrate_contract_log_by_parts_exposes_didactic_substep_and_keeps_compact_trace() {
+    for (input, expected_result, expected_required) in [
+        ("integrate(x*ln(x), x)", "1/4·x^2·(2·ln(x) - 1)", "x > 0"),
+        (
+            "integrate((2*x+1)*ln(2*x+1), x)",
+            "1/4·((2·x + 1)^2·ln(2·x + 1) - 2·x^2 - 2·x)",
+            "2·x + 1 > 0",
+        ),
+        (
+            "integrate((x^2+x+1)*ln(2*x+1), x)",
+            "(1/3·x^3 + 1/2·x^2 + x)·ln(2·x + 1) - 1/9·x^3 - 1/6·x^2 - 5/6·x + 5/12·ln(2·x + 1)",
+            "2·x + 1 > 0",
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        assert!(
+            stderr.is_empty(),
+            "log by-parts presentation should stay quiet for {input}\nstderr:\n{stderr}"
+        );
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"],
+            serde_json::json!([expected_required]),
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        assert_eq!(
+            steps.len(),
+            1,
+            "expected compact direct integration trace for {input}, got {steps:?}"
+        );
+        assert!(
+            steps
+                .iter()
+                .all(|step| step["rule"] != "Expandir la expresión"),
+            "log by-parts trace should not expand before integrating for {input}, got {steps:?}"
+        );
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar integración por partes"),
+            "expected integration-by-parts substep for {input}, got {substeps:?}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_positive_quadratic_log_by_parts_keeps_compact_trace() {
+    let input = "integrate((x^2+1)*ln(x^2+1), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+    assert!(
+        stderr.is_empty(),
+        "positive quadratic log by-parts presentation should stay quiet\nstderr:\n{stderr}"
+    );
+    assert_eq!(
+        wire["result"],
+        "(1/3·x^3 + x)·ln(x^2 + 1) - 2/9·x^3 - 4/3·x + 4/3·arctan(x)"
+    );
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!([]),
+        "positive quadratic log by-parts should not add domain requirements"
+    );
+
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    assert_eq!(
+        steps.len(),
+        1,
+        "expected compact direct integration trace, got {steps:?}"
+    );
+    assert!(
+        steps
+            .iter()
+            .all(|step| step["rule"] != "Expandir la expresión"),
+        "positive quadratic log by-parts trace should not expand before integrating, got {steps:?}"
+    );
+    let integration_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .expect("expected public symbolic integration step");
+    let substeps = integration_step["substeps"]
+        .as_array()
+        .expect("integration step should expose didactic substeps");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar integración por partes"),
+        "expected integration-by-parts substep, got {substeps:?}"
+    );
+
+    assert_eq!(
+        assert_antiderivative_verifies(input),
+        AntiderivativeVerificationRoute::PublicResidual
+    );
+}
+
+#[test]
+fn integrate_contract_positive_quadratic_log_by_parts_collects_repeated_log_factor() {
+    let input = "integrate((x^2+x+1)*ln(x^2+1), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+    assert!(
+        stderr.is_empty(),
+        "positive quadratic log by-parts presentation should stay quiet\nstderr:\n{stderr}"
+    );
+    assert_eq!(
+        wire["result"],
+        "ln(x^2 + 1)·(1/3·x^3 + 1/2·x^2 + x + 1/2) + 4/3·arctan(x) - 2/9·x^3 - 1/2·x^2 - 4/3·x"
+    );
+    assert_eq!(wire["required_display"], serde_json::json!([]));
+
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    assert_eq!(
+        steps.len(),
+        1,
+        "expected compact direct integration trace, got {steps:?}"
+    );
+    assert!(
+        steps
+            .iter()
+            .all(|step| step["rule"] != "Expandir la expresión"),
+        "positive quadratic log by-parts trace should not expand before integrating, got {steps:?}"
+    );
+    let integration_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .expect("expected public symbolic integration step");
+    let substeps = integration_step["substeps"]
+        .as_array()
+        .expect("integration step should expose didactic substeps");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar integración por partes"),
+        "expected integration-by-parts substep, got {substeps:?}"
+    );
+
+    assert_eq!(
+        assert_antiderivative_verifies(input),
+        AntiderivativeVerificationRoute::PublicResidual
+    );
+    let residual = "diff(integrate((x^2+x+1)*ln(x^2+1), x), x) - (x^2+x+1)*ln(x^2+1)";
+    let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+    assert!(
+        residual_stderr.is_empty(),
+        "positive quadratic log by-parts residual should stay quiet\nstderr:\n{residual_stderr}"
+    );
+    assert_eq!(residual_wire["result"], "0");
+    assert_eq!(residual_wire["required_display"], serde_json::json!([]));
 }
 
 #[test]
@@ -3093,13 +4789,13 @@ fn integrate_contract_quadratic_times_positive_quadratic_log_by_parts_verifies_s
     let cases = [
         (
             "integrate(ln(x^2+x+1), x)",
-            "x·ln(x^2 + x + 1) + 3·arctan((2·x + 1) / sqrt(3)) / sqrt(3) - 2·x + 1/2·ln(x^2 + x + 1)",
+            "1/2·ln(x^2 + x + 1) + ln(x^2 + x + 1)·x + 3·arctan((2·x + 1) / sqrt(3)) / sqrt(3) - 2·x",
             "diff(integrate(ln(x^2+x+1), x), x) - ln(x^2+x+1)",
             true,
         ),
         (
             "integrate(x*ln(x^2+x+1), x)",
-            "1/2·x^2·ln(x^2 + x + 1) - 3/2·arctan((2·x + 1) / sqrt(3)) / sqrt(3) - 1/2·x^2 + 1/4·ln(x^2 + x + 1) + 1/2·x",
+            "1/4·ln(x^2 + x + 1) + 1/2·ln(x^2 + x + 1)·x^2 - 3/2·arctan((2·x + 1) / sqrt(3)) / sqrt(3) + 1/2·x - 1/2·x^2",
             "diff(integrate(x*ln(x^2+x+1), x), x) - x*ln(x^2+x+1)",
             true,
         ),
@@ -3214,6 +4910,151 @@ fn integrate_contract_quadratic_times_positive_quadratic_log_by_parts_verifies_s
     );
     assert_eq!(wire["result"], "integrate(ln(x^2 + 1)·x^9, x)");
     assert_eq!(wire["required_display"], serde_json::json!([]));
+}
+
+#[test]
+fn integrate_contract_positive_quadratic_log_by_parts_flattens_compound_remainder() {
+    let input = "integrate((x+1)*ln(x^2+x+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "ln(x^2 + x + 1) * (1/2 * x^2 + x + 3/4) + 3/2 * arctan((2 * x + 1) / sqrt(3)) / sqrt(3) - 1/2 * x^2 - 3/2 * x"
+    );
+    assert!(
+        !result.contains(" - ("),
+        "compound positive-quadratic log by-parts presentation should flatten subtracting a remainder group, got {result}"
+    );
+    assert!(
+        required.is_empty(),
+        "positive quadratic log argument should not add conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    assert_rendered_antiderivative_verifies(input, &result);
+
+    let residual = "diff(integrate((x+1)*ln(x^2+x+1), x), x) - (x+1)*ln(x^2+x+1)";
+    let (residual_result, residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "positive-quadratic log by-parts residual should not add conditions: {residual_required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_positive_quadratic_log_by_parts_recombines_expanded_orientation() {
+    let input = "integrate((x+1)*ln(x^2-x+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "ln(x^2 + 1 - x) * (1/2 * x^2 + x - 1/4) + 9/2 * arctan((2 * x - 1) / sqrt(3)) / sqrt(3) - 1/2 * x^2 - 5/2 * x"
+    );
+    assert!(
+        !result.contains(" - (") && !result.contains("1/2 * ("),
+        "expanded-orientation positive-quadratic log by-parts presentation should stay flat, got {result}"
+    );
+    assert!(
+        required.is_empty(),
+        "positive quadratic log argument should not add conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
+    let residual = "diff(integrate((x+1)*ln(x^2-x+1), x), x) - (x+1)*ln(x^2-x+1)";
+    let (residual_result, residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "expanded-orientation positive-quadratic log by-parts residual should not add conditions: {residual_required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_positive_quadratic_self_log_by_parts_flattens_remainder() {
+    let input = "integrate((x^2+x+1)*ln(x^2+x+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "ln(x^2 + x + 1) * (1/3 * x^3 + 1/2 * x^2 + x + 5/12) + 3/2 * arctan((2 * x + 1) / sqrt(3)) / sqrt(3) - 2/9 * x^3 - 1/3 * x^2 - 7/6 * x"
+    );
+    assert!(
+        !result.contains(" - ("),
+        "self positive-quadratic log by-parts presentation should flatten subtracting a remainder group, got {result}"
+    );
+    assert!(
+        required.is_empty(),
+        "positive quadratic self-log argument should not add conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    assert_rendered_antiderivative_verifies(input, &result);
+
+    let residual = "diff(integrate((x^2+x+1)*ln(x^2+x+1), x), x) - (x^2+x+1)*ln(x^2+x+1)";
+    let (residual_result, residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "positive-quadratic self-log by-parts residual should not add conditions: {residual_required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_cubic_times_shifted_positive_quadratic_log_flattens_remainder() {
+    let input = "integrate((x^3+x^2+x+1)*ln(x^2+x+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "ln(x^2 + x + 1) * (1/4 * x^4 + 1/3 * x^3 + 1/2 * x^2 + x + 13/24) + 9/4 * arctan((2 * x + 1) / sqrt(3)) / sqrt(3) - 1/8 * x^4 - 5/36 * x^3 - 5/24 * x^2 - 5/3 * x"
+    );
+    assert!(
+        !result.contains(" - ("),
+        "cubic shifted positive-quadratic log by-parts presentation should flatten subtracting a remainder group, got {result}"
+    );
+    assert!(
+        required.is_empty(),
+        "shifted positive quadratic log argument should not add conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    assert_rendered_antiderivative_verifies(input, &result);
+
+    let residual = "diff(integrate((x^3+x^2+x+1)*ln(x^2+x+1), x), x) - (x^3+x^2+x+1)*ln(x^2+x+1)";
+    let (residual_result, residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "cubic shifted positive-quadratic log by-parts residual should not add conditions: {residual_required:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_quartic_times_shifted_positive_quadratic_log_flattens_remainder() {
+    let input = "integrate((x^4+x^3+x^2+x+1)*ln(x^2+x+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(
+        result,
+        "ln(x^2 + x + 1) * (1/5 * x^5 + 1/4 * x^4 + 1/3 * x^3 + 1/2 * x^2 + x + 77/120) + 33/20 * arctan((2 * x + 1) / sqrt(3)) / sqrt(3) - 2/25 * x^5 - 3/40 * x^4 - 13/180 * x^3 - 49/120 * x^2 - 22/15 * x"
+    );
+    assert!(
+        !result.contains(" - ("),
+        "quartic shifted positive-quadratic log by-parts presentation should flatten subtracting a remainder group, got {result}"
+    );
+    assert!(
+        required.is_empty(),
+        "quartic shifted positive quadratic log argument should not add conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    assert_rendered_antiderivative_verifies(input, &result);
+
+    let residual =
+        "diff(integrate((x^4+x^3+x^2+x+1)*ln(x^2+x+1), x), x) - (x^4+x^3+x^2+x+1)*ln(x^2+x+1)";
+    let (residual_result, residual_required) = evaluated_expr_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "quartic shifted positive-quadratic log by-parts residual should not add conditions: {residual_required:?}"
+    );
 }
 
 #[test]
@@ -5077,7 +6918,7 @@ fn integrate_contract_polynomial_times_arctan_affine_by_parts() {
     for (input, fragments) in [
         (
             "integrate(x*arctan(x), x)",
-            vec!["x^2 * arctan(x)", "arctan(x)"],
+            vec!["arctan(x) * (x^2 + 1)", "- x"],
         ),
         (
             "integrate(x^2*arctan(x), x)",
@@ -5085,7 +6926,7 @@ fn integrate_contract_polynomial_times_arctan_affine_by_parts() {
         ),
         (
             "integrate(x^3*arctan(x), x)",
-            vec!["x^4 * arctan(x)", "x^3", "arctan(x)"],
+            vec!["arctan(x) * (3 * x^4 - 3)", "3 * x - x^3"],
         ),
         (
             "integrate(x^4*arctan(x), x)",
@@ -5093,7 +6934,7 @@ fn integrate_contract_polynomial_times_arctan_affine_by_parts() {
         ),
         (
             "integrate(x^5*arctan(x), x)",
-            vec!["x^6 * arctan(x)", "x^5", "arctan(x)"],
+            vec!["arctan(x) * (15 * x^6 + 15)", "5 * x^3 - 3 * x^5 - 15 * x"],
         ),
         (
             "integrate(x^6*arctan(x), x)",
@@ -5101,11 +6942,15 @@ fn integrate_contract_polynomial_times_arctan_affine_by_parts() {
         ),
         (
             "integrate(x^2*arctan(x+1), x)",
-            vec!["x^3 * arctan(x + 1)", "ln(x^2 + 2 * x + 2)"],
+            vec!["arctan(x + 1) * (2 * x^3 - 4)", "ln(x^2 + 2 * x + 2)"],
+        ),
+        (
+            "integrate(x^3*arctan(x+1), x)",
+            vec!["arctan(x + 1) * (3 * x^4 + 12)", "3 * x^2 - x^3 - 6 * x"],
         ),
         (
             "integrate(x^2*arctan(1-x), x)",
-            vec!["x^3 * arctan(1 - x)", "ln(x^2 + 2 - 2 * x)"],
+            vec!["arctan(1 - x) * (1/3 * x^3 + 2/3)", "ln(x^2 + 2 - 2 * x)"],
         ),
     ] {
         let (result, required) = evaluated_integral_with_required_conditions(input);
@@ -5130,6 +6975,43 @@ fn integrate_contract_polynomial_times_arctan_affine_by_parts() {
         assert_antiderivative_verifies(input);
     }
 
+    let (linear_arctan_result, _) =
+        evaluated_integral_with_required_conditions("integrate(x*arctan(x), x)");
+    assert!(
+        linear_arctan_result.matches("arctan(x)").nth(1).is_none(),
+        "linear polynomial-arctan by-parts presentation should collect repeated arctan terms, got {linear_arctan_result}"
+    );
+    let (cubic_arctan_result, _) =
+        evaluated_integral_with_required_conditions("integrate(x^3*arctan(x), x)");
+    assert!(
+        cubic_arctan_result.matches("arctan(x)").nth(1).is_none(),
+        "cubic polynomial-arctan by-parts presentation should collect repeated arctan terms, got {cubic_arctan_result}"
+    );
+    let (quintic_arctan_result, _) =
+        evaluated_integral_with_required_conditions("integrate(x^5*arctan(x), x)");
+    assert!(
+        quintic_arctan_result.matches("arctan(x)").nth(1).is_none(),
+        "quintic polynomial-arctan by-parts presentation should collect repeated arctan terms, got {quintic_arctan_result}"
+    );
+    let (shifted_quadratic_arctan_result, _) =
+        evaluated_integral_with_required_conditions("integrate(x^2*arctan(x+1), x)");
+    assert!(
+        shifted_quadratic_arctan_result
+            .matches("arctan(x + 1)")
+            .nth(1)
+            .is_none(),
+        "shifted quadratic polynomial-arctan by-parts presentation should collect repeated arctan terms, got {shifted_quadratic_arctan_result}"
+    );
+    let (shifted_cubic_arctan_result, _) =
+        evaluated_integral_with_required_conditions("integrate(x^3*arctan(x+1), x)");
+    assert!(
+        shifted_cubic_arctan_result
+            .matches("arctan(x + 1)")
+            .nth(1)
+            .is_none(),
+        "shifted cubic polynomial-arctan by-parts presentation should collect repeated arctan terms, got {shifted_cubic_arctan_result}"
+    );
+
     for input in [
         "integrate(x*arctan(x), x)",
         "integrate(x^2*arctan(x), x)",
@@ -5138,6 +7020,7 @@ fn integrate_contract_polynomial_times_arctan_affine_by_parts() {
         "integrate(x^5*arctan(x), x)",
         "integrate(x^6*arctan(x), x)",
         "integrate(x^2*arctan(x+1), x)",
+        "integrate(x^3*arctan(x+1), x)",
         "integrate(x^2*arctan(1-x), x)",
     ] {
         let (wire, _) = cli_eval_json_with_stderr(input);
@@ -5155,10 +7038,34 @@ fn integrate_contract_polynomial_times_arctan_affine_by_parts() {
 
     let (negative_shifted_result, _) =
         evaluated_integral_with_required_conditions("integrate(x^2*arctan(1-x), x)");
+    assert_eq!(
+        negative_shifted_result.matches("arctan(1 - x)").count(),
+        1,
+        "negative-shifted polynomial-arctan presentation should collect repeated arctan terms, got {negative_shifted_result}"
+    );
     assert!(
-        negative_shifted_result.contains("2/3 * arctan(1 - x)")
+        negative_shifted_result.contains("1/3 * x^3 + 2/3")
             && !negative_shifted_result.contains("arctan(x - 1)"),
         "negative-shifted polynomial-arctan presentation should orient correction terms toward the input argument, got {negative_shifted_result}"
+    );
+
+    let (negative_expanded_result, _) =
+        evaluated_integral_with_required_conditions("integrate((x^2+x)*arctan(1-x), x)");
+    assert_eq!(
+        negative_expanded_result.matches("arctan(1 - x)").count(),
+        1,
+        "expanded negative-shifted polynomial-arctan presentation should collect repeated arctan terms, got {negative_expanded_result}"
+    );
+    assert_eq!(
+        negative_expanded_result.matches("ln(x^2 + 2 - 2 * x)").count(),
+        1,
+        "expanded negative-shifted polynomial-arctan presentation should collect repeated log companions, got {negative_expanded_result}"
+    );
+    assert!(
+        negative_expanded_result.contains("5/6 * ln(x^2 + 2 - 2 * x)")
+            && negative_expanded_result.contains("7/6 * x")
+            && !negative_expanded_result.contains("arctan(x - 1)"),
+        "expanded negative-shifted polynomial-arctan presentation should keep compact companions and input orientation, got {negative_expanded_result}"
     );
 
     let residual = "diff(integrate(x^6*arctan(x), x), x) - x^6*arctan(x)";
@@ -5178,6 +7085,15 @@ fn integrate_contract_polynomial_times_arctan_affine_by_parts() {
     );
     assert_eq!(wire["required_display"], serde_json::json!([]));
 
+    let shifted_cubic_residual = "diff(integrate(x^3*arctan(x+1), x), x) - x^3*arctan(x+1)";
+    let (wire, stderr) = cli_eval_json_with_stderr(shifted_cubic_residual);
+    assert_eq!(wire["result"], "0");
+    assert!(
+        stderr.is_empty(),
+        "shifted cubic polynomial-arctan residual should stay quiet\nstderr:\n{stderr}"
+    );
+    assert_eq!(wire["required_display"], serde_json::json!([]));
+
     let expanded_residual =
         "diff(integrate(x^2*arctan(x+1)+x*arctan(x+1), x), x) - (x^2*arctan(x+1)+x*arctan(x+1))";
     let (wire, stderr) = cli_eval_json_with_stderr(expanded_residual);
@@ -5194,6 +7110,16 @@ fn integrate_contract_polynomial_times_arctan_affine_by_parts() {
     assert!(
         stderr.is_empty(),
         "negative-shifted polynomial-arctan residual should stay quiet\nstderr:\n{stderr}"
+    );
+    assert_eq!(wire["required_display"], serde_json::json!([]));
+
+    let compact_negative_shifted_residual =
+        "diff(((x^3+2)*arctan(1-x))/3 + ln(x^2+2-2*x)/3 + x^2/6 + 2*x/3, x) - x^2*arctan(1-x)";
+    let (wire, stderr) = cli_eval_json_with_stderr(compact_negative_shifted_residual);
+    assert_eq!(wire["result"], "0");
+    assert!(
+        stderr.is_empty(),
+        "explicit compact negative-shifted polynomial-arctan residual should stay quiet\nstderr:\n{stderr}"
     );
     assert_eq!(wire["required_display"], serde_json::json!([]));
 
@@ -6534,25 +8460,25 @@ fn integrate_contract_log_high_power_product_by_parts_verifies() {
     let cases: [(&str, &str, &[&str], &str); 4] = [
         (
             "integrate(2*x*ln(x^2+1)^4, x)",
-            "(x^2 + 1) * ln(x^2 + 1)^4 + 12 * (x^2 + 1) * ln(x^2 + 1)^2 + 24 * (x^2 + 1) - 24 * (x^2 + 1) * ln(x^2 + 1) - 4 * (x^2 + 1) * ln(x^2 + 1)^3",
+            "(x^2 + 1) * (ln(x^2 + 1)^4 - 4 * ln(x^2 + 1)^3 + 12 * ln(x^2 + 1)^2 - 24 * ln(x^2 + 1) + 24)",
             &[],
             "diff(integrate(2*x*ln(x^2+1)^4, x), x) - 2*x*ln(x^2+1)^4",
         ),
         (
             "integrate(2*x*ln(x^2+1)^5, x)",
-            "(x^2 + 1) * ln(x^2 + 1)^5 + 20 * (x^2 + 1) * ln(x^2 + 1)^3 + 120 * (x^2 + 1) * ln(x^2 + 1) - 120 * (x^2 + 1) - 60 * (x^2 + 1) * ln(x^2 + 1)^2 - 5 * (x^2 + 1) * ln(x^2 + 1)^4",
+            "(x^2 + 1) * (ln(x^2 + 1)^5 - 5 * ln(x^2 + 1)^4 + 20 * ln(x^2 + 1)^3 - 60 * ln(x^2 + 1)^2 + 120 * ln(x^2 + 1) - 120)",
             &[],
             "diff(integrate(2*x*ln(x^2+1)^5, x), x) - 2*x*ln(x^2+1)^5",
         ),
         (
             "integrate((2*x+1)*ln(x^2+x+1)^4, x)",
-            "(x^2 + x + 1) * ln(x^2 + x + 1)^4 + 12 * (x^2 + x + 1) * ln(x^2 + x + 1)^2 + 24 * (x^2 + x + 1) - 24 * (x^2 + x + 1) * ln(x^2 + x + 1) - 4 * (x^2 + x + 1) * ln(x^2 + x + 1)^3",
+            "(x^2 + x + 1) * (ln(x^2 + x + 1)^4 - 4 * ln(x^2 + x + 1)^3 + 12 * ln(x^2 + x + 1)^2 - 24 * ln(x^2 + x + 1) + 24)",
             &[],
             "diff(integrate((2*x+1)*ln(x^2+x+1)^4, x), x) - (2*x+1)*ln(x^2+x+1)^4",
         ),
         (
             "integrate((2*x+1)*ln(x^2+x+1)^5, x)",
-            "(x^2 + x + 1) * ln(x^2 + x + 1)^5 + 20 * (x^2 + x + 1) * ln(x^2 + x + 1)^3 + 120 * (x^2 + x + 1) * ln(x^2 + x + 1) - 120 * (x^2 + x + 1) - 60 * (x^2 + x + 1) * ln(x^2 + x + 1)^2 - 5 * (x^2 + x + 1) * ln(x^2 + x + 1)^4",
+            "(x^2 + x + 1) * (ln(x^2 + x + 1)^5 - 5 * ln(x^2 + x + 1)^4 + 20 * ln(x^2 + x + 1)^3 - 60 * ln(x^2 + x + 1)^2 + 120 * ln(x^2 + x + 1) - 120)",
             &[],
             "diff(integrate((2*x+1)*ln(x^2+x+1)^5, x), x) - (2*x+1)*ln(x^2+x+1)^5",
         ),
@@ -8180,6 +10106,73 @@ fn integrate_contract_sqrt_chain_raw_reciprocal_trig_derivative_quotients_render
             residual_required, expected_conditions,
             "residual should preserve required domain for {input}: {residual_required:?}"
         );
+    }
+}
+
+#[test]
+fn integrate_contract_sqrt_chain_substitutions_expose_didactic_substep() {
+    for (input, expected_result, expected_required_display) in [
+        (
+            "integrate(sin(sqrt(x))/(sqrt(x)*cos(sqrt(x))^2), x)",
+            "2·sec(sqrt(x))",
+            serde_json::json!(["cos(sqrt(x)) ≠ 0", "x > 0"]),
+        ),
+        (
+            "integrate(tan(sqrt(x))/sqrt(x), x)",
+            "-2·ln(|cos(sqrt(x))|)",
+            serde_json::json!(["cos(sqrt(x)) ≠ 0", "x > 0"]),
+        ),
+        (
+            "integrate(tanh(sqrt(x))/sqrt(x), x)",
+            "2·ln(cosh(sqrt(x)))",
+            serde_json::json!(["x > 0"]),
+        ),
+        (
+            "integrate(1/(sqrt(x)*cosh(sqrt(x))^2), x)",
+            "2·tanh(sqrt(x))",
+            serde_json::json!(["x > 0"]),
+        ),
+        (
+            "integrate(sinh(sqrt(x))/(sqrt(x)*cosh(sqrt(x))^2), x)",
+            "-2 / cosh(sqrt(x))",
+            serde_json::json!(["x > 0"]),
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "sqrt-chain substitution trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        assert_eq!(
+            steps.len(),
+            1,
+            "expected compact direct substitution trace for {input}, got {steps:?}"
+        );
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar sustitución"),
+            "expected substitution substep for {input}, got {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
     }
 }
 

@@ -96,6 +96,17 @@ fn push_structural_requires(
             crate::diagnostics::RequireOrigin::InputImplicit,
         );
     }
+    push_intrinsic_function_requires(
+        ctx,
+        resolved,
+        crate::diagnostics::RequireOrigin::InputImplicit,
+        diagnostics,
+    );
+
+    let resolved_is_calculus_call = matches!(
+        ctx.get(resolved),
+        cas_ast::Expr::Function(fn_id, _) if matches!(ctx.sym_name(*fn_id), "diff" | "integrate" | "limit")
+    );
 
     if let Some(result_id) = eval_result_first_expr(result) {
         let output_domain =
@@ -120,6 +131,89 @@ fn push_structural_requires(
                 cond.clone(),
                 crate::diagnostics::RequireOrigin::OutputImplicit,
             );
+        }
+        if !resolved_is_calculus_call {
+            push_intrinsic_function_requires(
+                ctx,
+                result_id,
+                crate::diagnostics::RequireOrigin::OutputImplicit,
+                diagnostics,
+            );
+        }
+    }
+}
+
+fn push_intrinsic_function_requires(
+    ctx: &mut cas_ast::Context,
+    root: ExprId,
+    origin: crate::diagnostics::RequireOrigin,
+    diagnostics: &mut crate::diagnostics::Diagnostics,
+) {
+    let mut stack = vec![(root, false)];
+    while let Some((expr, inside_calculus_call)) = stack.pop() {
+        match ctx.get(expr).clone() {
+            cas_ast::Expr::Function(fn_id, args) => {
+                let builtin = ctx.builtin_of(fn_id);
+                if !inside_calculus_call
+                    && args.len() == 1
+                    && !cas_ast::collect_variables(ctx, args[0]).is_empty()
+                {
+                    let requirement = match builtin {
+                        Some(cas_ast::BuiltinFn::Tan | cas_ast::BuiltinFn::Sec) => {
+                            let denominator =
+                                ctx.call_builtin(cas_ast::BuiltinFn::Cos, vec![args[0]]);
+                            Some(crate::ImplicitCondition::NonZero(denominator))
+                        }
+                        Some(cas_ast::BuiltinFn::Cot | cas_ast::BuiltinFn::Csc) => {
+                            let denominator =
+                                ctx.call_builtin(cas_ast::BuiltinFn::Sin, vec![args[0]]);
+                            Some(crate::ImplicitCondition::NonZero(denominator))
+                        }
+                        Some(
+                            cas_ast::BuiltinFn::Arcsin
+                            | cas_ast::BuiltinFn::Asin
+                            | cas_ast::BuiltinFn::Arccos
+                            | cas_ast::BuiltinFn::Acos,
+                        ) => {
+                            let one = ctx.num(1);
+                            let two = ctx.num(2);
+                            let square = ctx.add(cas_ast::Expr::Pow(args[0], two));
+                            let bounded = ctx.add(cas_ast::Expr::Sub(one, square));
+                            Some(crate::ImplicitCondition::NonNegative(bounded))
+                        }
+                        _ => None,
+                    };
+                    if let Some(requirement) = requirement {
+                        diagnostics.push_required(requirement, origin);
+                    }
+                }
+                let enters_calculus = matches!(ctx.sym_name(fn_id), "diff" | "integrate" | "limit");
+                stack.extend(
+                    args.into_iter()
+                        .map(|arg| (arg, inside_calculus_call || enters_calculus)),
+                );
+            }
+            cas_ast::Expr::Add(left, right)
+            | cas_ast::Expr::Sub(left, right)
+            | cas_ast::Expr::Mul(left, right)
+            | cas_ast::Expr::Div(left, right) => {
+                stack.push((left, inside_calculus_call));
+                stack.push((right, inside_calculus_call));
+            }
+            cas_ast::Expr::Pow(base, exponent) => {
+                stack.push((base, inside_calculus_call));
+                stack.push((exponent, inside_calculus_call));
+            }
+            cas_ast::Expr::Neg(inner) | cas_ast::Expr::Hold(inner) => {
+                stack.push((inner, inside_calculus_call));
+            }
+            cas_ast::Expr::Matrix { data, .. } => {
+                stack.extend(data.into_iter().map(|arg| (arg, inside_calculus_call)));
+            }
+            cas_ast::Expr::Number(_)
+            | cas_ast::Expr::Variable(_)
+            | cas_ast::Expr::Constant(_)
+            | cas_ast::Expr::SessionRef(_) => {}
         }
     }
 }

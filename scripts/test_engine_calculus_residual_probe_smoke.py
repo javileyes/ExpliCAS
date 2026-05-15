@@ -47,6 +47,13 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             ("x + 1", "x + 2"),
         )
         self.assertEqual(SMOKE.extract_warnings(parsed), ("diagnostic",))
+        self.assertEqual(
+            SMOKE.extract_stderr_warnings(
+                "2026-05-15T05:36:56Z  WARN simplify: depth_overflow\n"
+                "ordinary stderr line\n"
+            ),
+            ("2026-05-15T05:36:56Z  WARN simplify: depth_overflow",),
+        )
 
     def test_classify_error_checks_result_required_conditions_and_warnings(self) -> None:
         self.assertIsNone(
@@ -121,6 +128,39 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(result.result, "1 / (x + 2)")
         self.assertEqual(result.required_conditions, ("x + 2",))
 
+    def test_run_probe_forbid_warnings_includes_stderr_warnings(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cas_cli = Path(temp_dir) / "cas_cli"
+            cas_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    echo '2026-05-15T05:36:56Z  WARN simplify: depth_overflow' >&2
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    """
+                ),
+                encoding="utf-8",
+            )
+            cas_cli.chmod(cas_cli.stat().st_mode | stat.S_IXUSR)
+
+            result = SMOKE.run_probe(
+                "ignored",
+                timeout_seconds=2.0,
+                cas_cli=cas_cli,
+                expected_result="1 / (x + 2)",
+                required_conditions=("x + 2",),
+                forbid_warnings=True,
+            )
+
+        self.assertEqual(result.status, "fail")
+        self.assertIn("depth_overflow", result.error or "")
+        self.assertEqual(
+            result.warnings,
+            ("2026-05-15T05:36:56Z  WARN simplify: depth_overflow",),
+        )
+
     def test_run_probe_timeout_terminates_process_group(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             cas_cli = Path(temp_dir) / "cas_cli"
@@ -143,7 +183,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
     def test_default_matrix_contains_representative_wrapped_residuals(self) -> None:
         cases = SMOKE.build_default_matrix_cases()
 
-        self.assertEqual(len(cases), 109)
+        self.assertEqual(len(cases), 113)
         self.assertIn("rational_quad:plus", {case.name for case in cases})
         self.assertIn("hyperbolic_sinh:scaled_negative", {case.name for case in cases})
         self.assertIn("hyperbolic_sinh:minus_const", {case.name for case in cases})
@@ -335,6 +375,31 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             positive_quadratic_fraction_denominator_case.required_conditions,
             (),
         )
+        product_zero_csc_case = next(
+            case for case in cases if case.name == "recip_trig_csc_product_zero_factor"
+        )
+        self.assertEqual(product_zero_csc_case.expected_result, "0")
+        self.assertEqual(product_zero_csc_case.required_conditions, ("sin(2·x + 1)",))
+        product_zero_csc_reversed_case = next(
+            case
+            for case in cases
+            if case.name == "recip_trig_csc_product_zero_factor_reversed"
+        )
+        self.assertEqual(product_zero_csc_reversed_case.expected_result, "0")
+        self.assertEqual(
+            product_zero_csc_reversed_case.required_conditions,
+            ("sin(2·x + 1)",),
+        )
+        product_zero_trig_case = next(
+            case for case in cases if case.name == "plain_trig_by_parts_product_zero_factor"
+        )
+        self.assertEqual(product_zero_trig_case.expected_result, "0")
+        self.assertEqual(product_zero_trig_case.required_conditions, ())
+        product_zero_hyperbolic_case = next(
+            case for case in cases if case.name == "hyperbolic_by_parts_product_zero_factor"
+        )
+        self.assertEqual(product_zero_hyperbolic_case.expected_result, "0")
+        self.assertEqual(product_zero_hyperbolic_case.required_conditions, ())
 
     def test_run_default_matrix_summarizes_all_cases(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -344,6 +409,21 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     """\
                     #!/bin/sh
                     case "$*" in
+                    *"csc(2*x+1)"*"(y-y)"*)
+                    cat <<'OUT'
+                    {"result":"0","required_conditions":[{"expr_display":"sin(2·x + 1)"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(y-y)"*"csc(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"0","required_conditions":[{"expr_display":"sin(2·x + 1)"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"*(y-y)"*)
+                    cat <<'OUT'
+                    {"result":"0","required_conditions":[],"warnings":[]}
+                    OUT
+                    ;;
                     *"3*(("*")/(((diff("*")-1)/(x^2+1)"*)
                     cat <<'OUT'
                     {"result":"-3·(x^2 + 1)","required_conditions":[],"warnings":[]}
@@ -434,8 +514,8 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(matrix["status"], "pass")
-        self.assertEqual(matrix["total"], 109)
-        self.assertEqual(matrix["status_counts"]["pass"], 109)
+        self.assertEqual(matrix["total"], 113)
+        self.assertEqual(matrix["status_counts"]["pass"], 113)
 
     def test_cli_accepts_repeated_require_flags(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -445,6 +525,21 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     """\
                     #!/bin/sh
                     case "$*" in
+                    *"csc(2*x+1)"*"(y-y)"*)
+                    cat <<'OUT'
+                    {"result":"0","required_conditions":[{"expr_display":"sin(2·x + 1)"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(y-y)"*"csc(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"0","required_conditions":[{"expr_display":"sin(2·x + 1)"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"*(y-y)"*)
+                    cat <<'OUT'
+                    {"result":"0","required_conditions":[],"warnings":[]}
+                    OUT
+                    ;;
                     *"3*(("*")/(((diff("*")-1)/(x^2+1)"*)
                     cat <<'OUT'
                     {"result":"-3·(x^2 + 1)","required_conditions":[],"warnings":[]}
@@ -561,6 +656,21 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     """\
                     #!/bin/sh
                     case "$*" in
+                    *"csc(2*x+1)"*"(y-y)"*)
+                    cat <<'OUT'
+                    {"result":"0","required_conditions":[{"expr_display":"sin(2·x + 1)"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(y-y)"*"csc(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"0","required_conditions":[{"expr_display":"sin(2·x + 1)"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"*(y-y)"*)
+                    cat <<'OUT'
+                    {"result":"0","required_conditions":[],"warnings":[]}
+                    OUT
+                    ;;
                     *"3*(("*")/(((diff("*")-1)/(x^2+1)"*)
                     cat <<'OUT'
                     {"result":"-3·(x^2 + 1)","required_conditions":[],"warnings":[]}
@@ -660,7 +770,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn('"total": 109', completed.stdout)
+        self.assertIn('"total": 113', completed.stdout)
 
 
 if __name__ == "__main__":

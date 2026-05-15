@@ -95,6 +95,109 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+### 2026-05-15: Cross-Family Csc Residual Quotient Discovery
+
+- area:
+  - calculus / residual verification / cross-family quotient wrappers
+- status:
+  - `superseded`
+- generated candidate:
+  - promote a shifted quotient of a domain-sensitive reciprocal-trig residual
+    over another calculus residual, for example:
+    `((diff(integrate(csc(2*x+1),x),x)-csc(2*x+1))+1) /
+    ((diff(integrate(1/(x^2+1),x),x)-1/(x^2+1))+1)`
+- local lane:
+  - `scripts/engine_calculus_residual_probe_smoke.py --expr ... --cas-cli
+    target/debug/cas_cli --expect-result 1 --require 'sin(2·x + 1)'
+    --forbid-warnings --timeout-seconds 4 --slow-wall-seconds 4 --json`
+  - focused direct CLI probe against the same `csc` numerator and the heavier
+    rational denominator
+- local finding:
+  - the simpler cross-family shifted quotient timed out under the 4s smoke
+    budget
+  - the heavier rational-denominator variant eventually returned `1`, but took
+    about 49s, emitted a `depth_overflow` warning on stderr, and leaked
+    residual required conditions such as the unsimplified denominator residual
+    plus `1`
+- retained subset:
+  - do not promote the generated case to the matrix in this iteration
+  - retain only a harness observability fix so `--forbid-warnings` also catches
+    `WARN` lines emitted on stderr, not only JSON `warnings`
+- what could make it combinable later:
+  - a narrow residual-first simplification gate for shifted quotients whose
+    numerator or denominator is a calculus residual with known domain
+    conditions, plus condition cleanup before quotient nonzero requirements are
+    collected
+- superseded by:
+  - a retained reciprocal-trig integral residual constant-passthrough quotient
+    shortcut
+  - the simpler cross-family shifted quotient now returns `1` with
+    `sin(2·x + 1) != 0`, no warnings, and about 0.54s wall time under the
+    debug CLI smoke
+  - the heavier rational-denominator variant now returns `1` with
+    `sin(2·x + 1) != 0` and `x + 1 != 0`, no residual denominator condition,
+    no warnings, and about 0.04s wall time under the debug CLI smoke
+
+### 2026-05-15: Shifted Hyperbolic Csch-Squared Residual Recheck
+
+- area:
+  - calculus / symbolic differentiation / hyperbolic reciprocal-square residuals
+- status:
+  - `superseded`
+- attempted case:
+  - promote `integrate(1/sinh(2*x+1)^2, x)` as part of the live bounded
+    public residual verification set
+- local lane:
+  - CLI residual probe:
+    `cargo run --release -q -p cas_cli -- eval 'diff(integrate(1/sinh(2*x + 1)^2, x), x) - 1/sinh(2*x + 1)^2' --format json --budget small`
+- local result:
+  - the residual still eventually simplifies to `0` and preserves
+    `sinh(2*x + 1) != 0`
+  - the probe took about 26.4s and emitted many `cycle_detected` and
+    `depth_overflow` warnings
+- global result:
+  - not promoted as live coverage in this iteration
+  - retained coverage was limited to the cheaper sibling set:
+    `1/cosh(2*x+1)^2`, `sinh(2*x+1)/cosh(2*x+1)^2`, and
+    `cosh(2*x+1)/sinh(2*x+1)^2`
+- best current explanation:
+  - the `csch^2` residual can still detour through expanded shifted
+    hyperbolic-square forms before reaching the compact reciprocal-square
+    identity
+- plausible follow-up:
+  - add a narrow pre-expansion residual gate for `csch(u)^2` derivative checks,
+    then retry the case as pressure before promoting it to live coverage
+- superseded by:
+  - a bounded `diff(integrate(...), x) - integrand` residual matcher for
+    `integrate_symbolic_is_hyperbolic_quotient_substitution_target`
+  - the same probe now returns `0` with `sinh(2*x + 1) != 0`, no warnings, and
+    about 3.6ms of engine time
+
+### 2026-05-15: Negative Shifted Arctan Compact Derivative Discovery
+
+- area:
+  - calculus / integration / post-calculus presentation
+- status:
+  - `observe-only`
+- generated candidate:
+  - compact the public primitive for `integrate(x^2*arctan(1-x), x)` from
+    separated `arctan(1 - x)` terms into a single polynomial cofactor
+- local lane:
+  - focused CLI probes for `diff(integrate(x^2*arctan(1-x)+x*arctan(1-x), x), x)`
+    residuals and explicit compact-antiderivative residuals
+- local finding:
+  - `diff(integrate(target), x) - target` can be made robust with a structural
+    polynomial-times-arctan-affine shortcut, but directly differentiating the
+    rendered compact negative-slope antiderivative still enters a deep rational
+    simplification route and emits `depth_overflow`
+- retained subset:
+  - keep the public `diff(integrate(...), x)` shortcut for structural
+    polynomial-times-arctan-affine integrands
+- what could make it combinable later:
+  - a compact-derivative recognizer for polynomial-cofactor arctan-affine
+    by-parts primitives, or a narrower rational cancellation route for the
+    `1 + (1 - x)^2` denominator orientation
+
 ### 2026-05-14: Shifted Hyperbolic Square Integration Discovery
 
 - area:
@@ -11890,3 +11993,631 @@ The burden of proof stays the same:
   - pause even-power promotion and look for a different high-ROI integration
     family, preferably one that reuses antiderivative verification without
     adding another long fixed table
+
+## 2026-05-14 - Observe-only discovery: sextic trig by-parts residual cost
+
+- area:
+  - calculus / integrate / antiderivative verification
+- status:
+  - `discovery/observe-only`
+- observed result:
+  - finite derivative-series construction can produce primitives for
+    `integrate(x^6*sin(x), x)` and `integrate(x^6*cos(x), x)`
+  - the nested public residual probe
+    `diff(integrate(x^6*sin(x), x), x) - x^6*sin(x)` did not return in a
+    reasonable smoke window
+- decision:
+  - do not promote degree-6 trig by-parts yet
+  - retain only the degree-6 exponential by-parts path, whose public residual
+    collapses to `0` cheaply
+- reusable weakness:
+  - higher-degree polynomial-times-trig primitives need a bounded residual or
+    post-calculus grouping path before promotion; simply generating the
+    antiderivative is not enough for a retained calculus feature
+- next candidate:
+  - investigate compact grouping/residual verification for
+    polynomial-times-trig by-parts before raising the public trig degree cap
+
+## 2026-05-14 - Retained calculus: sextic polynomial-times-trig by-parts
+
+- area:
+  - calculus / integrate / polynomial-times-trig by-parts / antiderivative
+    verification
+- status:
+  - `retained`
+- retained result:
+  - `integrate(x^6*sin(x), x)` now returns
+    `(6*x^5 + 720*x - 120*x^3)*sin(x) + (30*x^4 + 720 - x^6 - 360*x^2)*cos(x)`
+  - `integrate(x^6*cos(x), x)` now returns
+    `(6*x^5 + 720*x - 120*x^3)*cos(x) + (x^6 + 360*x^2 - 30*x^4 - 720)*sin(x)`
+  - nested public residuals such as
+    `diff(integrate(x^6*sin(x), x), x) - x^6*sin(x)` collapse to `0`
+    without required conditions or `depth_overflow`
+- implementation note:
+  - the previous observe-only failure was caused by the residual classifier
+    still using a degree-5 cap while the primitive builder had become
+    degree-cap driven
+  - promotion raised the trig by-parts cap to 6 and aligned the classifier and
+    additive regrouping path with the same constant
+  - the residual matcher uses the existing term-shape comparison after the
+    integrand has already been bounded to the polynomial-times-trig family
+- validation:
+  - symbolic integration unit, calculus residual helper unit, public residual
+    CLI probes, public integration contract, `make engine-fast`, and
+    `make engine-scorecard` passed with `failed = 0`
+- next candidate:
+  - before considering degree 7/8 polynomial-times-trig by-parts, probe sparse
+    affine degree-6 variants and presentation grouping; reject any promotion
+    whose public residual does not stay bounded
+
+## 2026-05-14 - Retained calculus: sparse affine sextic trig by-parts trace
+
+- area:
+  - calculus / integrate / didactic presentation / distribution guard
+- status:
+  - `retained`
+- retained result:
+  - `integrate((x^6+1)*sin(2*x+1), x)` and
+    `integrate((x^6+1)*cos(2*x+1), x)` now keep the compact source product as
+    the direct integration target instead of first emitting a distributive
+    expansion step
+  - both primitives verify through the bounded public residual route, and
+    nested residuals collapse to `0` without required conditions or
+    `depth_overflow`
+- implementation note:
+  - the first promotion probe exposed a structural trace-quality weakness: the
+    antiderivative was correct and verified, but `DistributeRule` fired before
+    the symbolic integration step for sparse degree-6 cofactors with a constant
+    term
+  - the retained fix adds a narrow distribution guard only when the current
+    product is exactly the target of an ancestor `integrate(...)` and the
+    bounded polynomial-times-trig classifier already accepts it
+  - this preserves general distribution behavior outside integrate-prep and
+    avoids adding another integration table
+- validation:
+  - focal sparse affine sextic contract, existing sparse quartic trace contract,
+    full public integration contract, `make engine-fast`,
+    `make engine-scorecard`, and `make engine-scorecard-pressure` passed with
+    `failed = 0`
+- next candidate:
+  - probe sparse affine degree-6 hyperbolic or exponential by-parts products
+    for the same trace-quality weakness before increasing any degree caps
+
+## 2026-05-14 - Retained calculus: sparse affine sextic exp by-parts trace
+
+- area:
+  - calculus / integrate / didactic presentation / distribution guard
+- status:
+  - `retained`
+- retained result:
+  - `integrate((x^6+1)*exp(2*x+1), x)` now keeps the compact source product as
+    the direct integration target instead of first expanding to a sum
+  - the primitive verifies through the bounded public residual route, and the
+    nested residual
+    `diff(integrate((x^6+1)*exp(2*x+1), x), x) - (x^6+1)*exp(2*x+1)`
+    collapses to `0` without required conditions or `depth_overflow`
+- implementation note:
+  - pre-promotion probes showed the result and residual were already correct,
+    but the public trace had a distributive expansion followed by cleanup
+  - the retained fix generalizes the existing integrate-target distribution
+    guard to also consult the bounded polynomial-times-exp classifier
+  - sparse affine degree-6 `sinh/cosh` probes still remain unsupported and were
+    not promoted in this iteration
+- validation:
+  - focal sparse affine sextic exp contract, existing sparse quartic exp
+    contract, sparse affine sextic trig contract, full public integration
+    contract, `make engine-fast`, `make engine-scorecard`, and
+    `make engine-scorecard-pressure` passed with `failed = 0`
+- next candidate:
+  - investigate whether polynomial-times-hyperbolic degree-6 support should
+    reuse the same finite derivative-series pattern, but promote only if
+    public residual verification stays bounded
+
+## 2026-05-15 - Retained calculus: sextic polynomial-times-hyperbolic by-parts
+
+- area:
+  - calculus / integrate / polynomial-times-hyperbolic by-parts /
+    antiderivative verification
+- status:
+  - `retained`
+- retained result:
+  - `integrate(x^6*sinh(x), x)` now returns
+    `(x^6 + 30*x^4 + 360*x^2 + 720)*cosh(x) - (6*x^5 + 120*x^3 + 720*x)*sinh(x)`
+  - `integrate(x^6*cosh(x), x)` now returns the companion primitive with
+    `sinh`/`cosh` swapped
+  - sparse affine variants such as
+    `integrate((x^6+1)*sinh(2*x+1), x)` and
+    `integrate((x^6+1)*cosh(2*x+1), x)` resolve directly and their nested
+    public residuals collapse to `0`
+- implementation note:
+  - the previous support was capped at degree 5 because the finite by-parts
+    series stopped at the fifth derivative
+  - the retained fix adds the missing sixth-derivative contribution to the
+    even hyperbolic polynomial and aligns the public classifier with the same
+    degree-6 cap
+  - no real-domain conditions are introduced; `sinh` and `cosh` remain total
+    in the supported real branch
+- validation:
+  - symbolic integration unit, public residual CLI probes, public integration
+    contract, `make engine-fast`, and `make engine-scorecard` passed with
+    `failed = 0`
+- next candidate:
+  - probe whether degree-6 polynomial-times-hyperbolic cases should get the
+    same embedded wrapper representative as exp/trig, but promote only a
+    minimal non-duplicate row if it exposes wrapper or shell-depth value
+
+## 2026-05-15 - Retained calculus: septic polynomial-times-exp by-parts
+
+- area:
+  - calculus / integrate / polynomial-times-exp by-parts / antiderivative
+    verification
+- status:
+  - `retained`
+- retained result:
+  - `integrate(x^7*exp(x), x)` now returns
+    `e^x*(x^7 + 42*x^5 + 840*x^3 + 5040*x - 7*x^6 - 210*x^4 - 2520*x^2 - 5040)`
+  - the nested public residual
+    `diff(integrate(x^7*exp(x), x), x) - x^7*exp(x)` collapses to `0`
+  - sparse affine variants such as
+    `integrate((x^7+1)*exp(2*x+1), x)` also verify through the bounded public
+    residual route
+- implementation note:
+  - the exp by-parts builder already used a generic finite derivative series;
+    the retained change only raises the exp polynomial cap from 6 to 7 and
+    extends the public contracts
+  - no real-domain conditions are introduced because `exp` remains total in the
+    supported real branch
+  - trig and hyperbolic degree-7 support was not promoted in this iteration;
+    trig needs a separate residual/presentation probe and hyperbolic still
+    requires extending the manual odd-series term
+- validation:
+  - symbolic integration unit, focal public exp contract, exp public residual
+    route contract, full public integration contract, `make engine-fast`, and
+    `make engine-scorecard` passed with `failed = 0`
+- next candidate:
+  - probe degree-7 polynomial-times-trig by-parts separately; promote only if
+    the public residual remains bounded and the trace stays teachable without
+    expansion cleanup
+
+## 2026-05-15 - Retained calculus: septic polynomial-times-trig by-parts
+
+- area:
+  - calculus / integrate / polynomial-times-trig by-parts / antiderivative
+    verification
+- status:
+  - `retained`
+- retained result:
+  - `integrate(x^7*sin(x), x)` now returns
+    `(42*x^5 + 5040*x - x^7 - 840*x^3)*cos(x) + (7*x^6 + 2520*x^2 - 210*x^4 - 5040)*sin(x)`
+  - `integrate(x^7*cos(x), x)` now returns the companion primitive with
+    `sin`/`cos` swapped
+  - sparse affine variants such as
+    `integrate((x^7+1)*sin(2*x+1), x)` and
+    `integrate((x^7+1)*cos(2*x+1), x)` resolve directly and their nested
+    public residuals collapse to `0`
+- implementation note:
+  - the trig by-parts builder already used a generic finite derivative series;
+    the retained change only raises the trig polynomial cap from 6 to 7 and
+    extends the public contracts
+  - no real-domain conditions are introduced because `sin` and `cos` are total
+    in the supported real branch
+  - embedded corpus padding was skipped because the scorecard marks embedded
+    coverage as balanced/saturated; the public calculus contract is the
+    retained representative
+- validation:
+  - symbolic integration unit, focal public trig contract, trig public residual
+    route contract, full public integration contract, `make engine-fast`, and
+    `make engine-scorecard` passed with `failed = 0`
+- next candidate:
+  - probe degree-7 polynomial-times-hyperbolic by-parts separately; promote
+    only if the manual hyperbolic series can be extended cleanly and public
+    residuals remain bounded
+
+## 2026-05-15 - Retained calculus: septic polynomial-times-hyperbolic by-parts
+
+- area:
+  - calculus / integrate / polynomial-times-hyperbolic by-parts /
+    antiderivative verification
+- status:
+  - `retained`
+- retained result:
+  - `integrate(x^7*sinh(x), x)` now returns
+    `(x^7 + 42*x^5 + 840*x^3 + 5040*x)*cosh(x) - (7*x^6 + 210*x^4 + 2520*x^2 + 5040)*sinh(x)`
+  - `integrate(x^7*cosh(x), x)` now returns the companion primitive with
+    `sinh`/`cosh` swapped
+  - sparse affine variants such as
+    `integrate((x^7+1)*sinh(2*x+1), x)` and
+    `integrate((x^7+1)*cosh(2*x+1), x)` resolve directly and their nested
+    public residuals collapse to `0`
+- implementation note:
+  - the previous hyperbolic support was capped at degree 6 because the manual
+    finite by-parts series stopped before the seventh-derivative odd term
+  - the retained fix adds that seventh derivative over `slope^8` and aligns the
+    public classifier with the same degree-7 cap
+  - no real-domain conditions are introduced; `sinh` and `cosh` remain total in
+    the supported real branch
+  - embedded corpus padding was skipped because the scorecard marks embedded
+    coverage as balanced/saturated; the public calculus contract is the
+    retained representative
+- validation:
+  - symbolic integration unit, focal public hyperbolic contract, hyperbolic
+    public residual route contract, full public integration contract, direct
+    residual probes for simple and sparse affine degree-7 cases,
+    `make engine-fast`, and `make engine-scorecard` passed with `failed = 0`
+- next candidate:
+  - probe nontrivial sparse degree-7 hyperbolic cofactors beyond `x^7+1`; promote
+    only if they expose a new representative shape rather than another
+    near-duplicate
+
+## 2026-05-15 - Retained calculus: log by-parts didactic trace and compact proportional affine prep
+
+- area:
+  - calculus / integrate / logarithmic integration by parts / didactic trace
+    quality
+- status:
+  - `retained`
+- retained result:
+  - `integrate(x*ln(x), x)` still returns the same verified primitive and
+    required condition `x > 0`, but now exposes a concrete
+    `Usar integración por partes` substep
+  - `integrate((2*x+1)*ln(2*x+1), x)` now keeps the proportional affine-log
+    product as the direct integration target in `steps on` mode, instead of
+    first emitting `Expandir la expresión`
+  - both residuals
+    `diff(integrate(x*ln(x), x), x) - x*ln(x)` and
+    `diff(integrate((2*x+1)*ln(2*x+1), x), x) - (2*x+1)*ln(2*x+1)` collapse
+    to `0` while preserving the same positive-domain requirements
+- implementation note:
+  - the mathematical antiderivatives already existed; the retained change
+    publishes narrow log-by-parts classifiers for didactic/presentation callers
+  - the transform preserve gate is intentionally restricted to proportional
+    affine-log products so non-proportional cases such as
+    `(x+1)*ln(2*x+1)` keep the previous, better-expanded presentation
+  - this is a calculus trace improvement, not a new integration algorithm
+- validation:
+  - focal log-by-parts trace contract, existing monomial-log and affine-log
+    contracts, full public integration contract (`237 passed; 0 failed;
+    1 ignored`), direct residual probes, `make engine-fast`,
+    `make engine-scorecard`, and `make engine-scorecard-pressure` passed with
+    `failed = 0`
+- derive bridge:
+  - no derive row promoted; this is command-specific calculus step quality, not
+    a reusable algebraic target-form transition
+- next candidate:
+  - audit other correct one-step integration-by-parts families, especially
+    inverse-trig by-parts, for missing non-decorative substeps before expanding
+    more integration surface
+
+## 2026-05-15 - Retained calculus: inverse-trig by-parts didactic trace
+
+- area:
+  - calculus / integrate / inverse-trig integration by parts / didactic trace
+    quality
+- status:
+  - `retained`
+- retained result:
+  - `integrate(arcsin(x), x)` still returns
+    `sqrt(1 - x^2) + x*arcsin(x)` with required condition `1 - x^2 > 0`,
+    but now exposes a concrete `Usar integración por partes` substep
+  - `integrate(arccos(x), x)` still returns
+    `x*arccos(x) - sqrt(1 - x^2)` with required condition
+    `1 - x^2 > 0`, and now exposes the same didactic substep
+  - `integrate(arctan(x), x)` and reciprocal-affine variants such as
+    `integrate(arctan(1/(2*x+1)), x)` now also expose the by-parts substep
+    while preserving their existing domain requirements
+  - residual probes for `arccos(x)` and `arctan(1/(2*x+1))` collapsed to `0`
+    with the same required conditions
+- implementation note:
+  - the mathematical antiderivatives already existed; the retained change only
+    publishes a narrow `arctan(linear)` classifier and teaches the didactic
+    classifier to recognize existing bounded inverse-trig and arctan
+    by-parts targets
+  - no antiderivative selection, domain policy, or simplification rule changed
+  - embedded corpus padding was skipped because this is command-specific
+    calculus trace quality, not a new algebraic equivalence family
+- validation:
+  - focal inverse-trig by-parts trace contract, full public integration
+    contract (`238 passed; 0 failed; 1 ignored`), direct residual probes,
+    `make engine-fast`, and `make engine-scorecard` passed with `failed = 0`
+- derive bridge:
+  - no derive row promoted; this is calculus command trace quality rather than
+    a reusable derive target-form transition
+- next candidate:
+  - inspect correct but opaque substitution-style integration families for the
+    same issue: promote only a representative family when the substep exposes a
+    real method such as substitution, not just a decorated table lookup
+
+## 2026-05-15 - Retained calculus: polynomial substitution didactic trace
+
+- area:
+  - calculus / integrate / polynomial-derivative substitution / didactic trace
+    quality
+- status:
+  - `retained`
+- retained result:
+  - `integrate(2*x*exp(x^2), x)` still returns `exp(x^2)` with no required
+    conditions, but now exposes a concrete `Usar sustitución` substep
+  - representative trig and hyperbolic substitution cases such as
+    `integrate(2*x*cos(x^2), x)`, `integrate(2*x*sin(x^2), x)`, and
+    `integrate(2*x*sinh(x^2), x)` now expose the same method-level substep
+  - residual probes for the cosine and hyperbolic representatives collapsed to
+    `0` with empty required conditions
+  - unsupported cases such as `integrate(sin(x^2), x)` remain unsupported and
+    emit no fake substitution trace
+- implementation note:
+  - the mathematical antiderivatives already existed; the retained change
+    publishes a narrow classifier that delegates to the existing
+    `f'(x)*kernel(f(x))` substitution recognizer
+  - the didactic layer uses that classifier only to add a substep to an already
+    successful `Symbolic Integration` step
+  - no antiderivative selection, domain policy, or general integration search
+    changed
+- validation:
+  - focal substitution trace contract, full public integration contract
+    (`239 passed; 0 failed; 1 ignored`), direct residual probes,
+    unsupported-case smoke, `make engine-fast`, and `make engine-scorecard`
+    passed with `failed = 0`
+- derive bridge:
+  - no derive row promoted; this is calculus command trace quality rather than
+    a reusable algebraic target-form transition
+- next candidate:
+  - inspect quotient substitution families with visible pre-normalization, such
+    as logarithmic derivative ratios, to decide whether compact-preserve or a
+    substitution substep gives better retained didactic value without changing
+    domains
+
+## 2026-05-15 - Retained calculus: hyperbolic quotient substitution didactic trace
+
+- area:
+  - calculus / integrate / hyperbolic quotient substitution / didactic trace
+    quality
+- status:
+  - `retained`
+- retained result:
+  - `integrate(2*x*cosh(x^2)/sinh(x^2), x)` still returns
+    `ln(|sinh(x^2)|)` with required condition `sinh(x^2) ≠ 0`, but now
+    exposes a concrete `Usar sustitución` substep
+  - `integrate(2*x/tanh(x^2), x)` now exposes the same substitution substep
+    while preserving the same nonzero `sinh(x^2)` requirement
+  - `integrate(2*x/cosh(x^2)^2, x)` still returns `tanh(x^2)` with no required
+    conditions and now exposes the substitution substep
+  - unsupported missing-cofactor cases such as
+    `integrate(cosh(x^2)/sinh(x^2), x)` remain unsupported and emit no fake
+    substitution trace
+- implementation note:
+  - the mathematical antiderivatives already existed; the retained change
+    publishes a narrow classifier over the existing hyperbolic quotient
+    substitution helpers
+  - the didactic layer uses that classifier only to add a substep to an already
+    successful `Symbolic Integration` step
+  - no antiderivative selection, domain policy, pre-normalization, or general
+    integration search changed
+- validation:
+  - focal hyperbolic quotient substitution trace contract, full public
+    integration contract (`240 passed; 0 failed; 1 ignored`), direct residual
+    probes, unsupported-case smoke, `make engine-fast`, and
+    `make engine-scorecard` passed with `failed = 0`
+- derive bridge:
+  - no derive row promoted; this is calculus command trace quality rather than
+    a reusable algebraic target-form transition
+- next candidate:
+  - consider trig logarithmic-derivative quotient substitution (`sin/cos`,
+    `cos/sin`) for the same narrow didactic trace, preserving nonzero
+    conditions and avoiding fake traces on missing-cofactor cases
+
+## 2026-05-15 - Retained calculus: trig quotient substitution didactic trace
+
+- area:
+  - calculus / integrate / trig quotient substitution / didactic trace quality
+- status:
+  - `retained`
+- retained result:
+  - `integrate(2*x*tan(x^2), x)` still returns `-ln(|cos(x^2)|)` with
+    required condition `cos(x^2) ≠ 0`, but now exposes a concrete
+    `Usar sustitución` substep on the public integration step
+  - `integrate(3*x^2*cot(x^3), x)` still returns `ln(|sin(x^3)|)` with
+    required condition `sin(x^3) ≠ 0`, and now exposes the same substitution
+    substep
+  - `integrate(2*x/cos(x^2)^2, x)` still returns `tan(x^2)` with required
+    condition `cos(x^2) ≠ 0`, and now exposes the substitution substep
+  - unsupported missing-cofactor cases such as `integrate(tan(x^2), x)` remain
+    unsupported and emit no fake integration step
+- implementation note:
+  - the mathematical antiderivatives already existed; the retained change
+    publishes a narrow classifier over existing trig quotient substitution
+    helpers
+  - the didactic layer uses that classifier only to add a substep to an already
+    successful `Symbolic Integration` step
+  - no antiderivative selection, domain policy, pre-normalization, or general
+    integration search changed
+- observe-only note:
+  - `integrate(2*x*sin(x^2)/cos(x^2)^2, x)` also resolves correctly to
+    `sec(x^2)`, but currently reaches the UI through a different public step
+    shape rather than the `Calcular la integral` step used by this substep
+    classifier
+  - it was not promoted in this iteration; treat it as a future didactic-route
+    audit candidate rather than widening this patch
+- validation:
+  - focal trig quotient substitution trace contract, full public integration
+    contract (`241 passed; 0 failed; 1 ignored`), direct residual probes,
+    unsupported-case smoke, `make engine-fast`, and `make engine-scorecard`
+    passed with `failed = 0`
+- derive bridge:
+  - no derive row promoted; this is calculus command trace quality rather than
+    a reusable algebraic target-form transition
+- next candidate:
+  - inspect successful integration families that bypass `Symbolic Integration`
+    in the public trace, starting with sec/csc derivative quotients, and decide
+    whether they need a shared didactic hook or should remain separate
+
+## 2026-05-15 - Retained calculus: direct sec/csc derivative quotient trace
+
+- area:
+  - calculus / integrate / direct public integration steps / didactic trace
+    quality
+- status:
+  - `retained`
+- retained result:
+  - `integrate(2*x*sin(x^2)/cos(x^2)^2, x)` still returns `sec(x^2)` with
+    required condition `cos(x^2) ≠ 0`, but now exposes a concrete
+    `Usar sustitución` substep on its direct public integration step
+  - `integrate(3*x^2*cos(x^3)/sin(x^3)^2, x)` still returns `-csc(x^3)` with
+    required condition `sin(x^3) ≠ 0`, and now exposes the same substitution
+    substep
+  - unsupported missing-cofactor cases such as
+    `integrate(sin(x^2)/cos(x^2)^2, x)` remain unsupported and emit no fake
+    substep
+- implementation note:
+  - the mathematical antiderivatives and narrow trig quotient classifier
+    already existed
+  - the retained change removes the didactic dependency on the internal
+    `Symbolic Integration` rule name for substitution substeps; the gate is now
+    the actual `before` expression being `integrate(...)` plus the existing
+    family classifier accepting the integrand
+  - no antiderivative selection, domain policy, pre-normalization, or general
+    integration search changed
+- validation:
+  - focal direct sec/csc derivative quotient trace contract, full public
+    integration contract (`242 passed; 0 failed; 1 ignored`), direct residual
+    probes, unsupported-case smoke, `make engine-fast`, and
+    `make engine-scorecard` passed with `failed = 0`
+- derive bridge:
+  - no derive row promoted; this is calculus command trace quality rather than
+    a reusable algebraic target-form transition
+- next candidate:
+  - audit other direct one-step integration families with correct results but
+    no method-level substep; promote only when a narrow existing classifier can
+    explain the method without changing math or domains
+
+## 2026-05-15 - Retained calculus: direct trig-log substitution trace
+
+- area:
+  - calculus / integrate / direct trig-log substitution / didactic trace
+    quality
+- status:
+  - `retained`
+- retained result:
+  - `integrate(tan(2*x+1), x)` still returns `-1/2*ln(|cos(2*x+1)|)` with
+    required condition `cos(2*x+1) ≠ 0`, and now exposes `Usar sustitución`
+    on the integration step
+  - `integrate(cot(2*x+1), x)` still returns `1/2*ln(|sin(2*x+1)|)` with
+    required condition `sin(2*x+1) ≠ 0`, and now exposes the same substitution
+    substep
+  - `integrate(sec(2*x+1), x)` and `integrate(csc(2*x+1), x)` expose
+    substitution on the actual integration step after reciprocal preparation,
+    while prep and cleanup steps do not receive fake substitution substeps
+  - unsupported non-linear missing-cofactor cases such as
+    `integrate(tan(x^2), x)` remain unsupported and emit no fake substitution
+    trace
+- implementation note:
+  - publishes a narrow classifier over existing `trig_log_antiderivative` and
+    `reciprocal_trig_log_antiderivative`
+  - the didactic substitution gate now also rejects steps whose `after` is
+    still `integrate(...)`, so preparation rewrites do not get method substeps
+  - no antiderivative selection, domain policy, pre-normalization, or general
+    integration search changed
+- validation:
+  - focal direct trig-log substitution trace contract, full public integration
+    contract (`243 passed; 0 failed; 1 ignored`), direct residual/smoke probes,
+    `make engine-fast`, and `make engine-scorecard` passed with `failed = 0`
+  - the first focal version was slow because it redundantly verified
+    antiderivatives already covered elsewhere; the retained contract was
+    reduced to trace assertions and finished in 0.57s
+- derive bridge:
+  - no derive row promoted; this is calculus command trace quality rather than
+    an algebraic target-form transition
+- next candidate:
+  - audit other direct one-step integration families with correct results but
+    no method-level substep; prefer a narrow existing classifier and avoid
+    adding duplicate residual-heavy tests
+
+## 2026-05-15 - Retained calculus: polynomial-base substitution trace
+
+- area:
+  - calculus / integrate / polynomial-base substitution / didactic trace
+    quality
+- status:
+  - `retained`
+- retained result:
+  - `integrate((2*x+1)/(x^2+x-1), x)` still returns
+    `ln(|x^2 + x - 1|)` with required condition `x^2 + x - 1 ≠ 0`, and now
+    exposes `Usar sustitución`
+  - `integrate((2*x+1)/(x^2+x-1)^3, x)` still returns
+    `-1/(2*(x^2+x-1)^2)` with the same nonzero base condition, and now
+    exposes the substitution substep
+  - `integrate(x/sqrt(x^2+1), x)`, `integrate(2*x/sqrt(x^2-1), x)`, and
+    `integrate(2*x*(x^2-1)^(3/2), x)` expose the same substep while preserving
+    their current empty, positive, or nonnegative radicand conditions
+  - table-shaped cases without a polynomial cofactor, such as
+    `integrate(1/(x^2+1), x)` and `integrate(1/sqrt(x^2+1), x)`, do not emit a
+    fake substitution substep
+- implementation note:
+  - publishes a narrow didactic classifier over existing log-derivative,
+    denominator-power, square-root derivative, and polynomial-power
+    antiderivative helpers
+  - the retained change does not alter antiderivative selection, domain policy,
+    pre-normalization, or general integration search
+- narrowed scope:
+  - early smoke showed that product-form inverse-hyperbolic table cases such
+    as `integrate(1/sqrt(x^2+1), x)` would be overclassified if product
+    inverse-trig/hyperbolic helpers were included
+  - those product-form helpers were removed from this classifier; nested
+    `arcsin/asinh` substitutions like `integrate(2*x/sqrt(4-x^4), x)` remain a
+    separate future candidate rather than widening this patch
+- validation:
+  - focal polynomial-base substitution trace contract, full public integration
+    contract (`244 passed; 0 failed; 1 ignored`), `make engine-fast`, and
+    `make engine-scorecard` passed with `failed = 0`
+- derive bridge:
+  - no derive row promoted; this is calculus command trace quality rather than
+    an algebraic target-form transition
+- next candidate:
+  - add a separate narrow classifier for nested inverse-trig/hyperbolic
+    substitutions only if it can distinguish genuine cofactor substitutions
+    from table primitives without domain or trace regressions
+
+## 2026-05-15 - Retained calculus: nested inverse-polynomial substitution trace
+
+- area:
+  - calculus / integrate / nested inverse trig-hyperbolic substitution /
+    didactic trace quality
+- status:
+  - `retained`
+- retained result:
+  - `integrate(2*x/sqrt(4-x^4), x)` still returns `arcsin(x^2/2)` with
+    required condition `4 - x^4 > 0`, and now exposes `Usar sustitución`
+  - `integrate(2*x/sqrt(1+x^4), x)` still returns `asinh(x^2)` with no
+    required conditions, and now exposes the same substep
+  - `integrate(2*x/(1+x^4), x)` still returns `arctan(x^2)`, and now exposes
+    the substitution substep
+  - `integrate(2*x/(4-x^4), x)` keeps `1/2*atanh(x^2/2)` with required
+    condition `4 - x^4 > 0`, and keeps the substitution substep through the
+    new non-linear detector rather than the broader polynomial-base detector
+- false-positive reduction:
+  - table or linear primitives such as `integrate(1/(x^2+1), x)`,
+    `integrate(1/(1-x^2), x)`, `integrate(1/(4-x^2), x)`,
+    `integrate(1/sqrt(x^2+1), x)`, `integrate(1/sqrt(1-x^2), x)`,
+    `integrate(1/sqrt(4-(x+1)^2), x)`,
+    `integrate(1/sqrt(4+(x+1)^2), x)`, and
+    `integrate(2/(1+(2*x+1)^2), x)` do not emit a fake substitution substep
+- implementation note:
+  - introduces a separate didactic classifier that requires a non-linear
+    polynomial substitution argument/radicand before accepting inverse
+    trig-hyperbolic families
+  - removes inverse trig-hyperbolic matching from the generic polynomial-base
+    substitution classifier so direct table primitives stay clean
+  - no antiderivative selection, result presentation, domain policy,
+    pre-normalization, or general integration search changed
+- validation:
+  - focal nested inverse-polynomial substitution trace contract, previous
+    polynomial-base substitution trace contract, full public integration
+    contract (`245 passed; 0 failed; 1 ignored`), `make engine-fast`, and
+    `make engine-scorecard` passed with `failed = 0`
+- derive bridge:
+  - no derive row promoted; this is calculus command trace quality rather than
+    an algebraic target-form transition
+- next candidate:
+  - audit remaining successful one-step integration families for either
+    missing method substeps or overly broad method substeps, starting with
+    arctan/atanh linear scaled variants and preserving the same no-fake-table
+    standard

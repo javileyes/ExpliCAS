@@ -4417,12 +4417,622 @@ fn ln_power_derivative_numeric_presentation(
     (compact != result).then_some(compact)
 }
 
+fn arctan_arg_matches_for_calculus_presentation(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    if compare_expr(ctx, left, right) == std::cmp::Ordering::Equal {
+        return true;
+    }
+
+    let Ok(left_poly) = Polynomial::from_expr(ctx, left, var_name) else {
+        return false;
+    };
+    let Ok(right_poly) = Polynomial::from_expr(ctx, right, var_name) else {
+        return false;
+    };
+    left_poly == right_poly
+}
+
+fn extract_arctan_term_for_calculus_presentation(
+    ctx: &mut Context,
+    term: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    let term = unwrap_internal_hold_for_calculus(ctx, term);
+    if let Expr::Neg(inner) = ctx.get(term).clone() {
+        let (arg, coeff) = extract_arctan_term_for_calculus_presentation(ctx, inner)?;
+        let coeff = ctx.add(Expr::Neg(coeff));
+        return Some((arg, coeff));
+    }
+    if let Expr::Div(num, den) = ctx.get(term).clone() {
+        let (arg, coeff) = extract_arctan_term_for_calculus_presentation(ctx, num)?;
+        let coeff = ctx.add(Expr::Div(coeff, den));
+        return Some((arg, coeff));
+    }
+
+    let factors = cas_math::expr_nary::MulView::from_expr(ctx, term).factors;
+    let mut arctan_arg = None;
+    let mut coefficient_factors = Vec::new();
+
+    for factor in factors {
+        let factor = unwrap_internal_hold_for_calculus(ctx, factor);
+        match ctx.get(factor).clone() {
+            Expr::Function(fn_id, args)
+                if args.len() == 1
+                    && matches!(
+                        ctx.builtin_of(fn_id),
+                        Some(BuiltinFn::Arctan | BuiltinFn::Atan)
+                    ) =>
+            {
+                if arctan_arg.is_some() {
+                    return None;
+                }
+                arctan_arg = Some(args[0]);
+            }
+            Expr::Div(num, den) => {
+                let Expr::Function(fn_id, args) = ctx.get(num).clone() else {
+                    coefficient_factors.push(factor);
+                    continue;
+                };
+                if args.len() == 1
+                    && matches!(
+                        ctx.builtin_of(fn_id),
+                        Some(BuiltinFn::Arctan | BuiltinFn::Atan)
+                    )
+                {
+                    if arctan_arg.is_some() {
+                        return None;
+                    }
+                    arctan_arg = Some(args[0]);
+                    let one = ctx.num(1);
+                    coefficient_factors.push(ctx.add(Expr::Div(one, den)));
+                } else {
+                    coefficient_factors.push(factor);
+                }
+            }
+            Expr::Neg(inner) => {
+                let inner = unwrap_internal_hold_for_calculus(ctx, inner);
+                let Expr::Function(fn_id, args) = ctx.get(inner).clone() else {
+                    coefficient_factors.push(factor);
+                    continue;
+                };
+                if args.len() == 1
+                    && matches!(
+                        ctx.builtin_of(fn_id),
+                        Some(BuiltinFn::Arctan | BuiltinFn::Atan)
+                    )
+                {
+                    if arctan_arg.is_some() {
+                        return None;
+                    }
+                    arctan_arg = Some(args[0]);
+                    let minus_one = ctx.num(-1);
+                    coefficient_factors.push(minus_one);
+                } else {
+                    coefficient_factors.push(factor);
+                }
+            }
+            _ => coefficient_factors.push(factor),
+        }
+    }
+
+    let arg = arctan_arg?;
+    let coeff = if coefficient_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        cas_math::expr_nary::build_balanced_mul(ctx, &coefficient_factors)
+    };
+    Some((arg, coeff))
+}
+
+fn negate_term_for_calculus_presentation(ctx: &mut Context, term: ExprId) -> ExprId {
+    let term = unwrap_internal_hold_for_calculus(ctx, term);
+    if let Expr::Number(value) = ctx.get(term).clone() {
+        return ctx.add(Expr::Number(-value));
+    }
+    if let Expr::Div(num, den) = ctx.get(term).clone() {
+        let num = negate_term_for_calculus_presentation(ctx, num);
+        return ctx.add(Expr::Div(num, den));
+    }
+
+    let factors = cas_math::expr_nary::MulView::from_expr(ctx, term).factors;
+    if factors.len() > 1 {
+        let mut replaced = false;
+        let mut negated_factors = Vec::with_capacity(factors.len());
+        for factor in factors {
+            if !replaced {
+                if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
+                    negated_factors.push(ctx.add(Expr::Number(-value)));
+                    replaced = true;
+                    continue;
+                }
+            }
+            negated_factors.push(factor);
+        }
+        if replaced {
+            return cas_math::expr_nary::build_balanced_mul(ctx, &negated_factors);
+        }
+    }
+
+    ctx.add(Expr::Neg(term))
+}
+
+struct LnTermForCalculusPresentation {
+    arg: ExprId,
+    arg_poly: Polynomial,
+    coefficient: BigRational,
+}
+
+fn extract_ln_term_for_calculus_presentation(
+    ctx: &mut Context,
+    term: ExprId,
+    var_name: &str,
+) -> Option<LnTermForCalculusPresentation> {
+    let term = unwrap_internal_hold_for_calculus(ctx, term);
+    if let Expr::Neg(inner) = ctx.get(term).clone() {
+        let mut extracted = extract_ln_term_for_calculus_presentation(ctx, inner, var_name)?;
+        extracted.coefficient = -extracted.coefficient;
+        return Some(extracted);
+    }
+    if let Expr::Div(num, den) = ctx.get(term).clone() {
+        let denominator = cas_ast::views::as_rational_const(ctx, den, 8)?;
+        if denominator.is_zero() {
+            return None;
+        }
+        let mut extracted = extract_ln_term_for_calculus_presentation(ctx, num, var_name)?;
+        extracted.coefficient /= denominator;
+        return Some(extracted);
+    }
+
+    let mut ln_arg = None;
+    let mut coefficient = BigRational::one();
+    for factor in cas_math::expr_nary::MulView::from_expr(ctx, term).factors {
+        let factor = unwrap_internal_hold_for_calculus(ctx, factor);
+        if let Expr::Function(fn_id, args) = ctx.get(factor).clone() {
+            if ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln) && args.len() == 1 {
+                if ln_arg.replace(args[0]).is_some() {
+                    return None;
+                }
+                continue;
+            }
+        }
+
+        let factor_value = cas_ast::views::as_rational_const(ctx, factor, 8)?;
+        coefficient *= factor_value;
+    }
+
+    let arg = ln_arg?;
+    Some(LnTermForCalculusPresentation {
+        arg,
+        arg_poly: Polynomial::from_expr(ctx, arg, var_name).ok()?,
+        coefficient,
+    })
+}
+
+fn build_scaled_ln_for_calculus_presentation(
+    ctx: &mut Context,
+    coefficient: &BigRational,
+    arg: ExprId,
+) -> Option<ExprId> {
+    if coefficient.is_zero() {
+        return None;
+    }
+
+    let ln = ctx.call_builtin(BuiltinFn::Ln, vec![arg]);
+    if coefficient.is_one() {
+        return Some(ln);
+    }
+    if *coefficient == -BigRational::one() {
+        return Some(ctx.add(Expr::Neg(ln)));
+    }
+
+    let coefficient = ctx.add(Expr::Number(coefficient.clone()));
+    Some(ctx.add(Expr::Mul(coefficient, ln)))
+}
+
+fn ln_polynomial_coefficient_degree_for_calculus_presentation(
+    ctx: &mut Context,
+    term: ExprId,
+    var_name: &str,
+) -> Option<usize> {
+    let term = unwrap_internal_hold_for_calculus(ctx, term);
+    if let Expr::Neg(inner) = ctx.get(term).clone() {
+        return ln_polynomial_coefficient_degree_for_calculus_presentation(ctx, inner, var_name);
+    }
+
+    let mut ln_seen = false;
+    let mut coefficient_factors = Vec::new();
+    for factor in cas_math::expr_nary::MulView::from_expr(ctx, term).factors {
+        let factor = unwrap_internal_hold_for_calculus(ctx, factor);
+        if let Expr::Function(fn_id, args) = ctx.get(factor).clone() {
+            if ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln) && args.len() == 1 {
+                if ln_seen {
+                    return None;
+                }
+                ln_seen = true;
+                continue;
+            }
+        }
+        coefficient_factors.push(factor);
+    }
+    if !ln_seen {
+        return None;
+    }
+
+    let coefficient = if coefficient_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        cas_math::expr_nary::build_balanced_mul(ctx, &coefficient_factors)
+    };
+    Some(
+        Polynomial::from_expr(ctx, coefficient, var_name)
+            .ok()?
+            .degree(),
+    )
+}
+
+fn compact_arctan_presentation_other_terms(
+    ctx: &mut Context,
+    terms: Vec<ExprId>,
+    var_name: &str,
+) -> Vec<ExprId> {
+    let mut polynomial_sum = Polynomial::zero(var_name.to_string());
+    let mut ln_groups: Vec<LnTermForCalculusPresentation> = Vec::new();
+    let mut passthrough = Vec::new();
+
+    for term in terms {
+        if let Some(ln_term) = extract_ln_term_for_calculus_presentation(ctx, term, var_name) {
+            if let Some(existing) = ln_groups
+                .iter_mut()
+                .find(|existing| existing.arg_poly == ln_term.arg_poly)
+            {
+                existing.coefficient += ln_term.coefficient;
+            } else {
+                ln_groups.push(ln_term);
+            }
+            continue;
+        }
+
+        if let Ok(poly) = Polynomial::from_expr(ctx, term, var_name) {
+            polynomial_sum = polynomial_sum.add(&poly);
+            continue;
+        }
+
+        passthrough.push(term);
+    }
+
+    let mut out = Vec::new();
+    for ln_term in ln_groups {
+        if let Some(term) =
+            build_scaled_ln_for_calculus_presentation(ctx, &ln_term.coefficient, ln_term.arg)
+        {
+            out.push(term);
+        }
+    }
+    if !polynomial_sum.is_zero() {
+        out.push(polynomial_sum.to_expr(ctx));
+    }
+    out.extend(passthrough);
+    out
+}
+
+fn contains_nontrivial_arctan_for_calculus_presentation(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let mut stack = vec![cas_ast::hold::unwrap_internal_hold(ctx, expr)];
+    while let Some(current) = stack.pop() {
+        match ctx.get(cas_ast::hold::unwrap_internal_hold(ctx, current)) {
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                stack.push(*left);
+                stack.push(*right);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(*inner),
+            Expr::Function(fn_id, args) => {
+                if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Arctan)
+                    && args.len() == 1
+                    && !variable_named(ctx, args[0], var_name)
+                {
+                    return true;
+                }
+                stack.extend(args.iter().copied());
+            }
+            _ => {}
+        }
+    }
+    false
+}
+
+fn flatten_subtracting_additive_group_for_calculus_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let expr = unwrap_internal_hold_for_calculus(ctx, expr);
+    let Expr::Sub(left, right) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let right = unwrap_internal_hold_for_calculus(ctx, right);
+    if !matches!(ctx.get(right), Expr::Add(_, _) | Expr::Sub(_, _)) {
+        return None;
+    }
+    if !contains_nontrivial_arctan_for_calculus_presentation(ctx, right, var_name) {
+        return None;
+    }
+    if ln_polynomial_coefficient_degree_for_calculus_presentation(ctx, left, var_name)? > 5 {
+        return None;
+    }
+
+    let mut additive_terms = Vec::new();
+    collect_additive_terms_for_arctan_calculus_presentation(
+        ctx,
+        left,
+        cas_math::expr_nary::Sign::Pos,
+        &mut additive_terms,
+    );
+    collect_additive_terms_for_arctan_calculus_presentation(
+        ctx,
+        right,
+        cas_math::expr_nary::Sign::Neg,
+        &mut additive_terms,
+    );
+    if additive_terms.len() < 3 {
+        return None;
+    }
+
+    let terms = additive_terms
+        .into_iter()
+        .map(|(term, sign)| {
+            let signed = match sign {
+                cas_math::expr_nary::Sign::Pos => term,
+                cas_math::expr_nary::Sign::Neg => negate_term_for_calculus_presentation(ctx, term),
+            };
+            fold_numeric_mul_constants_for_hold(ctx, signed)
+        })
+        .collect::<Vec<_>>();
+
+    Some(cas_math::expr_nary::build_balanced_add(ctx, &terms))
+}
+
+fn linear_hyperbolic_integer_slope_for_calculus_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    for factor in cas_math::expr_nary::MulView::from_expr(ctx, expr).factors {
+        let factor = unwrap_internal_hold_for_calculus(ctx, factor);
+        let Expr::Function(fn_id, args) = ctx.get(factor).clone() else {
+            continue;
+        };
+        if args.len() != 1
+            || !matches!(
+                ctx.builtin_of(fn_id),
+                Some(BuiltinFn::Sinh | BuiltinFn::Cosh)
+            )
+        {
+            continue;
+        }
+        let Ok(arg_poly) = Polynomial::from_expr(ctx, args[0], var_name) else {
+            return false;
+        };
+        if arg_poly.degree() != 1 {
+            return false;
+        }
+        let slope = arg_poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        return !slope.is_zero() && slope.is_integer();
+    }
+    false
+}
+
+fn compact_arctan_additive_terms_for_calculus_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let expr = unwrap_internal_hold_for_calculus(ctx, expr);
+
+    match ctx.get(expr).clone() {
+        Expr::Mul(left, right) => {
+            if cas_ast::views::as_rational_const(ctx, left, 8).is_some() {
+                let compact =
+                    compact_arctan_additive_terms_for_calculus_presentation(ctx, right, var_name)?;
+                let compact = cas_ast::hold::wrap_hold(ctx, compact);
+                return Some(ctx.add(Expr::Mul(left, compact)));
+            }
+            if cas_ast::views::as_rational_const(ctx, right, 8).is_some() {
+                let compact =
+                    compact_arctan_additive_terms_for_calculus_presentation(ctx, left, var_name)?;
+                let compact = cas_ast::hold::wrap_hold(ctx, compact);
+                return Some(ctx.add(Expr::Mul(compact, right)));
+            }
+        }
+        Expr::Div(num, den) if cas_ast::views::as_rational_const(ctx, den, 8).is_some() => {
+            let compact =
+                compact_arctan_additive_terms_for_calculus_presentation(ctx, num, var_name)?;
+            let compact = cas_ast::hold::wrap_hold(ctx, compact);
+            return Some(ctx.add(Expr::Div(compact, den)));
+        }
+        _ => {}
+    }
+
+    let mut additive_terms = Vec::new();
+    collect_additive_terms_for_arctan_calculus_presentation(
+        ctx,
+        expr,
+        cas_math::expr_nary::Sign::Pos,
+        &mut additive_terms,
+    );
+    if additive_terms.len() < 2 {
+        return None;
+    }
+
+    let mut arctan_arg = None;
+    let mut arctan_coefficients = Vec::new();
+    let mut other_terms = Vec::new();
+    let mut arctan_term_count = 0usize;
+
+    for (term, sign) in additive_terms {
+        if let Some((arg, coeff)) = extract_arctan_term_for_calculus_presentation(ctx, term) {
+            if let Some(existing_arg) = arctan_arg {
+                if !arctan_arg_matches_for_calculus_presentation(ctx, existing_arg, arg, var_name) {
+                    return None;
+                }
+            } else {
+                arctan_arg = Some(arg);
+            }
+            arctan_term_count += 1;
+            let coeff = match sign {
+                cas_math::expr_nary::Sign::Pos => coeff,
+                cas_math::expr_nary::Sign::Neg => negate_term_for_calculus_presentation(ctx, coeff),
+            };
+            let coeff = fold_numeric_mul_constants_for_hold(ctx, coeff);
+            arctan_coefficients.push(coeff);
+        } else {
+            let signed_term = match sign {
+                cas_math::expr_nary::Sign::Pos => term,
+                cas_math::expr_nary::Sign::Neg => negate_term_for_calculus_presentation(ctx, term),
+            };
+            let signed_term = fold_numeric_mul_constants_for_hold(ctx, signed_term);
+            other_terms.push(signed_term);
+        }
+    }
+
+    if arctan_term_count < 2 {
+        return None;
+    }
+
+    let arg = arctan_arg?;
+    if Polynomial::from_expr(ctx, arg, var_name).is_err() {
+        return None;
+    };
+    let coeff = cas_math::expr_nary::build_balanced_add(ctx, &arctan_coefficients);
+    let coeff = cas_ast::hold::wrap_hold(ctx, coeff);
+    let arctan = ctx.call_builtin(BuiltinFn::Arctan, vec![arg]);
+    let arctan_term = ctx.add(Expr::Mul(coeff, arctan));
+
+    let mut terms = vec![arctan_term];
+    terms.extend(compact_arctan_presentation_other_terms(
+        ctx,
+        other_terms,
+        var_name,
+    ));
+    Some(cas_math::expr_nary::build_balanced_add(ctx, &terms))
+}
+
+fn collect_additive_terms_for_arctan_calculus_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    sign: cas_math::expr_nary::Sign,
+    out: &mut Vec<(ExprId, cas_math::expr_nary::Sign)>,
+) {
+    let expr = unwrap_internal_hold_for_calculus(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            collect_additive_terms_for_arctan_calculus_presentation(ctx, left, sign, out);
+            collect_additive_terms_for_arctan_calculus_presentation(ctx, right, sign, out);
+        }
+        Expr::Sub(left, right) => {
+            collect_additive_terms_for_arctan_calculus_presentation(ctx, left, sign, out);
+            collect_additive_terms_for_arctan_calculus_presentation(ctx, right, sign.negate(), out);
+        }
+        Expr::Neg(inner) => {
+            collect_additive_terms_for_arctan_calculus_presentation(ctx, inner, sign.negate(), out);
+        }
+        _ => out.push((expr, sign)),
+    }
+}
+
+fn polynomial_times_arctan_affine_integrand_for_diff_shortcut(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let terms = cas_math::expr_nary::AddView::from_expr(ctx, expr).terms;
+    !terms.is_empty()
+        && terms.into_iter().all(|(term, _)| {
+            polynomial_times_arctan_affine_term_for_diff_shortcut(ctx, term, var_name)
+        })
+}
+
+fn polynomial_times_arctan_affine_term_for_diff_shortcut(
+    ctx: &Context,
+    term: ExprId,
+    var_name: &str,
+) -> bool {
+    let term = cas_ast::hold::unwrap_internal_hold(ctx, term);
+    match ctx.get(term).clone() {
+        Expr::Neg(inner) => {
+            return polynomial_times_arctan_affine_term_for_diff_shortcut(ctx, inner, var_name);
+        }
+        Expr::Div(num, den) if cas_ast::views::as_rational_const(ctx, den, 8).is_some() => {
+            return polynomial_times_arctan_affine_term_for_diff_shortcut(ctx, num, var_name);
+        }
+        _ => {}
+    }
+
+    let mut arctan_arg = None;
+    let mut polynomial_factor = Polynomial::one(var_name.to_string());
+    for factor in cas_math::expr_nary::MulView::from_expr(ctx, term).factors {
+        let factor = cas_ast::hold::unwrap_internal_hold(ctx, factor);
+        if let Expr::Function(fn_id, args) = ctx.get(factor).clone() {
+            if args.len() == 1
+                && matches!(
+                    ctx.builtin_of(fn_id),
+                    Some(BuiltinFn::Arctan | BuiltinFn::Atan)
+                )
+            {
+                if arctan_arg.replace(args[0]).is_some() {
+                    return false;
+                }
+                continue;
+            }
+        }
+
+        let Ok(factor_poly) = Polynomial::from_expr(ctx, factor, var_name) else {
+            return false;
+        };
+        polynomial_factor = polynomial_factor.mul(&factor_poly);
+    }
+
+    let Some(arg) = arctan_arg else {
+        return false;
+    };
+    let Ok(arg_poly) = Polynomial::from_expr(ctx, arg, var_name) else {
+        return false;
+    };
+    arg_poly.degree() == 1 && !arg_poly.derivative().is_zero() && !polynomial_factor.is_zero()
+}
+
 pub(crate) fn try_post_calculus_presentation(
     ctx: &mut Context,
     source: ExprId,
     result: ExprId,
 ) -> Option<ExprId> {
     if let Some(call) = try_extract_integrate_call(ctx, source) {
+        if cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_arctan_affine_target(
+            ctx,
+            call.target,
+            &call.var_name,
+        ) {
+            if let Some(compact) = compact_arctan_additive_terms_for_calculus_presentation(
+                ctx,
+                result,
+                &call.var_name,
+            ) {
+                return Some(compact);
+            }
+        }
         if cas_math::symbolic_integration_support::integrate_symbolic_is_fractional_denominator_power_substitution_target(
             ctx,
             call.target,
@@ -4771,6 +5381,7 @@ pub(crate) fn try_calculus_result_presentation(
         .or_else(|| {
             compact_trig_odd_power_reduction_primitive_for_integration_presentation(ctx, result)
         })
+        .or_else(|| compact_arctan_additive_terms_for_calculus_presentation(ctx, result, "x"))
 }
 
 fn collect_scaled_trig_square_terms_for_integration_presentation(
@@ -6140,6 +6751,17 @@ fn arctan_affine_by_parts_arctan_term(
     sign: cas_math::expr_nary::Sign,
     var_name: &str,
 ) -> Option<ArctanAffineByPartsTerm> {
+    let term = cas_ast::hold::unwrap_internal_hold(ctx, term);
+    if let Expr::Div(num, den) = ctx.get(term).clone() {
+        let denominator = cas_ast::views::as_rational_const(ctx, den, 8)?;
+        if denominator.is_zero() {
+            return None;
+        }
+        let mut term = arctan_affine_by_parts_arctan_term(ctx, num, sign, var_name)?;
+        term.cofactor_poly = term.cofactor_poly.div_scalar(&denominator);
+        return Some(term);
+    }
+
     let factors = cas_math::expr_nary::MulView::from_expr(ctx, term).factors;
     let mut arctan_arg = None;
     let mut cofactor_poly = Polynomial::one(var_name.to_string());
@@ -6183,6 +6805,17 @@ fn arctan_affine_by_parts_ln_term(
     sign: cas_math::expr_nary::Sign,
     var_name: &str,
 ) -> Option<LnAffineByPartsTerm> {
+    let term = cas_ast::hold::unwrap_internal_hold(ctx, term);
+    if let Expr::Div(num, den) = ctx.get(term).clone() {
+        let denominator = cas_ast::views::as_rational_const(ctx, den, 8)?;
+        if denominator.is_zero() {
+            return None;
+        }
+        let mut term = arctan_affine_by_parts_ln_term(ctx, num, sign, var_name)?;
+        term.coefficient /= denominator;
+        return Some(term);
+    }
+
     let factors = cas_math::expr_nary::MulView::from_expr(ctx, term).factors;
     let mut ln_arg = None;
     let mut coefficient_poly = Polynomial::one(var_name.to_string());
@@ -6218,35 +6851,94 @@ fn arctan_affine_by_parts_ln_term(
     })
 }
 
+fn scale_polynomial(poly: &Polynomial, scale: &BigRational) -> Polynomial {
+    Polynomial::new(
+        poly.coeffs.iter().map(|coeff| coeff * scale).collect(),
+        poly.var.clone(),
+    )
+}
+
+fn polynomial_arctan_product(ctx: &mut Context, poly: &Polynomial, arg: ExprId) -> ExprId {
+    if poly.is_zero() {
+        return ctx.num(0);
+    }
+
+    let one = Polynomial::one(poly.var.clone());
+    let arctan = ctx.call_builtin(BuiltinFn::Arctan, vec![arg]);
+    if *poly == one {
+        return arctan;
+    }
+    if *poly == one.neg() {
+        return ctx.add(Expr::Neg(arctan));
+    }
+
+    let poly_expr = poly.to_expr(ctx);
+    ctx.add(Expr::Mul(poly_expr, arctan))
+}
+
 fn arctan_affine_by_parts_compact_derivative(
     ctx: &mut Context,
     target: ExprId,
     var_name: &str,
 ) -> Option<ExprId> {
+    let target = unwrap_internal_hold_for_calculus(ctx, target);
+    match ctx.get(target).clone() {
+        Expr::Mul(left, right) => {
+            if cas_ast::views::as_rational_const(ctx, left, 8).is_some() {
+                let derivative = arctan_affine_by_parts_compact_derivative(ctx, right, var_name)?;
+                let scaled = ctx.add(Expr::Mul(left, derivative));
+                return Some(fold_numeric_mul_constants_for_hold(ctx, scaled));
+            }
+            if cas_ast::views::as_rational_const(ctx, right, 8).is_some() {
+                let derivative = arctan_affine_by_parts_compact_derivative(ctx, left, var_name)?;
+                let scaled = ctx.add(Expr::Mul(derivative, right));
+                return Some(fold_numeric_mul_constants_for_hold(ctx, scaled));
+            }
+        }
+        Expr::Div(num, den) if cas_ast::views::as_rational_const(ctx, den, 8).is_some() => {
+            let derivative = arctan_affine_by_parts_compact_derivative(ctx, num, var_name)?;
+            let scaled = ctx.add(Expr::Div(derivative, den));
+            return Some(fold_numeric_mul_constants_for_hold(ctx, scaled));
+        }
+        _ => {}
+    }
+
     let terms = cas_math::expr_nary::AddView::from_expr(ctx, target).terms;
-    if terms.len() != 2 {
+    if terms.len() < 2 {
         return None;
     }
 
-    let mut arctan_term = None;
-    let mut ln_term = None;
+    let mut arctan_term: Option<ArctanAffineByPartsTerm> = None;
+    let mut ln_term: Option<LnAffineByPartsTerm> = None;
+    let mut remainder_poly = Polynomial::zero(var_name.to_string());
 
     for (term, sign) in terms {
         if let Some(term) = arctan_affine_by_parts_arctan_term(ctx, term, sign, var_name) {
-            if arctan_term.replace(term).is_some() {
-                return None;
+            if let Some(existing) = &mut arctan_term {
+                if existing.arg_poly != term.arg_poly {
+                    return None;
+                }
+                existing.cofactor_poly = existing.cofactor_poly.add(&term.cofactor_poly);
+            } else {
+                arctan_term = Some(term);
             }
             continue;
         }
 
         if let Some(term) = arctan_affine_by_parts_ln_term(ctx, term, sign, var_name) {
-            if ln_term.replace(term).is_some() {
-                return None;
+            if let Some(existing) = &mut ln_term {
+                if existing.arg_poly != term.arg_poly {
+                    return None;
+                }
+                existing.coefficient += term.coefficient;
+            } else {
+                ln_term = Some(term);
             }
             continue;
         }
 
-        return None;
+        let term_poly = Polynomial::from_expr(ctx, term, var_name).ok()?;
+        remainder_poly = remainder_poly.add(&apply_additive_sign_to_poly(term_poly, sign));
     }
 
     let arctan_term = arctan_term?;
@@ -6260,17 +6952,6 @@ fn arctan_affine_by_parts_compact_derivative(
         return None;
     }
 
-    let expected_arctan_cofactor = arctan_term.arg_poly.div_scalar(&linear_coeff);
-    if arctan_term.cofactor_poly != expected_arctan_cofactor {
-        return None;
-    }
-
-    let expected_ln_coeff =
-        -BigRational::one() / (BigRational::from_integer(2.into()) * linear_coeff);
-    if ln_term.coefficient != expected_ln_coeff {
-        return None;
-    }
-
     let expected_ln_arg_poly = arctan_term
         .arg_poly
         .mul(&arctan_term.arg_poly)
@@ -6279,7 +6960,22 @@ fn arctan_affine_by_parts_compact_derivative(
         return None;
     }
 
-    Some(ctx.call_builtin(BuiltinFn::Arctan, vec![arctan_term.arg]))
+    let rational_numerator = scale_polynomial(&arctan_term.cofactor_poly, &linear_coeff)
+        .add(&scale_polynomial(
+            &arctan_term.arg_poly,
+            &(BigRational::from_integer(2.into()) * &ln_term.coefficient * &linear_coeff),
+        ))
+        .add(&remainder_poly.derivative().mul(&expected_ln_arg_poly));
+    if !rational_numerator.is_zero() {
+        return None;
+    }
+
+    let arctan_cofactor_derivative = arctan_term.cofactor_poly.derivative();
+    Some(polynomial_arctan_product(
+        ctx,
+        &arctan_cofactor_derivative,
+        arctan_term.arg,
+    ))
 }
 
 fn collect_atanh_open_interval_conditions(ctx: &mut Context, root: ExprId) -> Vec<ExprId> {
@@ -7095,6 +7791,14 @@ fn supported_integral_derivative_presentation(
         &integrate_call.var_name,
     ) {
         integrate(ctx, integrate_call.target, &integrate_call.var_name)?;
+        return Some(integrate_call.target);
+    }
+
+    if polynomial_times_arctan_affine_integrand_for_diff_shortcut(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
         return Some(integrate_call.target);
     }
 
@@ -8047,13 +8751,24 @@ fn collect_sqrt_reciprocal_trig_product_signal(
 
 define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
     let call = try_extract_integrate_call(ctx, expr)?;
-    if let Some((result, required_nonzero)) =
+    if let Some((mut result, required_nonzero)) =
         cas_math::symbolic_integration_support::integrate_symbolic_polynomial_trig_reciprocal_derivative_root_gate(
             ctx,
             call.target,
             &call.var_name,
         )
     {
+        if polynomial_times_arctan_affine_integrand_for_diff_shortcut(
+            ctx,
+            call.target,
+            &call.var_name,
+        ) {
+            if let Some(compact) =
+                compact_arctan_additive_terms_for_calculus_presentation(ctx, result, &call.var_name)
+            {
+                result = compact;
+            }
+        }
         let desc = render_integrate_desc_with(&call, |id| {
             format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
         });
@@ -8204,6 +8919,17 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
             call.target,
             &call.var_name,
         );
+    let preserve_compact_linear_hyperbolic_by_parts = crate::rule::steps_enabled()
+        && cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_hyperbolic_linear_target(
+            ctx,
+            call.target,
+            &call.var_name,
+        )
+        && linear_hyperbolic_integer_slope_for_calculus_presentation(
+            ctx,
+            call.target,
+            &call.var_name,
+        );
     let preserve_compact_repeated_trig_by_parts =
         cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_trig_linear_target(
             ctx,
@@ -8216,7 +8942,32 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
             call.target,
             &call.var_name,
         );
+    let preserve_compact_log_by_parts = crate::rule::steps_enabled()
+        && (cas_math::symbolic_integration_support::integrate_symbolic_is_monomial_times_ln_var_by_parts_target(
+            ctx,
+            call.target,
+            &call.var_name,
+        ) || (!matches!(ctx.get(call.target), Expr::Add(_, _) | Expr::Sub(_, _))
+            && cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_affine_ln_by_parts_target(
+            ctx,
+            call.target,
+            &call.var_name,
+        )) || (!matches!(ctx.get(call.target), Expr::Add(_, _) | Expr::Sub(_, _))
+            && cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_affine_ln_by_parts_target(
+            ctx,
+            call.target,
+            &call.var_name,
+        )) || (!matches!(ctx.get(call.target), Expr::Add(_, _) | Expr::Sub(_, _))
+            && cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_positive_quadratic_ln_by_parts_target(
+            ctx,
+            call.target,
+            &call.var_name,
+        )));
     let mut result = integrate(ctx, call.target, &call.var_name)?;
+    let compact_polynomial_arctan_by_parts_result =
+        compact_arctan_additive_terms_for_calculus_presentation(ctx, result, &call.var_name);
+    let preserve_compact_polynomial_arctan_by_parts_result =
+        compact_polynomial_arctan_by_parts_result.is_some();
     if required_positive.is_empty() {
         required_positive.extend(collect_atanh_open_interval_conditions(ctx, result));
     }
@@ -8264,8 +9015,11 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
         || preserve_compact_hyperbolic_square_product
         || preserve_compact_linear_exp_by_parts
         || preserve_compact_linear_trig_by_parts
+        || preserve_compact_linear_hyperbolic_by_parts
         || preserve_compact_repeated_trig_by_parts
         || preserve_compact_repeated_hyperbolic_by_parts
+        || preserve_compact_polynomial_arctan_by_parts_result
+        || preserve_compact_log_by_parts
         || preserve_compact_inverse_sqrt_arg
         || preserve_compact_sqrt_denominator_result
         || preserve_compact_negative_half_power_result
@@ -8300,11 +9054,30 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
                 &call.var_name,
             );
         }
+        if let Some(compact) = compact_polynomial_arctan_by_parts_result {
+            result = compact;
+        }
         result = if preserve_compact_rational_linear_partial_fraction {
             fold_numeric_mul_constants_for_hold_additive_terms(ctx, result)
         } else {
             fold_numeric_mul_constants_for_hold(ctx, result)
         };
+        if preserve_compact_polynomial_arctan_by_parts_result {
+            if let Some(compact) =
+                compact_arctan_additive_terms_for_calculus_presentation(ctx, result, &call.var_name)
+            {
+                result = compact;
+            }
+        }
+        if preserve_compact_log_by_parts {
+            if let Some(compact) = flatten_subtracting_additive_group_for_calculus_presentation(
+                ctx,
+                result,
+                &call.var_name,
+            ) {
+                result = compact;
+            }
+        }
         result = if preserve_compact_fractional_denominator_power {
             ctx.add(Expr::Hold(result))
         } else {
@@ -8742,6 +9515,122 @@ mod compact_hold_tests {
             rendered(&ctx, derivative),
             "2 * sqrt(6) / ((2 * x + 2)^2 + 6)"
         );
+    }
+
+    #[test]
+    fn arctan_affine_by_parts_compact_derivative_accepts_polynomial_remainder() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((x^3+2)*arctan(1-x))/3 + ln(x^2+2-2*x)/3 + x^2/6 + 2*x/3",
+            &mut ctx,
+        )
+        .unwrap();
+        let derivative = arctan_affine_by_parts_compact_derivative(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, derivative), "arctan(1 - x) * x^2");
+
+        let normalized = parse(
+            "1/6*(2*ln(x^2+2-2*x) + 2*arctan(1-x)*x^3 + 4*arctan(1-x) + x^2 + 4*x)",
+            &mut ctx,
+        )
+        .unwrap();
+        let derivative =
+            arctan_affine_by_parts_compact_derivative(&mut ctx, normalized, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, derivative), "x^2 * arctan(1 - x)");
+    }
+
+    #[test]
+    fn arctan_affine_by_parts_compact_derivative_runs_in_diff_pipeline() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "diff(((x^3+2)*arctan(1-x))/3 + ln(x^2+2-2*x)/3 + x^2/6 + 2*x/3, x)",
+            &mut simplifier.context,
+        )
+        .unwrap();
+        let (result, _steps) = simplifier.simplify(expr);
+
+        assert_eq!(rendered(&simplifier.context, result), "arctan(1 - x) * x^2");
+    }
+
+    #[test]
+    fn compact_arctan_additive_terms_accepts_negative_affine_argument() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "1/3*x^3*arctan(1-x) + 1/3*ln(x^2+2-2*x) + 2/3*arctan(1-x) + 1/6*x^2 + 2/3*x",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact =
+            compact_arctan_additive_terms_for_calculus_presentation(&mut ctx, expr, "x").unwrap();
+
+        assert_eq!(rendered(&ctx, compact).matches("arctan(1 - x)").count(), 1);
+
+        let raw_by_parts = parse(
+            "1/3*x^3*arctan(1-x) - (-1/3*ln(x^2+2-2*x) - 2/3*arctan(1-x) - 1/6*x^2 - 2/3*x)",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact =
+            compact_arctan_additive_terms_for_calculus_presentation(&mut ctx, raw_by_parts, "x")
+                .unwrap();
+        assert_eq!(rendered(&ctx, compact).matches("arctan(1 - x)").count(), 1);
+
+        let duplicate_companions = parse(
+            "1/3*ln(x^2+2-2*x) + 1/2*ln(x^2+2-2*x) + 1/3*x^3*arctan(1-x) + 1/2*x^2*arctan(1-x) + 2/3*arctan(1-x) + 1/6*x^2 + 1/2*x + 2/3*x",
+            &mut ctx,
+        )
+        .unwrap();
+        let compact = compact_arctan_additive_terms_for_calculus_presentation(
+            &mut ctx,
+            duplicate_companions,
+            "x",
+        )
+        .unwrap();
+        let rendered = rendered(&ctx, compact);
+        assert_eq!(rendered.matches("ln(x^2 + 2 - 2 * x)").count(), 1);
+        assert!(rendered.contains("5/6 * ln(x^2 + 2 - 2 * x)"));
+        assert!(rendered.contains("7/6 * x"));
+    }
+
+    #[test]
+    fn integrate_pipeline_compacts_negative_affine_arctan_by_parts_result() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse("integrate(x^2*arctan(1-x), x)", &mut simplifier.context).unwrap();
+        let target = match simplifier.context.get(expr) {
+            Expr::Function(_, args) => args[0],
+            _ => expr,
+        };
+        assert!(
+            cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_arctan_affine_target(
+                &mut simplifier.context,
+                target,
+                "x",
+            )
+        );
+        assert!(polynomial_times_arctan_affine_integrand_for_diff_shortcut(
+            &simplifier.context,
+            target,
+            "x"
+        ));
+        let raw = integrate(&mut simplifier.context, target, "x").unwrap();
+        let raw = fold_numeric_mul_constants_for_hold(&mut simplifier.context, raw);
+        let compact = compact_arctan_additive_terms_for_calculus_presentation(
+            &mut simplifier.context,
+            raw,
+            "x",
+        )
+        .unwrap();
+        assert_eq!(
+            rendered(&simplifier.context, compact)
+                .matches("arctan(1 - x)")
+                .count(),
+            1
+        );
+        let (result, _steps) = simplifier.simplify(expr);
+        let rendered = rendered(&simplifier.context, result);
+
+        assert_eq!(rendered.matches("arctan(1 - x)").count(), 1);
     }
 
     #[test]

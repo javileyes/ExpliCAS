@@ -1,16 +1,16 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-05-14T14:37:35.237845+00:00
+- Generated: 2026-05-15T06:40:03.026274+00:00
 - Git branch: main
-- Git commit: `b438ff94a7a825d5087cc1163675cde420a2d8bb`
+- Git commit: `363710223dd65516297ffde2bdfcc1571ea55de0`
 - Profile: `guardrail`
 
 ## Embedded Runtime Guardrail
 
 - Dimension: contextual simplify/equivalence under real wrappers.
 - Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 7.78s
-- Per-case runtime: 5.232ms/case
+- Elapsed: 7.26s
+- Per-case runtime: 4.882ms/case
 - Coverage axes: 7 wrappers across 27 families
 - Context axes: 4 complexity levels across 6 shell depths
 - Largest wrapper share: 19.8%
@@ -84,7 +84,7 @@
 - `diff`: passed=169 failed=0 ignored=1 filtered_out=0
 - `limit`: passed=67 failed=0 ignored=0 filtered_out=0
 - `limit_presimplify_safe`: passed=8 failed=0 ignored=0 filtered_out=0
-- `integrate`: passed=230 failed=0 ignored=1 filtered_out=0
+- `integrate`: passed=274 failed=0 ignored=1 filtered_out=0
 
 ## Simplify Closure Signal
 
@@ -102,13 +102,13 @@
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 7.78s | passed=1487 failed=0 total=1487 wrappers=7 families=27 avg_case=5.232ms |
-| `derive_contract` | `pass` | 5.23s | derived=390 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
-| `derive_shadow_pressure` | `pass` | 0.31s | sampled=66 derived=66 unsupported=0 not_equivalent=0 mean_step_count=1.11 generic_simplify_strategy_successes=0 single_step=61 multi_step_ids=5 embedded_families=26/26 |
-| `derive_didactic_audit` | `pass` | 37.45s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 |
-| `simplify_didactic_audit` | `pass` | 0.98s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
-| `simplify_strict` | `pass` | 20.09s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
-| `calculus_diff_contract` | `pass` | 5.09s | passed=169 failed=0 |
-| `calculus_limit_contract` | `pass` | 0.94s | passed=67 failed=0 |
-| `calculus_limit_presimplify_contract` | `pass` | 0.66s | passed=8 failed=0 |
-| `calculus_integrate_contract` | `pass` | 6.03s | passed=230 failed=0 |
+| `embedded_equivalence_context` | `pass` | 7.26s | passed=1487 failed=0 total=1487 wrappers=7 families=27 avg_case=4.882ms |
+| `derive_contract` | `pass` | 4.93s | derived=390 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
+| `derive_shadow_pressure` | `pass` | 0.28s | sampled=66 derived=66 unsupported=0 not_equivalent=0 mean_step_count=1.11 generic_simplify_strategy_successes=0 single_step=61 multi_step_ids=5 embedded_families=26/26 |
+| `derive_didactic_audit` | `pass` | 18.67s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 |
+| `simplify_didactic_audit` | `pass` | 0.92s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
+| `simplify_strict` | `pass` | 20.53s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
+| `calculus_diff_contract` | `pass` | 4.55s | passed=169 failed=0 |
+| `calculus_limit_contract` | `pass` | 0.93s | passed=67 failed=0 |
+| `calculus_limit_presimplify_contract` | `pass` | 0.68s | passed=8 failed=0 |
+| `calculus_integrate_contract` | `pass` | 3.84s | passed=274 failed=0 |

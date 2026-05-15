@@ -59,7 +59,10 @@ fn integrate_call_should_preserve_raw_target_for_direct_integration(
         || integrate_target_is_repeated_trig_by_parts_kernel(ctx, args[0], var_name)
         || integrate_target_is_repeated_exp_by_parts_kernel(ctx, args[0], var_name)
         || (crate::rule::steps_enabled()
-            && integrate_target_is_affine_times_basic_by_parts_kernel(ctx, args[0], var_name))
+            && (integrate_target_is_affine_times_basic_by_parts_kernel(ctx, args[0], var_name)
+                || integrate_target_is_proportional_affine_ln_by_parts_kernel(
+                    ctx, args[0], var_name,
+                )))
 }
 
 fn integrate_target_is_affine_times_basic_by_parts_kernel(
@@ -118,6 +121,68 @@ fn expr_is_basic_linear_by_parts_kernel(
         return false;
     };
     poly.degree() == 1
+}
+
+fn integrate_target_is_proportional_affine_ln_by_parts_kernel(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Mul(left, right) = ctx.get(target) else {
+        return false;
+    };
+
+    expr_is_proportional_affine_ln_pair(ctx, *left, *right, var_name)
+        || expr_is_proportional_affine_ln_pair(ctx, *right, *left, var_name)
+}
+
+fn expr_is_proportional_affine_ln_pair(
+    ctx: &cas_ast::Context,
+    cofactor: ExprId,
+    log_expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(log_expr) else {
+        return false;
+    };
+    if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(cas_ast::BuiltinFn::Ln) {
+        return false;
+    }
+
+    let Ok(arg_poly) = Polynomial::from_expr(ctx, args[0], var_name) else {
+        return false;
+    };
+    let Ok(cofactor_poly) = Polynomial::from_expr(ctx, cofactor, var_name) else {
+        return false;
+    };
+    if arg_poly.degree() != 1 || cofactor_poly.degree() != 1 {
+        return false;
+    }
+
+    let arg_offset = arg_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let arg_slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let cofactor_offset = cofactor_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let cofactor_slope = cofactor_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+
+    !arg_slope.is_zero()
+        && !cofactor_slope.is_zero()
+        && cofactor_offset * arg_slope == cofactor_slope * arg_offset
 }
 
 fn diff_target_should_preserve_raw_derivative_route(

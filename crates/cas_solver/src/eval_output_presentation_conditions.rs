@@ -1,5 +1,5 @@
 use cas_api_models::{AssumptionDto, BlockedHintDto, RequiredConditionWire, WarningWire};
-use cas_ast::Context;
+use cas_ast::{Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_solver_core::domain_normalization::normalize_and_dedupe_conditions;
 use std::collections::HashSet;
@@ -62,9 +62,15 @@ pub(crate) fn collect_output_required_display(
     result_display: Option<&str>,
 ) -> Vec<String> {
     let assumed_filter = AssumedConditionFilter::from_assumptions(assumptions_used);
-    normalize_and_dedupe_conditions(ctx, required_conditions)
+    let normalized = normalize_and_dedupe_conditions(ctx, required_conditions);
+    let visible_conditions: Vec<_> = normalized
         .iter()
         .filter(|cond| !assumed_filter.covers_required_condition(ctx, cond))
+        .collect();
+
+    visible_conditions
+        .iter()
+        .filter(|cond| !required_display_condition_is_redundant(ctx, cond, &visible_conditions))
         .map(|cond| {
             apply_input_inverse_trig_alias_preferences(
                 &cond.display(ctx),
@@ -73,6 +79,77 @@ pub(crate) fn collect_output_required_display(
             )
         })
         .collect()
+}
+
+fn required_display_condition_is_redundant(
+    ctx: &Context,
+    cond: &crate::ImplicitCondition,
+    visible_conditions: &[&crate::ImplicitCondition],
+) -> bool {
+    let crate::ImplicitCondition::NonZero(nonzero_expr) = cond else {
+        return false;
+    };
+
+    visible_conditions.iter().any(|candidate| {
+        let crate::ImplicitCondition::NonNegative(gap_expr) = candidate else {
+            return false;
+        };
+        let Some(denominator) = exterior_unit_interval_denominator(ctx, *gap_expr) else {
+            return false;
+        };
+        cas_math::expr_domain::exprs_equivalent(ctx, denominator, *nonzero_expr)
+    })
+}
+
+fn exterior_unit_interval_denominator(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let base = unit_interval_base(ctx, expr)?;
+    match ctx.get(base) {
+        Expr::Div(numerator, denominator) if is_integer_literal(ctx, *numerator, 1) => {
+            Some(*denominator)
+        }
+        Expr::Pow(inner, exponent) if is_integer_literal(ctx, *exponent, -1) => Some(*inner),
+        _ => None,
+    }
+}
+
+fn unit_interval_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) if is_integer_literal(ctx, *left, 1) => squared_base(ctx, *right),
+        Expr::Add(left, right) if is_integer_literal(ctx, *left, 1) => {
+            negated_squared_base(ctx, *right)
+        }
+        Expr::Add(left, right) if is_integer_literal(ctx, *right, 1) => {
+            negated_squared_base(ctx, *left)
+        }
+        _ => None,
+    }
+}
+
+fn squared_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exponent) = ctx.get(expr) else {
+        return None;
+    };
+    if is_integer_literal(ctx, *exponent, 2) {
+        Some(*base)
+    } else {
+        None
+    }
+}
+
+fn negated_squared_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => squared_base(ctx, *inner),
+        Expr::Mul(left, right) if is_integer_literal(ctx, *left, -1) => squared_base(ctx, *right),
+        Expr::Mul(left, right) if is_integer_literal(ctx, *right, -1) => squared_base(ctx, *left),
+        _ => None,
+    }
+}
+
+fn is_integer_literal(ctx: &Context, expr: ExprId, value: i64) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Number(n) if n == &num_rational::BigRational::from_integer(value.into())
+    )
 }
 
 pub(crate) fn collect_output_blocked_hints(

@@ -634,6 +634,134 @@ mod tests {
     }
 
     #[test]
+    fn eval_stateless_preserves_reciprocal_trig_intrinsic_domain_requires() {
+        for (expr_text, expected_result, expected_requires) in [
+            (
+                "tan(x)+cot(x)-sec(x)*csc(x)",
+                "0",
+                vec!["cos(x) ≠ 0", "sin(x) ≠ 0"],
+            ),
+            ("tan(x)", "tan(x)", vec!["cos(x) ≠ 0"]),
+            ("sec(x)", "sec(x)", vec!["cos(x) ≠ 0"]),
+            ("cot(x)", "cot(x)", vec!["sin(x) ≠ 0"]),
+            ("csc(x)", "csc(x)", vec!["sin(x) ≠ 0"]),
+        ] {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{expr_text}: {e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{expr_text}: {e:?}"));
+
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("{expr_text}: expected expression result");
+            };
+            assert_eq!(
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: result,
+                }
+                .to_string(),
+                expected_result,
+                "{expr_text}"
+            );
+
+            let required_display: Vec<_> = output
+                .required_conditions
+                .iter()
+                .map(|condition| condition.display(&engine.simplifier.context))
+                .collect();
+            for expected in expected_requires {
+                assert!(
+                    required_display.iter().any(|actual| actual == expected),
+                    "{expr_text}: expected {expected}, got {required_display:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn eval_stateless_preserves_inverse_trig_bounded_domain_requires() {
+        for (expr_text, expected_result, expected_requires) in [
+            ("arcsin(x)", "arcsin(x)", vec!["-1 ≤ x ≤ 1"]),
+            ("arccos(x)", "arccos(x)", vec!["-1 ≤ x ≤ 1"]),
+            (
+                "ln(arcsin(x)^2)",
+                "2 * ln(|arcsin(x)|)",
+                vec!["-1 ≤ x ≤ 1", "arcsin(x) ≠ 0"],
+            ),
+            (
+                "arcsec(x)",
+                "arccos(1 / x)",
+                vec!["x ≤ -1 or x ≥ 1", "x ≠ 0"],
+            ),
+            (
+                "arccsc(x)",
+                "arcsin(1 / x)",
+                vec!["x ≤ -1 or x ≥ 1", "x ≠ 0"],
+            ),
+        ] {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{expr_text}: {e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{expr_text}: {e:?}"));
+
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("{expr_text}: expected expression result");
+            };
+            assert_eq!(
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: result,
+                }
+                .to_string(),
+                expected_result,
+                "{expr_text}"
+            );
+
+            let required_display: Vec<_> = output
+                .required_conditions
+                .iter()
+                .map(|condition| condition.display(&engine.simplifier.context))
+                .collect();
+            for expected in expected_requires {
+                assert!(
+                    required_display.iter().any(|actual| actual == expected),
+                    "{expr_text}: expected {expected}, got {required_display:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
     fn eval_simplify_steps_off_handles_triple_sine_plus_rational_against_hyperbolic_pythagorean_regression(
     ) {
         let mut engine = Engine::new();

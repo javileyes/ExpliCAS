@@ -4519,7 +4519,7 @@ Steps (Aggressive Mode):
    After: sqrt(1 - x^2)
 Result: sqrt(1 - x^(2))
 ℹ️ Requires:
-  • 1 - x^2 ≥ 0
+  • -1 ≤ x ≤ 1
 ```
 
 ### Web / JSON Steps
@@ -8118,7 +8118,7 @@ Steps (Aggressive Mode):
    After: 2 * x * sqrt(1 - x^2)
 Result: 2 * x * sqrt(1 - x^(2))
 ℹ️ Requires:
-  • 1 - x^2 ≥ 0
+  • -1 ≤ x ≤ 1
 ```
 
 ### Web / JSON Steps
@@ -8152,7 +8152,7 @@ Steps (Aggressive Mode):
    After: 2 * x * sqrt(1 - x^2)
 Result: 2 * x * sqrt(1 - x^(2))
 ℹ️ Requires:
-  • 1 - x^2 ≥ 0
+  • -1 ≤ x ≤ 1
 ```
 
 ### Web / JSON Steps
@@ -15089,7 +15089,7 @@ Steps (Aggressive Mode):
    After: sqrt(1 - x^2)
 Result: sqrt(1 - x^(2))
 ℹ️ Requires:
-  • 1 - x^2 ≥ 0
+  • -1 ≤ x ≤ 1
 ```
 
 ### Web / JSON Steps

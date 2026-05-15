@@ -42,6 +42,11 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return integration_by_parts_substeps;
     }
 
+    let integration_substitution_substeps = generate_integration_substitution_substeps(ctx, step);
+    if !integration_substitution_substeps.is_empty() {
+        return integration_substitution_substeps;
+    }
+
     let sixth_power_substeps = generate_sum_difference_sixth_powers_substeps(ctx, step);
     if !sixth_power_substeps.is_empty() {
         return sixth_power_substeps;
@@ -11406,6 +11411,11 @@ fn generate_integration_by_parts_substeps(ctx: &Context, step: &Step) -> Vec<Sub
     if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
         return Vec::new();
     }
+    if let Expr::Function(after_fn_id, _) = ctx.get(after) {
+        if ctx.sym_name(*after_fn_id) == "integrate" {
+            return Vec::new();
+        }
+    }
 
     let Expr::Variable(var_sym) = ctx.get(args[1]) else {
         return Vec::new();
@@ -11465,6 +11475,54 @@ fn contains_linear_integration_by_parts_target(
         &mut scratch,
         expr,
         var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_monomial_times_ln_var_by_parts_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_affine_ln_by_parts_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_affine_ln_by_parts_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || (!(cas_math::symbolic_integration_support::integrate_symbolic_is_log_product_substitution_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_log_power_product_substitution_target(
+        &mut scratch,
+        expr,
+        var_name,
+    )) && cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_positive_quadratic_ln_by_parts_target(
+        &mut scratch,
+        expr,
+        var_name,
+    )) || cas_math::symbolic_integration_support::integrate_symbolic_is_bounded_inverse_trig_variable_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_scaled_variable_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_reciprocal_affine_variable_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_asinh_affine_variable_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_atanh_affine_variable_target(
+        &mut scratch,
+        expr,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_acosh_affine_variable_target(
+        &mut scratch,
+        expr,
+        var_name,
     ) {
         return true;
     }
@@ -11477,6 +11535,91 @@ fn contains_linear_integration_by_parts_target(
         Expr::Neg(inner) => contains_linear_integration_by_parts_target(ctx, *inner, var_name),
         _ => false,
     }
+}
+
+fn generate_integration_substitution_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if let Expr::Function(after_fn_id, _) = ctx.get(after) {
+        if ctx.sym_name(*after_fn_id) == "integrate" {
+            return Vec::new();
+        }
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    let mut scratch = ctx.clone();
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_derivative_substitution_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_hyperbolic_quotient_substitution_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_trig_quotient_substitution_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_trig_log_substitution_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_log_product_substitution_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_log_power_product_substitution_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_reciprocal_derivative_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_log_derivative_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_log_derivative_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_reciprocal_square_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_hyperbolic_reciprocal_derivative_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_base_substitution_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_nested_inverse_polynomial_substitution_target(
+        &mut scratch,
+        args[0],
+        var_name,
+    ) {
+        return Vec::new();
+    }
+
+    vec![SubStep::new(
+        "Usar sustitución",
+        display_expr(ctx, args[0]),
+        display_expr(ctx, after),
+    )
+    .with_before_latex(latex_expr(ctx, args[0]))
+    .with_after_latex(latex_expr(ctx, after))]
 }
 
 fn display_expr(ctx: &Context, expr: ExprId) -> String {

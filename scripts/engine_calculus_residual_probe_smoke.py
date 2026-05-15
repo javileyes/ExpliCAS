@@ -255,6 +255,42 @@ DEFAULT_SHIFTED_QUOTIENT_RESIDUAL_DEN_CASES = (
     ),
 )
 
+DEFAULT_PRODUCT_ZERO_FACTOR_CASES = (
+    MatrixProbeCase(
+        name="recip_trig_csc_product_zero_factor",
+        expr=(
+            "((diff(integrate(csc(2*x+1),x),x)-csc(2*x+1))+x+2)*(y-y)"
+        ),
+        expected_result="0",
+        required_conditions=("sin(2·x + 1)",),
+    ),
+    MatrixProbeCase(
+        name="recip_trig_csc_product_zero_factor_reversed",
+        expr=(
+            "(y-y)*((diff(integrate(csc(2*x+1),x),x)-csc(2*x+1))+x+2)"
+        ),
+        expected_result="0",
+        required_conditions=("sin(2·x + 1)",),
+    ),
+    MatrixProbeCase(
+        name="plain_trig_by_parts_product_zero_factor",
+        expr=(
+            "((diff(integrate(x^6*sin(x),x),x)-x^6*sin(x))+x+2)*(y-y)"
+        ),
+        expected_result="0",
+        required_conditions=(),
+    ),
+    MatrixProbeCase(
+        name="hyperbolic_by_parts_product_zero_factor",
+        expr=(
+            "((diff(integrate((x^3+x)*cosh(2*x+1),x),x)"
+            "-((x^3+x)*cosh(2*x+1)))+x+2)*(y-y)"
+        ),
+        expected_result="0",
+        required_conditions=(),
+    ),
+)
+
 
 def build_default_matrix_cases() -> tuple[MatrixProbeCase, ...]:
     cases: list[MatrixProbeCase] = []
@@ -271,6 +307,7 @@ def build_default_matrix_cases() -> tuple[MatrixProbeCase, ...]:
                 )
             )
     cases.extend(DEFAULT_SHIFTED_QUOTIENT_RESIDUAL_DEN_CASES)
+    cases.extend(DEFAULT_PRODUCT_ZERO_FACTOR_CASES)
     return tuple(cases)
 
 
@@ -301,7 +338,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--forbid-warnings",
         action="store_true",
-        help="Fail if the JSON response contains warnings.",
+        help="Fail if the JSON response or stderr contains warnings.",
     )
     parser.add_argument(
         "--timeout-seconds",
@@ -375,7 +412,7 @@ def run_probe(
     parsed, parse_error = parse_json(stdout)
     result = extract_result(parsed)
     actual_required = extract_required_conditions(parsed)
-    warnings = extract_warnings(parsed)
+    warnings = (*extract_warnings(parsed), *extract_stderr_warnings(stderr))
 
     error = classify_error(
         returncode=process.returncode,
@@ -501,6 +538,15 @@ def extract_warnings(parsed: dict[str, Any] | None) -> tuple[str, ...]:
             message = item.get("message") or item.get("text")
             if isinstance(message, str):
                 warnings.append(message)
+    return tuple(warnings)
+
+
+def extract_stderr_warnings(stderr: str) -> tuple[str, ...]:
+    warnings: list[str] = []
+    for line in stderr.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("WARN ") or " WARN " in stripped:
+            warnings.append(stripped)
     return tuple(warnings)
 
 
