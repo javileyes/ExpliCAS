@@ -95,6 +95,45 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-15 - Observe-only discovery: negative acosh fused residual after public diff
+
+- area:
+  - calculus / diff-integrate residual verification / reciprocal square-root
+    radicand scaling
+- status:
+  - `superseded`
+- generated candidate:
+  - promote fused-radicand `acosh` coverage for
+    `integrate(±2/sqrt((2*x-1)^2-1), x)`
+- retained subset:
+  - promoted the positive and negative fused-radicand integration rows
+  - added a bounded residual helper for scaled reciprocal square-root
+    polynomial radicands, so the positive public residual
+    `diff(acosh(2*x-1), x) - 2/sqrt((2*x-1)^2-1)` now closes to `0`
+- observed gap:
+  - the negative public residual
+    `diff(acosh(1-2*x), x) - (-2/sqrt((2*x-1)^2-1))` still renders as
+    `(x^2 - x)^(-1/2) - 2*(-2*x*(2 - 2*x))^(-1/2)` under `x < 0`
+  - the promoted integration contract still verifies the antiderivative, so
+    this is a residual presentation/re-entry gap rather than an incorrect
+    integration result
+- superseded by:
+  - retained the narrow post-diff `acosh` residual re-entry gate for affine
+    arguments against fused reciprocal-square-root radicands
+  - the positive residual now closes to `0` with `Requires: x > 1`
+  - the negative residual now closes to `0` with `Requires: x < 0`
+- reusable weakness:
+  - after differentiating a negatively oriented inverse-hyperbolic primitive,
+    the simplifier can expose equivalent reciprocal square-root radicands
+    whose scalar content is sign-normalized differently, and the public
+    top-level residual route may not re-enter the scaled-radicand cancellation
+    helper
+- next candidate:
+  - add a narrow post-diff residual re-entry gate for reciprocal square-root
+    terms with same-sign coefficients and polynomial radicands differing by a
+    positive square factor, while preserving explicit branch/domain conditions
+    and measuring embedded runtime
+
 ## 2026-05-15 - Observe-only discovery: negative sqrt reciprocal-trig trace
 
 - area:

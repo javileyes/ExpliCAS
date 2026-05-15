@@ -569,6 +569,30 @@ fn test_positive_affine_partition_quotient_expands_to_positive_parts() {
 }
 
 #[test]
+fn test_positive_sqrt_minus_radicand_gap_is_dominated_by_atomic_bounds() {
+    let mut ctx = Context::new();
+    let raw_gap = cas_parser::parse("sqrt(x) - x", &mut ctx).expect("parse raw gap");
+    let pow_gap = cas_parser::parse("x^(1/2) - x", &mut ctx).expect("parse pow gap");
+    let unit_minus_sqrt =
+        cas_parser::parse("1 - sqrt(x)", &mut ctx).expect("parse unit minus sqrt");
+    let x = cas_parser::parse("x", &mut ctx).expect("parse x");
+    let upper = cas_parser::parse("1 - x", &mut ctx).expect("parse upper");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::NonZero(unit_minus_sqrt),
+            ImplicitCondition::Positive(raw_gap),
+            ImplicitCondition::Positive(pow_gap),
+            ImplicitCondition::Positive(x),
+            ImplicitCondition::Positive(upper),
+        ],
+    );
+
+    assert_eq!(rendered, vec!["x > 0", "x < 1"]);
+}
+
+#[test]
 fn test_expanded_shifted_square_product_nonzero_is_dominated_by_atomic_guards() {
     let mut ctx = Context::new();
     let composite =

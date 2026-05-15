@@ -11590,11 +11590,12 @@ fn generate_linear_inverse_table_integration_substeps(ctx: &Context, step: &Step
         return Vec::new();
     };
     let var_name = ctx.sym_name(*var_sym);
-    let Some((builtin, arg)) = linear_inverse_table_result_arg(ctx, after, var_name) else {
+    let Some((builtin, arg, scale)) = linear_inverse_table_result_arg(ctx, after, var_name) else {
         return Vec::new();
     };
 
     let title = match builtin {
+        BuiltinFn::Arcsin | BuiltinFn::Asin => "Usar la regla de arcsin con derivada interna",
         BuiltinFn::Arctan | BuiltinFn::Atan => "Usar la regla de arctan con derivada interna",
         BuiltinFn::Asinh => "Usar la regla de asinh con derivada interna",
         BuiltinFn::Acosh => "Usar la regla de acosh con derivada interna",
@@ -11602,7 +11603,7 @@ fn generate_linear_inverse_table_integration_substeps(ctx: &Context, step: &Step
         _ => return Vec::new(),
     };
 
-    vec![
+    let mut substeps = vec![
         SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
             .with_before_latex(latex_expr(ctx, args[0]))
             .with_after_latex(latex_expr(ctx, after)),
@@ -11613,14 +11614,28 @@ fn generate_linear_inverse_table_integration_substeps(ctx: &Context, step: &Step
         )
         .with_before_latex(latex_expr(ctx, arg))
         .with_after_latex(latex_expr(ctx, after)),
-    ]
+    ];
+
+    if scale != BigRational::one() {
+        substeps.push(
+            SubStep::new(
+                "Ajustar el factor constante",
+                inverse_table_function_display(ctx, builtin, arg),
+                display_expr(ctx, after),
+            )
+            .with_before_latex(inverse_table_function_latex(ctx, builtin, arg))
+            .with_after_latex(latex_expr(ctx, after)),
+        );
+    }
+
+    substeps
 }
 
 fn linear_inverse_table_result_arg(
     ctx: &Context,
     expr: ExprId,
     var_name: &str,
-) -> Option<(BuiltinFn, ExprId)> {
+) -> Option<(BuiltinFn, ExprId, BigRational)> {
     let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
     match ctx.get(expr) {
         Expr::Function(fn_id, args) if args.len() == 1 => {
@@ -11629,23 +11644,70 @@ fn linear_inverse_table_result_arg(
                 builtin,
                 BuiltinFn::Arctan
                     | BuiltinFn::Atan
+                    | BuiltinFn::Arcsin
+                    | BuiltinFn::Asin
                     | BuiltinFn::Asinh
                     | BuiltinFn::Acosh
                     | BuiltinFn::Atanh
             ) {
                 return None;
             }
-            nontrivial_affine_argument(ctx, args[0], var_name).then_some((builtin, args[0]))
+            nontrivial_affine_argument(ctx, args[0], var_name).then_some((
+                builtin,
+                args[0],
+                BigRational::one(),
+            ))
         }
-        Expr::Neg(inner) | Expr::Hold(inner) => {
-            linear_inverse_table_result_arg(ctx, *inner, var_name)
+        Expr::Neg(inner) => linear_inverse_table_result_arg(ctx, *inner, var_name)
+            .map(|(builtin, arg, scale)| (builtin, arg, -scale)),
+        Expr::Hold(inner) => linear_inverse_table_result_arg(ctx, *inner, var_name),
+        Expr::Mul(left, right) => {
+            if let Some(scale) = as_rational_const(ctx, *left, 8) {
+                return linear_inverse_table_result_arg(ctx, *right, var_name)
+                    .map(|(builtin, arg, inner_scale)| (builtin, arg, scale * inner_scale));
+            }
+            if let Some(scale) = as_rational_const(ctx, *right, 8) {
+                return linear_inverse_table_result_arg(ctx, *left, var_name)
+                    .map(|(builtin, arg, inner_scale)| (builtin, arg, scale * inner_scale));
+            }
+            None
         }
-        Expr::Mul(left, right) => linear_inverse_table_result_arg(ctx, *left, var_name)
-            .or_else(|| linear_inverse_table_result_arg(ctx, *right, var_name)),
-        Expr::Div(num, den) if as_rational_const(ctx, *den, 8).is_some() => {
+        Expr::Div(num, den) => {
+            let denominator = as_rational_const(ctx, *den, 8)?;
+            if denominator.is_zero() {
+                return None;
+            }
             linear_inverse_table_result_arg(ctx, *num, var_name)
+                .map(|(builtin, arg, scale)| (builtin, arg, scale / denominator))
         }
         _ => None,
+    }
+}
+
+fn inverse_table_function_display(ctx: &Context, builtin: BuiltinFn, arg: ExprId) -> String {
+    format!(
+        "{}({})",
+        inverse_table_function_name(builtin),
+        display_expr(ctx, arg)
+    )
+}
+
+fn inverse_table_function_latex(ctx: &Context, builtin: BuiltinFn, arg: ExprId) -> String {
+    format!(
+        "\\{}\\left({}\\right)",
+        inverse_table_function_name(builtin),
+        latex_expr(ctx, arg)
+    )
+}
+
+fn inverse_table_function_name(builtin: BuiltinFn) -> &'static str {
+    match builtin {
+        BuiltinFn::Arcsin | BuiltinFn::Asin => "arcsin",
+        BuiltinFn::Arctan | BuiltinFn::Atan => "arctan",
+        BuiltinFn::Asinh => "asinh",
+        BuiltinFn::Acosh => "acosh",
+        BuiltinFn::Atanh => "atanh",
+        _ => "f",
     }
 }
 
@@ -11699,9 +11761,22 @@ fn generate_linear_elementary_table_integration_substeps(
     let Some((builtin, arg)) = linear_elementary_integrand_arg(ctx, args[0]) else {
         return Vec::new();
     };
-    if !nontrivial_affine_argument(ctx, arg, var_name) {
+    let Ok(arg_poly) = Polynomial::from_expr(ctx, arg, var_name) else {
         return Vec::new();
     };
+    let slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let offset = arg_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if slope.is_zero() || (slope.is_one() && offset.is_zero()) {
+        return Vec::new();
+    }
 
     let title = match builtin {
         BuiltinFn::Exp => "Usar la regla de exp con derivada interna",
@@ -11712,7 +11787,7 @@ fn generate_linear_elementary_table_integration_substeps(
         _ => return Vec::new(),
     };
 
-    vec![
+    let mut substeps = vec![
         SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
             .with_before_latex(latex_expr(ctx, args[0]))
             .with_after_latex(latex_expr(ctx, after)),
@@ -11723,7 +11798,49 @@ fn generate_linear_elementary_table_integration_substeps(
         )
         .with_before_latex(latex_expr(ctx, arg))
         .with_after_latex(latex_expr(ctx, after)),
-    ]
+    ];
+
+    if !slope.is_one() {
+        substeps.push(
+            SubStep::new(
+                "Ajustar el factor constante",
+                affine_internal_derivative_display(ctx, arg, var_name, &slope),
+                display_expr(ctx, after),
+            )
+            .with_before_latex(affine_internal_derivative_latex(ctx, arg, var_name, &slope))
+            .with_after_latex(latex_expr(ctx, after)),
+        );
+    }
+
+    substeps
+}
+
+fn affine_internal_derivative_display(
+    ctx: &Context,
+    arg: ExprId,
+    var_name: &str,
+    slope: &BigRational,
+) -> String {
+    format!(
+        "d/d{}({}) = {}",
+        var_name,
+        display_expr(ctx, arg),
+        rational_display(slope)
+    )
+}
+
+fn affine_internal_derivative_latex(
+    ctx: &Context,
+    arg: ExprId,
+    var_name: &str,
+    slope: &BigRational,
+) -> String {
+    format!(
+        "\\frac{{d}}{{d{}}}\\left({}\\right) = {}",
+        var_name,
+        latex_expr(ctx, arg),
+        rational_latex(slope)
+    )
 }
 
 fn linear_elementary_integrand_arg(
@@ -11775,8 +11892,16 @@ fn generate_linear_log_table_integration_substeps(ctx: &Context, step: &Step) ->
     let Some(denominator) = linear_log_table_denominator_arg(ctx, args[0], var_name) else {
         return Vec::new();
     };
+    let Ok(denominator_poly) = Polynomial::from_expr(ctx, denominator, var_name) else {
+        return Vec::new();
+    };
+    let slope = denominator_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
 
-    vec![
+    let mut substeps = vec![
         SubStep::new(
             "Usar la regla de ln|u| con derivada interna",
             display_expr(ctx, args[0]),
@@ -11791,7 +11916,26 @@ fn generate_linear_log_table_integration_substeps(ctx: &Context, step: &Step) ->
         )
         .with_before_latex(latex_expr(ctx, denominator))
         .with_after_latex(latex_expr(ctx, after)),
-    ]
+    ];
+
+    if !slope.is_one() {
+        substeps.push(
+            SubStep::new(
+                "Ajustar el factor constante",
+                affine_internal_derivative_display(ctx, denominator, var_name, &slope),
+                display_expr(ctx, after),
+            )
+            .with_before_latex(affine_internal_derivative_latex(
+                ctx,
+                denominator,
+                var_name,
+                &slope,
+            ))
+            .with_after_latex(latex_expr(ctx, after)),
+        );
+    }
+
+    substeps
 }
 
 fn linear_log_table_denominator_arg(

@@ -440,6 +440,60 @@ fn rational_scaled_term(ctx: &mut Context, expr: ExprId) -> (BigRational, ExprId
     }
 }
 
+fn scaled_reciprocal_sqrt_polynomial_term(
+    ctx: &mut Context,
+    term: ExprId,
+) -> Option<(BigRational, Polynomial, ExprId)> {
+    let (scale, core) = rational_scaled_term(ctx, term);
+    if scale.is_zero() {
+        return None;
+    }
+
+    let base = reciprocal_sqrt_like_base(ctx, core)?;
+    let vars = cas_ast::collect_variables(ctx, base);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var_name = vars.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, base, var_name).ok()?;
+    if poly.is_zero() {
+        return None;
+    }
+
+    Some((scale, poly, base))
+}
+
+fn same_nonzero_sign(left: &BigRational, right: &BigRational) -> bool {
+    (left > &BigRational::zero() && right > &BigRational::zero())
+        || (left < &BigRational::zero() && right < &BigRational::zero())
+}
+
+fn scaled_reciprocal_sqrt_polynomial_terms_required_conditions(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (left_scale, left_poly, left_base) = scaled_reciprocal_sqrt_polynomial_term(ctx, left)?;
+    let (right_scale, right_poly, right_base) = scaled_reciprocal_sqrt_polynomial_term(ctx, right)?;
+
+    if left_poly.var != right_poly.var || !same_nonzero_sign(&left_scale, &right_scale) {
+        return None;
+    }
+
+    let left_scale_sq = left_scale.clone() * left_scale;
+    let right_scale_sq = right_scale.clone() * right_scale;
+    if scale_polynomial(&right_poly, &left_scale_sq)
+        != scale_polynomial(&left_poly, &right_scale_sq)
+    {
+        return None;
+    }
+
+    Some(vec![
+        crate::ImplicitCondition::Positive(left_base),
+        crate::ImplicitCondition::Positive(right_base),
+    ])
+}
+
 fn remove_denominator_factor_matching_base(
     ctx: &Context,
     factors: &[ExprId],
@@ -737,6 +791,7 @@ pub(crate) fn try_reciprocal_half_power_shared_denominator_residual_root_zero(
     reciprocal_half_power_shared_denominator_terms_cancel(ctx, left, right)
         .or_else(|| reciprocal_half_power_shared_denominator_terms_cancel(ctx, right, left))
         .map(|_| Vec::new())
+        .or_else(|| scaled_reciprocal_sqrt_polynomial_terms_required_conditions(ctx, left, right))
         .or_else(|| {
             power_numerator_shifted_power_denominator_terms_required_conditions(ctx, left, right)
         })
@@ -6420,6 +6475,82 @@ pub(crate) fn try_diff_sqrt_acosh_split_radical_residual_root_zero(
     }
 }
 
+fn diff_acosh_affine_reciprocal_sqrt_residual_conditions(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    let acosh_arg = unary_builtin_arg(ctx, target, BuiltinFn::Acosh)?;
+    let arg_poly = Polynomial::from_expr(ctx, acosh_arg, &call.var_name).ok()?;
+    let derivative = arg_poly.derivative();
+    if derivative.coeffs.len() != 1 {
+        return None;
+    }
+    let expected_scale = derivative.coeffs[0].clone();
+    if expected_scale.is_zero() {
+        return None;
+    }
+
+    let expected_base_poly = arg_poly
+        .mul(&arg_poly)
+        .sub(&Polynomial::one(call.var_name.clone()));
+    if expected_base_poly.is_zero() {
+        return None;
+    }
+
+    let (actual_scale, actual_base_poly, _) = scaled_reciprocal_sqrt_polynomial_term(ctx, right)?;
+    if actual_base_poly.var != expected_base_poly.var
+        || !same_nonzero_sign(&expected_scale, &actual_scale)
+    {
+        return None;
+    }
+
+    let expected_scale_sq = expected_scale.clone() * expected_scale;
+    let actual_scale_sq = actual_scale.clone() * actual_scale;
+    if scale_polynomial(&expected_base_poly, &actual_scale_sq)
+        != scale_polynomial(&actual_base_poly, &expected_scale_sq)
+    {
+        return None;
+    }
+
+    let arg_minus_one = arg_poly
+        .sub(&Polynomial::one(call.var_name.clone()))
+        .to_expr(ctx);
+    Some(vec![crate::ImplicitCondition::Positive(arg_minus_one)])
+}
+
+pub(crate) fn try_diff_acosh_affine_reciprocal_sqrt_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let required_conditions = match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            let left = *left;
+            let right = *right;
+            diff_acosh_affine_reciprocal_sqrt_residual_conditions(ctx, left, right)
+                .or_else(|| diff_acosh_affine_reciprocal_sqrt_residual_conditions(ctx, right, left))
+        }
+        Expr::Add(left, right) => {
+            let left = *left;
+            let right = *right;
+            let neg_right = ctx.add(Expr::Neg(right));
+            let neg_left = ctx.add(Expr::Neg(left));
+            diff_acosh_affine_reciprocal_sqrt_residual_conditions(ctx, left, neg_right).or_else(
+                || diff_acosh_affine_reciprocal_sqrt_residual_conditions(ctx, right, neg_left),
+            )
+        }
+        _ => None,
+    }?;
+    Some((ctx.num(0), required_conditions))
+}
+
 fn try_diff_asinh_scaled_surd_residual_zero_preorder(
     ctx: &mut Context,
     left: ExprId,
@@ -7588,6 +7719,23 @@ mod tests {
         )
     }
 
+    fn acosh_affine_reciprocal_sqrt_residual_result(input: &str) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_acosh_affine_reciprocal_sqrt_residual_root_zero(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
     fn reciprocal_trig_root_residual_result(input: &str) -> Option<String> {
         let mut ctx = Context::new();
         let expr = parse(input, &mut ctx)
@@ -7663,6 +7811,28 @@ mod tests {
             Some((
                 "0".to_string(),
                 vec!["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2".to_string()]
+            ))
+        );
+    }
+
+    #[test]
+    fn reciprocal_half_power_residual_cancels_scaled_polynomial_radicand_content() {
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "2*(2*x*(2*x-2))^(-1/2) - (x^2-x)^(-1/2)"
+            ),
+            Some((
+                "0".to_string(),
+                vec!["x < 0 or x > 1".to_string(), "x < 0 or x > 1".to_string()]
+            ))
+        );
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "(x^2-x)^(-1/2) - 2*(-2*x*(2-2*x))^(-1/2)"
+            ),
+            Some((
+                "0".to_string(),
+                vec!["x < 0 or x > 1".to_string(), "x < 0 or x > 1".to_string()]
             ))
         );
     }
@@ -9603,5 +9773,22 @@ mod tests {
             ))
         );
         assert_eq!(simplify_text(input), "0");
+    }
+
+    #[test]
+    fn diff_acosh_affine_fused_reciprocal_sqrt_residual_cancels_before_expanding_diff() {
+        let cases = [
+            ("diff(acosh(2*x-1), x) - 2/sqrt((2*x-1)^2-1)", "x > 1"),
+            ("diff(acosh(1-2*x), x) - (-2/sqrt((2*x-1)^2-1))", "x < 0"),
+        ];
+
+        for (input, expected_condition) in cases {
+            assert_eq!(
+                acosh_affine_reciprocal_sqrt_residual_result(input),
+                Some(("0".to_string(), vec![expected_condition.to_string()])),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
     }
 }

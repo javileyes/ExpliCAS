@@ -2937,12 +2937,14 @@ fn condition_is_intrinsically_satisfied(ctx: &Context, cond: &ImplicitCondition)
             positive_sqrt_even_power_base(ctx, *expr).is_none()
                 && !positive_reciprocal_requires_nonzero_guard(ctx, *expr)
                 && (is_intrinsically_positive_real(ctx, *expr)
-                    || positive_quadratic_power_gap_is_intrinsic(ctx, *expr))
+                    || positive_quadratic_power_gap_is_intrinsic(ctx, *expr)
+                    || positive_sqrt_polynomial_gap_sum_is_intrinsic(ctx, *expr))
         }
         ImplicitCondition::NonNegative(expr) => {
             is_intrinsically_nonnegative_real(ctx, *expr)
                 || is_intrinsically_positive_real(ctx, *expr)
                 || positive_quadratic_power_gap_is_intrinsic(ctx, *expr)
+                || unit_nonnegative_ratio_gap_is_intrinsic(ctx, *expr)
         }
         ImplicitCondition::LowerBound(expr, lower) => match ctx.get(*expr) {
             Expr::Number(value) => value >= lower,
@@ -2953,6 +2955,138 @@ fn condition_is_intrinsically_satisfied(ctx: &Context, cond: &ImplicitCondition)
                 && is_intrinsically_positive_real(ctx, *expr)
         }
     }
+}
+
+fn unit_nonnegative_ratio_gap_is_intrinsic(ctx: &Context, expr: ExprId) -> bool {
+    let Some((num, den)) = one_minus_ratio_parts(ctx, expr) else {
+        return false;
+    };
+    if !is_intrinsically_nonnegative_real(ctx, num) {
+        return false;
+    }
+
+    let mut vars = cas_ast::collect_variables(ctx, num);
+    vars.extend(cas_ast::collect_variables(ctx, den));
+    if vars.len() != 1 {
+        return false;
+    }
+    let Some(var_name) = vars.iter().next() else {
+        return false;
+    };
+
+    let Ok(num_poly) = Polynomial::from_expr(ctx, num, var_name.as_str()) else {
+        return false;
+    };
+    let Ok(den_poly) = Polynomial::from_expr(ctx, den, var_name.as_str()) else {
+        return false;
+    };
+    let gap_poly = den_poly.sub(&num_poly);
+    gap_poly.degree() == 0
+        && gap_poly
+            .coeffs
+            .first()
+            .is_some_and(|coeff| coeff.is_positive())
+}
+
+fn one_minus_ratio_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right)
+            if as_rational_const(ctx, *left).is_some_and(|value| value.is_one()) =>
+        {
+            ratio_parts(ctx, *right)
+        }
+        Expr::Add(left, right) => {
+            if as_rational_const(ctx, *left).is_some_and(|value| value.is_one()) {
+                return negative_ratio_parts(ctx, *right);
+            }
+            if as_rational_const(ctx, *right).is_some_and(|value| value.is_one()) {
+                return negative_ratio_parts(ctx, *left);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn ratio_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Div(num, den) => Some((*num, *den)),
+        _ => None,
+    }
+}
+
+fn negative_ratio_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => ratio_parts(ctx, *inner),
+        Expr::Mul(left, right)
+            if as_rational_const(ctx, *left).is_some_and(|value| value == -BigRational::one()) =>
+        {
+            ratio_parts(ctx, *right)
+        }
+        Expr::Mul(left, right)
+            if as_rational_const(ctx, *right).is_some_and(|value| value == -BigRational::one()) =>
+        {
+            ratio_parts(ctx, *left)
+        }
+        _ => None,
+    }
+}
+
+fn positive_sqrt_polynomial_gap_sum_is_intrinsic(ctx: &Context, expr: ExprId) -> bool {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+    if terms.len() < 2 {
+        return false;
+    }
+
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return false;
+    }
+    let Some(var) = vars.iter().next() else {
+        return false;
+    };
+
+    let mut radicand = None;
+    let mut term_poly = Polynomial::zero(var.to_string());
+    for (term, sign) in terms {
+        if let Some(term_radicand) = sqrt_or_half_power_argument(ctx, term) {
+            if sign == Sign::Neg {
+                return false;
+            }
+            if radicand.is_some() {
+                return false;
+            }
+            radicand = Some(term_radicand);
+        } else {
+            let Ok(mut next_poly) = Polynomial::from_expr(ctx, term, var.as_str()) else {
+                return false;
+            };
+            if sign == Sign::Neg {
+                next_poly = next_poly.neg();
+            }
+            term_poly = term_poly.add(&next_poly);
+        }
+    }
+
+    let Some(radicand) = radicand else {
+        return false;
+    };
+    let Ok(radicand_poly) = Polynomial::from_expr(ctx, radicand, var.as_str()) else {
+        return false;
+    };
+    let gap = radicand_poly.sub(&term_poly.mul(&term_poly));
+    gap.degree() == 0 && gap.coeffs.first().is_some_and(|value| value.is_positive())
+}
+
+fn sqrt_or_half_power_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(arg) = extract_sqrt_argument_view(ctx, expr) {
+        return Some(arg);
+    }
+
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    (as_rational_const(ctx, *exp) == Some(BigRational::new(1.into(), 2.into()))).then_some(*base)
 }
 
 fn positive_quadratic_power_gap_is_intrinsic(ctx: &Context, expr: ExprId) -> bool {
@@ -3800,6 +3934,128 @@ fn positive_condition_dominates_shifted_unit_sqrt_open_interval(
     })
 }
 
+fn positive_condition_present_equiv(
+    ctx: &Context,
+    conditions: &[ImplicitCondition],
+    skip_index: usize,
+    target: ExprId,
+) -> bool {
+    conditions.iter().enumerate().any(|(idx, condition)| {
+        if idx == skip_index {
+            return false;
+        }
+        let ImplicitCondition::Positive(expr) = condition else {
+            return false;
+        };
+        positive_ordered_exprs_equivalent(ctx, *expr, target)
+            || conditions_same_display(
+                ctx,
+                &ImplicitCondition::Positive(*expr),
+                &ImplicitCondition::Positive(target),
+            )
+    })
+}
+
+fn unit_sqrt_gap_positive_parts(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let mut radicand = None;
+    let mut other = None;
+    for (term, sign) in terms {
+        if let Some((mut scale, term_radicand)) = scaled_sqrt_radicand_for_display(ctx, term) {
+            if sign == Sign::Neg {
+                scale = -scale;
+            }
+            if !scale.is_one() || radicand.replace(term_radicand).is_some() {
+                return None;
+            }
+        } else if other.replace((term, sign)).is_some() {
+            return None;
+        }
+    }
+
+    let radicand = radicand?;
+    let (other_term, other_sign) = other?;
+    let signed_other = if other_sign == Sign::Neg {
+        ctx.add(Expr::Neg(other_term))
+    } else {
+        other_term
+    };
+    let neg_radicand = ctx.add(Expr::Neg(radicand));
+    if !exprs_equivalent(ctx, signed_other, neg_radicand) {
+        return None;
+    }
+
+    let one = ctx.num(1);
+    let boundary = ctx.add(Expr::Sub(one, radicand));
+    Some((radicand, boundary))
+}
+
+fn positive_unit_sqrt_gap_dominated_by_atomic_bounds(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+    skip_index: usize,
+    gap_expr: ExprId,
+) -> bool {
+    let Some((radicand, boundary)) = unit_sqrt_gap_positive_parts(ctx, gap_expr) else {
+        return false;
+    };
+
+    positive_condition_present_equiv(ctx, conditions, skip_index, radicand)
+        && positive_condition_present_equiv(ctx, conditions, skip_index, boundary)
+}
+
+fn unit_sqrt_boundary_for_nonzero(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let mut constant = BigRational::zero();
+    let mut radicand = None;
+    let mut sqrt_scale = BigRational::zero();
+    for (term, sign) in terms {
+        if let Some(value) = as_rational_const(ctx, term) {
+            constant += if sign == Sign::Neg { -value } else { value };
+            continue;
+        }
+        let (mut scale, term_radicand) = scaled_sqrt_radicand_for_display(ctx, term)?;
+        if sign == Sign::Neg {
+            scale = -scale;
+        }
+        sqrt_scale += scale;
+        if radicand.replace(term_radicand).is_some() {
+            return None;
+        }
+    }
+
+    if constant.abs() != BigRational::one() || sqrt_scale.abs() != BigRational::one() {
+        return None;
+    }
+
+    let radicand = radicand?;
+    let one = ctx.num(1);
+    let boundary = ctx.add(Expr::Sub(one, radicand));
+    Some((radicand, boundary))
+}
+
+fn positive_bounds_dominate_unit_sqrt_nonzero(
+    ctx: &mut Context,
+    conditions: &[ImplicitCondition],
+    skip_index: usize,
+    nonzero_expr: ExprId,
+) -> bool {
+    let Some((radicand, boundary)) = unit_sqrt_boundary_for_nonzero(ctx, nonzero_expr) else {
+        return false;
+    };
+
+    positive_condition_present_equiv(ctx, conditions, skip_index, radicand)
+        && positive_condition_present_equiv(ctx, conditions, skip_index, boundary)
+}
+
 fn nonzero_condition_dominates_sqrt_lower_nonzero(
     ctx: &mut Context,
     nonzero_expr: ExprId,
@@ -3969,6 +4225,7 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                             ctx, *pos_expr, *nz_expr,
                         )
                         || positive_condition_dominates_sqrt_lower_nonzero(ctx, *pos_expr, *nz_expr)
+                        || positive_bounds_dominate_unit_sqrt_nonzero(ctx, conditions, i, *nz_expr)
                         || positive_polynomial_condition_contains_nonzero_factor(
                             ctx, *pos_expr, *nz_expr,
                         )
@@ -3996,6 +4253,12 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                             conditions,
                             i,
                             *pos_expr,
+                            *derived_expr,
+                        )
+                        || positive_unit_sqrt_gap_dominated_by_atomic_bounds(
+                            ctx,
+                            conditions,
+                            i,
                             *derived_expr,
                         )
                     {
@@ -4662,6 +4925,19 @@ mod tests {
             expr,
             DISPLAY_SIGN_PROOF_DEPTH
         ));
+    }
+
+    #[test]
+    fn unit_nonnegative_ratio_gap_is_intrinsic_for_positive_constant_gap() {
+        let mut ctx = Context::new();
+        let expr = parse("1 - x^2/(x^2 + 3)", &mut ctx).expect("parse expression");
+        let normalized =
+            normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonNegative(expr)]);
+
+        assert!(
+            normalized.is_empty(),
+            "1 - n^2/(n^2+c) is intrinsically nonnegative for c > 0"
+        );
     }
 
     #[test]
@@ -5575,6 +5851,29 @@ mod tests {
             normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::Positive(expr)]);
 
         assert!(normalized.is_empty());
+    }
+
+    #[test]
+    fn positive_sqrt_polynomial_gap_sum_condition_is_dropped() {
+        let mut ctx = Context::new();
+        for input in [
+            "sqrt(x^2 + 1) + x",
+            "sqrt(x^2 + 1) - x",
+            "sqrt(x^4 + 1) + x^2",
+            "sqrt(x^4 + 1) - x^2",
+            "sqrt((2*x+1)^2 + 4) + 2*x + 1",
+            "sqrt((2*x+1)^2 + 4) - (2*x + 1)",
+        ] {
+            let expr = parse(input, &mut ctx).expect("parse expr");
+
+            let normalized =
+                normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::Positive(expr)]);
+
+            assert!(
+                normalized.is_empty(),
+                "positive sqrt-polynomial gap should be intrinsic for {input}"
+            );
+        }
     }
 
     #[test]

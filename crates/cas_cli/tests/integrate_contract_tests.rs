@@ -516,6 +516,29 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation() {
 }
 
 #[test]
+fn integrate_contract_positive_half_power_antiderivatives_render_as_sqrt() {
+    for (input, expected) in [
+        ("integrate(x/sqrt(x^2+3), x)", "sqrt(x^2 + 3)"),
+        (
+            "integrate((2*x+1)/sqrt(x^2+x+1), x)",
+            "2 * sqrt(x^2 + x + 1)",
+        ),
+    ] {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            required.is_empty(),
+            "positive half-power presentation should not add domain conditions for {input}: {required:?}"
+        );
+        assert!(
+            !result.contains("^(1/2)"),
+            "post-integration presentation should prefer sqrt notation: {result}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
 fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_hyperbolic_by_parts(
 ) {
     for input in [
@@ -4064,12 +4087,12 @@ fn integrate_contract_polynomial_base_substitution_exposes_didactic_substep() {
         ),
         (
             "integrate(x/sqrt(x^2+1), x)",
-            "(x^2 + 1)^(1/2)",
+            "sqrt(x^2 + 1)",
             serde_json::json!([]),
         ),
         (
             "integrate(2*x/sqrt(x^2-1), x)",
-            "2·(x^2 - 1)^(1/2)",
+            "2·sqrt(x^2 - 1)",
             serde_json::json!(["x < -1 or x > 1"]),
         ),
         (
@@ -4239,30 +4262,103 @@ fn integrate_contract_nested_inverse_polynomial_substitution_exposes_didactic_su
 
 #[test]
 fn integrate_contract_linear_inverse_table_explains_internal_derivative_without_substitution() {
-    for (input, expected_result, expected_required_display, expected_substep_title) in [
+    for (
+        input,
+        expected_result,
+        expected_required_display,
+        expected_substep_title,
+        expect_constant_adjustment,
+    ) in [
+        (
+            "integrate(1/sqrt(9-(3*x-2)^2), x)",
+            "1/3·arcsin((3·x - 2) / 3)",
+            serde_json::json!(["-1/3 < x < 5/3"]),
+            "Usar la regla de arcsin con derivada interna",
+            true,
+        ),
+        (
+            "integrate(-1/sqrt(9-(3*x-2)^2), x)",
+            "-1/3·arcsin((3·x - 2) / 3)",
+            serde_json::json!(["-1/3 < x < 5/3"]),
+            "Usar la regla de arcsin con derivada interna",
+            true,
+        ),
+        (
+            "integrate(3/sqrt(9-(3*x-2)^2), x)",
+            "arcsin((3·x - 2) / 3)",
+            serde_json::json!(["-1/3 < x < 5/3"]),
+            "Usar la regla de arcsin con derivada interna",
+            false,
+        ),
         (
             "integrate(1/(1+(2*x+1)^2), x)",
             "1/2·arctan(2·x + 1)",
             serde_json::json!([]),
             "Usar la regla de arctan con derivada interna",
+            true,
+        ),
+        (
+            "integrate(1/(1+(1-2*x)^2), x)",
+            "1/2·arctan(2·x - 1)",
+            serde_json::json!([]),
+            "Usar la regla de arctan con derivada interna",
+            true,
         ),
         (
             "integrate(2/(4-(2*x+1)^2), x)",
             "1/2·atanh((2·x + 1) / 2)",
             serde_json::json!(["-3/2 < x < 1/2"]),
             "Usar la regla de atanh con derivada interna",
+            true,
+        ),
+        (
+            "integrate(2/(4-(1-2*x)^2), x)",
+            "1/2·atanh((2·x - 1) / 2)",
+            serde_json::json!(["-1/2 < x < 3/2"]),
+            "Usar la regla de atanh con derivada interna",
+            true,
         ),
         (
             "integrate(1/sqrt((2*x+1)^2+1), x)",
             "1/2·asinh(2·x + 1)",
             serde_json::json!([]),
             "Usar la regla de asinh con derivada interna",
+            true,
+        ),
+        (
+            "integrate(1/sqrt((1-2*x)^2+1), x)",
+            "1/2·asinh(2·x - 1)",
+            serde_json::json!([]),
+            "Usar la regla de asinh con derivada interna",
+            true,
         ),
         (
             "integrate(2/(sqrt(2*x)*sqrt(2*x+2)), x)",
             "acosh(2·x + 1)",
             serde_json::json!(["x > 0"]),
             "Usar la regla de acosh con derivada interna",
+            false,
+        ),
+        (
+            "integrate(2/sqrt((2*x-1)^2-1), x)",
+            "acosh(2·x - 1)",
+            serde_json::json!(["x > 1"]),
+            "Usar la regla de acosh con derivada interna",
+            false,
+        ),
+        (
+            "integrate(-2/(sqrt(-2*x)*sqrt(2-2*x)), x)",
+            "acosh(1 - 2·x)",
+            serde_json::json!(["x < 0"]),
+            "Usar la regla de acosh con derivada interna",
+            false,
+        ),
+        (
+            "integrate(-2/sqrt((2*x-1)^2-1), x)",
+            "acosh(1 - 2·x)",
+            serde_json::json!(["x < 0"]),
+            "Usar la regla de acosh con derivada interna",
+            false,
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -4300,37 +4396,85 @@ fn integrate_contract_linear_inverse_table_explains_internal_derivative_without_
                 .all(|substep| substep["title"] != "Usar sustitución"),
             "linear inverse table case should not use the polynomial-substitution substep for {input}: {substeps:?}"
         );
+        assert_eq!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Ajustar el factor constante"),
+            expect_constant_adjustment,
+            "unexpected constant adjustment substep presence for {input}: {substeps:?}"
+        );
         assert_antiderivative_verifies(input);
     }
 }
 
 #[test]
 fn integrate_contract_linear_elementary_table_explains_internal_derivative_without_substitution() {
-    for (input, expected_result, expected_substep_title) in [
+    for (input, expected_result, expected_substep_title, expect_constant_adjustment) in [
+        (
+            "integrate(sin(x+1), x)",
+            "-cos(x + 1)",
+            "Usar la regla de sin con derivada interna",
+            false,
+        ),
         (
             "integrate(sin(2*x+1), x)",
             "-1/2·cos(2·x + 1)",
             "Usar la regla de sin con derivada interna",
+            true,
+        ),
+        (
+            "integrate(sin(1-2*x), x)",
+            "1/2·cos(1 - 2·x)",
+            "Usar la regla de sin con derivada interna",
+            true,
         ),
         (
             "integrate(cos(2*x+1), x)",
             "1/2·sin(2·x + 1)",
             "Usar la regla de cos con derivada interna",
+            true,
+        ),
+        (
+            "integrate(cos(1-2*x), x)",
+            "-1/2·sin(1 - 2·x)",
+            "Usar la regla de cos con derivada interna",
+            true,
         ),
         (
             "integrate(exp(2*x+1), x)",
             "1/2·e^(2·x + 1)",
             "Usar la regla de exp con derivada interna",
+            true,
+        ),
+        (
+            "integrate(exp(1-2*x), x)",
+            "-1/2·e^(1 - 2·x)",
+            "Usar la regla de exp con derivada interna",
+            true,
         ),
         (
             "integrate(sinh(2*x+1), x)",
             "1/2·cosh(2·x + 1)",
             "Usar la regla de sinh con derivada interna",
+            true,
+        ),
+        (
+            "integrate(sinh(1-2*x), x)",
+            "-1/2·cosh(1 - 2·x)",
+            "Usar la regla de sinh con derivada interna",
+            true,
         ),
         (
             "integrate(cosh(2*x+1), x)",
             "1/2·sinh(2·x + 1)",
             "Usar la regla de cosh con derivada interna",
+            true,
+        ),
+        (
+            "integrate(cosh(1-2*x), x)",
+            "-1/2·sinh(1 - 2·x)",
+            "Usar la regla de cosh con derivada interna",
+            true,
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -4369,6 +4513,13 @@ fn integrate_contract_linear_elementary_table_explains_internal_derivative_witho
                 .all(|substep| substep["title"] != "Usar sustitución"),
             "linear elementary table case should not use the polynomial-substitution substep for {input}: {substeps:?}"
         );
+        assert_eq!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Ajustar el factor constante"),
+            expect_constant_adjustment,
+            "unexpected constant adjustment substep presence for {input}: {substeps:?}"
+        );
         assert_antiderivative_verifies(input);
     }
 }
@@ -4376,50 +4527,76 @@ fn integrate_contract_linear_elementary_table_explains_internal_derivative_witho
 #[test]
 fn integrate_contract_reciprocal_linear_log_table_explains_internal_derivative_without_substitution(
 ) {
-    let input = "integrate(1/(2*x+1), x)";
-    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+    for (input, expected_result, expected_required_display, expect_constant_adjustment) in [
+        (
+            "integrate(1/(x+1), x)",
+            "ln(|x + 1|)",
+            serde_json::json!(["x ≠ -1"]),
+            false,
+        ),
+        (
+            "integrate(1/(2*x+1), x)",
+            "1/2·ln(|2·x + 1|)",
+            serde_json::json!(["x ≠ -1/2"]),
+            true,
+        ),
+        (
+            "integrate(1/(1-2*x), x)",
+            "-1/2·ln(|1 - 2·x|)",
+            serde_json::json!(["x ≠ 1/2"]),
+            true,
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
 
-    assert_eq!(wire["result"], "1/2·ln(|2·x + 1|)");
-    assert_eq!(
-        wire["required_display"],
-        serde_json::json!(["x ≠ -1/2"]),
-        "unexpected required_display for {input}: {:?}",
-        wire["required_display"]
-    );
-    assert!(
-        !stderr.contains("depth_overflow"),
-        "linear log table trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
-    );
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "linear log table trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
 
-    let steps = wire["steps"]
-        .as_array()
-        .expect("steps should be present with --steps on");
-    let integration_step = steps
-        .iter()
-        .find(|step| step["rule"] == "Calcular la integral")
-        .expect("expected public symbolic integration step");
-    let substeps = integration_step["substeps"]
-        .as_array()
-        .expect("integration step should expose didactic substeps");
-    assert!(
-        substeps
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
             .iter()
-            .any(|substep| substep["title"] == "Usar la regla de ln|u| con derivada interna"),
-        "expected ln|u| substep for {input}, got {substeps:?}"
-    );
-    assert!(
-        substeps
-            .iter()
-            .any(|substep| substep["title"] == "Identificar el denominador afín"),
-        "expected affine denominator substep for {input}, got {substeps:?}"
-    );
-    assert!(
-        substeps
-            .iter()
-            .all(|substep| substep["title"] != "Usar sustitución"),
-        "linear log table case should not use the polynomial-substitution substep for {input}: {substeps:?}"
-    );
-    assert_antiderivative_verifies(input);
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar la regla de ln|u| con derivada interna"),
+            "expected ln|u| substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar el denominador afín"),
+            "expected affine denominator substep for {input}, got {substeps:?}"
+        );
+        assert_eq!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Ajustar el factor constante"),
+            expect_constant_adjustment,
+            "unexpected constant adjustment substep presence for {input}: {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "linear log table case should not use the polynomial-substitution substep for {input}: {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
 }
 
 #[test]
@@ -5392,10 +5569,7 @@ fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() 
         !result.starts_with("integrate("),
         "expected a proper antiderivative, got {result}"
     );
-    assert!(
-        result.contains("ln(|x + 1|)") && result.contains("ln(|x - 1|)"),
-        "expected logarithmic linear partial-fraction terms, got {result}"
-    );
+    assert_eq!(result, "1/2 * ln(|(x + 1) / (x - 1)|) - 4 / (x - 1)");
     assert!(
         result.contains("4 / (x - 1)"),
         "expected repeated-pole rational term, got {result}"
@@ -5438,10 +5612,7 @@ fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() 
     let input = "integrate((3*x+5)/((1-x)^2*(x+1)), x)";
     let (result, mut required) = evaluated_integral_with_required_conditions(input);
 
-    assert!(
-        result.contains("ln(|x + 1|)") && result.contains("ln(|x - 1|)"),
-        "expected logarithmic linear partial-fraction terms for factored orientation, got {result}"
-    );
+    assert_eq!(result, "1/2 * ln(|(x + 1) / (x - 1)|) - 4 / (x - 1)");
     assert!(
         result.contains(" - 4 / (x - 1)") && !result.contains("+ -"),
         "expected clean repeated-pole term for factored orientation, got {result}"
@@ -5467,12 +5638,7 @@ fn integrate_contract_rational_partial_fractions_over_repeated_linear_factors() 
     let input = "integrate((3*x+5)/((x-1)^2*(-x-1)), x)";
     let (result, mut required) = evaluated_integral_with_required_conditions(input);
 
-    assert!(
-        result.contains("ln(|x + 1|)")
-            && result.contains("ln(|x - 1|)")
-            && !result.contains("ln(|-x - 1|)"),
-        "expected normalized logarithmic linear partial-fraction terms for negative factor orientation, got {result}"
-    );
+    assert_eq!(result, "1/2 * ln(|(x - 1) / (x + 1)|) + 4 / (x - 1)");
     assert!(
         result.contains("4 / (x - 1)") && !result.contains("+ -"),
         "expected clean repeated-pole term for negative factor orientation, got {result}"
@@ -5501,14 +5667,7 @@ fn integrate_contract_scaled_repeated_linear_partial_fractions_normalize_log_arg
     let input = "integrate((3*x+5)/(2*x^3-2*x^2-2*x+2), x)";
     let (result, mut required) = evaluated_integral_with_required_conditions(input);
 
-    assert!(
-        result.contains("ln(|x + 1|)") && !result.contains("ln(|2 * x + 2|)"),
-        "scaled partial-fraction log argument should drop constant factors, got {result}"
-    );
-    assert!(
-        result.contains("ln(|x - 1|)") && result.contains("2 / (x - 1)"),
-        "scaled partial-fraction result should preserve the repeated-pole term, got {result}"
-    );
+    assert_eq!(result, "1/4 * ln(|(x + 1) / (x - 1)|) - 2 / (x - 1)");
     required.sort();
     assert_eq!(
         required,
@@ -5531,14 +5690,7 @@ fn integrate_contract_scaled_repeated_linear_partial_fractions_normalize_log_arg
     let input = "integrate((3*x+5)/(1/2*x^3-1/2*x^2-1/2*x+1/2), x)";
     let (result, mut required) = evaluated_integral_with_required_conditions(input);
 
-    assert!(
-        result.contains("ln(|x + 1|)") && !result.contains("ln(|1/2 * x + 1/2|)"),
-        "fractionally scaled partial-fraction log argument should drop constant factors, got {result}"
-    );
-    assert!(
-        result.contains("ln(|x - 1|)") && result.contains("8 / (x - 1)"),
-        "fractionally scaled partial-fraction result should preserve the repeated-pole term, got {result}"
-    );
+    assert_eq!(result, "ln(|(x + 1) / (x - 1)|) - 8 / (x - 1)");
     required.sort();
     assert_eq!(
         required,
@@ -5565,14 +5717,7 @@ fn integrate_contract_scaled_repeated_linear_partial_fractions_normalize_log_arg
         !result.starts_with("integrate("),
         "expected scaled repeated linear factors to integrate, got {result}"
     );
-    assert!(
-        result.contains("ln(|x + 1|)") && !result.contains("ln(|2 * x + 2|)"),
-        "scaled repeated factor should normalize the logarithmic argument, got {result}"
-    );
-    assert!(
-        result.contains("1 / (8 * (x + 1))") && !result.contains("1/8 / (x + 1)"),
-        "scaled repeated factor should use compact reciprocal presentation, got {result}"
-    );
+    assert_eq!(result, "1/16 * ln(|(x - 1) / (x + 1)|) + 1 / (8 * (x + 1))");
     required.sort();
     assert_eq!(
         required,
@@ -8094,14 +8239,72 @@ fn integrate_contract_square_minus_constant_uses_abs_log_ratio_and_nonzero_domai
 }
 
 #[test]
+fn integrate_contract_factorable_quadratic_log_ratio_simplifies_linear_factors() {
+    let cases = [
+        (
+            "integrate(1/(x^2+x), x)",
+            "ln(|x / (x + 1)|)",
+            vec!["x ≠ 0".to_string(), "x ≠ -1".to_string()],
+        ),
+        (
+            "integrate(1/(x^2-x), x)",
+            "ln(|(x - 1) / x|)",
+            vec!["x ≠ 1".to_string(), "x ≠ 0".to_string()],
+        ),
+        (
+            "integrate(1/(x^2+3*x+2), x)",
+            "ln(|(x + 1) / (x + 2)|)",
+            vec!["x ≠ -1".to_string(), "x ≠ -2".to_string()],
+        ),
+        (
+            "integrate(1/(4*x^2+4*x), x)",
+            "1/4 * ln(|x / (x + 1)|)",
+            vec!["x ≠ 0".to_string(), "x ≠ -1".to_string()],
+        ),
+        (
+            "integrate(1/(4*x^2+12*x+8), x)",
+            "1/4 * ln(|(x + 1) / (x + 2)|)",
+            vec!["x ≠ -1".to_string(), "x ≠ -2".to_string()],
+        ),
+        (
+            "integrate(1/(4*x^2-4), x)",
+            "1/8 * ln(|(x - 1) / (x + 1)|)",
+            vec!["x ≠ 1".to_string(), "x ≠ -1".to_string()],
+        ),
+        (
+            "integrate(1/(2*x^2+3*x+1), x)",
+            "ln(|(2 * x + 1) / (x + 1)|)",
+            vec!["x ≠ -1/2".to_string(), "x ≠ -1".to_string()],
+        ),
+        (
+            "integrate(1/(6*x^2+9*x+3), x)",
+            "1/3 * ln(|(2 * x + 1) / (x + 1)|)",
+            vec!["x ≠ -1/2".to_string(), "x ≠ -1".to_string()],
+        ),
+        (
+            "integrate(1/(3*x^2+7*x+4), x)",
+            "ln(|(x + 1) / (3 * x + 4)|)",
+            vec!["x ≠ -1".to_string(), "x ≠ -4/3".to_string()],
+        ),
+    ];
+
+    for (input, expected_result, expected_required) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected_result, "input: {input}");
+        assert_eq!(
+            required, expected_required,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+        assert_rendered_antiderivative_verifies(input, &result);
+    }
+}
+
+#[test]
 fn integrate_contract_repeated_linear_partial_fraction_preserves_nonzero_domain() {
     let input = "integrate((3*x+5)/(x^3-x^2-x+1), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(
-        result,
-        "1/2 * ln(|x + 1|) - 1/2 * ln(|x - 1|) - 4 / (x - 1)"
-    );
+    assert_eq!(result, "1/2 * ln(|(x + 1) / (x - 1)|) - 4 / (x - 1)");
     assert_eq!(
         required,
         vec!["x ≠ -1".to_string(), "x ≠ 1".to_string()],
@@ -9236,7 +9439,7 @@ fn integrate_contract_polynomial_derivative_over_square_root_substitution() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(x/sqrt(x^2+1), x)");
 
-    assert_eq!(result, "(x^2 + 1)^(1/2)");
+    assert_eq!(result, "sqrt(x^2 + 1)");
     assert!(
         required.is_empty(),
         "unexpected required_conditions: {required:?}"
@@ -9245,7 +9448,7 @@ fn integrate_contract_polynomial_derivative_over_square_root_substitution() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(2*x/sqrt(x^2-1), x)");
 
-    assert_eq!(result, "2 * (x^2 - 1)^(1/2)");
+    assert_eq!(result, "2 * sqrt(x^2 - 1)");
     assert_eq!(
         required,
         vec!["x < -1 or x > 1".to_string()],
@@ -9255,7 +9458,7 @@ fn integrate_contract_polynomial_derivative_over_square_root_substitution() {
     let input = "integrate((3*x^2+2*x+1)/sqrt(x^3+x^2+x+1), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "2 * (x^3 + x^2 + x + 1)^(1/2)");
+    assert_eq!(result, "2 * sqrt(x^3 + x^2 + x + 1)");
     assert_eq!(
         required,
         vec!["x^3 + x^2 + x + 1 > 0".to_string()],
