@@ -60,6 +60,24 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         return integration_linear_log_table_substeps;
     }
 
+    let integration_rational_partial_fraction_substeps =
+        generate_rational_linear_partial_fraction_integration_substeps(ctx, step);
+    if !integration_rational_partial_fraction_substeps.is_empty() {
+        return integration_rational_partial_fraction_substeps;
+    }
+
+    let integration_positive_quadratic_square_substeps =
+        generate_positive_quadratic_square_integration_substeps(ctx, step);
+    if !integration_positive_quadratic_square_substeps.is_empty() {
+        return integration_positive_quadratic_square_substeps;
+    }
+
+    let integration_positive_quadratic_cube_substeps =
+        generate_positive_quadratic_cube_integration_substeps(ctx, step);
+    if !integration_positive_quadratic_cube_substeps.is_empty() {
+        return integration_positive_quadratic_cube_substeps;
+    }
+
     let integration_trig_log_table_substeps =
         generate_trig_log_table_integration_substeps(ctx, step);
     if !integration_trig_log_table_substeps.is_empty() {
@@ -11957,6 +11975,218 @@ fn linear_log_table_denominator_arg(
         return None;
     }
     Some(base)
+}
+
+fn generate_rational_linear_partial_fraction_integration_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if let Expr::Function(after_fn_id, _) = ctx.get(after) {
+        if ctx.sym_name(*after_fn_id) == "integrate" {
+            return Vec::new();
+        }
+    }
+    if !expr_contains_log_call(ctx, after) {
+        return Vec::new();
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    let mut scratch = ctx.clone();
+    let decomposition =
+        cas_math::symbolic_integration_support::integrate_symbolic_rational_linear_partial_fraction_decomposition_expr(
+            &mut scratch,
+            args[0],
+            var_name,
+        )
+        .or_else(|| {
+            cas_math::symbolic_integration_support::integrate_symbolic_rational_linear_positive_quadratic_partial_fraction_decomposition_expr(
+                &mut scratch,
+                args[0],
+                var_name,
+            )
+        })
+        .or_else(|| {
+            cas_math::symbolic_integration_support::integrate_symbolic_positive_quadratic_linear_numerator_decomposition_expr(
+                &mut scratch,
+                args[0],
+                var_name,
+            )
+        });
+    let Some(decomposition) = decomposition else {
+        return Vec::new();
+    };
+    let decomposition_display = display_expr(&scratch, decomposition);
+    let decomposition_latex = latex_expr(&scratch, decomposition);
+
+    vec![
+        SubStep::new(
+            "Descomponer en fracciones parciales",
+            display_expr(ctx, args[0]),
+            decomposition_display.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, args[0]))
+        .with_after_latex(decomposition_latex.clone()),
+        SubStep::new(
+            "Integrar los términos simples",
+            decomposition_display,
+            display_expr(ctx, after),
+        )
+        .with_before_latex(decomposition_latex)
+        .with_after_latex(latex_expr(ctx, after)),
+    ]
+}
+
+fn expr_contains_log_call(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            if matches!(
+                ctx.builtin_of(*fn_id),
+                Some(BuiltinFn::Ln | BuiltinFn::Log | BuiltinFn::Log10)
+            ) {
+                return true;
+            }
+            args.iter().any(|arg| expr_contains_log_call(ctx, *arg))
+        }
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            expr_contains_log_call(ctx, *left) || expr_contains_log_call(ctx, *right)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_log_call(ctx, *inner),
+        Expr::Matrix { data, .. } => data.iter().any(|id| expr_contains_log_call(ctx, *id)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
+    }
+}
+
+fn generate_positive_quadratic_square_integration_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if let Expr::Function(after_fn_id, _) = ctx.get(after) {
+        if ctx.sym_name(*after_fn_id) == "integrate" {
+            return Vec::new();
+        }
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    let mut scratch = ctx.clone();
+    let Some(reduction) =
+        cas_math::symbolic_integration_support::integrate_symbolic_positive_quadratic_square_constant_reduction_expr(
+            &mut scratch,
+            args[0],
+            var_name,
+        )
+    else {
+        return Vec::new();
+    };
+    let reduction_display = display_expr(&scratch, reduction);
+    let reduction_latex = latex_expr(&scratch, reduction);
+
+    vec![
+        SubStep::new(
+            "Reducir el cuadrático positivo al cuadrado",
+            display_expr(ctx, args[0]),
+            reduction_display.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, args[0]))
+        .with_after_latex(reduction_latex.clone()),
+        SubStep::new(
+            "Integrar la parte arctan y la parte racional",
+            reduction_display,
+            display_expr(ctx, after),
+        )
+        .with_before_latex(reduction_latex)
+        .with_after_latex(latex_expr(ctx, after)),
+    ]
+}
+
+fn generate_positive_quadratic_cube_integration_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if let Expr::Function(after_fn_id, _) = ctx.get(after) {
+        if ctx.sym_name(*after_fn_id) == "integrate" {
+            return Vec::new();
+        }
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    let mut scratch = ctx.clone();
+    let Some(reduction) =
+        cas_math::symbolic_integration_support::integrate_symbolic_positive_quadratic_cube_constant_reduction_expr(
+            &mut scratch,
+            args[0],
+            var_name,
+        )
+    else {
+        return Vec::new();
+    };
+    let reduction_display = display_expr(&scratch, reduction);
+    let reduction_latex = latex_expr(&scratch, reduction);
+
+    vec![
+        SubStep::new(
+            "Reducir el cuadrático positivo al cubo",
+            display_expr(ctx, args[0]),
+            reduction_display.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, args[0]))
+        .with_after_latex(reduction_latex.clone()),
+        SubStep::new(
+            "Integrar la parte arctan y la parte racional",
+            reduction_display,
+            display_expr(ctx, after),
+        )
+        .with_before_latex(reduction_latex)
+        .with_after_latex(latex_expr(ctx, after)),
+    ]
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

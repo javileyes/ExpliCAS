@@ -64,15 +64,31 @@ pub fn try_extract_common_mul_factor_expr(
         }
     }
 
+    let mut require_common_integer_factor = false;
     if common_factors.is_empty() {
-        return None;
+        let symbolic_factors =
+            common_variable_factors_with_integer_functional_residual(ctx, &all_factors)?;
+        common_factors.extend(symbolic_factors);
+        require_common_integer_factor = true;
     }
 
-    let common_integer_factor = common_factors
-        .iter()
-        .any(|&factor| is_compact_additive_integer_power(ctx, factor))
+    let should_extract_integer = require_common_integer_factor
+        || common_factors
+            .iter()
+            .any(|&factor| is_compact_additive_integer_power(ctx, factor));
+    let common_integer_factor = should_extract_integer
         .then(|| common_integer_factor(ctx, &all_factors))
         .flatten();
+    if require_common_integer_factor
+        && !residual_has_functional_anchor(
+            ctx,
+            &all_factors,
+            &common_factors,
+            common_integer_factor?,
+        )
+    {
+        return None;
+    }
 
     let mut quotient_terms: SmallVec<[(ExprId, Sign); 8]> = SmallVec::new();
     for (i, (_, sign)) in terms.iter().enumerate() {
@@ -211,6 +227,79 @@ fn integer_number_value(ctx: &Context, expr: ExprId) -> Option<i64> {
     }
 }
 
+fn common_variable_factors_with_integer_functional_residual(
+    ctx: &Context,
+    all_factors: &[SmallVec<[ExprId; 8]>],
+) -> Option<SmallVec<[ExprId; 4]>> {
+    let _ = common_integer_factor(ctx, all_factors)?;
+    let first_factors = all_factors.first()?;
+    let mut common_variables = SmallVec::<[ExprId; 4]>::new();
+
+    for &candidate in first_factors {
+        if !matches!(ctx.get(candidate), Expr::Variable(_)) {
+            continue;
+        }
+        if common_variables
+            .iter()
+            .any(|&cf| compare_expr(ctx, cf, candidate) == Ordering::Equal)
+        {
+            continue;
+        }
+        if all_factors
+            .iter()
+            .skip(1)
+            .all(|factors| find_factor(ctx, factors, candidate).is_some())
+        {
+            common_variables.push(candidate);
+        }
+    }
+
+    (!common_variables.is_empty()).then_some(common_variables)
+}
+
+fn residual_has_functional_anchor(
+    ctx: &Context,
+    all_factors: &[SmallVec<[ExprId; 8]>],
+    common_factors: &[ExprId],
+    integer_factor: i64,
+) -> bool {
+    all_factors.iter().any(|factors| {
+        let mut remaining = factors.clone();
+        for &cf in common_factors {
+            let Some(idx) = find_factor(ctx, &remaining, cf) else {
+                return false;
+            };
+            remaining.remove(idx);
+        }
+
+        let mut dropped_integer = false;
+        remaining.retain(|factor| {
+            let factor = *factor;
+            if !dropped_integer && integer_number_value(ctx, factor) == Some(integer_factor) {
+                dropped_integer = true;
+                false
+            } else {
+                true
+            }
+        });
+
+        remaining
+            .iter()
+            .any(|&factor| is_functional_residual_factor(ctx, factor))
+    })
+}
+
+fn is_functional_residual_factor(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(_, _) | Expr::Constant(_) => true,
+        Expr::Pow(_, exp) => match ctx.get(*exp) {
+            Expr::Number(n) => !n.is_integer(),
+            _ => true,
+        },
+        _ => false,
+    }
+}
+
 fn is_extractable_factor(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Function(_, _) => true,
@@ -281,6 +370,45 @@ mod tests {
     fn rejects_when_no_extractable_common_factor() {
         let mut ctx = Context::new();
         let expr = parse("x*a + x*b", &mut ctx).expect("parse");
+        let out = try_extract_common_mul_factor_expr(
+            &mut ctx,
+            expr,
+            ExtractCommonMulFactorPolicy::default(),
+        );
+        assert!(out.is_none());
+    }
+
+    #[test]
+    fn extracts_symbolic_common_factor_with_integer_functional_residual() {
+        let mut ctx = Context::new();
+        let expr = parse("2*x*log2(x) + 2*x", &mut ctx).expect("parse");
+        let out = try_extract_common_mul_factor_expr(
+            &mut ctx,
+            expr,
+            ExtractCommonMulFactorPolicy::default(),
+        )
+        .expect("rewrite");
+
+        let Expr::Mul(common, inner) = ctx.get(out) else {
+            panic!("expected factored product, got {:?}", ctx.get(out));
+        };
+        assert!(
+            matches!(ctx.get(*common), Expr::Mul(_, _)),
+            "expected integer and symbol common product, got {:?}",
+            ctx.get(*common)
+        );
+        assert!(
+            matches!(ctx.get(*inner), Expr::Add(_, _)),
+            "expected residual sum, got {:?}",
+            ctx.get(*inner)
+        );
+        assert!(cas_ast::count_nodes(&ctx, out) <= cas_ast::count_nodes(&ctx, expr));
+    }
+
+    #[test]
+    fn rejects_symbolic_common_factor_without_functional_residual() {
+        let mut ctx = Context::new();
+        let expr = parse("2*x*a + 2*x*b", &mut ctx).expect("parse");
         let out = try_extract_common_mul_factor_expr(
             &mut ctx,
             expr,

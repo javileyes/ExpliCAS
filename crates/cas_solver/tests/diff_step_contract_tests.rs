@@ -138,6 +138,34 @@ fn chain_rule_power_composition_diff_evaluates_to_simplified_product() {
 }
 
 #[test]
+fn exp_trig_by_parts_primitive_diff_residual_collapses() {
+    for input in [
+        "diff(1/4*exp(2*x+1)*(sin(2*x+1)-cos(2*x+1)), x) - exp(2*x+1)*sin(2*x+1)",
+        "diff(1/4*exp(2*x+1)*(sin(2*x+1)+cos(2*x+1)), x) - exp(2*x+1)*cos(2*x+1)",
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::Off;
+
+        let output =
+            evaluate_eval_command_output(&mut engine, &mut state, input, false).expect("eval");
+        let result = output
+            .result_line
+            .as_ref()
+            .expect("result line")
+            .line
+            .as_str();
+
+        assert_eq!(result, "Result: 0", "input: {input}");
+        assert!(
+            output.metadata.requires_lines.is_empty(),
+            "input: {input}, unexpected required conditions: {:?}",
+            output.metadata.requires_lines
+        );
+    }
+}
+
+#[test]
 fn reciprocal_trig_affine_diff_omits_non_actionable_cycle_hints() {
     for (input, expected_condition, expected_terms) in [
         (
@@ -13093,6 +13121,7 @@ fn inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions() {
         "diff(arcsec(sqrt(x^2+1)), x)",
         "diff(arccsc(sqrt(x^2+2)), x)",
         "diff(arcsec(x^2+1), x)",
+        "diff(arcsec(((1/3)*(x^2+x+3))^2), x)",
         "diff(arccsc(sqrt(3/2)*(x^2+x+3)), x)",
         "diff(arccot(x), x)",
     ];

@@ -136,6 +136,91 @@ fn test_eval_scaled_arctan_surd_diff_stays_off_rationalize_overflow_route() {
 }
 
 #[test]
+fn test_eval_plain_reciprocal_trig_log_diff_stays_off_depth_overflow_route() {
+    let cases = [
+        (
+            "diff(ln(sec(sqrt(x))+tan(sqrt(x))), x)",
+            "x^(-1/2) / (2\u{00b7}cos(sqrt(x)))",
+            vec![
+                "cos(sqrt(x)) \u{2260} 0",
+                "tan(sqrt(x)) + sec(sqrt(x)) > 0",
+                "x > 0",
+            ],
+        ),
+        (
+            "diff(ln(csc(sqrt(x))-cot(sqrt(x))), x)",
+            "x^(-1/2) / (2\u{00b7}sin(sqrt(x)))",
+            vec![
+                "sin(sqrt(x)) \u{2260} 0",
+                "csc(sqrt(x)) - cot(sqrt(x)) > 0",
+                "x > 0",
+            ],
+        ),
+    ];
+
+    for (input, expected_result, expected_required_display) in cases {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .unwrap_or_else(|err| panic!("Failed to run CLI for {input}: {err}"));
+
+        assert!(output.status.success(), "CLI failed for {input}");
+
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let stderr = String::from_utf8(output.stderr).unwrap();
+        let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
+
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"]
+                .as_array()
+                .expect("required_display array"),
+            &expected_required_display
+                .iter()
+                .map(|condition| Value::String((*condition).to_string()))
+                .collect::<Vec<_>>(),
+            "input: {input}"
+        );
+        assert!(
+            wire.get("blocked_hints").is_none(),
+            "successful reciprocal-trig log diff should not surface non-actionable cycle hints for {input}: {:?}",
+            wire["blocked_hints"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow") && !stderr.contains("WARN"),
+            "plain reciprocal-trig log diff should use the direct route for {input}, got stderr:\n{stderr}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_diff_requires_explicit_variable_diagnostic() {
+    let output = cli()
+        .args(["eval", "diff(sin(e^(x^2)))", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+
+    assert!(
+        output.status.success(),
+        "eval should surface the diagnostic as JSON, not a process failure"
+    );
+
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
+
+    assert!(stderr.is_empty(), "unexpected stderr: {stderr}");
+    assert_eq!(wire["ok"], false);
+    assert_eq!(wire["kind"], "InternalError");
+    assert_eq!(wire["code"], "E_INTERNAL");
+    assert_eq!(
+        wire["error"],
+        "diff requiere variable explícita: diff(expr, x)"
+    );
+}
+
+#[test]
 fn test_eval_text_surfaces_blocked_diff_domain_hint_on_stderr() {
     cli()
         .args(["eval", "diff(atanh(sqrt(x^2+2)), x)"])

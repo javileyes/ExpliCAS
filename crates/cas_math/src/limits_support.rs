@@ -1,5 +1,6 @@
 use crate::infinity_support::{mk_infinity, InfSign};
 use crate::limit_types::{Approach, LimitEvalOutcome, LimitOptions, PreSimplifyMode};
+use crate::polynomial::Polynomial;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
@@ -107,6 +108,152 @@ pub fn apply_constant_rule(ctx: &Context, expr: ExprId, var: ExprId) -> Option<E
     }
 }
 
+fn apply_finite_polynomial_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol);
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+
+    let poly = Polynomial::from_expr(ctx, expr, var_name).ok()?;
+    let value = poly.eval(&point_value);
+    Some(ctx.add(Expr::Number(value)))
+}
+
+fn apply_finite_rational_polynomial_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol);
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let numerator = Polynomial::from_expr(ctx, num, var_name).ok()?;
+    let denominator = Polynomial::from_expr(ctx, den, var_name).ok()?;
+    let denominator_value = denominator.eval(&point_value);
+    if denominator_value.is_zero() {
+        return None;
+    }
+    let value = numerator.eval(&point_value) / denominator_value;
+    Some(ctx.add(Expr::Number(value)))
+}
+
+fn apply_finite_elementary_polynomial_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, point, var) {
+        return None;
+    }
+    let Expr::Variable(var_symbol) = ctx.get(var) else {
+        return None;
+    };
+    let var_name = ctx.sym_name(*var_symbol);
+    let Expr::Number(point_value) = ctx.get(point) else {
+        return None;
+    };
+    let point_value = point_value.clone();
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !matches!(builtin, BuiltinFn::Ln | BuiltinFn::Sqrt) {
+        return None;
+    }
+
+    let argument = Polynomial::from_expr(ctx, args[0], var_name).ok()?;
+    let argument_value = argument.eval(&point_value);
+    if !argument_value.is_positive() {
+        return None;
+    }
+
+    let value_expr = ctx.add(Expr::Number(argument_value));
+    Some(ctx.call_builtin(builtin, vec![value_expr]))
+}
+
+fn try_limit_rules_at_finite(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if let Some(result) = apply_constant_rule(ctx, expr, var) {
+        return Some(result);
+    }
+    if expr == var && !depends_on(ctx, point, var) {
+        return Some(point);
+    }
+    if let Some(result) = apply_finite_polynomial_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_rational_polynomial_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_elementary_polynomial_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) => {
+            let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
+            let rhs_limit = try_limit_rules_at_finite(ctx, rhs, var, point)?;
+            Some(ctx.add(Expr::Add(lhs_limit, rhs_limit)))
+        }
+        Expr::Sub(lhs, rhs) => {
+            let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
+            let rhs_limit = try_limit_rules_at_finite(ctx, rhs, var, point)?;
+            Some(ctx.add(Expr::Sub(lhs_limit, rhs_limit)))
+        }
+        Expr::Mul(lhs, rhs) => {
+            let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
+            let rhs_limit = try_limit_rules_at_finite(ctx, rhs, var, point)?;
+            Some(ctx.add(Expr::Mul(lhs_limit, rhs_limit)))
+        }
+        Expr::Div(num, den) => {
+            let num_limit = try_limit_rules_at_finite(ctx, num, var, point)?;
+            let den_limit = try_limit_rules_at_finite(ctx, den, var, point)?;
+            if !finite_denominator_proven_nonzero(ctx, den_limit) {
+                return None;
+            }
+            Some(ctx.add(Expr::Div(num_limit, den_limit)))
+        }
+        Expr::Neg(inner) => {
+            let inner_limit = try_limit_rules_at_finite(ctx, inner, var, point)?;
+            Some(ctx.add(Expr::Neg(inner_limit)))
+        }
+        _ => None,
+    }
+}
+
 /// Rule 2: Variable - lim x = ±∞ based on approach sign.
 pub fn apply_variable_rule(
     ctx: &mut Context,
@@ -211,6 +358,26 @@ fn numeric_limit_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     match ctx.get(expr) {
         Expr::Number(value) => Some(value.clone()),
         _ => None,
+    }
+}
+
+fn finite_expr_proven_positive(ctx: &Context, expr: ExprId) -> bool {
+    crate::prove_sign::prove_positive_depth_with(ctx, expr, 4, true, |_, _, _| {
+        crate::tri_proof::TriProof::Unknown
+    })
+    .is_proven()
+}
+
+fn finite_denominator_proven_nonzero(ctx: &Context, expr: ExprId) -> bool {
+    if numeric_limit_value(ctx, expr).is_some_and(|value| !value.is_zero()) {
+        return true;
+    }
+    if finite_expr_proven_positive(ctx, expr) {
+        return true;
+    }
+    match ctx.get(expr) {
+        Expr::Neg(inner) => finite_expr_proven_positive(ctx, *inner),
+        _ => false,
     }
 }
 
@@ -822,6 +989,35 @@ pub fn bounded_elementary_over_divergent_limit_at_infinity(
     Some(ctx.num(0))
 }
 
+fn bounded_elementary_times_decaying_exp_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let Expr::Mul(lhs, rhs) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    if let Some(exp_info) = scaled_linear_exp_tail_info(ctx, lhs, var, approach) {
+        if (exp_info.coeff.is_zero() || exp_info.tail == InfSign::Neg)
+            && is_bounded_elementary_expr_at_infinity(ctx, rhs, var)
+        {
+            return Some(ctx.num(0));
+        }
+    }
+
+    if let Some(exp_info) = scaled_linear_exp_tail_info(ctx, rhs, var, approach) {
+        if (exp_info.coeff.is_zero() || exp_info.tail == InfSign::Neg)
+            && is_bounded_elementary_expr_at_infinity(ctx, lhs, var)
+        {
+            return Some(ctx.num(0));
+        }
+    }
+
+    None
+}
+
 /// Dominance rule for linear-argument exponentials against polynomial growth as `x -> ±∞`.
 ///
 /// This is intentionally narrow: only `exp(linear)`/`e^(linear)` with optional
@@ -1258,6 +1454,11 @@ pub fn try_limit_rules_at_infinity(
     if let Some(r) = bounded_elementary_over_divergent_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
+    if let Some(r) =
+        bounded_elementary_times_decaying_exp_limit_at_infinity(ctx, expr, var, approach)
+    {
+        return Some(r);
+    }
     if let Some(r) = exponential_polynomial_dominance_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
@@ -1292,15 +1493,9 @@ pub fn eval_limit_at_infinity(
     };
 
     if let Approach::Finite(point) = approach {
-        if let Some(result_expr) = apply_constant_rule(ctx, simplified_expr, var) {
+        if let Some(result_expr) = try_limit_rules_at_finite(ctx, simplified_expr, var, point) {
             return LimitEvalOutcome {
                 expr: result_expr,
-                warning: None,
-            };
-        }
-        if simplified_expr == var && !depends_on(ctx, point, var) {
-            return LimitEvalOutcome {
-                expr: point,
                 warning: None,
             };
         }
@@ -2301,6 +2496,39 @@ mod tests {
         assert!(bounded_elementary_over_divergent_limit_at_infinity(
             &mut ctx,
             tanh_nondominant_den,
+            x,
+            InfSign::Pos,
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn bounded_elementary_times_decaying_exp_limit_at_infinity_resolves_to_zero() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let cases = [
+            "sin(x)*exp(-x)",
+            "exp(-2*x)*cos(x)",
+            "(sin(x) + cos(x))*exp(-x)",
+            "arctan(x)*exp(-x)",
+            "-tanh(x)*exp(-x)",
+        ];
+
+        for expr in cases {
+            let parsed = parse_expr(&mut ctx, expr);
+            let out = try_limit_rules_at_infinity(&mut ctx, parsed, x, InfSign::Pos)
+                .unwrap_or_else(|| panic!("expected bounded-times-decaying-exp zero for {expr}"));
+            assert!(
+                matches!(ctx.get(out), Expr::Number(n) if n == &BigRational::from_integer(BigInt::from(0))),
+                "expected zero for {expr}, got {:?}",
+                ctx.get(out)
+            );
+        }
+
+        let tan_product = parse_expr(&mut ctx, "tan(x)*exp(-x)");
+        assert!(bounded_elementary_times_decaying_exp_limit_at_infinity(
+            &mut ctx,
+            tan_product,
             x,
             InfSign::Pos,
         )

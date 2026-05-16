@@ -50,6 +50,41 @@ Do not create entries for:
 
 ## Current Entries
 
+### 2026-05-16: `integrate_contract_expanded_polynomial_tangent_cotangent_preserves_domain`
+
+- area:
+  - `cas_cli`
+  - integration contract antiderivative verification
+- repro:
+  - `cargo test -p cas_cli --test integrate_contract_tests integrate_contract_expanded_polynomial_tangent_cotangent_preserves_domain -- --exact --nocapture`
+- latest measured time:
+  - observed during guardrail investigation: full
+    `cargo test -p cas_cli --test integrate_contract_tests -- --nocapture`
+    reported this test as running for over `60s`
+  - focused repro: `111.14s` test time (`real 111.23s`)
+  - after harness fix: focused repro `0.03s` test time (`real 1.24s`,
+    including incremental compile/test startup)
+- classification:
+  - `test verification pathology`
+- root cause hypothesis:
+  - the test verifies both
+    `integrate((4*x^3-2*x)*tan(x^4-x^2), x)` and
+    `integrate((4*x^3-2*x)*cot(x^4-x^2), x)` by differentiating the
+    antiderivative and simplifying the residual
+  - the public integrals themselves return the expected compact log forms and
+    domain conditions; the slow path is the debug contract verification over
+    expanded polynomial trig-log primitives
+- retained action:
+  - kept the public integral result and required-domain assertions in the
+    focused contract
+  - replaced the slow internal debug antiderivative verification with the
+    public residual check `diff(integrate(...), x) - integrand -> 0`, matching
+    the fast nested-residual contract already used for the same tan/cot family
+- embedded corpus guardrail:
+  - unchanged engine runtime path in this iteration
+- status:
+  - `fixed in test`
+
 ### 2026-05-07: `inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions`
 
 - area:

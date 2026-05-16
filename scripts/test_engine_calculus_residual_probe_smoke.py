@@ -46,6 +46,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             SMOKE.extract_required_conditions(parsed),
             ("x + 1", "x + 2"),
         )
+        self.assertEqual(SMOKE.extract_impossible_required_conditions(parsed), ())
         self.assertEqual(SMOKE.extract_warnings(parsed), ("diagnostic",))
         self.assertEqual(
             SMOKE.extract_stderr_warnings(
@@ -64,6 +65,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                 expected_result="1 / (x + 2)",
                 actual_required=("x + 1", "x + 2"),
                 expected_required=("x + 2",),
+                impossible_required=(),
                 warnings=(),
                 forbid_warnings=True,
             )
@@ -78,6 +80,21 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                 expected_result="1 / (x + 2)",
                 actual_required=("x + 1",),
                 expected_required=("x + 2",),
+                impossible_required=(),
+                warnings=(),
+                forbid_warnings=False,
+            ),
+        )
+        self.assertIn(
+            "impossible required conditions",
+            SMOKE.classify_error(
+                returncode=0,
+                parse_error=None,
+                result="undefined",
+                expected_result="undefined",
+                actual_required=("0",),
+                expected_required=(),
+                impossible_required=("NonZero(0)",),
                 warnings=(),
                 forbid_warnings=False,
             ),
@@ -91,9 +108,33 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                 expected_result="1 / (x + 2)",
                 actual_required=("x + 2",),
                 expected_required=("x + 2",),
+                impossible_required=(),
                 warnings=("diagnostic",),
                 forbid_warnings=True,
             ),
+        )
+
+    def test_extracts_literal_impossible_nonzero_required_conditions(self) -> None:
+        parsed, error = SMOKE.parse_json(
+            textwrap.dedent(
+                """\
+                {
+                  "result": "undefined",
+                  "required_conditions": [
+                    {"kind": "NonZero", "expr_display": "0", "expr_canonical": "0"},
+                    {"kind": "Positive", "expr_display": "0", "expr_canonical": "0"},
+                    {"kind": "NonZero", "expr_display": "x", "expr_canonical": "x"}
+                  ],
+                  "warnings": []
+                }
+                """
+            )
+        )
+
+        self.assertIsNone(error)
+        self.assertEqual(
+            SMOKE.extract_impossible_required_conditions(parsed),
+            ("NonZero(0)",),
         )
 
     def test_run_probe_classifies_pass_and_slow_with_cli_stub(self) -> None:
@@ -127,6 +168,34 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.result, "1 / (x + 2)")
         self.assertEqual(result.required_conditions, ("x + 2",))
+        self.assertEqual(result.impossible_required_conditions, ())
+
+    def test_run_probe_fails_on_literal_impossible_nonzero_required_condition(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cas_cli = Path(temp_dir) / "cas_cli"
+            cas_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    cat <<'OUT'
+                    {"result":"undefined","required_conditions":[{"kind":"NonZero","expr_display":"0","expr_canonical":"0"}],"warnings":[]}
+                    OUT
+                    """
+                ),
+                encoding="utf-8",
+            )
+            cas_cli.chmod(cas_cli.stat().st_mode | stat.S_IXUSR)
+
+            result = SMOKE.run_probe(
+                "ignored",
+                timeout_seconds=2.0,
+                cas_cli=cas_cli,
+                expected_result="undefined",
+            )
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.impossible_required_conditions, ("NonZero(0)",))
+        self.assertIn("impossible required conditions", result.error or "")
 
     def test_run_probe_forbid_warnings_includes_stderr_warnings(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -183,7 +252,21 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
     def test_default_matrix_contains_representative_wrapped_residuals(self) -> None:
         cases = SMOKE.build_default_matrix_cases()
 
-        self.assertEqual(len(cases), 113)
+        self.assertEqual(len(cases), 201)
+        self.assertIn("integrate_exp_trig_sin:plus", {case.name for case in cases})
+        self.assertIn("integrate_exp_trig_sin:nested_den", {case.name for case in cases})
+        self.assertIn("integrate_exp_trig_cos:plus", {case.name for case in cases})
+        self.assertIn("integrate_exp_trig_cos:nested_den", {case.name for case in cases})
+        self.assertIn("integrate_exp_trig_neg_sin:plus", {case.name for case in cases})
+        self.assertIn("integrate_exp_trig_neg_sin:nested_den", {case.name for case in cases})
+        self.assertIn("integrate_exp_trig_neg_cos:plus", {case.name for case in cases})
+        self.assertIn("integrate_exp_trig_neg_cos:nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_neg_sin:plus", {case.name for case in cases})
+        self.assertIn("plain_trig_neg_sin:nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_neg_cos:plus", {case.name for case in cases})
+        self.assertIn("plain_trig_neg_cos:nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_sparse_neg_sin:plus", {case.name for case in cases})
+        self.assertIn("plain_trig_sparse_neg_sin:nested_den", {case.name for case in cases})
         self.assertIn("rational_quad:plus", {case.name for case in cases})
         self.assertIn("hyperbolic_sinh:scaled_negative", {case.name for case in cases})
         self.assertIn("hyperbolic_sinh:minus_const", {case.name for case in cases})
@@ -235,6 +318,8 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertIn(
             "rational_quad_over_recip_trig_shifted_quotient", {case.name for case in cases}
         )
+        self.assertIn("fractional_den_power:plus", {case.name for case in cases})
+        self.assertIn("fractional_den_power:nested_den", {case.name for case in cases})
         rational_case = next(case for case in cases if case.name == "rational_quad:plus")
         self.assertEqual(rational_case.expected_result, "1 / (x + 2)")
         self.assertEqual(rational_case.required_conditions, ("x + 1", "x + 2"))
@@ -279,6 +364,53 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         exp_nested_case = next(case for case in cases if case.name == "exp_poly:nested_den")
         self.assertEqual(exp_nested_case.expected_result, "1 / (x·(x + 2) + 3·x + 6)")
         self.assertEqual(exp_nested_case.required_conditions, ("x + 2", "x + 3"))
+        exp_trig_nested_case = next(
+            case for case in cases if case.name == "integrate_exp_trig_sin:nested_den"
+        )
+        self.assertEqual(
+            exp_trig_nested_case.expected_result,
+            "1 / (x·(x + 2) + 3·x + 6)",
+        )
+        self.assertEqual(exp_trig_nested_case.required_conditions, ("x + 2", "x + 3"))
+        exp_trig_neg_nested_case = next(
+            case for case in cases if case.name == "integrate_exp_trig_neg_sin:nested_den"
+        )
+        self.assertEqual(
+            exp_trig_neg_nested_case.expected_result,
+            "1 / (x·(x + 2) + 3·x + 6)",
+        )
+        self.assertEqual(exp_trig_neg_nested_case.required_conditions, ("x + 2", "x + 3"))
+        plain_trig_neg_nested_case = next(
+            case for case in cases if case.name == "plain_trig_neg_sin:nested_den"
+        )
+        self.assertEqual(
+            plain_trig_neg_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(plain_trig_neg_nested_case.required_conditions, ("x + 2", "x + 3"))
+        sparse_plain_trig_neg_nested_case = next(
+            case for case in cases if case.name == "plain_trig_sparse_neg_sin:nested_den"
+        )
+        self.assertEqual(
+            sparse_plain_trig_neg_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            sparse_plain_trig_neg_nested_case.required_conditions, ("x + 2", "x + 3")
+        )
+        fractional_den_power_case = next(
+            case for case in cases if case.name == "fractional_den_power:plus"
+        )
+        self.assertEqual(fractional_den_power_case.expected_result, "1 / (x + 2)")
+        self.assertEqual(fractional_den_power_case.required_conditions, ("x + 2",))
+        fractional_den_power_nested_case = next(
+            case for case in cases if case.name == "fractional_den_power:nested_den"
+        )
+        self.assertEqual(
+            fractional_den_power_nested_case.expected_result,
+            "1 / (x·(x + 2) + 3·x + 6)",
+        )
+        self.assertEqual(fractional_den_power_nested_case.required_conditions, ("x + 2", "x + 3"))
         shifted_quotient_case = next(
             case for case in cases if case.name == "rational_quad_over_recip_trig_shifted_quotient"
         )
@@ -439,6 +571,36 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"-3·(x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
+                    *"^(3/2)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"^(3/2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"(-1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
                     *")-1)/(x+2)"*)
                     cat <<'OUT'
                     {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"}],"warnings":[]}
@@ -479,6 +641,36 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1","required_conditions":[{"expr_display":"x + 1"}],"warnings":[]}
                     OUT
                     ;;
+                    *"^(3/2)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"^(3/2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"(-1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"exp("*"/(x+3)"*)
                     cat <<'OUT'
                     {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
@@ -513,9 +705,9 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                 slow_wall_seconds=1.0,
             )
 
-        self.assertEqual(matrix["status"], "pass")
-        self.assertEqual(matrix["total"], 113)
-        self.assertEqual(matrix["status_counts"]["pass"], 113)
+        self.assertEqual(matrix["status"], "pass", matrix)
+        self.assertEqual(matrix["total"], 201)
+        self.assertEqual(matrix["status_counts"]["pass"], 201)
 
     def test_cli_accepts_repeated_require_flags(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -555,6 +747,36 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"-3·(x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
+                    *"^(3/2)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"^(3/2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"(-1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
                     *")-1)/(x+2)"*)
                     cat <<'OUT'
                     {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"}],"warnings":[]}
@@ -593,6 +815,36 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     *")+1)/((diff("*)
                     cat <<'OUT'
                     {"result":"1","required_conditions":[{"expr_display":"x + 1"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"^(3/2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"(-1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
                     *"exp("*"/(x+3)"*)
@@ -645,7 +897,11 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                 timeout=3,
             )
 
-        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertEqual(
+            completed.returncode,
+            0,
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+        )
         self.assertIn('"status": "pass"', completed.stdout)
 
     def test_cli_runs_default_matrix_without_expr(self) -> None:
@@ -726,6 +982,36 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1","required_conditions":[{"expr_display":"x + 1"}],"warnings":[]}
                     OUT
                     ;;
+                    *"^(3/2)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"^(3/2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"(-1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"exp("*"/(x+3)"*)
                     cat <<'OUT'
                     {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
@@ -769,8 +1055,12 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                 timeout=3,
             )
 
-        self.assertEqual(completed.returncode, 0, completed.stderr)
-        self.assertIn('"total": 113', completed.stdout)
+        self.assertEqual(
+            completed.returncode,
+            0,
+            f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
+        )
+        self.assertIn('"total": 201', completed.stdout)
 
 
 if __name__ == "__main__":

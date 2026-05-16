@@ -1,5 +1,5 @@
 use cas_api_models::{AssumptionDto, BlockedHintDto, RequiredConditionWire, WarningWire};
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_solver_core::domain_normalization::normalize_and_dedupe_conditions;
 use std::collections::HashSet;
@@ -32,10 +32,20 @@ pub(crate) fn collect_output_required_conditions(
     result_display: Option<&str>,
 ) -> Vec<RequiredConditionWire> {
     let assumed_filter = AssumedConditionFilter::from_assumptions(assumptions_used);
-    normalize_and_dedupe_conditions(ctx, required_conditions)
+    let normalized = normalize_and_dedupe_conditions(ctx, required_conditions);
+    let visible_conditions = visible_required_conditions_after_public_suppression(
+        ctx,
+        &normalized,
+        &assumed_filter,
+        result_display,
+    );
+
+    visible_conditions
         .iter()
+        .filter(|cond| !required_condition_wire_is_redundant(ctx, cond, &visible_conditions))
         .filter(|cond| !assumed_filter.covers_required_condition(ctx, cond))
         .map(|cond| {
+            let cond = *cond;
             let (kind, expr_id) = match cond {
                 crate::ImplicitCondition::NonNegative(e) => ("NonNegative", *e),
                 crate::ImplicitCondition::LowerBound(e, _) => ("LowerBound", *e),
@@ -54,6 +64,28 @@ pub(crate) fn collect_output_required_conditions(
         .collect()
 }
 
+fn required_condition_wire_is_redundant(
+    ctx: &Context,
+    cond: &crate::ImplicitCondition,
+    visible_conditions: &[&crate::ImplicitCondition],
+) -> bool {
+    let crate::ImplicitCondition::NonZero(nonzero_expr) = cond else {
+        return matches!(cond, crate::ImplicitCondition::Positive(positive_expr) if
+            reciprocal_trig_log_positive_quotient_condition_is_redundant(
+                ctx,
+                *positive_expr,
+                visible_conditions
+            )
+        );
+    };
+
+    if calculus_nonzero_condition_is_redundant(ctx, *nonzero_expr, visible_conditions) {
+        return true;
+    }
+
+    reciprocal_trig_log_argument_condition_is_redundant(ctx, *nonzero_expr, visible_conditions)
+}
+
 pub(crate) fn collect_output_required_display(
     required_conditions: &[crate::ImplicitCondition],
     ctx: &mut Context,
@@ -63,14 +95,16 @@ pub(crate) fn collect_output_required_display(
 ) -> Vec<String> {
     let assumed_filter = AssumedConditionFilter::from_assumptions(assumptions_used);
     let normalized = normalize_and_dedupe_conditions(ctx, required_conditions);
-    let visible_conditions: Vec<_> = normalized
-        .iter()
-        .filter(|cond| !assumed_filter.covers_required_condition(ctx, cond))
-        .collect();
+    let visible_conditions = visible_required_conditions_after_public_suppression(
+        ctx,
+        &normalized,
+        &assumed_filter,
+        result_display,
+    );
 
     visible_conditions
         .iter()
-        .filter(|cond| !required_display_condition_is_redundant(ctx, cond, &visible_conditions))
+        .filter(|cond| !required_condition_is_redundant(ctx, cond, &visible_conditions))
         .map(|cond| {
             apply_input_inverse_trig_alias_preferences(
                 &cond.display(ctx),
@@ -81,15 +115,203 @@ pub(crate) fn collect_output_required_display(
         .collect()
 }
 
-fn required_display_condition_is_redundant(
+fn visible_required_conditions_after_public_suppression<'a>(
+    ctx: &Context,
+    normalized: &'a [crate::ImplicitCondition],
+    assumed_filter: &AssumedConditionFilter,
+    result_display: Option<&str>,
+) -> Vec<&'a crate::ImplicitCondition> {
+    normalized
+        .iter()
+        .filter(|cond| !assumed_filter.covers_required_condition(ctx, cond))
+        .filter(|cond| !should_suppress_public_required_condition(ctx, cond, result_display))
+        .collect()
+}
+
+fn should_suppress_public_required_condition(
+    ctx: &Context,
+    cond: &crate::ImplicitCondition,
+    result_display: Option<&str>,
+) -> bool {
+    let Some(display) = result_display.map(str::trim_start) else {
+        return false;
+    };
+    if !(display.starts_with("limit(") || display == "undefined") {
+        return false;
+    }
+
+    matches!(
+        cond,
+        crate::ImplicitCondition::NonZero(expr) if is_integer_literal(ctx, *expr, 0)
+    )
+}
+
+fn required_condition_is_redundant(
     ctx: &Context,
     cond: &crate::ImplicitCondition,
     visible_conditions: &[&crate::ImplicitCondition],
 ) -> bool {
     let crate::ImplicitCondition::NonZero(nonzero_expr) = cond else {
+        return matches!(cond, crate::ImplicitCondition::Positive(positive_expr) if
+            reciprocal_trig_log_positive_quotient_condition_is_redundant(
+                ctx,
+                *positive_expr,
+                visible_conditions
+            )
+        );
+    };
+
+    if unit_interval_nonzero_condition_is_redundant(ctx, *nonzero_expr, visible_conditions) {
+        return true;
+    }
+
+    if calculus_nonzero_condition_is_redundant(ctx, *nonzero_expr, visible_conditions) {
+        return true;
+    }
+
+    reciprocal_trig_log_argument_condition_is_redundant(ctx, *nonzero_expr, visible_conditions)
+}
+
+#[derive(Clone, Copy)]
+enum ReciprocalTrigLogPositiveKind {
+    SecTan,
+    CscCot,
+}
+
+fn reciprocal_trig_log_positive_quotient_condition_is_redundant(
+    ctx: &Context,
+    positive_expr: ExprId,
+    visible_conditions: &[&crate::ImplicitCondition],
+) -> bool {
+    if reciprocal_trig_log_positive_quotient_display_condition_is_redundant(
+        ctx,
+        positive_expr,
+        visible_conditions,
+    ) {
+        return true;
+    }
+
+    let Some((kind, arg)) = reciprocal_trig_log_positive_quotient_arg(ctx, positive_expr) else {
         return false;
     };
 
+    visible_conditions.iter().any(|candidate| {
+        let crate::ImplicitCondition::Positive(candidate_expr) = candidate else {
+            return false;
+        };
+        if *candidate_expr == positive_expr {
+            return false;
+        }
+
+        let candidate_arg = match kind {
+            ReciprocalTrigLogPositiveKind::SecTan => sec_tan_sum_arg(ctx, *candidate_expr),
+            ReciprocalTrigLogPositiveKind::CscCot => csc_cot_difference_arg(ctx, *candidate_expr),
+        };
+        candidate_arg.is_some_and(|candidate_arg| {
+            cas_math::expr_domain::exprs_equivalent(ctx, candidate_arg, arg)
+        })
+    })
+}
+
+fn reciprocal_trig_log_positive_quotient_display_condition_is_redundant(
+    ctx: &Context,
+    positive_expr: ExprId,
+    visible_conditions: &[&crate::ImplicitCondition],
+) -> bool {
+    let positive_display = expr_display(ctx, positive_expr);
+    visible_conditions.iter().any(|candidate| {
+        let crate::ImplicitCondition::Positive(candidate_expr) = candidate else {
+            return false;
+        };
+        if *candidate_expr == positive_expr {
+            return false;
+        }
+
+        if let Some(arg) = sec_tan_sum_arg(ctx, *candidate_expr) {
+            let arg_display = expr_display(ctx, arg);
+            return positive_display == format!("(sin({arg_display}) + 1) / cos({arg_display})")
+                || positive_display == format!("(1 + sin({arg_display})) / cos({arg_display})");
+        }
+
+        if let Some(arg) = csc_cot_difference_arg(ctx, *candidate_expr) {
+            let arg_display = expr_display(ctx, arg);
+            return positive_display == format!("(1 - cos({arg_display})) / sin({arg_display})");
+        }
+
+        false
+    })
+}
+
+fn reciprocal_trig_log_positive_quotient_arg(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ReciprocalTrigLogPositiveKind, ExprId)> {
+    sec_tan_compact_quotient_arg(ctx, expr)
+        .map(|arg| (ReciprocalTrigLogPositiveKind::SecTan, arg))
+        .or_else(|| {
+            csc_cot_compact_quotient_arg(ctx, expr)
+                .map(|arg| (ReciprocalTrigLogPositiveKind::CscCot, arg))
+        })
+}
+
+fn sec_tan_compact_quotient_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    let denominator_arg = unary_builtin_arg(ctx, *denominator, BuiltinFn::Cos)?;
+    let numerator_arg = one_plus_unary_builtin_arg(ctx, *numerator, BuiltinFn::Sin)?;
+    cas_math::expr_domain::exprs_equivalent(ctx, denominator_arg, numerator_arg)
+        .then_some(denominator_arg)
+}
+
+fn csc_cot_compact_quotient_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    let denominator_arg = unary_builtin_arg(ctx, *denominator, BuiltinFn::Sin)?;
+    let numerator_arg = one_minus_unary_builtin_arg(ctx, *numerator, BuiltinFn::Cos)?;
+    cas_math::expr_domain::exprs_equivalent(ctx, denominator_arg, numerator_arg)
+        .then_some(denominator_arg)
+}
+
+fn one_plus_unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return None;
+    };
+
+    if is_integer_literal(ctx, *left, 1) {
+        unary_builtin_arg(ctx, *right, builtin)
+    } else if is_integer_literal(ctx, *right, 1) {
+        unary_builtin_arg(ctx, *left, builtin)
+    } else {
+        None
+    }
+}
+
+fn one_minus_unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Sub(left, right) if is_integer_literal(ctx, *left, 1) => {
+            unary_builtin_arg(ctx, *right, builtin)
+        }
+        Expr::Add(left, right) if is_integer_literal(ctx, *left, 1) => {
+            negated_unary_builtin_arg(ctx, *right, builtin)
+        }
+        Expr::Add(left, right) if is_integer_literal(ctx, *right, 1) => {
+            negated_unary_builtin_arg(ctx, *left, builtin)
+        }
+        _ => None,
+    }
+}
+
+fn unit_interval_nonzero_condition_is_redundant(
+    ctx: &Context,
+    nonzero_expr: ExprId,
+    visible_conditions: &[&crate::ImplicitCondition],
+) -> bool {
     visible_conditions.iter().any(|candidate| {
         let crate::ImplicitCondition::NonNegative(gap_expr) = candidate else {
             return false;
@@ -97,8 +319,365 @@ fn required_display_condition_is_redundant(
         let Some(denominator) = exterior_unit_interval_denominator(ctx, *gap_expr) else {
             return false;
         };
-        cas_math::expr_domain::exprs_equivalent(ctx, denominator, *nonzero_expr)
+        cas_math::expr_domain::exprs_equivalent(ctx, denominator, nonzero_expr)
     })
+}
+
+fn reciprocal_trig_log_argument_condition_is_redundant(
+    ctx: &Context,
+    nonzero_expr: ExprId,
+    visible_conditions: &[&crate::ImplicitCondition],
+) -> bool {
+    let Some((required_builtin, arg)) = reciprocal_trig_log_argument_denominator(ctx, nonzero_expr)
+    else {
+        return false;
+    };
+
+    visible_conditions.iter().any(|candidate| {
+        let crate::ImplicitCondition::NonZero(candidate_expr) = candidate else {
+            return false;
+        };
+        unary_builtin_arg(ctx, *candidate_expr, required_builtin).is_some_and(|candidate_arg| {
+            cas_math::expr_domain::exprs_equivalent(ctx, candidate_arg, arg)
+        })
+    })
+}
+
+fn calculus_nonzero_condition_is_redundant(
+    ctx: &Context,
+    nonzero_expr: ExprId,
+    visible_conditions: &[&crate::ImplicitCondition],
+) -> bool {
+    if !expr_contains_calculus_call(ctx, nonzero_expr) {
+        return false;
+    }
+
+    visible_conditions.iter().any(|candidate| {
+        let crate::ImplicitCondition::NonZero(candidate_expr) = candidate else {
+            return false;
+        };
+        *candidate_expr != nonzero_expr
+            && (cas_math::expr_domain::exprs_equivalent(ctx, *candidate_expr, nonzero_expr)
+                || nonzero_condition_is_candidate_plus_antiderivative_residual(
+                    ctx,
+                    nonzero_expr,
+                    *candidate_expr,
+                ))
+    })
+}
+
+#[derive(Clone, Copy)]
+struct SignedTerm {
+    expr: ExprId,
+    positive: bool,
+}
+
+fn nonzero_condition_is_candidate_plus_antiderivative_residual(
+    ctx: &Context,
+    nonzero_expr: ExprId,
+    candidate_expr: ExprId,
+) -> bool {
+    let mut terms = Vec::new();
+    collect_signed_add_terms(ctx, nonzero_expr, true, &mut terms);
+
+    let mut candidate_terms = Vec::new();
+    collect_signed_add_terms(ctx, candidate_expr, true, &mut candidate_terms);
+
+    for candidate_term in candidate_terms {
+        let Some(index) = terms.iter().position(|term| {
+            term.positive == candidate_term.positive
+                && cas_math::expr_domain::exprs_equivalent(ctx, term.expr, candidate_term.expr)
+        }) else {
+            return false;
+        };
+        terms.remove(index);
+    }
+
+    signed_terms_are_antiderivative_residual(ctx, &terms)
+}
+
+fn collect_signed_add_terms(
+    ctx: &Context,
+    expr: ExprId,
+    positive: bool,
+    terms: &mut Vec<SignedTerm>,
+) {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            collect_signed_add_terms(ctx, *left, positive, terms);
+            collect_signed_add_terms(ctx, *right, positive, terms);
+        }
+        Expr::Sub(left, right) => {
+            collect_signed_add_terms(ctx, *left, positive, terms);
+            collect_signed_add_terms(ctx, *right, !positive, terms);
+        }
+        Expr::Neg(inner) => collect_signed_add_terms(ctx, *inner, !positive, terms),
+        Expr::Mul(left, right) if is_integer_literal(ctx, *left, -1) => {
+            collect_signed_add_terms(ctx, *right, !positive, terms)
+        }
+        Expr::Mul(left, right) if is_integer_literal(ctx, *right, -1) => {
+            collect_signed_add_terms(ctx, *left, !positive, terms)
+        }
+        _ => terms.push(SignedTerm { expr, positive }),
+    }
+}
+
+fn signed_terms_are_antiderivative_residual(ctx: &Context, terms: &[SignedTerm]) -> bool {
+    if terms.len() != 2 || terms[0].positive == terms[1].positive {
+        return false;
+    }
+
+    diff_integrate_integrand(ctx, terms[0].expr).is_some_and(|integrand| {
+        cas_math::expr_domain::exprs_equivalent(ctx, integrand, terms[1].expr)
+    }) || diff_integrate_integrand(ctx, terms[1].expr).is_some_and(|integrand| {
+        cas_math::expr_domain::exprs_equivalent(ctx, integrand, terms[0].expr)
+    })
+}
+
+fn diff_integrate_integrand(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    let Expr::Function(diff_fn, diff_args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.sym_name(*diff_fn) != "diff" || diff_args.len() != 2 {
+        return None;
+    }
+
+    let Expr::Function(integrate_fn, integrate_args) =
+        ctx.get(cas_ast::hold::unwrap_hold(ctx, diff_args[0]))
+    else {
+        return None;
+    };
+    if ctx.sym_name(*integrate_fn) != "integrate" || integrate_args.len() != 2 {
+        return None;
+    }
+
+    cas_math::expr_domain::exprs_equivalent(ctx, diff_args[1], integrate_args[1])
+        .then_some(integrate_args[0])
+}
+
+fn expr_contains_calculus_call(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Function(fn_id, args) => {
+            matches!(ctx.sym_name(*fn_id), "diff" | "integrate" | "limit")
+                || args
+                    .iter()
+                    .any(|arg| expr_contains_calculus_call(ctx, *arg))
+        }
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            expr_contains_calculus_call(ctx, *left) || expr_contains_calculus_call(ctx, *right)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_calculus_call(ctx, *inner),
+        Expr::Matrix { data, .. } => data
+            .iter()
+            .any(|entry| expr_contains_calculus_call(ctx, *entry)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
+    }
+}
+
+fn reciprocal_trig_log_argument_denominator(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BuiltinFn, ExprId)> {
+    sec_tan_sum_arg(ctx, expr)
+        .or_else(|| sec_tan_quotient_sum_arg(ctx, expr))
+        .map(|arg| (BuiltinFn::Cos, arg))
+        .or_else(|| {
+            csc_cot_difference_arg(ctx, expr)
+                .or_else(|| csc_cot_quotient_difference_arg(ctx, expr))
+                .map(|arg| (BuiltinFn::Sin, arg))
+        })
+}
+
+fn sec_tan_sum_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    unordered_same_arg_unary_pair(ctx, *left, BuiltinFn::Sec, *right, BuiltinFn::Tan)
+}
+
+fn csc_cot_difference_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            same_arg_unary_pair(ctx, *left, BuiltinFn::Csc, *right, BuiltinFn::Cot)
+        }
+        Expr::Add(left, right) => unary_builtin_arg(ctx, *left, BuiltinFn::Csc)
+            .zip(negated_unary_builtin_arg(ctx, *right, BuiltinFn::Cot))
+            .or_else(|| {
+                unary_builtin_arg(ctx, *right, BuiltinFn::Csc).zip(negated_unary_builtin_arg(
+                    ctx,
+                    *left,
+                    BuiltinFn::Cot,
+                ))
+            })
+            .and_then(|(left_arg, right_arg)| {
+                cas_math::expr_domain::exprs_equivalent(ctx, left_arg, right_arg)
+                    .then_some(left_arg)
+            }),
+        _ => None,
+    }
+}
+
+fn sec_tan_quotient_sum_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    reciprocal_plus_ratio_arg(ctx, *left, *right, BuiltinFn::Sin, BuiltinFn::Cos)
+        .or_else(|| reciprocal_plus_ratio_arg(ctx, *right, *left, BuiltinFn::Sin, BuiltinFn::Cos))
+}
+
+fn csc_cot_quotient_difference_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            reciprocal_plus_ratio_arg(ctx, *left, *right, BuiltinFn::Cos, BuiltinFn::Sin)
+        }
+        Expr::Add(left, right) => reciprocal_plus_ratio_arg_with_negated_ratio(
+            ctx,
+            *left,
+            *right,
+            BuiltinFn::Cos,
+            BuiltinFn::Sin,
+        )
+        .or_else(|| {
+            reciprocal_plus_ratio_arg_with_negated_ratio(
+                ctx,
+                *right,
+                *left,
+                BuiltinFn::Cos,
+                BuiltinFn::Sin,
+            )
+        }),
+        _ => None,
+    }
+}
+
+fn reciprocal_plus_ratio_arg(
+    ctx: &Context,
+    reciprocal: ExprId,
+    ratio: ExprId,
+    numerator_builtin: BuiltinFn,
+    denominator_builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let denominator_arg = reciprocal_builtin_denominator_arg(ctx, reciprocal, denominator_builtin)?;
+    let ratio_arg =
+        ratio_builtin_denominator_arg(ctx, ratio, numerator_builtin, denominator_builtin)?;
+    cas_math::expr_domain::exprs_equivalent(ctx, denominator_arg, ratio_arg)
+        .then_some(denominator_arg)
+}
+
+fn reciprocal_plus_ratio_arg_with_negated_ratio(
+    ctx: &Context,
+    reciprocal: ExprId,
+    ratio: ExprId,
+    numerator_builtin: BuiltinFn,
+    denominator_builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let ratio = match ctx.get(cas_ast::hold::unwrap_hold(ctx, ratio)) {
+        Expr::Neg(inner) => *inner,
+        Expr::Mul(left, right) if is_integer_literal(ctx, *left, -1) => *right,
+        Expr::Mul(left, right) if is_integer_literal(ctx, *right, -1) => *left,
+        _ => return None,
+    };
+    reciprocal_plus_ratio_arg(
+        ctx,
+        reciprocal,
+        ratio,
+        numerator_builtin,
+        denominator_builtin,
+    )
+}
+
+fn reciprocal_builtin_denominator_arg(
+    ctx: &Context,
+    expr: ExprId,
+    denominator_builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    if is_integer_literal(ctx, *numerator, 1) {
+        unary_builtin_arg(ctx, *denominator, denominator_builtin)
+    } else {
+        None
+    }
+}
+
+fn ratio_builtin_denominator_arg(
+    ctx: &Context,
+    expr: ExprId,
+    numerator_builtin: BuiltinFn,
+    denominator_builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    let Expr::Div(numerator, denominator) = ctx.get(expr) else {
+        return None;
+    };
+    same_arg_unary_pair(
+        ctx,
+        *numerator,
+        numerator_builtin,
+        *denominator,
+        denominator_builtin,
+    )
+}
+
+fn unordered_same_arg_unary_pair(
+    ctx: &Context,
+    left: ExprId,
+    left_builtin: BuiltinFn,
+    right: ExprId,
+    right_builtin: BuiltinFn,
+) -> Option<ExprId> {
+    same_arg_unary_pair(ctx, left, left_builtin, right, right_builtin)
+        .or_else(|| same_arg_unary_pair(ctx, right, left_builtin, left, right_builtin))
+}
+
+fn same_arg_unary_pair(
+    ctx: &Context,
+    left: ExprId,
+    left_builtin: BuiltinFn,
+    right: ExprId,
+    right_builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let left_arg = unary_builtin_arg(ctx, left, left_builtin)?;
+    let right_arg = unary_builtin_arg(ctx, right, right_builtin)?;
+    cas_math::expr_domain::exprs_equivalent(ctx, left_arg, right_arg).then_some(left_arg)
+}
+
+fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() == 1 && ctx.is_builtin(*fn_id, builtin) {
+        Some(args[0])
+    } else {
+        None
+    }
+}
+
+fn negated_unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Neg(inner) => unary_builtin_arg(ctx, *inner, builtin),
+        Expr::Mul(left, right) if is_integer_literal(ctx, *left, -1) => {
+            unary_builtin_arg(ctx, *right, builtin)
+        }
+        Expr::Mul(left, right) if is_integer_literal(ctx, *right, -1) => {
+            unary_builtin_arg(ctx, *left, builtin)
+        }
+        _ => None,
+    }
 }
 
 fn exterior_unit_interval_denominator(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -153,19 +732,25 @@ fn is_integer_literal(ctx: &Context, expr: ExprId, value: i64) -> bool {
 }
 
 pub(crate) fn collect_output_blocked_hints(
-    ctx: &Context,
+    ctx: &mut Context,
     resolved: cas_ast::ExprId,
     required_conditions: &[crate::ImplicitCondition],
     blocked_hints: &[crate::BlockedHint],
 ) -> Vec<BlockedHintDto> {
-    crate::filter_blocked_hints_for_eval(ctx, resolved, required_conditions, blocked_hints)
-        .iter()
-        .map(|hint| BlockedHintDto {
-            rule: hint.rule.clone(),
-            requires: vec![crate::format_blocked_hint_condition(ctx, hint)],
-            tip: hint.suggestion.to_string(),
-        })
-        .collect()
+    let normalized_required_conditions = normalize_and_dedupe_conditions(ctx, required_conditions);
+    crate::filter_blocked_hints_for_eval(
+        ctx,
+        resolved,
+        &normalized_required_conditions,
+        blocked_hints,
+    )
+    .iter()
+    .map(|hint| BlockedHintDto {
+        rule: hint.rule.clone(),
+        requires: vec![crate::format_blocked_hint_condition(ctx, hint)],
+        tip: hint.suggestion.to_string(),
+    })
+    .collect()
 }
 
 pub(crate) fn collect_output_assumptions_used(steps: &[crate::Step]) -> Vec<AssumptionDto> {

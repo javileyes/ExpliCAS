@@ -2642,6 +2642,74 @@ fn eval_symbolic_integration_step_keeps_integral_latex_in_before_wire() {
 }
 
 #[test]
+fn eval_default_variable_integration_keeps_integral_latex_in_wire() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "integrate(x^2)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], json!("1/3·x^3"));
+    let input_latex = wire["input_latex"].as_str().expect("input_latex");
+    assert!(
+        input_latex.contains("\\int") && input_latex.contains("\\, dx"),
+        "expected input_latex to show an integral with default dx, got: {input_latex}"
+    );
+    assert!(
+        !input_latex.contains("\\text{integrate}"),
+        "expected input_latex to avoid function-style integrate(), got: {input_latex}"
+    );
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    let before_latex = steps[0]["before_latex"].as_str().expect("before_latex");
+    assert!(
+        before_latex.contains("\\int") && before_latex.contains("\\, dx"),
+        "expected before_latex to show an integral with default dx, got: {before_latex}"
+    );
+    assert!(
+        !before_latex.contains("\\text{integrate}"),
+        "expected before_latex to avoid function-style integrate(), got: {before_latex}"
+    );
+}
+
+#[test]
+fn eval_unresolved_integration_residual_uses_integral_text_display() {
+    let (output, _code) = run_cli(&[
+        "eval",
+        "integrate(sin(x^2))",
+        "--format",
+        "json",
+        "--steps",
+        "off",
+    ]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], json!("int sin(x^2) , dx"));
+    let result_latex = wire["result_latex"].as_str().expect("result_latex");
+    assert!(
+        result_latex.contains("\\int") && result_latex.contains("\\, dx"),
+        "expected result_latex to show an unresolved integral, got: {result_latex}"
+    );
+    assert!(
+        !result_latex.contains("\\text{integrate}"),
+        "expected result_latex to avoid function-style integrate(), got: {result_latex}"
+    );
+
+    let text = wire["wire"]["messages"][0]["text"]
+        .as_str()
+        .expect("wire output text");
+    assert!(
+        text.starts_with("Result: int sin(x^2) , dx "),
+        "expected wire text to use integral display, got: {text}"
+    );
+}
+
+#[test]
 fn eval_symbolic_differentiation_step_keeps_derivative_latex_in_before_wire() {
     let (output, _code) = run_cli(&["eval", "diff(x^2, x)", "--format", "json", "--steps", "on"]);
     let wire = parse_wire(&output);

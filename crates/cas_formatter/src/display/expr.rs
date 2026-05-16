@@ -114,6 +114,10 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 }
             }
             Expr::Mul(l, r) => {
+                if format_trig_polynomial_product(f, self.context, *l, *r)? {
+                    return Ok(());
+                }
+
                 // P3: Try to display as fraction using FractionDisplayView
                 if let Some(frac) = FractionDisplayView::from(self.context, self.id) {
                     // Handle sign
@@ -599,6 +603,15 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                             id: args[1]
                         }
                     )
+                } else if name == "integrate" && args.len() == 1 {
+                    write!(
+                        f,
+                        "int {} , dx",
+                        DisplayExpr {
+                            context: self.context,
+                            id: args[0]
+                        }
+                    )
                 } else if args.len() == 1 && prefers_quotient_sum_function_arg(name) {
                     let arg = format_preferred_function_arg_for_display(self.context, args[0])
                         .unwrap_or_else(|| {
@@ -754,6 +767,9 @@ fn prefers_quotient_sum_function_arg(name: &str) -> bool {
         "sin"
             | "cos"
             | "tan"
+            | "sec"
+            | "csc"
+            | "cot"
             | "sinh"
             | "cosh"
             | "tanh"
@@ -928,6 +944,164 @@ fn displayable_quotient_numerator(ctx: &Context, id: ExprId) -> bool {
 fn quotient_numerator_needs_parens(ctx: &Context, id: ExprId) -> bool {
     let id = unwrap_internal_hold_for_display(ctx, id);
     is_add_sub_after_internal_hold(ctx, id) || matches!(ctx.get(id), Expr::Div(_, _))
+}
+
+fn format_trig_polynomial_product(
+    f: &mut fmt::Formatter<'_>,
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> Result<bool, fmt::Error> {
+    let Some((poly, trig)) = trig_polynomial_product_factors(ctx, left, right) else {
+        return Ok(false);
+    };
+    let mut terms = collect_signed_add_terms(ctx, poly);
+    if !should_format_add_degree_first(ctx, &terms) {
+        return Ok(false);
+    }
+
+    terms.sort_by(|a, b| compare_add_terms_degree_first(ctx, a, b));
+    write!(f, "(")?;
+    format_signed_add_terms_in_order(f, ctx, &terms)?;
+    write!(
+        f,
+        "){}{}",
+        mul_symbol(),
+        DisplayExpr {
+            context: ctx,
+            id: trig
+        }
+    )?;
+    Ok(true)
+}
+
+fn trig_polynomial_product_factors(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    if is_add_sub_after_internal_hold(ctx, left) && is_display_trig_factor(ctx, right) {
+        return Some((left, right));
+    }
+    if is_display_trig_factor(ctx, left) && is_add_sub_after_internal_hold(ctx, right) {
+        return Some((right, left));
+    }
+    None
+}
+
+fn is_display_trig_factor(ctx: &Context, id: ExprId) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(id) else {
+        return false;
+    };
+    args.len() == 1
+        && matches!(
+            ctx.builtin_of(*fn_id),
+            Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+        )
+}
+
+fn should_format_add_degree_first(ctx: &Context, terms: &[SignedAddTerm]) -> bool {
+    if terms.len() < 3 {
+        return false;
+    }
+    let mut max_degree = 0;
+    for term in terms {
+        let Some(degree) = display_polynomial_degree(ctx, term.id) else {
+            return false;
+        };
+        max_degree = max_degree.max(degree);
+    }
+    max_degree >= 2
+}
+
+fn compare_add_terms_degree_first(
+    ctx: &Context,
+    a: &SignedAddTerm,
+    b: &SignedAddTerm,
+) -> std::cmp::Ordering {
+    use crate::ordering::compare_expr;
+
+    let deg_a = display_polynomial_degree(ctx, a.id).unwrap_or_default();
+    let deg_b = display_polynomial_degree(ctx, b.id).unwrap_or_default();
+    if deg_a != deg_b {
+        return deg_b.cmp(&deg_a);
+    }
+    compare_expr(ctx, a.id, b.id)
+}
+
+fn display_polynomial_degree(ctx: &Context, id: ExprId) -> Option<i32> {
+    match ctx.get(id) {
+        Expr::Number(_) | Expr::Constant(_) => Some(0),
+        Expr::Variable(_) => Some(1),
+        Expr::Pow(base, exp) => {
+            if matches!(ctx.get(*base), Expr::Variable(_)) {
+                if let Expr::Number(n) = ctx.get(*exp) {
+                    if n.is_integer() {
+                        return n.to_integer().try_into().ok();
+                    }
+                }
+            }
+            None
+        }
+        Expr::Mul(a, b) => match (
+            display_polynomial_degree(ctx, *a),
+            display_polynomial_degree(ctx, *b),
+        ) {
+            (Some(left), Some(right)) => Some(left + right),
+            _ => None,
+        },
+        Expr::Div(a, b) => {
+            if display_polynomial_degree(ctx, *b) == Some(0) {
+                display_polynomial_degree(ctx, *a)
+            } else {
+                None
+            }
+        }
+        Expr::Neg(inner) => display_polynomial_degree(ctx, *inner),
+        _ => None,
+    }
+}
+
+fn format_signed_add_terms_in_order(
+    f: &mut fmt::Formatter<'_>,
+    ctx: &Context,
+    terms: &[SignedAddTerm],
+) -> fmt::Result {
+    for (i, term) in terms.iter().enumerate() {
+        let raw_is_neg = check_negative(ctx, term.id).0;
+        let is_neg = term.invert_sign ^ raw_is_neg;
+
+        if i == 0 {
+            if is_neg {
+                write!(f, "-")?;
+                format_term_absolute(f, ctx, term.id)?;
+            } else if term.invert_sign && raw_is_neg {
+                format_term_absolute(f, ctx, term.id)?;
+            } else {
+                write!(
+                    f,
+                    "{}",
+                    DisplayExpr {
+                        context: ctx,
+                        id: term.id
+                    }
+                )?;
+            }
+        } else if is_neg {
+            write!(f, " - ")?;
+            format_term_absolute(f, ctx, term.id)?;
+        } else {
+            write!(
+                f,
+                " + {}",
+                DisplayExpr {
+                    context: ctx,
+                    id: term.id
+                }
+            )?;
+        }
+    }
+    Ok(())
 }
 
 #[derive(Clone, Copy)]

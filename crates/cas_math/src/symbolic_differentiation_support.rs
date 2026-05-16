@@ -11,7 +11,7 @@ use crate::root_forms::{
     extract_square_root_base, try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind,
 };
 use crate::tri_proof::TriProof;
-use cas_ast::{ordering::compare_expr, BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{ordering::compare_expr, BuiltinFn, Constant, Context, Expr, ExprId};
 use num_integer::Integer;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
@@ -111,6 +111,18 @@ fn rational_constant_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
             }
         }
         Expr::Neg(inner) => rational_constant_value(ctx, *inner).map(|value| -value),
+        _ => None,
+    }
+}
+
+fn exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Exp) && args.len() == 1 =>
+        {
+            Some(args[0])
+        }
+        Expr::Pow(base, exp) if matches!(ctx.get(*base), Expr::Constant(Constant::E)) => Some(*exp),
         _ => None,
     }
 }
@@ -3460,6 +3472,106 @@ fn same_arg_unary_pair(
     (compare_expr(ctx, left_arg, right_arg) == Ordering::Equal).then_some(left_arg)
 }
 
+fn sin_minus_cos_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            same_arg_unary_pair(ctx, *left, BuiltinFn::Sin, *right, BuiltinFn::Cos)
+        }
+        Expr::Add(left, right) => {
+            if let Expr::Neg(negated_right) = ctx.get(*right) {
+                if let Some(arg) =
+                    same_arg_unary_pair(ctx, *left, BuiltinFn::Sin, *negated_right, BuiltinFn::Cos)
+                {
+                    return Some(arg);
+                }
+            }
+            if let Expr::Neg(negated_left) = ctx.get(*left) {
+                if let Some(arg) =
+                    same_arg_unary_pair(ctx, *right, BuiltinFn::Sin, *negated_left, BuiltinFn::Cos)
+                {
+                    return Some(arg);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn sin_plus_cos_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Add(left, right) = ctx.get(expr) else {
+        return None;
+    };
+    same_arg_unary_pair(ctx, *left, BuiltinFn::Sin, *right, BuiltinFn::Cos)
+        .or_else(|| same_arg_unary_pair(ctx, *right, BuiltinFn::Sin, *left, BuiltinFn::Cos))
+}
+
+fn exp_trig_by_parts_primitive_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut scale = BigRational::one();
+    let mut exp_factor = None;
+    let mut exp_arg = None;
+    let mut trig_arg_and_result = None;
+
+    for factor in factors {
+        if let Some(arg) = exp_like_arg(ctx, factor) {
+            if exp_factor.replace(factor).is_some() || exp_arg.replace(arg).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        if let Some(arg) = sin_minus_cos_arg(ctx, factor) {
+            if trig_arg_and_result.replace((arg, BuiltinFn::Sin)).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        if let Some(arg) = sin_plus_cos_arg(ctx, factor) {
+            if trig_arg_and_result.replace((arg, BuiltinFn::Cos)).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        scale *= rational_constant_value(ctx, factor)?;
+    }
+
+    let exp_factor = exp_factor?;
+    let exp_arg = exp_arg?;
+    let (trig_arg, result_builtin) = trig_arg_and_result?;
+    if compare_expr(ctx, exp_arg, trig_arg) != Ordering::Equal {
+        return None;
+    }
+
+    let arg_poly = Polynomial::from_expr(ctx, exp_arg, var).ok()?;
+    if arg_poly.degree() != 1 {
+        return None;
+    }
+    let arg_slope = arg_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if arg_slope.is_zero() {
+        return None;
+    }
+
+    let result_trig = ctx.call_builtin(result_builtin, vec![exp_arg]);
+    let product = mul_pruned(ctx, exp_factor, result_trig);
+    let derivative_scale = scale * BigRational::from_integer(2.into()) * arg_slope;
+    Some(scale_expr_pruned(ctx, derivative_scale, product))
+}
+
 fn unordered_same_arg_unary_sum(
     ctx: &Context,
     expr: ExprId,
@@ -3479,11 +3591,21 @@ fn csc_minus_cot_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
             same_arg_unary_pair(ctx, *left, BuiltinFn::Csc, *right, BuiltinFn::Cot)
         }
         Expr::Add(left, right) => {
-            let negated_right = match ctx.get(*right) {
-                Expr::Neg(inner) => *inner,
-                _ => return None,
-            };
-            same_arg_unary_pair(ctx, *left, BuiltinFn::Csc, negated_right, BuiltinFn::Cot)
+            if let Expr::Neg(negated_right) = ctx.get(*right) {
+                if let Some(arg) =
+                    same_arg_unary_pair(ctx, *left, BuiltinFn::Csc, *negated_right, BuiltinFn::Cot)
+                {
+                    return Some(arg);
+                }
+            }
+            if let Expr::Neg(negated_left) = ctx.get(*left) {
+                if let Some(arg) =
+                    same_arg_unary_pair(ctx, *right, BuiltinFn::Csc, *negated_left, BuiltinFn::Cot)
+                {
+                    return Some(arg);
+                }
+            }
+            None
         }
         _ => None,
     }
@@ -3510,6 +3632,14 @@ fn plus_or_minus_one_cos_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         Expr::Sub(left, right) if is_one(ctx, *right) => {
             unary_builtin_arg(ctx, *left, BuiltinFn::Cos)
         }
+        Expr::Add(left, right) if is_one(ctx, *left) => match ctx.get(*right) {
+            Expr::Neg(inner) => unary_builtin_arg(ctx, *inner, BuiltinFn::Cos),
+            _ => None,
+        },
+        Expr::Add(left, right) if is_one(ctx, *right) => match ctx.get(*left) {
+            Expr::Neg(inner) => unary_builtin_arg(ctx, *inner, BuiltinFn::Cos),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -3756,6 +3886,10 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         return Some(derivative);
     }
 
+    if let Some(derivative) = exp_trig_by_parts_primitive_derivative(ctx, expr, var) {
+        return Some(derivative);
+    }
+
     if let Some(derivative) = try_constant_scaled_atanh_polynomial_derivative(ctx, expr, var) {
         return Some(derivative);
     }
@@ -3932,6 +4066,11 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
             let arg = args[0];
 
             if ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln) {
+                if let Some(derivative) =
+                    log_abs_reciprocal_trig_primitive_derivative(ctx, arg, var)
+                {
+                    return Some(derivative);
+                }
                 if let Some(derivative) = log_abs_builtin_derivative(ctx, arg, var) {
                     return Some(derivative);
                 }
@@ -4127,6 +4266,19 @@ mod tests {
         let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
         let text = rendered(&ctx, out);
         assert!(text.contains("exp(x^2)") || text.contains("e^(x^2)"));
+    }
+
+    #[test]
+    fn differentiates_exp_trig_by_parts_primitives_directly() {
+        let mut ctx = Context::new();
+
+        let expr = parse("1/4*exp(2*x+1)*(sin(2*x+1)-cos(2*x+1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "e^(2 * x + 1) * sin(2 * x + 1)");
+
+        let expr = parse("1/4*exp(2*x+1)*(sin(2*x+1)+cos(2*x+1))", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "e^(2 * x + 1) * cos(2 * x + 1)");
     }
 
     #[test]
@@ -4503,6 +4655,26 @@ mod tests {
             ("ln(abs(csc(x)-cot(x)))", "csc(x)"),
             ("ln(abs(csc(2*x+1)-cot(2*x+1)))", "2 * csc(2 * x + 1)"),
             ("ln(abs((cos(2*x+1)-1)/sin(2*x+1)))", "2 * csc(2 * x + 1)"),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+
+            assert_eq!(rendered(&ctx, out), expected, "input: {input}");
+        }
+    }
+
+    #[test]
+    fn differentiates_positive_reciprocal_trig_log_primitives_directly() {
+        let cases = [
+            ("ln(sec(x)+tan(x))", "sec(x)"),
+            ("ln(sec(2*x+1)+tan(2*x+1))", "2 * sec(2 * x + 1)"),
+            ("ln((1+sin(2*x+1))/cos(2*x+1))", "2 * sec(2 * x + 1)"),
+            ("ln(csc(x)-cot(x))", "csc(x)"),
+            ("ln(csc(2*x+1)-cot(2*x+1))", "2 * csc(2 * x + 1)"),
+            ("ln((cos(2*x+1)-1)/sin(2*x+1))", "2 * csc(2 * x + 1)"),
         ];
 
         for (input, expected) in cases {

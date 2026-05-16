@@ -33,6 +33,7 @@ class ProbeResult:
     wall_elapsed_seconds: float
     result: str | None
     required_conditions: tuple[str, ...]
+    impossible_required_conditions: tuple[str, ...]
     warnings: tuple[str, ...]
     stdout: str
     stderr: str
@@ -47,6 +48,7 @@ class ProbeResult:
             "slow_wall_seconds": self.slow_wall_seconds,
             "result": self.result,
             "required_conditions": list(self.required_conditions),
+            "impossible_required_conditions": list(self.impossible_required_conditions),
             "warnings": list(self.warnings),
             "error": self.error,
         }
@@ -117,24 +119,67 @@ DEFAULT_MATRIX_WRAPPERS = (
 NESTED_DEN_EXPECTED_RESULTS = {
     "exp_poly": "1 / (x·(x + 2) + 3·x + 6)",
     "exp_affine": "1 / (x·(x + 2) + 3·x + 6)",
+    "integrate_exp_trig_sin": "1 / (x·(x + 2) + 3·x + 6)",
+    "integrate_exp_trig_cos": "1 / (x·(x + 2) + 3·x + 6)",
+    "integrate_exp_trig_neg_sin": "1 / (x·(x + 2) + 3·x + 6)",
+    "integrate_exp_trig_neg_cos": "1 / (x·(x + 2) + 3·x + 6)",
     "plain_trig_sin": "1 / ((x + 2)·(x + 3))",
     "plain_trig_cos": "1 / ((x + 2)·(x + 3))",
+    "plain_trig_neg_sin": "1 / ((x + 2)·(x + 3))",
+    "plain_trig_neg_cos": "1 / ((x + 2)·(x + 3))",
+    "plain_trig_sparse_neg_sin": "1 / ((x + 2)·(x + 3))",
     "hyperbolic_sinh": "1 / ((x + 2)·(x + 3))",
     "hyperbolic_cosh": "1 / ((x + 2)·(x + 3))",
     "inverse_trig_arctan": "1 / ((x + 2)·(x + 3))",
     "rational_quad": "1 / ((x + 2)·(x + 3))",
     "recip_trig": "1 / ((x + 2)·(x + 3))",
+    "fractional_den_power": "1 / (x·(x + 2) + 3·x + 6)",
 }
 
 DEFAULT_MATRIX_BASES = (
     ("exp_poly", "diff(integrate(x^5*exp(x),x),x)-x^5*exp(x)", ()),
     ("exp_affine", "diff(integrate(x^4*exp(2*x+1),x),x)-x^4*exp(2*x+1)", ()),
     (
+        "integrate_exp_trig_sin",
+        "diff(integrate(exp(2*x+1)*sin(2*x+1),x),x)-exp(2*x+1)*sin(2*x+1)",
+        (),
+    ),
+    (
+        "integrate_exp_trig_cos",
+        "diff(integrate(exp(2*x+1)*cos(2*x+1),x),x)-exp(2*x+1)*cos(2*x+1)",
+        (),
+    ),
+    (
+        "integrate_exp_trig_neg_sin",
+        "diff(integrate(exp(1-2*x)*sin(1-2*x),x),x)-exp(1-2*x)*sin(1-2*x)",
+        (),
+    ),
+    (
+        "integrate_exp_trig_neg_cos",
+        "diff(integrate(exp(1-2*x)*cos(1-2*x),x),x)-exp(1-2*x)*cos(1-2*x)",
+        (),
+    ),
+    (
         "plain_trig_sin",
         "diff(integrate(x^4*sin(2*x+1),x),x)-x^4*sin(2*x+1)",
         (),
     ),
     ("plain_trig_cos", "diff(integrate(x^3*cos(x),x),x)-x^3*cos(x)", ()),
+    (
+        "plain_trig_neg_sin",
+        "diff(integrate(x^4*sin(1-2*x),x),x)-x^4*sin(1-2*x)",
+        (),
+    ),
+    (
+        "plain_trig_neg_cos",
+        "diff(integrate(x^3*cos(1-2*x),x),x)-x^3*cos(1-2*x)",
+        (),
+    ),
+    (
+        "plain_trig_sparse_neg_sin",
+        "diff(integrate((x^6+1)*sin(1-2*x),x),x)-(x^6+1)*sin(1-2*x)",
+        (),
+    ),
     (
         "hyperbolic_sinh",
         "diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1)",
@@ -159,6 +204,14 @@ DEFAULT_MATRIX_BASES = (
         ("x + 1",),
     ),
     ("recip_trig", "diff(integrate(1/(x^2+1),x),x)-1/(x^2+1)", ()),
+    (
+        "fractional_den_power",
+        (
+            "diff(integrate((2*x+1)/(x^2+x+1)^(3/2),x),x)"
+            "-(2*x+1)/(x^2+x+1)^(3/2)"
+        ),
+        (),
+    ),
 )
 
 DEFAULT_SHIFTED_QUOTIENT_RESIDUAL_DEN_CASES = (
@@ -401,6 +454,7 @@ def run_probe(
             wall_elapsed_seconds=time.monotonic() - start,
             result=None,
             required_conditions=(),
+            impossible_required_conditions=(),
             warnings=(),
             stdout=stdout,
             stderr=stderr,
@@ -412,6 +466,7 @@ def run_probe(
     parsed, parse_error = parse_json(stdout)
     result = extract_result(parsed)
     actual_required = extract_required_conditions(parsed)
+    impossible_required = extract_impossible_required_conditions(parsed)
     warnings = (*extract_warnings(parsed), *extract_stderr_warnings(stderr))
 
     error = classify_error(
@@ -421,6 +476,7 @@ def run_probe(
         expected_result=expected_result,
         actual_required=actual_required,
         expected_required=required_conditions,
+        impossible_required=impossible_required,
         warnings=warnings,
         forbid_warnings=forbid_warnings,
     )
@@ -434,6 +490,7 @@ def run_probe(
         wall_elapsed_seconds=wall_elapsed,
         result=result,
         required_conditions=actual_required,
+        impossible_required_conditions=impossible_required,
         warnings=warnings,
         stdout=stdout,
         stderr=stderr,
@@ -524,6 +581,26 @@ def extract_required_conditions(parsed: dict[str, Any] | None) -> tuple[str, ...
     return tuple(displays)
 
 
+def extract_impossible_required_conditions(parsed: dict[str, Any] | None) -> tuple[str, ...]:
+    if not parsed:
+        return ()
+    raw = parsed.get("required_conditions") or []
+    if not isinstance(raw, list):
+        return ()
+    impossible: list[str] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        if item.get("kind") != "NonZero":
+            continue
+        display = item.get("expr_display")
+        canonical = item.get("expr_canonical")
+        witness = canonical if isinstance(canonical, str) else display
+        if witness == "0":
+            impossible.append("NonZero(0)")
+    return tuple(impossible)
+
+
 def extract_warnings(parsed: dict[str, Any] | None) -> tuple[str, ...]:
     if not parsed:
         return ()
@@ -557,6 +634,7 @@ def classify_error(
     expected_result: str | None,
     actual_required: tuple[str, ...],
     expected_required: tuple[str, ...],
+    impossible_required: tuple[str, ...],
     warnings: tuple[str, ...],
     forbid_warnings: bool,
 ) -> str | None:
@@ -569,6 +647,8 @@ def classify_error(
     missing = [condition for condition in expected_required if condition not in actual_required]
     if missing:
         return f"missing required conditions: {', '.join(missing)}"
+    if impossible_required:
+        return f"impossible required conditions: {', '.join(impossible_required)}"
     if forbid_warnings and warnings:
         return f"unexpected warnings: {', '.join(warnings)}"
     return None
@@ -588,6 +668,8 @@ def print_human(result: ProbeResult, expect: str) -> None:
         fields.append(f"result={result.result!r}")
     if result.required_conditions:
         fields.append(f"required={list(result.required_conditions)!r}")
+    if result.impossible_required_conditions:
+        fields.append(f"impossible_required={list(result.impossible_required_conditions)!r}")
     if result.warnings:
         fields.append(f"warnings={list(result.warnings)!r}")
     if result.slow_wall_seconds is not None:

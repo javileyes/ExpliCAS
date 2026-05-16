@@ -164,7 +164,7 @@ Candidates for similar treatment:
 
 Inline eval syntax may accept finite-point notation such as
 `limit(ln(x), x, -1)`, but this is only a residual contract until Limits V2 is
-defined and tested.
+defined and tested beyond the narrow exception below.
 
 Current contract:
 
@@ -173,8 +173,29 @@ Current contract:
   preserving their own implicit domain requirements
 - the identity variable limit may evaluate directly to the finite point when
   that point does not depend on the limit variable
+- polynomial expressions may evaluate at numeric rational finite points because
+  real polynomials are total on the real line and require no continuity,
+  branch, side, or domain assumption
+- rational polynomial expressions may evaluate at numeric rational finite
+  points only when the denominator evaluates explicitly to a nonzero value at
+  that point; zero denominators, including removable-looking holes, remain
+  residual until a dedicated finite-point continuity/cancellation policy exists
+- `sqrt(p(x))` and `ln(p(x))` may evaluate at numeric rational finite points
+  only when `p(x)` is polynomial in the limit variable and `p(a)` is
+  strictly positive; zero and negative argument values remain residual to
+  avoid endpoint, side, branch, or domain-path assumptions
+- arithmetic compositions of already-resolved safe finite sublimits may
+  evaluate through `+`, `-`, `*`, unary negation, and division only when the
+  computed denominator is either an explicit nonzero numeric value or is proven
+  structurally positive by the existing sign prover; if any sublimit is
+  unresolved or a denominator is not proven safe, the whole finite limit remains
+  residual
 - unresolved finite-point limits carry a warning that finite point limits are
   not supported safely yet
+- unresolved finite-point residuals must not surface literal-impossible public
+  requirements such as `0 ≠ 0` from a collapsed denominator witness; suppressing
+  that display artifact does not prove or promote the limit, and the residual
+  result plus finite-limit warning remains the contract
 - no finite-point answer is invented
 - no side, path, continuity, branch, or domain assumption is inferred
 - the CLI subcommand `limit --to` remains scoped to `infinity` and `-infinity`

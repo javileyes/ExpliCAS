@@ -95,6 +95,101 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-16 - Rejected broad residual display: two-argument integration as integral text
+
+- area:
+  - calculus / integration / post-calculus presentation / CLI residual display
+- status:
+  - `rejected`
+- local lane:
+  - `cargo test -p cas_cli eval_unresolved_integration_residual_uses_integral_text_display -- --nocapture`
+  - direct probe:
+    `cargo run --release -q -p cas_cli -- eval 'integrate(sin(x^2), x)' --format json --steps off`
+- local win:
+  - two-argument unsupported integration residuals rendered as textbook-style
+    plain text, e.g. `int sin(x^2) , dx`, matching the existing `result_latex`
+    integral presentation
+- global result:
+  - `make engine-scorecard` kept embedded, derive, simplify, diff, and limit
+    lanes green, but failed `calculus_integrate_contract`
+  - failures were contract assertions that intentionally distinguish unsupported
+    residuals by the function-call text form, e.g.
+    `integrate(sin(x^2), x)`
+- why it regressed globally:
+  - the two-argument `integrate(expr, x)` form is already used throughout the
+    integration contract suite as a stable textual residual sentinel
+  - changing that display globally is broader than a post-calculus polish fix
+    and requires a deliberate contract migration
+- what could make it combinable later:
+  - introduce an explicit unsupported/residual field or status in CLI/wire, then
+    migrate integration contracts away from function-call text as the residual
+    sentinel before changing two-argument presentation
+- retained narrower route:
+  - keep the display improvement only for one-argument public
+    `integrate(expr)`, where the default-variable surface already presents as
+    `dx` in LaTeX and does not collide with the existing integration residual
+    contract lane
+
+## 2026-05-16 - Observe-only discovery: compact sec/csc log presentation adds redundant domain requirements
+
+- area:
+  - calculus / integration / post-calculus presentation / domain presentation
+- status:
+  - `observe-only`
+- generated candidate:
+  - protect the `sec(u)` and `csc(u)` logarithmic primitive arguments with
+    `__hold`, so public integration could render the same form used in the
+    didactic trace:
+    - `integrate(2*x*sec(x^2), x) -> ln(|tan(x^2) + sec(x^2)|)`
+    - `integrate(2*x*csc(x^2), x) -> ln(|csc(x^2) - cot(x^2)|)`
+- local win:
+  - polynomial substitution probes rendered the standard textbook primitives
+    instead of the current ratio forms
+- rejection reason:
+  - the held compact log argument introduced redundant public requirements:
+    - `tan(x^2) + sec(x^2) != 0` in addition to `cos(x^2) != 0`
+    - `csc(x^2) - cot(x^2) != 0` in addition to `sin(x^2) != 0`
+  - the affine `sec(2*x+1)`/`csc(2*x+1)` siblings also degraded to reciprocal
+    quotient spelling inside the held argument, so the change was not a clean
+    presentation-only improvement
+- reusable weakness:
+  - post-calculus presentation for reciprocal-trig log primitives needs a
+    domain-presentation proof/filter before preserving compact `sec/tan` or
+    `csc/cot` log arguments; under `cos(u) != 0`, `sec(u)+tan(u)` is nonzero,
+    and under `sin(u) != 0`, `csc(u)-cot(u)` is nonzero, but the public
+    condition layer does not currently encode that redundancy
+- next candidate:
+  - add a narrow required-condition redundancy filter or proof helper for these
+    reciprocal-trig log arguments, then re-evaluate compact presentation with
+    direct residual verification and `failed = 0`
+
+## 2026-05-16 - Observe-only discovery: impossible nonzero condition on finite-limit residual
+
+- area:
+  - calculus / limit / domain requirement presentation
+- status:
+  - `superseded`
+- observed probe:
+  - `limit(1/(sqrt(x^2+1)-sqrt(x^2+1)), x, -2)`
+- observed result:
+  - the finite-limit evaluator correctly keeps the expression residual and does
+    not divide by the zero denominator
+  - the public domain envelope still renders an impossible requirement:
+    `0 != 0`
+- reusable weakness:
+  - when denominator requirements are collected after simplification has
+    collapsed a denominator to literal zero, the residual output can surface a
+    mathematically impossible nonzero requirement instead of suppressing or
+    classifying it as an unsatisfied-domain residual
+- next candidate:
+  - add a narrow domain-presentation cleanup for residual expressions whose
+    collected `NonZero` requirement is literal zero, preserving the residual
+    and warning while avoiding impossible `Requires` text
+- superseded by:
+  - a narrow public-condition presentation filter for residual `limit(...)`
+    outputs that suppresses literal `NonZero(0)` while retaining the residual
+    result and finite-limit warning
+
 ## 2026-05-15 - Observe-only discovery: negative acosh fused residual after public diff
 
 - area:
@@ -12698,3 +12793,56 @@ The burden of proof stays the same:
     missing method substeps or overly broad method substeps, starting with
     arctan/atanh linear scaled variants and preserving the same no-fake-table
     standard
+
+## 2026-05-16 - Rejected broad condition propagation: reciprocal trig canonicalization
+
+- area:
+  - calculus / domain safety / trig reciprocal canonicalization
+- status:
+  - `rejected`
+- local win:
+  - adding required nonzero conditions directly to `sec(u) -> 1/cos(u)`,
+    `csc(u) -> 1/sin(u)`, and `cot(u) -> cos(u)/sin(u)` made
+    `integrate(2*x*sec(x^2)^2, x)` and
+    `integrate(2*x*csc(x^2)^2, x)` publish the expected source-domain
+    conditions after IntegratePrep rewrote the input
+- global loss:
+  - `make engine-fast` failed in `calculus_diff_contract`
+  - the broad rewrite surfaced redundant or reordered conditions in existing
+    diff contracts, including `diff(cot(sqrt(2*x)), x)`,
+    `diff(cot((2-3*x)/2), x)`, and `diff(tan(x)^2/2, x)`
+- retained learning:
+  - source-domain preservation for integration should not be solved by making
+    all reciprocal-trig canonicalization rewrites emit conditions globally
+  - the retained route should stay inside integration condition extraction and
+    recognize the supported `du/cos(u)^2`, `du/sin(u)^2`, `du*sec(u)^2`, and
+    `du*csc(u)^2` families directly
+- follow-up:
+  - only revisit global reciprocal-trig condition propagation if diff policy is
+    deliberately updated to accept those extra conditions and ordering is
+    normalized first
+
+## 2026-05-16 - Discovery observe-only: affine exp-trig antiderivative residual is slow
+
+- area:
+  - calculus / integrate / exp-trig by-parts / residual verification
+- status:
+  - `discovery/observe-only`
+- observed while testing:
+  - a generated candidate for
+    `integrate(exp(2*x+1)*sin(2*x+1), x)` produced the expected compact
+    antiderivative `1/4*e^(2*x+1)*(sin(2*x+1)-cos(2*x+1))`
+  - the public residual
+    `diff(1/4*exp(2*x+1)*(sin(2*x+1)-cos(2*x+1)), x) - exp(2*x+1)*sin(2*x+1)`
+    did eventually simplify to `0`, but took about `45s` in the CLI smoke
+- retained learning:
+  - unit-argument `exp(x)*sin(x)` and `exp(x)*cos(x)` are cheap and stable, but
+    affine exp-trig antiderivatives should not be promoted until the
+    derivative residual path avoids expanding or repeatedly normalizing the
+    shared affine argument
+  - this is a reusable simplification/runtime weakness, not a malformed case
+    or display-only issue
+- follow-up:
+  - before promoting affine exp-trig integration, add a bounded residual
+    simplification route for same-affine exp-trig products or another verified
+    fast path that keeps the derivative check cheap

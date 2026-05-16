@@ -231,6 +231,9 @@ Good early presentation targets:
   conditions are explicit
 - preservation of compact antiderivative denominators after verification by
   differentiation
+- undefined calculus outputs should not render literal-impossible requirements
+  such as `0 ≠ 0` from a collapsed denominator witness; the public result can
+  remain `undefined` without pretending there is a satisfiable requirement
 
 Presentation work must still keep required conditions visible. For example,
 `diff(arctan(sqrt(x)), x)` may prefer

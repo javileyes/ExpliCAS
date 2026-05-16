@@ -140,6 +140,45 @@ fn test_eval_calculus_residual_domain_modes_preserve_required_conditions() {
 }
 
 #[test]
+fn test_eval_calculus_undefined_suppresses_impossible_zero_nonzero_requirement() {
+    for expr in [
+        "diff(1/(sqrt(x^2+1)-sqrt(x^2+1)), x)",
+        "integrate(1/(sqrt(x^2+1)-sqrt(x^2+1)), x)",
+    ] {
+        let json = eval_json(expr);
+
+        assert_eq!(json["ok"], true, "eval should succeed for {expr}");
+        assert_eq!(json["result"], "undefined", "expected undefined for {expr}");
+        assert_eq!(
+            json["required_conditions"]
+                .as_array()
+                .expect("required_conditions should be an array")
+                .len(),
+            0,
+            "undefined calculus result should not expose NonZero(0): {json:?}"
+        );
+        assert_eq!(
+            json["required_display"]
+                .as_array()
+                .expect("required_display should be an array")
+                .len(),
+            0,
+            "undefined calculus result should not render 0 ≠ 0: {json:?}"
+        );
+
+        let messages = json["wire"]["messages"]
+            .as_array()
+            .expect("wire messages should be an array");
+        assert!(
+            !messages.iter().any(|message| message["text"]
+                .as_str()
+                .is_some_and(|text| text.contains("Requires:") || text.contains("0 ≠ 0"))),
+            "undefined calculus result should not render impossible Requires: {messages:?}"
+        );
+    }
+}
+
+#[test]
 fn test_eval_json_inverse_trig_alias_sqrt_derivative_conditions_dedupe() {
     let cases = [
         (
@@ -254,11 +293,95 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
             Some("ln(x)"),
         ),
         (
+            "diff(sqrt(ln(x)+1), x)",
+            "1 / (2·x·sqrt(ln(x) + 1))",
+            "((ln(x) + 1))^(1/2 - 1)",
+            ["x", "sqrt(ln(x) + 1)"],
+            Some("ln(x) + 1"),
+        ),
+        (
+            "diff(sqrt(2*ln(x)+3), x)",
+            "1 / (x·sqrt(2·ln(x) + 3))",
+            "((2 · ln(x) + 3))^(1/2 - 1)",
+            ["x", "sqrt(2 · ln(x) + 3)"],
+            Some("2·ln(x) + 3"),
+        ),
+        (
+            "diff(sqrt(ln(2*x+1)+1), x)",
+            "1 / ((2·x + 1)·sqrt(ln(2·x + 1) + 1))",
+            "((ln(2 · x + 1) + 1))^(1/2 - 1)",
+            ["2 · x + 1", "sqrt(ln(2 · x + 1) + 1)"],
+            Some("ln(2·x + 1) + 1"),
+        ),
+        (
+            "diff(sqrt(ln(x^2+1)+1), x)",
+            "x / ((x^2 + 1)·sqrt(ln(x^2 + 1) + 1))",
+            "((ln(x^2 + 1) + 1))^(1/2 - 1)",
+            ["sqrt(ln(x^2 + 1) + 1)", "x^2 + 1"],
+            Some("ln(x^2 + 1) + 1"),
+        ),
+        (
             "diff(sqrt(log10(x)), x)",
             "1 / (2·x·ln(10)·sqrt(log10(x)))",
             "log10(x)^(-1/2)",
             ["ln(10)", "sqrt(log_10(x))"],
             Some("log10(x)"),
+        ),
+        (
+            "diff(sqrt(log10(x)+1), x)",
+            "1 / (2·x·ln(10)·sqrt(log10(x) + 1))",
+            "((log_10(x) + 1))^(1/2 - 1)",
+            ["ln(10)", "sqrt(log_10(x) + 1)"],
+            Some("log10(x) + 1"),
+        ),
+        (
+            "diff(sqrt(log10(x^2+1)+1), x)",
+            "x / ((x^2 + 1)·ln(10)·sqrt(log10(x^2 + 1) + 1))",
+            "((log_10(x^2 + 1) + 1))^(-1/2)",
+            ["ln(10)", "sqrt(log_10(x^2 + 1) + 1)"],
+            Some("log10(x^2 + 1) + 1"),
+        ),
+        (
+            "diff(sqrt(log2(x)+1), x)",
+            "1 / (2·x·ln(2)·sqrt(log2(x) + 1))",
+            "((log2(x) + 1))^(1/2 - 1)",
+            ["ln(2)", "sqrt(log2(x) + 1)"],
+            Some("log2(x) + 1"),
+        ),
+        (
+            "diff(sqrt(2*log10(3*x+1)+5), x)",
+            "3 / ((3·x + 1)·ln(10)·sqrt(2·log10(3·x + 1) + 5))",
+            "((2 · log_10(3 · x + 1) + 5))^(-1/2)",
+            ["ln(10)", "sqrt(2 · log_10(3 · x + 1) + 5)"],
+            Some("2·log10(3·x + 1) + 5"),
+        ),
+        (
+            "diff(sqrt(exp(x)+1), x)",
+            "e^x / (2·sqrt(e^x + 1))",
+            "((e^x + 1))^(-1/2)",
+            ["e^x", "sqrt(e^x + 1)"],
+            None,
+        ),
+        (
+            "diff(sqrt(exp(2*x+1)+1), x)",
+            "e^(2·x + 1) / sqrt(e^(2·x + 1) + 1)",
+            "((e^(2 · x + 1) + 1))^(-1/2)",
+            ["e^(2 · x + 1)", "sqrt(e^(2 · x + 1) + 1)"],
+            None,
+        ),
+        (
+            "diff(sqrt(2*exp(x)+1), x)",
+            "e^x / sqrt(2·e^x + 1)",
+            "((2 · e^x + 1))^(-1/2)",
+            ["e^x", "sqrt(2 · e^x + 1)"],
+            None,
+        ),
+        (
+            "diff(sqrt(3*exp(2*x+1)+5), x)",
+            "3·e^(2·x + 1) / sqrt(3·e^(2·x + 1) + 5)",
+            "((3 · e^(2 · x + 1) + 5))^(-1/2)",
+            ["3 · e^(2 · x + 1)", "sqrt(3 · e^(2 · x + 1) + 5)"],
+            None,
         ),
         (
             "diff(sqrt(tan(x)), x)",
@@ -516,8 +639,60 @@ fn test_eval_json_post_calculus_sqrt_elementary_derivative_verifies() {
         ),
         ("diff(sqrt(ln(x)), x) - 1/(2*x*sqrt(ln(x)))", ["ln(x)", "x"]),
         (
+            "diff(sqrt(ln(x)+1), x) - 1/(2*x*sqrt(ln(x)+1))",
+            ["ln(x) + 1", "x"],
+        ),
+        (
+            "diff(sqrt(2*ln(x)+3), x) - 1/(x*sqrt(2*ln(x)+3))",
+            ["2·ln(x) + 3", "x"],
+        ),
+        (
+            "diff(sqrt(ln(2*x+1)+1), x) - 1/((2*x+1)*sqrt(ln(2*x+1)+1))",
+            ["ln(2·x + 1) + 1", "2·x + 1"],
+        ),
+        (
+            "diff(sqrt(ln(x^2+1)+1), x) - x/((x^2+1)*sqrt(ln(x^2+1)+1))",
+            ["ln(x^2 + 1) + 1", ""],
+        ),
+        (
             "diff(sqrt(log10(x)), x) - 1/(2*x*ln(10)*sqrt(log10(x)))",
             ["log10(x)", "x"],
+        ),
+        (
+            "diff(sqrt(log10(x)+1), x) - 1/(2*x*ln(10)*sqrt(log10(x)+1))",
+            ["log10(x) + 1", "x"],
+        ),
+        (
+            "diff(sqrt(log10(x^2+1)+1), x) - x/((x^2+1)*ln(10)*sqrt(log10(x^2+1)+1))",
+            ["log10(x^2 + 1) + 1", ""],
+        ),
+        (
+            "diff(sqrt(log2(x)+1), x) - 1/(2*x*ln(2)*sqrt(log2(x)+1))",
+            ["log2(x) + 1", "x"],
+        ),
+        (
+            "diff(sqrt(log2(x^2+1)+1), x) - x/((x^2+1)*ln(2)*sqrt(log2(x^2+1)+1))",
+            ["log2(x^2 + 1) + 1", ""],
+        ),
+        (
+            "diff(sqrt(2*log10(3*x+1)+5), x) - 3/(ln(10)*(3*x+1)*sqrt(2*log10(3*x+1)+5))",
+            ["2·log10(3·x + 1) + 5", "3·x + 1"],
+        ),
+        (
+            "diff(sqrt(exp(x)+1), x) - exp(x)/(2*sqrt(exp(x)+1))",
+            ["", ""],
+        ),
+        (
+            "diff(sqrt(exp(2*x+1)+1), x) - exp(2*x+1)/sqrt(exp(2*x+1)+1)",
+            ["", ""],
+        ),
+        (
+            "diff(sqrt(2*exp(x)+1), x) - exp(x)/sqrt(2*exp(x)+1)",
+            ["", ""],
+        ),
+        (
+            "diff(sqrt(3*exp(2*x+1)+5), x) - 3*exp(2*x+1)/sqrt(3*exp(2*x+1)+5)",
+            ["", ""],
         ),
         (
             "diff(sqrt(tan(x)), x) - 1/(2*cos(x)^2*sqrt(tan(x)))",

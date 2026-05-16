@@ -137,6 +137,21 @@ fn test_limit_bounded_tanh_over_divergent_denominator_json() {
 }
 
 #[test]
+fn test_limit_bounded_cross_family_arithmetic_over_divergent_denominator_json() {
+    let (success, stdout) = run_limit("(sin(x)+cos(x)*arctan(x))/(x^2+1)", "x", "infinity", "json");
+    assert!(success, "Command should succeed");
+    assert!(stdout.contains("\"ok\":true"), "JSON should have ok:true");
+    assert!(
+        stdout.contains("\"result\":\"0\""),
+        "Bounded cross-family arithmetic over divergent denominator should resolve to 0, got: {stdout}"
+    );
+    assert!(
+        !stdout.contains("\"warning\""),
+        "Resolved bounded cross-family arithmetic should not warn, got: {stdout}"
+    );
+}
+
+#[test]
 fn test_limit_trig_over_nondivergent_denominator_remains_residual_json() {
     let (success, stdout) = run_limit("sin(x)/cos(x)", "x", "infinity", "json");
     assert!(success, "Command should succeed even for residual");
@@ -163,11 +178,11 @@ fn test_limit_subcommand_rejects_finite_to_value_before_eval_json() {
 
 #[test]
 fn test_eval_finite_dependent_limit_stays_residual_with_warning_json() {
-    let (success, stdout) = run_eval("limit(x + 1, x, 0)", "json");
+    let (success, stdout) = run_eval("limit(ln(x), x, -1)", "json");
     assert!(success, "Command should succeed even for finite residual");
     let wire: Value = serde_json::from_str(&stdout).expect("eval json");
     assert_eq!(wire["ok"], true);
-    assert_eq!(wire["result"], "limit(x + 1, x, 0)");
+    assert_eq!(wire["result"], "limit(ln(x), x, -1)");
     assert!(
         wire["warnings"].as_array().is_some_and(|warnings| {
             warnings.iter().any(|warning| {
@@ -178,6 +193,202 @@ fn test_eval_finite_dependent_limit_stays_residual_with_warning_json() {
             })
         }),
         "Dependent finite limit should keep explicit finite-limit warning, got: {wire:?}"
+    );
+}
+
+#[test]
+fn test_eval_finite_limit_residual_suppresses_impossible_zero_nonzero_requirement_json() {
+    let (success, stdout) = run_eval("limit(1/(sqrt(x^2+1)-sqrt(x^2+1)), x, -2)", "json");
+    assert!(
+        success,
+        "Command should succeed even when the finite limit remains residual"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(
+        wire["result"],
+        "limit(1 / (sqrt(x^2 + 1) - sqrt(x^2 + 1)), x, -2)"
+    );
+    assert!(
+        wire["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("Finite point limits are not supported safely yet")
+                    })
+            })
+        }),
+        "Finite zero-denominator residual should keep explicit warning, got: {wire:?}"
+    );
+    assert_eq!(wire["required_conditions"], json!([]));
+    assert_eq!(wire["required_display"], json!([]));
+}
+
+#[test]
+fn test_eval_finite_polynomial_limit_returns_substituted_value_json() {
+    let (success, stdout) = run_eval("limit(x^2 + x + 1, x, -2)", "json");
+    assert!(
+        success,
+        "Command should succeed for finite polynomial limit"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "3");
+    assert_eq!(wire["warnings"], json!([]));
+}
+
+#[test]
+fn test_eval_finite_rational_polynomial_limit_requires_nonzero_denominator_at_point_json() {
+    let (success, stdout) = run_eval("limit((x^2+3*x+2)/(x+2), x, 0)", "json");
+    assert!(
+        success,
+        "Command should succeed for nonsingular finite rational-polynomial limit"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!(["x ≠ -2"]));
+
+    let (success, stdout) = run_eval("limit((x^2+3*x+2)/(x+2), x, -2)", "json");
+    assert!(
+        success,
+        "Command should keep singular finite rational-polynomial limit residual"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "limit((x^2 + 3·x + 2) / (x + 2), x, -2)");
+    assert!(
+        wire["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("Finite point limits are not supported safely yet")
+                    })
+            })
+        }),
+        "Singular rational finite limit should remain residual with warning, got: {wire:?}"
+    );
+}
+
+#[test]
+fn test_eval_finite_elementary_polynomial_limit_requires_positive_argument_at_point_json() {
+    let (success, stdout) = run_eval("limit(sqrt(x^2 + 1), x, -2)", "json");
+    assert!(
+        success,
+        "Command should succeed for positive-argument finite sqrt polynomial limit"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "sqrt(5)");
+    assert_eq!(wire["warnings"], json!([]));
+
+    let (success, stdout) = run_eval("limit(ln(x + 3), x, 0)", "json");
+    assert!(
+        success,
+        "Command should succeed for positive-argument finite ln polynomial limit"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "ln(3)");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!(["x > -3"]));
+
+    let (success, stdout) = run_eval("limit(ln(x + 3), x, -4)", "json");
+    assert!(
+        success,
+        "Command should keep out-of-domain finite ln polynomial limit residual"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "limit(ln(x + 3), x, -4)");
+    assert!(
+        wire["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("Finite point limits are not supported safely yet")
+                    })
+            })
+        }),
+        "Out-of-domain finite ln limit should remain residual with warning, got: {wire:?}"
+    );
+}
+
+#[test]
+fn test_eval_finite_composite_limit_requires_all_subterms_safe_json() {
+    let (success, stdout) = run_eval("limit(sqrt(x^2 + 1) + ln(x + 5), x, -2)", "json");
+    assert!(
+        success,
+        "Command should succeed for finite composite limit with safe subterms"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "ln(3) + sqrt(5)");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!(["x > -5"]));
+
+    let (success, stdout) = run_eval("limit(2*sqrt(x^2 + 1), x, -2)", "json");
+    assert!(
+        success,
+        "Command should succeed for finite product limit with safe subterm"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "2·sqrt(5)");
+    assert_eq!(wire["warnings"], json!([]));
+
+    let (success, stdout) = run_eval("limit(sqrt(x) + 1, x, 0)", "json");
+    assert!(
+        success,
+        "Command should keep finite composite limit residual when a sublimit is unsafe"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "limit(sqrt(x) + 1, x, 0)");
+    assert!(
+        wire["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("Finite point limits are not supported safely yet")
+                    })
+            })
+        }),
+        "Composite finite limit with unsafe sublimit should remain residual, got: {wire:?}"
+    );
+}
+
+#[test]
+fn test_eval_finite_division_limit_accepts_structurally_nonzero_denominator_json() {
+    let (success, stdout) = run_eval("limit(1/sqrt(x^2 + 1), x, -2)", "json");
+    assert!(
+        success,
+        "Command should succeed for finite division with structurally positive denominator"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "1 / sqrt(5)");
+    assert_eq!(wire["warnings"], json!([]));
+
+    let (success, stdout) = run_eval("limit(1/sqrt(x), x, 0)", "json");
+    assert!(
+        success,
+        "Command should keep finite division residual when denominator is not proven nonzero"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "limit(1 / sqrt(x), x, 0)");
+    assert!(
+        wire["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("Finite point limits are not supported safely yet")
+                    })
+            })
+        }),
+        "Finite division with unproven nonzero denominator should remain residual, got: {wire:?}"
     );
 }
 
@@ -968,6 +1179,22 @@ fn test_limit_sqrt_times_decaying_exp_pos_infinity() {
         "Resolved root-times-decaying-exp dominance should not warn, got: {}",
         stdout
     );
+}
+
+#[test]
+fn test_limit_bounded_trig_times_decaying_exp_pos_infinity() {
+    for expr in ["sin(x)*exp(-x)", "exp(-2*x)*cos(x)"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for {expr}");
+        assert!(
+            stdout.contains("\"result\":\"0\""),
+            "{expr} should resolve to 0, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved bounded-trig-times-decaying-exp dominance should not warn for {expr}, got: {stdout}"
+        );
+    }
 }
 
 #[test]

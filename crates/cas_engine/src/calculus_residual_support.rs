@@ -48,6 +48,7 @@ fn expr_is_one(ctx: &mut Context, expr: ExprId) -> bool {
 }
 
 fn unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
     let Expr::Function(fn_id, args) = ctx.get(expr) else {
         return None;
     };
@@ -113,6 +114,34 @@ fn rational_polynomial_terms_match(
         return false;
     };
     let Some((right_num, right_den)) = quotient_numerator_denominator(ctx, right) else {
+        return false;
+    };
+    let Ok(left_num) = Polynomial::from_expr(ctx, left_num, var_name) else {
+        return false;
+    };
+    let Ok(left_den) = Polynomial::from_expr(ctx, left_den, var_name) else {
+        return false;
+    };
+    let Ok(right_num) = Polynomial::from_expr(ctx, right_num, var_name) else {
+        return false;
+    };
+    let Ok(right_den) = Polynomial::from_expr(ctx, right_den, var_name) else {
+        return false;
+    };
+
+    left_num.mul(&right_den) == right_num.mul(&left_den)
+}
+
+fn signed_rational_polynomial_terms_match(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    let Some((left_num, left_den)) = signed_quotient_numerator_denominator(ctx, left) else {
+        return false;
+    };
+    let Some((right_num, right_den)) = signed_quotient_numerator_denominator(ctx, right) else {
         return false;
     };
     let Ok(left_num) = Polynomial::from_expr(ctx, left_num, var_name) else {
@@ -383,7 +412,16 @@ fn signed_antiderivative_term_matches(
 ) -> bool {
     let (left_scale, left_core) = signed_rational_scaled_term(ctx, left_term, left_sign);
     let (right_scale, right_core) = signed_rational_scaled_term(ctx, right_term, right_sign);
-    left_scale == right_scale && antiderivative_term_matches(ctx, left_core, right_core, var_name)
+    if left_scale == right_scale
+        && antiderivative_term_matches(ctx, left_core, right_core, var_name)
+    {
+        return true;
+    }
+
+    let signed_left = scale_expr_by_rational(ctx, left_core, left_scale);
+    let signed_right = scale_expr_by_rational(ctx, right_core, right_scale);
+    signed_rational_polynomial_terms_match(ctx, signed_left, signed_right, var_name)
+        || antiderivative_term_matches(ctx, signed_left, signed_right, var_name)
 }
 
 fn signed_rational_scaled_term(
@@ -1022,7 +1060,8 @@ fn same_arg_unary_pair(
 ) -> Option<ExprId> {
     let first_arg = unary_builtin_arg(ctx, left, first_builtin)?;
     let second_arg = unary_builtin_arg(ctx, right, second_builtin)?;
-    exprs_equivalent(ctx, first_arg, second_arg).then_some(first_arg)
+    (expr_eq(ctx, first_arg, second_arg) || exprs_equivalent(ctx, first_arg, second_arg))
+        .then_some(first_arg)
 }
 
 fn unordered_same_arg_unary_sum(
@@ -1043,11 +1082,30 @@ fn csc_minus_cot_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         Expr::Sub(left, right) => {
             same_arg_unary_pair(ctx, *left, BuiltinFn::Csc, *right, BuiltinFn::Cot)
         }
-        Expr::Add(left, right) => {
-            let Expr::Neg(negated_right) = ctx.get(*right) else {
-                return None;
-            };
-            same_arg_unary_pair(ctx, *left, BuiltinFn::Csc, *negated_right, BuiltinFn::Cot)
+        Expr::Add(left, right) => unary_builtin_arg(ctx, *left, BuiltinFn::Csc)
+            .zip(negated_unary_builtin_arg(ctx, *right, BuiltinFn::Cot))
+            .or_else(|| {
+                unary_builtin_arg(ctx, *right, BuiltinFn::Csc).zip(negated_unary_builtin_arg(
+                    ctx,
+                    *left,
+                    BuiltinFn::Cot,
+                ))
+            })
+            .and_then(|(left_arg, right_arg)| {
+                exprs_equivalent(ctx, left_arg, right_arg).then_some(left_arg)
+            }),
+        _ => None,
+    }
+}
+
+fn negated_unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => unary_builtin_arg(ctx, *inner, builtin),
+        Expr::Mul(left, right) if is_negative_one_constant(ctx, *left) => {
+            unary_builtin_arg(ctx, *right, builtin)
+        }
+        Expr::Mul(left, right) if is_negative_one_constant(ctx, *right) => {
+            unary_builtin_arg(ctx, *left, builtin)
         }
         _ => None,
     }
@@ -1080,6 +1138,11 @@ fn plus_or_minus_one_cos_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 
 fn is_one_constant(ctx: &Context, expr: ExprId) -> bool {
     cas_math::numeric_eval::as_rational_const(ctx, expr).is_some_and(|value| value.is_one())
+}
+
+fn is_negative_one_constant(ctx: &Context, expr: ExprId) -> bool {
+    cas_math::numeric_eval::as_rational_const(ctx, expr)
+        .is_some_and(|value| value == -BigRational::one())
 }
 
 fn is_zero_constant(ctx: &Context, expr: ExprId) -> bool {
@@ -1136,11 +1199,17 @@ fn reciprocal_trig_log_abs_primitive(
 }
 
 fn ln_abs_inner(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
     let ln_arg = unary_builtin_arg(ctx, expr, BuiltinFn::Ln)?;
-    unary_builtin_arg(ctx, ln_arg, BuiltinFn::Abs)
+    let mut inner = unary_builtin_arg(ctx, ln_arg, BuiltinFn::Abs)?;
+    while let Some(unwrapped) = cas_ast::hold::unwrap_hold_if_wrapped(ctx, inner) {
+        inner = unwrapped;
+    }
+    Some(inner)
 }
 
 fn scaled_ln_abs_inner(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
     if let Some(inner) = ln_abs_inner(ctx, expr) {
         return Some((BigRational::one(), inner));
     }

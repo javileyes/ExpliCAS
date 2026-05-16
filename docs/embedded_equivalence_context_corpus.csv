@@ -1458,6 +1458,7 @@ k*(5*sin(x+arctan(4/3))+a) - k*(5*cos(x-arctan(3/4))+a),0,scaled_difference_zero
 "((diff(sin(e^(x^2)),x)+m) - (2*x*cos(e^(x^2))*e^(x^2)+m))",0,additive_passthrough_zero,calculus_diff_trig_exp_chain_additive_passthrough_zero,calculus_diff,"diff(sin(e^(x^2)),x)",2*x*cos(e^(x^2))*e^(x^2),additive passthrough
 "((diff(exp(sin(x)),x)/q) - ((cos(x)*e^sin(x))/q))",0,common_denominator_zero,calculus_diff_exp_sin_common_denominator_zero,calculus_diff,"diff(exp(sin(x)),x)",cos(x)*e^sin(x),common denominator
 "((diff(sin(e^(x^2)),x)/q) - ((2*x*cos(e^(x^2))*e^(x^2))/q))",0,common_denominator_zero,calculus_diff_trig_exp_chain_common_denominator_zero,calculus_diff,"diff(sin(e^(x^2)),x)",2*x*cos(e^(x^2))*e^(x^2),common denominator
+"((diff(sqrt(log2(x^2+1)+1),x)/q) - ((x/((x^2+1)*ln(2)*sqrt(log2(x^2+1)+1)))/q))",0,common_denominator_zero,calculus_diff_sqrt_log2_poly_common_denominator_zero,calculus_diff,"diff(sqrt(log2(x^2+1)+1),x)",x/((x^2+1)*ln(2)*sqrt(log2(x^2+1)+1)),common denominator
 "((diff(exp(sin(x)),x))+1)/((cos(x)*e^sin(x))+1)",1,shifted_quotient_one,calculus_diff_exp_sin_shifted_quotient_one,calculus_diff,"diff(exp(sin(x)),x)",cos(x)*e^sin(x),shifted quotient
 "((diff(sin(e^(x^2)),x))+1)/((2*x*cos(e^(x^2))*e^(x^2))+1)",1,shifted_quotient_one,calculus_diff_trig_exp_chain_shifted_quotient_one,calculus_diff,"diff(sin(e^(x^2)),x)",2*x*cos(e^(x^2))*e^(x^2),shifted quotient
 "k*diff(exp(sin(x)),x) - k*(cos(x)*e^sin(x))",0,scaled_difference_zero,calculus_diff_exp_sin_scaled_difference_zero,calculus_diff,"diff(exp(sin(x)),x)",cos(x)*e^sin(x),scaled difference
