@@ -8971,7 +8971,7 @@ fn integrate_contract_polynomial_derivative_acosh_substitution_preserves_real_do
     let input = "integrate((2*x+1)/sqrt((x^2+x)^2-5), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "acosh(sqrt(5) * (x^2 + x) / 5)");
+    assert_eq!(result, "acosh((x^2 + x) / sqrt(5))");
     assert_eq!(
         required,
         vec!["x^2 + x - sqrt(5) > 0".to_string()],

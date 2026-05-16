@@ -2889,6 +2889,7 @@ pub fn normalize_and_dedupe_conditions(
     combine_nonzero_nonnegative_into_positive(ctx, &mut result);
     combine_factored_nonzero_nonnegative_into_positive(ctx, &mut result);
     apply_dominance_rules(ctx, &mut result);
+    drop_acosh_log_argument_positive_dominated_by_branch_gap(ctx, &mut result);
     drop_nonzero_conditions_with_matching_positive_condition(ctx, &mut result);
     if result.is_empty() {
         restore_nonzero_domain_hole_guards(ctx, conditions, &mut result);
@@ -3899,6 +3900,150 @@ fn positive_condition_dominates_sqrt_lower_nonzero(
     positive_ordered_exprs_equivalent(ctx, positive_expr, boundary)
 }
 
+fn positive_condition_dominates_acosh_sqrt_gap_nonzero(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    if positive_polynomial_gap_dominates_square_gap_sqrt_nonzero(ctx, positive_expr, nonzero_expr) {
+        return true;
+    }
+
+    let Some((polynomial_term, gap_value)) = acosh_sqrt_gap_nonzero_parts(ctx, nonzero_expr) else {
+        return false;
+    };
+
+    condition_implies_acosh_log_argument_positive(
+        ctx,
+        &ImplicitCondition::Positive(positive_expr),
+        polynomial_term,
+        &gap_value,
+    ) || {
+        let negated_polynomial_term = ctx.add(Expr::Neg(polynomial_term));
+        condition_implies_acosh_log_argument_positive(
+            ctx,
+            &ImplicitCondition::Positive(positive_expr),
+            negated_polynomial_term,
+            &gap_value,
+        )
+    }
+}
+
+fn acosh_sqrt_gap_nonzero_parts(
+    ctx: &mut Context,
+    nonzero_expr: ExprId,
+) -> Option<(ExprId, BigRational)> {
+    let nonzero_expr = cas_ast::hold::unwrap_internal_hold(ctx, nonzero_expr);
+    let radicand = extract_sqrt_like_base(ctx, nonzero_expr)?;
+    acosh_radicand_gap_parts(ctx, radicand)
+}
+
+fn positive_polynomial_gap_dominates_square_gap_sqrt_nonzero(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    let nonzero_expr = cas_ast::hold::unwrap_internal_hold(ctx, nonzero_expr);
+    let Some(radicand) = extract_sqrt_like_base(ctx, nonzero_expr) else {
+        return false;
+    };
+    let positive_expr = cas_ast::hold::unwrap_internal_hold(ctx, positive_expr);
+
+    let mut vars = cas_ast::collect_variables(ctx, radicand);
+    vars.extend(cas_ast::collect_variables(ctx, positive_expr));
+    if vars.len() != 1 {
+        return false;
+    }
+    let Some(var_name) = vars.iter().next() else {
+        return false;
+    };
+
+    let Ok(radicand_poly) = Polynomial::from_expr(ctx, radicand, var_name.as_str()) else {
+        return false;
+    };
+    let Ok(gap_poly) = Polynomial::from_expr(ctx, positive_expr, var_name.as_str()) else {
+        return false;
+    };
+    if gap_poly.is_zero() {
+        return false;
+    }
+
+    let gap_squared = gap_poly.mul(&gap_poly);
+    let remainder_after_square = radicand_poly.sub(&gap_squared);
+    let Ok((quotient, remainder)) = remainder_after_square.div_rem(&gap_poly) else {
+        return false;
+    };
+
+    if !remainder.is_zero() || quotient.degree() != 0 {
+        return false;
+    }
+
+    quotient
+        .coeffs
+        .first()
+        .is_some_and(|constant| constant.is_positive())
+}
+
+fn positive_condition_dominates_acosh_radicand_nonnegative(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonnegative_expr: ExprId,
+) -> bool {
+    let Some((polynomial_term, gap_value)) = acosh_radicand_gap_parts(ctx, nonnegative_expr) else {
+        return false;
+    };
+
+    condition_implies_acosh_log_argument_positive(
+        ctx,
+        &ImplicitCondition::Positive(positive_expr),
+        polynomial_term,
+        &gap_value,
+    ) || {
+        let negated_polynomial_term = ctx.add(Expr::Neg(polynomial_term));
+        condition_implies_acosh_log_argument_positive(
+            ctx,
+            &ImplicitCondition::Positive(positive_expr),
+            negated_polynomial_term,
+            &gap_value,
+        )
+    }
+}
+
+fn acosh_radicand_gap_parts(ctx: &mut Context, radicand: ExprId) -> Option<(ExprId, BigRational)> {
+    let radicand = cas_ast::hold::unwrap_internal_hold(ctx, radicand);
+    let vars = cas_ast::collect_variables(ctx, radicand);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var_name = vars.iter().next()?;
+    let radicand_poly = Polynomial::from_expr(ctx, radicand, var_name.as_str()).ok()?;
+    if radicand_poly.degree() != 2 {
+        return None;
+    }
+
+    let quadratic = radicand_poly.coeffs.get(2)?;
+    let linear = radicand_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let constant = radicand_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let slope = exact_positive_rational_nth_root(quadratic, 2)?;
+    let two = BigRational::from_integer(2.into());
+    let shift = linear / (two * slope.clone());
+    let gap_value = shift.clone() * shift.clone() - constant;
+    if !gap_value.is_positive() {
+        return None;
+    }
+
+    let polynomial_term = Polynomial::new(vec![shift, slope], var_name.to_string()).to_expr(ctx);
+    Some((polynomial_term, gap_value))
+}
+
 fn positive_condition_dominates_shifted_unit_sqrt_open_interval(
     ctx: &mut Context,
     conditions: &[ImplicitCondition],
@@ -4145,6 +4290,203 @@ fn positive_condition_dominates_reciprocal_surd_lower_bound(
         )
 }
 
+fn drop_acosh_log_argument_positive_dominated_by_branch_gap(
+    ctx: &mut Context,
+    conditions: &mut Vec<ImplicitCondition>,
+) {
+    let mut to_remove = Vec::new();
+
+    for (idx, condition) in conditions.iter().enumerate() {
+        let Some((polynomial_term, gap_value)) = acosh_log_argument_positive_parts(ctx, condition)
+        else {
+            continue;
+        };
+
+        if conditions.iter().enumerate().any(|(other_idx, other)| {
+            other_idx != idx
+                && condition_implies_acosh_log_argument_positive(
+                    ctx,
+                    other,
+                    polynomial_term,
+                    &gap_value,
+                )
+        }) {
+            to_remove.push(idx);
+        }
+    }
+
+    to_remove.sort_unstable();
+    to_remove.dedup();
+    for idx in to_remove.into_iter().rev() {
+        conditions.remove(idx);
+    }
+}
+
+fn acosh_log_argument_positive_parts(
+    ctx: &mut Context,
+    condition: &ImplicitCondition,
+) -> Option<(ExprId, BigRational)> {
+    let expr = match condition {
+        ImplicitCondition::Positive(expr) => *expr,
+        ImplicitCondition::LowerBound(expr, lower) if lower.is_zero() => *expr,
+        _ => return None,
+    };
+
+    let mut radicand = None;
+    let mut polynomial_terms = Vec::new();
+    for (term, sign) in AddView::from_expr(ctx, expr).terms {
+        if let Some(term_radicand) = extract_sqrt_like_base(ctx, term) {
+            if sign == Sign::Neg {
+                return None;
+            }
+            if radicand.replace(term_radicand).is_some() {
+                return None;
+            }
+        } else {
+            polynomial_terms.push((term, sign));
+        }
+    }
+
+    let radicand = radicand?;
+    if polynomial_terms.is_empty() {
+        return None;
+    }
+    let mut vars = cas_ast::collect_variables(ctx, radicand);
+    for (term, _) in &polynomial_terms {
+        vars.extend(cas_ast::collect_variables(ctx, *term));
+    }
+    if vars.len() != 1 {
+        return None;
+    }
+    let var_name = vars.iter().next()?;
+    let radicand_poly = Polynomial::from_expr(ctx, radicand, var_name.as_str()).ok()?;
+    let mut polynomial_poly = Polynomial::zero(var_name.to_string());
+    for (term, sign) in polynomial_terms {
+        let mut term_poly = Polynomial::from_expr(ctx, term, var_name.as_str()).ok()?;
+        if sign == Sign::Neg {
+            term_poly = term_poly.neg();
+        }
+        polynomial_poly = polynomial_poly.add(&term_poly);
+    }
+    if polynomial_poly.is_zero() {
+        return None;
+    }
+    let polynomial_term = polynomial_poly.to_expr(ctx);
+    let square_gap = polynomial_poly.mul(&polynomial_poly).sub(&radicand_poly);
+    if square_gap.degree() != 0 {
+        return None;
+    }
+    let gap_value = square_gap.coeffs.first()?;
+    gap_value
+        .is_positive()
+        .then(|| (polynomial_term, gap_value.clone()))
+}
+
+fn condition_implies_acosh_log_argument_positive(
+    ctx: &mut Context,
+    condition: &ImplicitCondition,
+    polynomial_term: ExprId,
+    gap_value: &BigRational,
+) -> bool {
+    if let Some(boundary) = exact_positive_rational_nth_root(gap_value, 2) {
+        match condition {
+            ImplicitCondition::LowerBound(expr, lower) => {
+                return (lower == &boundary && exprs_equivalent(ctx, *expr, polynomial_term))
+                    || lower_bound_implies_affine_branch_gap(
+                        ctx,
+                        *expr,
+                        lower,
+                        polynomial_term,
+                        &boundary,
+                    );
+            }
+            ImplicitCondition::Positive(expr) => {
+                let boundary_expr = ctx.add(Expr::Number(boundary));
+                let expected_gap = ctx.add(Expr::Sub(polynomial_term, boundary_expr));
+                if exprs_equivalent(ctx, *expr, expected_gap)
+                    || positive_ordered_exprs_equivalent(ctx, *expr, expected_gap)
+                    || conditions_same_display(
+                        ctx,
+                        condition,
+                        &ImplicitCondition::Positive(expected_gap),
+                    )
+                {
+                    return true;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let gap_expr = ctx.add(Expr::Number(gap_value.clone()));
+    let sqrt_gap = ctx.call_builtin(BuiltinFn::Sqrt, vec![gap_expr]);
+    let expected_gap = ctx.add(Expr::Sub(polynomial_term, sqrt_gap));
+    match condition {
+        ImplicitCondition::Positive(expr) => {
+            exprs_equivalent(ctx, *expr, expected_gap)
+                || positive_ordered_exprs_equivalent(ctx, *expr, expected_gap)
+                || conditions_same_display(
+                    ctx,
+                    condition,
+                    &ImplicitCondition::Positive(expected_gap),
+                )
+        }
+        _ => false,
+    }
+}
+
+fn lower_bound_implies_affine_branch_gap(
+    ctx: &mut Context,
+    bounded_expr: ExprId,
+    lower: &BigRational,
+    polynomial_term: ExprId,
+    boundary: &BigRational,
+) -> bool {
+    let mut vars = cas_ast::collect_variables(ctx, bounded_expr);
+    vars.extend(cas_ast::collect_variables(ctx, polynomial_term));
+    if vars.len() != 1 {
+        return false;
+    }
+    let Some(var_name) = vars.iter().next() else {
+        return false;
+    };
+    let Ok(bounded_poly) = Polynomial::from_expr(ctx, bounded_expr, var_name.as_str()) else {
+        return false;
+    };
+    let Ok(branch_poly) = Polynomial::from_expr(ctx, polynomial_term, var_name.as_str()) else {
+        return false;
+    };
+    if bounded_poly.degree() != 1 || branch_poly.degree() != 1 {
+        return false;
+    }
+
+    let Some(bounded_slope) = bounded_poly.coeffs.get(1).filter(|value| !value.is_zero()) else {
+        return false;
+    };
+    let Some(branch_slope) = branch_poly.coeffs.get(1).filter(|value| !value.is_zero()) else {
+        return false;
+    };
+    let scale = branch_slope / bounded_slope;
+    if !scale.is_positive() {
+        return false;
+    }
+
+    let bounded_const = bounded_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let branch_const = branch_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let shift = branch_const - scale.clone() * bounded_const;
+    let expected_lower = (boundary - shift) / scale;
+
+    lower == &expected_lower
+}
+
 fn collect_reciprocal_surd_lower_bound_parts(
     ctx: &Context,
     expr: ExprId,
@@ -4193,6 +4535,24 @@ fn collect_reciprocal_surd_lower_bound_parts(
                     payload_factors,
                 );
                 *rational_coeff /= value;
+            } else if let Some(arg) = extract_sqrt_like_base(ctx, *den) {
+                if let Some(value) = as_rational_const(ctx, arg) {
+                    if value.is_positive() && sqrt_arg.is_none() {
+                        collect_reciprocal_surd_lower_bound_parts(
+                            ctx,
+                            *num,
+                            rational_coeff,
+                            sqrt_arg,
+                            payload_factors,
+                        );
+                        *sqrt_arg = Some(value.clone());
+                        *rational_coeff /= value;
+                    } else {
+                        payload_factors.push(expr);
+                    }
+                } else {
+                    payload_factors.push(expr);
+                }
             } else {
                 payload_factors.push(expr);
             }
@@ -4225,6 +4585,9 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                             ctx, *pos_expr, *nz_expr,
                         )
                         || positive_condition_dominates_sqrt_lower_nonzero(ctx, *pos_expr, *nz_expr)
+                        || positive_condition_dominates_acosh_sqrt_gap_nonzero(
+                            ctx, *pos_expr, *nz_expr,
+                        )
                         || positive_bounds_dominate_unit_sqrt_nonzero(ctx, conditions, i, *nz_expr)
                         || positive_polynomial_condition_contains_nonzero_factor(
                             ctx, *pos_expr, *nz_expr,
@@ -4261,6 +4624,11 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                             i,
                             *derived_expr,
                         )
+                        || positive_condition_dominates_acosh_radicand_nonnegative(
+                            ctx,
+                            *pos_expr,
+                            *derived_expr,
+                        )
                     {
                         to_remove.push(i);
                         break;
@@ -4274,6 +4642,9 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                         || is_odd_power_of(ctx, *nn_expr, *pos_expr)
                         || is_positive_multiple_of(ctx, *nn_expr, *pos_expr)
                         || positive_condition_dominates_reciprocal_offset_nonnegative(
+                            ctx, *pos_expr, *nn_expr,
+                        )
+                        || positive_condition_dominates_acosh_radicand_nonnegative(
                             ctx, *pos_expr, *nn_expr,
                         )
                     {
@@ -4955,6 +5326,94 @@ mod tests {
         );
 
         assert_eq!(rendered, vec!["x^2 + x - sqrt(5) > 0"]);
+
+        let bounded = parse("(x^2+x)/sqrt(5)", &mut ctx).expect("parse bounded expression");
+        let gap = parse("x^2+x-sqrt(5)", &mut ctx).expect("parse positive gap");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::LowerBound(bounded, BigRational::one()),
+                ImplicitCondition::Positive(gap),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x^2 + x - sqrt(5) > 0"]);
+    }
+
+    #[test]
+    fn acosh_log_argument_positive_is_dominated_by_branch_gap() {
+        let mut ctx = Context::new();
+        let half_power_arg = parse("(x^2-1)^(1/2)+x", &mut ctx).expect("parse half-power log arg");
+        let sqrt_arg = parse("sqrt(x^2-1)+x", &mut ctx).expect("parse sqrt log arg");
+        let branch_gap = parse("x-1", &mut ctx).expect("parse branch gap");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(half_power_arg),
+                ImplicitCondition::Positive(sqrt_arg),
+                ImplicitCondition::Positive(branch_gap),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x > 1"]);
+
+        let mut ctx = Context::new();
+        let half_power_arg =
+            parse("(4*x^2+4*x-3)^(1/2)+2*x+1", &mut ctx).expect("parse affine half-power log arg");
+        let sqrt_arg =
+            parse("sqrt((2*x+1)^2-4)+2*x+1", &mut ctx).expect("parse affine sqrt log arg");
+        let sqrt_gap = parse("sqrt((2*x+1)^2-4)", &mut ctx).expect("parse affine sqrt gap");
+        let branch_gap = parse("2*x-1", &mut ctx).expect("parse affine branch gap");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(half_power_arg),
+                ImplicitCondition::Positive(sqrt_arg),
+                ImplicitCondition::NonZero(sqrt_gap),
+                ImplicitCondition::Positive(branch_gap),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x > 1/2"]);
+
+        let mut ctx = Context::new();
+        let sqrt_gap = parse("sqrt((x^2+x+1)^2-4)", &mut ctx).expect("parse quadratic sqrt gap");
+        let branch_gap = parse("x^2+x-1", &mut ctx).expect("parse quadratic branch gap");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(sqrt_gap),
+                ImplicitCondition::Positive(branch_gap),
+            ],
+        );
+
+        assert_eq!(
+            rendered,
+            vec!["x < -1/2 - sqrt(5)/2 or x > -1/2 + sqrt(5)/2"]
+        );
+
+        let mut ctx = Context::new();
+        let sqrt_arg =
+            parse("sqrt((2*x+1)^2-4)-(2*x+1)", &mut ctx).expect("parse negative sqrt log arg");
+        let sqrt_gap = parse("sqrt((2*x+1)^2-4)", &mut ctx).expect("parse negative sqrt gap");
+        let radicand_gap = parse("(2*x+1)^2-4", &mut ctx).expect("parse negative radicand gap");
+        let branch_gap = parse("-2*x-3", &mut ctx).expect("parse negative branch gap");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(sqrt_arg),
+                ImplicitCondition::NonZero(sqrt_gap),
+                ImplicitCondition::NonNegative(radicand_gap),
+                ImplicitCondition::Positive(branch_gap),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x < -3/2"]);
     }
 
     #[test]

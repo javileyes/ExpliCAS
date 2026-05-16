@@ -4,7 +4,7 @@ use cas_math::multipoly::{multipoly_from_expr, multipoly_to_expr, PolyBudget};
 use cas_math::polynomial::Polynomial;
 use cas_math::root_forms::try_rewrite_simplify_square_root_expr;
 use num_rational::BigRational;
-use num_traits::{One, Zero};
+use num_traits::{One, Signed, Zero};
 
 fn expr_eq(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
@@ -499,6 +499,58 @@ fn scaled_reciprocal_sqrt_polynomial_term(
     }
 
     Some((scale, poly, base))
+}
+
+fn polynomial_over_reciprocal_sqrt_term(
+    ctx: &mut Context,
+    term: ExprId,
+    var_name: &str,
+) -> Option<(Polynomial, Polynomial)> {
+    let term = cas_ast::hold::strip_all_holds(ctx, term);
+    match ctx.get(term).clone() {
+        Expr::Neg(inner) => {
+            let (numerator, base) = polynomial_over_reciprocal_sqrt_term(ctx, inner, var_name)?;
+            Some((numerator.neg(), base))
+        }
+        Expr::Div(num, den) => {
+            let den = cas_ast::hold::strip_all_holds(ctx, den);
+            if let Some(base) = sqrt_like_base(ctx, den) {
+                let numerator = Polynomial::from_expr(ctx, num, var_name).ok()?;
+                let base = Polynomial::from_expr(ctx, base, var_name).ok()?;
+                if !base.is_zero() {
+                    return Some((numerator, base));
+                }
+            }
+            None
+        }
+        Expr::Mul(_, _) => {
+            let mut numerator = Polynomial::one(var_name.to_string());
+            let mut base_poly = None;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, term) {
+                let factor = cas_ast::hold::strip_all_holds(ctx, factor);
+                if base_poly.is_none() {
+                    if let Some(base) = reciprocal_sqrt_like_base(ctx, factor) {
+                        let base = Polynomial::from_expr(ctx, base, var_name).ok()?;
+                        if base.is_zero() {
+                            return None;
+                        }
+                        base_poly = Some(base);
+                        continue;
+                    }
+                }
+
+                let factor_poly = Polynomial::from_expr(ctx, factor, var_name).ok()?;
+                numerator = numerator.mul(&factor_poly);
+            }
+
+            Some((numerator, base_poly?))
+        }
+        _ => {
+            let base = reciprocal_sqrt_like_base(ctx, term)?;
+            let base = Polynomial::from_expr(ctx, base, var_name).ok()?;
+            (!base.is_zero()).then(|| (Polynomial::one(var_name.to_string()), base))
+        }
+    }
 }
 
 fn same_nonzero_sign(left: &BigRational, right: &BigRational) -> bool {
@@ -6620,6 +6672,123 @@ pub(crate) fn try_diff_acosh_affine_reciprocal_sqrt_residual_root_zero(
     Some((ctx.num(0), required_conditions))
 }
 
+fn exact_positive_rational_sqrt(value: &BigRational) -> Option<BigRational> {
+    if !value.is_positive() {
+        return None;
+    }
+
+    let numer_sqrt = value.numer().sqrt();
+    let denom_sqrt = value.denom().sqrt();
+    if &numer_sqrt * &numer_sqrt == *value.numer() && &denom_sqrt * &denom_sqrt == *value.denom() {
+        Some(BigRational::new(numer_sqrt, denom_sqrt))
+    } else {
+        None
+    }
+}
+
+fn ln_sqrt_polynomial_gap_target_parts(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(Polynomial, Polynomial, BigRational)> {
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let arg = unary_builtin_arg(ctx, target, BuiltinFn::Ln)?;
+    let mut radicand = None;
+    let mut polynomial_term = Polynomial::zero(var_name.to_string());
+
+    for (term, sign) in cas_math::expr_nary::AddView::from_expr(ctx, arg).terms {
+        if let Some(term_radicand) = sqrt_like_base(ctx, term) {
+            if sign == cas_math::expr_nary::Sign::Neg || radicand.replace(term_radicand).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        let mut term_poly = Polynomial::from_expr(ctx, term, var_name).ok()?;
+        if sign == cas_math::expr_nary::Sign::Neg {
+            term_poly = term_poly.neg();
+        }
+        polynomial_term = polynomial_term.add(&term_poly);
+    }
+
+    if polynomial_term.is_zero() {
+        return None;
+    }
+    let radicand_poly = Polynomial::from_expr(ctx, radicand?, var_name).ok()?;
+    let square_gap = polynomial_term.mul(&polynomial_term).sub(&radicand_poly);
+    if square_gap.degree() != 0 {
+        return None;
+    }
+    let gap_value = square_gap.coeffs.first()?.clone();
+    if !gap_value.is_positive() {
+        return None;
+    }
+
+    Some((polynomial_term, radicand_poly, gap_value))
+}
+
+fn diff_ln_sqrt_polynomial_gap_residual_conditions(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (polynomial_term, expected_base_poly, gap_value) =
+        ln_sqrt_polynomial_gap_target_parts(ctx, call.target, &call.var_name)?;
+    let derivative = polynomial_term.derivative();
+    if derivative.is_zero() {
+        return None;
+    }
+
+    let (actual_numerator, actual_base_poly) =
+        polynomial_over_reciprocal_sqrt_term(ctx, right, &call.var_name)?;
+    if actual_base_poly.var != expected_base_poly.var {
+        return None;
+    }
+    if actual_base_poly != expected_base_poly || actual_numerator != derivative {
+        return None;
+    }
+
+    let branch_boundary = if let Some(sqrt_value) = exact_positive_rational_sqrt(&gap_value) {
+        ctx.add(Expr::Number(sqrt_value))
+    } else {
+        let gap_expr = ctx.add(Expr::Number(gap_value));
+        ctx.call_builtin(BuiltinFn::Sqrt, vec![gap_expr])
+    };
+    let polynomial_expr = polynomial_term.to_expr(ctx);
+    let branch_gap = ctx.add(Expr::Sub(polynomial_expr, branch_boundary));
+    Some(vec![crate::ImplicitCondition::Positive(branch_gap)])
+}
+
+pub(crate) fn try_diff_ln_sqrt_polynomial_gap_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let required_conditions = match ctx.get(expr) {
+        Expr::Sub(left, right) => {
+            let left = *left;
+            let right = *right;
+            diff_ln_sqrt_polynomial_gap_residual_conditions(ctx, left, right)
+                .or_else(|| diff_ln_sqrt_polynomial_gap_residual_conditions(ctx, right, left))
+        }
+        Expr::Add(left, right) => {
+            let left = *left;
+            let right = *right;
+            let neg_right = ctx.add(Expr::Neg(right));
+            let neg_left = ctx.add(Expr::Neg(left));
+            diff_ln_sqrt_polynomial_gap_residual_conditions(ctx, left, neg_right)
+                .or_else(|| diff_ln_sqrt_polynomial_gap_residual_conditions(ctx, right, neg_left))
+        }
+        _ => None,
+    }?;
+    Some((ctx.num(0), required_conditions))
+}
+
 fn try_diff_asinh_scaled_surd_residual_zero_preorder(
     ctx: &mut Context,
     left: ExprId,
@@ -7793,6 +7962,23 @@ mod tests {
         let expr = parse(input, &mut ctx)
             .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
         try_diff_acosh_affine_reciprocal_sqrt_residual_root_zero(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
+    fn ln_sqrt_polynomial_gap_residual_result(input: &str) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_ln_sqrt_polynomial_gap_residual_root_zero(&mut ctx, expr).map(
             |(result, required_conditions)| {
                 (
                     render(&ctx, result),
@@ -9854,6 +10040,41 @@ mod tests {
         for (input, expected_condition) in cases {
             assert_eq!(
                 acosh_affine_reciprocal_sqrt_residual_result(input),
+                Some(("0".to_string(), vec![expected_condition.to_string()])),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_ln_sqrt_polynomial_gap_residual_cancels_affine_branches() {
+        let cases = [
+            (
+                "diff(ln(sqrt((2*x+1)^2-4)+(2*x+1)), x) - 2/sqrt((2*x+1)^2-4)",
+                "x > 1/2",
+            ),
+            (
+                "diff(ln(sqrt((2*x+1)^2-4)-(2*x+1)), x) + 2/sqrt((2*x+1)^2-4)",
+                "x < -3/2",
+            ),
+            (
+                "diff(ln(sqrt((2*x+1)^2-4)-(2*x+1)), x) + 2*(4*x^2+4*x-3)^(-1/2)",
+                "x < -3/2",
+            ),
+            (
+                "diff(ln(sqrt((x^2+x+1)^2-4)+(x^2+x+1)), x) - (2*x+1)/sqrt((x^2+x+1)^2-4)",
+                "x < -1/2 - sqrt(5)/2 or x > -1/2 + sqrt(5)/2",
+            ),
+            (
+                "diff(ln(sqrt((x^2+x+1)^2-4)+(x^2+x+1)), x) - (x^4+2*x*x^2+x^2+2*x^2+2*x+1-4)^(-1/2)*(2*x+1)",
+                "x < -1/2 - sqrt(5)/2 or x > -1/2 + sqrt(5)/2",
+            ),
+        ];
+
+        for (input, expected_condition) in cases {
+            assert_eq!(
+                ln_sqrt_polynomial_gap_residual_result(input),
                 Some(("0".to_string(), vec![expected_condition.to_string()])),
                 "{input}"
             );

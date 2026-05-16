@@ -2306,6 +2306,73 @@ fn ln_positive_sqrt_polynomial_gap_diff_uses_asinh_presentation() {
 }
 
 #[test]
+fn ln_negative_sqrt_polynomial_gap_diff_uses_acosh_branch_presentation() {
+    let (input, expected_display, expected_expr, expected_required) = (
+        "diff(ln(sqrt(x^2-1)+x), x)",
+        "1 / sqrt(x^2 - 1)",
+        "1/sqrt(x^2-1)",
+        "x > 1",
+    );
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert_eq!(result, expected_display, "input: {input}");
+    assert!(
+        !result.contains("^(-1/2)") && !result.contains(" - x)"),
+        "acosh-form derivative should hide the conjugate/fractional-power residual: {result}"
+    );
+    let expected = parse(expected_expr, &mut engine.simplifier.context).expect("parse expected");
+    assert!(
+        engine.simplifier.are_equivalent(result_expr, expected),
+        "input: {input}, expected compact logarithmic acosh-form derivative, got: {result}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec![expected_required.to_string()],
+        "input: {input}, expected only the compact acosh branch guard: {required:?}"
+    );
+    assert!(
+        output
+            .steps
+            .iter()
+            .any(|step| step.rule_name == "Symbolic Differentiation"),
+        "input: {input}, expected the derivative to keep the ordinary symbolic differentiation trace"
+    );
+}
+
+#[test]
 fn ln_sqrt_plus_matching_polynomial_diff_avoids_removable_domain_pole() {
     let input = "diff(ln(sqrt(x)+x), x)";
     let mut engine = Engine::new();
@@ -3662,12 +3729,12 @@ fn asinh_surd_quotient_diff_uses_compact_sqrt_scale_presentation() {
     let cases = [
         (
             "diff(asinh((1-x-x^2)/sqrt(5))/sqrt(5), x)",
-            "(-2 * x - 1) / (sqrt((1 - x - x^2)^2 + 5) * sqrt(5))",
+            "(-2 * x - 1) / (sqrt(5) * sqrt((1 - x - x^2)^2 + 5))",
             "(-2*x-1)/(5*sqrt(1+((1-x-x^2)/sqrt(5))^2))",
         ),
         (
             "diff((1/sqrt(5))*asinh((1-x-x^2)/sqrt(5)), x)",
-            "(-2 * x - 1) / (sqrt((1 - x - x^2)^2 + 5) * sqrt(5))",
+            "(-2 * x - 1) / (sqrt(5) * sqrt((1 - x - x^2)^2 + 5))",
             "(-2*x-1)/(5*sqrt(1+((1-x-x^2)/sqrt(5))^2))",
         ),
     ];
@@ -3895,12 +3962,12 @@ fn acosh_affine_scaled_diff_uses_compact_root_product_presentation() {
     let cases = [
         (
             "diff(acosh(x+1)/2, x)",
-            "1 / (sqrt(x) * sqrt(x + 2) * 2)",
+            "1 / (2 * sqrt(x) * sqrt(x + 2))",
             "1/(2*sqrt(x)*sqrt(x+2))",
         ),
         (
             "diff((1/2)*acosh(x+1), x)",
-            "1 / (sqrt(x) * sqrt(x + 2) * 2)",
+            "1 / (2 * sqrt(x) * sqrt(x + 2))",
             "1/(2*sqrt(x)*sqrt(x+2))",
         ),
     ];
@@ -4057,22 +4124,22 @@ fn inverse_reciprocal_trig_affine_scaled_diff_uses_abs_sqrt_presentation() {
     let cases = [
         (
             "diff(arcsec(x)/2, x)",
-            "1 / (|x| * sqrt(x^2 - 1) * 2)",
+            "1 / (2 * |x| * sqrt(x^2 - 1))",
             "x < -1 or x > 1",
         ),
         (
             "diff((1/2)*arcsec(x), x)",
-            "1 / (|x| * sqrt(x^2 - 1) * 2)",
+            "1 / (2 * |x| * sqrt(x^2 - 1))",
             "x < -1 or x > 1",
         ),
         (
             "diff(arccsc(x)/2, x)",
-            "-1 / (|x| * sqrt(x^2 - 1) * 2)",
+            "-1 / (2 * |x| * sqrt(x^2 - 1))",
             "x < -1 or x > 1",
         ),
         (
             "diff(arcsec(2*x+1)/3, x)",
-            "1 / (|2 * x + 1| * sqrt(x^2 + x) * 3)",
+            "1 / (3 * |2 * x + 1| * sqrt(x^2 + x))",
             "x < -1 or x > 0",
         ),
     ];
@@ -10712,6 +10779,11 @@ fn inverse_hyperbolic_acosh_diff_evaluates_with_domain_safe_conditions() {
             "(8*x-4)/(sqrt(4*x^2+1-4*x)*sqrt(4*x^2+3-4*x))",
             vec!["x ≠ 1/2"],
         ),
+        (
+            "diff(acosh(x^2+x+3), x)",
+            "(2*x+1)/(sqrt(x^2+x+2)*sqrt(x^2+x+4))",
+            vec![],
+        ),
     ];
 
     for (input, expected_derivative, expected_conditions) in cases {
@@ -10769,6 +10841,16 @@ fn inverse_hyperbolic_acosh_diff_evaluates_with_domain_safe_conditions() {
             assert!(
                 result.contains("|1 - 2 * x|"),
                 "negatively oriented shifted-square acosh derivative must preserve branch sign with abs: {result}"
+            );
+        }
+        if input == "diff(acosh(x^2+x+3), x)" {
+            assert_eq!(
+                result, "(2 * x + 1) / (sqrt(x^2 + x + 2) * sqrt(x^2 + x + 4))",
+                "strictly-positive quadratic acosh derivative should use sqrt denominator presentation"
+            );
+            assert!(
+                !result.contains("^(-1/2)") && !result.contains("|"),
+                "strictly-positive quadratic acosh derivative should avoid inverse powers and unnecessary abs: {result}"
             );
         }
         let required: Vec<String> = normalize_and_dedupe_conditions(
@@ -13448,6 +13530,178 @@ fn acosh_affine_fused_reciprocal_sqrt_residual_collapses_publicly() {
         (
             "diff(acosh(1-2*x), x) - (-2/sqrt((2*x-1)^2-1))",
             vec!["x < 0".to_string()],
+        ),
+    ];
+
+    for (input, expected_conditions) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+
+        assert_eq!(result, "0", "input: {input}");
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_conditions,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn ln_sqrt_affine_gap_diff_uses_compact_public_radicand_and_branch_domain() {
+    let cases = [
+        (
+            "diff(ln(sqrt((2*x+1)^2-4)+(2*x+1)), x)",
+            "2 / sqrt((2 * x + 1)^2 - 4)",
+            vec!["x > 1/2".to_string()],
+        ),
+        (
+            "diff(ln(sqrt((2*x+1)^2-4)-(2*x+1)), x)",
+            "-2 / sqrt((2 * x + 1)^2 - 4)",
+            vec!["x < -3/2".to_string()],
+        ),
+    ];
+
+    for (input, expected_result, expected_conditions) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+
+        assert_eq!(result, expected_result, "input: {input}");
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_conditions,
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn ln_sqrt_quadratic_gap_diff_drops_redundant_sqrt_nonzero_domain() {
+    let input = "diff(ln(sqrt((x^2+x+1)^2-4)+(x^2+x+1)), x)";
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval failed");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(
+        result, "(2 * x + 1) / sqrt((x^2 + x + 1)^2 - 4)",
+        "unexpected diff result"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["x < -1/2 - sqrt(5)/2 or x > -1/2 + sqrt(5)/2"],
+        "unexpected required_conditions: {required:?}"
+    );
+}
+
+#[test]
+fn ln_sqrt_affine_gap_diff_residual_collapses_with_branch_domain() {
+    let cases = [
+        (
+            "diff(ln(sqrt((2*x+1)^2-4)+(2*x+1)), x) - 2/sqrt((2*x+1)^2-4)",
+            vec!["x > 1/2".to_string()],
+        ),
+        (
+            "diff(ln(sqrt((2*x+1)^2-4)-(2*x+1)), x) + 2/sqrt((2*x+1)^2-4)",
+            vec!["x < -3/2".to_string()],
+        ),
+        (
+            "diff(ln(sqrt((x^2+x+1)^2-4)+(x^2+x+1)), x) - (2*x+1)/sqrt((x^2+x+1)^2-4)",
+            vec!["x < -1/2 - sqrt(5)/2 or x > -1/2 + sqrt(5)/2".to_string()],
         ),
     ];
 
