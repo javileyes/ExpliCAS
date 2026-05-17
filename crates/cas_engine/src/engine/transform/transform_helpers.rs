@@ -210,6 +210,7 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_arctan_reciprocal_affine_by_parts_sum(ctx, target, var_name)
         || diff_target_is_arctan_affine_by_parts_sum(ctx, target, var_name)
         || diff_target_is_inverse_tangent_direct_trig_linear_arg(ctx, target, var_name)
+        || diff_target_is_scaled_inverse_tangent_reciprocal_sqrt_product(ctx, target, var_name)
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
         || diff_target_is_scaled_bounded_inverse_trig_surd_quotient(ctx, target, var_name)
@@ -1093,6 +1094,112 @@ fn diff_target_is_scaled_bounded_inverse_trig_surd_quotient(
         }
         _ => false,
     }
+}
+
+fn diff_target_is_scaled_inverse_tangent_reciprocal_sqrt_product(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    if diff_target_is_inverse_tangent_reciprocal_sqrt_product(ctx, target, var_name) {
+        return true;
+    }
+
+    match ctx.get(target) {
+        Expr::Neg(inner) => {
+            diff_target_is_scaled_inverse_tangent_reciprocal_sqrt_product(ctx, *inner, var_name)
+        }
+        Expr::Div(num, den) if diff_preserve_factor_is_constant_scale(ctx, *den, var_name) => {
+            diff_target_is_scaled_inverse_tangent_reciprocal_sqrt_product(ctx, *num, var_name)
+        }
+        Expr::Mul(_, _) => {
+            let mut matched_target = false;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, target) {
+                if diff_target_is_inverse_tangent_reciprocal_sqrt_product(ctx, factor, var_name) {
+                    if matched_target {
+                        return false;
+                    }
+                    matched_target = true;
+                    continue;
+                }
+
+                if !diff_preserve_factor_is_constant_scale(ctx, factor, var_name) {
+                    return false;
+                }
+            }
+            matched_target
+        }
+        _ => false,
+    }
+}
+
+fn diff_target_is_inverse_tangent_reciprocal_sqrt_product(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(
+                cas_ast::BuiltinFn::Atan
+                    | cas_ast::BuiltinFn::Arctan
+                    | cas_ast::BuiltinFn::Acot
+                    | cas_ast::BuiltinFn::Arccot
+            )
+        )
+    {
+        return false;
+    }
+
+    let Expr::Div(num, den) = ctx.get(args[0]) else {
+        return false;
+    };
+    if cas_ast::views::as_rational_const(ctx, *num, 8).is_none_or(|value| value.is_zero()) {
+        return false;
+    }
+
+    let mut saw_sqrt = false;
+    let mut saw_polynomial = false;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, *den) {
+        if let Some(radicand) = extract_square_root_base(ctx, factor) {
+            if saw_sqrt {
+                return false;
+            }
+            let Ok(poly) = Polynomial::from_expr(ctx, radicand, var_name) else {
+                return false;
+            };
+            if poly.is_zero() || poly.degree() > 4 {
+                return false;
+            }
+            saw_sqrt = true;
+            continue;
+        }
+
+        if !contains_named_var(ctx, factor, var_name) {
+            if cas_ast::views::as_rational_const(ctx, factor, 8).is_none_or(|value| value.is_zero())
+            {
+                return false;
+            }
+            continue;
+        }
+
+        if saw_polynomial {
+            return false;
+        }
+        let Ok(poly) = Polynomial::from_expr(ctx, factor, var_name) else {
+            return false;
+        };
+        if poly.is_zero() || poly.degree() > 4 {
+            return false;
+        }
+        saw_polynomial = true;
+    }
+
+    saw_sqrt && saw_polynomial
 }
 
 fn diff_target_is_bounded_inverse_trig_surd_quotient(

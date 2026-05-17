@@ -78,6 +78,19 @@ fn push_structural_requires(
     for cond in input_domain.conditions() {
         if let crate::ImplicitCondition::NonZero(expr) = cond {
             if let Some(required_conditions) =
+                crate::calculus_residual_support::shifted_integrate_resolved_reciprocal_half_power_residual_passthrough_nonzero_required_conditions(
+                    ctx, *expr,
+                )
+            {
+                for required in required_conditions {
+                    diagnostics.push_required(
+                        required,
+                        crate::diagnostics::RequireOrigin::InputImplicit,
+                    );
+                }
+                continue;
+            }
+            if let Some(required_conditions) =
                 crate::calculus_residual_support::shifted_integral_residual_passthrough_nonzero_required_conditions(
                     ctx, *expr,
                 )

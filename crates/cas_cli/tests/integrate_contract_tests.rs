@@ -541,6 +541,123 @@ fn integrate_contract_positive_half_power_antiderivatives_render_as_sqrt() {
 }
 
 #[test]
+fn integrate_contract_reciprocal_sqrt_antiderivative_rationalized_residual_collapses() {
+    let input = "integrate((2*x+1)/(x^2+x+1)^(3/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, "-2 / sqrt(x^2 + x + 1)");
+    assert!(
+        required.is_empty(),
+        "positive quadratic reciprocal-root primitive should not add domain conditions: {required:?}"
+    );
+
+    let residual = "integrate((2*x+1)/(x^2+x+1)^(3/2), x) - (-2*sqrt(x^2+x+1)/(x^2+x+1))";
+    let (residual_result, residual_required) =
+        evaluated_integral_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "positive quadratic rationalized residual should not add domain conditions: {residual_required:?}"
+    );
+
+    let step_summaries = evaluated_expr_step_summaries(residual);
+    assert!(
+        step_summaries
+            .iter()
+            .any(
+                |(description, rule, _)| description == "Post-calculus residual simplification"
+                    || rule == "Post-calculus residual simplification"
+            ),
+        "expected a visible post-calculus residual simplification step, got {step_summaries:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_positive_sqrt_antiderivative_rationalized_residual_collapses() {
+    let input = "integrate((2*x+1)/sqrt(x^2+x+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, "2 * sqrt(x^2 + x + 1)");
+    assert!(
+        required.is_empty(),
+        "positive quadratic sqrt primitive should not add domain conditions: {required:?}"
+    );
+
+    let residual = "integrate((2*x+1)/sqrt(x^2+x+1), x) - 2*(x^2+x+1)/sqrt(x^2+x+1)";
+    let (residual_result, residual_required) =
+        evaluated_integral_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert!(
+        residual_required.is_empty(),
+        "positive quadratic rationalized sqrt residual should not add domain conditions: {residual_required:?}"
+    );
+
+    let mismatch = "integrate((2*x+1)/sqrt(x^2+x+1), x) - 3*(x^2+x+1)/sqrt(x^2+x+1)";
+    let (mismatch_result, _) = evaluated_integral_with_required_conditions(mismatch);
+    assert_ne!(
+        mismatch_result, "0",
+        "mismatched rationalized sqrt scale must not collapse"
+    );
+}
+
+#[test]
+fn integrate_contract_positive_sqrt_antiderivative_rationalized_residual_survives_quotient_wrapper()
+{
+    let residual = "(integrate((2*x+1)/sqrt(x^2+x+1), x) - 2*(x^2+x+1)/sqrt(x^2+x+1))/(x+2)";
+    let (residual_result, residual_required) =
+        evaluated_integral_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert_eq!(
+        residual_required,
+        vec!["x ≠ -2".to_string()],
+        "quotient-wrapped rationalized sqrt residual should preserve denominator domain"
+    );
+
+    let step_summaries = evaluated_expr_step_summaries(residual);
+    assert!(
+        step_summaries
+            .iter()
+            .any(
+                |(description, rule, _)| description == "Post-calculus residual simplification"
+                    || rule == "Post-calculus residual simplification"
+            ),
+        "expected a visible post-calculus residual simplification step, got {step_summaries:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_positive_sqrt_antiderivative_rationalized_residual_survives_shifted_reciprocal_difference(
+) {
+    let residual =
+        "1/((integrate((2*x+1)/sqrt(x^2+x+1), x) - 2*(x^2+x+1)/sqrt(x^2+x+1))+x+2)-1/(x+2)";
+    let (residual_result, residual_required) =
+        evaluated_integral_with_required_conditions(residual);
+    assert_eq!(residual_result, "0");
+    assert_eq!(
+        residual_required,
+        vec!["x ≠ -2".to_string()],
+        "shifted reciprocal residual should preserve the compact denominator domain"
+    );
+
+    let mismatch =
+        "1/((integrate((2*x+1)/sqrt(x^2+x+1), x) - 3*(x^2+x+1)/sqrt(x^2+x+1))+x+2)-1/(x+2)";
+    let (mismatch_result, _) = evaluated_integral_with_required_conditions(mismatch);
+    assert_ne!(
+        mismatch_result, "0",
+        "mismatched rationalized sqrt scale must not collapse under reciprocal shift"
+    );
+
+    let step_summaries = evaluated_expr_step_summaries(residual);
+    assert!(
+        step_summaries
+            .iter()
+            .any(
+                |(description, rule, _)| description == "Post-calculus residual simplification"
+                    || rule == "Post-calculus residual simplification"
+            ),
+        "expected a visible post-calculus residual simplification step, got {step_summaries:?}"
+    );
+}
+
+#[test]
 fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_hyperbolic_by_parts(
 ) {
     for input in [
@@ -10030,6 +10147,34 @@ fn integrate_contract_beta_sqrt_product_kernel_preserves_open_domain_and_verifie
 }
 
 #[test]
+fn integrate_contract_shifted_sqrt_arcsin_kernel_verifies_public_residual() {
+    let input = "integrate(1/(sqrt(x)*sqrt(sqrt(x)-x)), x)";
+    let (result, mut required) = evaluated_integral_with_required_conditions(input);
+    let mut expected_required = vec!["sqrt(x) - x > 0".to_string(), "x > 0".to_string()];
+    required.sort();
+    expected_required.sort();
+
+    assert_eq!(result, "2 * arcsin(2 * sqrt(x) - 1)");
+    assert_eq!(
+        required, expected_required,
+        "shifted sqrt arcsin kernel should preserve minimal denominator conditions"
+    );
+    assert_antiderivative_verifies(input);
+
+    let (nested_residual, mut nested_required) = evaluated_expr_with_required_conditions(
+        "diff(integrate(1/(sqrt(x)*sqrt(sqrt(x)-x)), x), x) - 1/(sqrt(x)*sqrt(sqrt(x)-x))",
+    );
+    let mut expected_nested_required = vec!["sqrt(x) - x > 0".to_string(), "x > 0".to_string()];
+    nested_required.sort();
+    expected_nested_required.sort();
+    assert_eq!(nested_residual, "0");
+    assert_eq!(
+        nested_required, expected_nested_required,
+        "nested shifted sqrt arcsin residual should preserve denominator conditions"
+    );
+}
+
+#[test]
 fn integrate_contract_polynomial_derivative_asinh_substitution() {
     assert_eq!(
         simplified_integral("integrate(2*x/sqrt(1+x^4), x)"),
@@ -10437,7 +10582,11 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(direct_wire["required_display"], serde_json::json!([]));
     let input = "integrate((2*x+1)/(x^2+x+1)^(5/2), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
-    assert_eq!(result, "-2 / (3 * (x^2 + x + 1)^(3/2))");
+    assert_eq!(result, "-2 / (3 * sqrt(x^2 + x + 1) * (x^2 + x + 1))");
+    assert!(
+        !result.contains("^(3/2)"),
+        "post-integration presentation should prefer a polynomial-sqrt denominator: {result}"
+    );
     assert!(
         required.is_empty(),
         "higher positive-quadratic denominator should not emit redundant conditions: {required:?}"

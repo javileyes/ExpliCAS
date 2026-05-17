@@ -12794,6 +12794,34 @@ The burden of proof stays the same:
     arctan/atanh linear scaled variants and preserving the same no-fake-table
     standard
 
+## 2026-05-17 - Discovery observe-only: 7/2 post-integration sqrt presentation residual
+
+- area:
+  - calculus / post-calculus presentation / antiderivative verification
+- status:
+  - `discovery/observe-only`
+- observed while testing:
+  - the local presentation candidate for
+    `integrate((2*x+1)/(x^2+x+1)^(7/2), x)` rewrote the correct primitive from
+    `-2/(5*(x^2+x+1)^(5/2))` to the more educational
+    `-2/(5*sqrt(x^2+x+1)*(x^2+x+1)^2)`
+  - direct plain CLI probing could simplify the corresponding derivative
+    residual to `0`
+  - the public JSON contract path did not collapse
+    `diff(integrate((2*x+1)/(x^2+x+1)^(7/2), x), x) -
+    (2*x+1)/(x^2+x+1)^(7/2)` to `0`; it left a large semienteric rational
+    residual
+- retained learning:
+  - extending post-calculus presentation beyond `3/2` reciprocal powers needs
+    residual support for two-term semienteric polynomial quotients under the
+    public wire/JSON route, not only a display rewrite
+  - the candidate should remain unpromoted until antiderivative verification is
+    stable in the promoted contract path
+- follow-up:
+  - add a bounded residual-normalization candidate for common-base
+    `P^(1/2)` / `P^(7/2)` quotient differences, then reattempt the
+    presentation only if `make engine-fast` and guardrails keep `failed = 0`
+
 ## 2026-05-16 - Rejected broad condition propagation: reciprocal trig canonicalization
 
 - area:

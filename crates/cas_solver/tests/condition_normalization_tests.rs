@@ -575,6 +575,7 @@ fn test_positive_sqrt_minus_radicand_gap_is_dominated_by_atomic_bounds() {
     let pow_gap = cas_parser::parse("x^(1/2) - x", &mut ctx).expect("parse pow gap");
     let unit_minus_sqrt =
         cas_parser::parse("1 - sqrt(x)", &mut ctx).expect("parse unit minus sqrt");
+    let product_gap = cas_parser::parse("x*(x^(1/2)+(-x))", &mut ctx).expect("parse product gap");
     let x = cas_parser::parse("x", &mut ctx).expect("parse x");
     let upper = cas_parser::parse("1 - x", &mut ctx).expect("parse upper");
 
@@ -584,12 +585,62 @@ fn test_positive_sqrt_minus_radicand_gap_is_dominated_by_atomic_bounds() {
             ImplicitCondition::NonZero(unit_minus_sqrt),
             ImplicitCondition::Positive(raw_gap),
             ImplicitCondition::Positive(pow_gap),
+            ImplicitCondition::Positive(product_gap),
             ImplicitCondition::Positive(x),
             ImplicitCondition::Positive(upper),
         ],
     );
 
     assert_eq!(rendered, vec!["x > 0", "x < 1"]);
+}
+
+#[test]
+fn positive_sqrt_half_power_product_is_dominated_by_positive_factors() {
+    let mut ctx = Context::new();
+    let product_gap = cas_parser::parse("x*(x^(1/2)-x)", &mut ctx).expect("parse product gap");
+    let x = cas_parser::parse("x", &mut ctx).expect("parse x");
+    let sqrt_gap = cas_parser::parse("sqrt(x) - x", &mut ctx).expect("parse sqrt gap");
+
+    let mut rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::Positive(sqrt_gap),
+            ImplicitCondition::Positive(x),
+            ImplicitCondition::Positive(product_gap),
+        ],
+    );
+    rendered.sort();
+
+    let mut expected = vec!["x > 0", "sqrt(x) - x > 0"];
+    expected.sort();
+    assert_eq!(rendered, expected);
+}
+
+#[test]
+fn positive_sqrt_half_power_product_is_dominated_in_raw_integral_condition_set() {
+    let mut ctx = Context::new();
+    let root_product =
+        cas_parser::parse("sqrt(x)*sqrt(sqrt(x)-x)", &mut ctx).expect("parse root product");
+    let sqrt_gap = cas_parser::parse("sqrt(x) - x", &mut ctx).expect("parse sqrt gap");
+    let product_gap = cas_parser::parse("x*(x^(1/2)-x)", &mut ctx).expect("parse product gap");
+    let x = cas_parser::parse("x", &mut ctx).expect("parse x");
+
+    let mut rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::NonZero(root_product),
+            ImplicitCondition::Positive(sqrt_gap),
+            ImplicitCondition::NonNegative(sqrt_gap),
+            ImplicitCondition::Positive(product_gap),
+            ImplicitCondition::Positive(x),
+            ImplicitCondition::NonNegative(x),
+        ],
+    );
+    rendered.sort();
+
+    let mut expected = vec!["x > 0", "sqrt(x) - x > 0"];
+    expected.sort();
+    assert_eq!(rendered, expected);
 }
 
 #[test]

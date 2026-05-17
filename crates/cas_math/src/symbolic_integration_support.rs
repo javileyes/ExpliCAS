@@ -12821,6 +12821,132 @@ fn arcsin_inverse_sqrt_product_substitution_radicand(
     Some(combined_radicand)
 }
 
+fn is_sqrt_of_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    sqrt_like_radicand(ctx, expr).is_some_and(|radicand| is_var(ctx, radicand, var))
+}
+
+fn is_neg_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    matches!(ctx.get(expr), Expr::Neg(inner) if is_var(ctx, *inner, var))
+}
+
+fn is_sqrt_var_minus_var(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => is_sqrt_of_var(ctx, *left, var) && is_var(ctx, *right, var),
+        Expr::Add(left, right) => {
+            (is_sqrt_of_var(ctx, *left, var) && is_neg_var(ctx, *right, var))
+                || (is_neg_var(ctx, *left, var) && is_sqrt_of_var(ctx, *right, var))
+        }
+        _ => false,
+    }
+}
+
+fn is_var_times_sqrt_var_minus_var_radicand(ctx: &Context, radicand: ExprId, var: &str) -> bool {
+    let factors = mul_leaves(ctx, radicand);
+    match factors.as_slice() {
+        [left, right] => {
+            (is_var(ctx, *left, var) && is_sqrt_var_minus_var(ctx, *right, var))
+                || (is_sqrt_var_minus_var(ctx, *left, var) && is_var(ctx, *right, var))
+        }
+        _ => false,
+    }
+}
+
+fn shifted_sqrt_arcsin_inverse_product_cofactor(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+
+    if let Some(radicand) = reciprocal_sqrt_like_radicand(ctx, expr) {
+        if is_var_times_sqrt_var_minus_var_radicand(ctx, radicand, var) {
+            return Some(ctx.num(1));
+        }
+    }
+
+    let mut numerator_factors = Vec::new();
+    let mut denominator_factors = Vec::new();
+    collect_fraction_factors_for_inverse_sqrt_product(
+        ctx,
+        expr,
+        false,
+        &mut numerator_factors,
+        &mut denominator_factors,
+    );
+
+    let mut radicands = Vec::new();
+    let mut remaining_denominator_factors = Vec::new();
+    for factor in denominator_factors {
+        if let Some(radicand) = sqrt_like_radicand(ctx, factor) {
+            radicands.push(radicand);
+        } else {
+            remaining_denominator_factors.push(factor);
+        }
+    }
+    if radicands.len() != 2 {
+        return None;
+    }
+
+    let combined_radicand = build_balanced_mul(ctx, &radicands);
+    if !is_var_times_sqrt_var_minus_var_radicand(ctx, combined_radicand, var) {
+        return None;
+    }
+
+    let numerator = if numerator_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        build_balanced_mul(ctx, &numerator_factors)
+    };
+    let cofactor = if remaining_denominator_factors.is_empty() {
+        numerator
+    } else {
+        let denominator = build_balanced_mul(ctx, &remaining_denominator_factors);
+        ctx.add(Expr::Div(numerator, denominator))
+    };
+    (!contains_named_var(ctx, cofactor, var)).then_some(cofactor)
+}
+
+fn shifted_sqrt_arcsin_inverse_product_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let cofactor = shifted_sqrt_arcsin_inverse_product_cofactor(ctx, expr, var)?;
+    let var_expr = ctx.var(var);
+    let sqrt_var = ctx.call_builtin(BuiltinFn::Sqrt, vec![var_expr]);
+    let two = ctx.num(2);
+    let one = ctx.num(1);
+    let shifted_sqrt = mul2_raw(ctx, two, sqrt_var);
+    let arg = ctx.add(Expr::Sub(shifted_sqrt, one));
+    let arcsin = ctx.call_builtin(BuiltinFn::Arcsin, vec![arg]);
+    if let Some(scale) = rational_constant_value(ctx, cofactor) {
+        return Some(scale_rational_term(
+            ctx,
+            scale * BigRational::from_integer(2.into()),
+            arcsin,
+        ));
+    }
+
+    let two = ctx.num(2);
+    let doubled_cofactor = mul2_raw(ctx, two, cofactor);
+    Some(mul2_raw(ctx, doubled_cofactor, arcsin))
+}
+
+fn shifted_sqrt_arcsin_inverse_product_positive_conditions(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Vec<ExprId> {
+    if shifted_sqrt_arcsin_inverse_product_cofactor(ctx, expr, var).is_none() {
+        return vec![];
+    }
+
+    let var_expr = ctx.var(var);
+    let sqrt_var = ctx.call_builtin(BuiltinFn::Sqrt, vec![var_expr]);
+    let var_expr = ctx.var(var);
+    vec![var_expr, ctx.add(Expr::Sub(sqrt_var, var_expr))]
+}
+
 fn strip_variable_free_factors_from_arcsin_product_cofactor(
     ctx: &mut Context,
     expr: ExprId,
@@ -12933,6 +13059,7 @@ pub fn integrate_symbolic_is_arcsin_inverse_sqrt_product_target(
     var: &str,
 ) -> bool {
     arcsin_inverse_sqrt_product_substitution_radicand(ctx, expr, var).is_some()
+        || shifted_sqrt_arcsin_inverse_product_cofactor(ctx, expr, var).is_some()
 }
 
 pub fn integrate_symbolic_is_asinh_polynomial_substitution_target(
@@ -13352,6 +13479,9 @@ pub fn integrate_symbolic_required_positive_conditions(
     ));
     conditions.extend(sqrt_derivative_substitution_radicand(ctx, expr, var));
     conditions.extend(affine_sqrt_product_derivative_radicand(ctx, expr, var));
+    conditions.extend(shifted_sqrt_arcsin_inverse_product_positive_conditions(
+        ctx, expr, var,
+    ));
     conditions.extend(sqrt_trig_reciprocal_derivative_radicand(ctx, expr, var));
     conditions.extend(sqrt_trig_log_derivative_radicand(ctx, expr, var));
     conditions.extend(sqrt_hyperbolic_log_derivative_radicand(ctx, expr, var));
@@ -13796,6 +13926,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let Some(integral) = linear_times_hyperbolic_linear_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
+    if let Some(integral) = shifted_sqrt_arcsin_inverse_product_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
 
@@ -14365,6 +14499,7 @@ mod tests {
         integrate_symbolic_is_arcsin_inverse_sqrt_product_target,
         integrate_symbolic_is_positive_quadratic_cube_target,
         integrate_symbolic_required_nonzero_conditions,
+        integrate_symbolic_required_positive_conditions,
     };
     use crate::polynomial::Polynomial;
     use cas_ast::Context;
@@ -15716,6 +15851,29 @@ mod tests {
         assert!(integrate_symbolic_is_arcsin_inverse_sqrt_product_target(
             &mut ctx, expr, "x"
         ));
+    }
+
+    #[test]
+    fn integrates_shifted_sqrt_arcsin_inverse_product() {
+        let mut ctx = Context::new();
+        let expr = parse("1/(sqrt(x)*sqrt(sqrt(x)-x))", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "2 * arcsin(2 * sqrt(x) - 1)");
+
+        let expr = parse("(x*(sqrt(x)-x))^(-1/2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "2 * arcsin(2 * sqrt(x) - 1)");
+
+        let expr = parse("1/(2*sqrt(x)*sqrt(sqrt(x)-x))", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "arcsin(2 * sqrt(x) - 1)");
+
+        let required = integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x");
+        let rendered_required: Vec<_> = required.iter().map(|id| rendered(&ctx, *id)).collect();
+        assert_eq!(
+            rendered_required,
+            vec!["x".to_string(), "sqrt(x) - x".to_string()]
+        );
     }
 
     #[test]

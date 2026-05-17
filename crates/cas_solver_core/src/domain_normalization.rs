@@ -5042,12 +5042,9 @@ fn positive_product_is_dominated_by_known_or_intrinsic_positive_factors(
     let mut saw_known_positive_factor = false;
     for factor_expr in factors {
         if factor_is_known_or_intrinsic_positive(ctx, factor_expr, known_positive_exprs) {
-            saw_known_positive_factor |= known_positive_exprs.iter().any(|known| {
-                exprs_equivalent(ctx, factor_expr, *known)
-                    || is_positive_power_of_base(ctx, factor_expr, *known)
-                    || is_abs_of(ctx, factor_expr, *known)
-                    || positive_condition_dominates_affine_positive_offset(ctx, *known, factor_expr)
-            });
+            saw_known_positive_factor |= known_positive_exprs
+                .iter()
+                .any(|known| positive_condition_factor_matches_known(ctx, factor_expr, *known));
             continue;
         }
 
@@ -5056,14 +5053,9 @@ fn positive_product_is_dominated_by_known_or_intrinsic_positive_factors(
             let mut factored_saw_known = false;
             let all_factored_parts_positive =
                 mul_leaves(ctx, factored_factor).into_iter().all(|part| {
-                    let part_is_known = known_positive_exprs.iter().any(|known| {
-                        exprs_equivalent(ctx, part, *known)
-                            || is_positive_power_of_base(ctx, part, *known)
-                            || is_abs_of(ctx, part, *known)
-                            || positive_condition_dominates_affine_positive_offset(
-                                ctx, *known, part,
-                            )
-                    });
+                    let part_is_known = known_positive_exprs
+                        .iter()
+                        .any(|known| positive_condition_factor_matches_known(ctx, part, *known));
                     factored_saw_known |= part_is_known;
                     part_is_known
                         || as_rational_const(ctx, part).is_some_and(|value| value.is_positive())
@@ -5089,19 +5081,194 @@ fn positive_product_is_dominated_by_known_or_intrinsic_positive_factors(
 }
 
 fn factor_is_known_or_intrinsic_positive(
-    ctx: &Context,
+    ctx: &mut Context,
     factor: ExprId,
     known_positive_exprs: &[ExprId],
 ) -> bool {
     as_rational_const(ctx, factor).is_some_and(|value| value.is_positive())
-        || known_positive_exprs.iter().any(|known| {
-            exprs_equivalent(ctx, factor, *known)
-                || is_positive_power_of_base(ctx, factor, *known)
-                || is_abs_of(ctx, factor, *known)
-                || positive_condition_dominates_affine_positive_offset(ctx, *known, factor)
-        })
+        || known_positive_exprs
+            .iter()
+            .any(|known| positive_condition_factor_matches_known(ctx, factor, *known))
         || is_intrinsically_positive_real(ctx, factor)
         || positive_quadratic_power_gap_is_intrinsic(ctx, factor)
+}
+
+fn positive_condition_factor_matches_known(
+    ctx: &mut Context,
+    factor: ExprId,
+    known: ExprId,
+) -> bool {
+    exprs_equivalent(ctx, factor, known)
+        || sqrt_like_gap_conditions_equivalent(ctx, factor, known)
+        || condition_exprs_equivalent_after_sqrt_half_power_normalization(ctx, factor, known)
+        || {
+            let normalized_factor = normalize_condition_expr_preserve_sign(ctx, factor);
+            let normalized_known = normalize_condition_expr_preserve_sign(ctx, known);
+            exprs_equivalent(ctx, normalized_factor, known)
+                || exprs_equivalent(ctx, factor, normalized_known)
+                || exprs_equivalent(ctx, normalized_factor, normalized_known)
+                || condition_exprs_equivalent_after_sqrt_half_power_normalization(
+                    ctx,
+                    normalized_factor,
+                    normalized_known,
+                )
+        }
+        || is_positive_power_of_base(ctx, factor, known)
+        || is_abs_of(ctx, factor, known)
+        || positive_condition_dominates_affine_positive_offset(ctx, known, factor)
+}
+
+fn sqrt_like_gap_conditions_equivalent(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let Some((left_root_base, left_rhs)) = sqrt_like_gap_parts(ctx, left) else {
+        return false;
+    };
+    let Some((right_root_base, right_rhs)) = sqrt_like_gap_parts(ctx, right) else {
+        return false;
+    };
+
+    exprs_equivalent(ctx, left_root_base, right_root_base)
+        && exprs_equivalent(ctx, left_rhs, right_rhs)
+}
+
+fn sqrt_like_gap_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => extract_sqrt_like_base(ctx, *left).map(|base| (base, *right)),
+        Expr::Add(left, right) => match (ctx.get(*left), ctx.get(*right)) {
+            (_, Expr::Neg(negated)) => {
+                extract_sqrt_like_base(ctx, *left).map(|base| (base, *negated))
+            }
+            (Expr::Neg(negated), _) => {
+                extract_sqrt_like_base(ctx, *right).map(|base| (base, *negated))
+            }
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn condition_exprs_equivalent_after_sqrt_half_power_normalization(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let left_norm = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, left);
+    let right_norm = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, right);
+    if left_norm == left && right_norm == right {
+        return false;
+    }
+
+    if exprs_equivalent(ctx, left_norm, right_norm) {
+        return true;
+    }
+
+    let left_display_norm = normalize_condition_expr_preserve_sign(ctx, left_norm);
+    let right_display_norm = normalize_condition_expr_preserve_sign(ctx, right_norm);
+    exprs_equivalent(ctx, left_display_norm, right_display_norm)
+}
+
+fn rewrite_sqrt_calls_as_half_powers_for_condition_match(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> ExprId {
+    let rewritten = match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            let new_left = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, left);
+            let new_right = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, right);
+            if new_left == left && new_right == right {
+                return expr;
+            }
+            Expr::Add(new_left, new_right)
+        }
+        Expr::Sub(left, right) => {
+            let new_left = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, left);
+            let new_right = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, right);
+            if new_left == left && new_right == right {
+                return expr;
+            }
+            Expr::Sub(new_left, new_right)
+        }
+        Expr::Mul(left, right) => {
+            let new_left = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, left);
+            let new_right = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, right);
+            if new_left == left && new_right == right {
+                return expr;
+            }
+            Expr::Mul(new_left, new_right)
+        }
+        Expr::Div(left, right) => {
+            let new_left = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, left);
+            let new_right = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, right);
+            if new_left == left && new_right == right {
+                return expr;
+            }
+            Expr::Div(new_left, new_right)
+        }
+        Expr::Pow(base, exp) => {
+            let new_base = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, base);
+            let rewritten_exp = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, exp);
+            let new_exp = as_rational_const(ctx, rewritten_exp)
+                .map(|value| ctx.add(Expr::Number(value)))
+                .unwrap_or(rewritten_exp);
+            if new_base == base && new_exp == exp {
+                return expr;
+            }
+            Expr::Pow(new_base, new_exp)
+        }
+        Expr::Neg(inner) => {
+            let new_inner = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, inner);
+            if new_inner == inner {
+                return expr;
+            }
+            Expr::Neg(new_inner)
+        }
+        Expr::Hold(inner) => {
+            let new_inner = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, inner);
+            if new_inner == inner {
+                return expr;
+            }
+            Expr::Hold(new_inner)
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Sqrt) =>
+        {
+            let new_arg = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, args[0]);
+            let half = ctx.add(Expr::Number(BigRational::new(1.into(), 2.into())));
+            Expr::Pow(new_arg, half)
+        }
+        Expr::Function(fn_id, args) => {
+            let mut changed = false;
+            let mut new_args = Vec::with_capacity(args.len());
+            for arg in args {
+                let new_arg = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, arg);
+                changed |= new_arg != arg;
+                new_args.push(new_arg);
+            }
+            if !changed {
+                return expr;
+            }
+            Expr::Function(fn_id, new_args)
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let mut changed = false;
+            let mut new_data = Vec::with_capacity(data.len());
+            for item in data {
+                let new_item = rewrite_sqrt_calls_as_half_powers_for_condition_match(ctx, item);
+                changed |= new_item != item;
+                new_data.push(new_item);
+            }
+            if !changed {
+                return expr;
+            }
+            Expr::Matrix {
+                rows,
+                cols,
+                data: new_data,
+            }
+        }
+        _ => return expr,
+    };
+
+    ctx.add(rewritten)
 }
 
 fn positive_even_power_gap_is_dominated_by_surd_lower_gap(

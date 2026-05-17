@@ -663,6 +663,54 @@ fn scaled_reciprocal_sqrt_polynomial_terms_required_conditions(
     ])
 }
 
+fn scaled_sqrt_polynomial_term(
+    ctx: &mut Context,
+    term: ExprId,
+) -> Option<(BigRational, Polynomial, ExprId)> {
+    let (scale, core) = rational_scaled_term(ctx, term);
+    if scale.is_zero() {
+        return None;
+    }
+
+    let base = sqrt_like_base(ctx, core)?;
+    let vars = cas_ast::collect_variables(ctx, base);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var_name = vars.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, base, var_name).ok()?;
+    if poly.is_zero() {
+        return None;
+    }
+
+    Some((scale, poly, base))
+}
+
+fn scaled_sqrt_polynomial_over_sqrt_terms_required_conditions(
+    ctx: &mut Context,
+    sqrt_term: ExprId,
+    quotient_term: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (sqrt_scale, sqrt_poly, sqrt_base) = scaled_sqrt_polynomial_term(ctx, sqrt_term)?;
+    let (quotient_num, quotient_base) =
+        polynomial_over_reciprocal_sqrt_term(ctx, quotient_term, &sqrt_poly.var)?;
+
+    if sqrt_poly != quotient_base {
+        return None;
+    }
+
+    let expected_num = scale_polynomial(&sqrt_poly, &sqrt_scale);
+    if quotient_num != expected_num {
+        return None;
+    }
+
+    if strictly_positive_quadratic_base(ctx, sqrt_base) {
+        Some(Vec::new())
+    } else {
+        Some(vec![crate::ImplicitCondition::Positive(sqrt_base)])
+    }
+}
+
 fn remove_denominator_factor_matching_base(
     ctx: &Context,
     factors: &[ExprId],
@@ -942,25 +990,304 @@ fn power_numerator_shifted_power_denominator_terms_required_conditions(
     Some(required_conditions)
 }
 
+fn half_integer_offset(value: &BigRational) -> Option<usize> {
+    let offset = value - BigRational::new(1.into(), 2.into());
+    if offset.is_negative() || !offset.is_integer() {
+        return None;
+    }
+    offset.to_integer().try_into().ok()
+}
+
+fn polynomial_power(poly: &Polynomial, exponent: usize) -> Polynomial {
+    let mut result = Polynomial::one(poly.var.clone());
+    for _ in 0..exponent {
+        result = result.mul(poly);
+    }
+    result
+}
+
+fn positive_half_power_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
+    if let Some(base) = sqrt_like_base(ctx, expr) {
+        return Some((base, BigRational::new(1.into(), 2.into())));
+    }
+
+    let Expr::Pow(base, exponent) = ctx.get(expr) else {
+        return None;
+    };
+    let exponent = cas_math::numeric_eval::as_rational_const(ctx, *exponent)?;
+    half_integer_offset(&exponent)?;
+    (exponent > BigRational::zero()).then_some((*base, exponent))
+}
+
+fn positive_half_power_product_parts(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, BigRational, BigRational)> {
+    if let Some(parts) = positive_half_power_parts(ctx, expr) {
+        return Some((parts.0, parts.1, BigRational::one()));
+    }
+
+    let mut base = None;
+    let mut exponent = BigRational::zero();
+    let mut scale = BigRational::one();
+    let mut other_factors = Vec::new();
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(value) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+            if value.is_zero() {
+                return None;
+            }
+            scale *= value;
+            continue;
+        }
+        if let Some((factor_base, factor_exponent)) = positive_half_power_parts(ctx, factor) {
+            if let Some(existing_base) = base {
+                if !exprs_match(ctx, existing_base, factor_base) {
+                    return None;
+                }
+            } else {
+                base = Some(factor_base);
+            }
+            exponent += factor_exponent;
+        } else {
+            other_factors.push(factor);
+        }
+    }
+
+    let base = base?;
+    for factor in other_factors {
+        if !exprs_match(ctx, factor, base) {
+            return None;
+        }
+        exponent += BigRational::one();
+    }
+    half_integer_offset(&exponent)?;
+    Some((base, exponent, scale))
+}
+
+fn half_power_polynomial_term(
+    ctx: &mut Context,
+    core: ExprId,
+    var_name: &str,
+) -> Option<(Polynomial, ExprId, BigRational)> {
+    let core = cas_ast::hold::strip_all_holds(ctx, core);
+    match ctx.get(core).clone() {
+        Expr::Div(num, den) => {
+            let (base, denominator_exponent, denominator_scale) =
+                positive_half_power_product_parts(ctx, den)?;
+            let numerator = Polynomial::from_expr(ctx, num, var_name)
+                .ok()?
+                .div_scalar(&denominator_scale);
+            Some((numerator, base, denominator_exponent))
+        }
+        Expr::Pow(base, exponent) => {
+            let exponent = cas_math::numeric_eval::as_rational_const(ctx, exponent)?;
+            let base_poly = Polynomial::from_expr(ctx, base, var_name).ok()?;
+            if exponent.is_negative() {
+                let denominator_exponent = -exponent;
+                half_integer_offset(&denominator_exponent)?;
+                Some((
+                    Polynomial::one(var_name.to_string()),
+                    base,
+                    denominator_exponent,
+                ))
+            } else {
+                let offset = half_integer_offset(&exponent)?;
+                let numerator = polynomial_power(&base_poly, offset + 1);
+                Some((numerator, base, BigRational::new(1.into(), 2.into())))
+            }
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Sqrt) =>
+        {
+            let base = args[0];
+            let base_poly = Polynomial::from_expr(ctx, base, var_name).ok()?;
+            Some((base_poly, base, BigRational::new(1.into(), 2.into())))
+        }
+        Expr::Mul(_, _) => {
+            let mut numerator = Polynomial::one(var_name.to_string());
+            let mut base = None;
+            let mut denominator_exponent = BigRational::zero();
+            let mut saw_half_power = false;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, core) {
+                let factor = cas_ast::hold::strip_all_holds(ctx, factor);
+                if let Some((factor_numerator, factor_base, factor_denominator_exponent)) =
+                    half_power_polynomial_term(ctx, factor, var_name)
+                {
+                    if let Some(existing_base) = base {
+                        if !exprs_match(ctx, existing_base, factor_base) {
+                            return None;
+                        }
+                    } else {
+                        base = Some(factor_base);
+                    }
+                    numerator = numerator.mul(&factor_numerator);
+                    denominator_exponent += factor_denominator_exponent;
+                    saw_half_power = true;
+                } else {
+                    let factor_poly = Polynomial::from_expr(ctx, factor, var_name).ok()?;
+                    numerator = numerator.mul(&factor_poly);
+                }
+            }
+            saw_half_power.then_some((numerator, base?, denominator_exponent))
+        }
+        _ => None,
+    }
+}
+
+fn half_power_polynomial_sum_required_conditions(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+    if !(3..=4).contains(&terms.len()) {
+        return None;
+    }
+
+    let mut parsed_terms = Vec::with_capacity(terms.len());
+    let mut shared_base: Option<ExprId> = None;
+    let mut max_denominator_exponent = BigRational::zero();
+    let mut var_name: Option<String> = None;
+    for (term, sign) in terms {
+        let (scale, core) = signed_rational_scaled_term(ctx, term, sign);
+        if scale.is_zero() {
+            continue;
+        }
+
+        let inferred_var = if let Some(existing_var) = var_name.as_deref() {
+            existing_var.to_string()
+        } else {
+            let vars = cas_ast::collect_variables(ctx, core);
+            if vars.len() != 1 {
+                return None;
+            }
+            vars.iter().next()?.to_string()
+        };
+        let (numerator, base, denominator_exponent) =
+            half_power_polynomial_term(ctx, core, &inferred_var)?;
+        if let Some(existing_base) = shared_base {
+            if !exprs_match(ctx, existing_base, base) {
+                return None;
+            }
+        } else {
+            shared_base = Some(base);
+            var_name = Some(inferred_var.clone());
+        }
+        if denominator_exponent > max_denominator_exponent {
+            max_denominator_exponent = denominator_exponent.clone();
+        }
+        parsed_terms.push((scale, numerator, denominator_exponent, inferred_var));
+    }
+
+    let base = shared_base?;
+    let var_name = var_name?;
+    let base_poly = Polynomial::from_expr(ctx, base, &var_name).ok()?;
+    if base_poly.is_zero() {
+        return None;
+    }
+
+    let mut combined = Polynomial::zero(var_name);
+    for (scale, numerator, denominator_exponent, term_var) in parsed_terms {
+        if combined.var != term_var {
+            return None;
+        }
+        let exponent_gap = max_denominator_exponent.clone() - denominator_exponent;
+        if exponent_gap.is_negative() || !exponent_gap.is_integer() {
+            return None;
+        }
+        let exponent_gap: usize = exponent_gap.to_integer().try_into().ok()?;
+        let lifted = numerator.mul(&polynomial_power(&base_poly, exponent_gap));
+        combined = combined.add(&scale_polynomial(&lifted, &scale));
+    }
+
+    if !combined.is_zero() {
+        return None;
+    }
+
+    let required_conditions = if strictly_positive_quadratic_base(ctx, base) {
+        Vec::new()
+    } else {
+        vec![crate::ImplicitCondition::Positive(base)]
+    };
+    Some(required_conditions)
+}
+
+fn two_term_residual_difference_terms(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => Some((*left, *right)),
+        Expr::Add(_, _) => {
+            let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+            if terms.len() != 2 {
+                return None;
+            }
+            match (terms[0], terms[1]) {
+                (
+                    (left, cas_math::expr_nary::Sign::Pos),
+                    (right, cas_math::expr_nary::Sign::Neg),
+                ) => Some((left, right)),
+                (
+                    (left, cas_math::expr_nary::Sign::Neg),
+                    (right, cas_math::expr_nary::Sign::Pos),
+                ) => Some((right, left)),
+                ((left, left_sign), (right, right_sign)) => {
+                    let (left_scale, left_core) = signed_rational_scaled_term(ctx, left, left_sign);
+                    let (right_scale, right_core) =
+                        signed_rational_scaled_term(ctx, right, right_sign);
+                    if left_scale.is_zero()
+                        || right_scale.is_zero()
+                        || same_nonzero_sign(&left_scale, &right_scale)
+                    {
+                        return None;
+                    }
+                    let left_positive = scale_expr_by_rational(ctx, left_core, left_scale.abs());
+                    let right_positive = scale_expr_by_rational(ctx, right_core, right_scale.abs());
+                    if left_scale.is_positive() {
+                        Some((left_positive, right_positive))
+                    } else {
+                        Some((right_positive, left_positive))
+                    }
+                }
+            }
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn try_reciprocal_half_power_shared_denominator_residual_root_zero(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
-    let (left, right) = match ctx.get(expr) {
-        Expr::Sub(left, right) => (*left, *right),
-        Expr::Add(left, right) => {
-            let Expr::Neg(negated_right) = ctx.get(*right) else {
-                return None;
-            };
-            (*left, *negated_right)
+    if let Some(result) =
+        try_reciprocal_half_power_residual_reciprocal_shifted_difference_root_zero(ctx, expr)
+    {
+        return Some(result);
+    }
+
+    if let Expr::Div(num, den) = ctx.get(expr).clone() {
+        if cas_math::numeric_eval::as_rational_const(ctx, den).is_some_and(|value| value.is_zero())
+        {
+            return None;
         }
-        _ => return None,
-    };
+
+        let (zero, mut required_conditions) =
+            try_reciprocal_half_power_shared_denominator_residual_root_zero(ctx, num)?;
+        if cas_math::numeric_eval::as_rational_const(ctx, den).is_none() {
+            required_conditions.push(crate::ImplicitCondition::NonZero(den));
+        }
+        return Some((zero, required_conditions));
+    }
+
+    if let Some(required_conditions) = half_power_polynomial_sum_required_conditions(ctx, expr) {
+        return Some((ctx.num(0), required_conditions));
+    }
+
+    let (left, right) = two_term_residual_difference_terms(ctx, expr)?;
 
     reciprocal_half_power_shared_denominator_terms_cancel(ctx, left, right)
         .or_else(|| reciprocal_half_power_shared_denominator_terms_cancel(ctx, right, left))
         .map(|_| Vec::new())
         .or_else(|| scaled_reciprocal_sqrt_polynomial_terms_required_conditions(ctx, left, right))
+        .or_else(|| scaled_sqrt_polynomial_over_sqrt_terms_required_conditions(ctx, left, right))
+        .or_else(|| scaled_sqrt_polynomial_over_sqrt_terms_required_conditions(ctx, right, left))
         .or_else(|| {
             power_numerator_shifted_power_denominator_terms_required_conditions(ctx, left, right)
         })
@@ -968,6 +1295,226 @@ pub(crate) fn try_reciprocal_half_power_shared_denominator_residual_root_zero(
             power_numerator_shifted_power_denominator_terms_required_conditions(ctx, right, left)
         })
         .map(|required_conditions| (ctx.num(0), required_conditions))
+}
+
+fn reciprocal_half_power_residual_shifted_reciprocal_conditions(
+    ctx: &mut Context,
+    residual_denominator: ExprId,
+    target_denominator: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (compacted_denominator, required_conditions) =
+        compact_reciprocal_half_power_residual_additive_passthrough_denominator(
+            ctx,
+            residual_denominator,
+        )?;
+    exprs_match(ctx, compacted_denominator, target_denominator).then_some(required_conditions)
+}
+
+fn try_reciprocal_half_power_residual_reciprocal_shifted_difference_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        Expr::Add(left, right) => match ctx.get(*right) {
+            Expr::Neg(right_inner) => (*left, *right_inner),
+            _ => return None,
+        },
+        _ => return None,
+    };
+
+    let left_denominator = unit_reciprocal_denominator(ctx, left)?;
+    let right_denominator = unit_reciprocal_denominator(ctx, right)?;
+    let required_conditions = reciprocal_half_power_residual_shifted_reciprocal_conditions(
+        ctx,
+        left_denominator,
+        right_denominator,
+    )
+    .or_else(|| {
+        reciprocal_half_power_residual_shifted_reciprocal_conditions(
+            ctx,
+            right_denominator,
+            left_denominator,
+        )
+    })?;
+    Some((ctx.num(0), required_conditions))
+}
+
+fn compact_reciprocal_half_power_residual_additive_passthrough_denominator(
+    ctx: &mut Context,
+    denominator: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let denominator = strip_exact_zero_additive_noise_bounded(ctx, denominator, 3);
+    let view = cas_math::expr_nary::AddView::from_expr(ctx, denominator);
+    let terms: Vec<_> = view.terms.into_iter().collect();
+    let term_count = terms.len();
+    if !(3..=6).contains(&term_count) {
+        return None;
+    }
+
+    let full_mask = (1_u32 << term_count) - 1;
+    for mask in 1..full_mask {
+        let passthrough_mask = full_mask ^ mask;
+        if passthrough_mask == 0 {
+            continue;
+        }
+
+        let residual_candidate = build_residual_subset_candidate(ctx, &terms, mask);
+        let Some((_zero, mut required_conditions)) =
+            try_reciprocal_half_power_shared_denominator_residual_root_zero(
+                ctx,
+                residual_candidate,
+            )
+        else {
+            continue;
+        };
+
+        let passthrough = build_signed_add_subset(ctx, &terms, mask, false);
+        if is_zero_constant(ctx, passthrough) {
+            continue;
+        }
+
+        required_conditions.push(crate::ImplicitCondition::NonZero(passthrough));
+        return Some((passthrough, required_conditions));
+    }
+
+    None
+}
+
+fn resolve_integrate_calls_for_reciprocal_half_power_residual(
+    ctx: &mut Context,
+    expr: ExprId,
+    depth: u8,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    if depth == 0 {
+        return None;
+    }
+
+    if let Some(call) = crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, expr)
+    {
+        let mut required_conditions: Vec<_> =
+            cas_math::symbolic_integration_support::integrate_symbolic_required_nonzero_conditions(
+                ctx,
+                call.target,
+                &call.var_name,
+            )
+            .into_iter()
+            .map(crate::ImplicitCondition::NonZero)
+            .collect();
+        required_conditions.extend(
+            cas_math::symbolic_integration_support::integrate_symbolic_required_positive_conditions(
+                ctx,
+                call.target,
+                &call.var_name,
+            )
+            .into_iter()
+            .map(crate::ImplicitCondition::Positive),
+        );
+        let result = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            call.target,
+            &call.var_name,
+        )?;
+        return Some((result, required_conditions));
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            let left_resolved =
+                resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, left, depth - 1);
+            let right_resolved =
+                resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, right, depth - 1);
+            if left_resolved.is_none() && right_resolved.is_none() {
+                return None;
+            }
+            let (left, mut required_conditions) = left_resolved.unwrap_or((left, Vec::new()));
+            let (right, right_conditions) = right_resolved.unwrap_or((right, Vec::new()));
+            required_conditions.extend(right_conditions);
+            Some((ctx.add(Expr::Add(left, right)), required_conditions))
+        }
+        Expr::Sub(left, right) => {
+            let left_resolved =
+                resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, left, depth - 1);
+            let right_resolved =
+                resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, right, depth - 1);
+            if left_resolved.is_none() && right_resolved.is_none() {
+                return None;
+            }
+            let (left, mut required_conditions) = left_resolved.unwrap_or((left, Vec::new()));
+            let (right, right_conditions) = right_resolved.unwrap_or((right, Vec::new()));
+            required_conditions.extend(right_conditions);
+            Some((ctx.add(Expr::Sub(left, right)), required_conditions))
+        }
+        Expr::Mul(left, right) => {
+            let left_resolved =
+                resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, left, depth - 1);
+            let right_resolved =
+                resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, right, depth - 1);
+            if left_resolved.is_none() && right_resolved.is_none() {
+                return None;
+            }
+            let (left, mut required_conditions) = left_resolved.unwrap_or((left, Vec::new()));
+            let (right, right_conditions) = right_resolved.unwrap_or((right, Vec::new()));
+            required_conditions.extend(right_conditions);
+            Some((ctx.add(Expr::Mul(left, right)), required_conditions))
+        }
+        Expr::Div(left, right) => {
+            let left_resolved =
+                resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, left, depth - 1);
+            let right_resolved =
+                resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, right, depth - 1);
+            if left_resolved.is_none() && right_resolved.is_none() {
+                return None;
+            }
+            let (left, mut required_conditions) = left_resolved.unwrap_or((left, Vec::new()));
+            let (right, right_conditions) = right_resolved.unwrap_or((right, Vec::new()));
+            required_conditions.extend(right_conditions);
+            Some((ctx.add(Expr::Div(left, right)), required_conditions))
+        }
+        Expr::Pow(left, right) => {
+            let left_resolved =
+                resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, left, depth - 1);
+            let right_resolved =
+                resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, right, depth - 1);
+            if left_resolved.is_none() && right_resolved.is_none() {
+                return None;
+            }
+            let (left, mut required_conditions) = left_resolved.unwrap_or((left, Vec::new()));
+            let (right, right_conditions) = right_resolved.unwrap_or((right, Vec::new()));
+            required_conditions.extend(right_conditions);
+            Some((ctx.add(Expr::Pow(left, right)), required_conditions))
+        }
+        Expr::Neg(inner) => {
+            let (inner, required_conditions) =
+                resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, inner, depth - 1)?;
+            Some((ctx.add(Expr::Neg(inner)), required_conditions))
+        }
+        _ => None,
+    }
+}
+
+pub(crate) fn try_integrate_resolved_reciprocal_half_power_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (resolved, mut required_conditions) =
+        resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, expr, 10)?;
+    let (result, residual_conditions) =
+        try_reciprocal_half_power_shared_denominator_residual_root_zero(ctx, resolved)?;
+    required_conditions.extend(residual_conditions);
+    Some((result, required_conditions))
+}
+
+pub(crate) fn shifted_integrate_resolved_reciprocal_half_power_residual_passthrough_nonzero_required_conditions(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (resolved, mut required_conditions) =
+        resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, expr, 10)?;
+    let (_passthrough, passthrough_conditions) =
+        compact_reciprocal_half_power_residual_additive_passthrough_denominator(ctx, resolved)?;
+    required_conditions.extend(passthrough_conditions);
+    Some(required_conditions)
 }
 
 fn expr_is_variable_named(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
@@ -8369,6 +8916,62 @@ mod tests {
     }
 
     #[test]
+    fn reciprocal_half_power_residual_cancels_scaled_sqrt_rationalized_positive_root() {
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "2*sqrt(x^2+x+1) - 2*(x^2+x+1)/sqrt(x^2+x+1)"
+            ),
+            Some(("0".to_string(), vec![]))
+        );
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result("2*sqrt(x) - 2*x/sqrt(x)"),
+            Some(("0".to_string(), vec!["x > 0".to_string()]))
+        );
+    }
+
+    #[test]
+    fn reciprocal_half_power_residual_cancels_three_term_common_denominator_sum() {
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "3/2*x^(1/2) - (3*x^2-1)/(2*x^(3/2)) - 1/2*x^(-3/2)"
+            ),
+            Some(("0".to_string(), vec!["x > 0".to_string()]))
+        );
+    }
+
+    #[test]
+    fn reciprocal_half_power_residual_cancels_quotient_wrapped_scaled_sqrt_rationalized_root() {
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "(2*sqrt(x^2+x+1) - 2*(x^2+x+1)/sqrt(x^2+x+1))/(x+2)"
+            ),
+            Some(("0".to_string(), vec!["x ≠ -2".to_string()]))
+        );
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "(2*sqrt(x^2+x+1) - 3*(x^2+x+1)/sqrt(x^2+x+1))/(x+2)"
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn reciprocal_half_power_residual_cancels_shifted_reciprocal_difference() {
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "1/(2*sqrt(x^2+x+1) - 2*(x^2+x+1)/sqrt(x^2+x+1) + x + 2) - 1/(x+2)"
+            ),
+            Some(("0".to_string(), vec!["x ≠ -2".to_string()]))
+        );
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "1/(2*sqrt(x^2+x+1) - 3*(x^2+x+1)/sqrt(x^2+x+1) + x + 2) - 1/(x+2)"
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn explicit_log_abs_antiderivative_residual_cancels_reordered_partial_fraction() {
         assert_eq!(
             explicit_log_abs_antiderivative_residual_result(
@@ -8383,6 +8986,12 @@ mod tests {
         assert_eq!(
             reciprocal_half_power_shared_denominator_result(
                 "ln(x)^(-1/2)/(2*x) - ln(x)^(1/2)/(3*x*ln(x))"
+            ),
+            None
+        );
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "2*sqrt(x^2+x+1) - 3*(x^2+x+1)/sqrt(x^2+x+1)"
             ),
             None
         );
