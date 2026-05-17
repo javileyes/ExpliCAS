@@ -51,6 +51,222 @@ fn expr_contains_hyperbolic_builtin_local(ctx: &cas_ast::Context, expr: ExprId) 
     )
 }
 
+fn exprs_equivalent_ignoring_internal_holds_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let left = cas_ast::hold::strip_all_holds(ctx, left);
+    let right = cas_ast::hold::strip_all_holds(ctx, right);
+    cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
+        || cas_math::expr_domain::exprs_equivalent(ctx, left, right)
+        || format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: ctx,
+                id: left
+            }
+        ) == format!(
+            "{}",
+            cas_formatter::DisplayExpr {
+                context: ctx,
+                id: right
+            }
+        )
+}
+
+fn sqrt_denominator_reciprocal_variant_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let (num, den) = match ctx.get(expr).clone() {
+        Expr::Div(num, den) => (num, den),
+        _ => return None,
+    };
+
+    let mut sqrt_factor = None;
+    let mut denominator_factors = Vec::new();
+    for factor in cas_math::expr_nary::mul_leaves(ctx, den) {
+        if let Some(radicand) = cas_math::root_forms::extract_square_root_base(ctx, factor) {
+            if sqrt_factor.replace(factor).is_some() {
+                return None;
+            }
+            denominator_factors.push(radicand);
+        } else {
+            denominator_factors.push(factor);
+        }
+    }
+
+    let sqrt_factor = sqrt_factor?;
+    let numerator = if cas_ast::views::as_rational_const(ctx, num, 8)
+        .is_some_and(|value| value == num_rational::BigRational::from_integer(1.into()))
+    {
+        sqrt_factor
+    } else {
+        cas_math::expr_nary::build_balanced_mul(ctx, &[num, sqrt_factor])
+    };
+    let denominator = cas_math::expr_nary::build_balanced_mul(ctx, &denominator_factors);
+    Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+fn residual_difference_terms_local(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr) {
+        Expr::Sub(left, right) => Some((*left, *right)),
+        Expr::Add(_, _) => {
+            let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+            if terms.len() != 2 {
+                return None;
+            }
+            match (terms[0], terms[1]) {
+                (
+                    (left, cas_math::expr_nary::Sign::Pos),
+                    (right, cas_math::expr_nary::Sign::Neg),
+                ) => Some((left, right)),
+                (
+                    (left, cas_math::expr_nary::Sign::Neg),
+                    (right, cas_math::expr_nary::Sign::Pos),
+                ) => Some((right, left)),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn negated_expr_for_local_match(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => inner,
+        Expr::Div(num, den) => {
+            if let Expr::Neg(inner_num) = ctx.get(num) {
+                return ctx.add(Expr::Div(*inner_num, den));
+            }
+            if let Some(value) = cas_ast::views::as_rational_const(ctx, num, 8) {
+                if value < num_rational::BigRational::from_integer(0.into()) {
+                    let positive = ctx.add(Expr::Number(-value));
+                    return ctx.add(Expr::Div(positive, den));
+                }
+            }
+            ctx.add(Expr::Neg(expr))
+        }
+        _ => ctx.add(Expr::Neg(expr)),
+    }
+}
+
+fn try_diff_ln_sum_equal_derivative_roots_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = residual_difference_terms_local(ctx, expr)?;
+
+    try_diff_ln_sum_equal_derivative_roots_residual_zero_ordered_local(ctx, left, right).or_else(
+        || try_diff_ln_sum_equal_derivative_roots_residual_zero_ordered_local(ctx, right, left),
+    )
+}
+
+fn try_diff_ln_sum_equal_derivative_roots_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    diff_expr: ExprId,
+    target: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (result, required_conditions) =
+        crate::rules::calculus::ln_sum_of_equal_derivative_roots_derivative_presentation_with_domain(
+            ctx,
+            call.target,
+            &call.var_name,
+        )?;
+    if !exprs_equivalent_ignoring_internal_holds_local(ctx, result, target) {
+        return None;
+    }
+
+    Some((ctx.num(0), required_conditions))
+}
+
+fn try_diff_sqrt_over_positive_shifted_sqrt_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    if let Some((left, right)) = residual_difference_terms_local(ctx, expr) {
+        if let Some(zero) =
+            try_diff_sqrt_over_positive_shifted_sqrt_residual_zero_ordered_local(ctx, left, right)
+                .or_else(|| {
+                    try_diff_sqrt_over_positive_shifted_sqrt_residual_zero_ordered_local(
+                        ctx, right, left,
+                    )
+                })
+        {
+            return Some(zero);
+        }
+    }
+
+    let Expr::Add(left, right) = ctx.get(expr).clone() else {
+        return None;
+    };
+    try_diff_sqrt_over_positive_shifted_sqrt_additive_inverse_residual_zero_ordered_local(
+        ctx, left, right,
+    )
+    .or_else(|| {
+        try_diff_sqrt_over_positive_shifted_sqrt_additive_inverse_residual_zero_ordered_local(
+            ctx, right, left,
+        )
+    })
+}
+
+fn try_diff_sqrt_over_positive_shifted_sqrt_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    diff_expr: ExprId,
+    target: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (result, required_conditions) =
+        crate::rules::calculus::sqrt_over_positive_shifted_sqrt_derivative_presentation_with_domain(
+            ctx,
+            call.target,
+            &call.var_name,
+        )?;
+    if !sqrt_shifted_diff_result_matches_target_local(ctx, result, target) {
+        return None;
+    }
+
+    Some((ctx.num(0), required_conditions))
+}
+
+fn try_diff_sqrt_over_positive_shifted_sqrt_additive_inverse_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    diff_expr: ExprId,
+    target: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (result, required_conditions) =
+        crate::rules::calculus::sqrt_over_positive_shifted_sqrt_derivative_presentation_with_domain(
+            ctx,
+            call.target,
+            &call.var_name,
+        )?;
+    let negated_target = negated_expr_for_local_match(ctx, target);
+    if !sqrt_shifted_diff_result_matches_target_local(ctx, result, negated_target) {
+        return None;
+    }
+
+    Some((ctx.num(0), required_conditions))
+}
+
+fn sqrt_shifted_diff_result_matches_target_local(
+    ctx: &mut cas_ast::Context,
+    result: ExprId,
+    target: ExprId,
+) -> bool {
+    exprs_equivalent_ignoring_internal_holds_local(ctx, result, target)
+        || sqrt_denominator_reciprocal_variant_local(ctx, result).is_some_and(|variant| {
+            exprs_equivalent_ignoring_internal_holds_local(ctx, variant, target)
+        })
+}
+
 fn expr_is_named_function_call_local(ctx: &cas_ast::Context, expr: ExprId, names: &[&str]) -> bool {
     let Expr::Function(fn_id, _) = ctx.get(expr) else {
         return false;
@@ -232,6 +448,172 @@ impl Engine {
             }
         }
 
+        if let Some(call) = crate::symbolic_calculus_call_support::try_extract_diff_call(
+            &self.simplifier.context,
+            resolved,
+        ) {
+            if let Some((result, required_conditions)) =
+                crate::rules::calculus::sqrt_over_positive_shifted_sqrt_derivative_presentation_with_domain(
+                    &mut self.simplifier.context,
+                    call.target,
+                    &call.var_name,
+                )
+            {
+                let desc = crate::symbolic_calculus_call_support::render_diff_desc_with(
+                    &call,
+                    |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &self.simplifier.context,
+                                id
+                            }
+                        )
+                    },
+                );
+                let mut steps = Vec::new();
+                if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                    let mut step = crate::Step::new(
+                        &desc,
+                        "Symbolic Differentiation",
+                        resolved,
+                        result,
+                        Vec::new(),
+                        Some(&self.simplifier.context),
+                    );
+                    step.meta_mut()
+                        .required_conditions
+                        .extend(required_conditions.iter().cloned());
+                    steps.push(step);
+                }
+
+                return Ok((
+                    crate::EvalResult::Expr(result),
+                    Vec::new(),
+                    steps,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    required_conditions,
+                ));
+            }
+            if let Some((result, required_conditions)) =
+                crate::rules::calculus::ln_sum_of_equal_derivative_roots_derivative_presentation_with_domain(
+                    &mut self.simplifier.context,
+                    call.target,
+                    &call.var_name,
+                )
+            {
+                let desc = crate::symbolic_calculus_call_support::render_diff_desc_with(
+                    &call,
+                    |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &self.simplifier.context,
+                                id
+                            }
+                        )
+                    },
+                );
+                let mut steps = Vec::new();
+                if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                    let mut step = crate::Step::new(
+                        &desc,
+                        "Symbolic Differentiation",
+                        resolved,
+                        result,
+                        Vec::new(),
+                        Some(&self.simplifier.context),
+                    );
+                    step.meta_mut()
+                        .required_conditions
+                        .extend(required_conditions.iter().cloned());
+                    steps.push(step);
+                }
+
+                return Ok((
+                    crate::EvalResult::Expr(result),
+                    Vec::new(),
+                    steps,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    required_conditions,
+                ));
+            }
+        }
+
+        if let Some((zero, required_conditions)) =
+            try_diff_ln_sum_equal_derivative_roots_residual_zero_local(
+                &mut self.simplifier.context,
+                resolved,
+            )
+        {
+            let mut steps = Vec::new();
+            if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                let mut step = crate::Step::new(
+                    "Resolve compact derivative residual",
+                    "Post-calculus residual simplification",
+                    resolved,
+                    zero,
+                    Vec::new(),
+                    Some(&self.simplifier.context),
+                );
+                step.meta_mut()
+                    .required_conditions
+                    .extend(required_conditions.iter().cloned());
+                steps.push(step);
+            }
+
+            return Ok((
+                crate::EvalResult::Expr(zero),
+                Vec::new(),
+                steps,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                required_conditions,
+            ));
+        }
+
+        if let Some((zero, required_conditions)) =
+            try_diff_sqrt_over_positive_shifted_sqrt_residual_zero_local(
+                &mut self.simplifier.context,
+                resolved,
+            )
+        {
+            let mut steps = Vec::new();
+            if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                let mut step = crate::Step::new(
+                    "Resolve compact derivative residual",
+                    "Post-calculus residual simplification",
+                    resolved,
+                    zero,
+                    Vec::new(),
+                    Some(&self.simplifier.context),
+                );
+                step.meta_mut()
+                    .required_conditions
+                    .extend(required_conditions.iter().cloned());
+                steps.push(step);
+            }
+
+            return Ok((
+                crate::EvalResult::Expr(zero),
+                Vec::new(),
+                steps,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                required_conditions,
+            ));
+        }
+
         if let Some((zero, required_conditions)) =
             crate::calculus_residual_support::try_diff_integral_reciprocal_trig_residual_root_zero(
                 &mut self.simplifier.context,
@@ -243,6 +625,40 @@ impl Engine {
                 let mut step = crate::Step::new(
                     "Post-calculus residual simplification",
                     "Verify supported antiderivative by differentiating it",
+                    resolved,
+                    zero,
+                    Vec::new(),
+                    Some(&self.simplifier.context),
+                );
+                step.meta_mut()
+                    .required_conditions
+                    .extend(required_conditions.iter().cloned());
+                steps.push(step);
+            }
+
+            return Ok((
+                crate::EvalResult::Expr(zero),
+                Vec::new(),
+                steps,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                required_conditions,
+            ));
+        }
+
+        if let Some((zero, required_conditions)) =
+            crate::calculus_residual_support::try_diff_inverse_reciprocal_trig_residual_root_zero(
+                &mut self.simplifier.context,
+                resolved,
+            )
+        {
+            let mut steps = Vec::new();
+            if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                let mut step = crate::Step::new(
+                    "Post-calculus residual simplification",
+                    "Resolve inverse-trig derivative residual",
                     resolved,
                     zero,
                     Vec::new(),

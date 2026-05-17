@@ -1146,6 +1146,7 @@ fn square_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 }
 
 fn extract_sqrt_like_base(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
     if let Some(arg) = extract_sqrt_argument_view(ctx, expr) {
         return Some(arg);
     }
@@ -1582,6 +1583,7 @@ fn nonzero_is_dominated_by_positive_condition(
         };
         let normalized_positive = normalize_condition_expr_preserve_sign(ctx, *pos_expr);
         exprs_equivalent_up_to_nonzero_scalar(ctx, normalized_expr, normalized_positive)
+            || positive_condition_dominates_sqrt_nonzero(ctx, normalized_positive, normalized_expr)
             || positive_condition_dominates_affine_nonzero_offset(
                 ctx,
                 normalized_positive,
@@ -1598,6 +1600,34 @@ fn nonzero_is_dominated_by_positive_condition(
                 normalized_expr,
             )
     })
+}
+
+fn positive_condition_dominates_sqrt_nonzero(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    let Some(radicand) = extract_sqrt_like_base(ctx, nonzero_expr) else {
+        return false;
+    };
+    let normalized_radicand = normalize_condition_expr(ctx, radicand);
+
+    exprs_equivalent_up_to_nonzero_scalar(ctx, normalized_radicand, positive_expr)
+        || positive_condition_dominates_affine_nonzero_offset(
+            ctx,
+            positive_expr,
+            normalized_radicand,
+        )
+        || positive_log_condition_dominates_argument_minus_one_nonzero(
+            ctx,
+            positive_expr,
+            normalized_radicand,
+        )
+        || positive_polynomial_condition_contains_nonzero_factor(
+            ctx,
+            positive_expr,
+            normalized_radicand,
+        )
 }
 
 fn positive_condition_dominates_affine_nonzero_offset(
@@ -7000,6 +7030,27 @@ mod tests {
         );
 
         assert_eq!(normalized, vec![ImplicitCondition::Positive(u)]);
+    }
+
+    #[test]
+    fn nonzero_sqrt_is_dominated_by_positive_radicand_context() {
+        let mut ctx = Context::new();
+        let sqrt_x = parse("sqrt(x)", &mut ctx).expect("parse sqrt(x)");
+        let sqrt_x_plus_one = parse("sqrt(x+1)", &mut ctx).expect("parse sqrt(x+1)");
+        let held_sqrt_x = cas_ast::hold::wrap_hold(&mut ctx, sqrt_x);
+        let held_sqrt_x_plus_one = cas_ast::hold::wrap_hold(&mut ctx, sqrt_x_plus_one);
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(held_sqrt_x),
+                ImplicitCondition::NonZero(held_sqrt_x_plus_one),
+                ImplicitCondition::Positive(x),
+            ],
+        );
+
+        assert_eq!(normalized, vec![ImplicitCondition::Positive(x)]);
     }
 
     #[test]
