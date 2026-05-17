@@ -411,6 +411,23 @@ fn normalize_asinh_reciprocal_display_base(
     }
 }
 
+fn normalize_atanh_reciprocal_display_base(
+    base: Polynomial,
+    constant: BigRational,
+) -> (Polynomial, BigRational) {
+    let content = base.content();
+    if content.is_zero() || !content.is_positive() || content.is_one() {
+        return (base, constant);
+    }
+
+    let normalized_constant = constant.clone() / content.clone();
+    if normalized_constant.is_positive() {
+        (base.div_scalar(&content), normalized_constant)
+    } else {
+        (base, constant)
+    }
+}
+
 fn affine_polynomial(ctx: &Context, expr: ExprId, var: &str) -> Option<Polynomial> {
     let poly = Polynomial::from_expr(ctx, expr, var).ok()?;
     (poly.degree() == 1).then_some(poly)
@@ -758,8 +775,9 @@ fn inverse_hyperbolic_sqrt_reciprocal_parts(
             let kernel_scale = num_scale * gap_alignment / den_scale;
             let scale =
                 -BigRational::from_integer(2.into()) * kernel_scale / (constant_root * slope);
+            let (base, constant) = normalize_atanh_reciprocal_display_base(sqrt_poly, constant);
             return Some(InverseHyperbolicSqrtReciprocalParts {
-                base: sqrt_poly,
+                base,
                 constant,
                 scale,
                 scale_sqrt_factor: None,
@@ -12093,15 +12111,18 @@ fn asinh_polynomial_substitution_from_radicand(
     Some(mul2_raw(ctx, scale_expr, asinh))
 }
 
-fn acosh_polynomial_substitution_from_radicand(
+fn acosh_polynomial_substitution_from_radicand_with_domain_sample(
     ctx: &mut Context,
     numerator: ExprId,
     radicand: ExprId,
     var: &str,
+    domain_sample: Option<&BigRational>,
 ) -> Option<ExprId> {
+    let (radicand, radicand_scale) =
+        split_positive_rational_content_from_sqrt_radicand(ctx, radicand, var)?;
     let numerator = Polynomial::from_expr(ctx, numerator, var).ok()?;
     let (arg_poly, offset_square, scale) =
-        acosh_polynomial_substitution_oriented_arg(ctx, &numerator, radicand, var)?;
+        acosh_polynomial_substitution_oriented_arg(ctx, &numerator, radicand, var, domain_sample)?;
     let offset_expr = positive_rational_sqrt_expr(ctx, &offset_square)?;
 
     let raw_arg = arg_poly.to_expr(ctx);
@@ -12112,12 +12133,18 @@ fn acosh_polynomial_substitution_from_radicand(
         ctx.add(Expr::Div(arg, offset_expr))
     };
     let acosh = ctx.call_builtin(BuiltinFn::Acosh, vec![acosh_arg]);
-    if scale.is_one() {
-        return Some(acosh);
-    }
+    let scaled = if scale.is_one() {
+        acosh
+    } else {
+        let scale_expr = ctx.add(Expr::Number(scale));
+        mul2_raw(ctx, scale_expr, acosh)
+    };
 
-    let scale_expr = ctx.add(Expr::Number(scale));
-    Some(mul2_raw(ctx, scale_expr, acosh))
+    Some(if let Some(radicand_scale) = radicand_scale {
+        divide_by_sqrt_product_denominator_scale(ctx, scaled, radicand_scale)
+    } else {
+        scaled
+    })
 }
 
 fn acosh_polynomial_substitution_oriented_arg(
@@ -12125,6 +12152,7 @@ fn acosh_polynomial_substitution_oriented_arg(
     numerator: &Polynomial,
     radicand: ExprId,
     var: &str,
+    domain_sample: Option<&BigRational>,
 ) -> Option<(Polynomial, BigRational, BigRational)> {
     let radicand_poly = Polynomial::from_expr(ctx, radicand, var).ok()?;
     let (mut arg_poly, offset_square) =
@@ -12136,11 +12164,158 @@ fn acosh_polynomial_substitution_oriented_arg(
         return None;
     }
     if arg_poly.degree() == 1 && scale.is_negative() {
-        arg_poly = arg_poly.neg();
-        scale = -scale;
+        let factored_domain_sample = domain_sample
+            .cloned()
+            .or_else(|| positive_linear_factor_domain_sample(ctx, radicand, var));
+        let should_flip = factored_domain_sample
+            .as_ref()
+            .map(|sample| arg_poly.eval(sample).is_negative())
+            .unwrap_or(true);
+        if should_flip {
+            arg_poly = arg_poly.neg();
+            scale = -scale;
+        }
     }
 
     Some((arg_poly, offset_square, scale))
+}
+
+fn positive_linear_factor_domain_sample(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<BigRational> {
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut lower: Option<BigRational> = None;
+    let mut upper: Option<BigRational> = None;
+    for factor in factors {
+        let poly = Polynomial::from_expr(ctx, factor, var).ok()?;
+        if poly.degree() != 1 {
+            return None;
+        }
+        let constant = poly
+            .coeffs
+            .first()
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        let slope = poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if slope.is_zero() {
+            return None;
+        }
+
+        let bound = -constant / slope.clone();
+        if slope.is_positive() {
+            lower = Some(match lower {
+                Some(current) if current > bound => current,
+                _ => bound,
+            });
+        } else {
+            upper = Some(match upper {
+                Some(current) if current < bound => current,
+                _ => bound,
+            });
+        }
+    }
+
+    if let (Some(low), Some(high)) = (&lower, &upper) {
+        if low >= high {
+            return None;
+        }
+        return Some((low.clone() + high.clone()) / BigRational::from_integer(2.into()));
+    }
+
+    let one = BigRational::one();
+    if let Some(low) = lower {
+        return Some(low + one);
+    }
+    if let Some(high) = upper {
+        return Some(high - one);
+    }
+
+    None
+}
+
+fn explicit_sqrt_linear_domain_sample(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<BigRational> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Div(_, den) => return explicit_sqrt_linear_domain_sample(ctx, *den, var),
+        Expr::Neg(inner) => return explicit_sqrt_linear_domain_sample(ctx, *inner, var),
+        _ => {}
+    }
+
+    let mut lower: Option<BigRational> = None;
+    let mut upper: Option<BigRational> = None;
+    let mut saw_linear_sqrt = false;
+
+    for factor in mul_leaves(ctx, expr) {
+        let Some(radicand) =
+            sqrt_like_radicand(ctx, factor).or_else(|| reciprocal_sqrt_like_radicand(ctx, factor))
+        else {
+            continue;
+        };
+        let poly = Polynomial::from_expr(ctx, radicand, var).ok()?;
+        if poly.degree() != 1 {
+            return None;
+        }
+        let constant = poly
+            .coeffs
+            .first()
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        let slope = poly
+            .coeffs
+            .get(1)
+            .cloned()
+            .unwrap_or_else(BigRational::zero);
+        if slope.is_zero() {
+            return None;
+        }
+        let bound = -constant / slope.clone();
+        if slope.is_positive() {
+            lower = Some(match lower {
+                Some(current) if current > bound => current,
+                _ => bound,
+            });
+        } else {
+            upper = Some(match upper {
+                Some(current) if current < bound => current,
+                _ => bound,
+            });
+        }
+        saw_linear_sqrt = true;
+    }
+
+    if !saw_linear_sqrt {
+        return None;
+    }
+    if let (Some(low), Some(high)) = (&lower, &upper) {
+        if low >= high {
+            return None;
+        }
+        return Some((low.clone() + high.clone()) / BigRational::from_integer(2.into()));
+    }
+
+    let one = BigRational::one();
+    if let Some(low) = lower {
+        return Some(low + one);
+    }
+    if let Some(high) = upper {
+        return Some(high - one);
+    }
+
+    Some(BigRational::zero())
 }
 
 fn sqrt_derivative_substitution_from_radicand(
@@ -12505,8 +12680,29 @@ fn acosh_polynomial_substitution_div_antiderivative(
     den: ExprId,
     var: &str,
 ) -> Option<ExprId> {
+    let domain_sample = explicit_sqrt_linear_domain_sample(ctx, den, var);
     if let Some(radicand) = sqrt_like_radicand(ctx, den) {
-        return acosh_polynomial_substitution_from_radicand(ctx, num, radicand, var);
+        return acosh_polynomial_substitution_from_radicand_with_domain_sample(
+            ctx,
+            num,
+            radicand,
+            var,
+            domain_sample.as_ref(),
+        );
+    }
+    if let Some((radicand, denominator_scale)) = sqrt_product_denominator_radicand(ctx, den, var) {
+        let antiderivative = acosh_polynomial_substitution_from_radicand_with_domain_sample(
+            ctx,
+            num,
+            radicand,
+            var,
+            domain_sample.as_ref(),
+        )?;
+        return Some(divide_by_sqrt_product_denominator_scale(
+            ctx,
+            antiderivative,
+            denominator_scale,
+        ));
     }
 
     let denominator = Polynomial::from_expr(ctx, den, var).ok()?;
@@ -12528,7 +12724,80 @@ fn acosh_polynomial_substitution_div_antiderivative(
         build_balanced_mul(ctx, &cofactor_factors)
     };
 
-    acosh_polynomial_substitution_from_radicand(ctx, cofactor, radicand, var)
+    acosh_polynomial_substitution_from_radicand_with_domain_sample(
+        ctx,
+        cofactor,
+        radicand,
+        var,
+        domain_sample.as_ref(),
+    )
+}
+
+fn sqrt_product_denominator_radicand(
+    ctx: &mut Context,
+    den: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    let mut radicands = Vec::new();
+    let mut denominator_scale_factors = Vec::new();
+    for factor in mul_leaves(ctx, den) {
+        if let Some(scale) = rational_constant_value(ctx, factor) {
+            if scale.is_zero() {
+                return None;
+            }
+            denominator_scale_factors.push(ctx.add(Expr::Number(scale)));
+            continue;
+        }
+        let radicand = sqrt_like_radicand(ctx, factor)?;
+        let (radicand, scale) =
+            split_positive_rational_content_from_sqrt_radicand(ctx, radicand, var)?;
+        radicands.push(radicand);
+        if let Some(scale) = scale {
+            denominator_scale_factors.push(scale);
+        }
+    }
+
+    if radicands.len() < 2 {
+        return None;
+    }
+
+    let denominator_scale = if denominator_scale_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        build_balanced_mul(ctx, &denominator_scale_factors)
+    };
+
+    Some((build_balanced_mul(ctx, &radicands), denominator_scale))
+}
+
+fn split_positive_rational_content_from_sqrt_radicand(
+    ctx: &mut Context,
+    radicand: ExprId,
+    var: &str,
+) -> Option<(ExprId, Option<ExprId>)> {
+    let poly = Polynomial::from_expr(ctx, radicand, var).ok()?;
+    let content = poly.content();
+    if content.is_zero() || !content.is_positive() {
+        return None;
+    }
+    if content.is_one() {
+        return Some((radicand, None));
+    }
+
+    let normalized = poly.div_scalar(&content).to_expr(ctx);
+    let scale = positive_rational_sqrt_expr(ctx, &content)?;
+    Some((normalized, Some(scale)))
+}
+
+fn divide_by_sqrt_product_denominator_scale(
+    ctx: &mut Context,
+    expr: ExprId,
+    denominator_scale: ExprId,
+) -> ExprId {
+    if matches!(ctx.get(denominator_scale), Expr::Number(n) if n.is_one()) {
+        return expr;
+    }
+    ctx.add(Expr::Div(expr, denominator_scale))
 }
 
 fn arcsin_polynomial_substitution_product_antiderivative(
@@ -12584,6 +12853,7 @@ fn acosh_polynomial_substitution_product_antiderivative(
     expr: ExprId,
     var: &str,
 ) -> Option<ExprId> {
+    let domain_sample = explicit_sqrt_linear_domain_sample(ctx, expr, var);
     let factors = mul_leaves(ctx, expr);
     let (sqrt_index, radicand) = factors.iter().enumerate().find_map(|(idx, factor)| {
         reciprocal_sqrt_like_radicand(ctx, *factor).map(|radicand| (idx, radicand))
@@ -12600,7 +12870,13 @@ fn acosh_polynomial_substitution_product_antiderivative(
         build_balanced_mul(ctx, &cofactor_factors)
     };
 
-    acosh_polynomial_substitution_from_radicand(ctx, cofactor, radicand, var)
+    acosh_polynomial_substitution_from_radicand_with_domain_sample(
+        ctx,
+        cofactor,
+        radicand,
+        var,
+        domain_sample.as_ref(),
+    )
 }
 
 fn sqrt_derivative_substitution_radicand(
@@ -13062,6 +13338,26 @@ pub fn integrate_symbolic_is_arcsin_inverse_sqrt_product_target(
         || shifted_sqrt_arcsin_inverse_product_cofactor(ctx, expr, var).is_some()
 }
 
+pub fn integrate_symbolic_is_acosh_polynomial_substitution_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    if let Some(inner) = constant_scaled_integrand_inner(ctx, expr, var) {
+        return integrate_symbolic_is_acosh_polynomial_substitution_target(ctx, inner, var);
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Div(num, den) => {
+            acosh_polynomial_substitution_div_antiderivative(ctx, num, den, var).is_some()
+        }
+        Expr::Mul(_, _) => {
+            acosh_polynomial_substitution_product_antiderivative(ctx, expr, var).is_some()
+        }
+        _ => false,
+    }
+}
+
 pub fn integrate_symbolic_is_asinh_polynomial_substitution_target(
     ctx: &mut Context,
     expr: ExprId,
@@ -13116,9 +13412,31 @@ fn acosh_polynomial_substitution_oriented_radicand_arg(
     match ctx.get(expr).clone() {
         Expr::Div(num, den) => {
             if let Some(radicand) = sqrt_like_radicand(ctx, den) {
+                let (radicand, _) =
+                    split_positive_rational_content_from_sqrt_radicand(ctx, radicand, var)?;
                 let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
-                let (arg, offset, _) =
-                    acosh_polynomial_substitution_oriented_arg(ctx, &numerator, radicand, var)?;
+                let domain_sample = explicit_sqrt_linear_domain_sample(ctx, den, var);
+                let (arg, offset, _) = acosh_polynomial_substitution_oriented_arg(
+                    ctx,
+                    &numerator,
+                    radicand,
+                    var,
+                    domain_sample.as_ref(),
+                )?;
+                return Some((radicand, arg, offset));
+            }
+            if let Some((radicand, _denominator_scale)) =
+                sqrt_product_denominator_radicand(ctx, den, var)
+            {
+                let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
+                let domain_sample = explicit_sqrt_linear_domain_sample(ctx, den, var);
+                let (arg, offset, _) = acosh_polynomial_substitution_oriented_arg(
+                    ctx,
+                    &numerator,
+                    radicand,
+                    var,
+                    domain_sample.as_ref(),
+                )?;
                 return Some((radicand, arg, offset));
             }
 
@@ -13141,15 +13459,24 @@ fn acosh_polynomial_substitution_oriented_radicand_arg(
                 build_balanced_mul(ctx, &cofactor_factors)
             };
             let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
-            let (arg, offset, _) =
-                acosh_polynomial_substitution_oriented_arg(ctx, &cofactor_poly, radicand, var)?;
+            let domain_sample = explicit_sqrt_linear_domain_sample(ctx, den, var);
+            let (arg, offset, _) = acosh_polynomial_substitution_oriented_arg(
+                ctx,
+                &cofactor_poly,
+                radicand,
+                var,
+                domain_sample.as_ref(),
+            )?;
             Some((radicand, arg, offset))
         }
         Expr::Mul(_, _) => {
+            let domain_sample = explicit_sqrt_linear_domain_sample(ctx, expr, var);
             let factors = mul_leaves(ctx, expr);
             let (sqrt_index, radicand) = factors.iter().enumerate().find_map(|(idx, factor)| {
                 reciprocal_sqrt_like_radicand(ctx, *factor).map(|radicand| (idx, radicand))
             })?;
+            let (radicand, _) =
+                split_positive_rational_content_from_sqrt_radicand(ctx, radicand, var)?;
 
             let cofactor_factors: Vec<ExprId> = factors
                 .iter()
@@ -13162,11 +13489,25 @@ fn acosh_polynomial_substitution_oriented_radicand_arg(
                 build_balanced_mul(ctx, &cofactor_factors)
             };
             let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
-            let (arg, offset, _) =
-                acosh_polynomial_substitution_oriented_arg(ctx, &cofactor_poly, radicand, var)?;
+            let (arg, offset, _) = acosh_polynomial_substitution_oriented_arg(
+                ctx,
+                &cofactor_poly,
+                radicand,
+                var,
+                domain_sample.as_ref(),
+            )?;
             Some((radicand, arg, offset))
         }
-        _ => None,
+        _ => {
+            let radicand = reciprocal_sqrt_like_radicand(ctx, expr)?;
+            let (radicand, _) =
+                split_positive_rational_content_from_sqrt_radicand(ctx, radicand, var)?;
+            let one = ctx.num(1);
+            let numerator = Polynomial::from_expr(ctx, one, var).ok()?;
+            let (arg, offset, _) =
+                acosh_polynomial_substitution_oriented_arg(ctx, &numerator, radicand, var, None)?;
+            Some((radicand, arg, offset))
+        }
     }
 }
 
@@ -15558,6 +15899,10 @@ mod tests {
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "atanh(sqrt(4 / x))");
 
+        let expr = parse("3/(2*sqrt(3*x)*(3-x))", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "atanh(sqrt(3 / x))");
+
         let expr = parse("-3/(2*sqrt(3*x+1)*(3*x))", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "atanh(sqrt(1 / (3 * x + 1)))");
@@ -15590,7 +15935,7 @@ mod tests {
 
         let expr = parse("-1/(x*sqrt(2*x+4))", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
-        assert_eq!(rendered(&ctx, out), "atanh(sqrt(4 / (2 * x + 4)))");
+        assert_eq!(rendered(&ctx, out), "atanh(sqrt(2 / (x + 2)))");
     }
 
     #[test]

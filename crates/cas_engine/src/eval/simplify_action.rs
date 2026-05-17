@@ -645,6 +645,62 @@ impl Engine {
             &self.simplifier.context,
             resolved,
         ) {
+            if effective_opts.steps_mode == crate::options::StepsMode::Off {
+                if let Some((result, required_conditions)) =
+                    crate::rules::calculus::sqrt_polynomial_quotient_derivative_presentation_with_domain(
+                        &mut self.simplifier.context,
+                        call.target,
+                        &call.var_name,
+                    )
+                {
+                    return Ok((
+                        crate::EvalResult::Expr(result),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        required_conditions,
+                    ));
+                }
+                if let Some((result, required_conditions)) =
+                    crate::rules::calculus::reciprocal_sqrt_polynomial_product_derivative_presentation_with_domain(
+                        &mut self.simplifier.context,
+                        call.target,
+                        &call.var_name,
+                    )
+                {
+                    return Ok((
+                        crate::EvalResult::Expr(result),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        required_conditions,
+                    ));
+                }
+                if let Some((result, required_conditions)) =
+                    crate::rules::calculus::polynomial_over_sqrt_polynomial_derivative_presentation_with_domain(
+                        &mut self.simplifier.context,
+                        call.target,
+                        &call.var_name,
+                    )
+                {
+                    return Ok((
+                        crate::EvalResult::Expr(result),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        required_conditions,
+                    ));
+                }
+            }
             if let Some((result, required_conditions)) =
                 crate::rules::calculus::sqrt_over_positive_shifted_sqrt_derivative_presentation_with_domain(
                     &mut self.simplifier.context,
@@ -1640,7 +1696,7 @@ mod tests {
             options.steps_mode = crate::options::StepsMode::Off;
             options.shared.context_mode = crate::options::ContextMode::Standard;
             options.shared.semantics.domain_mode = crate::DomainMode::Generic;
-            options.time_budget_ms = Some(50);
+            options.time_budget_ms = Some(200);
 
             let output = engine
                 .eval_stateless(

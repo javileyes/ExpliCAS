@@ -589,7 +589,6 @@ fn inverse_tangent_scaled_sqrt_polynomial_derivative_presentation(
         let denominator_scale = rational_const_for_calculus_presentation(ctx, denominator_coeff);
         cas_math::expr_nary::build_balanced_mul(ctx, &[denominator_scale, core_denominator])
     };
-
     Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
@@ -676,7 +675,6 @@ fn arctan_sqrt_affine_partition_quotient_derivative_presentation(
         let denominator_scale = rational_const_for_calculus_presentation(ctx, denominator_coeff);
         cas_math::expr_nary::build_balanced_mul(ctx, &[denominator_scale, core_denominator])
     };
-
     Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
@@ -1038,6 +1036,24 @@ fn subtract_from_one_for_calculus_presentation(ctx: &mut Context, expr: ExprId) 
         .unwrap_or(raw)
 }
 
+fn subtract_from_rational_for_calculus_presentation(
+    ctx: &mut Context,
+    value: BigRational,
+    expr: ExprId,
+) -> ExprId {
+    let constant = rational_const_for_calculus_presentation(ctx, value);
+    let raw = ctx.add(Expr::Sub(constant, expr));
+    let budget = PolyBudget {
+        max_terms: 8,
+        max_total_degree: 4,
+        max_pow_exp: 4,
+    };
+
+    multipoly_from_expr(ctx, raw, &budget)
+        .map(|poly| multipoly_to_expr(&poly, ctx))
+        .unwrap_or(raw)
+}
+
 fn add_rational_for_calculus_presentation(
     ctx: &mut Context,
     expr: ExprId,
@@ -1143,7 +1159,6 @@ fn arctan_sqrt_reciprocal_content_presentation(
         let denominator_scale = rational_const_for_calculus_presentation(ctx, denominator_coeff);
         cas_math::expr_nary::build_balanced_mul(ctx, &[denominator_scale, core_denominator])
     };
-
     Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
@@ -1242,8 +1257,8 @@ fn asinh_sqrt_constant_over_polynomial_presentation(
     }
     let (numerator_value, den) =
         positive_constant_over_inverse_sqrt_arg_for_calculus_presentation(ctx, args[0])?;
-    let (displayed_numerator_value, sqrt_numerator_denominator) =
-        positive_rational_sqrt_denominator_factor_for_calculus_presentation(ctx, &numerator_value)?;
+    let (sqrt_numerator_outside, sqrt_numerator_inside) =
+        split_square_factor_positive_rational_for_calculus_presentation(&numerator_value);
 
     let denominator_poly = polynomial_radicand_for_calculus_presentation(ctx, den, var_name)?;
     let derivative_poly = denominator_poly.derivative();
@@ -1254,7 +1269,7 @@ fn asinh_sqrt_constant_over_polynomial_presentation(
     let (derivative_core, derivative_content) =
         split_polynomial_content_for_calculus_presentation(ctx, derivative);
     let coefficient =
-        -displayed_numerator_value * derivative_content * BigRational::new(1.into(), 2.into());
+        -sqrt_numerator_outside * derivative_content * BigRational::new(1.into(), 2.into());
     let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
 
     let denominator_plus_numerator =
@@ -1266,13 +1281,19 @@ fn asinh_sqrt_constant_over_polynomial_presentation(
             denominator_coeff,
             den,
         );
-    let numerator = scale_expr_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
-    let sqrt_gap = ctx.call_builtin(BuiltinFn::Sqrt, vec![denominator_plus_numerator]);
-    let core_denominator = if let Some(sqrt_numerator_denominator) = sqrt_numerator_denominator {
-        cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_numerator_denominator, den, sqrt_gap])
+    let scaled_derivative =
+        scale_expr_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
+    let numerator = if sqrt_numerator_inside.is_one() {
+        scaled_derivative
     } else {
-        cas_math::expr_nary::build_balanced_mul(ctx, &[den, sqrt_gap])
+        scale_expr_by_sqrt_positive_rational_for_calculus_presentation(
+            ctx,
+            sqrt_numerator_inside,
+            scaled_derivative,
+        )
     };
+    let sqrt_gap = ctx.call_builtin(BuiltinFn::Sqrt, vec![denominator_plus_numerator]);
+    let core_denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[den, sqrt_gap]);
     let denominator = if denominator_coeff == BigRational::one() {
         core_denominator
     } else {
@@ -1358,35 +1379,67 @@ fn atanh_sqrt_constant_over_polynomial_presentation(
     let derivative = derivative_poly.to_expr(ctx);
     let (derivative_core, derivative_content) =
         split_polynomial_content_for_calculus_presentation(ctx, derivative);
-    let coefficient =
-        -displayed_numerator_value * derivative_content * BigRational::new(1.into(), 2.into());
+    let denominator_constant = denominator_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let orient_gap_to_numerator = numerator_value > denominator_constant;
+    let coefficient_sign = if orient_gap_to_numerator {
+        BigRational::one()
+    } else {
+        -BigRational::one()
+    };
+    let coefficient = coefficient_sign
+        * displayed_numerator_value
+        * derivative_content
+        * BigRational::new(1.into(), 2.into());
     let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
 
-    let sqrt_denominator = ctx.call_builtin(BuiltinFn::Sqrt, vec![den]);
-    let denominator_minus_numerator =
-        add_rational_for_calculus_presentation(ctx, den, -numerator_value);
-    let (numerator_coeff, denominator_coeff, denominator_minus_numerator) =
+    let combine_constant_with_sqrt_denominator =
+        sqrt_numerator_denominator.is_some() && numerator_value.is_integer();
+    let sqrt_denominator = if combine_constant_with_sqrt_denominator {
+        let scaled_denominator_poly =
+            scale_polynomial_for_calculus_presentation(&denominator_poly, &numerator_value);
+        let scaled_denominator = scaled_denominator_poly.to_expr(ctx);
+        ctx.call_builtin(BuiltinFn::Sqrt, vec![scaled_denominator])
+    } else {
+        ctx.call_builtin(BuiltinFn::Sqrt, vec![den])
+    };
+    let denominator_gap = if orient_gap_to_numerator {
+        subtract_from_rational_for_calculus_presentation(ctx, numerator_value, den)
+    } else {
+        add_rational_for_calculus_presentation(ctx, den, -numerator_value)
+    };
+    let (numerator_coeff, denominator_coeff, denominator_gap) = if orient_gap_to_numerator {
+        cancel_positive_denominator_content_with_numerator_for_calculus_presentation(
+            ctx,
+            numerator_coeff,
+            denominator_coeff,
+            denominator_gap,
+        )
+    } else {
         cancel_denominator_content_with_numerator_for_calculus_presentation(
             ctx,
             numerator_coeff,
             denominator_coeff,
-            denominator_minus_numerator,
-        );
+            denominator_gap,
+        )
+    };
     let numerator = scale_expr_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
-    let core_denominator = if let Some(sqrt_numerator_denominator) = sqrt_numerator_denominator {
+    let core_denominator = if combine_constant_with_sqrt_denominator {
+        cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_denominator, denominator_gap])
+    } else if let Some(sqrt_numerator_denominator) = sqrt_numerator_denominator {
         cas_math::expr_nary::build_balanced_mul(
             ctx,
             &[
                 sqrt_numerator_denominator,
                 sqrt_denominator,
-                denominator_minus_numerator,
+                denominator_gap,
             ],
         )
     } else {
-        cas_math::expr_nary::build_balanced_mul(
-            ctx,
-            &[sqrt_denominator, denominator_minus_numerator],
-        )
+        cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_denominator, denominator_gap])
     };
     let denominator = if denominator_coeff == BigRational::one() {
         core_denominator
@@ -1437,6 +1490,9 @@ fn polynomial_radicand_for_calculus_presentation(
 }
 
 fn polynomial_is_strictly_positive_everywhere(poly: &Polynomial) -> bool {
+    if polynomial_has_positive_constant_and_nonnegative_even_terms(poly) {
+        return true;
+    }
     match poly.degree() {
         0 => poly
             .coeffs
@@ -1466,6 +1522,21 @@ fn polynomial_is_strictly_positive_everywhere(poly: &Polynomial) -> bool {
         }
         _ => false,
     }
+}
+
+fn polynomial_has_positive_constant_and_nonnegative_even_terms(poly: &Polynomial) -> bool {
+    if !poly
+        .coeffs
+        .first()
+        .is_some_and(|constant| constant.is_positive())
+    {
+        return false;
+    }
+    poly.coeffs
+        .iter()
+        .enumerate()
+        .skip(1)
+        .all(|(power, coeff)| coeff.is_zero() || (power % 2 == 0 && !coeff.is_negative()))
 }
 
 fn polynomial_derivative_expr_for_calculus_presentation(
@@ -1606,7 +1677,7 @@ fn scale_expr_for_calculus_presentation(
     cas_math::expr_nary::build_balanced_mul(ctx, &[coeff, expr])
 }
 
-fn compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation(
+fn compact_integer_affine_inverse_args_for_integration_presentation(
     ctx: &mut Context,
     expr: ExprId,
     var_name: &str,
@@ -1616,66 +1687,74 @@ fn compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation
             if args.len() == 1
                 && matches!(
                     ctx.builtin_of(fn_id),
-                    Some(BuiltinFn::Arcsin | BuiltinFn::Asin | BuiltinFn::Arccos | BuiltinFn::Acos)
+                    Some(
+                        BuiltinFn::Arcsin
+                            | BuiltinFn::Asin
+                            | BuiltinFn::Arccos
+                            | BuiltinFn::Acos
+                            | BuiltinFn::Acosh
+                    )
                 ) =>
         {
             let arg = args[0];
+            let Some(builtin) = ctx.builtin_of(fn_id) else {
+                return expr;
+            };
             let compact_arg = Polynomial::from_expr(ctx, arg, var_name)
                 .ok()
-                .filter(|poly| poly.degree() == 1 && poly.coeffs.iter().all(|c| c.is_integer()))
+                .filter(|poly| {
+                    poly.degree() == 1
+                        && (poly.coeffs.iter().all(|c| c.is_integer())
+                            || (builtin == BuiltinFn::Acosh
+                                && poly
+                                    .coeffs
+                                    .first()
+                                    .is_some_and(|constant| constant.is_one())))
+                })
                 .map(|poly| poly.to_expr(ctx))
                 .unwrap_or(arg);
             ctx.add(Expr::Function(fn_id, vec![compact_arg]))
         }
         Expr::Neg(inner) => {
-            let inner =
-                compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation(
-                    ctx, inner, var_name,
-                );
+            let inner = compact_integer_affine_inverse_args_for_integration_presentation(
+                ctx, inner, var_name,
+            );
             ctx.add(Expr::Neg(inner))
         }
         Expr::Add(left, right) => {
-            let left =
-                compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation(
-                    ctx, left, var_name,
-                );
-            let right =
-                compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation(
-                    ctx, right, var_name,
-                );
+            let left = compact_integer_affine_inverse_args_for_integration_presentation(
+                ctx, left, var_name,
+            );
+            let right = compact_integer_affine_inverse_args_for_integration_presentation(
+                ctx, right, var_name,
+            );
             ctx.add(Expr::Add(left, right))
         }
         Expr::Sub(left, right) => {
-            let left =
-                compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation(
-                    ctx, left, var_name,
-                );
-            let right =
-                compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation(
-                    ctx, right, var_name,
-                );
+            let left = compact_integer_affine_inverse_args_for_integration_presentation(
+                ctx, left, var_name,
+            );
+            let right = compact_integer_affine_inverse_args_for_integration_presentation(
+                ctx, right, var_name,
+            );
             ctx.add(Expr::Sub(left, right))
         }
         Expr::Mul(left, right) => {
-            let left =
-                compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation(
-                    ctx, left, var_name,
-                );
-            let right =
-                compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation(
-                    ctx, right, var_name,
-                );
+            let left = compact_integer_affine_inverse_args_for_integration_presentation(
+                ctx, left, var_name,
+            );
+            let right = compact_integer_affine_inverse_args_for_integration_presentation(
+                ctx, right, var_name,
+            );
             ctx.add(Expr::Mul(left, right))
         }
         Expr::Div(left, right) => {
-            let left =
-                compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation(
-                    ctx, left, var_name,
-                );
-            let right =
-                compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation(
-                    ctx, right, var_name,
-                );
+            let left = compact_integer_affine_inverse_args_for_integration_presentation(
+                ctx, left, var_name,
+            );
+            let right = compact_integer_affine_inverse_args_for_integration_presentation(
+                ctx, right, var_name,
+            );
             ctx.add(Expr::Div(left, right))
         }
         _ => expr,
@@ -1696,14 +1775,44 @@ fn cancel_denominator_content_with_numerator_for_calculus_presentation(
 
     let adjusted_numerator = numerator_coeff.clone() / factor_content.clone();
     if !adjusted_numerator.is_integer() {
-        return (
-            numerator_coeff,
-            denominator_coeff * factor_content,
-            primitive_factor,
-        );
+        let adjusted_denominator = denominator_coeff * factor_content;
+        let (numerator_coeff, denominator_coeff) =
+            nonzero_rational_parts(&(numerator_coeff / adjusted_denominator))
+                .unwrap_or_else(|| (BigRational::zero(), BigRational::one()));
+        return (numerator_coeff, denominator_coeff, primitive_factor);
     }
 
-    (adjusted_numerator, denominator_coeff, primitive_factor)
+    let (numerator_coeff, denominator_coeff) =
+        nonzero_rational_parts(&(adjusted_numerator / denominator_coeff))
+            .unwrap_or_else(|| (BigRational::zero(), BigRational::one()));
+    (numerator_coeff, denominator_coeff, primitive_factor)
+}
+
+fn cancel_positive_denominator_content_with_numerator_for_calculus_presentation(
+    ctx: &mut Context,
+    numerator_coeff: BigRational,
+    denominator_coeff: BigRational,
+    denominator_factor: ExprId,
+) -> (BigRational, BigRational, ExprId) {
+    let (primitive_factor, factor_content) =
+        split_polynomial_content_for_calculus_presentation(ctx, denominator_factor);
+    if factor_content.is_zero() || !factor_content.is_positive() || factor_content.is_one() {
+        return (numerator_coeff, denominator_coeff, denominator_factor);
+    }
+
+    let adjusted_numerator = numerator_coeff.clone() / factor_content.clone();
+    if !adjusted_numerator.is_integer() {
+        let adjusted_denominator = denominator_coeff * factor_content;
+        let (numerator_coeff, denominator_coeff) =
+            nonzero_rational_parts(&(numerator_coeff / adjusted_denominator))
+                .unwrap_or_else(|| (BigRational::zero(), BigRational::one()));
+        return (numerator_coeff, denominator_coeff, primitive_factor);
+    }
+
+    let (numerator_coeff, denominator_coeff) =
+        nonzero_rational_parts(&(adjusted_numerator / denominator_coeff))
+            .unwrap_or_else(|| (BigRational::zero(), BigRational::one()));
+    (numerator_coeff, denominator_coeff, primitive_factor)
 }
 
 fn positive_rational_sqrt_denominator_factor_for_calculus_presentation(
@@ -2844,7 +2953,7 @@ fn sqrt_polynomial_quotient_derivative_presentation(
 
     let radicand_derivative = radicand_poly.derivative();
     let denominator_derivative = denominator_poly.derivative();
-    let numerator_poly = denominator_poly.mul(&radicand_derivative).sub(
+    let mut numerator_poly = denominator_poly.mul(&radicand_derivative).sub(
         &radicand_poly
             .mul(&denominator_derivative)
             .mul(&Polynomial::new(
@@ -2856,6 +2965,34 @@ fn sqrt_polynomial_quotient_derivative_presentation(
         return Some(ctx.num(0));
     }
 
+    let mut presentation_denominator_power = {
+        let two = ctx.num(2);
+        ctx.add(Expr::Pow(denominator_expr, two))
+    };
+    let denominator_power_factor = positive_integer_polynomial_power_for_calculus_presentation(
+        ctx,
+        denominator_expr,
+        var_name,
+    )
+    .or_else(|| expanded_affine_square_for_calculus_presentation(ctx, denominator_expr, var_name));
+    if let Some((base, exponent, base_poly)) = denominator_power_factor {
+        if exponent > 1 {
+            let cancellable = polynomial_power_for_calculus_presentation(&base_poly, exponent - 1);
+            if let Ok((quotient, remainder)) = numerator_poly.div_rem(&cancellable) {
+                if remainder.is_zero() {
+                    numerator_poly = quotient;
+                    let denominator_exponent = ctx.num((exponent + 1) as i64);
+                    presentation_denominator_power = ctx.add(Expr::Pow(base, denominator_exponent));
+                }
+            }
+        }
+    } else if let Ok((quotient, remainder)) = numerator_poly.div_rem(&denominator_poly) {
+        if remainder.is_zero() {
+            numerator_poly = quotient;
+            presentation_denominator_power = denominator_expr;
+        }
+    }
+
     let raw_numerator = numerator_poly.to_expr(ctx);
     let (numerator_core, numerator_content) =
         split_polynomial_content_for_calculus_presentation(ctx, raw_numerator);
@@ -2865,10 +3002,10 @@ fn sqrt_polynomial_quotient_derivative_presentation(
         signed_numerator_for_calculus_presentation(ctx, numerator_coeff, numerator_core);
 
     let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
-    let two = ctx.num(2);
-    let denominator_square = ctx.add(Expr::Pow(denominator_expr, two));
-    let core_denominator =
-        cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, denominator_square]);
+    let core_denominator = cas_math::expr_nary::build_balanced_mul(
+        ctx,
+        &[sqrt_radicand, presentation_denominator_power],
+    );
     let denominator = if denominator_coeff == BigRational::one() {
         core_denominator
     } else {
@@ -2877,6 +3014,61 @@ fn sqrt_polynomial_quotient_derivative_presentation(
     };
 
     Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+fn positive_integer_polynomial_power_for_calculus_presentation(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, usize, Polynomial)> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let exponent = cas_ast::views::as_rational_const(ctx, exp, 8)?;
+    if !exponent.is_integer() || exponent <= BigRational::one() {
+        return None;
+    }
+    let exponent = exponent.to_integer().to_usize()?;
+    let base_poly = polynomial_radicand_for_calculus_presentation(ctx, base, var_name)?;
+    Some((base, exponent, base_poly))
+}
+
+fn expanded_affine_square_for_calculus_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, usize, Polynomial)> {
+    let poly = polynomial_radicand_for_calculus_presentation(ctx, expr, var_name)?;
+    if poly.degree() != 2 {
+        return None;
+    }
+
+    let leading = poly
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let slope = exact_positive_rational_sqrt_for_calculus_presentation(&leading)?;
+
+    let linear = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let constant = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let shift = linear / (BigRational::from_integer(2.into()) * slope.clone());
+    if constant != shift.clone() * shift.clone() {
+        return None;
+    }
+
+    let base_poly = Polynomial::new(vec![shift, slope], var_name.to_string());
+    let base = base_poly.to_expr(ctx);
+    Some((base, 2, base_poly))
 }
 
 fn polynomial_over_sqrt_polynomial_derivative_presentation(
@@ -2888,14 +3080,30 @@ fn polynomial_over_sqrt_polynomial_derivative_presentation(
         return None;
     };
     let radicand = calculus_sqrt_like_radicand(ctx, denominator_expr)?;
+    let radicand_poly = polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
+    polynomial_over_sqrt_polynomial_derivative_presentation_from_parts(
+        ctx,
+        numerator_expr,
+        radicand,
+        &radicand_poly,
+        var_name,
+    )
+}
+
+fn polynomial_over_sqrt_polynomial_derivative_presentation_from_parts(
+    ctx: &mut Context,
+    numerator_expr: ExprId,
+    radicand: ExprId,
+    radicand_poly: &Polynomial,
+    var_name: &str,
+) -> Option<ExprId> {
     let numerator_poly =
         polynomial_radicand_for_calculus_presentation(ctx, numerator_expr, var_name)?;
-    let radicand_poly = polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
     if radicand_poly.is_zero() {
         return None;
     }
     let numerator_derivative = numerator_poly.derivative();
-    if numerator_derivative.is_zero() || radicand_poly.degree() != 1 {
+    if numerator_derivative.is_zero() {
         return None;
     }
     if numerator_derivative.degree() > 2 {
@@ -2906,12 +3114,28 @@ fn polynomial_over_sqrt_polynomial_derivative_presentation(
         vec![BigRational::from_integer(2.into())],
         var_name.to_string(),
     );
-    let numerator_result_poly = numerator_derivative
-        .mul(&radicand_poly)
+    let mut numerator_result_poly = numerator_derivative
+        .mul(radicand_poly)
         .mul(&two_poly)
         .sub(&numerator_poly.mul(&radicand_poly.derivative()));
     if numerator_result_poly.is_zero() {
         return Some(ctx.num(0));
+    }
+    let mut cancel_radicand_from_denominator = false;
+    if let Ok((quotient, remainder)) = numerator_result_poly.div_rem(radicand_poly) {
+        if remainder.is_zero() {
+            numerator_result_poly = quotient;
+            cancel_radicand_from_denominator = true;
+        }
+    }
+    let mut lift_radicand_to_numerator = false;
+    if cancel_radicand_from_denominator {
+        if let Ok((quotient, remainder)) = numerator_result_poly.div_rem(radicand_poly) {
+            if remainder.is_zero() {
+                numerator_result_poly = quotient;
+                lift_radicand_to_numerator = true;
+            }
+        }
     }
 
     let raw_numerator = numerator_result_poly.to_expr(ctx);
@@ -2919,19 +3143,67 @@ fn polynomial_over_sqrt_polynomial_derivative_presentation(
         split_polynomial_content_for_calculus_presentation(ctx, raw_numerator);
     let coefficient = numerator_content / BigRational::new(2.into(), 1.into());
     let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
-    let numerator =
-        signed_numerator_for_calculus_presentation(ctx, numerator_coeff, numerator_core);
 
     let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
-    let core_denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[radicand, sqrt_radicand]);
-    let denominator = if denominator_coeff == BigRational::one() {
+    let numerator_core = if lift_radicand_to_numerator {
+        if cas_ast::views::as_rational_const(ctx, numerator_core, 8)
+            .is_some_and(|value| value.is_one())
+        {
+            sqrt_radicand
+        } else {
+            cas_math::expr_nary::build_balanced_mul(ctx, &[numerator_core, sqrt_radicand])
+        }
+    } else {
+        numerator_core
+    };
+    let numerator =
+        signed_numerator_for_calculus_presentation(ctx, numerator_coeff, numerator_core);
+    let core_denominator = if cancel_radicand_from_denominator {
+        if lift_radicand_to_numerator {
+            ctx.num(1)
+        } else {
+            sqrt_radicand
+        }
+    } else {
+        cas_math::expr_nary::build_balanced_mul(ctx, &[radicand, sqrt_radicand])
+    };
+    let denominator_coeff_is_one = denominator_coeff == BigRational::one();
+    let denominator = if denominator_coeff_is_one {
         core_denominator
     } else {
         let denominator_scale = rational_const_for_calculus_presentation(ctx, denominator_coeff);
         cas_math::expr_nary::build_balanced_mul(ctx, &[denominator_scale, core_denominator])
     };
+    if lift_radicand_to_numerator && denominator_coeff_is_one {
+        return Some(numerator);
+    }
 
     Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+pub(crate) fn polynomial_over_sqrt_polynomial_derivative_presentation_with_domain(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let Expr::Div(numerator_expr, denominator_expr) = ctx.get(target).clone() else {
+        return None;
+    };
+    let radicand = calculus_sqrt_like_radicand(ctx, denominator_expr)?;
+    let radicand_poly = polynomial_radicand_for_calculus_presentation(ctx, radicand, var_name)?;
+    let result = polynomial_over_sqrt_polynomial_derivative_presentation_from_parts(
+        ctx,
+        numerator_expr,
+        radicand,
+        &radicand_poly,
+        var_name,
+    )?;
+    let required_conditions = if polynomial_is_strictly_positive_everywhere(&radicand_poly) {
+        Vec::new()
+    } else {
+        vec![crate::ImplicitCondition::Positive(radicand)]
+    };
+    Some((result, required_conditions))
 }
 
 pub(crate) fn sqrt_polynomial_quotient_derivative_presentation_with_domain(
@@ -3100,11 +3372,11 @@ fn reciprocal_sqrt_polynomial_product_derivative_presentation(
     target: ExprId,
     var_name: &str,
 ) -> Option<ExprId> {
-    let (numerator_scale, radicand, denominator_poly) =
+    let (numerator_scale, radicand, denominator_poly, denominator_power_factor) =
         if let Some((scale, radicand, denominator_poly)) =
             negative_half_power_target_parts(ctx, target, var_name)
         {
-            (scale, radicand, denominator_poly)
+            (scale, radicand, denominator_poly, None)
         } else {
             let Expr::Div(numerator_expr, denominator_expr) = ctx.get(target).clone() else {
                 return None;
@@ -3112,7 +3384,14 @@ fn reciprocal_sqrt_polynomial_product_derivative_presentation(
             let numerator_scale = cas_ast::views::as_rational_const(ctx, numerator_expr, 8)?;
             let (radicand, denominator_poly) =
                 denominator_sqrt_polynomial_parts(ctx, denominator_expr, var_name)?;
-            (numerator_scale, radicand, denominator_poly)
+            let denominator_power_factor =
+                sqrt_denominator_positive_integer_power_factor(ctx, denominator_expr, var_name);
+            (
+                numerator_scale,
+                radicand,
+                denominator_poly,
+                denominator_power_factor,
+            )
         };
     if numerator_scale.is_zero() {
         return Some(ctx.num(0));
@@ -3127,13 +3406,28 @@ fn reciprocal_sqrt_polynomial_product_derivative_presentation(
         vec![BigRational::from_integer(2.into())],
         var_name.to_string(),
     );
-    let numerator_poly = denominator_poly.mul(&radicand_poly.derivative()).add(
+    let mut numerator_poly = denominator_poly.mul(&radicand_poly.derivative()).add(
         &radicand_poly
             .mul(&denominator_poly.derivative())
             .mul(&two_poly),
     );
     if numerator_poly.is_zero() {
         return Some(ctx.num(0));
+    }
+
+    let mut presentation_denominator_power = None;
+    if let Some((base, exponent, base_poly)) = denominator_power_factor {
+        if exponent > 1 {
+            let cancellable = polynomial_power_for_calculus_presentation(&base_poly, exponent - 1);
+            if let Ok((quotient, remainder)) = numerator_poly.div_rem(&cancellable) {
+                if remainder.is_zero() {
+                    numerator_poly = quotient;
+                    let denominator_exponent = ctx.num((exponent + 1) as i64);
+                    presentation_denominator_power =
+                        Some(ctx.add(Expr::Pow(base, denominator_exponent)));
+                }
+            }
+        }
     }
 
     let raw_numerator = numerator_poly.to_expr(ctx);
@@ -3166,11 +3460,54 @@ fn reciprocal_sqrt_polynomial_product_derivative_presentation(
     if !cas_ast::views::as_rational_const(ctx, denominator_core, 8)
         .is_some_and(|value| value.is_one())
     {
-        denominator_parts.push(squared_expr(ctx, denominator_core));
+        denominator_parts.push(
+            presentation_denominator_power.unwrap_or_else(|| squared_expr(ctx, denominator_core)),
+        );
     }
     let denominator = cas_math::expr_nary::build_balanced_mul(ctx, &denominator_parts);
 
     Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+pub(crate) fn reciprocal_sqrt_polynomial_product_derivative_presentation_with_domain(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let radicand =
+        if let Some((_, radicand, _)) = negative_half_power_target_parts(ctx, target, var_name) {
+            radicand
+        } else {
+            let Expr::Div(_, denominator_expr) = ctx.get(target).clone() else {
+                return None;
+            };
+            let (radicand, _) = denominator_sqrt_polynomial_parts(ctx, denominator_expr, var_name)?;
+            radicand
+        };
+    let result = reciprocal_sqrt_polynomial_product_derivative_presentation(ctx, target, var_name)?;
+    Some((result, vec![crate::ImplicitCondition::Positive(radicand)]))
+}
+
+fn sqrt_denominator_positive_integer_power_factor(
+    ctx: &Context,
+    denominator_expr: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, usize, Polynomial)> {
+    let mut power_factor = None;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, denominator_expr) {
+        if extract_square_root_base(ctx, factor).is_some() {
+            continue;
+        }
+        if cas_ast::views::as_rational_const(ctx, factor, 8).is_some() {
+            continue;
+        }
+        let factor_power =
+            positive_integer_polynomial_power_for_calculus_presentation(ctx, factor, var_name)?;
+        if power_factor.replace(factor_power).is_some() {
+            return None;
+        }
+    }
+    power_factor
 }
 
 fn inverse_tangent_reciprocal_sqrt_polynomial_product_derivative_presentation(
@@ -3579,6 +3916,85 @@ fn bounded_inverse_trig_sqrt_polynomial_derivative_presentation(
     };
     let sqrt_gap = ctx.call_builtin(BuiltinFn::Sqrt, vec![gap]);
     let core_denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, sqrt_gap]);
+    let denominator = if denominator_coeff == BigRational::one() {
+        core_denominator
+    } else {
+        let denominator_scale = rational_const_for_calculus_presentation(ctx, denominator_coeff);
+        cas_math::expr_nary::build_balanced_mul(ctx, &[denominator_scale, core_denominator])
+    };
+
+    Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+fn bounded_inverse_trig_sqrt_affine_quotient_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(target).clone() else {
+        return None;
+    };
+    let derivative_sign = match ctx.builtin_of(fn_id) {
+        Some(BuiltinFn::Arcsin | BuiltinFn::Asin) => BigRational::one(),
+        Some(BuiltinFn::Arccos | BuiltinFn::Acos) => -BigRational::one(),
+        _ => return None,
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    let radicand = extract_square_root_base(ctx, args[0])?;
+    let Expr::Div(num, den) = ctx.get(radicand).clone() else {
+        return None;
+    };
+
+    let numerator_poly = Polynomial::from_expr(ctx, num, var_name).ok()?;
+    let denominator_poly = Polynomial::from_expr(ctx, den, var_name).ok()?;
+    if numerator_poly.degree() != 1 || denominator_poly.degree() != 1 {
+        return None;
+    }
+
+    let numerator_slope = numerator_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let denominator_slope = denominator_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if numerator_slope.is_zero() || numerator_slope != denominator_slope {
+        return None;
+    }
+
+    let numerator_constant = numerator_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let denominator_constant = denominator_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let quotient_gap = denominator_constant - numerator_constant;
+    if !quotient_gap.is_positive() {
+        return None;
+    }
+
+    let coefficient = derivative_sign * numerator_slope * BigRational::new(1.into(), 2.into());
+    let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
+    let one = ctx.num(1);
+    let numerator = signed_numerator_for_calculus_presentation(ctx, numerator_coeff, one);
+    let numerator = scale_expr_by_sqrt_positive_rational_for_calculus_presentation(
+        ctx,
+        quotient_gap,
+        numerator,
+    );
+
+    let sqrt_numerator = ctx.call_builtin(BuiltinFn::Sqrt, vec![num]);
+    let core_denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[den, sqrt_numerator]);
     let denominator = if denominator_coeff == BigRational::one() {
         core_denominator
     } else {
@@ -4258,11 +4674,29 @@ fn acosh_fractional_affine_derivative_presentation(
         .cloned()
         .unwrap_or_else(BigRational::zero);
     let one = ctx.num(1);
-    let numerator =
-        signed_numerator_for_calculus_presentation(ctx, derivative_coeff * content_num, one);
-    let sqrt_lower = ctx.call_builtin(BuiltinFn::Sqrt, vec![lower_branch]);
-    let sqrt_upper = ctx.call_builtin(BuiltinFn::Sqrt, vec![upper_branch]);
-    let denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_lower, sqrt_upper]);
+    let mut numerator_coeff = derivative_coeff * content_num;
+    let mut denominator_coeff = BigRational::one();
+    let denominator = if let Some((primitive_product, shared_content)) =
+        shared_positive_content_sqrt_product_for_calculus_presentation(
+            ctx,
+            lower_branch,
+            upper_branch,
+        ) {
+        (numerator_coeff, denominator_coeff) =
+            nonzero_rational_parts(&(numerator_coeff / shared_content))?;
+        primitive_product
+    } else {
+        let sqrt_lower = ctx.call_builtin(BuiltinFn::Sqrt, vec![lower_branch]);
+        let sqrt_upper = ctx.call_builtin(BuiltinFn::Sqrt, vec![upper_branch]);
+        cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_lower, sqrt_upper])
+    };
+    let numerator = signed_numerator_for_calculus_presentation(ctx, numerator_coeff, one);
+    let denominator = if denominator_coeff == BigRational::one() {
+        denominator
+    } else {
+        let denominator_scale = rational_const_for_calculus_presentation(ctx, denominator_coeff);
+        cas_math::expr_nary::build_balanced_mul(ctx, &[denominator_scale, denominator])
+    };
     let result = ctx.add(Expr::Div(numerator, denominator));
 
     Some((
@@ -4348,14 +4782,25 @@ fn asinh_sqrt_polynomial_derivative_presentation(
     let (derivative_core, derivative_content) =
         split_polynomial_content_for_calculus_presentation(ctx, derivative);
     let coefficient = derivative_content * BigRational::new(1.into(), 2.into());
-    let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
-    let numerator =
-        signed_numerator_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
+    let (mut numerator_coeff, mut denominator_coeff) = nonzero_rational_parts(&coefficient)?;
 
     let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
     let radicand_plus_one = add_one_for_calculus_presentation(ctx, radicand);
     let sqrt_gap = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand_plus_one]);
-    let core_denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, sqrt_gap]);
+    let core_denominator = if let Some((primitive_product, shared_content)) =
+        shared_positive_content_sqrt_product_for_calculus_presentation(
+            ctx,
+            radicand,
+            radicand_plus_one,
+        ) {
+        (numerator_coeff, denominator_coeff) =
+            nonzero_rational_parts(&(numerator_coeff / (denominator_coeff * shared_content)))?;
+        primitive_product
+    } else {
+        cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, sqrt_gap])
+    };
+    let numerator =
+        signed_numerator_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
     let denominator = if denominator_coeff == BigRational::one() {
         core_denominator
     } else {
@@ -4366,12 +4811,105 @@ fn asinh_sqrt_polynomial_derivative_presentation(
     Some(ctx.add(Expr::Div(numerator, denominator)))
 }
 
+fn constant_scaled_asinh_sqrt_polynomial_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let (scale, inner) = rational_scaled_single_factor(ctx, target)?;
+    let derivative = asinh_sqrt_polynomial_derivative_presentation(ctx, inner, var_name)?;
+
+    Some(scale_compact_derivative_by_rational(ctx, derivative, scale))
+}
+
 fn asinh_sqrt_presentation_safe_radicand(poly: &Polynomial) -> bool {
     match poly.degree() {
         1 => poly.coeffs.get(1).is_some_and(|linear| !linear.is_zero()),
         2 => polynomial_is_strictly_positive_everywhere(poly),
         _ => false,
     }
+}
+
+fn shared_positive_content_sqrt_product_for_calculus_presentation(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, BigRational)> {
+    let (left_primitive, left_content) =
+        split_polynomial_content_for_calculus_presentation(ctx, left);
+    let (right_primitive, right_content) =
+        split_polynomial_content_for_calculus_presentation(ctx, right);
+
+    if !left_content.is_one() && left_content.is_positive() && right_content == left_content {
+        let left_sqrt = ctx.call_builtin(BuiltinFn::Sqrt, vec![left_primitive]);
+        let right_sqrt = ctx.call_builtin(BuiltinFn::Sqrt, vec![right_primitive]);
+        let product = cas_math::expr_nary::build_balanced_mul(ctx, &[left_sqrt, right_sqrt]);
+        return Some((product, left_content));
+    }
+
+    shared_positive_denominator_sqrt_product_for_calculus_presentation(ctx, left, right)
+}
+
+fn shared_positive_denominator_sqrt_product_for_calculus_presentation(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, BigRational)> {
+    let budget = PolyBudget {
+        max_terms: 8,
+        max_total_degree: 4,
+        max_pow_exp: 4,
+    };
+    let left_poly = multipoly_from_expr(ctx, left, &budget).ok()?;
+    let right_poly = multipoly_from_expr(ctx, right, &budget).ok()?;
+    if left_poly.vars != right_poly.vars {
+        return None;
+    }
+
+    let left_denominator = multipoly_denominator_lcm_for_calculus_presentation(&left_poly);
+    let right_denominator = multipoly_denominator_lcm_for_calculus_presentation(&right_poly);
+    if left_denominator != right_denominator || left_denominator <= BigInt::one() {
+        return None;
+    }
+
+    let denominator = BigRational::from_integer(left_denominator);
+    let left_primitive = left_poly.mul_scalar(&denominator);
+    let right_primitive = right_poly.mul_scalar(&denominator);
+    if !multipoly_has_integer_coefficients_for_calculus_presentation(&left_primitive)
+        || !multipoly_has_integer_coefficients_for_calculus_presentation(&right_primitive)
+    {
+        return None;
+    }
+
+    let left_expr = multipoly_to_expr(&left_primitive, ctx);
+    let right_expr = multipoly_to_expr(&right_primitive, ctx);
+    let left_sqrt = ctx.call_builtin(BuiltinFn::Sqrt, vec![left_expr]);
+    let right_sqrt = ctx.call_builtin(BuiltinFn::Sqrt, vec![right_expr]);
+    let product = cas_math::expr_nary::build_balanced_mul(ctx, &[left_sqrt, right_sqrt]);
+    Some((product, BigRational::one() / denominator))
+}
+
+fn multipoly_denominator_lcm_for_calculus_presentation(
+    poly: &cas_math::multipoly::MultiPoly,
+) -> BigInt {
+    poly.terms
+        .iter()
+        .fold(BigInt::one(), |acc, (coeff, _)| acc.lcm(coeff.denom()))
+}
+
+fn multipoly_has_integer_coefficients_for_calculus_presentation(
+    poly: &cas_math::multipoly::MultiPoly,
+) -> bool {
+    poly.terms.iter().all(|(coeff, _)| coeff.denom().is_one())
+}
+
+fn preserve_atanh_sqrt_open_interval_gap_orientation(poly: &Polynomial) -> bool {
+    poly.degree() == 1
+        && poly
+            .coeffs
+            .first()
+            .is_some_and(|constant| constant.is_positive())
+        && poly.leading_coeff().is_negative()
 }
 
 fn atanh_sqrt_polynomial_derivative_presentation(
@@ -4400,7 +4938,9 @@ fn atanh_sqrt_polynomial_derivative_presentation(
     let mut numerator_sign = BigRational::one();
     let one = Polynomial::one(radicand_poly.var.clone());
     let mut gap_poly = one.sub(&radicand_poly);
-    if gap_poly.leading_coeff().is_negative() {
+    if gap_poly.leading_coeff().is_negative()
+        && !preserve_atanh_sqrt_open_interval_gap_orientation(&gap_poly)
+    {
         gap_poly = gap_poly.neg();
         numerator_sign = -numerator_sign;
     }
@@ -4411,7 +4951,6 @@ fn atanh_sqrt_polynomial_derivative_presentation(
     let coefficient = numerator_sign * derivative_content * BigRational::new(1.into(), 2.into());
     let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
 
-    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
     let gap = gap_poly.to_expr(ctx);
     let (numerator_coeff, denominator_coeff, gap) =
         cancel_denominator_content_with_numerator_for_calculus_presentation(
@@ -4420,6 +4959,27 @@ fn atanh_sqrt_polynomial_derivative_presentation(
             denominator_coeff,
             gap,
         );
+    let (sqrt_radicand, numerator_coeff, denominator_coeff) =
+        if let Some((compact_sqrt, compact_numerator_coeff, compact_denominator_coeff)) =
+            compact_rational_monomial_sqrt_denominator_for_calculus_presentation(
+                ctx,
+                &radicand_poly,
+                numerator_coeff.clone(),
+                denominator_coeff.clone(),
+            )
+        {
+            (
+                compact_sqrt,
+                compact_numerator_coeff,
+                compact_denominator_coeff,
+            )
+        } else {
+            (
+                ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]),
+                numerator_coeff,
+                denominator_coeff,
+            )
+        };
     let numerator =
         signed_numerator_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
     let core_denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, gap]);
@@ -4431,6 +4991,130 @@ fn atanh_sqrt_polynomial_derivative_presentation(
     };
 
     Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+fn atanh_sqrt_affine_quotient_positive_gap_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return None;
+    };
+    if args.len() != 1 || !ctx.is_builtin(*fn_id, BuiltinFn::Atanh) {
+        return None;
+    }
+
+    let radicand = extract_square_root_base(ctx, args[0])?;
+    let Expr::Div(num, den) = ctx.get(radicand).clone() else {
+        return None;
+    };
+
+    let numerator_poly = Polynomial::from_expr(ctx, num, var_name).ok()?;
+    let denominator_poly = Polynomial::from_expr(ctx, den, var_name).ok()?;
+    if numerator_poly.degree() != 1 || denominator_poly.degree() != 1 {
+        return None;
+    }
+
+    let gap_poly = denominator_poly.sub(&numerator_poly);
+    if gap_poly.degree() != 0 {
+        return None;
+    }
+    let gap_value = gap_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if !gap_value.is_positive() {
+        return None;
+    }
+
+    let wronskian = numerator_poly
+        .derivative()
+        .mul(&denominator_poly)
+        .sub(&numerator_poly.mul(&denominator_poly.derivative()));
+    if wronskian.degree() != 0 {
+        return None;
+    }
+    let wronskian_value = wronskian
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if wronskian_value.is_zero() {
+        return Some(ctx.num(0));
+    }
+
+    let coefficient = wronskian_value / (BigRational::from_integer(2.into()) * gap_value);
+    let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
+    let numerator = rational_const_for_calculus_presentation(ctx, numerator_coeff);
+    let sqrt_num = ctx.call_builtin(BuiltinFn::Sqrt, vec![num]);
+    let sqrt_den = ctx.call_builtin(BuiltinFn::Sqrt, vec![den]);
+    let core_denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_num, sqrt_den]);
+    let denominator = if denominator_coeff == BigRational::one() {
+        core_denominator
+    } else {
+        let denominator_scale = rational_const_for_calculus_presentation(ctx, denominator_coeff);
+        cas_math::expr_nary::build_balanced_mul(ctx, &[denominator_scale, core_denominator])
+    };
+
+    Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+fn compact_rational_monomial_sqrt_denominator_for_calculus_presentation(
+    ctx: &mut Context,
+    radicand_poly: &Polynomial,
+    numerator_coeff: BigRational,
+    denominator_coeff: BigRational,
+) -> Option<(ExprId, BigRational, BigRational)> {
+    if !denominator_coeff.is_integer()
+        || !denominator_coeff.is_positive()
+        || denominator_coeff.is_one()
+    {
+        return None;
+    }
+    if radicand_poly.degree() != 1
+        || radicand_poly
+            .coeffs
+            .first()
+            .is_some_and(|constant| !constant.is_zero())
+    {
+        return None;
+    }
+
+    let slope = radicand_poly.coeffs.get(1)?;
+    let radicand_denominator = slope.denom().clone();
+    if radicand_denominator <= BigInt::one() {
+        return None;
+    }
+
+    let radicand_denominator_rational = BigRational::from_integer(radicand_denominator.clone());
+    let compact_slope = slope * &radicand_denominator_rational * &radicand_denominator_rational;
+    if !compact_slope.is_integer() {
+        return None;
+    }
+
+    let compact_poly = Polynomial::new(
+        vec![BigRational::zero(), compact_slope],
+        radicand_poly.var.clone(),
+    );
+    let compact_radicand = compact_poly.to_expr(ctx);
+    let compact_sqrt = ctx.call_builtin(BuiltinFn::Sqrt, vec![compact_radicand]);
+    let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(
+        &(numerator_coeff * radicand_denominator_rational / denominator_coeff),
+    )?;
+    Some((compact_sqrt, numerator_coeff, denominator_coeff))
+}
+
+fn constant_scaled_atanh_sqrt_polynomial_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let (scale, inner) = rational_scaled_single_factor(ctx, target)?;
+    let derivative = atanh_sqrt_polynomial_derivative_presentation(ctx, inner, var_name)?;
+
+    Some(scale_compact_derivative_by_rational(ctx, derivative, scale))
 }
 
 fn acosh_sqrt_polynomial_derivative_presentation(
@@ -4460,9 +5144,7 @@ fn acosh_sqrt_polynomial_derivative_presentation(
     let (derivative_core, derivative_content) =
         split_polynomial_content_for_calculus_presentation(ctx, derivative);
     let coefficient = derivative_content * BigRational::new(1.into(), 2.into());
-    let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
-    let numerator =
-        signed_numerator_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
+    let (mut numerator_coeff, mut denominator_coeff) = nonzero_rational_parts(&coefficient)?;
 
     let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
     let radicand_minus_one =
@@ -4472,8 +5154,20 @@ fn acosh_sqrt_polynomial_derivative_presentation(
         try_rewrite_simplify_square_root_expr(ctx, raw_sqrt_radicand_minus_one)
             .map(|rewrite| rewrite.rewritten)
             .unwrap_or(raw_sqrt_radicand_minus_one);
-    let core_denominator =
-        cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, sqrt_radicand_minus_one]);
+    let core_denominator = if let Some((primitive_product, shared_content)) =
+        shared_positive_content_sqrt_product_for_calculus_presentation(
+            ctx,
+            radicand,
+            radicand_minus_one,
+        ) {
+        (numerator_coeff, denominator_coeff) =
+            nonzero_rational_parts(&(numerator_coeff / (denominator_coeff * shared_content)))?;
+        primitive_product
+    } else {
+        cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_radicand, sqrt_radicand_minus_one])
+    };
+    let numerator =
+        signed_numerator_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
     let denominator = if denominator_coeff == BigRational::one() {
         core_denominator
     } else {
@@ -4482,6 +5176,17 @@ fn acosh_sqrt_polynomial_derivative_presentation(
     };
 
     Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+fn constant_scaled_acosh_sqrt_polynomial_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let (scale, inner) = rational_scaled_single_factor(ctx, target)?;
+    let derivative = acosh_sqrt_polynomial_derivative_presentation(ctx, inner, var_name)?;
+
+    Some(scale_compact_derivative_by_rational(ctx, derivative, scale))
 }
 
 fn acosh_sqrt_shifted_quadratic_derivative_presentation(
@@ -4580,6 +5285,19 @@ fn acosh_polynomial_over_sqrt_derivative_presentation(
             crate::ImplicitCondition::Positive(branch_gap),
         ],
     ))
+}
+
+fn constant_scaled_acosh_polynomial_over_sqrt_derivative_presentation(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (scale, inner) = rational_scaled_single_factor(ctx, target)?;
+    let (derivative, required_conditions) =
+        acosh_polynomial_over_sqrt_derivative_presentation(ctx, inner, var_name)?;
+    let result = scale_compact_derivative_by_rational(ctx, derivative, scale);
+
+    Some((result, required_conditions))
 }
 
 fn inverse_reciprocal_trig_sqrt_affine_derivative_presentation(
@@ -5780,6 +6498,11 @@ fn unit_interval_bounded_inverse_trig_derivative_presentation(
     let mut inverse_trig = None;
     let mut target = target;
 
+    if let Expr::Neg(inner) = ctx.get(target).clone() {
+        outer_coeff = -outer_coeff;
+        target = inner;
+    }
+
     if let Expr::Div(numerator, denominator) = ctx.get(target).clone() {
         let denominator = cas_ast::views::as_rational_const(ctx, denominator, 8)?;
         if denominator.is_zero() {
@@ -6498,11 +7221,15 @@ pub(crate) fn try_post_calculus_presentation(
             call.target,
             &call.var_name,
         ) {
+            let allow_conditional_positive_quadratic =
+                !integrate_required_positive_conditions(ctx, call.target, &call.var_name)
+                    .is_empty();
             if let Some(compact) =
                 compact_negative_three_half_power_result_for_integration_presentation(
                     ctx,
                     result,
                     &call.var_name,
+                    allow_conditional_positive_quadratic,
                 )
             {
                 return Some(compact);
@@ -6692,6 +7419,13 @@ pub(crate) fn try_post_calculus_presentation(
     {
         return Some(compact);
     }
+    if let Some(compact) = bounded_inverse_trig_sqrt_affine_quotient_derivative_presentation(
+        ctx,
+        target,
+        &call.var_name,
+    ) {
+        return Some(compact);
+    }
     if let Some(compact) = bounded_inverse_trig_reciprocal_sqrt_polynomial_derivative_presentation(
         ctx,
         target,
@@ -6741,6 +7475,11 @@ pub(crate) fn try_post_calculus_presentation(
     {
         return Some(compact);
     }
+    if let Some(compact) =
+        atanh_sqrt_affine_quotient_positive_gap_presentation(ctx, target, &call.var_name)
+    {
+        return Some(compact);
+    }
     if let Some((compact, _)) =
         arctan_self_normalized_surd_reciprocal_compact_derivative(ctx, target, &call.var_name)
     {
@@ -6784,7 +7523,17 @@ pub(crate) fn try_post_calculus_presentation(
         return Some(compact);
     }
     if let Some(compact) =
+        constant_scaled_asinh_sqrt_polynomial_derivative_presentation(ctx, target, &call.var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) =
         atanh_sqrt_polynomial_derivative_presentation(ctx, target, &call.var_name)
+    {
+        return Some(compact);
+    }
+    if let Some(compact) =
+        constant_scaled_atanh_sqrt_polynomial_derivative_presentation(ctx, target, &call.var_name)
     {
         return Some(compact);
     }
@@ -6793,9 +7542,21 @@ pub(crate) fn try_post_calculus_presentation(
     {
         return Some(compact);
     }
+    if let Some(compact) =
+        constant_scaled_acosh_sqrt_polynomial_derivative_presentation(ctx, target, &call.var_name)
+    {
+        return Some(compact);
+    }
     if let Some((compact, _)) =
         acosh_polynomial_over_sqrt_derivative_presentation(ctx, target, &call.var_name)
     {
+        return Some(compact);
+    }
+    if let Some((compact, _)) = constant_scaled_acosh_polynomial_over_sqrt_derivative_presentation(
+        ctx,
+        target,
+        &call.var_name,
+    ) {
         return Some(compact);
     }
     if let Some(compact) =
@@ -8101,6 +8862,12 @@ fn rational_scaled_single_factor_allow_unit(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(BigRational, ExprId)> {
+    if let Expr::Neg(inner) = ctx.get(expr).clone() {
+        let (inner_scale, inner_factor) = rational_scaled_single_factor_allow_unit(ctx, inner)
+            .unwrap_or_else(|| (BigRational::one(), inner));
+        return Some((-inner_scale, inner_factor));
+    }
+
     let factors = cas_math::expr_nary::mul_leaves(ctx, expr);
     let mut scale = BigRational::one();
     let mut non_numeric = Vec::new();
@@ -8121,6 +8888,16 @@ fn rational_scaled_single_factor_allow_unit(
 }
 
 fn rational_scaled_single_factor(ctx: &mut Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    if let Expr::Neg(inner) = ctx.get(expr).clone() {
+        let (inner_scale, inner_factor) = rational_scaled_single_factor_allow_unit(ctx, inner)
+            .unwrap_or_else(|| (BigRational::one(), inner));
+        let scale = -inner_scale;
+        if scale.is_one() {
+            return None;
+        }
+        return Some((scale, inner_factor));
+    }
+
     let factors = cas_math::expr_nary::mul_leaves(ctx, expr);
     let mut scale = BigRational::one();
     let mut non_numeric = Vec::new();
@@ -9939,24 +10716,33 @@ fn compact_negative_three_half_power_result_for_integration_presentation(
     ctx: &mut Context,
     expr: ExprId,
     var_name: &str,
+    allow_conditional_positive_quadratic: bool,
 ) -> Option<ExprId> {
     let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
     if let Expr::Pow(base, exp) = ctx.get(expr).clone() {
         let exponent = cas_ast::views::as_rational_const(ctx, exp, 8)?;
-        if exponent == BigRational::new((-3).into(), 2.into()) {
-            if !strictly_positive_quadratic_for_calculus_presentation(ctx, base, var_name) {
+        if matches_supported_negative_odd_half_power(&exponent) {
+            if !quadratic_for_fractional_power_calculus_presentation(
+                ctx,
+                base,
+                var_name,
+                allow_conditional_positive_quadratic,
+            ) {
                 return None;
             }
             let one = ctx.num(1);
-            let sqrt = ctx.call_builtin(BuiltinFn::Sqrt, vec![base]);
-            let denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[base, sqrt]);
+            let denominator =
+                negative_odd_half_power_denominator_for_presentation(ctx, base, -exponent)?;
             return Some(ctx.add(Expr::Div(one, denominator)));
         }
     }
 
     if let Expr::Neg(inner) = ctx.get(expr).clone() {
         let compact = compact_negative_three_half_power_result_for_integration_presentation(
-            ctx, inner, var_name,
+            ctx,
+            inner,
+            var_name,
+            allow_conditional_positive_quadratic,
         )?;
         if let Expr::Div(num, den) = ctx.get(compact).clone() {
             let numerator = ctx.add(Expr::Neg(num));
@@ -9978,23 +10764,27 @@ fn compact_negative_three_half_power_result_for_integration_presentation(
                 return None;
             };
             let exponent = cas_ast::views::as_rational_const(ctx, exp, 8)?;
-            if exponent != BigRational::new(3.into(), 2.into()) || base.is_some() {
+            if !matches_supported_positive_odd_half_power(&exponent) || base.is_some() {
                 return None;
             }
-            base = Some(pow_base);
+            base = Some((pow_base, exponent));
         }
         if denominator_scale.is_zero() {
             return None;
         }
-        let base = base?;
-        if !strictly_positive_quadratic_for_calculus_presentation(ctx, base, var_name) {
+        let (base, denominator_power) = base?;
+        if !quadratic_for_fractional_power_calculus_presentation(
+            ctx,
+            base,
+            var_name,
+            allow_conditional_positive_quadratic,
+        ) {
             return None;
         }
         let coefficient = numerator_value / denominator_scale;
         let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
         let one = ctx.num(1);
         let numerator = signed_numerator_for_calculus_presentation(ctx, numerator_coeff, one);
-        let sqrt = ctx.call_builtin(BuiltinFn::Sqrt, vec![base]);
         let mut denominator_parts = Vec::new();
         if !denominator_coeff.is_one() {
             denominator_parts.push(rational_const_for_calculus_presentation(
@@ -10002,8 +10792,11 @@ fn compact_negative_three_half_power_result_for_integration_presentation(
                 denominator_coeff,
             ));
         }
-        denominator_parts.push(base);
-        denominator_parts.push(sqrt);
+        denominator_parts.push(negative_odd_half_power_denominator_for_presentation(
+            ctx,
+            base,
+            denominator_power,
+        )?);
         let denominator = cas_math::expr_nary::build_balanced_mul(ctx, &denominator_parts);
         return Some(ctx.add(Expr::Div(numerator, denominator)));
     }
@@ -10019,10 +10812,10 @@ fn compact_negative_three_half_power_result_for_integration_presentation(
         match ctx.get(factor) {
             Expr::Pow(pow_base, exp) => {
                 let exponent = cas_ast::views::as_rational_const(ctx, *exp, 8)?;
-                if exponent != BigRational::new((-3).into(), 2.into()) || base.is_some() {
+                if !matches_supported_negative_odd_half_power(&exponent) || base.is_some() {
                     return None;
                 }
-                base = Some(*pow_base);
+                base = Some((*pow_base, -exponent));
             }
             _ => {
                 coefficient *= cas_ast::views::as_rational_const(ctx, factor, 8)?;
@@ -10030,8 +10823,13 @@ fn compact_negative_three_half_power_result_for_integration_presentation(
         }
     }
 
-    let base = base?;
-    if !strictly_positive_quadratic_for_calculus_presentation(ctx, base, var_name) {
+    let (base, denominator_power) = base?;
+    if !quadratic_for_fractional_power_calculus_presentation(
+        ctx,
+        base,
+        var_name,
+        allow_conditional_positive_quadratic,
+    ) {
         return None;
     }
     if coefficient.is_zero() {
@@ -10040,7 +10838,6 @@ fn compact_negative_three_half_power_result_for_integration_presentation(
     let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
     let one = ctx.num(1);
     let numerator = signed_numerator_for_calculus_presentation(ctx, numerator_coeff, one);
-    let sqrt = ctx.call_builtin(BuiltinFn::Sqrt, vec![base]);
     let mut denominator_parts = Vec::new();
     if !denominator_coeff.is_one() {
         denominator_parts.push(rational_const_for_calculus_presentation(
@@ -10048,10 +10845,81 @@ fn compact_negative_three_half_power_result_for_integration_presentation(
             denominator_coeff,
         ));
     }
-    denominator_parts.push(base);
-    denominator_parts.push(sqrt);
+    denominator_parts.push(negative_odd_half_power_denominator_for_presentation(
+        ctx,
+        base,
+        denominator_power,
+    )?);
     let denominator = cas_math::expr_nary::build_balanced_mul(ctx, &denominator_parts);
     Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+fn matches_supported_negative_odd_half_power(exponent: &BigRational) -> bool {
+    exponent.is_negative() && odd_half_denominator_base_power(&(-exponent.clone())).is_some()
+}
+
+fn matches_supported_positive_odd_half_power(exponent: &BigRational) -> bool {
+    odd_half_denominator_base_power(exponent).is_some()
+}
+
+fn quadratic_for_fractional_power_calculus_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+    allow_conditional_positive_quadratic: bool,
+) -> bool {
+    if strictly_positive_quadratic_for_calculus_presentation(ctx, expr, var_name) {
+        return true;
+    }
+    if !allow_conditional_positive_quadratic {
+        return false;
+    }
+    let Some(poly) = polynomial_radicand_for_calculus_presentation(ctx, expr, var_name) else {
+        return false;
+    };
+    if poly.degree() != 2 || poly.coeffs.len() < 3 {
+        return false;
+    }
+    let leading = poly
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    leading.is_positive()
+}
+
+fn negative_odd_half_power_denominator_for_presentation(
+    ctx: &mut Context,
+    base: ExprId,
+    denominator_power: BigRational,
+) -> Option<ExprId> {
+    let sqrt = ctx.call_builtin(BuiltinFn::Sqrt, vec![base]);
+    let base_power = odd_half_denominator_base_power(&denominator_power)?;
+    let base_factor = if base_power == 1 {
+        base
+    } else {
+        let exponent = ctx.num(base_power);
+        ctx.add(Expr::Pow(base, exponent))
+    };
+    Some(cas_math::expr_nary::build_balanced_mul(
+        ctx,
+        &[base_factor, sqrt],
+    ))
+}
+
+fn odd_half_denominator_base_power(denominator_power: &BigRational) -> Option<i64> {
+    if denominator_power.denom() != &BigInt::from(2) {
+        return None;
+    }
+    let numerator = denominator_power.numer();
+    if !numerator.is_positive() || !numerator.is_odd() {
+        return None;
+    }
+    let numerator = numerator.to_i64()?;
+    if numerator < 3 {
+        return None;
+    }
+    Some((numerator - 1) / 2)
 }
 
 fn strictly_positive_quadratic_for_calculus_presentation(
@@ -10099,9 +10967,15 @@ fn compact_positive_half_power_result_for_integration_presentation(
         if exponent == BigRational::new(1.into(), 2.into()) {
             return Some(ctx.call_builtin(BuiltinFn::Sqrt, vec![base]));
         }
+        if exponent == BigRational::new(3.into(), 2.into()) {
+            return Some(product_with_sqrt_for_positive_three_half_power(ctx, base));
+        }
     }
 
     if let Expr::Neg(inner) = ctx.get(expr).clone() {
+        if expression_contains_positive_three_half_power(ctx, inner) {
+            return None;
+        }
         let compact = compact_positive_half_power_result_for_integration_presentation(ctx, inner)?;
         return Some(ctx.add(Expr::Neg(compact)));
     }
@@ -10117,10 +10991,13 @@ fn compact_positive_half_power_result_for_integration_presentation(
         match ctx.get(factor) {
             Expr::Pow(pow_base, exp) => {
                 let exponent = cas_ast::views::as_rational_const(ctx, *exp, 8)?;
-                if exponent != BigRational::new(1.into(), 2.into()) || base.is_some() {
+                if !(exponent == BigRational::new(1.into(), 2.into())
+                    || exponent == BigRational::new(3.into(), 2.into()))
+                    || base.is_some()
+                {
                     return None;
                 }
-                base = Some(*pow_base);
+                base = Some((*pow_base, exponent));
             }
             _ => {
                 coefficient *= cas_ast::views::as_rational_const(ctx, factor, 8)?;
@@ -10128,12 +11005,52 @@ fn compact_positive_half_power_result_for_integration_presentation(
         }
     }
 
-    let base = base?;
+    let (base, exponent) = base?;
     if coefficient.is_zero() {
         return Some(ctx.num(0));
     }
+    let core = if exponent == BigRational::new(1.into(), 2.into()) {
+        ctx.call_builtin(BuiltinFn::Sqrt, vec![base])
+    } else if exponent == BigRational::new(3.into(), 2.into()) {
+        let product = product_with_sqrt_for_positive_three_half_power(ctx, base);
+        return Some(scale_three_half_power_product_for_presentation(
+            ctx,
+            coefficient,
+            product,
+        ));
+    } else {
+        return None;
+    };
+    Some(scale_expr_for_calculus_presentation(ctx, coefficient, core))
+}
+
+fn expression_contains_positive_three_half_power(ctx: &Context, expr: ExprId) -> bool {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Pow(_, exp) => cas_ast::views::as_rational_const(ctx, *exp, 8)
+            .is_some_and(|exponent| exponent == BigRational::new(3.into(), 2.into())),
+        Expr::Mul(_, _) => cas_math::expr_nary::mul_leaves(ctx, expr)
+            .iter()
+            .any(|factor| expression_contains_positive_three_half_power(ctx, *factor)),
+        _ => false,
+    }
+}
+
+fn product_with_sqrt_for_positive_three_half_power(ctx: &mut Context, base: ExprId) -> ExprId {
     let sqrt = ctx.call_builtin(BuiltinFn::Sqrt, vec![base]);
-    Some(scale_expr_for_calculus_presentation(ctx, coefficient, sqrt))
+    cas_math::expr_nary::build_balanced_mul(ctx, &[base, sqrt])
+}
+
+fn scale_three_half_power_product_for_presentation(
+    ctx: &mut Context,
+    coefficient: BigRational,
+    product: ExprId,
+) -> ExprId {
+    if coefficient.is_negative() {
+        let positive = scale_expr_for_calculus_presentation(ctx, -coefficient, product);
+        return ctx.add(Expr::Neg(positive));
+    }
+    scale_expr_for_calculus_presentation(ctx, coefficient, product)
 }
 
 fn supported_integral_derivative_presentation(
@@ -10249,6 +11166,40 @@ fn supported_integral_derivative_presentation(
         {
             return Some(cas_ast::hold::wrap_hold(ctx, compact));
         }
+        return Some(cas_ast::hold::wrap_hold(ctx, integrate_call.target));
+    }
+
+    if cas_math::symbolic_integration_support::integrate_symbolic_is_affine_sqrt_product_derivative_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_acosh_polynomial_substitution_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        integrate(ctx, integrate_call.target, &integrate_call.var_name)?;
+        if let Some(compact) =
+            compact_inverse_sqrt_product_integrand_for_calculus_presentation(
+                ctx,
+                integrate_call.target,
+            )
+        {
+            return Some(cas_ast::hold::wrap_hold(ctx, compact));
+        }
+        return Some(cas_ast::hold::wrap_hold(ctx, integrate_call.target));
+    }
+
+    if cas_math::symbolic_integration_support::integrate_symbolic_is_arcsin_polynomial_substitution_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_asinh_polynomial_substitution_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) {
+        integrate(ctx, integrate_call.target, &integrate_call.var_name)?;
         return Some(cas_ast::hold::wrap_hold(ctx, integrate_call.target));
     }
 
@@ -11385,6 +12336,7 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
             ctx,
             result,
             &call.var_name,
+            !required_positive.is_empty(),
         );
     let preserve_compact_negative_three_half_power_result =
         compact_negative_three_half_power_result.is_some();
@@ -11511,7 +12463,7 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
     if let Some(compact) = compact_acosh_surd_width_arg_for_integration_presentation(ctx, result) {
         result = compact;
     }
-    result = compact_integer_affine_bounded_inverse_trig_args_for_integration_presentation(
+    result = compact_integer_affine_inverse_args_for_integration_presentation(
         ctx,
         result,
         &call.var_name,
@@ -11658,6 +12610,16 @@ define_rule!(DiffRule, "Symbolic Differentiation", |ctx, expr| {
         .or_else(|| {
             let (result, required_conditions) =
                 constant_scaled_acosh_affine_derivative_presentation(ctx, target, &call.var_name)?;
+            shortcut_required_conditions.extend(required_conditions);
+            Some(result)
+        })
+        .or_else(|| {
+            let (result, required_conditions) =
+                constant_scaled_acosh_polynomial_over_sqrt_derivative_presentation(
+                    ctx,
+                    target,
+                    &call.var_name,
+                )?;
             shortcut_required_conditions.extend(required_conditions);
             Some(result)
         })
@@ -11989,7 +12951,7 @@ mod compact_hold_tests {
         let mut ctx = Context::new();
         let expr = parse("-2/(3*(x^2+x+1)^(3/2))", &mut ctx).unwrap();
         let compact = compact_negative_three_half_power_result_for_integration_presentation(
-            &mut ctx, expr, "x",
+            &mut ctx, expr, "x", false,
         )
         .unwrap();
         let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
@@ -12001,15 +12963,107 @@ mod compact_hold_tests {
     }
 
     #[test]
-    fn compact_negative_three_half_power_result_keeps_conditional_base_unchanged() {
+    fn compact_negative_five_half_power_result_for_integration_presentation_uses_sqrt_product() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(5*(x^2+x+1)^(5/2))", &mut ctx).unwrap();
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", false,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (5 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^2)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_seven_half_power_result_for_integration_presentation_uses_sqrt_product() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(7*(x^2+x+1)^(7/2))", &mut ctx).unwrap();
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", false,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (7 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^3)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_nine_half_power_result_for_integration_presentation_uses_sqrt_product() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(9*(x^2+x+1)^(9/2))", &mut ctx).unwrap();
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", false,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (9 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^4)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_eleven_half_power_result_for_integration_presentation_uses_sqrt_product() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(11*(x^2+x+1)^(11/2))", &mut ctx).unwrap();
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", false,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (11 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^5)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_thirteen_half_power_result_for_integration_presentation_uses_sqrt_product()
+    {
+        let mut ctx = Context::new();
+        let expr = parse("-2/(13*(x^2+x+1)^(13/2))", &mut ctx).unwrap();
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", false,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (13 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^6)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_three_half_power_result_requires_conditional_domain_signal() {
         let mut ctx = Context::new();
         let expr = parse("-2/(3*(x^2-1)^(3/2))", &mut ctx).unwrap();
 
         assert!(
             compact_negative_three_half_power_result_for_integration_presentation(
-                &mut ctx, expr, "x",
+                &mut ctx, expr, "x", false,
             )
             .is_none()
+        );
+
+        let compact = compact_negative_three_half_power_result_for_integration_presentation(
+            &mut ctx, expr, "x", true,
+        )
+        .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-2 / (3 * sqrt(x^2 - 1) * (x^2 - 1))"
         );
     }
 
@@ -12023,6 +13077,36 @@ mod compact_hold_tests {
         let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
 
         assert_eq!(rendered(&ctx, folded), "2 * sqrt(x^2 + x + 1)");
+    }
+
+    #[test]
+    fn compact_positive_three_half_power_result_for_integration_presentation_uses_sqrt_product() {
+        let mut ctx = Context::new();
+        let expr = parse("2/3*(x^2+x+1)^(3/2)", &mut ctx).unwrap();
+        let compact =
+            compact_positive_half_power_result_for_integration_presentation(&mut ctx, expr)
+                .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "2/3 * sqrt(x^2 + x + 1) * (x^2 + x + 1)"
+        );
+    }
+
+    #[test]
+    fn compact_negative_three_half_power_result_for_integration_presentation_keeps_outer_sign() {
+        let mut ctx = Context::new();
+        let expr = parse("-2/3*(x^2+x+1)^(3/2)", &mut ctx).unwrap();
+        let compact =
+            compact_positive_half_power_result_for_integration_presentation(&mut ctx, expr)
+                .unwrap();
+        let folded = fold_numeric_mul_constants_for_hold(&mut ctx, compact);
+
+        assert_eq!(
+            rendered(&ctx, folded),
+            "-(2/3 * sqrt(x^2 + x + 1) * (x^2 + x + 1))"
+        );
     }
 
     #[test]

@@ -1394,6 +1394,98 @@ fn scaled_arcsin_unit_interval_residual_collapses_inside_subtraction_context() {
 }
 
 #[test]
+fn negated_arcsin_unit_interval_diff_uses_post_calculus_root_denominator_presentation() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let input = "diff(-arcsin(2*x-1), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval failed");
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert_eq!(result, "-1 / (sqrt(x) * sqrt(1 - x))");
+    assert!(
+        !result.contains("^(-1/2)") && !result.contains("x - x^2"),
+        "negated unit-interval arcsin derivative should use educational root-denominator form, got: {result}"
+    );
+
+    let expected =
+        parse("-1/(sqrt(x)*sqrt(1-x))", &mut engine.simplifier.context).expect("parse expected");
+    assert!(
+        engine.simplifier.are_equivalent(result_expr, expected),
+        "post-calculus presentation must stay equivalent to the expected derivative, got: {result}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["x > 0".to_string(), "x < 1".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    assert!(
+        output
+            .steps
+            .iter()
+            .any(|step| step.rule_name == "Symbolic Differentiation"),
+        "expected the ordinary symbolic differentiation trace"
+    );
+
+    let residual_input = "diff(-arcsin(2*x-1), x) + 1/(sqrt(x)*sqrt(1-x))";
+    let parsed_residual =
+        parse(residual_input, &mut engine.simplifier.context).expect("parse residual");
+    let residual_output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: residual_input.to_string(),
+                parsed: parsed_residual,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval residual failed");
+    let residual = match residual_output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression residual result, got {other:?}"),
+    };
+    assert_eq!(residual, "0", "residual did not collapse for {input}");
+}
+
+#[test]
 fn shifted_arcsin_wrong_orientation_residual_does_not_collapse_across_domains() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();
@@ -3801,22 +3893,73 @@ fn arctan_sqrt_affine_quotient_diff_keeps_domain_equivalent_compact_presentation
         "presentation should keep the quotient root instead of splitting domains: {result}"
     );
 
-    let mut required: Vec<String> = normalize_and_dedupe_conditions(
+    let required: Vec<String> = normalize_and_dedupe_conditions(
         &mut engine.simplifier.context,
         &output.required_conditions,
     )
     .iter()
     .map(|cond| cond.display(&engine.simplifier.context))
     .collect();
-    required.sort();
 
     assert_eq!(
         required,
-        vec![
-            "(x + 1) / (x + 3) > 0".to_string(),
-            "x ≠ -2".to_string(),
-            "x ≠ -3".to_string(),
-        ],
+        vec!["x < -3 or x > -1".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+
+    assert!(
+        output
+            .steps
+            .iter()
+            .any(|step| step.rule_name == "Present calculus result in compact form"),
+        "expected the compact post-calculus presentation step to remain visible"
+    );
+}
+
+#[test]
+fn arctan_sqrt_scaled_affine_quotient_diff_drops_internal_nonzero_requires() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let input = "diff(arctan(sqrt((2*x+1)/(x+3))), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let req = EvalRequest {
+        raw_input: input.to_string(),
+        parsed,
+        action: EvalAction::Simplify,
+        auto_store: false,
+    };
+
+    let output = engine.eval(&mut state, req).expect("eval failed");
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert_eq!(
+        result,
+        "5 / (2 * (3 * x + 4) * (x + 3) * sqrt((2 * x + 1) / (x + 3)))"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["x < -3 or x > -1/2".to_string()],
         "unexpected required_conditions: {required:?}"
     );
 
@@ -4532,6 +4675,154 @@ fn asinh_surd_quotient_diff_uses_compact_sqrt_scale_presentation() {
 }
 
 #[test]
+fn asinh_sqrt_constant_over_polynomial_diff_places_surd_scale_in_numerator() {
+    let cases = [
+        (
+            "diff(asinh(sqrt(3/x)), x)",
+            "-sqrt(3) / (2 * x * sqrt(x + 3))",
+        ),
+        (
+            "diff(asinh(sqrt(12/x)), x)",
+            "-sqrt(3) / (x * sqrt(x + 12))",
+        ),
+    ];
+
+    for (input, expected_result) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::Off;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_result, "input: {input}");
+        assert!(
+            !result.contains("/ (sqrt(3)")
+                && !result.contains("/ (sqrt(12)")
+                && !result.contains("sqrt(12)"),
+            "asinh reciprocal-root presentation should not leave c/sqrt(c) scale in the denominator: {result}"
+        );
+
+        let expected =
+            parse(expected_result, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "post-calculus presentation must stay equivalent to the compact expected form, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+        assert_eq!(required, vec!["x > 0".to_string()]);
+    }
+}
+
+#[test]
+fn atanh_sqrt_constant_over_polynomial_diff_combines_sqrt_scale_presentation() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::Off;
+    let input = "diff(atanh(sqrt(3/x)), x)";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval failed");
+    let result_expr = match output.result {
+        EvalResult::Expr(expr) => expr,
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    let result = format!(
+        "{}",
+        DisplayExpr {
+            context: &engine.simplifier.context,
+            id: result_expr,
+        }
+    );
+
+    assert_eq!(result, "3 / (2 * sqrt(3 * x) * (3 - x))");
+    assert!(
+        !result.contains("sqrt(3) * sqrt(x)"),
+        "atanh reciprocal-root presentation should combine constant and polynomial roots: {result}"
+    );
+
+    let expected =
+        parse("3/(2*sqrt(3*x)*(3-x))", &mut engine.simplifier.context).expect("parse expected");
+    assert!(
+        engine.simplifier.are_equivalent(result_expr, expected),
+        "post-calculus presentation must stay equivalent to the integrand-shaped derivative, got: {result}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+    assert_eq!(required, vec!["x > 3".to_string()]);
+
+    let residual_input = "diff(atanh(sqrt(3/x)), x) - 3/(2*sqrt(3*x)*(3-x))";
+    let parsed_residual =
+        parse(residual_input, &mut engine.simplifier.context).expect("parse residual");
+    let residual_output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: residual_input.to_string(),
+                parsed: parsed_residual,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval residual");
+    let residual = match residual_output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected residual expression result, got {other:?}"),
+    };
+    assert_eq!(residual, "0");
+}
+
+#[test]
 fn atanh_surd_quotient_diff_uses_compact_sqrt_scale_presentation() {
     let cases = [
         (
@@ -4796,13 +5087,23 @@ fn acosh_fractional_affine_diff_absorbs_common_root_denominator() {
         ),
         (
             "diff(acosh((2*x+1)/3), x)",
-            "2 / (sqrt(2 * x - 2) * sqrt(2 * x + 4))",
+            "1 / (sqrt(x - 1) * sqrt(x + 2))",
             vec!["x > 1".to_string()],
         ),
         (
             "diff(acosh(-(2*x+1)/3), x)",
-            "-2 / (sqrt(-2 * x - 4) * sqrt(2 - 2 * x))",
+            "-1 / (sqrt(-x - 2) * sqrt(1 - x))",
             vec!["x < -2".to_string()],
+        ),
+        (
+            "diff(acosh(2/5*x+1), x)",
+            "1 / (sqrt(x) * sqrt(x + 5))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(acosh(2/3*x+1), x)",
+            "1 / (sqrt(x) * sqrt(x + 3))",
+            vec!["x > 0".to_string()],
         ),
     ];
 
@@ -4832,6 +5133,10 @@ fn acosh_fractional_affine_diff_absorbs_common_root_denominator() {
         );
 
         assert_eq!(result, expected_display, "input: {input}");
+        assert!(
+            !result.contains("sqrt(2 *"),
+            "input: {input}, acosh fractional-affine presentation should absorb common positive root content: {result}"
+        );
 
         let expected =
             parse(expected_display, &mut engine.simplifier.context).expect("parse expected");
@@ -5161,6 +5466,11 @@ fn constant_scaled_arctan_sqrt_diff_uses_post_calculus_reciprocal_root_presentat
             "(x^(-1/2)*2)/(2*x+2)",
         ),
         (
+            "diff(-arctan(sqrt(x)), x)",
+            "-1 / (2 * (x + 1) * sqrt(x))",
+            "-x^(-1/2)/(2*x+2)",
+        ),
+        (
             "diff(-2*arccot(sqrt(x)), x)",
             "1 / ((x + 1) * sqrt(x))",
             "(x^(-1/2)*2)/(2*x+2)",
@@ -5481,8 +5791,8 @@ fn affine_linear_over_sqrt_x_diff_uses_post_calculus_root_denominator_presentati
         ),
         (
             "diff((x^3+1)/sqrt(x+1), x)",
-            "(5 * x^3 + 6 * x^2 - 1) / (2 * (x + 1) * sqrt(x + 1))",
-            "diff((x^3+1)/sqrt(x+1), x) - (5*x^3+6*x^2-1)/(2*(x+1)*sqrt(x+1))",
+            "(5 * x^2 + x - 1) / (2 * sqrt(x + 1))",
+            "diff((x^3+1)/sqrt(x+1), x) - (5*x^2+x-1)/(2*sqrt(x+1))",
             vec!["x > -1".to_string()],
         ),
         (
@@ -11915,8 +12225,23 @@ fn asinh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
             vec!["x > 0".to_string()],
         ),
         (
+            "diff(-asinh(sqrt(x)), x)",
+            "-1 / (2 * sqrt(x + 1) * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(2*asinh(sqrt(x)), x)",
+            "1 / (sqrt(x + 1) * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
             "diff(asinh(sqrt(2*x)), x)",
             "1 / (sqrt(2 * x) * sqrt(2 * x + 1))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(asinh(sqrt(x/2)), x)",
+            "1 / (2 * sqrt(x) * sqrt(x + 2))",
             vec!["x > 0".to_string()],
         ),
         (
@@ -11966,7 +12291,7 @@ fn asinh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
         ),
         (
             "diff(asinh(sqrt(2/(x+3))), x)",
-            "-1 / (sqrt(2) * (x + 3) * sqrt(x + 5))",
+            "-sqrt(2) / (2 * (x + 3) * sqrt(x + 5))",
             vec!["x > -3".to_string()],
         ),
     ] {
@@ -11999,6 +12324,10 @@ fn asinh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
         assert!(
             !result.contains("^(-1/2)"),
             "presentation should use explicit sqrt denominators, got: {result}"
+        );
+        assert!(
+            !result.contains("1 / (sqrt(2)"),
+            "presentation should place irrational constant scale in the numerator, got: {result}"
         );
 
         let required: Vec<String> = normalize_and_dedupe_conditions(
@@ -12213,65 +12542,79 @@ fn inverse_hyperbolic_acosh_diff_evaluates_with_domain_safe_conditions() {
 
 #[test]
 fn inverse_hyperbolic_acosh_surd_polynomial_diff_uses_compact_real_domain() {
-    let mut engine = Engine::new();
-    let mut state = SessionState::new();
-    state.options_mut().steps_mode = StepsMode::Off;
-    let input = "diff(acosh((x^2+x)/sqrt(5)), x)";
-    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+    for (input, expected_result, expected_chain_rule) in [
+        (
+            "diff(acosh((x^2+x)/sqrt(5)), x)",
+            "(2 * x + 1) / sqrt((x^2 + x)^2 - 5)",
+            "(2*x+1)/(sqrt(5)*sqrt(((x^2+x)/sqrt(5))^2-1))",
+        ),
+        (
+            "diff(-acosh((x^2+x)/sqrt(5)), x)",
+            "-(2 * x + 1) / sqrt((x^2 + x)^2 - 5)",
+            "-(2*x+1)/(sqrt(5)*sqrt(((x^2+x)/sqrt(5))^2-1))",
+        ),
+        (
+            "diff(2*acosh((x^2+x)/sqrt(5)), x)",
+            "2 * (2 * x + 1) / sqrt((x^2 + x)^2 - 5)",
+            "2*(2*x+1)/(sqrt(5)*sqrt(((x^2+x)/sqrt(5))^2-1))",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::Off;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
 
-    let req = EvalRequest {
-        raw_input: input.to_string(),
-        parsed,
-        action: EvalAction::Simplify,
-        auto_store: false,
-    };
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
 
-    let output = engine.eval(&mut state, req).expect("eval failed");
-    assert!(
-        output.steps.is_empty(),
-        "steps-off contract should not rely on recorded steps"
-    );
-    let result_expr = match output.result {
-        EvalResult::Expr(expr) => expr,
-        other => panic!("expected expression result, got {other:?}"),
-    };
-    let result = format!(
-        "{}",
-        DisplayExpr {
-            context: &engine.simplifier.context,
-            id: result_expr,
-        }
-    );
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        assert!(
+            output.steps.is_empty(),
+            "steps-off contract should not rely on recorded steps"
+        );
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
 
-    assert_eq!(
-        result, "(2 * x + 1) / sqrt((x^2 + x)^2 - 5)",
-        "input: {input}, unexpected derivative result"
-    );
-    assert!(!result.contains("diff("), "input: {input}, got: {result}");
+        assert_eq!(result, expected_result, "input: {input}");
+        assert!(
+            !result.contains("diff(") && !result.contains("^(-1/2)"),
+            "input: {input}, got: {result}"
+        );
 
-    let expected = parse(
-        "(2*x+1)/(sqrt(5)*sqrt(((x^2+x)/sqrt(5))^2-1))",
-        &mut engine.simplifier.context,
-    )
-    .expect("parse expected");
-    assert!(
-        engine.simplifier.are_equivalent(result_expr, expected),
-        "input: {input}, expected derivative equivalent to chain rule over acosh, got: {result}"
-    );
+        let expected =
+            parse(expected_chain_rule, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "input: {input}, expected derivative equivalent to chain rule over acosh, got: {result}"
+        );
 
-    let required: Vec<String> = normalize_and_dedupe_conditions(
-        &mut engine.simplifier.context,
-        &output.required_conditions,
-    )
-    .iter()
-    .map(|cond| cond.display(&engine.simplifier.context))
-    .collect();
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
 
-    assert_eq!(
-        required,
-        vec!["x^2 + x - sqrt(5) > 0".to_string()],
-        "input: {input}, unexpected required_conditions: {required:?}"
-    );
+        assert_eq!(
+            required,
+            vec!["x^2 + x - sqrt(5) > 0".to_string()],
+            "input: {input}, unexpected required_conditions: {required:?}"
+        );
+    }
 }
 
 #[test]
@@ -12346,8 +12689,28 @@ fn acosh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
             vec!["x > 1".to_string()],
         ),
         (
+            "diff(-acosh(sqrt(x)), x)",
+            "-1 / (2 * sqrt(x - 1) * sqrt(x))",
+            vec!["x > 1".to_string()],
+        ),
+        (
+            "diff(2*acosh(sqrt(x)), x)",
+            "1 / (sqrt(x - 1) * sqrt(x))",
+            vec!["x > 1".to_string()],
+        ),
+        (
             "diff(acosh(sqrt(x+1)), x)",
             "1 / (2 * sqrt(x + 1) * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(acosh(sqrt(x/2)), x)",
+            "1 / (2 * sqrt(x) * sqrt(x - 2))",
+            vec!["x > 2".to_string()],
+        ),
+        (
+            "diff(-acosh(sqrt(x+1)), x)",
+            "-1 / (2 * sqrt(x) * sqrt(x + 1))",
             vec!["x > 0".to_string()],
         ),
         (
@@ -12359,6 +12722,11 @@ fn acosh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
             "diff(acosh(sqrt((x+1)^2+1)), x)",
             "(x + 1) / (sqrt((x + 1)^2 + 1) * |x + 1|)",
             vec!["x ≠ -1".to_string()],
+        ),
+        (
+            "diff(acosh(sqrt((2*x+1)/3)), x)",
+            "1 / (sqrt(2 * x + 1) * sqrt(2 * x - 2))",
+            vec!["x > 1".to_string()],
         ),
         (
             "diff(acosh(sqrt(x^2+2*x+2)), x)",
@@ -12681,13 +13049,33 @@ fn atanh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
     for (input, expected_render, expected_required) in [
         (
             "diff(atanh(sqrt(x)), x)",
-            "-1 / (2 * sqrt(x) * (x - 1))",
+            "1 / (2 * sqrt(x) * (1 - x))",
+            vec!["x < 1".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "diff(-atanh(sqrt(x)), x)",
+            "-1 / (2 * (1 - x) * sqrt(x))",
+            vec!["x < 1".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "diff(2*atanh(sqrt(x)), x)",
+            "1 / ((1 - x) * sqrt(x))",
             vec!["x < 1".to_string(), "x > 0".to_string()],
         ),
         (
             "diff(atanh(sqrt(2*x)), x)",
-            "-1 / (sqrt(2 * x) * (2 * x - 1))",
+            "1 / (sqrt(2 * x) * (1 - 2 * x))",
             vec!["x < 1/2".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "diff(atanh(sqrt(x/2)), x)",
+            "1 / (sqrt(2 * x) * (2 - x))",
+            vec!["x < 2".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "diff(atanh(sqrt(x/3)), x)",
+            "3 / (2 * sqrt(3 * x) * (3 - x))",
+            vec!["x < 3".to_string(), "x > 0".to_string()],
         ),
         (
             "diff(atanh(sqrt(x+1)), x)",
@@ -12706,12 +13094,12 @@ fn atanh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
         ),
         (
             "diff(atanh(sqrt(1/x)), x)",
-            "-1 / (2 * sqrt(x) * (x - 1))",
+            "1 / (2 * sqrt(x) * (1 - x))",
             vec!["x > 1".to_string()],
         ),
         (
             "diff(atanh(sqrt(4/x)), x)",
-            "-1 / (sqrt(x) * (x - 4))",
+            "1 / (sqrt(x) * (4 - x))",
             vec!["x > 4".to_string()],
         ),
         (
@@ -12731,13 +13119,26 @@ fn atanh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
         ),
         (
             "diff(atanh(sqrt(9/(3*x+6))), x)",
-            "-3 / (2 * sqrt(3 * x + 6) * (x - 1))",
+            "3 / (2 * sqrt(3 * x + 6) * (1 - x))",
             vec!["x > 1".to_string()],
         ),
         (
             "diff(atanh(sqrt(2/(x+3))), x)",
-            "-1 / (sqrt(2) * sqrt(x + 3) * (x + 1))",
+            "-1 / (sqrt(2 * x + 6) * (x + 1))",
             vec!["x > -1".to_string()],
+        ),
+        (
+            "diff(atanh(sqrt(x/(x+1))), x)",
+            "1 / (2 * sqrt(x) * sqrt(x + 1))",
+            vec!["1 - x / (x + 1) ≥ 0".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "diff(atanh(sqrt((x+1)/(x+3))), x)",
+            "1 / (2 * sqrt(x + 1) * sqrt(x + 3))",
+            vec![
+                "1 - (x + 1) / (x + 3) ≥ 0".to_string(),
+                "x > -1".to_string(),
+            ],
         ),
     ] {
         let mut engine = Engine::new();
@@ -13707,6 +14108,30 @@ fn bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentati
             None,
         ),
         (
+            "diff(arcsin(sqrt((x+1)/(x+2))), x)",
+            "1 / (2 * (x + 2) * sqrt(x + 1))",
+            vec!["x > -1".to_string()],
+            None,
+        ),
+        (
+            "diff(arccos(sqrt((x+1)/(x+2))), x)",
+            "-1 / (2 * (x + 2) * sqrt(x + 1))",
+            vec!["x > -1".to_string()],
+            None,
+        ),
+        (
+            "diff(arcsin(sqrt((x+1)/(x+3))), x)",
+            "sqrt(2) / (2 * (x + 3) * sqrt(x + 1))",
+            vec!["x > -1".to_string()],
+            None,
+        ),
+        (
+            "diff(arccos(sqrt((x+1)/(x+3))), x)",
+            "-sqrt(2) / (2 * (x + 3) * sqrt(x + 1))",
+            vec!["x > -1".to_string()],
+            None,
+        ),
+        (
             "diff(arcsin(sqrt(2*x+3)), x)",
             "1 / (sqrt(2 * x + 3) * sqrt(-2 * x - 2))",
             vec!["x > -3/2".to_string(), "x < -1".to_string()],
@@ -13829,6 +14254,103 @@ fn bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentati
         other => panic!("expected expression residual result, got {other:?}"),
     };
     assert_eq!(residual_result, "0");
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let residual_input = "diff(arcsin(sqrt((x+1)/(x+2))), x) - 1/(2*(x+2)*sqrt(x+1))";
+    let parsed =
+        parse(residual_input, &mut engine.simplifier.context).expect("parse quotient residual");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: residual_input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval quotient residual");
+    let residual_result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression residual result, got {other:?}"),
+    };
+    assert_eq!(residual_result, "0");
+
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    let residual_input = "diff(arcsin(sqrt((x+1)/(x+3))), x) - sqrt(2)/(2*(x+3)*sqrt(x+1))";
+    let parsed = parse(residual_input, &mut engine.simplifier.context)
+        .expect("parse non-square quotient residual");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: residual_input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval non-square quotient residual");
+    let residual_result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression residual result, got {other:?}"),
+    };
+    assert_eq!(residual_result, "0");
+
+    let parsed = parse(
+        "diff(arccos(sqrt((x+1)/(x+3))), x) + sqrt(2)/(2*(x+3)*sqrt(x+1))",
+        &mut engine.simplifier.context,
+    )
+    .expect("parse non-square arccos quotient residual");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: "diff(arccos(sqrt((x+1)/(x+3))), x) + sqrt(2)/(2*(x+3)*sqrt(x+1))"
+                    .to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval non-square arccos quotient residual");
+    let residual_result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression residual result, got {other:?}"),
+    };
+    assert_eq!(residual_result, "0");
+    let residual_required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|condition| condition.display(&engine.simplifier.context))
+    .collect();
+    assert_eq!(
+        residual_required,
+        vec!["x > -1".to_string()],
+        "non-square arccos quotient residual should not retain redundant open-interval guard"
+    );
 }
 
 #[test]

@@ -26240,6 +26240,28 @@ impl Orchestrator {
             return (compact, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
+        if let Some((one, required_conditions)) = crate::calculus_residual_support::
+            try_diff_integral_residual_passthrough_quotient_root_one(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            simplifier.extend_required_conditions(required_conditions.clone());
+            let shortcut_steps = if collect_steps {
+                let mut step = build_root_shortcut_compact_step(
+                    expr,
+                    one,
+                    "Compact quotient with matching antiderivative residual",
+                    "Integral Residual Quotient",
+                );
+                step.meta_mut().required_conditions = required_conditions;
+                vec![step]
+            } else {
+                Vec::new()
+            };
+            return (one, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
         if let Some((zero, required_conditions)) =
             crate::calculus_residual_support::try_diff_integral_plain_trig_residual_root_zero(
                 &mut simplifier.context,

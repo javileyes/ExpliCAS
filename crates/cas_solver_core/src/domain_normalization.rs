@@ -18,6 +18,7 @@ use cas_math::expr_normalization::{
 use cas_math::factor::factor;
 use cas_math::multipoly::MultiPoly;
 use cas_math::numeric_eval::as_rational_const;
+use cas_math::perfect_square_support::rational_sqrt;
 use cas_math::polynomial::Polynomial;
 use cas_math::prove_sign::{prove_nonnegative_depth_with, prove_positive_depth_with};
 use cas_math::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind};
@@ -577,6 +578,12 @@ fn negative_inner(ctx: &Context, expr: ExprId) -> Option<ExprId> {
 }
 
 fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId) -> ExprId {
+    if let Some(compact) =
+        compact_diff_integral_residual_passthrough_for_condition_display(ctx, expr)
+    {
+        return normalize_nonzero_condition_expr_for_display(ctx, compact);
+    }
+
     if let Some(base) = nonzero_integer_power_base_for_display(ctx, expr) {
         return normalize_nonzero_condition_expr_for_display(ctx, base);
     }
@@ -599,6 +606,71 @@ fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId)
     compact_nonzero_power_gap_for_display(ctx, expr)
         .or_else(|| compact_nonzero_power_gap_for_display(ctx, normalized))
         .unwrap_or(normalized)
+}
+
+fn compact_diff_integral_residual_passthrough_for_condition_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() < 3 {
+        return None;
+    }
+
+    for (diff_index, (diff_term, diff_sign)) in terms.iter().copied().enumerate() {
+        let Some(integrand) = diff_of_matching_integral_term(ctx, diff_term) else {
+            continue;
+        };
+
+        for (target_index, (target_term, target_sign)) in terms.iter().copied().enumerate() {
+            if target_index == diff_index || target_sign == diff_sign {
+                continue;
+            }
+            if !exprs_equivalent(ctx, integrand, target_term) {
+                continue;
+            }
+
+            let mut remaining = Vec::with_capacity(terms.len().saturating_sub(2));
+            for (index, (term, sign)) in terms.iter().copied().enumerate() {
+                if index == diff_index || index == target_index {
+                    continue;
+                }
+                remaining.push(match sign {
+                    Sign::Pos => term,
+                    Sign::Neg => ctx.add(Expr::Neg(term)),
+                });
+            }
+
+            return Some(match remaining.as_slice() {
+                [] => ctx.add(Expr::Number(BigRational::zero())),
+                [single] => *single,
+                _ => build_balanced_add(ctx, &remaining),
+            });
+        }
+    }
+
+    None
+}
+
+fn diff_of_matching_integral_term(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Function(diff_fn, diff_args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.sym_name(*diff_fn) != "diff" || diff_args.len() != 2 {
+        return None;
+    }
+
+    let Expr::Function(integrate_fn, integrate_args) = ctx.get(diff_args[0]) else {
+        return None;
+    };
+    if ctx.sym_name(*integrate_fn) != "integrate" || integrate_args.len() != 2 {
+        return None;
+    }
+    if !exprs_equivalent(ctx, diff_args[1], integrate_args[1]) {
+        return None;
+    }
+
+    Some(integrate_args[0])
 }
 
 fn nonzero_integer_power_base_for_display(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -1686,6 +1758,177 @@ fn positive_log_condition_dominates_argument_minus_one_nonzero(
     exprs_equivalent_up_to_sign(ctx, normalized_nonzero, normalized_boundary)
 }
 
+fn affine_root(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    affine_root_and_slope(ctx, expr).map(|(root, _)| root)
+}
+
+fn affine_root_and_slope(ctx: &Context, expr: ExprId) -> Option<(BigRational, BigRational)> {
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var_name = vars.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, expr, var_name.as_str()).ok()?;
+    if poly.degree() != 1 {
+        return None;
+    }
+    let slope = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if slope.is_zero() {
+        return None;
+    }
+    let constant = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    Some((-constant / slope.clone(), slope))
+}
+
+fn positive_affine_product_dominates_affine_nonzero(
+    ctx: &Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    let factors: Vec<_> = mul_leaves(ctx, positive_expr).into_iter().collect();
+    if factors.len() != 2 {
+        return false;
+    }
+
+    let Some((left_root, left_slope)) = affine_root_and_slope(ctx, factors[0]) else {
+        return false;
+    };
+    let Some((right_root, right_slope)) = affine_root_and_slope(ctx, factors[1]) else {
+        return false;
+    };
+    if left_root == right_root {
+        return false;
+    }
+    if !(left_slope * right_slope).is_positive() {
+        return false;
+    }
+    let Some(nonzero_root) = affine_root(ctx, nonzero_expr) else {
+        return false;
+    };
+
+    let (lower, upper) = if left_root < right_root {
+        (left_root, right_root)
+    } else {
+        (right_root, left_root)
+    };
+    lower <= nonzero_root && nonzero_root <= upper
+}
+
+fn quadratic_roots_with_leading(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(BigRational, BigRational, BigRational)> {
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var_name = vars.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, expr, var_name.as_str()).ok()?;
+    if poly.degree() != 2 {
+        return None;
+    }
+    let a = poly
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let b = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let c = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if a.is_zero() {
+        return None;
+    }
+
+    let four = BigRational::from_integer(4.into());
+    let two = BigRational::from_integer(2.into());
+    let discriminant = b.clone() * b.clone() - four * a.clone() * c;
+    let root_disc = rational_sqrt(&discriminant)?;
+    let leading_sign = a.signum();
+    let denominator = two * a;
+    if denominator.is_zero() {
+        return None;
+    }
+
+    Some((
+        leading_sign,
+        (-b.clone() - root_disc.clone()) / denominator.clone(),
+        (-b + root_disc) / denominator,
+    ))
+}
+
+fn positive_quadratic_dominates_affine_nonzero(
+    ctx: &Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    let Some((leading_sign, left_root, right_root)) =
+        quadratic_roots_with_leading(ctx, positive_expr)
+    else {
+        return false;
+    };
+    if left_root == right_root {
+        return false;
+    }
+    if !leading_sign.is_positive() {
+        return false;
+    }
+    let Some(nonzero_root) = affine_root(ctx, nonzero_expr) else {
+        return false;
+    };
+
+    let (lower, upper) = if left_root < right_root {
+        (left_root, right_root)
+    } else {
+        (right_root, left_root)
+    };
+    lower <= nonzero_root && nonzero_root <= upper
+}
+
+fn positive_affine_product_dominates_quotient_nonnegative(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    quotient_expr: ExprId,
+) -> bool {
+    let Expr::Div(num, den) = ctx.get(quotient_expr).clone() else {
+        return false;
+    };
+
+    let vars = cas_ast::collect_variables(ctx, quotient_expr);
+    if vars.len() != 1 {
+        return false;
+    }
+    let Some(var_name) = vars.iter().next() else {
+        return false;
+    };
+    let Ok(num_poly) = Polynomial::from_expr(ctx, num, var_name.as_str()) else {
+        return false;
+    };
+    let Ok(den_poly) = Polynomial::from_expr(ctx, den, var_name.as_str()) else {
+        return false;
+    };
+    if num_poly.degree() != 1 || den_poly.degree() != 1 {
+        return false;
+    }
+
+    let product = cas_math::expr_nary::build_balanced_mul(ctx, &[num, den]);
+    exprs_equivalent_up_to_nonzero_scalar(ctx, positive_expr, product)
+}
+
 fn positive_condition_dominates_affine_positive_offset(
     ctx: &Context,
     positive_expr: ExprId,
@@ -1723,6 +1966,48 @@ fn positive_condition_dominates_affine_positive_offset(
     offset_poly
         .constant_value()
         .is_some_and(|offset| offset >= BigRational::zero())
+}
+
+fn positive_condition_dominates_affine_unit_ratio_gap(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    derived_positive_expr: ExprId,
+) -> bool {
+    let Some((num, den)) = one_minus_ratio_parts(ctx, derived_positive_expr) else {
+        return false;
+    };
+
+    let normalized_positive = normalize_condition_expr_preserve_sign(ctx, positive_expr);
+    let normalized_num = normalize_condition_expr_preserve_sign(ctx, num);
+    if !positive_condition_dominates_affine_positive_offset(
+        ctx,
+        normalized_positive,
+        normalized_num,
+    ) {
+        return false;
+    }
+
+    let mut vars = cas_ast::collect_variables(ctx, normalized_num);
+    vars.extend(cas_ast::collect_variables(ctx, den));
+    if vars.len() != 1 {
+        return false;
+    }
+    let Some(var_name) = vars.iter().next() else {
+        return false;
+    };
+
+    let Ok(num_poly) = Polynomial::from_expr(ctx, normalized_num, var_name.as_str()) else {
+        return false;
+    };
+    let Ok(den_poly) = Polynomial::from_expr(ctx, den, var_name.as_str()) else {
+        return false;
+    };
+    let gap_poly = den_poly.sub(&num_poly);
+    gap_poly.degree() == 0
+        && gap_poly
+            .coeffs
+            .first()
+            .is_some_and(|offset| offset.is_positive())
 }
 
 fn one_minus_positive_const_over_expr_parts(
@@ -3300,6 +3585,9 @@ fn expand_positive_quotient_condition_for_display(
     if let Some(expanded) = expand_positive_affine_partition_quotient_condition(ctx, expr) {
         return Some(expanded);
     }
+    if let Some(expanded) = expand_positive_affine_quotient_as_product_condition(ctx, expr) {
+        return Some(expanded);
+    }
 
     let (num, den) = match ctx.get(expr) {
         Expr::Div(num, den) => (*num, *den),
@@ -3330,6 +3618,32 @@ fn expand_positive_quotient_condition_for_display(
     }
 
     Some(expanded)
+}
+
+fn expand_positive_affine_quotient_as_product_condition(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<ImplicitCondition>> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let vars = cas_ast::collect_variables(ctx, expr);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var_name = vars.iter().next()?;
+    let num_poly = Polynomial::from_expr(ctx, num, var_name.as_str()).ok()?;
+    let den_poly = Polynomial::from_expr(ctx, den, var_name.as_str()).ok()?;
+    if num_poly.degree() != 1 || den_poly.degree() != 1 {
+        return None;
+    }
+
+    let product = cas_math::expr_nary::build_balanced_mul(ctx, &[num, den]);
+    Some(vec![normalize_condition(
+        ctx,
+        &ImplicitCondition::Positive(product),
+    )])
 }
 
 fn expand_positive_affine_partition_quotient_condition(
@@ -3924,6 +4238,18 @@ fn positive_condition_dominates_sqrt_lower_nonzero(
     nonzero_expr: ExprId,
 ) -> bool {
     let Some(boundary) = sqrt_lower_nonzero_boundary(ctx, nonzero_expr) else {
+        return false;
+    };
+
+    positive_ordered_exprs_equivalent(ctx, positive_expr, boundary)
+}
+
+fn positive_condition_dominates_sqrt_lower_positive(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    derived_positive_expr: ExprId,
+) -> bool {
+    let Some(boundary) = sqrt_lower_nonzero_boundary(ctx, derived_positive_expr) else {
         return false;
     };
 
@@ -4614,6 +4940,10 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                         || positive_log_condition_dominates_argument_minus_one_nonzero(
                             ctx, *pos_expr, *nz_expr,
                         )
+                        || positive_affine_product_dominates_affine_nonzero(
+                            ctx, *pos_expr, *nz_expr,
+                        )
+                        || positive_quadratic_dominates_affine_nonzero(ctx, *pos_expr, *nz_expr)
                         || positive_condition_dominates_sqrt_lower_nonzero(ctx, *pos_expr, *nz_expr)
                         || positive_condition_dominates_acosh_sqrt_gap_nonzero(
                             ctx, *pos_expr, *nz_expr,
@@ -4637,6 +4967,16 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                     if is_abs_of(ctx, *derived_expr, *pos_expr)
                         || is_positive_power_of_base(ctx, *derived_expr, *pos_expr)
                         || positive_condition_dominates_affine_positive_offset(
+                            ctx,
+                            *pos_expr,
+                            *derived_expr,
+                        )
+                        || positive_condition_dominates_sqrt_lower_positive(
+                            ctx,
+                            *pos_expr,
+                            *derived_expr,
+                        )
+                        || positive_condition_dominates_affine_unit_ratio_gap(
                             ctx,
                             *pos_expr,
                             *derived_expr,
@@ -4671,6 +5011,9 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                     if exprs_equivalent(ctx, *nn_expr, *pos_expr)
                         || is_odd_power_of(ctx, *nn_expr, *pos_expr)
                         || is_positive_multiple_of(ctx, *nn_expr, *pos_expr)
+                        || positive_affine_product_dominates_quotient_nonnegative(
+                            ctx, *pos_expr, *nn_expr,
+                        )
                         || positive_condition_dominates_reciprocal_offset_nonnegative(
                             ctx, *pos_expr, *nn_expr,
                         )
@@ -5116,6 +5459,7 @@ fn positive_condition_factor_matches_known(
         || is_positive_power_of_base(ctx, factor, known)
         || is_abs_of(ctx, factor, known)
         || positive_condition_dominates_affine_positive_offset(ctx, known, factor)
+        || positive_condition_dominates_sqrt_lower_positive(ctx, known, factor)
 }
 
 fn sqrt_like_gap_conditions_equivalent(ctx: &Context, left: ExprId, right: ExprId) -> bool {
@@ -5614,6 +5958,26 @@ mod tests {
     }
 
     #[test]
+    fn positive_sqrt_lower_gap_dominates_positive_product_condition() {
+        let mut ctx = Context::new();
+        let branch_gap = parse("x-2", &mut ctx).expect("parse branch gap");
+        let sqrt_product = parse("1/2*x*(sqrt(x/2)-1)", &mut ctx).expect("parse sqrt product");
+        let half_power_product =
+            parse("1/2*x*((1/2*x)^(1/2)-1)", &mut ctx).expect("parse half-power product");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(branch_gap),
+                ImplicitCondition::Positive(sqrt_product),
+                ImplicitCondition::Positive(half_power_product),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x > 2"]);
+    }
+
+    #[test]
     fn nonnegative_factorial_argument_dominates_factorial_nonzero_display_condition() {
         let mut ctx = Context::new();
         let n = parse("n", &mut ctx).expect("parse n");
@@ -5738,6 +6102,27 @@ mod tests {
             render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(original)]);
 
         assert_eq!(rendered, vec!["integrate(cos(x) * x^2, x) + c ≠ 0"]);
+    }
+
+    #[test]
+    fn nonzero_diff_integral_residual_passthrough_denominator_compacts_for_display() {
+        let mut ctx = Context::new();
+        let denominator = parse(
+            "diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)),x),x)-1/(sqrt(2*x)*sqrt(2*x+6))+x+2",
+            &mut ctx,
+        )
+        .expect("parse denominator");
+        let positive_x = parse("x", &mut ctx).expect("parse x");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(denominator),
+                ImplicitCondition::Positive(positive_x),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x > 0"]);
     }
 
     #[test]
@@ -6736,6 +7121,104 @@ mod tests {
         assert_eq!(
             rendered,
             vec!["x > 0".to_string(), "sqrt(2 * x) - 2 * x > 0".to_string()]
+        );
+    }
+
+    #[test]
+    fn positive_affine_numerator_dominates_shifted_unit_ratio_gap() {
+        let mut ctx = Context::new();
+        let numerator = parse("x+1", &mut ctx).expect("parse numerator");
+        let raw_open_interval =
+            parse("1 - (x+1)/(x+3)", &mut ctx).expect("parse raw open interval");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(numerator),
+                ImplicitCondition::Positive(raw_open_interval),
+            ],
+        );
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["x > -1".to_string()]);
+    }
+
+    #[test]
+    fn positive_affine_quotient_displays_exterior_interval_and_dominates_internal_nonzeros() {
+        let mut ctx = Context::new();
+        let quotient = parse("(x+1)/(x+3)", &mut ctx).expect("parse quotient");
+        let quotient_nonnegative =
+            parse("(x+1)/(x+3)", &mut ctx).expect("parse nonnegative quotient");
+        let interior_boundary = parse("x+2", &mut ctx).expect("parse interior boundary");
+        let denominator_boundary = parse("x+3", &mut ctx).expect("parse denominator boundary");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonNegative(quotient_nonnegative),
+                ImplicitCondition::Positive(quotient),
+                ImplicitCondition::NonZero(interior_boundary),
+                ImplicitCondition::NonZero(denominator_boundary),
+            ],
+        );
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["x < -3 or x > -1".to_string()]);
+    }
+
+    #[test]
+    fn scaled_positive_affine_quotient_dominates_internal_affine_nonzero() {
+        let mut ctx = Context::new();
+        let quotient = parse("(2*x+1)/(x+3)", &mut ctx).expect("parse quotient");
+        let quotient_nonnegative =
+            parse("(2*x+1)/(x+3)", &mut ctx).expect("parse nonnegative quotient");
+        let interior_boundary = parse("3*x+4", &mut ctx).expect("parse interior boundary");
+        let denominator_boundary = parse("x+3", &mut ctx).expect("parse denominator boundary");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonNegative(quotient_nonnegative),
+                ImplicitCondition::Positive(quotient),
+                ImplicitCondition::NonZero(interior_boundary),
+                ImplicitCondition::NonZero(denominator_boundary),
+            ],
+        );
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["x < -3 or x > -1/2".to_string()]);
+    }
+
+    #[test]
+    fn bounded_positive_quadratic_does_not_dominate_interior_nonzero() {
+        let mut ctx = Context::new();
+        let interval = parse("4-(x+1)^2", &mut ctx).expect("parse interval");
+        let interior_boundary = parse("x+2", &mut ctx).expect("parse interior boundary");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(interval),
+                ImplicitCondition::NonZero(interior_boundary),
+            ],
+        );
+        let rendered: Vec<String> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(
+            rendered,
+            vec!["-3 < x < 1".to_string(), "x ≠ -2".to_string()]
         );
     }
 

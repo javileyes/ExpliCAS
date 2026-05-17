@@ -118,6 +118,10 @@ fn should_verify_antiderivative_with_public_integrate_residual(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_trig_log_substitution_target(
         ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_affine_sqrt_product_derivative_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_acosh_polynomial_substitution_target(
+        ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_monomial_times_ln_var_by_parts_target(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_affine_ln_by_parts_target(
@@ -979,6 +983,35 @@ fn integrate_contract_reciprocal_shifted_arctan_sqrt_residual_keeps_positive_dom
 }
 
 #[test]
+fn integrate_contract_reciprocal_shifted_root_product_residual_compacts_without_timeout() {
+    let input =
+        "1/((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)), x), x) - 1/(sqrt(2*x)*sqrt(2*x+6))) + x + 2) - 1/(x+2)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for reciprocal shifted root-product residual: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!(["x > 0"]));
+}
+
+#[test]
+fn integrate_contract_reciprocal_shifted_root_product_residual_additive_noise_compacts_without_timeout(
+) {
+    let input =
+        "1/((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)), x), x) - 1/(sqrt(2*x)*sqrt(2*x+6))) + x + 2) - 1/(x+2) + y - y";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for reciprocal shifted root-product residual with additive noise: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!(["x > 0"]));
+}
+
+#[test]
 fn integrate_contract_reciprocal_shifted_asinh_residual_compacts_without_timeout() {
     let input =
         "1/((diff(integrate(1/sqrt(4+(x+1)^2), x), x) - 1/sqrt(4+(x+1)^2)) + x + 2) - 1/(x+2)";
@@ -1036,6 +1069,64 @@ fn integrate_contract_shifted_quotient_csc_residual_compacts_without_timeout() {
         wire["required_display"],
         serde_json::json!(["sin(2·x + 1) ≠ 0", "x ≠ -2"])
     );
+}
+
+#[test]
+fn integrate_contract_root_product_residual_constant_passthrough_quotient_compacts_without_timeout()
+{
+    let input =
+        "((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)), x), x) - 1/(sqrt(2*x)*sqrt(2*x+6))) + x + 2)/(x+2)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for root-product residual passthrough quotient: {stderr}"
+    );
+    assert_eq!(wire["result"], "1");
+    assert_eq!(wire["required_display"], serde_json::json!(["x > 0"]));
+}
+
+#[test]
+fn integrate_contract_root_product_residual_reciprocal_shifted_quotient_compacts_without_timeout() {
+    let input =
+        "1/(((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)), x), x) - 1/(sqrt(2*x)*sqrt(2*x+6))) + x + 2)/(x+2)) - 1";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for root-product residual reciprocal shifted quotient: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!(["x > 0"]));
+}
+
+#[test]
+fn integrate_contract_root_product_residual_reciprocal_shifted_quotient_additive_noise_compacts_without_timeout(
+) {
+    let input =
+        "1/(((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)), x), x) - 1/(sqrt(2*x)*sqrt(2*x+6))) + x + 2)/(x+2)) + y - (1+y)";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for root-product residual reciprocal shifted quotient with additive noise: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!(["x > 0"]));
+}
+
+#[test]
+fn integrate_contract_root_product_residual_squared_shifted_quotient_compacts_without_timeout() {
+    let input =
+        "(((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)), x), x) - 1/(sqrt(2*x)*sqrt(2*x+6))) + x + 2)/(x+2))^2 - 1";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+
+    assert!(
+        stderr.is_empty(),
+        "unexpected stderr for root-product residual squared shifted quotient: {stderr}"
+    );
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], serde_json::json!(["x > 0"]));
 }
 
 #[test]
@@ -4737,6 +4828,13 @@ fn integrate_contract_linear_inverse_table_explains_internal_derivative_without_
             false,
         ),
         (
+            "integrate(-1/(2*sqrt(x)*sqrt(x+1)), x)",
+            "-1/2·acosh(2·x + 1)",
+            serde_json::json!(["x > 0"]),
+            "Usar la regla de acosh con derivada interna",
+            true,
+        ),
+        (
             "integrate(2/sqrt((2*x-1)^2-1), x)",
             "acosh(2·x - 1)",
             serde_json::json!(["x > 1"]),
@@ -4801,6 +4899,86 @@ fn integrate_contract_linear_inverse_table_explains_internal_derivative_without_
             "unexpected constant adjustment substep presence for {input}: {substeps:?}"
         );
         assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_affine_sqrt_product_public_diff_verifies_antiderivative() {
+    for (input, expected_diff, expected_required) in [
+        (
+            "integrate(1/(sqrt(x)*sqrt(x+5)), x)",
+            "1 / (sqrt(x) * sqrt(x + 5))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "integrate(1/(sqrt(x-1)*sqrt(x+2)), x)",
+            "1 / (sqrt(x + 2) * sqrt(x - 1))",
+            vec!["x > 1".to_string()],
+        ),
+        (
+            "integrate(1/(sqrt(x)*sqrt(2*x+4)), x)",
+            "1 / (sqrt(x) * sqrt(2 * x + 4))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "integrate(1/(sqrt(2*x)*sqrt(2*x+6)), x)",
+            "1 / (sqrt(2) * sqrt(x) * sqrt(2 * x + 6))",
+            vec!["x > 0".to_string()],
+        ),
+    ] {
+        let diff_input = format!("diff({input}, x)");
+        let (result, required) = evaluated_expr_with_required_conditions(&diff_input);
+
+        assert_eq!(result, expected_diff, "input: {diff_input}");
+        assert_eq!(required, expected_required, "input: {diff_input}");
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "affine sqrt-product antiderivative should verify through the public residual"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_acosh_root_product_uses_compact_unit_offset_affine_arg() {
+    for (input, expected_result) in [
+        ("integrate(1/(sqrt(x)*sqrt(x+3)), x)", "acosh(2/3 * x + 1)"),
+        ("integrate(1/(sqrt(x)*sqrt(x+5)), x)", "acosh(2/5 * x + 1)"),
+        (
+            "integrate(1/(sqrt(x)*sqrt(2*x+4)), x)",
+            "acosh(x + 1) / sqrt(2)",
+        ),
+    ] {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected_result, "input: {input}");
+        assert!(
+            !result.contains("*(x +") && !result.contains("* (x +"),
+            "post-calculus presentation should not leave a scaled shifted group in acosh: {result}"
+        );
+        assert_eq!(
+            required,
+            vec!["x > 0".to_string()],
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+        assert_rendered_antiderivative_verifies(input, &result);
+
+        let residual = format!(
+            "diff({result}, x) - {}",
+            input
+                .strip_prefix("integrate(")
+                .and_then(|rest| rest.strip_suffix(", x)"))
+                .expect("test input should be explicit integrate(expr, x)")
+        );
+        let (residual_result, residual_required) =
+            evaluated_expr_with_required_conditions(&residual);
+        assert_eq!(residual_result, "0", "residual: {residual}");
+        assert_eq!(
+            residual_required,
+            vec!["x > 0".to_string()],
+            "unexpected residual required_conditions for {input}: {residual_required:?}"
+        );
     }
 }
 
@@ -7959,6 +8137,11 @@ fn integrate_contract_inverse_hyperbolic_sqrt_reciprocal_kernels_invert_diff_out
             vec!["x > 4".to_string()],
         ),
         (
+            "integrate(3/(2*sqrt(3*x)*(3-x)), x)",
+            "atanh(sqrt(3 / x))",
+            vec!["x > 3".to_string()],
+        ),
+        (
             "integrate(-3/(2*sqrt(3*x+1)*(3*x)), x)",
             "atanh(sqrt(1 / (3 * x + 1)))",
             vec!["x > 0".to_string()],
@@ -7985,7 +8168,7 @@ fn integrate_contract_inverse_hyperbolic_sqrt_reciprocal_kernels_invert_diff_out
         ),
         (
             "integrate(-1/(x*sqrt(2*x+4)), x)",
-            "atanh(sqrt(4 / (2 * x + 4)))",
+            "atanh(sqrt(2 / (x + 2)))",
             vec!["x > 0".to_string()],
         ),
     ] {
@@ -10049,6 +10232,39 @@ fn integrate_contract_shifted_linear_scaled_arcsin_substitution() {
 }
 
 #[test]
+fn integrate_contract_polynomial_inverse_sqrt_public_diff_keeps_sqrt_presentation() {
+    for (input, expected_diff, expected_required) in [
+        (
+            "integrate(1/sqrt(1-x^2), x)",
+            "1 / sqrt(1 - x^2)",
+            vec!["-1 < x < 1".to_string()],
+        ),
+        (
+            "integrate(1/sqrt(4-(x+1)^2), x)",
+            "1 / sqrt(4 - (x + 1)^2)",
+            vec!["-3 < x < 1".to_string()],
+        ),
+        (
+            "integrate(2*x/sqrt(1+x^4), x)",
+            "2 * x / sqrt(x^4 + 1)",
+            Vec::new(),
+        ),
+    ] {
+        let direct_diff = format!("diff({input}, x)");
+        let (result, required) = evaluated_expr_with_required_conditions(&direct_diff);
+
+        assert_eq!(result, expected_diff, "input: {direct_diff}");
+        assert_eq!(required, expected_required, "input: {direct_diff}");
+
+        let residual = format!("{direct_diff} - {expected_diff}");
+        let (residual_result, residual_required) =
+            evaluated_expr_with_required_conditions(&residual);
+        assert_eq!(residual_result, "0", "input: {residual}");
+        assert_eq!(residual_required, expected_required, "input: {residual}");
+    }
+}
+
+#[test]
 fn integrate_contract_beta_sqrt_product_kernel_preserves_open_domain_and_verifies() {
     for (input, expected_result, expected_derivative) in [
         (
@@ -10465,17 +10681,37 @@ fn integrate_contract_polynomial_derivative_times_square_root_substitution() {
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate(x*sqrt(x^2+1), x)");
 
-    assert_eq!(result, "1/3 * (x^2 + 1)^(3/2)");
+    assert_eq!(result, "1/3 * sqrt(x^2 + 1) * (x^2 + 1)");
     assert!(
         required.is_empty(),
         "unexpected required_conditions: {required:?}"
     );
     assert_antiderivative_verifies("integrate(x*sqrt(x^2+1), x)");
 
+    let input = "integrate(-x*sqrt(x^2+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "-(1/3 * (x^2 + 1) * sqrt(x^2 + 1))");
+    assert!(
+        required.is_empty(),
+        "unexpected negative required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
+    let input = "integrate((2*x+1)*sqrt(x^2+x+1), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "2/3 * sqrt(x^2 + x + 1) * (x^2 + x + 1)");
+    assert!(
+        required.is_empty(),
+        "unexpected affine required_conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+
     let input = "integrate(2*x*sqrt(x^2-1), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "2/3 * (x^2 - 1)^(3/2)");
+    assert_eq!(result, "2/3 * sqrt(x^2 - 1) * (x^2 - 1)");
     assert_eq!(
         required,
         vec!["x ≤ -1 or x ≥ 1".to_string()],
@@ -10486,7 +10722,7 @@ fn integrate_contract_polynomial_derivative_times_square_root_substitution() {
     let input = "integrate(-2*x*sqrt(x^2-1), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
-    assert_eq!(result, "-2/3 * (x^2 - 1)^(3/2)");
+    assert_eq!(result, "-(2/3 * sqrt(x^2 - 1) * (x^2 - 1))");
     assert_eq!(
         required,
         vec!["x ≤ -1 or x ≥ 1".to_string()],
@@ -10601,6 +10837,48 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
     assert_eq!(residual_wire["result"], "0");
     assert_eq!(residual_wire["required_display"], serde_json::json!([]));
 
+    let input = "integrate((2*x+1)/(x^2+x+1)^(7/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, "-2 / (5 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^2)");
+    assert!(
+        !result.contains("^(5/2)"),
+        "deeper post-integration presentation should prefer a polynomial-sqrt denominator: {result}"
+    );
+    assert!(
+        required.is_empty(),
+        "deeper positive-quadratic denominator should not emit redundant conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    let residual = "diff(integrate((2*x+1)/(x^2+x+1)^(7/2), x), x) - (2*x+1)/(x^2+x+1)^(7/2)";
+    let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+    assert!(
+        residual_stderr.is_empty(),
+        "deeper fractional denominator-power residual should stay quiet: {residual_stderr}"
+    );
+    assert_eq!(residual_wire["result"], "0");
+    assert_eq!(residual_wire["required_display"], serde_json::json!([]));
+
+    let input = "integrate((2*x+1)/(x^2+x+1)^(9/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, "-2 / (7 * sqrt(x^2 + x + 1) * (x^2 + x + 1)^3)");
+    assert!(
+        !result.contains("^(7/2)"),
+        "deepest post-integration presentation should prefer a polynomial-sqrt denominator: {result}"
+    );
+    assert!(
+        required.is_empty(),
+        "deepest positive-quadratic denominator should not emit redundant conditions: {required:?}"
+    );
+    assert_antiderivative_verifies(input);
+    let residual = "diff(integrate((2*x+1)/(x^2+x+1)^(9/2), x), x) - (2*x+1)/(x^2+x+1)^(9/2)";
+    let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+    assert!(
+        residual_stderr.is_empty(),
+        "deepest fractional denominator-power residual should stay quiet: {residual_stderr}"
+    );
+    assert_eq!(residual_wire["result"], "0");
+    assert_eq!(residual_wire["required_display"], serde_json::json!([]));
+
     let input = "integrate((2*x+1)/(sqrt(x^2+x+1)^3), x)";
     let (result, required) = evaluated_integral_with_required_conditions(input);
 
@@ -10631,6 +10909,101 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
         0,
         "conditional fractional denominator power should not take an internal rationalize route"
     );
+    let input = "integrate(2*x/(x^2-1)^(5/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, "-2 / (3 * (x^2 - 1) * sqrt(x^2 - 1))");
+    assert_eq!(
+        required,
+        vec!["x < -1 or x > 1".to_string()],
+        "conditional higher fractional denominator power should preserve the positive-base condition"
+    );
+    assert_antiderivative_verifies(input);
+
+    let input = "integrate(2*x/(x^2-1)^(7/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, "-2 / (5 * (x^2 - 1)^2 * sqrt(x^2 - 1))");
+    assert_eq!(
+        required,
+        vec!["x < -1 or x > 1".to_string()],
+        "conditional deeper fractional denominator power should preserve the positive-base condition"
+    );
+    assert_antiderivative_verifies(input);
+
+    let input = "integrate(2*x/(x^2-1)^(11/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, "-2 / (9 * (x^2 - 1)^4 * sqrt(x^2 - 1))");
+    assert!(
+        !result.contains("^(9/2)"),
+        "conditional deepest denominator-power presentation should prefer a polynomial-sqrt denominator: {result}"
+    );
+    assert_eq!(
+        required,
+        vec!["x < -1 or x > 1".to_string()],
+        "conditional deepest fractional denominator power should preserve the positive-base condition"
+    );
+    assert_antiderivative_verifies(input);
+    let residual = "diff(integrate(2*x/(x^2-1)^(11/2), x), x) - 2*x/(x^2-1)^(11/2)";
+    let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+    assert!(
+        residual_stderr.is_empty(),
+        "conditional deepest fractional denominator-power residual should stay quiet: {residual_stderr}"
+    );
+    assert_eq!(residual_wire["result"], "0");
+    assert_eq!(
+        residual_wire["required_display"],
+        serde_json::json!(["x < -1 or x > 1"])
+    );
+
+    let input = "integrate(2*x/(x^2-1)^(13/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, "-2 / (11 * (x^2 - 1)^5 * sqrt(x^2 - 1))");
+    assert!(
+        !result.contains("^(11/2)"),
+        "conditional next-depth denominator-power presentation should prefer a polynomial-sqrt denominator: {result}"
+    );
+    assert_eq!(
+        required,
+        vec!["x < -1 or x > 1".to_string()],
+        "conditional next-depth fractional denominator power should preserve the positive-base condition"
+    );
+    assert_antiderivative_verifies(input);
+    let residual = "diff(integrate(2*x/(x^2-1)^(13/2), x), x) - 2*x/(x^2-1)^(13/2)";
+    let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+    assert!(
+        residual_stderr.is_empty(),
+        "conditional next-depth fractional denominator-power residual should stay quiet: {residual_stderr}"
+    );
+    assert_eq!(residual_wire["result"], "0");
+    assert_eq!(
+        residual_wire["required_display"],
+        serde_json::json!(["x < -1 or x > 1"])
+    );
+
+    let input = "integrate(2*x/(x^2-1)^(15/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, "-2 / (13 * (x^2 - 1)^6 * sqrt(x^2 - 1))");
+    assert!(
+        !result.contains("^(13/2)"),
+        "conditional odd-half denominator-power presentation should not depend on a manual exponent whitelist: {result}"
+    );
+    assert_eq!(
+        required,
+        vec!["x < -1 or x > 1".to_string()],
+        "conditional odd-half fractional denominator power should preserve the positive-base condition"
+    );
+    assert_antiderivative_verifies(input);
+    let residual = "diff(integrate(2*x/(x^2-1)^(15/2), x), x) - 2*x/(x^2-1)^(15/2)";
+    let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual);
+    assert!(
+        residual_stderr.is_empty(),
+        "conditional odd-half fractional denominator-power residual should stay quiet: {residual_stderr}"
+    );
+    assert_eq!(residual_wire["result"], "0");
+    assert_eq!(
+        residual_wire["required_display"],
+        serde_json::json!(["x < -1 or x > 1"])
+    );
+
     let direct_diff = "diff(integrate(2*x/(x^2-1)^(3/2), x), x)";
     let (direct_wire, direct_stderr) = cli_eval_json_with_stderr(direct_diff);
     assert!(
@@ -10662,6 +11035,30 @@ fn integrate_contract_polynomial_derivative_over_fractional_denominator_power_su
         required,
         vec!["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2".to_string()],
         "scaled shifted fractional denominator power should preserve the positive-base condition"
+    );
+    assert_antiderivative_verifies(input);
+    let input = "integrate((4*x+2)/(2*x^2+2*x-3)^(5/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(
+        result,
+        "-2 / (3 * sqrt(2 * x^2 + 2 * x - 3) * (2 * x^2 + 2 * x - 3))"
+    );
+    assert_eq!(
+        required,
+        vec!["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2".to_string()],
+        "higher scaled shifted fractional denominator power should preserve the positive-base condition"
+    );
+    assert_antiderivative_verifies(input);
+    let input = "integrate((4*x+2)/(2*x^2+2*x-3)^(7/2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(
+        result,
+        "-2 / (5 * sqrt(2 * x^2 + 2 * x - 3) * (2 * x^2 + 2 * x - 3)^2)"
+    );
+    assert_eq!(
+        required,
+        vec!["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2".to_string()],
+        "deeper scaled shifted fractional denominator power should preserve the positive-base condition"
     );
     assert_antiderivative_verifies(input);
     let residual =

@@ -95,6 +95,37 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-17 - Superseded scaled conditional post-integration presentation
+
+- area:
+  - calculus / integration / post-calculus presentation / residual verification
+- status:
+  - `superseded`
+- local lane:
+  - `cargo test -q -p cas_cli --test integrate_contract_tests integrate_contract_polynomial_derivative_over_fractional_denominator_power_substitution -- --exact --nocapture`
+- local win:
+  - broadening fractional denominator-power presentation from strictly positive
+    quadratics to all positive-leading conditional quadratics made outputs such
+    as `integrate((4*x+2)/(2*x^2+2*x-3)^(7/2), x)` eligible for compact
+    `sqrt(base) * base^n` denominator rendering while preserving the positive
+    base condition.
+- global result:
+  - existing scaled-shifted residual assertions regressed before promotion:
+    differentiating the displayed antiderivative left a nonzero-looking
+    residual for the `5/2` scaled base case.
+- why it regressed globally:
+  - residual normalization already handles the unpresented fractional power
+    form and the monic conditional presentation path, but not the scaled
+    conditional displayed denominator shape.
+- what could make it combinable later:
+  - add a residual-normalization path for scaled conditional
+    `sqrt(base) * base^n` denominators, then re-open presentation beyond monic
+    conditional quadratics.
+- superseded by:
+  - a follow-up residual parser change that sums integer powers of the same
+    base inside half-power denominator products, allowing the scaled conditional
+    presentation to be promoted with antiderivative verification intact.
+
 ## 2026-05-16 - Rejected broad residual display: two-argument integration as integral text
 
 - area:
@@ -622,7 +653,8 @@ The burden of proof stays the same:
 - area:
   - orchestrator / calculus residual / additive passthrough
 - status:
-  - `discovery/observe-only`
+  - `resolved`
+  - originally logged as `discovery/observe-only`
 - discovered case:
   - `((diff(exp(sin(x)),x)+m) - (cos(x)*e^sin(x)+m))`
   - `((diff(sin(e^(x^2)),x)+m) - (2*x*cos(e^(x^2))*e^(x^2)+m))`
@@ -12818,9 +12850,11 @@ The burden of proof stays the same:
   - the candidate should remain unpromoted until antiderivative verification is
     stable in the promoted contract path
 - follow-up:
-  - add a bounded residual-normalization candidate for common-base
-    `P^(1/2)` / `P^(7/2)` quotient differences, then reattempt the
-    presentation only if `make engine-fast` and guardrails keep `failed = 0`
+  - resolved by a bounded residual-normalization extension for exact
+    polynomial-power denominators plus a retained post-integration presentation
+    contract for the `7/2 -> 5/2` reciprocal-power primitive
+  - validation kept `make engine-fast`, `make engine-scorecard`, and
+    `make engine-scorecard-pressure` at `failed = 0`
 
 ## 2026-05-16 - Rejected broad condition propagation: reciprocal trig canonicalization
 
@@ -12874,3 +12908,65 @@ The burden of proof stays the same:
   - before promoting affine exp-trig integration, add a bounded residual
     simplification route for same-affine exp-trig products or another verified
     fast path that keeps the derivative check cheap
+
+## 2026-05-17 - Refined condition dominance: positive quadratic interval vs exterior
+
+- area:
+  - calculus / post-calculus condition presentation / domain normalization
+- status:
+  - `refined-retained`
+- local win:
+  - broad dominance of affine `NonZero` guards by a positive quadratic
+    condition removed redundant public `Requires` for exterior affine-quotient
+    domains such as `diff(arctan(sqrt((2*x+1)/(x+3))), x)`, reducing
+    `["x ≠ -4/3", "x < -3 or x > -1/2"]` to
+    `["x < -3 or x > -1/2"]`
+- global loss:
+  - the first version also removed `x ≠ -2` from the bounded interval
+    integration residual guard `["-3 < x < 1", "x ≠ -2"]`
+  - that was unsound because `-2` lies inside the allowed interval, so the
+    nonzero guard is not redundant
+- retained learning:
+  - a positive quadratic dominates an affine nonzero root between its two roots
+    only when the positive region is exterior, i.e. the quadratic leading
+    coefficient is positive
+  - for factored affine products, the analogous condition is a positive product
+    of slopes; opposite-slope products describe a bounded interval and must not
+    erase interior nonzero guards
+- follow-up:
+  - future condition-presentation cleanup should add both exterior and bounded
+    negative tests whenever it reasons from roots instead of direct factors
+
+## 2026-05-17 - Rejected broad quotient-gap condition presentation
+
+- area:
+  - calculus / post-calculus condition presentation / atanh sqrt quotient
+- status:
+  - `partial-reject-retained-presentation`
+- local win:
+  - for `diff(atanh(sqrt(x/(x+1))), x)`, expanding the gap condition
+    `1 - x/(x+1) > 0` to `x+1 > 0` plus refining
+    `x*(x+1) > 0` with that positive factor reduced the public conditions to
+    the ideal `["x > 0"]`
+- global loss:
+  - the same global expansion changed branch-sensitive contracts for
+    `diff(acosh(1-2*x), x)` and
+    `diff(ln(sqrt((2*x+1)^2-4)-(2*x+1)), x)`, surfacing the opposite branch
+    condition such as `x > 1` or `x > 1/2` where the promoted contract expects
+    only the selected branch
+  - this failed `make engine-fast` in `calculus_diff_contract`
+- retained learning:
+  - `1 - N/D > 0` is not just display cleanup in branch-sensitive calculus
+    traces; expanding it globally can erase or expose branch-selection policy
+    that other families intentionally keep directional
+  - quotient-gap domain cleanup should be tied to a family-aware calculus
+    condition policy or a more explicit branch regime, not a broad
+    condition-normalization rule
+- retained part:
+  - the derivative presentation for affine positive-gap
+    `atanh(sqrt(N/D))` was kept, so supported cases now render compact
+    root-denominator forms while preserving existing conservative conditions
+- follow-up:
+  - revisit minimal `Requires` for `atanh(sqrt(N/D))` only after adding a
+    branch-aware condition combiner that has negative tests for `acosh` and
+    `ln(sqrt(gap) ± affine)` branch contracts

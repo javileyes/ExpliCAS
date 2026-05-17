@@ -518,6 +518,97 @@ fn scaled_reciprocal_sqrt_polynomial_term(
     Some((scale, poly, base))
 }
 
+fn reciprocal_sqrt_product_denominator_base(
+    ctx: &mut Context,
+    denominator: ExprId,
+) -> Option<(BigRational, ExprId)> {
+    let mut scale = BigRational::one();
+    let mut bases = Vec::new();
+    for factor in cas_math::expr_nary::mul_leaves(ctx, denominator) {
+        let factor = cas_ast::hold::strip_all_holds(ctx, factor);
+        if let Some(value) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+            if value.is_zero() {
+                return None;
+            }
+            scale *= value;
+            continue;
+        }
+        let base = sqrt_like_base(ctx, factor)?;
+        bases.push(base);
+    }
+
+    if bases.len() < 2 {
+        return None;
+    }
+
+    Some((scale, cas_math::expr_nary::build_balanced_mul(ctx, &bases)))
+}
+
+fn scaled_reciprocal_sqrt_product_or_power_term(
+    ctx: &mut Context,
+    term: ExprId,
+) -> Option<(BigRational, Polynomial, ExprId, bool)> {
+    let term = cas_ast::hold::strip_all_holds(ctx, term);
+    let (mut scale, core) = rational_scaled_term(ctx, term);
+    let core = cas_ast::hold::strip_all_holds(ctx, core);
+
+    let (base, product_denominator) = if let Some(base) = reciprocal_sqrt_like_base(ctx, core) {
+        (base, false)
+    } else {
+        let Expr::Div(num, den) = ctx.get(core).clone() else {
+            return None;
+        };
+        let (num_scale, num_core) = rational_scaled_term(ctx, num);
+        if !expr_is_one(ctx, num_core) {
+            return None;
+        }
+        let (den_scale, base) = reciprocal_sqrt_product_denominator_base(ctx, den)?;
+        scale *= num_scale;
+        scale /= den_scale;
+        (base, true)
+    };
+
+    let vars = cas_ast::collect_variables(ctx, base);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var_name = vars.iter().next()?;
+    let poly = Polynomial::from_expr(ctx, base, var_name).ok()?;
+    if poly.is_zero() {
+        return None;
+    }
+
+    Some((scale, poly, base, product_denominator))
+}
+
+fn scaled_reciprocal_sqrt_product_terms_required_conditions(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (left_scale, left_poly, _left_base, left_product) =
+        scaled_reciprocal_sqrt_product_or_power_term(ctx, left)?;
+    let (right_scale, right_poly, _right_base, right_product) =
+        scaled_reciprocal_sqrt_product_or_power_term(ctx, right)?;
+
+    if !left_product && !right_product {
+        return None;
+    }
+    if left_poly.var != right_poly.var || !same_nonzero_sign(&left_scale, &right_scale) {
+        return None;
+    }
+
+    let left_scale_sq = left_scale.clone() * left_scale;
+    let right_scale_sq = right_scale.clone() * right_scale;
+    if scale_polynomial(&right_poly, &left_scale_sq)
+        != scale_polynomial(&left_poly, &right_scale_sq)
+    {
+        return None;
+    }
+
+    Some(Vec::new())
+}
+
 fn rationalized_reciprocal_sqrt_base(ctx: &mut Context, term: ExprId) -> Option<ExprId> {
     let Expr::Div(num, den) = ctx.get(term).clone() else {
         return None;
@@ -709,6 +800,91 @@ fn scaled_sqrt_polynomial_over_sqrt_terms_required_conditions(
     } else {
         Some(vec![crate::ImplicitCondition::Positive(sqrt_base)])
     }
+}
+
+fn scaled_sqrt_over_base_product_term(
+    ctx: &mut Context,
+    term: ExprId,
+) -> Option<(BigRational, ExprId, ExprId)> {
+    let (outer_scale, core) = rational_scaled_term(ctx, term);
+    if outer_scale.is_zero() {
+        return None;
+    }
+    let core = cas_ast::hold::strip_all_holds(ctx, core);
+    let Expr::Div(num, den) = ctx.get(core).clone() else {
+        return None;
+    };
+
+    let (num_scale, num_core) = rational_scaled_term(ctx, num);
+    if num_scale.is_zero() {
+        return None;
+    }
+    let num_core = cas_ast::hold::strip_all_holds(ctx, num_core);
+    let sqrt_base = sqrt_like_base(ctx, num_core)?;
+
+    let (den_scale, den_core) = rational_scaled_term(ctx, den);
+    if den_scale.is_zero() {
+        return None;
+    }
+    let den_factors = cas_math::expr_nary::mul_leaves(ctx, den_core);
+    let remaining = remove_denominator_factor_matching_base(ctx, &den_factors, sqrt_base)?;
+    let [product_base] = remaining.as_slice() else {
+        return None;
+    };
+
+    Some((
+        outer_scale * num_scale / den_scale,
+        sqrt_base,
+        *product_base,
+    ))
+}
+
+fn scaled_reciprocal_sqrt_base_term(
+    ctx: &mut Context,
+    term: ExprId,
+) -> Option<(BigRational, ExprId)> {
+    let (scale, core) = rational_scaled_term(ctx, term);
+    if scale.is_zero() {
+        return None;
+    }
+    let core = cas_ast::hold::strip_all_holds(ctx, core);
+    let base = reciprocal_sqrt_like_base(ctx, core)?;
+    Some((scale, base))
+}
+
+fn sqrt_over_product_matches_reciprocal_product_root_conditions(
+    ctx: &mut Context,
+    sqrt_over_product: ExprId,
+    reciprocal_root: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (left_scale, sqrt_base, product_base) =
+        scaled_sqrt_over_base_product_term(ctx, sqrt_over_product)?;
+    let (right_scale, reciprocal_base) = scaled_reciprocal_sqrt_base_term(ctx, reciprocal_root)?;
+    if left_scale != right_scale {
+        return None;
+    }
+
+    let vars = cas_ast::collect_variables(ctx, sqrt_base);
+    if vars.len() != 1 {
+        return None;
+    }
+    let var_name = vars.iter().next()?;
+    let sqrt_poly = Polynomial::from_expr(ctx, sqrt_base, var_name).ok()?;
+    let product_poly = Polynomial::from_expr(ctx, product_base, var_name).ok()?;
+    let reciprocal_poly = Polynomial::from_expr(ctx, reciprocal_base, var_name).ok()?;
+    if sqrt_poly.is_zero() || product_poly.is_zero() {
+        return None;
+    }
+
+    let expected = sqrt_poly.mul(&product_poly.mul(&product_poly));
+    if reciprocal_poly != expected {
+        return None;
+    }
+
+    Some(vec![
+        crate::ImplicitCondition::Positive(sqrt_base),
+        crate::ImplicitCondition::Positive(product_base),
+    ])
 }
 
 fn remove_denominator_factor_matching_base(
@@ -1006,6 +1182,32 @@ fn polynomial_power(poly: &Polynomial, exponent: usize) -> Polynomial {
     result
 }
 
+fn scaled_polynomial_power(
+    poly: &Polynomial,
+    base: &Polynomial,
+    max_exponent: usize,
+) -> Option<(BigRational, usize)> {
+    if poly.is_zero() || base.is_zero() || poly.var != base.var {
+        return None;
+    }
+
+    for exponent in 0..=max_exponent {
+        let base_power = polynomial_power(base, exponent);
+        if base_power.is_zero() || base_power.degree() != poly.degree() {
+            continue;
+        }
+        let scale = poly.leading_coeff() / base_power.leading_coeff();
+        if scale.is_zero() {
+            continue;
+        }
+        if scale_polynomial(&base_power, &scale) == *poly {
+            return Some((scale, exponent));
+        }
+    }
+
+    None
+}
+
 fn positive_half_power_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, BigRational)> {
     if let Some(base) = sqrt_like_base(ctx, expr) {
         return Some((base, BigRational::new(1.into(), 2.into())));
@@ -1055,10 +1257,22 @@ fn positive_half_power_product_parts(
 
     let base = base?;
     for factor in other_factors {
-        if !exprs_match(ctx, factor, base) {
+        if exprs_match(ctx, factor, base) {
+            exponent += BigRational::one();
+            continue;
+        }
+
+        let Expr::Pow(factor_base, factor_exp) = ctx.get(factor) else {
+            return None;
+        };
+        let factor_exp = cas_math::numeric_eval::as_rational_const(ctx, *factor_exp)?;
+        if !factor_exp.is_positive() || !factor_exp.is_integer() {
             return None;
         }
-        exponent += BigRational::one();
+        if !exprs_match(ctx, *factor_base, base) {
+            return None;
+        }
+        exponent += factor_exp;
     }
     half_integer_offset(&exponent)?;
     Some((base, exponent, scale))
@@ -1072,12 +1286,28 @@ fn half_power_polynomial_term(
     let core = cas_ast::hold::strip_all_holds(ctx, core);
     match ctx.get(core).clone() {
         Expr::Div(num, den) => {
-            let (base, denominator_exponent, denominator_scale) =
-                positive_half_power_product_parts(ctx, den)?;
-            let numerator = Polynomial::from_expr(ctx, num, var_name)
-                .ok()?
-                .div_scalar(&denominator_scale);
-            Some((numerator, base, denominator_exponent))
+            if let Some((base, denominator_exponent, denominator_scale)) =
+                positive_half_power_product_parts(ctx, den)
+            {
+                let numerator = Polynomial::from_expr(ctx, num, var_name)
+                    .ok()?
+                    .div_scalar(&denominator_scale);
+                return Some((numerator, base, denominator_exponent));
+            }
+
+            let (numerator, base, numerator_denominator_exponent) =
+                half_power_polynomial_term(ctx, num, var_name)?;
+            let base_poly = Polynomial::from_expr(ctx, base, var_name).ok()?;
+            let den_poly = Polynomial::from_expr(ctx, den, var_name).ok()?;
+            let (denominator_scale, denominator_integer_power) =
+                scaled_polynomial_power(&den_poly, &base_poly, 6)?;
+            let denominator_exponent = numerator_denominator_exponent
+                + BigRational::from_integer((denominator_integer_power as i64).into());
+            Some((
+                numerator.div_scalar(&denominator_scale),
+                base,
+                denominator_exponent,
+            ))
         }
         Expr::Pow(base, exponent) => {
             let exponent = cas_math::numeric_eval::as_rational_const(ctx, exponent)?;
@@ -1139,7 +1369,7 @@ fn half_power_polynomial_sum_required_conditions(
     expr: ExprId,
 ) -> Option<Vec<crate::ImplicitCondition>> {
     let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
-    if !(3..=4).contains(&terms.len()) {
+    if !(2..=4).contains(&terms.len()) {
         return None;
     }
 
@@ -1286,8 +1516,11 @@ pub(crate) fn try_reciprocal_half_power_shared_denominator_residual_root_zero(
         .or_else(|| reciprocal_half_power_shared_denominator_terms_cancel(ctx, right, left))
         .map(|_| Vec::new())
         .or_else(|| scaled_reciprocal_sqrt_polynomial_terms_required_conditions(ctx, left, right))
+        .or_else(|| scaled_reciprocal_sqrt_product_terms_required_conditions(ctx, left, right))
         .or_else(|| scaled_sqrt_polynomial_over_sqrt_terms_required_conditions(ctx, left, right))
         .or_else(|| scaled_sqrt_polynomial_over_sqrt_terms_required_conditions(ctx, right, left))
+        .or_else(|| sqrt_over_product_matches_reciprocal_product_root_conditions(ctx, left, right))
+        .or_else(|| sqrt_over_product_matches_reciprocal_product_root_conditions(ctx, right, left))
         .or_else(|| {
             power_numerator_shifted_power_denominator_terms_required_conditions(ctx, left, right)
         })
@@ -5562,6 +5795,103 @@ fn bounded_inverse_trig_sqrt_polynomial_residual_conditions(
     ])
 }
 
+fn compact_inverse_trig_derivative_terms_match(
+    ctx: &mut Context,
+    compact: ExprId,
+    right: ExprId,
+) -> bool {
+    if exprs_match(ctx, compact, right)
+        || quotient_matches_with_unordered_products(ctx, compact, right)
+        || quotient_matches_rationalized_sqrt_denominator_variant(ctx, compact, right)
+    {
+        return true;
+    }
+
+    let compact = cas_ast::hold::strip_all_holds(ctx, compact);
+    let right = cas_ast::hold::strip_all_holds(ctx, right);
+    let (Expr::Neg(compact_inner), Expr::Neg(right_inner)) =
+        (ctx.get(compact).clone(), ctx.get(right).clone())
+    else {
+        return false;
+    };
+
+    exprs_match(ctx, compact_inner, right_inner)
+        || quotient_matches_with_unordered_products(ctx, compact_inner, right_inner)
+        || quotient_matches_rationalized_sqrt_denominator_variant(ctx, compact_inner, right_inner)
+}
+
+fn bounded_inverse_trig_sqrt_affine_quotient_residual_conditions(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let target = cas_ast::hold::strip_all_holds(ctx, call.target);
+    let Expr::Function(fn_id, args) = ctx.get(target).clone() else {
+        return None;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(fn_id),
+            Some(BuiltinFn::Arcsin | BuiltinFn::Asin | BuiltinFn::Arccos | BuiltinFn::Acos)
+        )
+    {
+        return None;
+    }
+
+    let radicand = sqrt_like_base(ctx, args[0])?;
+    let Expr::Div(num, den) = ctx.get(radicand).clone() else {
+        return None;
+    };
+    let numerator_poly = Polynomial::from_expr(ctx, num, &call.var_name).ok()?;
+    let denominator_poly = Polynomial::from_expr(ctx, den, &call.var_name).ok()?;
+    if numerator_poly.degree() != 1 || denominator_poly.degree() != 1 {
+        return None;
+    }
+
+    let numerator_slope = numerator_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let denominator_slope = denominator_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if numerator_slope.is_zero() || numerator_slope != denominator_slope {
+        return None;
+    }
+
+    let numerator_constant = numerator_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let denominator_constant = denominator_poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if !(denominator_constant - numerator_constant).is_positive() {
+        return None;
+    }
+
+    let compact =
+        crate::rules::calculus::try_post_calculus_presentation(ctx, diff_expr, diff_expr)?;
+    let compact = cas_ast::hold::strip_all_holds(ctx, compact);
+    if !compact_inverse_trig_derivative_terms_match(ctx, compact, right) {
+        return None;
+    }
+
+    Some(vec![crate::ImplicitCondition::Positive(num)])
+}
+
 fn arctan_sqrt_positive_polynomial_quotient_diff_matches(
     ctx: &mut Context,
     diff_expr: ExprId,
@@ -6371,6 +6701,11 @@ pub(crate) fn try_diff_inverse_reciprocal_trig_residual_zero_preorder(
                     ctx, diff_expr, divisor, right,
                 )
             })
+            .or_else(|| {
+                bounded_inverse_trig_sqrt_affine_quotient_residual_conditions(
+                    ctx, diff_expr, divisor, right,
+                )
+            })
             .or_else(|| inverse_reciprocal_trig_affine_diff_matches(ctx, diff_expr, divisor, right))
             .or_else(|| {
                 inverse_reciprocal_trig_positive_quadratic_diff_matches(
@@ -6812,7 +7147,7 @@ fn diff_integral_residual_shared_shift_reciprocal_conditions(
     Some(required_conditions)
 }
 
-pub(crate) fn try_diff_integral_residual_reciprocal_shifted_difference_root_zero(
+fn try_diff_integral_residual_reciprocal_shifted_difference_direct_root_zero(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
@@ -6840,6 +7175,58 @@ pub(crate) fn try_diff_integral_residual_reciprocal_shifted_difference_root_zero
         )
     })?;
     Some((ctx.num(0), required_conditions))
+}
+
+pub(crate) fn try_diff_integral_residual_reciprocal_shifted_difference_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_additive_passthrough_root_zero(
+        ctx,
+        expr,
+        try_diff_integral_residual_reciprocal_shifted_difference_direct_root_zero,
+    )
+}
+
+fn try_diff_integral_residual_additive_passthrough_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+    direct_root_zero: IntegralResidualRootMatcher,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let expr = strip_exact_zero_additive_noise_bounded(ctx, expr, 3);
+    if let Some(result) = direct_root_zero(ctx, expr) {
+        return Some(result);
+    }
+    if !contains_diff_call_bounded(ctx, expr, 8) {
+        return None;
+    }
+
+    let view = cas_math::expr_nary::AddView::from_expr(ctx, expr);
+    let terms: Vec<_> = view.terms.into_iter().collect();
+    let term_count = terms.len();
+    if !(3..=6).contains(&term_count) {
+        return None;
+    }
+
+    let full_mask = (1_u32 << term_count) - 1;
+    for mask in 1..full_mask {
+        let passthrough_mask = full_mask ^ mask;
+        if passthrough_mask == 0 {
+            continue;
+        }
+
+        let residual_candidate = build_residual_subset_candidate(ctx, &terms, mask);
+        let Some((_zero, required_conditions)) = direct_root_zero(ctx, residual_candidate) else {
+            continue;
+        };
+
+        let passthrough = build_residual_subset_candidate(ctx, &terms, passthrough_mask);
+        if exact_zero_noise_expr(ctx, passthrough) {
+            return Some((ctx.num(0), required_conditions));
+        }
+    }
+
+    None
 }
 
 fn diff_integral_residual_shifted_quotient_exact_one_conditions(
@@ -6876,7 +7263,34 @@ fn diff_integral_residual_shifted_quotient_exact_one_conditions(
     None
 }
 
-pub(crate) fn try_diff_integral_residual_shifted_quotient_difference_root_zero(
+pub(crate) fn try_diff_integral_residual_passthrough_quotient_root_one(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let Expr::Div(numerator, denominator) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if cas_math::numeric_eval::as_rational_const(ctx, denominator)
+        .is_some_and(|value| value.is_zero())
+    {
+        return None;
+    }
+
+    let required_conditions =
+        diff_integral_residual_shifted_quotient_exact_one_conditions(ctx, numerator, denominator)?;
+    Some((ctx.num(1), required_conditions))
+}
+
+fn square_of_unit_quotient_candidate(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exponent) = ctx.get(expr) else {
+        return None;
+    };
+    cas_math::numeric_eval::as_rational_const(ctx, *exponent)
+        .is_some_and(|value| value == BigRational::from_integer(2.into()))
+        .then_some(*base)
+}
+
+fn try_diff_integral_residual_shifted_quotient_difference_direct_root_zero(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
@@ -6889,6 +7303,8 @@ pub(crate) fn try_diff_integral_residual_shifted_quotient_difference_root_zero(
         },
         _ => return None,
     };
+    let quotient = unit_reciprocal_denominator(ctx, quotient).unwrap_or(quotient);
+    let quotient = square_of_unit_quotient_candidate(ctx, quotient).unwrap_or(quotient);
     let Expr::Div(numerator, denominator) = ctx.get(quotient) else {
         return None;
     };
@@ -6904,6 +7320,17 @@ pub(crate) fn try_diff_integral_residual_shifted_quotient_difference_root_zero(
         *denominator,
     )?;
     Some((ctx.num(0), required_conditions))
+}
+
+pub(crate) fn try_diff_integral_residual_shifted_quotient_difference_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_additive_passthrough_root_zero(
+        ctx,
+        expr,
+        try_diff_integral_residual_shifted_quotient_difference_direct_root_zero,
+    )
 }
 
 fn try_diff_integral_rational_quadratic_residual_zero_preorder(
@@ -7817,6 +8244,61 @@ fn try_diff_integral_reciprocal_trig_residual_direct_root_zero(
         .or_else(|| try_diff_integral_reciprocal_trig_residual_zero_preorder(ctx, right, left))
 }
 
+fn try_diff_integral_reciprocal_half_power_residual_direct_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr).clone() {
+        Expr::Sub(left, right) => (left, right),
+        Expr::Add(left, right) => match (ctx.get(left).clone(), ctx.get(right).clone()) {
+            (_, Expr::Neg(right_inner)) => (left, right_inner),
+            (Expr::Neg(left_inner), _) => (right, left_inner),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    try_diff_integral_reciprocal_half_power_residual_zero_preorder(ctx, left, right).or_else(|| {
+        try_diff_integral_reciprocal_half_power_residual_zero_preorder(ctx, right, left)
+    })
+}
+
+fn try_diff_integral_reciprocal_half_power_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)?;
+    if diff_call.var_name != integrate_call.var_name {
+        return None;
+    }
+
+    let is_supported_root_product =
+        cas_math::symbolic_integration_support::integrate_symbolic_is_affine_sqrt_product_derivative_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) || cas_math::symbolic_integration_support::integrate_symbolic_is_acosh_polynomial_substitution_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        );
+    if !is_supported_root_product || !exprs_match(ctx, integrate_call.target, right) {
+        return None;
+    }
+
+    Some((
+        ctx.num(0),
+        integral_required_conditions(ctx, integrate_call.target, &integrate_call.var_name),
+    ))
+}
+
 type IntegralResidualRootResult = Option<(ExprId, Vec<crate::ImplicitCondition>)>;
 type IntegralResidualRootMatcher = fn(&mut Context, ExprId) -> IntegralResidualRootResult;
 
@@ -7834,6 +8316,7 @@ fn try_any_diff_integral_residual_wrapped_root_zero(
         try_diff_integral_reciprocal_trig_residual_direct_root_zero,
         try_diff_integral_plain_trig_residual_direct_root_zero,
         try_diff_integral_inverse_trig_residual_direct_root_zero,
+        try_diff_integral_reciprocal_half_power_residual_direct_root_zero,
     ] {
         if let Some(result) =
             try_diff_integral_residual_wrapped_root_zero(ctx, expr, depth, matcher)
@@ -8891,6 +9374,32 @@ mod tests {
                 vec!["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2".to_string()]
             ))
         );
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "(8*x^3+12*x^2-8*x-6)/(2*x^2+2*x-3)^(7/2) - (4*x+2)/(2*x^2+2*x-3)^(5/2)"
+            ),
+            Some((
+                "0".to_string(),
+                vec!["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2".to_string()]
+            ))
+        );
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "(8*x^3+12*x^2-8*x-6)/((2*x^2+2*x-3)^(3/2)*(2*x^2+2*x-3)^2) - (4*x+2)/(2*x^2+2*x-3)^(5/2)"
+            ),
+            Some((
+                "0".to_string(),
+                vec!["x < -1/2 - sqrt(7)/2 or x > -1/2 + sqrt(7)/2".to_string()]
+            ))
+        );
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "(x^2+x+1)^(1/2)*(50*x^5+125*x^4+200*x^3+175*x^2+100*x+25) / \
+                 ((x^2+x+1)*(25*(x^4+2*x^3+3*x^2+2*x+1)^2+25*x*(x^4+2*x^3+3*x^2+2*x+1)^2+25*x^2*(x^4+2*x^3+3*x^2+2*x+1)^2)) \
+                 - (2*x+1)/(x^2+x+1)^(7/2)"
+            ),
+            Some(("0".to_string(), vec![]))
+        );
     }
 
     #[test]
@@ -8912,6 +9421,16 @@ mod tests {
                 "0".to_string(),
                 vec!["x < 0 or x > 1".to_string(), "x < 0 or x > 1".to_string()]
             ))
+        );
+    }
+
+    #[test]
+    fn reciprocal_half_power_residual_cancels_scaled_sqrt_product_denominator_content() {
+        assert_eq!(
+            reciprocal_half_power_shared_denominator_result(
+                "1/(sqrt(2)*sqrt(x)*sqrt(2*x+6)) - 1/(sqrt(2*x)*sqrt(2*x+6))"
+            ),
+            Some(("0".to_string(), vec![]))
         );
     }
 
@@ -9108,6 +9627,23 @@ mod tests {
                         .collect(),
                 )
             })
+    }
+
+    fn integral_residual_passthrough_quotient_result(input: &str) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_integral_residual_passthrough_quotient_root_one(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
     }
 
     fn integral_inverse_trig_passthrough_quotient_result(
@@ -10573,6 +11109,116 @@ mod tests {
             ),
             None
         );
+    }
+
+    #[test]
+    fn diff_integral_root_product_residual_cancels_reciprocal_shifted_difference() {
+        let input =
+            "1/((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)),x),x)-1/(sqrt(2*x)*sqrt(2*x+6)))+x+2)-1/(x+2)";
+        assert_eq!(
+            integral_residual_reciprocal_shifted_result(input),
+            Some((
+                "0".to_string(),
+                vec![
+                    "x < -3 or x > 0".to_string(),
+                    "x > 0".to_string(),
+                    "x ≠ -2".to_string()
+                ]
+            ))
+        );
+        assert_eq!(simplify_text(input), "0");
+    }
+
+    #[test]
+    fn diff_integral_root_product_residual_cancels_reciprocal_shifted_difference_with_additive_noise(
+    ) {
+        let input =
+            "1/((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)),x),x)-1/(sqrt(2*x)*sqrt(2*x+6)))+x+2)-1/(x+2)+y-y";
+        assert_eq!(
+            integral_residual_reciprocal_shifted_result(input),
+            Some((
+                "0".to_string(),
+                vec![
+                    "x < -3 or x > 0".to_string(),
+                    "x > 0".to_string(),
+                    "x ≠ -2".to_string()
+                ]
+            ))
+        );
+        assert_eq!(simplify_text(input), "0");
+    }
+
+    #[test]
+    fn diff_integral_root_product_residual_cancels_reciprocal_shifted_quotient_with_additive_noise()
+    {
+        let input =
+            "1/(((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)),x),x)-1/(sqrt(2*x)*sqrt(2*x+6)))+x+2)/(x+2))+y-(1+y)";
+        assert_eq!(
+            integral_residual_shifted_quotient_result(input),
+            Some((
+                "0".to_string(),
+                vec![
+                    "x < -3 or x > 0".to_string(),
+                    "x > 0".to_string(),
+                    "x ≠ -2".to_string()
+                ]
+            ))
+        );
+        assert_eq!(simplify_text(input), "0");
+    }
+
+    #[test]
+    fn diff_integral_root_product_residual_compacts_constant_passthrough_quotient() {
+        let input =
+            "((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)),x),x)-1/(sqrt(2*x)*sqrt(2*x+6)))+x+2)/(x+2)";
+        assert_eq!(
+            integral_residual_passthrough_quotient_result(input),
+            Some((
+                "1".to_string(),
+                vec![
+                    "x < -3 or x > 0".to_string(),
+                    "x > 0".to_string(),
+                    "x ≠ -2".to_string()
+                ]
+            ))
+        );
+        assert_eq!(simplify_text(input), "1");
+    }
+
+    #[test]
+    fn diff_integral_root_product_residual_cancels_reciprocal_shifted_quotient() {
+        let input =
+            "1/(((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)),x),x)-1/(sqrt(2*x)*sqrt(2*x+6)))+x+2)/(x+2))-1";
+        assert_eq!(
+            integral_residual_shifted_quotient_result(input),
+            Some((
+                "0".to_string(),
+                vec![
+                    "x < -3 or x > 0".to_string(),
+                    "x > 0".to_string(),
+                    "x ≠ -2".to_string()
+                ]
+            ))
+        );
+        assert_eq!(simplify_text(input), "0");
+    }
+
+    #[test]
+    fn diff_integral_root_product_residual_cancels_squared_shifted_quotient() {
+        let input =
+            "(((diff(integrate(1/(sqrt(2*x)*sqrt(2*x+6)),x),x)-1/(sqrt(2*x)*sqrt(2*x+6)))+x+2)/(x+2))^2-1";
+        assert_eq!(
+            integral_residual_shifted_quotient_result(input),
+            Some((
+                "0".to_string(),
+                vec![
+                    "x < -3 or x > 0".to_string(),
+                    "x > 0".to_string(),
+                    "x ≠ -2".to_string()
+                ]
+            ))
+        );
+        assert_eq!(simplify_text(input), "0");
     }
 
     #[test]

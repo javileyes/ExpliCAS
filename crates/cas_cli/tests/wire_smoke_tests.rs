@@ -952,6 +952,376 @@ fn test_eval_json_omits_noop_post_calculus_presentation_step() {
 }
 
 #[test]
+fn test_eval_json_diff_sqrt_polynomial_quotient_power_presentation_cancels_common_factor() {
+    let expr = "diff(sqrt(x)/(x+1)^2, x)";
+    let json = eval_json(expr);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "(1 - 3·x) / (2·sqrt(x)·(x + 1)^3)");
+
+    let residual = eval_json("diff(sqrt(x)/(x+1)^2, x) - (1-3*x)/(2*sqrt(x)*(x+1)^3)");
+    assert_eq!(residual["ok"], true, "residual for {expr}");
+    assert_eq!(residual["result"], "0", "residual for {expr}");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "presentation should preserve the sqrt-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_expanded_affine_square_quotient_presentation_cancels_common_factor() {
+    let expr = "diff(sqrt(x)/(x^2+2*x+1), x)";
+    let json = eval_json(expr);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "(1 - 3·x) / (2·sqrt(x)·(x + 1)^3)");
+
+    let residual = eval_json("diff(sqrt(x)/(x^2+2*x+1), x) - (1-3*x)/(2*sqrt(x)*(x+1)^3)");
+    assert_eq!(residual["ok"], true, "residual for {expr}");
+    assert_eq!(residual["result"], "0", "residual for {expr}");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "presentation should preserve the sqrt-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_scaled_expanded_affine_square_quotient_presentation_cancels_common_factor(
+) {
+    let expr = "diff(sqrt(x)/(4*x^2+4*x+1), x)";
+    let json = eval_json(expr);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "(1 - 6·x) / (2·sqrt(x)·(2·x + 1)^3)");
+
+    let residual = eval_json("diff(sqrt(x)/(4*x^2+4*x+1), x) - (1-6*x)/(2*sqrt(x)*(2*x+1)^3)");
+    assert_eq!(residual["ok"], true, "residual for {expr}");
+    assert_eq!(residual["result"], "0", "residual for {expr}");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "presentation should preserve the sqrt-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_polynomial_over_same_polynomial_cancels_denominator_factor() {
+    let positive = eval_json("diff(sqrt(x^2+1)/(x^2+1), x)");
+    assert_eq!(positive["ok"], true);
+    assert_eq!(positive["result"], "-x / (sqrt(x^2 + 1)·(x^2 + 1))");
+    assert!(
+        positive["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "globally positive radicand should not add conditions: {positive:?}"
+    );
+    let positive_residual = eval_json("diff(sqrt(x^2+1)/(x^2+1), x) + x/(sqrt(x^2+1)*(x^2+1))");
+    assert_eq!(positive_residual["ok"], true);
+    assert_eq!(positive_residual["result"], "0");
+
+    let conditional = eval_json("diff(sqrt(x^2-1)/(x^2-1), x)");
+    assert_eq!(conditional["ok"], true);
+    assert_eq!(conditional["result"], "-x / (sqrt(x^2 - 1)·(x^2 - 1))");
+    assert!(
+        conditional["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .iter()
+            .any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "x^2 - 1"
+            }),
+        "conditional radicand should preserve its domain guard: {conditional:?}"
+    );
+    let conditional_residual = eval_json("diff(sqrt(x^2-1)/(x^2-1), x) + x/(sqrt(x^2-1)*(x^2-1))");
+    assert_eq!(conditional_residual["ok"], true);
+    assert_eq!(conditional_residual["result"], "0");
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_scaled_expanded_affine_square_keeps_steps_on_didactic_trace() {
+    let expr = "diff(sqrt(x)/(4*x^2+4*x+1), x)";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "(1 - 6·x) / (2·sqrt(x)·(2·x + 1)^3)");
+    assert!(
+        json["steps_count"].as_u64().is_some_and(|count| count > 1),
+        "steps-on mode should keep the explanatory derivative trace for {expr}: {json:?}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Presentar resultado de cálculo en forma compacta"),
+        "steps-on mode should still show post-calculus presentation for {expr}: {steps:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_reciprocal_sqrt_polynomial_power_presentation_cancels_common_factor() {
+    let expr = "diff(1/(sqrt(x)*(x+1)^2), x)";
+    let json = eval_json(expr);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "-(5·x + 1) / (2·x·sqrt(x)·(x + 1)^3)");
+
+    let residual = eval_json("diff(1/(sqrt(x)*(x+1)^2), x) + (5*x+1)/(2*x*sqrt(x)*(x+1)^3)");
+    assert_eq!(residual["ok"], true, "residual for {expr}");
+    assert_eq!(residual["result"], "0", "residual for {expr}");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "presentation should preserve the sqrt-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_reciprocal_sqrt_polynomial_power_keeps_steps_on_trace() {
+    let expr = "diff(1/(sqrt(x)*(x+1)^2), x)";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "-(5·x + 1) / (2·x·sqrt(x)·(x + 1)^3)");
+    assert!(
+        json["steps_count"].as_u64().is_some_and(|count| count >= 1),
+        "steps-on mode should keep an explanatory derivative trace for {expr}: {json:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "steps-on mode should preserve the sqrt-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_polynomial_over_positive_quadratic_sqrt_presents_compact_fraction() {
+    let expr = "diff(x/sqrt(x^2+1), x)";
+    let json = eval_json(expr);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "1 / ((x^2 + 1)·sqrt(x^2 + 1))");
+    assert!(
+        json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "strictly positive quadratic radicand should not add domain guards for {expr}: {json:?}"
+    );
+
+    let residual = eval_json("diff(x/sqrt(x^2+1), x) - 1/(sqrt(x^2+1)*(x^2+1))");
+    assert_eq!(residual["ok"], true, "residual for {expr}");
+    assert_eq!(residual["result"], "0", "residual for {expr}");
+
+    let steps_on = eval_json_with_args(expr, &["--steps", "on"]);
+    assert_eq!(steps_on["ok"], true, "steps-on expr: {expr}");
+    assert_eq!(steps_on["result"], "1 / ((x^2 + 1)·sqrt(x^2 + 1))");
+    assert!(
+        steps_on["steps_count"]
+            .as_u64()
+            .is_some_and(|count| count >= 2),
+        "steps-on mode should expose derivative plus compact presentation for {expr}: {steps_on:?}"
+    );
+    let steps = steps_on["steps"]
+        .as_array()
+        .expect("steps should be an array");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Presentar resultado de cálculo en forma compacta"),
+        "steps-on mode should show post-calculus presentation for {expr}: {steps:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_polynomial_over_positive_even_sqrt_presents_compact_fraction() {
+    let expr = "diff(x/sqrt(x^4+1), x)";
+    let json = eval_json(expr);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "(1 - x^4) / ((x^4 + 1)·sqrt(x^4 + 1))");
+    assert!(
+        json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "strictly positive even radicand should not add domain guards for {expr}: {json:?}"
+    );
+
+    let residual = eval_json("diff(x/sqrt(x^4+1), x) - (1-x^4)/(sqrt(x^4+1)*(x^4+1))");
+    assert_eq!(residual["ok"], true, "residual for {expr}");
+    assert_eq!(residual["result"], "0", "residual for {expr}");
+
+    let steps_on = eval_json_with_args(expr, &["--steps", "on"]);
+    assert_eq!(steps_on["ok"], true, "steps-on expr: {expr}");
+    assert_eq!(steps_on["result"], "(1 - x^4) / ((x^4 + 1)·sqrt(x^4 + 1))");
+    let steps = steps_on["steps"]
+        .as_array()
+        .expect("steps should be an array");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Presentar resultado de cálculo en forma compacta"),
+        "steps-on mode should show post-calculus presentation for {expr}: {steps:?}"
+    );
+
+    let non_positive = eval_json("diff(x/sqrt(x^4-x^2), x)");
+    assert_eq!(non_positive["ok"], true, "non-positive radicand case");
+    assert_eq!(
+        non_positive["result"],
+        "-x^4 / ((x^4 - x^2)·sqrt(x^4 - x^2))"
+    );
+    assert!(
+        non_positive["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .iter()
+            .any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "x^4 - x^2"
+            }),
+        "non-positive radicand should preserve its domain guard: {non_positive:?}"
+    );
+
+    let conditional = eval_json("diff(x/sqrt(x^2-1), x)");
+    assert_eq!(conditional["ok"], true, "conditional radicand case");
+    assert_eq!(conditional["result"], "-1 / ((x^2 - 1)·sqrt(x^2 - 1))");
+    assert!(
+        conditional["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .iter()
+            .any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "x^2 - 1"
+            }),
+        "conditional radicand should preserve its domain guard: {conditional:?}"
+    );
+
+    let conditional_residual = eval_json("diff(x/sqrt(x^2-1), x) + 1/(sqrt(x^2-1)*(x^2-1))");
+    assert_eq!(conditional_residual["ok"], true, "conditional residual");
+    assert_eq!(conditional_residual["result"], "0", "conditional residual");
+
+    let conditional_steps_on = eval_json_with_args("diff(x/sqrt(x^2-1), x)", &["--steps", "on"]);
+    assert_eq!(conditional_steps_on["ok"], true, "conditional steps-on");
+    assert_eq!(
+        conditional_steps_on["result"],
+        "-1 / ((x^2 - 1)·sqrt(x^2 - 1))"
+    );
+    assert!(
+        conditional_steps_on["steps_count"]
+            .as_u64()
+            .is_some_and(|count| count >= 2),
+        "steps-on mode should keep derivative plus presentation trace: {conditional_steps_on:?}"
+    );
+    assert!(
+        conditional_steps_on["steps"]
+            .as_array()
+            .expect("steps should be an array")
+            .iter()
+            .any(|step| step["rule"] == "Presentar resultado de cálculo en forma compacta"),
+        "steps-on mode should still show post-calculus presentation: {conditional_steps_on:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_polynomial_over_its_sqrt_cancels_radicand_factor() {
+    let positive = eval_json("diff((x^2+1)/sqrt(x^2+1), x)");
+    assert_eq!(positive["ok"], true);
+    assert_eq!(positive["result"], "x / sqrt(x^2 + 1)");
+    assert!(
+        positive["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .is_empty(),
+        "globally positive radicand should not add conditions: {positive:?}"
+    );
+    let positive_residual = eval_json("diff((x^2+1)/sqrt(x^2+1), x) - x/sqrt(x^2+1)");
+    assert_eq!(positive_residual["ok"], true);
+    assert_eq!(positive_residual["result"], "0");
+
+    let conditional = eval_json("diff((x^2-1)/sqrt(x^2-1), x)");
+    assert_eq!(conditional["ok"], true);
+    assert_eq!(conditional["result"], "x / sqrt(x^2 - 1)");
+    assert!(
+        conditional["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .iter()
+            .any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "x^2 - 1"
+            }),
+        "conditional radicand should preserve its domain guard: {conditional:?}"
+    );
+    let conditional_residual = eval_json("diff((x^2-1)/sqrt(x^2-1), x) - x/sqrt(x^2-1)");
+    assert_eq!(conditional_residual["ok"], true);
+    assert_eq!(conditional_residual["result"], "0");
+}
+
+#[test]
+fn test_eval_json_diff_polynomial_square_over_its_sqrt_lifts_radicand_to_sqrt() {
+    let linear = eval_json("diff((x+1)^2/sqrt(x+1), x)");
+    assert_eq!(linear["ok"], true);
+    assert_eq!(linear["result"], "3·sqrt(x + 1) / (2)");
+    assert!(
+        linear["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .iter()
+            .any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "x + 1"
+            }),
+        "linear radicand should preserve its domain guard: {linear:?}"
+    );
+    let linear_residual = eval_json("diff((x+1)^2/sqrt(x+1), x) - 3*sqrt(x+1)/2");
+    assert_eq!(linear_residual["ok"], true);
+    assert_eq!(linear_residual["result"], "0");
+
+    let scaled = eval_json("diff((2*x+3)^2/sqrt(2*x+3), x)");
+    assert_eq!(scaled["ok"], true);
+    assert_eq!(scaled["result"], "3·sqrt(2·x + 3)");
+    assert!(
+        scaled["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array")
+            .iter()
+            .any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "2·x + 3"
+            }),
+        "scaled radicand should preserve its domain guard: {scaled:?}"
+    );
+    let scaled_residual = eval_json("diff((2*x+3)^2/sqrt(2*x+3), x) - 3*sqrt(2*x+3)");
+    assert_eq!(scaled_residual["ok"], true);
+    assert_eq!(scaled_residual["result"], "0");
+}
+
+#[test]
 fn test_eval_diff_arcsin_sqrt_affine_residual_collapses_reciprocal_root_product() {
     let cases = [
         "diff(arcsin(sqrt(2*x-1)), x) - 1/(sqrt(2*x-1)*sqrt(2-2*x))",
