@@ -140,7 +140,7 @@ fn test_eval_plain_reciprocal_trig_log_diff_stays_off_depth_overflow_route() {
     let cases = [
         (
             "diff(ln(sec(sqrt(x))+tan(sqrt(x))), x)",
-            "x^(-1/2) / (2\u{00b7}cos(sqrt(x)))",
+            "1 / (sqrt(x)\u{00b7}2\u{00b7}cos(sqrt(x)))",
             vec![
                 "cos(sqrt(x)) \u{2260} 0",
                 "tan(sqrt(x)) + sec(sqrt(x)) > 0",
@@ -149,7 +149,7 @@ fn test_eval_plain_reciprocal_trig_log_diff_stays_off_depth_overflow_route() {
         ),
         (
             "diff(ln(csc(sqrt(x))-cot(sqrt(x))), x)",
-            "x^(-1/2) / (2\u{00b7}sin(sqrt(x)))",
+            "1 / (sqrt(x)\u{00b7}2\u{00b7}sin(sqrt(x)))",
             vec![
                 "sin(sqrt(x)) \u{2260} 0",
                 "csc(sqrt(x)) - cot(sqrt(x)) > 0",

@@ -269,6 +269,20 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 let (lhs_is_neg, lhs_neg_inner, _) = check_negative(self.context, *l);
                 let (rhs_is_neg, _, _) = check_negative(self.context, *r);
 
+                if !lhs_is_neg && !rhs_is_neg {
+                    if let Some((coefficient, radicand)) =
+                        reciprocal_sqrt_numerator_for_display(self.context, *l)
+                    {
+                        return format_reciprocal_sqrt_div_for_display(
+                            f,
+                            self.context,
+                            coefficient,
+                            radicand,
+                            *r,
+                        );
+                    }
+                }
+
                 if lhs_is_neg ^ rhs_is_neg {
                     write!(f, "-")?;
                 }
@@ -807,6 +821,86 @@ fn format_half_power_function_arg_for_display(ctx: &Context, id: ExprId) -> Opti
         }
     );
     Some(format!("sqrt({base})"))
+}
+
+fn reciprocal_sqrt_numerator_for_display(
+    ctx: &Context,
+    id: ExprId,
+) -> Option<(BigRational, ExprId)> {
+    let mut factors = Vec::new();
+    collect_mul_factors_for_display(ctx, id, &mut factors);
+
+    let mut coefficient = BigRational::one();
+    let mut radicand = None;
+
+    for factor in factors {
+        match ctx.get(factor) {
+            Expr::Number(n) if n.is_positive() => coefficient *= n.clone(),
+            Expr::Pow(base, exp) if is_negative_one_half_exponent(ctx, *exp) => {
+                if radicand.replace(*base).is_some() {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+
+    radicand.map(|radicand| (coefficient, radicand))
+}
+
+fn collect_mul_factors_for_display(ctx: &Context, id: ExprId, out: &mut Vec<ExprId>) {
+    match ctx.get(id) {
+        Expr::Mul(l, r) => {
+            collect_mul_factors_for_display(ctx, *l, out);
+            collect_mul_factors_for_display(ctx, *r, out);
+        }
+        _ => out.push(id),
+    }
+}
+
+fn is_negative_one_half_exponent(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Number(n) => *n == BigRational::new((-1).into(), 2.into()),
+        Expr::Div(num, den) => {
+            matches!(ctx.get(*num), Expr::Number(n) if *n == BigRational::from_integer((-1).into()))
+                && matches!(ctx.get(*den), Expr::Number(n) if *n == BigRational::from_integer(2.into()))
+        }
+        _ => false,
+    }
+}
+
+fn format_reciprocal_sqrt_div_for_display(
+    f: &mut fmt::Formatter<'_>,
+    ctx: &Context,
+    coefficient: BigRational,
+    radicand: ExprId,
+    denominator: ExprId,
+) -> fmt::Result {
+    if coefficient.is_one() {
+        write!(f, "1")?;
+    } else {
+        write!(f, "{coefficient}")?;
+    }
+
+    write!(f, " / (sqrt(")?;
+    write!(
+        f,
+        "{}",
+        DisplayExpr {
+            context: ctx,
+            id: radicand
+        }
+    )?;
+    write!(
+        f,
+        "){}{}",
+        mul_symbol(),
+        DisplayExpr {
+            context: ctx,
+            id: denominator
+        }
+    )?;
+    write!(f, ")")
 }
 
 fn format_unit_fraction_scaled_expression_for_display(ctx: &Context, id: ExprId) -> Option<String> {

@@ -2,6 +2,7 @@
 
 use super::*;
 use cas_ast::{BuiltinFn, Expr};
+use num_traits::Zero;
 
 fn expr_contains_any_builtin_local(
     ctx: &cas_ast::Context,
@@ -366,6 +367,417 @@ fn try_diff_sqrt_polynomial_quotient_residual_zero_local(
         })
 }
 
+fn try_diff_arctan_sqrt_plus_sqrt_over_x_plus_one_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = residual_difference_terms_local(ctx, expr)?;
+    try_diff_arctan_sqrt_plus_sqrt_over_x_plus_one_residual_zero_ordered_local(ctx, left, right)
+        .or_else(|| {
+            try_diff_arctan_sqrt_plus_sqrt_over_x_plus_one_residual_zero_ordered_local(
+                ctx, right, left,
+            )
+        })
+        .or_else(|| {
+            try_reciprocal_sqrt_x_plus_one_square_residual_zero_ordered_local(ctx, left, right)
+        })
+        .or_else(|| {
+            try_reciprocal_sqrt_x_plus_one_square_residual_zero_ordered_local(ctx, right, left)
+        })
+}
+
+fn try_reciprocal_sqrt_x_plus_one_square_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let vars = {
+        let mut vars = cas_ast::collect_variables(ctx, left);
+        vars.extend(cas_ast::collect_variables(ctx, right));
+        vars
+    };
+    if vars.len() != 1 {
+        return None;
+    }
+    let var_name = vars.iter().next()?.as_str();
+    let left_scale = reciprocal_sqrt_x_plus_one_square_scale_local(ctx, left, var_name)?;
+    let right_scale = reciprocal_sqrt_x_plus_one_square_scale_local(ctx, right, var_name)?;
+    if left_scale != right_scale {
+        return None;
+    }
+    let var = ctx.var(var_name);
+    Some((ctx.num(0), vec![crate::ImplicitCondition::Positive(var)]))
+}
+
+fn try_diff_arctan_sqrt_plus_sqrt_over_x_plus_one_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    diff_expr: ExprId,
+    target: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let scale =
+        arctan_sqrt_plus_sqrt_over_x_plus_one_scale_local(ctx, call.target, &call.var_name)?;
+    if reciprocal_sqrt_x_plus_one_square_scale_local(ctx, target, &call.var_name)
+        .is_some_and(|target_scale| target_scale == scale)
+    {
+        let var = ctx.var(&call.var_name);
+        return Some((ctx.num(0), vec![crate::ImplicitCondition::Positive(var)]));
+    }
+    let expected = build_scaled_reciprocal_sqrt_x_plus_one_square_local(ctx, scale, &call.var_name);
+    if !sqrt_shifted_diff_result_matches_target_local(ctx, expected, target) {
+        return None;
+    }
+
+    let var = ctx.var(&call.var_name);
+    Some((ctx.num(0), vec![crate::ImplicitCondition::Positive(var)]))
+}
+
+fn arctan_sqrt_plus_sqrt_over_x_plus_one_scale_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<num_rational::BigRational> {
+    if let Some((outer_scale, core)) = scaled_nontrivial_core_local(ctx, expr) {
+        if let Some(inner_scale) =
+            arctan_sqrt_plus_sqrt_over_x_plus_one_scale_local(ctx, core, var_name)
+        {
+            return Some(outer_scale * inner_scale);
+        }
+    }
+
+    if let Some(scale) =
+        arctan_sqrt_plus_sqrt_over_x_plus_one_combined_quotient_scale_local(ctx, expr, var_name)
+    {
+        return Some(scale);
+    }
+
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let mut arctan_scale = None;
+    let mut rational_scale = None;
+    for (term, sign) in terms {
+        if sign != cas_math::expr_nary::Sign::Pos {
+            return None;
+        }
+        if let Some(scale) = scaled_arctan_sqrt_var_scale_local(ctx, term, var_name) {
+            if arctan_scale.replace(scale).is_some() {
+                return None;
+            }
+        } else if let Some(scale) = scaled_sqrt_var_over_x_plus_one_scale_local(ctx, term, var_name)
+        {
+            if rational_scale.replace(scale).is_some() {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+
+    let arctan_scale = arctan_scale?;
+    let rational_scale = rational_scale?;
+    (arctan_scale == rational_scale).then_some(arctan_scale)
+}
+
+fn scaled_nontrivial_core_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(num_rational::BigRational, ExprId)> {
+    let (scale, core) = split_numeric_scale_one_core_local(ctx, expr)?;
+    let one = num_rational::BigRational::from_integer(1.into());
+    (scale != one && core != expr).then_some((scale, core))
+}
+
+fn arctan_sqrt_plus_sqrt_over_x_plus_one_combined_quotient_scale_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<num_rational::BigRational> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let denominator_scale = x_plus_one_linear_scale_local(ctx, den, var_name)?;
+    if denominator_scale.is_zero() {
+        return None;
+    }
+    let numerator_scale =
+        arctan_sqrt_plus_sqrt_over_x_plus_one_combined_numerator_scale_local(ctx, num, var_name)?;
+    Some(numerator_scale / denominator_scale)
+}
+
+fn arctan_sqrt_plus_sqrt_over_x_plus_one_combined_numerator_scale_local(
+    ctx: &mut cas_ast::Context,
+    numerator: ExprId,
+    var_name: &str,
+) -> Option<num_rational::BigRational> {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, numerator);
+    if terms.len() != 3 {
+        return None;
+    }
+
+    let mut arctan_scale = None;
+    let mut sqrt_scale = None;
+    let mut x_arctan_scale = None;
+    for (term, sign) in terms {
+        if sign != cas_math::expr_nary::Sign::Pos {
+            return None;
+        }
+        if let Some(scale) = scaled_arctan_sqrt_var_scale_local(ctx, term, var_name) {
+            if arctan_scale.replace(scale).is_some() {
+                return None;
+            }
+        } else if let Some(scale) = scaled_sqrt_var_scale_local(ctx, term, var_name) {
+            if sqrt_scale.replace(scale).is_some() {
+                return None;
+            }
+        } else if let Some(scale) =
+            scaled_var_times_arctan_sqrt_var_scale_local(ctx, term, var_name)
+        {
+            if x_arctan_scale.replace(scale).is_some() {
+                return None;
+            }
+        } else {
+            return None;
+        }
+    }
+
+    let arctan_scale = arctan_scale?;
+    (sqrt_scale? == arctan_scale && x_arctan_scale? == arctan_scale).then_some(arctan_scale)
+}
+
+fn scaled_arctan_sqrt_var_scale_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<num_rational::BigRational> {
+    let (scale, core) = split_numeric_scale_one_core_local(ctx, expr)?;
+    is_arctan_sqrt_var_local(ctx, core, var_name).then_some(scale)
+}
+
+fn scaled_sqrt_var_scale_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<num_rational::BigRational> {
+    let (scale, core) = split_numeric_scale_one_core_local(ctx, expr)?;
+    is_sqrt_var_local(ctx, core, var_name).then_some(scale)
+}
+
+fn scaled_var_times_arctan_sqrt_var_scale_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<num_rational::BigRational> {
+    let mut scale = num_rational::BigRational::from_integer(1.into());
+    let mut saw_var = false;
+    let mut saw_arctan = false;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
+            scale *= value;
+        } else if is_var_local(ctx, factor, var_name) {
+            if saw_var {
+                return None;
+            }
+            saw_var = true;
+        } else if is_arctan_sqrt_var_local(ctx, factor, var_name) {
+            if saw_arctan {
+                return None;
+            }
+            saw_arctan = true;
+        } else {
+            return None;
+        }
+    }
+    (saw_var && saw_arctan).then_some(scale)
+}
+
+fn scaled_sqrt_var_over_x_plus_one_scale_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<num_rational::BigRational> {
+    let (outer_scale, core) = split_numeric_scale_one_core_local(ctx, expr)?;
+    let core = cas_ast::hold::strip_all_holds(ctx, core);
+    let (num, den) = match ctx.get(core).clone() {
+        Expr::Div(num, den) => (num, den),
+        _ => return None,
+    };
+    if !matches_x_plus_one_local(ctx, den, var_name) {
+        return None;
+    }
+    let (num_scale, num_core) = split_numeric_scale_one_core_local(ctx, num)?;
+    if !is_sqrt_var_local(ctx, num_core, var_name) {
+        return None;
+    }
+    Some(outer_scale * num_scale)
+}
+
+fn split_numeric_scale_one_core_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(num_rational::BigRational, ExprId)> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let mut scale = num_rational::BigRational::from_integer(1.into());
+    let mut core = None;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
+            scale *= value;
+        } else if core.replace(factor).is_some() {
+            return None;
+        }
+    }
+    Some((scale, core.unwrap_or(expr)))
+}
+
+fn x_plus_one_linear_scale_local(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<num_rational::BigRational> {
+    let poly = cas_math::polynomial::Polynomial::from_expr(ctx, expr, var_name).ok()?;
+    if poly.degree() != 1 {
+        return None;
+    }
+    let offset = poly.coeffs.first()?;
+    let slope = poly.coeffs.get(1)?;
+    (offset == slope).then_some(offset.clone())
+}
+
+fn is_arctan_sqrt_var_local(ctx: &mut cas_ast::Context, expr: ExprId, var_name: &str) -> bool {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return false;
+    };
+    args.len() == 1
+        && ctx.builtin_of(*fn_id) == Some(BuiltinFn::Arctan)
+        && is_sqrt_var_local(ctx, args[0], var_name)
+}
+
+fn is_sqrt_var_local(ctx: &mut cas_ast::Context, expr: ExprId, var_name: &str) -> bool {
+    cas_math::root_forms::extract_square_root_base(ctx, expr).is_some_and(|radicand| {
+        let radicand = cas_ast::hold::strip_all_holds(ctx, radicand);
+        matches!(ctx.get(radicand), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var_name)
+    })
+}
+
+fn matches_x_plus_one_local(ctx: &mut cas_ast::Context, expr: ExprId, var_name: &str) -> bool {
+    let var = ctx.var(var_name);
+    let one = ctx.num(1);
+    let expected = ctx.add(Expr::Add(var, one));
+    exprs_equivalent_ignoring_internal_holds_local(ctx, expr, expected)
+}
+
+fn matches_x_plus_one_square_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return false;
+    };
+    cas_ast::views::as_rational_const(ctx, exp, 8)
+        .is_some_and(|value| value == num_rational::BigRational::from_integer(2.into()))
+        && matches_x_plus_one_local(ctx, base, var_name)
+}
+
+fn is_var_local(ctx: &mut cas_ast::Context, expr: ExprId, var_name: &str) -> bool {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    matches!(ctx.get(expr), Expr::Variable(sym_id) if ctx.sym_name(*sym_id) == var_name)
+}
+
+fn sqrt_x_plus_one_square_denominator_scale_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<num_rational::BigRational> {
+    let mut scale = num_rational::BigRational::from_integer(1.into());
+    let mut saw_sqrt = false;
+    let mut saw_square = false;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if is_sqrt_var_local(ctx, factor, var_name) {
+            if saw_sqrt {
+                return None;
+            }
+            saw_sqrt = true;
+        } else if matches_x_plus_one_square_local(ctx, factor, var_name) {
+            if saw_square {
+                return None;
+            }
+            saw_square = true;
+        } else {
+            scale *= cas_ast::views::as_rational_const(ctx, factor, 8)?;
+        }
+    }
+    (saw_sqrt && saw_square).then_some(scale)
+}
+
+fn var_times_x_plus_one_square_denominator_scale_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<num_rational::BigRational> {
+    let mut scale = num_rational::BigRational::from_integer(1.into());
+    let mut saw_var = false;
+    let mut saw_square = false;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if is_var_local(ctx, factor, var_name) {
+            if saw_var {
+                return None;
+            }
+            saw_var = true;
+        } else if matches_x_plus_one_square_local(ctx, factor, var_name) {
+            if saw_square {
+                return None;
+            }
+            saw_square = true;
+        } else {
+            scale *= cas_ast::views::as_rational_const(ctx, factor, 8)?;
+        }
+    }
+    (saw_var && saw_square).then_some(scale)
+}
+
+fn reciprocal_sqrt_x_plus_one_square_scale_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<num_rational::BigRational> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    if let Some(den_scale) = sqrt_x_plus_one_square_denominator_scale_local(ctx, den, var_name) {
+        let num_scale = cas_ast::views::as_rational_const(ctx, num, 8)?;
+        return Some(num_scale / den_scale);
+    }
+
+    let den_scale = var_times_x_plus_one_square_denominator_scale_local(ctx, den, var_name)?;
+    let (num_scale, num_core) = split_numeric_scale_one_core_local(ctx, num)?;
+    is_sqrt_var_local(ctx, num_core, var_name).then_some(num_scale / den_scale)
+}
+
+fn build_scaled_reciprocal_sqrt_x_plus_one_square_local(
+    ctx: &mut cas_ast::Context,
+    scale: num_rational::BigRational,
+    var_name: &str,
+) -> ExprId {
+    let var = ctx.var(var_name);
+    let sqrt_var = ctx.call_builtin(BuiltinFn::Sqrt, vec![var]);
+    let var = ctx.var(var_name);
+    let one = ctx.num(1);
+    let linear = ctx.add(Expr::Add(var, one));
+    let two = ctx.num(2);
+    let linear_square = ctx.add(Expr::Pow(linear, two));
+    let denominator = cas_math::expr_nary::build_balanced_mul(ctx, &[sqrt_var, linear_square]);
+    let numerator = ctx.add(Expr::Number(scale));
+    ctx.add(Expr::Div(numerator, denominator))
+}
+
 fn try_diff_sqrt_polynomial_quotient_residual_zero_ordered_local(
     ctx: &mut cas_ast::Context,
     diff_expr: ExprId,
@@ -502,6 +914,51 @@ fn try_resolve_post_calculus_residual_before_general_simplify_local(
         ctx,
         expr,
     )
+    .or_else(|| try_diff_integrate_arctan_sqrt_unit_shift_square_residual_zero_local(ctx, expr))
+    .or_else(|| {
+        try_diff_arctan_sqrt_plus_sqrt_over_x_plus_one_residual_zero_local(ctx, expr)
+    })
+}
+
+fn try_diff_integrate_arctan_sqrt_unit_shift_square_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = residual_difference_terms_local(ctx, expr)?;
+    try_diff_integrate_arctan_sqrt_unit_shift_square_residual_zero_ordered_local(ctx, left, right)
+        .or_else(|| {
+            try_diff_integrate_arctan_sqrt_unit_shift_square_residual_zero_ordered_local(
+                ctx, right, left,
+            )
+        })
+}
+
+fn try_diff_integrate_arctan_sqrt_unit_shift_square_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    diff_expr: ExprId,
+    target: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let integrate_call =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)?;
+    if diff_call.var_name != integrate_call.var_name {
+        return None;
+    }
+    let source_key = cas_math::symbolic_integration_support::integrate_symbolic_arctan_sqrt_var_unit_shift_square_key(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    )?;
+    let target_key = cas_math::symbolic_integration_support::integrate_symbolic_arctan_sqrt_var_unit_shift_square_key(
+        ctx,
+        target,
+        &integrate_call.var_name,
+    )?;
+    if source_key != target_key {
+        return None;
+    }
+    let var = ctx.var(&integrate_call.var_name);
+    Some((ctx.num(0), vec![crate::ImplicitCondition::Positive(var)]))
 }
 
 fn collapse_redundant_post_calculus_trace_if_direct_step_is_compact(
@@ -648,6 +1105,24 @@ impl Engine {
             if effective_opts.steps_mode == crate::options::StepsMode::Off {
                 if let Some((result, required_conditions)) =
                     crate::rules::calculus::sqrt_polynomial_quotient_derivative_presentation_with_domain(
+                        &mut self.simplifier.context,
+                        call.target,
+                        &call.var_name,
+                    )
+                {
+                    return Ok((
+                        crate::EvalResult::Expr(result),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        required_conditions,
+                    ));
+                }
+                if let Some((result, required_conditions)) =
+                    crate::rules::calculus::sqrt_of_polynomial_quotient_derivative_presentation_with_domain(
                         &mut self.simplifier.context,
                         call.target,
                         &call.var_name,

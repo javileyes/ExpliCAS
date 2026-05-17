@@ -130,6 +130,8 @@ fn should_verify_antiderivative_with_public_integrate_residual(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_positive_quadratic_ln_by_parts_target(
         ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_sqrt_var_unit_shift_square_target(
+        ctx, integrand, var_name,
     )
 }
 
@@ -8105,6 +8107,114 @@ fn integrate_contract_arctan_sqrt_kernel_inverts_diff_output() {
         nested_required,
         vec!["x < 1".to_string()],
         "unit-slope negative affine derivative equivalence should preserve the positive radicand condition"
+    );
+}
+
+#[test]
+fn integrate_contract_arctan_sqrt_unit_shift_square_inverts_diff_output() {
+    let input = "integrate(1/(sqrt(x)*(x+1)^2), x)";
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+
+    assert_eq!(result, "arctan(sqrt(x)) + sqrt(x) / (x + 1)");
+    assert_eq!(
+        required,
+        vec!["x > 0".to_string()],
+        "unexpected required_conditions: {required:?}"
+    );
+    let step_rules = evaluated_integral_step_rules(input);
+    assert!(
+        step_rules
+            .iter()
+            .any(|rule| rule == "Symbolic Integration"),
+        "unit-shift square arctan sqrt reciprocal kernel should reach symbolic integration: {step_rules:?}"
+    );
+    assert_rendered_antiderivative_verifies(input, &result);
+
+    let scaled_input = "integrate(1/(2*sqrt(x)*(x+1)^2), x)";
+    let (scaled_result, scaled_required) =
+        evaluated_integral_with_required_conditions(scaled_input);
+    assert_eq!(scaled_result, "1/2 * (arctan(sqrt(x)) + sqrt(x) / (x + 1))");
+    assert_eq!(
+        scaled_required,
+        vec!["x > 0".to_string()],
+        "unexpected scaled required_conditions: {scaled_required:?}"
+    );
+    assert_eq!(
+        integrate_call_antiderivative_residual_result(scaled_input),
+        "0"
+    );
+    assert_rendered_antiderivative_verifies(scaled_input, &scaled_result);
+
+    let shifted_input = "integrate(1/(sqrt(x)*(x+4)^2), x)";
+    let (shifted_result, shifted_required) =
+        evaluated_integral_with_required_conditions(shifted_input);
+    assert_eq!(
+        shifted_result,
+        "1/8 * arctan(sqrt(x) / 2) + sqrt(x) / (4 * (x + 4))"
+    );
+    assert_eq!(
+        shifted_required,
+        vec!["x > 0".to_string()],
+        "unexpected shifted required_conditions: {shifted_required:?}"
+    );
+    assert_eq!(
+        integrate_call_antiderivative_residual_result(shifted_input),
+        "0"
+    );
+    assert_eq!(
+        assert_antiderivative_verifies(shifted_input),
+        AntiderivativeVerificationRoute::PublicResidual
+    );
+    assert_rendered_antiderivative_verifies(shifted_input, &shifted_result);
+
+    let rational_shift_input = "integrate(1/(sqrt(x)*(x+1/4)^2), x)";
+    let (rational_shift_result, rational_shift_required) =
+        evaluated_integral_with_required_conditions(rational_shift_input);
+    assert_eq!(
+        rational_shift_result,
+        "8 * arctan(2 * sqrt(x)) + 4 * sqrt(x) / (x + 1/4)"
+    );
+    assert_eq!(
+        rational_shift_required,
+        vec!["x > 0".to_string()],
+        "unexpected rational shift required_conditions: {rational_shift_required:?}"
+    );
+    assert_eq!(
+        integrate_call_antiderivative_residual_result(rational_shift_input),
+        "0"
+    );
+    assert_rendered_antiderivative_verifies(rational_shift_input, &rational_shift_result);
+    let (rational_shift_displayed_derivative, rational_shift_displayed_required) =
+        evaluated_expr_with_required_conditions("diff(8*arctan(2*sqrt(x)) + 4*sqrt(x)/(x+1/4), x)");
+    assert_eq!(
+        rational_shift_displayed_derivative,
+        "1 / (sqrt(x) * (x + 1/4)^2)"
+    );
+    assert_eq!(
+        rational_shift_displayed_required,
+        vec!["x > 0".to_string()],
+        "displayed rational-shift derivative should preserve the positive radicand condition"
+    );
+
+    let externally_scaled_rational_shift_input = "integrate(1/(3*sqrt(x)*(x+1/4)^2), x)";
+    let (externally_scaled_rational_shift_result, externally_scaled_rational_shift_required) =
+        evaluated_integral_with_required_conditions(externally_scaled_rational_shift_input);
+    assert_eq!(
+        externally_scaled_rational_shift_result,
+        "8/3 * arctan(2 * sqrt(x)) + 4/3 * sqrt(x) / (x + 1/4)"
+    );
+    assert_eq!(
+        externally_scaled_rational_shift_required,
+        vec!["x > 0".to_string()],
+        "unexpected externally scaled rational shift required_conditions: {externally_scaled_rational_shift_required:?}"
+    );
+    assert_eq!(
+        integrate_call_antiderivative_residual_result(externally_scaled_rational_shift_input),
+        "0"
+    );
+    assert_rendered_antiderivative_verifies(
+        externally_scaled_rational_shift_input,
+        &externally_scaled_rational_shift_result,
     );
 }
 

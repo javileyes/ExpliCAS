@@ -39,6 +39,23 @@ fn eval_json(expr: &str) -> Value {
     eval_json_with_args(expr, &[])
 }
 
+fn eval_json_with_stderr(expr: &str) -> (Value, String) {
+    let output = Command::new(cargo::cargo_bin!("cas_cli"))
+        .arg("eval")
+        .arg(expr)
+        .arg("--format")
+        .arg("json")
+        .output()
+        .expect("Failed to execute command");
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    (
+        serde_json::from_str(&stdout).expect("Failed to parse JSON"),
+        stderr,
+    )
+}
+
 #[test]
 fn test_wire_present_on_success() {
     let wire = eval_wire("2+2");
@@ -1022,6 +1039,107 @@ fn test_eval_json_diff_sqrt_scaled_expanded_affine_square_quotient_presentation_
 }
 
 #[test]
+fn test_eval_json_diff_sqrt_of_polynomial_quotient_presents_reciprocal_sqrt_denominator() {
+    let expr = "diff(sqrt((x+1)/(x+2)), x)";
+    let json = eval_json(expr);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "1 / (2·sqrt((x + 1) / (x + 2))·(x + 2)^2)");
+    assert!(
+        !json["result"]
+            .as_str()
+            .expect("result should be a string")
+            .contains("^(-1/2)"),
+        "post-calculus presentation should avoid reciprocal half-power notation: {json:?}"
+    );
+
+    let residual = eval_json("diff(sqrt((x+1)/(x+2)), x) - 1/(2*sqrt((x+1)/(x+2))*(x+2)^2)");
+    assert_eq!(residual["ok"], true, "residual for {expr}");
+    assert_eq!(residual["result"], "0", "residual for {expr}");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x^2 + 3·x + 2"
+        }),
+        "presentation should preserve the quotient sqrt-domain guard for {expr}: {required:?}"
+    );
+    assert_eq!(
+        json["required_display"]
+            .as_array()
+            .expect("required_display should be an array"),
+        &[serde_json::json!("x < -2 or x > -1")]
+    );
+
+    let steps_on = eval_json_with_args(expr, &["--steps", "on"]);
+    assert_eq!(steps_on["ok"], true, "steps-on expr: {expr}");
+    assert_eq!(steps_on["result"], json["result"]);
+    let steps = steps_on["steps"]
+        .as_array()
+        .expect("steps should be an array");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Presentar resultado de cálculo en forma compacta"),
+        "steps-on mode should expose the post-calculus presentation recovery for {expr}: {steps:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_of_power_denominator_quotient_cancels_partial_base_factor() {
+    let expr = "diff(sqrt((x+1)/(x+2)^2), x)";
+    let json = eval_json(expr);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(
+        json["result"],
+        "-x / (2·sqrt((x + 1) / (x + 2)^2)·(x + 2)^3)"
+    );
+    assert!(
+        !json["result"]
+            .as_str()
+            .expect("result should be a string")
+            .contains("^2^2"),
+        "post-calculus presentation should not render nested power text: {json:?}"
+    );
+
+    let residual = eval_json("diff(sqrt((x+1)/(x+2)^2), x) + x/(2*sqrt((x+1)/(x+2)^2)*(x+2)^3)");
+    assert_eq!(residual["ok"], true, "residual for {expr}");
+    assert_eq!(residual["result"], "0", "residual for {expr}");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x + 1"
+        }),
+        "presentation should preserve the quotient sqrt-domain guard for {expr}: {required:?}"
+    );
+    assert_eq!(
+        json["required_display"]
+            .as_array()
+            .expect("required_display should be an array"),
+        &[serde_json::json!("x > -1")]
+    );
+
+    let steps_on = eval_json_with_args(expr, &["--steps", "on"]);
+    assert_eq!(steps_on["ok"], true, "steps-on expr: {expr}");
+    assert_eq!(steps_on["result"], json["result"]);
+    let steps = steps_on["steps"]
+        .as_array()
+        .expect("steps should be an array");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Presentar resultado de cálculo en forma compacta"),
+        "steps-on mode should expose post-calculus recovery after intermediate simplification for {expr}: {steps:?}"
+    );
+}
+
+#[test]
 fn test_eval_json_diff_sqrt_polynomial_over_same_polynomial_cancels_denominator_factor() {
     let positive = eval_json("diff(sqrt(x^2+1)/(x^2+1), x)");
     assert_eq!(positive["ok"], true);
@@ -1097,6 +1215,33 @@ fn test_eval_json_diff_reciprocal_sqrt_polynomial_power_presentation_cancels_com
         }),
         "presentation should preserve the sqrt-domain guard for {expr}: {required:?}"
     );
+}
+
+#[test]
+fn test_eval_json_diff_arctan_sqrt_plus_rational_residual_collapses_without_depth_overflow() {
+    for expr in [
+        "diff(arctan(sqrt(x)) + sqrt(x)/(x+1), x) - 1/(sqrt(x)*(x+1)^2)",
+        "diff(2*arctan(sqrt(x)) + 2*sqrt(x)/(x+1), x) - 2/(sqrt(x)*(x+1)^2)",
+    ] {
+        let (json, stderr) = eval_json_with_stderr(expr);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(json["result"], "0", "expr: {expr}");
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "arctan-sqrt residual should not emit depth_overflow for {expr}\nstderr:\n{stderr}"
+        );
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+            }),
+            "residual shortcut should preserve the sqrt-domain guard for {expr}: {required:?}"
+        );
+    }
 }
 
 #[test]

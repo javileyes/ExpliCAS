@@ -5165,11 +5165,8 @@ mod tests {
     #[test]
     fn differentiates_acosh_with_domain_safe_radicals() {
         let cases = [
-            ("acosh(x)", "(x - 1)^(-1 / 2) / sqrt(x + 1)"),
-            (
-                "acosh(2*x + 1)",
-                "2 * (2 * x)^(-1 / 2) / sqrt(2 * x + 1 + 1)",
-            ),
+            ("acosh(x)", "1 / (sqrt(x - 1) * sqrt(x + 1))"),
+            ("acosh(2*x + 1)", "2 / (sqrt(2 * x) * sqrt(2 * x + 1 + 1))"),
             (
                 "acosh(x^2 + 1)",
                 "2 * x^(2 - 1) / (sqrt(x^2) * sqrt(x^2 + 1 + 1))",

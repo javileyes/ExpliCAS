@@ -95,6 +95,82 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-17 - Observe-only sqrt denominator square presentation gap
+
+- area:
+  - calculus / diff / post-calculus presentation / formatter boundary
+- status:
+  - `superseded`
+- local lane:
+  - direct probes:
+    `cargo run -q -p cas_cli -- eval 'diff(arctan(sqrt(x)) + sqrt(x)/(x+1), x)' --no-pretty`
+    and
+    `cargo run -q -p cas_cli -- eval '1/(sqrt(x)*(x+1)^2)' --no-pretty`
+- local win:
+  - a bounded post-diff recognizer can identify the mathematically compact
+    shape produced by differentiating
+    `arctan(sqrt(x)) + sqrt(x)/(x+1)` and
+    `8*arctan(2*sqrt(x)) + 4*sqrt(x)/(x+1/4)`.
+- global result:
+  - the strict presentation target
+    `1/(sqrt(x)*(x+a)^2)` was not promoted. The expression renderer/canonical
+    display path rewrites that shape back toward `sqrt(x)/(x*(x+a)^2)`, and
+    forcing it through internal holds would couple a domain-conditional
+    calculus presentation to global display semantics.
+- why it regressed globally:
+  - `sqrt(x)/x = 1/sqrt(x)` is only real-safe under `x > 0`; the current
+    display layer has no domain-condition channel, so a formatter-level rule
+    would be too broad.
+- what could make it combinable later:
+  - add an explicit domain-aware post-calculus display channel, or a dedicated
+    final-form marker that can render reciprocal-root denominators only when
+    the calculus result carries the required `x > 0` condition.
+- retained narrower follow-up:
+  - the current iteration retained the safer compact form
+    `x^(-1/2)/(x+a)^2`, preserving the public `x > 0` requirement and
+    avoiding a global formatter change.
+- superseded by:
+  - a follow-up display-only presentation change renders quotient numerators
+    of the form `base^(-1/2)` as reciprocal square-root denominators, so the
+    retained calculus result now displays as `1/(sqrt(x)*(x+a)^2)` without
+    changing the internal AST or simplification route.
+
+## 2026-05-17 - Observe-only sqrt-linear-square arctan antiderivative residual
+
+- area:
+  - calculus / integration / antiderivative verification / residual simplification
+- status:
+  - `superseded`
+- local lane:
+  - `cargo test -p cas_math symbolic_integration_support::tests::integrates_arctan_sqrt_reciprocal_linear_square_kernel -- --exact`
+  - direct residual probe:
+    `timeout 15s cargo run -q -p cas_cli -- eval 'diff(arctan(sqrt(x)) + sqrt(x)/(x+1), x) - 1/(sqrt(x)*(x+1)^2)' --format json`
+- local win:
+  - a bounded table extension for `integrate(1/(sqrt(x)*(a*x+b)^2), x)`,
+    `a,b > 0`, produced the expected antiderivative family via
+    `u = sqrt(x)`, for example
+    `arctan(sqrt(x)) + sqrt(x)/(x+1)`.
+- global result:
+  - not promoted. The candidate passed its narrow construction test, but the
+    public residual verification for
+    `diff(arctan(sqrt(x)) + sqrt(x)/(x+1), x) - 1/(sqrt(x)*(x+1)^2)`
+    hit `depth_overflow` and timed out under the 15s probe.
+- why it regressed globally:
+  - simplification combines the arctan-plus-rational antiderivative over the
+    shared `(x+1)` denominator and then differentiates a much larger quotient;
+    the residual does not cheaply cancel the duplicated `arctan(sqrt(x))`
+    terms before depth pressure appears.
+- what could make it combinable later:
+  - first add a residual/presentation simplification path that preserves or
+    recovers `arctan(sqrt(x)) + sqrt(x)/(x+1)` as a sum for differentiation, or
+    a bounded cancellation for the resulting duplicated arctan quotient shape;
+    then retry the conservative integration family.
+- superseded by:
+  - a follow-up robustness iteration added a bounded pre-simplification
+    residual recognizer for
+    `diff(c*arctan(sqrt(x)) + c*sqrt(x)/(x+1), x) - c/(sqrt(x)*(x+1)^2)`,
+    preserving the `x > 0` condition and avoiding the depth-overflow path.
+
 ## 2026-05-17 - Superseded scaled conditional post-integration presentation
 
 - area:
@@ -12970,3 +13046,32 @@ The burden of proof stays the same:
   - revisit minimal `Requires` for `atanh(sqrt(N/D))` only after adding a
     branch-aware condition combiner that has negative tests for `acosh` and
     `ln(sqrt(gap) ± affine)` branch contracts
+
+## 2026-05-17 - Observe-only scaled arctan-sqrt unit-shift-square primitive
+
+- area:
+  - calculus / integration / antiderivative residual verification
+- status:
+  - `superseded`
+- observed while testing:
+  - the minimal primitive for
+    `integrate(1/(sqrt(x)*(x+1)^2), x)` is stable as
+    `arctan(sqrt(x)) + sqrt(x)/(x+1)`
+  - the scaled candidate
+    `integrate(1/(2*sqrt(x)*(x+1)^2), x)` produced a mathematically analogous
+    primitive, but the public residual
+    `diff(1/2*arctan(sqrt(x)) + (sqrt(x)*1/2)/(x+1), x) - 1/(2*sqrt(x)*(x+1)^2)`
+    entered depth-overflow/timeout-shaped simplification during smoke
+- retained learning:
+  - the unscaled family representative is promotable
+  - a later retained cycle promoted the constant-scaled `integrate(...)` path
+    with a bounded `diff(integrate(...), x) - integrand` residual verifier
+  - this is a reusable residual-verification weakness, not a malformed input
+    or duplicate corpus row
+- superseded by:
+  - a follow-up post-calculus presentation/residual robustness cycle taught the
+    arctan-sqrt primitive matcher to recognize the precombined quotient form of
+    the manually rendered scaled primitive, so
+    `diff(1/2*arctan(sqrt(x)) + (sqrt(x)*1/2)/(x+1), x) - 1/(2*sqrt(x)*(x+1)^2)`
+    now collapses to `0` under `x > 0` without entering the depth-overflow
+    route
