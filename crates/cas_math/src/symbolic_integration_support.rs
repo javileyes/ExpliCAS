@@ -8465,7 +8465,17 @@ fn exp_trig_same_linear_antiderivative(
             let Some((builtin, trig_arg)) = trig_like_factor(ctx, *trig_factor) else {
                 continue;
             };
-            if compare_expr(ctx, exp_arg, trig_arg) != Ordering::Equal {
+
+            let trig_poly = Polynomial::from_expr(ctx, trig_arg, var).ok()?;
+            if trig_poly.degree() != 1 {
+                continue;
+            }
+            let trig_slope = trig_poly
+                .coeffs
+                .get(1)
+                .cloned()
+                .unwrap_or_else(BigRational::zero);
+            if trig_slope.is_zero() {
                 continue;
             }
 
@@ -8483,6 +8493,46 @@ fn exp_trig_same_linear_antiderivative(
             };
             if contains_named_var(ctx, cofactor, var) {
                 continue;
+            }
+
+            if compare_expr(ctx, exp_arg, trig_arg) != Ordering::Equal {
+                if matches!(builtin, BuiltinFn::Cos)
+                    && pure_integer_multiple_angle_expansion_risk(&trig_poly)
+                {
+                    continue;
+                }
+                let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![trig_arg]);
+                let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![trig_arg]);
+                let inner = match builtin {
+                    BuiltinFn::Sin => {
+                        let sin_term = scale_rational_term(ctx, arg_slope.clone(), sin_arg);
+                        let cos_term = scale_rational_term(ctx, trig_slope.clone(), cos_arg);
+                        ctx.add(Expr::Sub(sin_term, cos_term))
+                    }
+                    BuiltinFn::Cos => {
+                        let cos_term = scale_rational_term(ctx, arg_slope.clone(), cos_arg);
+                        let sin_term = scale_rational_term(ctx, trig_slope.clone(), sin_arg);
+                        ctx.add(Expr::Add(cos_term, sin_term))
+                    }
+                    _ => continue,
+                };
+                let exp_inner = mul2_raw(ctx, *exp_factor, inner);
+                let denominator =
+                    arg_slope.clone() * arg_slope.clone() + trig_slope.clone() * trig_slope.clone();
+                if denominator.is_zero() {
+                    continue;
+                }
+                let scale = BigRational::one() / denominator;
+                if let Some(cofactor_scale) = rational_constant_value(ctx, cofactor) {
+                    return Some(scale_rational_term(ctx, scale * cofactor_scale, exp_inner));
+                }
+
+                let integral = scale_rational_term(ctx, scale, exp_inner);
+                return if cofactor_factors.is_empty() {
+                    Some(integral)
+                } else {
+                    Some(mul2_raw(ctx, cofactor, integral))
+                };
             }
 
             let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![exp_arg]);
@@ -8516,6 +8566,26 @@ pub fn integrate_symbolic_is_exp_trig_same_linear_target(
     var: &str,
 ) -> bool {
     exp_trig_same_linear_antiderivative(ctx, expr, var).is_some()
+}
+
+fn pure_integer_multiple_angle_expansion_risk(poly: &Polynomial) -> bool {
+    if poly.degree() != 1 {
+        return false;
+    }
+    let constant = poly
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if !constant.is_zero() {
+        return false;
+    }
+    let slope = poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    slope.denom().is_one() && slope.abs() > BigRational::one()
 }
 
 fn is_polynomial_times_linear_function_target<F>(
@@ -15697,6 +15767,30 @@ mod tests {
             rendered(&ctx, out),
             "3/4 * e^(2 * x + 1) * (sin(2 * x + 1) - cos(2 * x + 1))"
         );
+
+        let expr = parse("exp(2*x)*sin(3*x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/13 * e^(2 * x) * (2 * sin(3 * x) - 3 * cos(3 * x))"
+        );
+
+        let expr = parse("exp(2*x)*sin((3*x+1)/2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "4/25 * e^(2 * x) * (2 * sin((3 * x + 1) / 2) - 3/2 * cos((3 * x + 1) / 2))"
+        );
+
+        let expr = parse("exp(2*x)*cos((3*x+1)/2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "4/25 * e^(2 * x) * (3/2 * sin((3 * x + 1) / 2) + 2 * cos((3 * x + 1) / 2))"
+        );
+
+        let expr = parse("exp(2*x)*cos(3*x)", &mut ctx).expect("parse");
+        assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
     }
 
     #[test]

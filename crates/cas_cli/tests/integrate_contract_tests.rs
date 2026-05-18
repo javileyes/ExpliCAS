@@ -734,6 +734,18 @@ fn integrate_contract_exp_trig_same_linear_antiderivatives_verify_by_differentia
             "integrate(3*exp(2*x+1)*sin(2*x+1), x)",
             "3/4 * e^(2 * x + 1) * (sin(2 * x + 1) - cos(2 * x + 1))",
         ),
+        (
+            "integrate(exp(2*x)*sin(3*x), x)",
+            "1/13 * e^(2 * x) * (2 * sin(3 * x) - 3 * cos(3 * x))",
+        ),
+        (
+            "integrate(exp(2*x)*sin((3*x+1)/2), x)",
+            "4/25 * e^(2 * x) * (2 * sin((3 * x + 1) / 2) - 3/2 * cos((3 * x + 1) / 2))",
+        ),
+        (
+            "integrate(exp(2*x)*cos((3*x+1)/2), x)",
+            "4/25 * e^(2 * x) * (3/2 * sin((3 * x + 1) / 2) + 2 * cos((3 * x + 1) / 2))",
+        ),
     ] {
         let (result, required) = evaluated_integral_with_required_conditions(input);
         assert_eq!(result, expected, "input: {input}");
@@ -748,6 +760,23 @@ fn integrate_contract_exp_trig_same_linear_antiderivatives_verify_by_differentia
             "{input} should verify through the bounded public residual route"
         );
     }
+}
+
+#[test]
+fn integrate_contract_exp_trig_integer_multiple_cos_stays_unsupported_until_residual_verifies() {
+    let input = "integrate(exp(2*x)*cos(3*x), x)";
+    let (result, required, blocked_count) =
+        evaluated_expr_with_required_conditions_and_blocked_count(input);
+
+    assert_eq!(result, "integrate(cos(3 * x) * e^(2 * x), x)");
+    assert!(
+        required.is_empty(),
+        "unsupported exp-trig integer-multiple cosine should not invent conditions: {required:?}"
+    );
+    assert_eq!(
+        blocked_count, 0,
+        "unsupported exp-trig integer-multiple cosine should stay a quiet boundary"
+    );
 }
 
 #[test]

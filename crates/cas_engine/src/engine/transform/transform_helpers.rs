@@ -216,12 +216,89 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_scaled_inverse_tangent_reciprocal_sqrt_product(ctx, target, var_name)
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
+        || diff_target_is_bounded_trig_positive_shift_sqrt(ctx, target)
         || diff_target_is_scaled_bounded_inverse_trig_surd_quotient(ctx, target, var_name)
         || diff_target_is_bounded_inverse_trig_self_normalized_projection(ctx, target, var_name)
         || expr_is_positive_integer_power_of_low_degree_polynomial(ctx, target, var_name)
         || diff_target_is_constant_scaled_positive_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_reciprocal_polynomial_power(ctx, target, var_name)
         || diff_target_is_constant_scaled_atanh_surd_polynomial(ctx, target, var_name)
+}
+
+fn diff_target_is_bounded_trig_positive_shift_sqrt(ctx: &cas_ast::Context, target: ExprId) -> bool {
+    let Some(radicand) = extract_square_root_base(ctx, target) else {
+        return false;
+    };
+    bounded_sin_cos_shift_margin_for_direct_diff_route(ctx, radicand).is_some()
+}
+
+fn bounded_sin_cos_shift_margin_for_direct_diff_route(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<BigRational> {
+    let mut constant_shift = BigRational::zero();
+    let mut trig_bound = BigRational::zero();
+    let mut has_bounded_trig = false;
+
+    for term in cas_math::expr_nary::add_terms_no_sign(ctx, expr) {
+        if let Some(value) = cas_ast::views::as_rational_const(ctx, term, 8) {
+            constant_shift += value;
+            continue;
+        }
+
+        let bound = bounded_sin_cos_term_bound_for_direct_diff_route(ctx, term)?;
+        trig_bound += bound;
+        has_bounded_trig = true;
+    }
+
+    if has_bounded_trig && constant_shift > trig_bound {
+        Some(constant_shift - trig_bound)
+    } else {
+        None
+    }
+}
+
+fn bounded_sin_cos_term_bound_for_direct_diff_route(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<BigRational> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    if bounded_sin_cos_unit_factor_for_direct_diff_route(ctx, expr) {
+        return Some(BigRational::one());
+    }
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        return bounded_sin_cos_term_bound_for_direct_diff_route(ctx, *inner);
+    }
+
+    let Expr::Mul(_, _) = ctx.get(expr) else {
+        return None;
+    };
+    let mut scale = BigRational::one();
+    let mut has_bounded_factor = false;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
+            scale *= value;
+        } else if bounded_sin_cos_unit_factor_for_direct_diff_route(ctx, factor) {
+            has_bounded_factor = true;
+        } else {
+            return None;
+        }
+    }
+
+    has_bounded_factor.then(|| scale.abs())
+}
+
+fn bounded_sin_cos_unit_factor_for_direct_diff_route(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    matches!(
+        ctx.get(expr),
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && matches!(
+                    ctx.builtin_of(*fn_id),
+                    Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
+                )
+    )
 }
 
 fn diff_target_is_rational_linear_partial_fraction_integrate_call(
@@ -375,6 +452,20 @@ mod tests {
             "ln(sec(sqrt(3*x+1))+tan(sqrt(3*x+1)))",
             "ln(csc(sqrt(3*x+1))-cot(sqrt(3*x+1)))",
         ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_raw_diff_target_for_positive_shifted_bounded_trig_sqrt() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in ["sqrt(sin(2*x)+cos(x)+4)", "sqrt(cos(x)+2*sin(x)*cos(x)+4)"] {
             let target = cas_parser::parse(raw, &mut ctx).unwrap();
             assert!(
                 diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),

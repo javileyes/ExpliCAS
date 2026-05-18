@@ -2908,18 +2908,36 @@ fn sqrt_bounded_trig_positive_shift_derivative_presentation(
 ) -> Option<ExprId> {
     let radicand = extract_square_root_base(ctx, target)?;
     bounded_sin_cos_shift_margin_for_calculus_presentation(ctx, radicand)?;
+    let presentation_radicand =
+        compact_double_angle_sine_products_for_calculus_presentation(ctx, radicand)
+            .filter(|candidate| {
+                bounded_sin_cos_shift_margin_for_calculus_presentation(ctx, *candidate).is_some()
+            })
+            .unwrap_or(radicand);
 
-    let derivative = differentiate(ctx, radicand, var_name)?;
+    let derivative = differentiate(ctx, presentation_radicand, var_name)?;
     if cas_ast::views::as_rational_const(ctx, derivative, 8).is_some_and(|value| value.is_zero()) {
         return Some(ctx.num(0));
     }
     let (derivative_scale, derivative_core) = split_numeric_scale_single_core(ctx, derivative)
         .unwrap_or((BigRational::one(), derivative));
     let coefficient = derivative_scale * BigRational::new(1.into(), 2.into());
-    let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
-    let numerator = scale_expr_for_calculus_presentation(ctx, numerator_coeff, derivative_core);
+    let distributed_numerator = if coefficient == BigRational::new(1.into(), 2.into()) {
+        distribute_half_over_additive_numerator_for_calculus_presentation(ctx, derivative_core)
+    } else {
+        None
+    };
+    let (numerator, denominator_coeff) = if let Some(numerator) = distributed_numerator {
+        (numerator, BigRational::one())
+    } else {
+        let (numerator_coeff, denominator_coeff) = nonzero_rational_parts(&coefficient)?;
+        (
+            scale_expr_for_calculus_presentation(ctx, numerator_coeff, derivative_core),
+            denominator_coeff,
+        )
+    };
 
-    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    let sqrt_radicand = ctx.call_builtin(BuiltinFn::Sqrt, vec![presentation_radicand]);
     let denominator = if denominator_coeff == BigRational::one() {
         sqrt_radicand
     } else {
@@ -2929,6 +2947,110 @@ fn sqrt_bounded_trig_positive_shift_derivative_presentation(
 
     let compact = ctx.add_raw(Expr::Div(numerator, denominator));
     Some(cas_ast::hold::wrap_hold(ctx, compact))
+}
+
+fn distribute_half_over_additive_numerator_for_calculus_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let half = BigRational::new(1.into(), 2.into());
+    let mut improves_integer_scale = false;
+    for (term, _) in terms.iter().copied() {
+        let (term_scale, _) =
+            split_numeric_scale_single_core(ctx, term).unwrap_or((BigRational::one(), term));
+        let scaled = term_scale * half.clone();
+        if scaled.is_integer() {
+            improves_integer_scale = true;
+            break;
+        }
+    }
+    if !improves_integer_scale {
+        return None;
+    }
+
+    let mut scaled_terms = Vec::with_capacity(terms.len());
+    for (term, sign) in terms {
+        let (term_scale, term_core) =
+            split_numeric_scale_single_core(ctx, term).unwrap_or((BigRational::one(), term));
+        let coeff = match sign {
+            cas_math::expr_nary::Sign::Pos => half.clone(),
+            cas_math::expr_nary::Sign::Neg => -half.clone(),
+        } * term_scale;
+        scaled_terms.push(scale_expr_for_calculus_presentation(ctx, coeff, term_core));
+    }
+
+    Some(cas_math::expr_nary::build_balanced_add(ctx, &scaled_terms))
+}
+
+pub(crate) fn compact_double_angle_sine_products_for_calculus_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut changed = false;
+    let mut rebuilt = Vec::with_capacity(terms.len());
+    for (term, sign) in terms {
+        let compact = double_angle_sine_product_for_calculus_presentation(ctx, term);
+        changed |= compact.is_some();
+        let mut rebuilt_term = compact.unwrap_or(term);
+        if sign == cas_math::expr_nary::Sign::Neg {
+            rebuilt_term = ctx.add(Expr::Neg(rebuilt_term));
+        }
+        rebuilt.push(rebuilt_term);
+    }
+
+    changed.then(|| cas_math::expr_nary::build_balanced_add(ctx, &rebuilt))
+}
+
+fn double_angle_sine_product_for_calculus_presentation(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    let mut scale = BigRational::one();
+    let mut sin_arg = None;
+    let mut cos_arg = None;
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
+            scale *= value;
+            continue;
+        }
+
+        let Expr::Function(fn_id, args) = ctx.get(factor) else {
+            return None;
+        };
+        if args.len() != 1 {
+            return None;
+        }
+        match ctx.builtin_of(*fn_id) {
+            Some(BuiltinFn::Sin) if sin_arg.replace(args[0]).is_none() => {}
+            Some(BuiltinFn::Cos) if cos_arg.replace(args[0]).is_none() => {}
+            _ => return None,
+        }
+    }
+
+    if scale != BigRational::from_integer(2.into()) {
+        return None;
+    }
+    let sin_arg = sin_arg?;
+    let cos_arg = cos_arg?;
+    if compare_expr(ctx, sin_arg, cos_arg) != std::cmp::Ordering::Equal {
+        return None;
+    }
+
+    let two = rational_const_for_calculus_presentation(ctx, BigRational::from_integer(2.into()));
+    let doubled_arg = cas_math::expr_nary::build_balanced_mul(ctx, &[two, sin_arg]);
+    Some(ctx.call_builtin(BuiltinFn::Sin, vec![doubled_arg]))
 }
 
 fn bounded_sin_cos_shift_margin_for_calculus_presentation(
@@ -14487,7 +14609,7 @@ mod compact_hold_tests {
 
         assert_eq!(
             rendered(&ctx, compact),
-            "(2 * cos(x) * cos(x) - sin(x) - 2 * sin(x) * sin(x)) / (2 * sqrt(cos(x) + 2 * sin(x) * cos(x) + 4))"
+            "(cos(2 * x) - 1/2 * sin(x)) / sqrt(sin(2 * x) + cos(x) + 4)"
         );
     }
 

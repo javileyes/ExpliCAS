@@ -3506,6 +3506,114 @@ fn sin_plus_cos_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         .or_else(|| same_arg_unary_pair(ctx, *right, BuiltinFn::Sin, *left, BuiltinFn::Cos))
 }
 
+fn scaled_unary_builtin_term(
+    ctx: &Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<(BigRational, ExprId)> {
+    if let Some(arg) = unary_builtin_arg(ctx, expr, builtin) {
+        return Some((BigRational::one(), arg));
+    }
+
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        let (scale, arg) = scaled_unary_builtin_term(ctx, *inner, builtin)?;
+        return Some((-scale, arg));
+    }
+
+    let factors = mul_leaves(ctx, expr);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut scale = BigRational::one();
+    let mut arg = None;
+    for factor in factors {
+        if let Some(factor_arg) = unary_builtin_arg(ctx, factor, builtin) {
+            if arg.replace(factor_arg).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        scale *= rational_constant_value(ctx, factor)?;
+    }
+
+    Some((scale, arg?))
+}
+
+fn scaled_sin_or_cos_term(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, BigRational, ExprId)> {
+    if let Some((scale, arg)) = scaled_unary_builtin_term(ctx, expr, BuiltinFn::Sin) {
+        return Some((BuiltinFn::Sin, scale, arg));
+    }
+    if let Some((scale, arg)) = scaled_unary_builtin_term(ctx, expr, BuiltinFn::Cos) {
+        return Some((BuiltinFn::Cos, scale, arg));
+    }
+    None
+}
+
+fn add_scaled_sin_cos_term(
+    ctx: &Context,
+    expr: ExprId,
+    sign: BigRational,
+    arg: &mut Option<ExprId>,
+    sin_coeff: &mut BigRational,
+    cos_coeff: &mut BigRational,
+) -> Option<()> {
+    let (builtin, scale, term_arg) = scaled_sin_or_cos_term(ctx, expr)?;
+    if let Some(existing_arg) = *arg {
+        if compare_expr(ctx, existing_arg, term_arg) != Ordering::Equal {
+            return None;
+        }
+    } else {
+        *arg = Some(term_arg);
+    }
+
+    let signed_scale = sign * scale;
+    match builtin {
+        BuiltinFn::Sin => *sin_coeff += signed_scale,
+        BuiltinFn::Cos => *cos_coeff += signed_scale,
+        _ => return None,
+    }
+    Some(())
+}
+
+fn scaled_sin_cos_linear_combo(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<(ExprId, BigRational, BigRational)> {
+    let (left, right, right_sign) = match ctx.get(expr) {
+        Expr::Add(left, right) => (*left, *right, BigRational::one()),
+        Expr::Sub(left, right) => (*left, *right, -BigRational::one()),
+        _ => return None,
+    };
+
+    let mut arg = None;
+    let mut sin_coeff = BigRational::zero();
+    let mut cos_coeff = BigRational::zero();
+    add_scaled_sin_cos_term(
+        ctx,
+        left,
+        BigRational::one(),
+        &mut arg,
+        &mut sin_coeff,
+        &mut cos_coeff,
+    )?;
+    add_scaled_sin_cos_term(
+        ctx,
+        right,
+        right_sign,
+        &mut arg,
+        &mut sin_coeff,
+        &mut cos_coeff,
+    )?;
+
+    let arg = arg?;
+    if sin_coeff.is_zero() || cos_coeff.is_zero() {
+        return None;
+    }
+    Some((arg, sin_coeff, cos_coeff))
+}
+
 fn exp_trig_by_parts_primitive_derivative(
     ctx: &mut Context,
     expr: ExprId,
@@ -3519,7 +3627,7 @@ fn exp_trig_by_parts_primitive_derivative(
     let mut scale = BigRational::one();
     let mut exp_factor = None;
     let mut exp_arg = None;
-    let mut trig_arg_and_result = None;
+    let mut trig_arg_and_coeffs = None;
 
     for factor in factors {
         if let Some(arg) = exp_like_arg(ctx, factor) {
@@ -3530,14 +3638,30 @@ fn exp_trig_by_parts_primitive_derivative(
         }
 
         if let Some(arg) = sin_minus_cos_arg(ctx, factor) {
-            if trig_arg_and_result.replace((arg, BuiltinFn::Sin)).is_some() {
+            if trig_arg_and_coeffs
+                .replace((arg, BigRational::one(), -BigRational::one()))
+                .is_some()
+            {
                 return None;
             }
             continue;
         }
 
         if let Some(arg) = sin_plus_cos_arg(ctx, factor) {
-            if trig_arg_and_result.replace((arg, BuiltinFn::Cos)).is_some() {
+            if trig_arg_and_coeffs
+                .replace((arg, BigRational::one(), BigRational::one()))
+                .is_some()
+            {
+                return None;
+            }
+            continue;
+        }
+
+        if let Some((arg, sin_coeff, cos_coeff)) = scaled_sin_cos_linear_combo(ctx, factor) {
+            if trig_arg_and_coeffs
+                .replace((arg, sin_coeff, cos_coeff))
+                .is_some()
+            {
                 return None;
             }
             continue;
@@ -3548,10 +3672,7 @@ fn exp_trig_by_parts_primitive_derivative(
 
     let exp_factor = exp_factor?;
     let exp_arg = exp_arg?;
-    let (trig_arg, result_builtin) = trig_arg_and_result?;
-    if compare_expr(ctx, exp_arg, trig_arg) != Ordering::Equal {
-        return None;
-    }
+    let (trig_arg, sin_coeff, cos_coeff) = trig_arg_and_coeffs?;
 
     let arg_poly = Polynomial::from_expr(ctx, exp_arg, var).ok()?;
     if arg_poly.degree() != 1 {
@@ -3566,10 +3687,40 @@ fn exp_trig_by_parts_primitive_derivative(
         return None;
     }
 
-    let result_trig = ctx.call_builtin(result_builtin, vec![exp_arg]);
-    let product = mul_pruned(ctx, exp_factor, result_trig);
-    let derivative_scale = scale * BigRational::from_integer(2.into()) * arg_slope;
-    Some(scale_expr_pruned(ctx, derivative_scale, product))
+    let trig_poly = Polynomial::from_expr(ctx, trig_arg, var).ok()?;
+    if trig_poly.degree() != 1 {
+        return None;
+    }
+    let trig_slope = trig_poly
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if trig_slope.is_zero() {
+        return None;
+    }
+
+    let sin_result_coeff = scale.clone()
+        * (arg_slope.clone() * sin_coeff.clone() - trig_slope.clone() * cos_coeff.clone());
+    let cos_result_coeff = scale * (arg_slope * cos_coeff + trig_slope * sin_coeff);
+
+    let mut terms = Vec::new();
+    if !sin_result_coeff.is_zero() {
+        let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![trig_arg]);
+        let product = mul_pruned(ctx, exp_factor, sin_arg);
+        terms.push(scale_expr_pruned(ctx, sin_result_coeff, product));
+    }
+    if !cos_result_coeff.is_zero() {
+        let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![trig_arg]);
+        let product = mul_pruned(ctx, exp_factor, cos_arg);
+        terms.push(scale_expr_pruned(ctx, cos_result_coeff, product));
+    }
+
+    match terms.as_slice() {
+        [] => Some(ctx.num(0)),
+        [term] => Some(*term),
+        _ => Some(build_balanced_add(ctx, &terms)),
+    }
 }
 
 fn unordered_same_arg_unary_sum(
@@ -4279,6 +4430,14 @@ mod tests {
         let expr = parse("1/4*exp(2*x+1)*(sin(2*x+1)+cos(2*x+1))", &mut ctx).expect("parse");
         let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
         assert_eq!(rendered(&ctx, out), "e^(2 * x + 1) * cos(2 * x + 1)");
+
+        let expr = parse(
+            "4/25*exp(2*x)*(3/2*sin((3*x+1)/2)+2*cos((3*x+1)/2))",
+            &mut ctx,
+        )
+        .expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "e^(2 * x) * cos((3 * x + 1) / 2)");
     }
 
     #[test]

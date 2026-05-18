@@ -13141,3 +13141,102 @@ The burden of proof stays the same:
     `diff(1/2*arctan(sqrt(x)) + (sqrt(x)*1/2)/(x+1), x) - 1/(2*sqrt(x)*(x+1)^2)`
     now collapses to `0` under `x > 0` without entering the depth-overflow
     route
+
+## 2026-05-18 - Discovery observe-only: distinct-slope exp-cos residual is slow
+
+- area:
+  - calculus / integration / exp-trig by-parts / residual verification
+- status:
+  - `discovery/observe-only`
+- observed while testing:
+  - the distinct-slope sine case
+    `integrate(exp(2*x)*sin(3*x), x)` produces the compact primitive
+    `1/13*e^(2*x)*(2*sin(3*x)-3*cos(3*x))` and its public residual collapses
+    to `0`
+  - the analogous cosine primitive
+    `1/13*e^(2*x)*(2*cos(3*x)+3*sin(3*x))` triggered repeated
+    `depth_overflow` warnings and did not close cheaply during a CLI residual
+    probe
+- retained learning:
+  - distinct-slope `exp(linear)*sin(linear)` can be promoted conservatively,
+    but `exp(linear)*cos(linear)` needs a bounded residual simplification route
+    before promotion
+  - this is a reusable residual-verification weakness, not a malformed input or
+    a presentation-only issue
+- follow-up:
+  - add a direct residual route for `d/dx(e^(a*x+b)*(A*cos(c*x+d)+B*sin(c*x+d)))`
+    minus an `exp(linear)*cos(linear)` target before enabling the cosine
+    sibling
+
+## 2026-05-18 - Retained: distinct-slope exp-cos without multiple-angle expansion
+
+- area:
+  - calculus / integration / exp-trig by-parts / residual verification
+- status:
+  - `retained-partial`
+- retained:
+  - the direct derivative recognizer now handles grouped primitives of the
+    form `e^(a*x+b)*(A*sin(c*x+d)+B*cos(c*x+d))`
+  - promoted the non-expansion-risk public representative
+    `integrate(exp(2*x)*cos((3*x+1)/2), x)` with the compact primitive
+    `4/25*e^(2*x)*(3/2*sin((3*x+1)/2)+2*cos((3*x+1)/2))`
+  - the public residual collapses to `0` without adding real-domain conditions
+- still deferred:
+  - `integrate(exp(2*x)*cos(3*x), x)` is deliberately not promoted because the
+    public pipeline expands the pure integer multiple-angle argument before the
+    residual route can use the compact primitive shape
+- retained learning:
+  - the useful boundary is not only `sin` vs `cos`; it is whether public
+    pre-diff presentation preserves the grouped trig argument long enough for
+    the bounded residual route to match
+- follow-up:
+  - add an anti-expansion or held-presentation route for pure integer
+    multiple-angle exp-trig residuals before promoting `cos(3*x)` and similar
+    siblings
+
+## 2026-05-18 - Retained coverage: shifted rational exp-sin by-parts guard
+
+- area:
+  - calculus / integration / exp-trig by-parts / contract coverage
+- status:
+  - `retained-coverage`
+- retained:
+  - promoted `integrate(exp(2*x)*sin((3*x+1)/2), x)` as the sine counterpart
+    to the retained shifted rational cosine representative
+  - expected primitive:
+    `4/25*e^(2*x)*(2*sin((3*x+1)/2)-3/2*cos((3*x+1)/2))`
+  - public antiderivative residual collapses to `0` and adds no real-domain
+    conditions
+- why this representative:
+  - it combines distinct exp/trig slopes, a rational shifted trig argument, and
+    the sine orientation without triggering pure integer multiple-angle
+    expansion
+  - it is smaller and safer than promoting the deferred `cos(3*x)` family
+- follow-up:
+  - still target anti-expansion or held-presentation for pure integer
+    multiple-angle exp-trig residuals before widening this family further
+
+## 2026-05-18 - Retained robustness: unsupported integer-multiple exp-cos boundary
+
+- area:
+  - calculus / integration / exp-trig by-parts / residual robustness
+- status:
+  - `retained-robustness`
+- retained:
+  - added a public integration contract that keeps
+    `integrate(exp(2*x)*cos(3*x), x)` as an unsupported, quiet boundary
+    until the compact primitive can be verified without expanding the trig
+    argument into a deep polynomial route
+  - the boundary returns the normalized residual call
+    `integrate(cos(3*x)*e^(2*x), x)` with no invented real-domain conditions
+    and no blocked hint noise
+- why retained:
+  - the compact primitive is mathematically known, but public `diff` currently
+    expands `sin(3*x)` / `cos(3*x)` before the bounded exp-trig residual route
+    can match it
+  - forcing this capability now would reintroduce repeated `depth_overflow`
+    warnings and a slow residual path
+- follow-up:
+  - implement a shape-preserving anti-expansion or held-presentation route for
+    pure integer multiple-angle exp-trig primitives, then promote the cosine
+    sibling with derivative verification

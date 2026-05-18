@@ -65,6 +65,47 @@ fn eval_result_first_expr(result: &EvalResult) -> Option<ExprId> {
     }
 }
 
+fn present_calculus_required_condition(
+    ctx: &mut cas_ast::Context,
+    condition: crate::ImplicitCondition,
+) -> crate::ImplicitCondition {
+    fn present_expr(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
+        crate::rules::calculus::compact_double_angle_sine_products_for_calculus_presentation(
+            ctx, expr,
+        )
+        .unwrap_or(expr)
+    }
+
+    match condition {
+        crate::ImplicitCondition::Positive(expr) => {
+            crate::ImplicitCondition::Positive(present_expr(ctx, expr))
+        }
+        crate::ImplicitCondition::NonNegative(expr) => {
+            crate::ImplicitCondition::NonNegative(present_expr(ctx, expr))
+        }
+        crate::ImplicitCondition::NonZero(expr) => crate::ImplicitCondition::NonZero(expr),
+        crate::ImplicitCondition::LowerBound(expr, bound) => {
+            crate::ImplicitCondition::LowerBound(expr, bound)
+        }
+    }
+}
+
+fn resolved_is_calculus_call(ctx: &cas_ast::Context, resolved: ExprId) -> bool {
+    matches!(
+        ctx.get(resolved),
+        cas_ast::Expr::Function(fn_id, _) if matches!(ctx.sym_name(*fn_id), "diff" | "integrate" | "limit")
+    )
+}
+
+fn present_calculus_required_diagnostics(
+    ctx: &mut cas_ast::Context,
+    diagnostics: &mut crate::diagnostics::Diagnostics,
+) {
+    for item in &mut diagnostics.requires {
+        item.cond = present_calculus_required_condition(ctx, item.cond.clone());
+    }
+}
+
 fn push_structural_requires(
     ctx: &mut cas_ast::Context,
     resolved: ExprId,
@@ -72,6 +113,8 @@ fn push_structural_requires(
     diagnostics: &mut crate::diagnostics::Diagnostics,
 ) {
     use crate::infer_implicit_domain;
+
+    let resolved_is_calculus_call = resolved_is_calculus_call(ctx, resolved);
 
     let input_domain =
         infer_implicit_domain(ctx, resolved, crate::semantics::ValueDomain::RealOnly);
@@ -104,21 +147,18 @@ fn push_structural_requires(
                 continue;
             }
         }
-        diagnostics.push_required(
-            cond.clone(),
-            crate::diagnostics::RequireOrigin::InputImplicit,
-        );
+        let cond = if resolved_is_calculus_call {
+            present_calculus_required_condition(ctx, cond.clone())
+        } else {
+            cond.clone()
+        };
+        diagnostics.push_required(cond, crate::diagnostics::RequireOrigin::InputImplicit);
     }
     push_intrinsic_function_requires(
         ctx,
         resolved,
         crate::diagnostics::RequireOrigin::InputImplicit,
         diagnostics,
-    );
-
-    let resolved_is_calculus_call = matches!(
-        ctx.get(resolved),
-        cas_ast::Expr::Function(fn_id, _) if matches!(ctx.sym_name(*fn_id), "diff" | "integrate" | "limit")
     );
 
     if let Some(result_id) = eval_result_first_expr(result) {
@@ -140,10 +180,12 @@ fn push_structural_requires(
                     continue;
                 }
             }
-            diagnostics.push_required(
-                cond.clone(),
-                crate::diagnostics::RequireOrigin::OutputImplicit,
-            );
+            let cond = if resolved_is_calculus_call {
+                present_calculus_required_condition(ctx, cond.clone())
+            } else {
+                cond.clone()
+            };
+            diagnostics.push_required(cond, crate::diagnostics::RequireOrigin::OutputImplicit);
         }
         if !resolved_is_calculus_call {
             push_intrinsic_function_requires(
@@ -373,6 +415,10 @@ fn build_eval_diagnostics(input: EvalDiagnosticsInput<'_>) -> crate::diagnostics
 
     // Track provenance when reusing cached/session entries.
     diagnostics.inherit_requires_from(inherited_diagnostics);
+
+    if resolved_is_calculus_call(ctx, resolved) {
+        present_calculus_required_diagnostics(ctx, &mut diagnostics);
+    }
 
     // Stable output ordering and trivial-condition filtering.
     diagnostics.dedup_and_sort(ctx);

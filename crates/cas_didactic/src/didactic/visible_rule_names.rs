@@ -59,7 +59,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Tangent Angle Sum/Diff Identity" => {
             "Aplicar identidad de tangente de suma/diferencia de ángulos"
         }
-        "Angle Consistency (Half-Angle)" => "Expandir coseno de ángulo doble",
+        "Angle Consistency (Half-Angle)" => "Expandir identidad de ángulo doble",
         "Cos 2x Additive Contraction" => "Contraer ángulo doble",
         "Trig Square Identity" => "Aplicar identidad del cuadrado trigonométrico",
         "Power Reduction Identity" => "Aplicar reducción de potencias",
@@ -217,7 +217,7 @@ pub(crate) fn visible_rule_name_for_step<'a>(
             Cow::Borrowed("Expandir logaritmos y cancelar términos iguales")
         }
         "Angle Consistency (Half-Angle)" if description == "Half-Angle Expansion" => {
-            Cow::Borrowed("Expandir coseno de ángulo doble")
+            Cow::Borrowed("Expandir identidad de ángulo doble")
         }
         "Expand Log Abs Mul/Div"
             if description == "Log expansion followed by exact cancellation" =>
@@ -382,7 +382,7 @@ pub(crate) fn visible_step_description<'a>(description: &'a str) -> Cow<'a, str>
         "Expand sin²(u) as (1 - cos(2u))/2" => {
             Cow::Borrowed("Expandir seno cuadrado con ángulo mitad")
         }
-        "Half-Angle Expansion" => Cow::Borrowed("Expandir coseno de ángulo doble"),
+        "Half-Angle Expansion" => Cow::Borrowed("Expandir identidad de ángulo doble"),
         "Expand cos²(u) as (1 + cos(2u))/2" => {
             Cow::Borrowed("Expandir coseno cuadrado con ángulo mitad")
         }

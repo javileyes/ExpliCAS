@@ -40,13 +40,15 @@ fn eval_json(expr: &str) -> Value {
 }
 
 fn eval_json_with_stderr(expr: &str) -> (Value, String) {
-    let output = Command::new(cargo::cargo_bin!("cas_cli"))
-        .arg("eval")
-        .arg(expr)
-        .arg("--format")
-        .arg("json")
-        .output()
-        .expect("Failed to execute command");
+    eval_json_with_args_and_stderr(expr, &[])
+}
+
+fn eval_json_with_args_and_stderr(expr: &str, args: &[&str]) -> (Value, String) {
+    let mut command = Command::new(cargo::cargo_bin!("cas_cli"));
+    command.arg("eval").arg(expr).arg("--format").arg("json");
+    command.args(args);
+
+    let output = command.output().expect("Failed to execute command");
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
@@ -299,7 +301,7 @@ fn test_eval_json_multi_function_trig_root_diff_skips_rationalization_noise() {
     assert_eq!(json["ok"], true, "expr: {expr}");
     assert_eq!(
         json["result"],
-        "(2·(cos(x)·cos(x) - sin(x)·sin(x)) - sin(x)) / (2·sqrt(cos(x) + 2·sin(x)·cos(x) + 4))"
+        "(cos(2·x) - 1/2·sin(x)) / sqrt(sin(2·x) + cos(x) + 4)"
     );
 
     let steps = json["steps"].as_array().expect("steps should be an array");
@@ -1548,6 +1550,44 @@ fn test_eval_json_omits_noop_post_calculus_presentation_step() {
             condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
         }),
         "no-op presentation filtering should preserve the sqrt-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_bounded_trig_positive_shift_uses_compact_trig_presentation() {
+    let expr = "diff(sqrt(sin(2*x)+cos(x)+4), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "bounded trig sqrt diff should preserve the raw target and avoid depth overflow: {stderr}"
+    );
+    assert_eq!(
+        json["result"], "(cos(2·x) - 1/2·sin(x)) / sqrt(sin(2·x) + cos(x) + 4)",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Calcular la derivada"),
+        "direct diff route should include a differentiation step for {expr}: {steps:?}"
+    );
+    assert!(
+        steps.iter().all(|step| !step["rule"]
+            .as_str()
+            .is_some_and(|rule| rule.contains("ángulo doble"))),
+        "raw diff target should avoid the double-angle expansion detour for {expr}: {steps:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.is_empty(),
+        "positive shifted bounded trig radicand should not emit a redundant guard for {expr}: {required:?}"
     );
 }
 
