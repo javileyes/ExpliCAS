@@ -7,7 +7,8 @@
 use crate::display_context::DisplayContext;
 use crate::latex_highlight::{HighlightColor, HighlightConfig};
 use crate::{Constant, Context, Expr, ExprId};
-use num_traits::Signed;
+use num_rational::BigRational;
+use num_traits::{One, Signed, Zero};
 use regex::Regex;
 use std::sync::LazyLock;
 
@@ -357,12 +358,37 @@ pub trait LaTeXRenderer {
             };
         }
 
+        if let Some((coefficient, radicand, denominator)) =
+            reciprocal_sqrt_times_unit_fraction_for_latex(self.context(), l, r)
+        {
+            return self.format_reciprocal_sqrt_div_latex(coefficient, radicand, &[denominator]);
+        }
+        if let Some((coefficient, radicand, denominators)) =
+            reciprocal_sqrt_product_with_unit_fraction_for_latex(self.context(), l, r)
+        {
+            return self.format_reciprocal_sqrt_div_latex(coefficient, radicand, &denominators);
+        }
+        if let Some(fraction_product) =
+            self.format_root_denominator_fraction_product_latex(l, r, parent_needs_parens)
+        {
+            return fraction_product;
+        }
+
         // V2.14.40: Absorb fractional coefficient into fraction for cleaner display
         // Pattern: (1/n) * expr -> \frac{expr}{n}
         // Pattern: (k/n) * expr -> \frac{k \cdot expr}{n} or just k/n * expr (simpler)
         if let Expr::Number(n) = self.context().get(l) {
             // Check if left is a simple fraction 1/n (numerator = 1, denominator > 1)
             if !n.is_integer() && *n.numer() == 1.into() && *n.denom() > 1.into() {
+                if let Some((coefficient, radicand)) =
+                    reciprocal_sqrt_numerator_for_latex(self.context(), r)
+                {
+                    return self.format_reciprocal_sqrt_div_latex(
+                        coefficient * n.clone(),
+                        radicand,
+                        &[],
+                    );
+                }
                 let right_latex = self.expr_to_latex(r, false);
                 return format!("\\frac{{{}}}{{{}}}", right_latex, n.denom());
             }
@@ -370,6 +396,15 @@ pub trait LaTeXRenderer {
         // Also check right side for (expr * 1/n) pattern
         if let Expr::Number(n) = self.context().get(r) {
             if !n.is_integer() && *n.numer() == 1.into() && *n.denom() > 1.into() {
+                if let Some((coefficient, radicand)) =
+                    reciprocal_sqrt_numerator_for_latex(self.context(), l)
+                {
+                    return self.format_reciprocal_sqrt_div_latex(
+                        coefficient * n.clone(),
+                        radicand,
+                        &[],
+                    );
+                }
                 let left_latex = self.expr_to_latex(l, false);
                 return format!("\\frac{{{}}}{{{}}}", left_latex, n.denom());
             }
@@ -390,11 +425,17 @@ pub trait LaTeXRenderer {
     fn format_div(&self, l: ExprId, r: ExprId) -> String {
         let ctx = self.context();
 
+        if let Some((coefficient, radicand, denominators)) =
+            reciprocal_sqrt_division_for_latex(ctx, l, r)
+        {
+            return self.format_reciprocal_sqrt_div_latex(coefficient, radicand, &denominators);
+        }
+
         // Check if numerator is negative - put sign outside fraction
         match ctx.get(l) {
             Expr::Neg(inner) => {
                 let numer = self.expr_to_latex(*inner, false);
-                let denom = self.expr_to_latex(r, false);
+                let denom = self.expr_to_latex_denominator(r);
                 format!("-\\frac{{{}}}{{{}}}", numer, denom)
             }
             Expr::Number(n) if n.is_negative() => {
@@ -404,15 +445,149 @@ pub trait LaTeXRenderer {
                 } else {
                     format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
                 };
-                let denom = self.expr_to_latex(r, false);
+                let denom = self.expr_to_latex_denominator(r);
                 format!("-\\frac{{{}}}{{{}}}", numer_str, denom)
             }
             _ => {
                 let numer = self.expr_to_latex(l, false);
-                let denom = self.expr_to_latex(r, false);
+                let denom = self.expr_to_latex_denominator(r);
                 format!("\\frac{{{}}}{{{}}}", numer, denom)
             }
         }
+    }
+
+    fn format_reciprocal_sqrt_div_latex(
+        &self,
+        mut coefficient: BigRational,
+        radicand: ExprId,
+        denominators: &[ExprId],
+    ) -> String {
+        let sqrt_radicand = self.expr_to_latex(radicand, false);
+        let mut denominator_parts = Vec::new();
+        let mut rest_denominator_parts = Vec::new();
+        let mut only_sin_or_cos_sqrt_rest = true;
+        for denominator in denominators {
+            let mut denominator_factors = Vec::new();
+            collect_mul_factors_for_latex(self.context(), *denominator, &mut denominator_factors);
+            for factor in denominator_factors {
+                let rendered = self.expr_to_latex_mul(factor);
+                if let Some(value) = rational_constant_expr_for_latex(self.context(), factor)
+                    .filter(|value| value.is_positive())
+                {
+                    coefficient /= value;
+                } else {
+                    only_sin_or_cos_sqrt_rest &=
+                        is_sin_or_cos_of_latex_sqrt_factor(self.context(), factor);
+                    rest_denominator_parts.push(rendered);
+                }
+            }
+        }
+        let sign = if coefficient.is_negative() { "-" } else { "" };
+        let coefficient = coefficient.abs();
+        let numerator = coefficient.numer().to_string();
+        if !coefficient.denom().is_one() {
+            denominator_parts.push(coefficient.denom().to_string());
+        }
+        let sqrt_before_rest = rest_denominator_parts.len() == 1 && only_sin_or_cos_sqrt_rest;
+        if sqrt_before_rest {
+            denominator_parts.push(format!("\\sqrt{{{}}}", sqrt_radicand));
+        }
+        denominator_parts.extend(rest_denominator_parts);
+        if !sqrt_before_rest {
+            denominator_parts.push(format!("\\sqrt{{{}}}", sqrt_radicand));
+        }
+        let denominator = denominator_parts.join("\\cdot ");
+        format!("{sign}\\frac{{{}}}{{{}}}", numerator, denominator)
+    }
+
+    fn format_root_denominator_fraction_product_latex(
+        &self,
+        l: ExprId,
+        r: ExprId,
+        parent_needs_parens: bool,
+    ) -> Option<String> {
+        let mut numerator_coeff = BigRational::one();
+        let mut numerator_factors = Vec::new();
+        let mut denominator_factors = Vec::new();
+        let mut saw_fraction = false;
+        collect_fraction_product_parts_with_numerators_for_latex(
+            self.context(),
+            l,
+            &mut numerator_coeff,
+            &mut numerator_factors,
+            &mut denominator_factors,
+            &mut saw_fraction,
+        )?;
+        collect_fraction_product_parts_with_numerators_for_latex(
+            self.context(),
+            r,
+            &mut numerator_coeff,
+            &mut numerator_factors,
+            &mut denominator_factors,
+            &mut saw_fraction,
+        )?;
+        if !saw_fraction || denominator_factors.is_empty() {
+            return None;
+        }
+        let mut denominator_coeff = BigRational::one();
+        let mut structural_denominators = Vec::new();
+        for factor in denominator_factors {
+            if let Some(value) = rational_constant_expr_for_latex(self.context(), factor) {
+                denominator_coeff *= value;
+            } else {
+                structural_denominators.push(factor);
+            }
+        }
+        if structural_denominators.is_empty()
+            || !denominator_has_sqrt_like_factor_for_latex(self.context(), &structural_denominators)
+            || denominator_coeff.is_zero()
+        {
+            return None;
+        }
+
+        let coefficient = numerator_coeff / denominator_coeff;
+        if coefficient.is_zero() {
+            return None;
+        }
+
+        let sign = if coefficient.is_negative() { "-" } else { "" };
+        let coefficient = coefficient.abs();
+        let mut numerator_parts = Vec::new();
+        if coefficient.numer() != &1.into() || numerator_factors.is_empty() {
+            numerator_parts.push(coefficient.numer().to_string());
+        }
+        numerator_parts.extend(
+            numerator_factors
+                .iter()
+                .map(|factor| self.expr_to_latex_mul(*factor)),
+        );
+        let mut denominator_parts = Vec::new();
+        if !coefficient.denom().is_one() {
+            denominator_parts.push(coefficient.denom().to_string());
+        }
+        let mut non_root_denominators = Vec::new();
+        let mut root_denominators = Vec::new();
+        for factor in structural_denominators {
+            if is_sqrt_like_factor_for_latex(self.context(), factor) {
+                root_denominators.push(factor);
+            } else {
+                non_root_denominators.push(factor);
+            }
+        }
+        denominator_parts.extend(
+            non_root_denominators
+                .iter()
+                .chain(root_denominators.iter())
+                .map(|factor| self.expr_to_latex_mul(*factor)),
+        );
+        let numerator = numerator_parts.join("\\cdot ");
+        let denominator = denominator_parts.join("\\cdot ");
+        let rendered = format!("{sign}\\frac{{{numerator}}}{{{denominator}}}");
+        Some(if parent_needs_parens {
+            format!("({rendered})")
+        } else {
+            rendered
+        })
     }
 
     /// Format power expression
@@ -683,6 +858,18 @@ pub trait LaTeXRenderer {
         }
     }
 
+    fn expr_to_latex_denominator(&self, id: ExprId) -> String {
+        if let Some(factors) = denominator_product_numeric_first_factors(self.context(), id) {
+            return factors
+                .iter()
+                .map(|factor| self.expr_to_latex_mul(*factor))
+                .collect::<Vec<_>>()
+                .join("\\cdot ");
+        }
+
+        self.expr_to_latex(id, false)
+    }
+
     /// Helper for power base - adds parens for composite expressions
     fn expr_to_latex_base(&self, id: ExprId) -> String {
         let display_id = unwrap_internal_hold_for_latex(self.context(), id);
@@ -700,6 +887,397 @@ pub trait LaTeXRenderer {
             }
             _ => self.expr_to_latex(id, false),
         }
+    }
+}
+
+fn reciprocal_sqrt_numerator_for_latex(ctx: &Context, id: ExprId) -> Option<(BigRational, ExprId)> {
+    let mut factors = Vec::new();
+    collect_mul_factors_for_latex(ctx, id, &mut factors);
+
+    let mut coefficient = BigRational::one();
+    let mut radicand = None;
+
+    for factor in factors {
+        match ctx.get(factor) {
+            Expr::Number(n) if n.is_positive() => coefficient *= n.clone(),
+            Expr::Pow(base, exp) if is_negative_one_half_exponent_for_latex(ctx, *exp) => {
+                if radicand.replace(*base).is_some() {
+                    return None;
+                }
+            }
+            _ => return None,
+        }
+    }
+
+    radicand.map(|radicand| (coefficient, radicand))
+}
+
+fn reciprocal_sqrt_division_for_latex(
+    ctx: &Context,
+    numerator: ExprId,
+    denominator: ExprId,
+) -> Option<(BigRational, ExprId, Vec<ExprId>)> {
+    if let Some((coefficient, radicand)) = reciprocal_sqrt_numerator_for_latex(ctx, numerator) {
+        return Some((coefficient, radicand, vec![denominator]));
+    }
+
+    match ctx.get(numerator) {
+        Expr::Div(inner_num, inner_den) => {
+            let (coefficient, radicand) = reciprocal_sqrt_numerator_for_latex(ctx, *inner_num)?;
+            Some((coefficient, radicand, vec![*inner_den, denominator]))
+        }
+        _ => None,
+    }
+}
+
+fn reciprocal_sqrt_times_unit_fraction_for_latex(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(BigRational, ExprId, ExprId)> {
+    if let (Some((coefficient, radicand)), Some(denominator)) = (
+        reciprocal_sqrt_numerator_for_latex(ctx, left),
+        unit_fraction_denominator_for_latex(ctx, right),
+    ) {
+        return Some((coefficient, radicand, denominator));
+    }
+
+    if let (Some(denominator), Some((coefficient, radicand))) = (
+        unit_fraction_denominator_for_latex(ctx, left),
+        reciprocal_sqrt_numerator_for_latex(ctx, right),
+    ) {
+        return Some((coefficient, radicand, denominator));
+    }
+
+    None
+}
+
+fn reciprocal_sqrt_product_with_unit_fraction_for_latex(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(BigRational, ExprId, Vec<ExprId>)> {
+    if let (Some((coefficient, radicand, mut denominators)), Some(denominator)) = (
+        reciprocal_sqrt_factor_with_denominators_for_latex(ctx, left),
+        unit_fraction_denominator_for_latex(ctx, right),
+    ) {
+        denominators.push(denominator);
+        return Some((coefficient, radicand, denominators));
+    }
+
+    if let (Some(denominator), Some((coefficient, radicand, mut denominators))) = (
+        unit_fraction_denominator_for_latex(ctx, left),
+        reciprocal_sqrt_factor_with_denominators_for_latex(ctx, right),
+    ) {
+        denominators.push(denominator);
+        return Some((coefficient, radicand, denominators));
+    }
+
+    if let (Some((coefficient, radicand, mut denominators)), Some((scale, mut extra))) = (
+        reciprocal_sqrt_factor_with_denominators_for_latex(ctx, left),
+        scalar_fraction_product_denominators_for_latex(ctx, right),
+    ) {
+        denominators.append(&mut extra);
+        return Some((coefficient * scale, radicand, denominators));
+    }
+
+    if let (Some((scale, mut extra)), Some((coefficient, radicand, mut denominators))) = (
+        scalar_fraction_product_denominators_for_latex(ctx, left),
+        reciprocal_sqrt_factor_with_denominators_for_latex(ctx, right),
+    ) {
+        extra.append(&mut denominators);
+        return Some((coefficient * scale, radicand, extra));
+    }
+
+    None
+}
+
+fn scalar_fraction_product_denominators_for_latex(
+    ctx: &Context,
+    id: ExprId,
+) -> Option<(BigRational, Vec<ExprId>)> {
+    let mut numerator_coeff = BigRational::one();
+    let mut denominator_factors = Vec::new();
+    let mut saw_fraction = false;
+    collect_fraction_product_parts_for_latex(
+        ctx,
+        id,
+        &mut numerator_coeff,
+        &mut denominator_factors,
+        &mut saw_fraction,
+    )?;
+    saw_fraction.then_some((numerator_coeff, denominator_factors))
+}
+
+fn reciprocal_sqrt_factor_with_denominators_for_latex(
+    ctx: &Context,
+    id: ExprId,
+) -> Option<(BigRational, ExprId, Vec<ExprId>)> {
+    if let Some((coefficient, radicand)) = reciprocal_sqrt_numerator_for_latex(ctx, id) {
+        return Some((coefficient, radicand, Vec::new()));
+    }
+
+    match ctx.get(id) {
+        Expr::Div(num, den) => {
+            let (coefficient, radicand) = reciprocal_sqrt_numerator_for_latex(ctx, *num)?;
+            Some((coefficient, radicand, vec![*den]))
+        }
+        _ => None,
+    }
+}
+
+fn unit_fraction_denominator_for_latex(ctx: &Context, id: ExprId) -> Option<ExprId> {
+    match ctx.get(id) {
+        Expr::Div(num, den) if matches!(ctx.get(*num), Expr::Number(n) if n.is_one()) => Some(*den),
+        _ => None,
+    }
+}
+
+fn collect_mul_factors_for_latex(ctx: &Context, id: ExprId, out: &mut Vec<ExprId>) {
+    let id = unwrap_internal_hold_for_latex(ctx, id);
+    match ctx.get(id) {
+        Expr::Mul(l, r) => {
+            collect_mul_factors_for_latex(ctx, *l, out);
+            collect_mul_factors_for_latex(ctx, *r, out);
+        }
+        _ => out.push(id),
+    }
+}
+
+fn collect_fraction_product_parts_for_latex(
+    ctx: &Context,
+    id: ExprId,
+    numerator_coeff: &mut BigRational,
+    denominator_factors: &mut Vec<ExprId>,
+    saw_fraction: &mut bool,
+) -> Option<()> {
+    let id = unwrap_internal_hold_for_latex(ctx, id);
+    match ctx.get(id) {
+        Expr::Mul(left, right) => {
+            collect_fraction_product_parts_for_latex(
+                ctx,
+                *left,
+                numerator_coeff,
+                denominator_factors,
+                saw_fraction,
+            )?;
+            collect_fraction_product_parts_for_latex(
+                ctx,
+                *right,
+                numerator_coeff,
+                denominator_factors,
+                saw_fraction,
+            )
+        }
+        Expr::Div(num, den) => {
+            *numerator_coeff *= rational_constant_expr_for_latex(ctx, *num)?;
+            collect_mul_factors_for_latex(ctx, *den, denominator_factors);
+            *saw_fraction = true;
+            Some(())
+        }
+        _ => {
+            *numerator_coeff *= rational_constant_expr_for_latex(ctx, id)?;
+            Some(())
+        }
+    }
+}
+
+fn collect_fraction_product_parts_with_numerators_for_latex(
+    ctx: &Context,
+    id: ExprId,
+    numerator_coeff: &mut BigRational,
+    numerator_factors: &mut Vec<ExprId>,
+    denominator_factors: &mut Vec<ExprId>,
+    saw_fraction: &mut bool,
+) -> Option<()> {
+    let id = unwrap_internal_hold_for_latex(ctx, id);
+    match ctx.get(id) {
+        Expr::Mul(left, right) => {
+            collect_fraction_product_parts_with_numerators_for_latex(
+                ctx,
+                *left,
+                numerator_coeff,
+                numerator_factors,
+                denominator_factors,
+                saw_fraction,
+            )?;
+            collect_fraction_product_parts_with_numerators_for_latex(
+                ctx,
+                *right,
+                numerator_coeff,
+                numerator_factors,
+                denominator_factors,
+                saw_fraction,
+            )
+        }
+        Expr::Div(num, den) => {
+            collect_fraction_product_numerator_for_latex(
+                ctx,
+                *num,
+                numerator_coeff,
+                numerator_factors,
+            )?;
+            collect_mul_factors_for_latex(ctx, *den, denominator_factors);
+            *saw_fraction = true;
+            Some(())
+        }
+        Expr::Number(value) => {
+            *numerator_coeff *= value.clone();
+            Some(())
+        }
+        _ => {
+            numerator_factors.push(id);
+            Some(())
+        }
+    }
+}
+
+fn collect_fraction_product_numerator_for_latex(
+    ctx: &Context,
+    id: ExprId,
+    numerator_coeff: &mut BigRational,
+    numerator_factors: &mut Vec<ExprId>,
+) -> Option<()> {
+    let id = unwrap_internal_hold_for_latex(ctx, id);
+    match ctx.get(id) {
+        Expr::Mul(left, right) => {
+            collect_fraction_product_numerator_for_latex(
+                ctx,
+                *left,
+                numerator_coeff,
+                numerator_factors,
+            )?;
+            collect_fraction_product_numerator_for_latex(
+                ctx,
+                *right,
+                numerator_coeff,
+                numerator_factors,
+            )
+        }
+        Expr::Number(value) => {
+            *numerator_coeff *= value.clone();
+            Some(())
+        }
+        Expr::Div(_, _) => None,
+        _ => {
+            numerator_factors.push(id);
+            Some(())
+        }
+    }
+}
+
+fn denominator_has_sqrt_like_factor_for_latex(ctx: &Context, factors: &[ExprId]) -> bool {
+    factors
+        .iter()
+        .any(|factor| is_sqrt_like_factor_for_latex(ctx, *factor))
+}
+
+fn is_sqrt_like_factor_for_latex(ctx: &Context, factor: ExprId) -> bool {
+    let factor = unwrap_internal_hold_for_latex(ctx, factor);
+    match ctx.get(factor) {
+        Expr::Function(fn_id, args) => args.len() == 1 && ctx.sym_name(*fn_id) == "sqrt",
+        Expr::Pow(_, exp) => is_positive_one_half_exponent_for_latex(ctx, *exp),
+        _ => false,
+    }
+}
+
+fn denominator_product_numeric_first_factors(ctx: &Context, id: ExprId) -> Option<Vec<ExprId>> {
+    let mut factors = Vec::new();
+    collect_mul_factors_for_latex(ctx, id, &mut factors);
+    numeric_first_product_factors_latex(ctx, &factors)
+}
+
+fn numeric_first_product_factors_latex(ctx: &Context, factors: &[ExprId]) -> Option<Vec<ExprId>> {
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut numeric = Vec::new();
+    let mut rest = Vec::new();
+    for factor in factors {
+        if matches!(ctx.get(*factor), Expr::Number(n) if n.is_positive()) {
+            numeric.push(*factor);
+        } else {
+            rest.push(*factor);
+        }
+    }
+
+    if numeric.is_empty() || rest.is_empty() {
+        return None;
+    }
+
+    let reordered = numeric.into_iter().chain(rest).collect::<Vec<_>>();
+    (reordered != factors).then_some(reordered)
+}
+
+fn is_negative_one_half_exponent_for_latex(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Number(n) => *n == BigRational::new((-1).into(), 2.into()),
+        Expr::Div(num, den) => {
+            matches!(ctx.get(*num), Expr::Number(n) if *n == BigRational::from_integer((-1).into()))
+                && matches!(ctx.get(*den), Expr::Number(n) if *n == BigRational::from_integer(2.into()))
+        }
+        Expr::Neg(inner) => is_positive_one_half_exponent_for_latex(ctx, *inner),
+        Expr::Add(left, right) => rational_constant_expr_for_latex(ctx, *left)
+            .zip(rational_constant_expr_for_latex(ctx, *right))
+            .is_some_and(|(left, right)| left + right == BigRational::new((-1).into(), 2.into())),
+        Expr::Sub(left, right) => rational_constant_expr_for_latex(ctx, *left)
+            .zip(rational_constant_expr_for_latex(ctx, *right))
+            .is_some_and(|(left, right)| left - right == BigRational::new((-1).into(), 2.into())),
+        _ => false,
+    }
+}
+
+fn rational_constant_expr_for_latex(ctx: &Context, id: ExprId) -> Option<BigRational> {
+    match ctx.get(id) {
+        Expr::Number(n) => Some(n.clone()),
+        Expr::Neg(inner) => Some(-rational_constant_expr_for_latex(ctx, *inner)?),
+        Expr::Add(left, right) => Some(
+            rational_constant_expr_for_latex(ctx, *left)?
+                + rational_constant_expr_for_latex(ctx, *right)?,
+        ),
+        Expr::Sub(left, right) => Some(
+            rational_constant_expr_for_latex(ctx, *left)?
+                - rational_constant_expr_for_latex(ctx, *right)?,
+        ),
+        Expr::Div(num, den) => {
+            let denominator = rational_constant_expr_for_latex(ctx, *den)?;
+            if denominator.is_zero() {
+                None
+            } else {
+                Some(rational_constant_expr_for_latex(ctx, *num)? / denominator)
+            }
+        }
+        _ => None,
+    }
+}
+
+fn is_positive_one_half_exponent_for_latex(ctx: &Context, id: ExprId) -> bool {
+    match ctx.get(id) {
+        Expr::Number(n) => *n == BigRational::new(1.into(), 2.into()),
+        Expr::Div(num, den) => {
+            matches!(ctx.get(*num), Expr::Number(n) if *n == BigRational::from_integer(1.into()))
+                && matches!(ctx.get(*den), Expr::Number(n) if *n == BigRational::from_integer(2.into()))
+        }
+        _ => false,
+    }
+}
+
+fn is_sin_or_cos_of_latex_sqrt_factor(ctx: &Context, id: ExprId) -> bool {
+    let id = unwrap_internal_hold_for_latex(ctx, id);
+    let Expr::Function(fn_id, args) = ctx.get(id) else {
+        return false;
+    };
+    if args.len() != 1 || !matches!(ctx.sym_name(*fn_id), "sin" | "cos") {
+        return false;
+    }
+    let arg = unwrap_internal_hold_for_latex(ctx, args[0]);
+    match ctx.get(arg) {
+        Expr::Function(inner_fn, inner_args) => {
+            inner_args.len() == 1 && ctx.sym_name(*inner_fn) == "sqrt"
+        }
+        Expr::Pow(_, exp) => is_positive_one_half_exponent_for_latex(ctx, *exp),
+        _ => false,
     }
 }
 
@@ -815,6 +1393,8 @@ impl<'a> LaTeXRenderer for FullLatexRenderer<'a> {
 use crate::expr_path::ExprPath;
 use crate::latex_highlight::PathHighlightConfig;
 
+type ReciprocalSqrtDivisionLatexParts = (BigRational, ExprId, ExprPath, Vec<(ExprId, ExprPath)>);
+
 /// LaTeX renderer that highlights by path instead of ExprId.
 ///
 /// This solves the problem where multiple occurrences of the same value
@@ -852,6 +1432,9 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
         // Check for path-based highlighting
         if let Some(color) = self.path_highlights.get(current_path) {
             let inner = self.format_at_path(id, parent_needs_parens, current_path);
+            if is_full_color_highlight(&inner, color) {
+                return inner;
+            }
             return format!("{{\\color{{{}}}{{{}}}}}", color.to_latex(), inner);
         }
 
@@ -1104,10 +1687,53 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
             };
         }
 
+        if let Some((coefficient, radicand, radicand_path, denominator, denominator_path)) =
+            self.reciprocal_sqrt_times_unit_fraction_for_latex_path(l, r, path)
+        {
+            return self.format_reciprocal_sqrt_with_denominators_path(
+                coefficient,
+                radicand,
+                &radicand_path,
+                &[(denominator, denominator_path)],
+            );
+        }
+        if let Some((coefficient, radicand, denominators)) =
+            reciprocal_sqrt_product_with_unit_fraction_for_latex(self.context, l, r)
+        {
+            let fallback_path = self.child_path(path, 0);
+            let denominator_paths = denominators
+                .into_iter()
+                .map(|denominator| (denominator, fallback_path.clone()))
+                .collect::<Vec<_>>();
+            return self.format_reciprocal_sqrt_with_denominators_path(
+                coefficient,
+                radicand,
+                &fallback_path,
+                &denominator_paths,
+            );
+        }
+        if let Some(fraction_product) = self.format_root_denominator_fraction_product_latex_path(
+            l,
+            r,
+            parent_needs_parens,
+            path,
+        ) {
+            return fraction_product;
+        }
+
         // V2.14.40: Absorb fractional coefficient into fraction for cleaner display
         // Pattern: (1/n) * expr -> \frac{expr}{n}
         if let Expr::Number(n) = self.context.get(l) {
             if !n.is_integer() && *n.numer() == 1.into() && *n.denom() > 1.into() {
+                if let Some((coefficient, radicand, radicand_path)) =
+                    self.reciprocal_sqrt_numerator_for_latex_path(r, &self.child_path(path, 1))
+                {
+                    return self.format_reciprocal_sqrt_product_path(
+                        coefficient * n.clone(),
+                        radicand,
+                        &radicand_path,
+                    );
+                }
                 let right_latex = self.render_with_path(r, false, &self.child_path(path, 1));
                 return format!("\\frac{{{}}}{{{}}}", right_latex, n.denom());
             }
@@ -1115,6 +1741,15 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
         // Also check right side for (expr * 1/n) pattern
         if let Expr::Number(n) = self.context.get(r) {
             if !n.is_integer() && *n.numer() == 1.into() && *n.denom() > 1.into() {
+                if let Some((coefficient, radicand, radicand_path)) =
+                    self.reciprocal_sqrt_numerator_for_latex_path(l, &self.child_path(path, 0))
+                {
+                    return self.format_reciprocal_sqrt_product_path(
+                        coefficient * n.clone(),
+                        radicand,
+                        &radicand_path,
+                    );
+                }
                 let left_latex = self.render_with_path(l, false, &self.child_path(path, 0));
                 return format!("\\frac{{{}}}{{{}}}", left_latex, n.denom());
             }
@@ -1139,10 +1774,383 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
         }
     }
 
+    fn format_root_denominator_fraction_product_latex_path(
+        &self,
+        l: ExprId,
+        r: ExprId,
+        parent_needs_parens: bool,
+        path: &ExprPath,
+    ) -> Option<String> {
+        let mut numerator_coeff = BigRational::one();
+        let mut numerator_factors = Vec::new();
+        let mut denominator_factors = Vec::new();
+        let mut saw_fraction = false;
+        collect_fraction_product_parts_with_numerators_for_latex(
+            self.context,
+            l,
+            &mut numerator_coeff,
+            &mut numerator_factors,
+            &mut denominator_factors,
+            &mut saw_fraction,
+        )?;
+        collect_fraction_product_parts_with_numerators_for_latex(
+            self.context,
+            r,
+            &mut numerator_coeff,
+            &mut numerator_factors,
+            &mut denominator_factors,
+            &mut saw_fraction,
+        )?;
+        if !saw_fraction || denominator_factors.is_empty() {
+            return None;
+        }
+
+        let mut denominator_coeff = BigRational::one();
+        let mut non_root_denominators = Vec::new();
+        let mut root_denominators = Vec::new();
+        for factor in denominator_factors {
+            if let Some(value) = rational_constant_expr_for_latex(self.context, factor) {
+                denominator_coeff *= value;
+            } else if is_sqrt_like_factor_for_latex(self.context, factor) {
+                root_denominators.push(factor);
+            } else {
+                non_root_denominators.push(factor);
+            }
+        }
+        if root_denominators.is_empty() || denominator_coeff.is_zero() {
+            return None;
+        }
+
+        let coefficient = numerator_coeff / denominator_coeff;
+        if coefficient.is_zero() {
+            return None;
+        }
+
+        let sign = if coefficient.is_negative() { "-" } else { "" };
+        let coefficient = coefficient.abs();
+        let fallback_path = self.child_path(path, 0);
+        let mut numerator_parts = Vec::new();
+        if coefficient.numer() != &1.into() || numerator_factors.is_empty() {
+            numerator_parts.push(coefficient.numer().to_string());
+        }
+        numerator_parts.extend(
+            numerator_factors
+                .iter()
+                .map(|factor| self.render_mul_operand(*factor, &fallback_path)),
+        );
+        let mut denominator_parts = Vec::new();
+        if !coefficient.denom().is_one() {
+            denominator_parts.push(coefficient.denom().to_string());
+        }
+        denominator_parts.extend(
+            non_root_denominators
+                .iter()
+                .chain(root_denominators.iter())
+                .map(|factor| self.render_mul_operand(*factor, &fallback_path)),
+        );
+        let numerator = numerator_parts.join("\\cdot ");
+        let denominator = denominator_parts.join("\\cdot ");
+        let rendered = format!("{sign}\\frac{{{numerator}}}{{{denominator}}}");
+        Some(if parent_needs_parens {
+            format!("({rendered})")
+        } else {
+            rendered
+        })
+    }
+
     fn format_div_path(&self, l: ExprId, r: ExprId, path: &ExprPath) -> String {
-        let numer = self.render_with_path(l, false, &self.child_path(path, 0));
-        let denom = self.render_with_path(r, false, &self.child_path(path, 1));
-        format!("\\frac{{{}}}{{{}}}", numer, denom)
+        if let Some((coefficient, radicand, radicand_path, denominators)) =
+            self.reciprocal_sqrt_division_for_latex_path(l, r, path)
+        {
+            return self.format_reciprocal_sqrt_with_denominators_path(
+                coefficient,
+                radicand,
+                &radicand_path,
+                &denominators,
+            );
+        }
+
+        let numerator_path = self.child_path(path, 0);
+        let denominator_path = self.child_path(path, 1);
+        let denom = self.render_denominator_path(r, &denominator_path);
+
+        match self.context.get(l) {
+            Expr::Neg(inner) if self.path_highlights.get(&numerator_path).is_none() => {
+                let inner_path = self.child_path(&numerator_path, 0);
+                let numer = self.render_with_path(*inner, false, &inner_path);
+                format!("-\\frac{{{}}}{{{}}}", numer, denom)
+            }
+            Expr::Number(n)
+                if n.is_negative() && self.path_highlights.get(&numerator_path).is_none() =>
+            {
+                let positive = -n;
+                let numer = if positive.is_integer() {
+                    positive.numer().to_string()
+                } else {
+                    format!("\\frac{{{}}}{{{}}}", positive.numer(), positive.denom())
+                };
+                format!("-\\frac{{{}}}{{{}}}", numer, denom)
+            }
+            _ => {
+                let numer = self.render_with_path(l, false, &numerator_path);
+                format!("\\frac{{{}}}{{{}}}", numer, denom)
+            }
+        }
+    }
+
+    fn format_reciprocal_sqrt_with_denominators_path(
+        &self,
+        mut coefficient: BigRational,
+        radicand: ExprId,
+        radicand_path: &ExprPath,
+        denominators: &[(ExprId, ExprPath)],
+    ) -> String {
+        let sqrt_radicand = self.render_with_path(radicand, false, radicand_path);
+        let mut denominator_parts = Vec::new();
+        let mut rest_denominator_parts = Vec::new();
+        let mut only_sin_or_cos_sqrt_rest = true;
+        for (denominator, denominator_path) in denominators {
+            let mut denominator_factors = Vec::new();
+            self.collect_mul_factors_for_latex_path(
+                *denominator,
+                denominator_path,
+                &mut denominator_factors,
+            );
+            for (factor, factor_path) in denominator_factors {
+                let rendered = self.render_mul_operand(factor, &factor_path);
+                if let Some(value) = rational_constant_expr_for_latex(self.context, factor)
+                    .filter(|value| value.is_positive())
+                {
+                    coefficient /= value;
+                } else {
+                    only_sin_or_cos_sqrt_rest &=
+                        is_sin_or_cos_of_latex_sqrt_factor(self.context, factor);
+                    rest_denominator_parts.push(rendered);
+                }
+            }
+        }
+        let sign = if coefficient.is_negative() { "-" } else { "" };
+        let coefficient = coefficient.abs();
+        let numerator = coefficient.numer().to_string();
+        if !coefficient.denom().is_one() {
+            denominator_parts.push(coefficient.denom().to_string());
+        }
+        let sqrt_before_rest = rest_denominator_parts.len() == 1 && only_sin_or_cos_sqrt_rest;
+        if sqrt_before_rest {
+            denominator_parts.push(format!("\\sqrt{{{}}}", sqrt_radicand));
+        }
+        denominator_parts.extend(rest_denominator_parts);
+        if !sqrt_before_rest {
+            denominator_parts.push(format!("\\sqrt{{{}}}", sqrt_radicand));
+        }
+        format!(
+            "{sign}\\frac{{{}}}{{{}}}",
+            numerator,
+            denominator_parts.join("\\cdot ")
+        )
+    }
+
+    fn format_reciprocal_sqrt_product_path(
+        &self,
+        coefficient: BigRational,
+        radicand: ExprId,
+        radicand_path: &ExprPath,
+    ) -> String {
+        let numerator = coefficient.numer().to_string();
+        let sqrt_radicand = self.render_with_path(radicand, false, radicand_path);
+        let mut denominator_parts = Vec::new();
+        if !coefficient.denom().is_one() {
+            denominator_parts.push(coefficient.denom().to_string());
+        }
+        denominator_parts.push(format!("\\sqrt{{{}}}", sqrt_radicand));
+        format!(
+            "\\frac{{{}}}{{{}}}",
+            numerator,
+            denominator_parts.join("\\cdot ")
+        )
+    }
+
+    fn reciprocal_sqrt_times_unit_fraction_for_latex_path(
+        &self,
+        left: ExprId,
+        right: ExprId,
+        path: &ExprPath,
+    ) -> Option<(BigRational, ExprId, ExprPath, ExprId, ExprPath)> {
+        let left_path = self.child_path(path, 0);
+        let right_path = self.child_path(path, 1);
+
+        if let (
+            Some((coefficient, radicand, radicand_path)),
+            Some((denominator, denominator_path)),
+        ) = (
+            self.reciprocal_sqrt_numerator_for_latex_path(left, &left_path),
+            self.unit_fraction_denominator_for_latex_path(right, &right_path),
+        ) {
+            return Some((
+                coefficient,
+                radicand,
+                radicand_path,
+                denominator,
+                denominator_path,
+            ));
+        }
+
+        if let (
+            Some((denominator, denominator_path)),
+            Some((coefficient, radicand, radicand_path)),
+        ) = (
+            self.unit_fraction_denominator_for_latex_path(left, &left_path),
+            self.reciprocal_sqrt_numerator_for_latex_path(right, &right_path),
+        ) {
+            return Some((
+                coefficient,
+                radicand,
+                radicand_path,
+                denominator,
+                denominator_path,
+            ));
+        }
+
+        None
+    }
+
+    fn unit_fraction_denominator_for_latex_path(
+        &self,
+        id: ExprId,
+        path: &ExprPath,
+    ) -> Option<(ExprId, ExprPath)> {
+        match self.context.get(id) {
+            Expr::Div(num, den) if matches!(self.context.get(*num), Expr::Number(n) if n.is_one()) => {
+                Some((*den, self.child_path(path, 1)))
+            }
+            _ => None,
+        }
+    }
+
+    fn reciprocal_sqrt_division_for_latex_path(
+        &self,
+        numerator: ExprId,
+        denominator: ExprId,
+        path: &ExprPath,
+    ) -> Option<ReciprocalSqrtDivisionLatexParts> {
+        let numerator_path = self.child_path(path, 0);
+        let denominator_path = self.child_path(path, 1);
+
+        if let Some((coefficient, radicand, radicand_path)) =
+            self.reciprocal_sqrt_numerator_for_latex_path(numerator, &numerator_path)
+        {
+            return Some((
+                coefficient,
+                radicand,
+                radicand_path,
+                vec![(denominator, denominator_path)],
+            ));
+        }
+
+        match self.context.get(numerator) {
+            Expr::Div(inner_num, inner_den) => {
+                let inner_num_path = self.child_path(&numerator_path, 0);
+                let inner_den_path = self.child_path(&numerator_path, 1);
+                let (coefficient, radicand, radicand_path) =
+                    self.reciprocal_sqrt_numerator_for_latex_path(*inner_num, &inner_num_path)?;
+                Some((
+                    coefficient,
+                    radicand,
+                    radicand_path,
+                    vec![
+                        (*inner_den, inner_den_path),
+                        (denominator, denominator_path),
+                    ],
+                ))
+            }
+            _ => None,
+        }
+    }
+
+    fn reciprocal_sqrt_numerator_for_latex_path(
+        &self,
+        id: ExprId,
+        path: &ExprPath,
+    ) -> Option<(BigRational, ExprId, ExprPath)> {
+        let mut factors = Vec::new();
+        self.collect_mul_factors_for_latex_path(id, path, &mut factors);
+
+        let mut coefficient = BigRational::one();
+        let mut radicand = None;
+
+        for (factor, factor_path) in factors {
+            match self.context.get(factor) {
+                Expr::Number(n) if n.is_positive() => coefficient *= n.clone(),
+                Expr::Pow(base, exp)
+                    if is_negative_one_half_exponent_for_latex(self.context, *exp) =>
+                {
+                    let radicand_path = self.child_path(&factor_path, 0);
+                    if radicand.replace((*base, radicand_path)).is_some() {
+                        return None;
+                    }
+                }
+                _ => return None,
+            }
+        }
+
+        radicand.map(|(radicand, radicand_path)| (coefficient, radicand, radicand_path))
+    }
+
+    fn collect_mul_factors_for_latex_path(
+        &self,
+        id: ExprId,
+        path: &ExprPath,
+        out: &mut Vec<(ExprId, ExprPath)>,
+    ) {
+        let display_id = unwrap_internal_hold_for_latex(self.context, id);
+        match self.context.get(display_id) {
+            Expr::Mul(l, r) => {
+                self.collect_mul_factors_for_latex_path(*l, &self.child_path(path, 0), out);
+                self.collect_mul_factors_for_latex_path(*r, &self.child_path(path, 1), out);
+            }
+            _ => out.push((display_id, path.clone())),
+        }
+    }
+
+    fn render_denominator_path(&self, id: ExprId, path: &ExprPath) -> String {
+        if let Some(factors) = self.denominator_product_numeric_first_path(id, path) {
+            return factors
+                .iter()
+                .map(|(factor, factor_path)| self.render_mul_operand(*factor, factor_path))
+                .collect::<Vec<_>>()
+                .join("\\cdot ");
+        }
+
+        self.render_with_path(id, false, path)
+    }
+
+    fn denominator_product_numeric_first_path(
+        &self,
+        id: ExprId,
+        path: &ExprPath,
+    ) -> Option<Vec<(ExprId, ExprPath)>> {
+        let mut factors = Vec::new();
+        self.collect_mul_factors_for_latex_path(id, path, &mut factors);
+        if factors.len() < 2 {
+            return None;
+        }
+
+        let mut numeric = Vec::new();
+        let mut rest = Vec::new();
+        for factor in factors.iter() {
+            if matches!(self.context.get(factor.0), Expr::Number(n) if n.is_positive()) {
+                numeric.push(factor.clone());
+            } else {
+                rest.push(factor.clone());
+            }
+        }
+
+        if numeric.is_empty() || rest.is_empty() {
+            return None;
+        }
+
+        let reordered = numeric.into_iter().chain(rest).collect::<Vec<_>>();
+        (reordered != factors).then_some(reordered)
     }
 
     fn format_pow_path(&self, base: ExprId, exp: ExprId, path: &ExprPath) -> String {
@@ -1397,4 +2405,9 @@ impl<'a> PathHighlightedLatexRenderer<'a> {
         result.push_str("\n\\end{bmatrix}");
         result
     }
+}
+
+fn is_full_color_highlight(latex: &str, color: HighlightColor) -> bool {
+    let prefix = format!("{{\\color{{{}}}{{", color.to_latex());
+    latex.starts_with(&prefix) && latex.ends_with("}}")
 }

@@ -56,6 +56,7 @@ fn integrate_call_should_preserve_raw_target_for_direct_integration(
         || integrate_target_is_inverse_hyperbolic_sqrt_reciprocal(ctx, args[0], var_name)
         || integrate_target_is_sqrt_trig_reciprocal_derivative(ctx, args[0], var_name)
         || integrate_target_is_sqrt_trig_log_derivative(ctx, args[0], var_name)
+        || integrate_target_is_sqrt_reciprocal_trig_log_derivative(ctx, args[0], var_name)
         || integrate_target_is_repeated_trig_by_parts_kernel(ctx, args[0], var_name)
         || integrate_target_is_repeated_exp_by_parts_kernel(ctx, args[0], var_name)
         || (crate::rule::steps_enabled()
@@ -210,6 +211,8 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_arctan_reciprocal_affine_by_parts_sum(ctx, target, var_name)
         || diff_target_is_arctan_affine_by_parts_sum(ctx, target, var_name)
         || diff_target_is_inverse_tangent_direct_trig_linear_arg(ctx, target, var_name)
+        || diff_target_is_ln_reciprocal_trig_sqrt(ctx, target, var_name)
+        || diff_target_is_ln_constant_shifted_tan_sqrt(ctx, target, var_name)
         || diff_target_is_scaled_inverse_tangent_reciprocal_sqrt_product(ctx, target, var_name)
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
@@ -344,6 +347,61 @@ fn integrate_target_has_inverse_sqrt_product_shape(
                 && cas_math::expr_nary::mul_leaves(ctx, *base).len() >= 2
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::items_after_test_module)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn preserves_raw_diff_target_for_shifted_tan_affine_sqrt_log() {
+        let mut ctx = cas_ast::Context::new();
+        let target = cas_parser::parse("ln(1+tan(sqrt(2*x+3)))", &mut ctx).unwrap();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        assert!(diff_target_should_preserve_raw_derivative_route(
+            &ctx, target, variable
+        ));
+    }
+
+    #[test]
+    fn preserves_raw_diff_target_for_reciprocal_trig_affine_sqrt_log() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in [
+            "ln(sec(sqrt(3*x+1))+tan(sqrt(3*x+1)))",
+            "ln(csc(sqrt(3*x+1))-cot(sqrt(3*x+1)))",
+        ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_raw_integrate_target_for_reciprocal_trig_affine_sqrt_log_kernel() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in [
+            "3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1)))",
+            "3/(2*sqrt(3*x+1)*sin(sqrt(3*x+1)))",
+        ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                integrate_call_should_preserve_raw_target_for_direct_integration(
+                    &ctx,
+                    "integrate",
+                    &[target, variable],
+                ),
+                "{raw}"
+            );
+        }
     }
 }
 
@@ -662,6 +720,183 @@ fn expr_is_direct_supported_builtin_derivative_call(ctx: &cas_ast::Context, expr
                     | cas_ast::BuiltinFn::Tanh
             )
         )
+}
+
+fn diff_target_is_ln_reciprocal_trig_sqrt(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(ln_fn, ln_args) = ctx.get(target) else {
+        return false;
+    };
+    if ln_args.len() != 1 || ctx.builtin_of(*ln_fn) != Some(cas_ast::BuiltinFn::Ln) {
+        return false;
+    }
+
+    let Some(sqrt_arg) = reciprocal_trig_log_sqrt_arg_for_diff_target(ctx, ln_args[0]) else {
+        return false;
+    };
+    let Some(radicand) = extract_square_root_base(ctx, sqrt_arg) else {
+        return false;
+    };
+    let Ok(poly) = Polynomial::from_expr(ctx, radicand, var_name) else {
+        return false;
+    };
+    !poly.derivative().is_zero() && poly.degree() <= 1
+}
+
+fn reciprocal_trig_log_sqrt_arg_for_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => unordered_same_arg_unary_pair_for_diff_target(
+            ctx,
+            *left,
+            cas_ast::BuiltinFn::Sec,
+            *right,
+            cas_ast::BuiltinFn::Tan,
+        ),
+        Expr::Sub(left, right) => same_arg_unary_pair_for_diff_target(
+            ctx,
+            *left,
+            cas_ast::BuiltinFn::Csc,
+            *right,
+            cas_ast::BuiltinFn::Cot,
+        ),
+        _ => None,
+    }
+}
+
+fn unordered_same_arg_unary_pair_for_diff_target(
+    ctx: &cas_ast::Context,
+    left: ExprId,
+    left_builtin: cas_ast::BuiltinFn,
+    right: ExprId,
+    right_builtin: cas_ast::BuiltinFn,
+) -> Option<ExprId> {
+    same_arg_unary_pair_for_diff_target(ctx, left, left_builtin, right, right_builtin).or_else(
+        || same_arg_unary_pair_for_diff_target(ctx, right, left_builtin, left, right_builtin),
+    )
+}
+
+fn same_arg_unary_pair_for_diff_target(
+    ctx: &cas_ast::Context,
+    left: ExprId,
+    left_builtin: cas_ast::BuiltinFn,
+    right: ExprId,
+    right_builtin: cas_ast::BuiltinFn,
+) -> Option<ExprId> {
+    let left_arg = direct_unary_arg_for_diff_target(ctx, left, left_builtin)?;
+    let right_arg = direct_unary_arg_for_diff_target(ctx, right, right_builtin)?;
+    let left_base = extract_square_root_base(ctx, left_arg)?;
+    let right_base = extract_square_root_base(ctx, right_arg)?;
+    (cas_ast::ordering::compare_expr(ctx, left_base, right_base) == std::cmp::Ordering::Equal)
+        .then_some(left_arg)
+}
+
+fn direct_unary_arg_for_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    builtin: cas_ast::BuiltinFn,
+) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    (args.len() == 1 && ctx.builtin_of(*fn_id) == Some(builtin)).then_some(args[0])
+}
+
+fn diff_target_is_ln_constant_shifted_tan_sqrt(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(ln_fn, ln_args) = ctx.get(target) else {
+        return false;
+    };
+    if ln_args.len() != 1 || ctx.builtin_of(*ln_fn) != Some(cas_ast::BuiltinFn::Ln) {
+        return false;
+    }
+
+    let Some(tan_arg) = shifted_tan_arg_for_diff_target(ctx, ln_args[0]) else {
+        return false;
+    };
+    let Some(radicand) = extract_square_root_base(ctx, tan_arg) else {
+        return false;
+    };
+    let Ok(poly) = Polynomial::from_expr(ctx, radicand, var_name) else {
+        return false;
+    };
+    !poly.derivative().is_zero() && poly.degree() <= 1
+}
+
+fn shifted_tan_arg_for_diff_target(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Add(left, right) => {
+            if cas_ast::views::as_rational_const(ctx, *left, 8)
+                .is_some_and(|value| !value.is_zero())
+            {
+                signed_tan_arg_for_diff_target(ctx, *right)
+            } else if cas_ast::views::as_rational_const(ctx, *right, 8)
+                .is_some_and(|value| !value.is_zero())
+            {
+                signed_tan_arg_for_diff_target(ctx, *left)
+            } else {
+                None
+            }
+        }
+        Expr::Sub(left, right) => {
+            if cas_ast::views::as_rational_const(ctx, *left, 8)
+                .is_some_and(|value| !value.is_zero())
+            {
+                direct_tan_arg_for_diff_target(ctx, *right)
+            } else if cas_ast::views::as_rational_const(ctx, *right, 8)
+                .is_some_and(|value| !value.is_zero())
+            {
+                direct_tan_arg_for_diff_target(ctx, *left)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn signed_tan_arg_for_diff_target(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(arg) = direct_tan_arg_for_diff_target(ctx, expr) {
+        return Some(arg);
+    }
+
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        return direct_tan_arg_for_diff_target(ctx, *inner);
+    }
+
+    if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
+        return None;
+    }
+
+    let mut scale = BigRational::one();
+    let mut tan_arg = None;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
+            scale *= value;
+            continue;
+        }
+        let arg = direct_tan_arg_for_diff_target(ctx, factor)?;
+        if tan_arg.replace(arg).is_some() {
+            return None;
+        }
+    }
+
+    (scale == -BigRational::one()).then_some(tan_arg?)
+}
+
+fn direct_tan_arg_for_diff_target(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    (args.len() == 1 && ctx.builtin_of(*fn_id) == Some(cas_ast::BuiltinFn::Tan)).then_some(args[0])
 }
 
 fn diff_target_is_reciprocal_positive_shifted_sqrt(
@@ -1557,6 +1792,19 @@ fn integrate_target_is_sqrt_trig_log_derivative(
 ) -> bool {
     let mut probe_ctx = ctx.clone();
     cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_log_derivative_target(
+        &mut probe_ctx,
+        target,
+        var_name,
+    )
+}
+
+fn integrate_target_is_sqrt_reciprocal_trig_log_derivative(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let mut probe_ctx = ctx.clone();
+    cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_reciprocal_trig_log_derivative_target(
         &mut probe_ctx,
         target,
         var_name,

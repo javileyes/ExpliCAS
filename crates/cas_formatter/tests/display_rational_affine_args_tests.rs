@@ -56,6 +56,13 @@ fn function_args_prefer_sqrt_for_half_power_arguments() {
 }
 
 #[test]
+fn function_args_prefer_sqrt_for_integer_scaled_half_power_arguments() {
+    assert_eq!(render("sin(2*x^(1/2))"), "sin(2 * sqrt(x))");
+    assert_eq!(render("cos(3*(x+1)^(1/2))"), "cos(3 * sqrt(x + 1))");
+    assert_eq!(render("arctan(2*x^(1/2))"), "arctan(2 * sqrt(x))");
+}
+
+#[test]
 fn trig_products_prefer_degree_order_for_larger_polynomial_cofactors() {
     assert_eq!(
         render("(3*x^2 - x^4 - 4)*cos(2*x+1)"),

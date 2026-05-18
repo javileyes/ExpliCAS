@@ -421,6 +421,45 @@ fn step_wire_post_diff_fraction_cleanup_uses_human_visible_rule_titles() {
 }
 
 #[test]
+fn step_wire_post_diff_trace_drops_adjacent_inverse_fraction_roundtrip() {
+    let (engine, output) = eval_output_for("diff(ln(sec(sqrt(x))+tan(sqrt(x))), x)");
+    let steps =
+        cas_didactic::collect_step_payloads(&output.steps, &engine.simplifier.context, "on");
+
+    for adjacent in steps.windows(2) {
+        let [previous, current] = adjacent else {
+            continue;
+        };
+        assert!(
+            !(previous.rule == current.rule
+                && previous.before == current.after
+                && previous.after == current.before),
+            "public step trace should not expose an adjacent inverse roundtrip: {previous:?} then {current:?}"
+        );
+    }
+
+    assert!(
+        steps
+            .iter()
+            .all(|step| step.after != "(1/(sqrt(x) · cos(sqrt(x))))/2"),
+        "transient nested fraction presentation should be hidden from the public trace: {steps:?}"
+    );
+
+    let final_step = steps.last().expect("expected visible post-diff step");
+    assert_eq!(
+        final_step.after, "1/(2 · cos(sqrt(x)) · sqrt(x))",
+        "post-diff result should put the numeric denominator factor first: {final_step:?}"
+    );
+    assert!(
+        final_step
+            .after_latex
+            .contains("\\frac{1}{2\\cdot \\cos(\\sqrt{x})\\cdot \\sqrt{x}}"),
+        "post-diff latex should put the numeric denominator factor first: {}",
+        final_step.after_latex
+    );
+}
+
+#[test]
 fn step_wire_integration_uses_human_visible_rule_title() {
     let (engine, output) = eval_output_for("integrate(1/(2*x+1), x)");
     let steps =
@@ -1170,6 +1209,38 @@ fn step_wire_rationalization_self_cancel_stays_direct_without_tautological_subst
             rationalize_step.after_latex
         );
     }
+}
+
+#[test]
+fn step_wire_integral_result_does_not_double_wrap_after_highlight() {
+    let steps = step_payloads_on_for("integrate((2*x+1)/(x^2+x+1)^(3/2), x)");
+    let step = steps
+        .first()
+        .expect("expected one integration step in wire payload");
+
+    assert_eq!(step.rule, "Calcular la integral");
+    assert!(
+        step.after_latex.contains("{\\color{green}{"),
+        "expected result highlight in after_latex, got {}",
+        step.after_latex
+    );
+    assert!(
+        !step
+            .after_latex
+            .contains("{\\color{green}{{\\color{green}{"),
+        "after_latex should not apply the same highlight twice: {}",
+        step.after_latex
+    );
+    assert!(
+        step.after_latex.contains("{\\color{green}{-\\frac{2}{"),
+        "after_latex should lift the negative sign outside the fraction numerator: {}",
+        step.after_latex
+    );
+    assert!(
+        !step.after_latex.contains("\\frac{-2}{"),
+        "after_latex should not keep the negative sign inside the numerator: {}",
+        step.after_latex
+    );
 }
 
 #[test]

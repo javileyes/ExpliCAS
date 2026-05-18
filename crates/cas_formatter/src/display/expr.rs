@@ -323,9 +323,15 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                 // a / b * c -> (a / b) * c usually.
                 // a / (b * c).
                 // If RHS is Mul/Div, we need parens: a / (b * c) vs a / b * c.
+                let rhs_product_display = (!rhs_is_neg)
+                    .then(|| denominator_product_numeric_first_for_display(self.context, *r))
+                    .flatten();
+
                 if rhs_prec <= op_prec {
                     write!(f, "(")?;
-                    if rhs_is_neg {
+                    if let Some(display) = rhs_product_display {
+                        write!(f, "{display}")?;
+                    } else if rhs_is_neg {
                         format_term_absolute(f, self.context, *r)?;
                     } else {
                         write!(
@@ -802,10 +808,54 @@ fn prefers_quotient_sum_function_arg(name: &str) -> bool {
 
 fn format_preferred_function_arg_for_display(ctx: &Context, id: ExprId) -> Option<String> {
     format_unit_fraction_scaled_expression_for_display(ctx, id)
+        .or_else(|| format_scaled_half_power_function_arg_for_display(ctx, id))
         .or_else(|| format_half_power_function_arg_for_display(ctx, id))
 }
 
+fn format_scaled_half_power_function_arg_for_display(ctx: &Context, id: ExprId) -> Option<String> {
+    let id = unwrap_internal_hold_for_display(ctx, id);
+    let Expr::Mul(left, right) = ctx.get(id) else {
+        return None;
+    };
+
+    let (scale, half_power) = match (
+        positive_non_unit_number_factor(ctx, *left),
+        half_power_base(ctx, *right),
+    ) {
+        (Some(scale), Some(base)) => (scale, base),
+        _ => match (
+            positive_non_unit_number_factor(ctx, *right),
+            half_power_base(ctx, *left),
+        ) {
+            (Some(scale), Some(base)) => (scale, base),
+            _ => return None,
+        },
+    };
+
+    let base = format!(
+        "{}",
+        DisplayExpr {
+            context: ctx,
+            id: half_power
+        }
+    );
+    Some(format!("{scale}{}sqrt({base})", mul_symbol()))
+}
+
 fn format_half_power_function_arg_for_display(ctx: &Context, id: ExprId) -> Option<String> {
+    let id = unwrap_internal_hold_for_display(ctx, id);
+    let base = half_power_base(ctx, id)?;
+    let base = format!(
+        "{}",
+        DisplayExpr {
+            context: ctx,
+            id: base
+        }
+    );
+    Some(format!("sqrt({base})"))
+}
+
+fn half_power_base(ctx: &Context, id: ExprId) -> Option<ExprId> {
     let id = unwrap_internal_hold_for_display(ctx, id);
     let Expr::Pow(base, exp) = ctx.get(id) else {
         return None;
@@ -813,14 +863,15 @@ fn format_half_power_function_arg_for_display(ctx: &Context, id: ExprId) -> Opti
     if !is_one_half_exponent(ctx, *exp) {
         return None;
     }
-    let base = format!(
-        "{}",
-        DisplayExpr {
-            context: ctx,
-            id: *base
-        }
-    );
-    Some(format!("sqrt({base})"))
+    Some(*base)
+}
+
+fn positive_non_unit_number_factor(ctx: &Context, id: ExprId) -> Option<String> {
+    let id = unwrap_internal_hold_for_display(ctx, id);
+    let Expr::Number(n) = ctx.get(id) else {
+        return None;
+    };
+    (n.is_positive() && !n.is_one()).then(|| n.to_string())
 }
 
 fn reciprocal_sqrt_numerator_for_display(
@@ -849,12 +900,58 @@ fn reciprocal_sqrt_numerator_for_display(
 }
 
 fn collect_mul_factors_for_display(ctx: &Context, id: ExprId, out: &mut Vec<ExprId>) {
+    let id = unwrap_internal_hold_for_display(ctx, id);
     match ctx.get(id) {
         Expr::Mul(l, r) => {
             collect_mul_factors_for_display(ctx, *l, out);
             collect_mul_factors_for_display(ctx, *r, out);
         }
         _ => out.push(id),
+    }
+}
+
+fn denominator_product_numeric_first_for_display(ctx: &Context, id: ExprId) -> Option<String> {
+    let mut factors = Vec::new();
+    collect_mul_factors_for_display(ctx, id, &mut factors);
+    let reordered = numeric_first_product_factors(ctx, &factors)?;
+    Some(
+        reordered
+            .iter()
+            .map(|factor| display_factor_in_product(ctx, *factor))
+            .collect::<Vec<_>>()
+            .join(mul_symbol()),
+    )
+}
+
+fn numeric_first_product_factors(ctx: &Context, factors: &[ExprId]) -> Option<Vec<ExprId>> {
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut numeric = Vec::new();
+    let mut rest = Vec::new();
+    for factor in factors {
+        if matches!(ctx.get(*factor), Expr::Number(n) if n.is_positive()) {
+            numeric.push(*factor);
+        } else {
+            rest.push(*factor);
+        }
+    }
+
+    if numeric.is_empty() || rest.is_empty() {
+        return None;
+    }
+
+    let reordered = numeric.into_iter().chain(rest).collect::<Vec<_>>();
+    (reordered != factors).then_some(reordered)
+}
+
+fn display_factor_in_product(ctx: &Context, id: ExprId) -> String {
+    let rendered = format!("{}", DisplayExpr { context: ctx, id });
+    if precedence(ctx, id) < 2 {
+        format!("({rendered})")
+    } else {
+        rendered
     }
 }
 
@@ -876,31 +973,63 @@ fn format_reciprocal_sqrt_div_for_display(
     radicand: ExprId,
     denominator: ExprId,
 ) -> fmt::Result {
-    if coefficient.is_one() {
-        write!(f, "1")?;
-    } else {
-        write!(f, "{coefficient}")?;
-    }
+    write!(f, "{}", coefficient.numer())?;
+    write!(f, " / (")?;
 
-    write!(f, " / (sqrt(")?;
-    write!(
-        f,
-        "{}",
+    let sqrt_display = format!(
+        "sqrt({})",
         DisplayExpr {
             context: ctx,
             id: radicand
         }
-    )?;
-    write!(
-        f,
-        "){}{}",
-        mul_symbol(),
-        DisplayExpr {
-            context: ctx,
-            id: denominator
+    );
+
+    let mut denominator_parts = Vec::new();
+    if !coefficient.denom().is_one() {
+        denominator_parts.push(coefficient.denom().to_string());
+    }
+
+    let mut denominator_factors = Vec::new();
+    collect_mul_factors_for_display(ctx, denominator, &mut denominator_factors);
+    let mut rest_parts = Vec::new();
+    let mut only_sin_or_cos_sqrt_rest = true;
+    for factor in denominator_factors {
+        let rendered = display_factor_in_product(ctx, factor);
+        if matches!(ctx.get(factor), Expr::Number(n) if n.is_positive()) {
+            denominator_parts.push(rendered);
+        } else {
+            only_sin_or_cos_sqrt_rest &= is_sin_or_cos_of_display_sqrt_factor(ctx, factor);
+            rest_parts.push(rendered);
         }
-    )?;
+    }
+    let sqrt_before_rest = rest_parts.len() == 1 && only_sin_or_cos_sqrt_rest;
+    if sqrt_before_rest {
+        denominator_parts.push(sqrt_display);
+        denominator_parts.extend(rest_parts);
+    } else {
+        denominator_parts.extend(rest_parts);
+        denominator_parts.push(sqrt_display);
+    }
+    write!(f, "{}", denominator_parts.join(mul_symbol()))?;
     write!(f, ")")
+}
+
+fn is_sin_or_cos_of_display_sqrt_factor(ctx: &Context, id: ExprId) -> bool {
+    let id = unwrap_internal_hold_for_display(ctx, id);
+    let Expr::Function(fn_id, args) = ctx.get(id) else {
+        return false;
+    };
+    if args.len() != 1 || !matches!(ctx.sym_name(*fn_id), "sin" | "cos") {
+        return false;
+    }
+    let arg = unwrap_internal_hold_for_display(ctx, args[0]);
+    match ctx.get(arg) {
+        Expr::Function(inner_fn, inner_args) => {
+            inner_args.len() == 1 && ctx.sym_name(*inner_fn) == "sqrt"
+        }
+        Expr::Pow(_, exp) => is_one_half_exponent(ctx, *exp),
+        _ => false,
+    }
 }
 
 fn format_unit_fraction_scaled_expression_for_display(ctx: &Context, id: ExprId) -> Option<String> {

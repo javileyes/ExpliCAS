@@ -4,16 +4,16 @@
 
 use cas_solver::wire::eval_str_to_wire;
 
-/// Test: symbolic reciprocal square roots use the engine's power canonical form.
+/// Test: symbolic reciprocal square roots use the post-calculus/root presentation form.
 #[test]
-fn test_symbolic_reciprocal_sqrt_uses_power_canonical_form() {
+fn test_symbolic_reciprocal_sqrt_uses_root_denominator_presentation() {
     let json = eval_str_to_wire("3/(2*sqrt(x))", "{}");
 
-    // The engine canonicalizes symbolic 1/sqrt(x) to x^(-1/2). It should not
+    // Public output should keep the educational denominator form and must not
     // regress to an inverse inside sqrt.
     assert!(
-        json.contains("\"result\":\"3/2 * x^(-1/2)\""),
-        "Unexpected reciprocal sqrt canonical form: {}",
+        json.contains("\"result\":\"3 / (2 * sqrt(x))\""),
+        "Unexpected reciprocal sqrt presentation form: {}",
         json
     );
     assert!(

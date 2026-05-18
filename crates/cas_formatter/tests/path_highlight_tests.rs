@@ -124,6 +124,59 @@ fn test_path_highlight_root_node() {
 }
 
 #[test]
+fn test_path_highlight_root_negative_fraction_lifts_sign_outside_fraction() {
+    let mut ctx = Context::new();
+    let neg_two = ctx.num(-2);
+    let x = ctx.var("x");
+    let denominator = ctx.call("sqrt", vec![x]);
+    let expr = ctx.add(Expr::Div(neg_two, denominator));
+
+    let mut config = PathHighlightConfig::new();
+    config.add(vec![], HighlightColor::Green);
+
+    let renderer = PathHighlightedLatexRenderer {
+        context: &ctx,
+        id: expr,
+        path_highlights: &config,
+        hints: None,
+        style_prefs: None,
+    };
+
+    let latex = renderer.to_latex();
+    assert_eq!(latex, "{\\color{green}{-\\frac{2}{\\sqrt{x}}}}");
+}
+
+#[test]
+fn test_path_highlight_root_denominator_product_prefers_numeric_factor_first() {
+    let mut ctx = Context::new();
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let x = ctx.var("x");
+    let sqrt_x = ctx.call("sqrt", vec![x]);
+    let cos_sqrt_x = ctx.call("cos", vec![sqrt_x]);
+    let sqrt_times_two = ctx.add(Expr::Mul(sqrt_x, two));
+    let denominator = ctx.add(Expr::Mul(sqrt_times_two, cos_sqrt_x));
+    let expr = ctx.add(Expr::Div(one, denominator));
+
+    let mut config = PathHighlightConfig::new();
+    config.add(vec![], HighlightColor::Green);
+
+    let renderer = PathHighlightedLatexRenderer {
+        context: &ctx,
+        id: expr,
+        path_highlights: &config,
+        hints: None,
+        style_prefs: None,
+    };
+
+    let latex = renderer.to_latex();
+    assert_eq!(
+        latex,
+        "{\\color{green}{\\frac{1}{2\\cdot \\cos(\\sqrt{x})\\cdot \\sqrt{x}}}}"
+    );
+}
+
+#[test]
 fn test_path_highlight_renders_negative_mul_factor_as_subtraction() {
     let mut ctx = Context::new();
     let a = ctx.var("a");

@@ -1102,6 +1102,79 @@ impl Engine {
             &self.simplifier.context,
             resolved,
         ) {
+            if effective_opts.steps_mode != crate::options::StepsMode::Off
+                && crate::rules::calculus::sqrt_polynomial_quotient_has_powered_expanded_affine_square_denominator(
+                    &mut self.simplifier.context,
+                    call.target,
+                    &call.var_name,
+                )
+            {
+                if let Some((result, required_conditions)) =
+                    crate::rules::calculus::sqrt_polynomial_quotient_derivative_presentation_with_domain(
+                        &mut self.simplifier.context,
+                        call.target,
+                        &call.var_name,
+                    )
+                {
+                    let desc = crate::symbolic_calculus_call_support::render_diff_desc_with(
+                        &call,
+                        |id| {
+                            format!(
+                                "{}",
+                                cas_formatter::DisplayExpr {
+                                    context: &self.simplifier.context,
+                                    id
+                                }
+                            )
+                        },
+                    );
+                    let raw_derivative =
+                        cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+                            &mut self.simplifier.context,
+                            call.target,
+                            &call.var_name,
+                        )
+                        .unwrap_or(result);
+                    let mut steps = Vec::new();
+                    let mut diff_step = crate::Step::new(
+                        &desc,
+                        "Symbolic Differentiation",
+                        resolved,
+                        raw_derivative,
+                        Vec::new(),
+                        Some(&self.simplifier.context),
+                    );
+                    diff_step
+                        .meta_mut()
+                        .required_conditions
+                        .extend(required_conditions.iter().cloned());
+                    diff_step.importance = crate::ImportanceLevel::Medium;
+                    steps.push(diff_step);
+                    if raw_derivative != result {
+                        let mut presentation_step = crate::Step::new(
+                            "Post-calculus presentation",
+                            "Present calculus result in compact form",
+                            raw_derivative,
+                            result,
+                            Vec::new(),
+                            Some(&self.simplifier.context),
+                        );
+                        presentation_step.importance = crate::ImportanceLevel::Medium;
+                        steps.push(presentation_step);
+                    }
+
+                    return Ok((
+                        crate::EvalResult::Expr(result),
+                        Vec::new(),
+                        steps,
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        Vec::new(),
+                        required_conditions,
+                    ));
+                }
+            }
             if effective_opts.steps_mode == crate::options::StepsMode::Off {
                 if let Some((result, required_conditions)) =
                     crate::rules::calculus::sqrt_polynomial_quotient_derivative_presentation_with_domain(
@@ -1683,13 +1756,22 @@ impl Engine {
             }
         }
 
-        if let Some(presented) = crate::rules::calculus::try_post_calculus_presentation(
+        let mut final_presented = crate::rules::calculus::try_post_calculus_presentation(
             &mut ctx_simplifier.context,
             resolved,
             res,
-        ) {
+        )
+        .filter(|presented| *presented != res);
+        if final_presented.is_none() {
+            final_presented = crate::rules::calculus::try_calculus_result_presentation(
+                &mut ctx_simplifier.context,
+                res,
+            )
+            .filter(|presented| *presented != res);
+        }
+
+        if let Some(presented) = final_presented {
             if effective_opts.steps_mode != crate::options::StepsMode::Off
-                && presented != res
                 && !collapse_redundant_post_calculus_trace_if_direct_step_is_compact(
                     &mut ctx_simplifier.context,
                     resolved,
@@ -1734,14 +1816,28 @@ impl Engine {
             resolved,
             res,
         ) {
-            res = presented;
-        } else if let Some(presented) = crate::rules::calculus::try_calculus_result_presentation(
-            &mut ctx_simplifier.context,
-            res,
-        ) {
+            if effective_opts.steps_mode != crate::options::StepsMode::Off
+                && presented != res
+                && !collapse_redundant_post_calculus_trace_if_direct_step_is_compact(
+                    &mut ctx_simplifier.context,
+                    resolved,
+                    presented,
+                    &mut steps,
+                )
+            {
+                let mut presentation_step = crate::Step::new(
+                    "Post-calculus presentation",
+                    "Present calculus result in compact form",
+                    res,
+                    presented,
+                    Vec::new(),
+                    Some(&ctx_simplifier.context),
+                );
+                presentation_step.importance = crate::ImportanceLevel::Medium;
+                steps.push(presentation_step);
+            }
             res = presented;
         }
-
         self.simplifier
             .extend_blocked_hints(ctx_simplifier.take_blocked_hints());
         let rewrite_required = ctx_simplifier.take_required_conditions();

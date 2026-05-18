@@ -684,13 +684,16 @@ fn log_tan_cot_sqrt_diff_conditions_are_compact_domain_guards() {
             "input: {input}, derivative is not equivalent to {expected_equivalent}"
         );
 
-        let required: Vec<String> = normalize_and_dedupe_conditions(
+        let mut required: Vec<String> = normalize_and_dedupe_conditions(
             &mut engine.simplifier.context,
             &output.required_conditions,
         )
         .iter()
         .map(|cond| cond.display(&engine.simplifier.context))
         .collect();
+        required.sort();
+        let mut expected_required = expected_required;
+        expected_required.sort();
 
         assert_eq!(
             required, expected_required,

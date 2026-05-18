@@ -3772,6 +3772,75 @@ pub fn integrate_symbolic_is_sqrt_trig_log_derivative_target(
     sqrt_trig_log_derivative_parts(ctx, expr, var).is_some()
 }
 
+fn sqrt_reciprocal_trig_log_derivative_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(BuiltinFn, ExprId, ExprId, BigRational)> {
+    let (num, den) = match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let (den_builtin, arg, radicand, scale) =
+                sqrt_reciprocal_trig_log_derivative_parts(ctx, inner, var)?;
+            return Some((den_builtin, arg, radicand, -scale));
+        }
+        Expr::Div(num, den) => (num, den),
+        _ => return None,
+    };
+
+    let numerator_factors = mul_leaves(ctx, num);
+    let denominator_factors = mul_leaves(ctx, den);
+    let (denominator_index, (den_builtin, arg)) =
+        denominator_factors
+            .iter()
+            .enumerate()
+            .find_map(|(idx, factor)| {
+                reciprocal_trig_factor_parts(ctx, *factor).map(|parts| (idx, parts))
+            })?;
+
+    let radicand = sqrt_like_radicand(ctx, arg)?;
+    let remaining_denominator: Vec<_> = denominator_factors
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, factor)| (idx != denominator_index).then_some(*factor))
+        .collect();
+    let scale = sqrt_polynomial_derivative_quotient_scale(
+        ctx,
+        &numerator_factors,
+        &remaining_denominator,
+        arg,
+        var,
+    )?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    Some((den_builtin, arg, radicand, scale))
+}
+
+fn sqrt_reciprocal_trig_log_derivative_antiderivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (den_builtin, arg, _, scale) = sqrt_reciprocal_trig_log_derivative_parts(ctx, expr, var)?;
+    let primitive_builtin = match den_builtin {
+        BuiltinFn::Cos => BuiltinFn::Sec,
+        BuiltinFn::Sin => BuiltinFn::Csc,
+        _ => return None,
+    };
+    let one = ctx.num(1);
+    let primitive = sec_csc_log_antiderivative(ctx, primitive_builtin, arg, one)?;
+    Some(scale_rational_term(ctx, scale, primitive))
+}
+
+pub fn integrate_symbolic_is_sqrt_reciprocal_trig_log_derivative_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    sqrt_reciprocal_trig_log_derivative_parts(ctx, expr, var).is_some()
+}
+
 fn sqrt_hyperbolic_log_derivative_parts(
     ctx: &mut Context,
     expr: ExprId,
@@ -4183,6 +4252,16 @@ fn sqrt_trig_log_derivative_required_nonzero(
     var: &str,
 ) -> Option<ExprId> {
     let (den_builtin, _, radicand, _) = sqrt_trig_log_derivative_parts(ctx, expr, var)?;
+    let arg = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
+    Some(ctx.call_builtin(den_builtin, vec![arg]))
+}
+
+fn sqrt_reciprocal_trig_log_derivative_required_nonzero(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (den_builtin, _, radicand, _) = sqrt_reciprocal_trig_log_derivative_parts(ctx, expr, var)?;
     let arg = ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]);
     Some(ctx.call_builtin(den_builtin, vec![arg]))
 }
@@ -13277,6 +13356,15 @@ fn sqrt_trig_log_derivative_radicand(ctx: &mut Context, expr: ExprId, var: &str)
     Some(radicand)
 }
 
+fn sqrt_reciprocal_trig_log_derivative_radicand(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (_, _, radicand, _) = sqrt_reciprocal_trig_log_derivative_parts(ctx, expr, var)?;
+    Some(radicand)
+}
+
 fn sqrt_hyperbolic_log_derivative_radicand(
     ctx: &mut Context,
     expr: ExprId,
@@ -14050,6 +14138,9 @@ pub fn integrate_symbolic_required_nonzero_conditions(
             ctx, expr, var,
         ))
         .chain(sqrt_trig_log_derivative_required_nonzero(ctx, expr, var))
+        .chain(sqrt_reciprocal_trig_log_derivative_required_nonzero(
+            ctx, expr, var,
+        ))
         .chain(sqrt_hyperbolic_log_derivative_required_nonzero(
             ctx, expr, var,
         ))
@@ -14145,6 +14236,7 @@ pub fn integrate_symbolic_required_positive_conditions(
     ));
     conditions.extend(sqrt_trig_reciprocal_derivative_radicand(ctx, expr, var));
     conditions.extend(sqrt_trig_log_derivative_radicand(ctx, expr, var));
+    conditions.extend(sqrt_reciprocal_trig_log_derivative_radicand(ctx, expr, var));
     conditions.extend(sqrt_hyperbolic_log_derivative_radicand(ctx, expr, var));
     conditions.extend(sqrt_hyperbolic_reciprocal_square_radicand(ctx, expr, var));
     conditions.extend(sqrt_hyperbolic_reciprocal_derivative_radicand(
@@ -14508,6 +14600,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let Some(integral) = sqrt_trig_log_derivative_antiderivative(ctx, expr, var) {
+        return Some(integral);
+    }
+
+    if let Some(integral) = sqrt_reciprocal_trig_log_derivative_antiderivative(ctx, expr, var) {
         return Some(integral);
     }
 

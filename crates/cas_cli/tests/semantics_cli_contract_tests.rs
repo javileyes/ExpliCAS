@@ -681,7 +681,7 @@ fn abs_sqrt_denominator_collapses_to_positive_base_guard() {
     ]);
     let wire = parse_wire(&output);
 
-    assert_eq!(wire["result"], "u^(-1/2)");
+    assert_eq!(wire["result"], "1 / sqrt(u)");
 
     let required = wire["required_display"]
         .as_array()

@@ -95,6 +95,72 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-18 - Observe-only multi-trig ln/sqrt diff trace cost
+
+- area:
+  - calculus / diff / domain cleanup / post-calculus presentation
+- status:
+  - `superseded`
+- local lane:
+  - direct probes:
+    `cargo run -q -p cas_cli -- eval 'diff(ln(1+sqrt(sin(x)+cos(x)+3)), x)' --format json --steps on`
+    and
+    `cargo run -q -p cas_cli -- eval 'diff(ln(1+sqrt(2*sin(x)+cos(x)+4)), x)' --format json --steps on`
+- local win:
+  - a conservative real-domain L1 bound in `prove_sign` can prove
+    `sin(x)+cos(x)+3 > 0` and `2*sin(x)+cos(x)+4 > 0`, so the public result no
+    longer needs redundant `Requires` for these radicands.
+- global result:
+  - the core sign-proof improvement was retained behind unit coverage, but
+    the two multi-trig `steps-on` public cases were not promoted to
+    `wire_smoke_tests`: each direct public probe took roughly 46-52s.
+- why it regressed globally:
+  - the cost appears to be the existing public diff/trace route for
+    multi-term trig radicands, not the L1 sign proof itself; unit sign probes
+    are instant, while the CLI calculus path is slow before it can return the
+    otherwise correct one-step result.
+- what could make it combinable later:
+  - add observability or a narrower calculus trace shortcut for multi-term
+    trig radicands before promoting these shapes into a hot public smoke lane.
+- superseded by:
+  - the broad opaque-root expand/cancel guard removed the public trace cost for
+    these shapes, and the minimal unit-weight and coefficient-weighted
+    multi-trig cases are now promoted in `wire_smoke_tests`.
+
+## 2026-05-18 - Superseded expanded-square diff presentation trace cost
+
+- area:
+  - calculus / diff / post-calculus presentation / didactic trace
+- status:
+  - `superseded`
+- local lane:
+  - direct probe:
+    `timeout 60s cargo run -q -p cas_cli -- eval 'diff(sqrt(x)/(x^2+2*x+1)^2, x)' --steps on --format json`
+  - promoted non-trace contract:
+    `cargo test -p cas_cli --test wire_smoke_tests test_eval_json_diff_sqrt_power_of_expanded_affine_square_quotient_presentation_cancels_common_factor -- --exact --nocapture`
+- local win:
+  - the public no-steps result can be presented compactly as
+    `(1 - 7·x) / (2·sqrt(x)·(x + 1)^5)` while preserving the `x > 0`
+    condition and proving the residual against the expanded denominator input.
+- global result:
+  - the no-steps presentation was retained and guardrails passed, but the
+    corresponding `steps-on` assertion was not promoted because the trace probe
+    exceeded 60s before producing output.
+- why it regressed globally:
+  - didactic tracing for this high-power expanded affine-square quotient appears
+    to explore a much larger path than the result computation; lower-power
+    neighbors stayed cheap, so the issue is trace cost rather than semantic
+    correctness.
+- what could make it combinable later:
+  - add a narrower post-calculus trace shortcut, trace budget, or reusable
+    explanation for compacting expanded affine-square denominator powers before
+    promoting this shape with a `steps-on` assertion.
+- superseded by:
+  - a follow-up robustness iteration added a narrow steps-on shortcut for
+    `sqrt(polynomial)/(expanded affine square)^n`, `n>=2`. The promoted probe
+    now returns the compact result with two visible steps, derivative plus
+    post-calculus presentation, while preserving `x > 0`.
+
 ## 2026-05-17 - Observe-only sqrt denominator square presentation gap
 
 - area:

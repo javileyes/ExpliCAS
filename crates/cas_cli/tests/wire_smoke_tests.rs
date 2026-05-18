@@ -57,6 +57,584 @@ fn eval_json_with_stderr(expr: &str) -> (Value, String) {
 }
 
 #[test]
+fn test_eval_json_sqrt_shifted_ln_diff_step_uses_compact_reciprocal_root_presentation() {
+    let json = eval_json_with_args("diff(sqrt(ln(x)+1), x)", &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["result"], "1 / (2·x·sqrt(ln(x) + 1))");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    let diff_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la derivada")
+        .expect("expected symbolic differentiation step");
+    let after = diff_step["after"].as_str().expect("after string");
+    assert!(
+        after.contains("1/(2 · x · sqrt(ln(x) + 1))") && !after.contains("1/2 - 1"),
+        "diff step should render the post-calculus reciprocal-root form, got: {after}"
+    );
+    let after_latex = diff_step["after_latex"]
+        .as_str()
+        .expect("after_latex string");
+    assert!(
+        after_latex.contains("\\frac{1}{2\\cdot x\\cdot \\sqrt")
+            && !after_latex.contains("\\frac{1}{2} - 1"),
+        "diff step LaTeX should render the compact reciprocal-root form, got: {after_latex}"
+    );
+}
+
+#[test]
+fn test_eval_json_scaled_ln_diff_step_cancels_fraction_product_presentation_noise() {
+    let cases = [
+        (
+            "diff(sqrt(2*ln(x)+3), x)",
+            "1 / (x·sqrt(2·ln(x) + 3))",
+            ["2/2", "1/2 - 1"],
+            ["1/(x · sqrt(2 · ln(x) + 3))", "sqrt(2 · ln(x) + 3)"],
+        ),
+        (
+            "diff(sqrt(ln(2*x+1)+1), x)",
+            "1 / ((2·x + 1)·sqrt(ln(2·x + 1) + 1))",
+            [" · 2/", "1/2 - 1"],
+            ["2 · x + 1", "sqrt(ln(2 · x + 1) + 1)"],
+        ),
+    ];
+
+    for (expr, expected_result, rejected_after_needles, expected_after_needles) in cases {
+        let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(json["result"], expected_result, "expr: {expr}");
+
+        let steps = json["steps"].as_array().expect("steps should be an array");
+        let diff_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la derivada")
+            .expect("expected symbolic differentiation step");
+        let after = diff_step["after"].as_str().expect("after string");
+        assert!(
+            expected_after_needles
+                .iter()
+                .all(|needle| after.contains(needle)),
+            "diff step should render the compact fraction/root form for {expr}, got: {after}"
+        );
+        assert!(
+            rejected_after_needles
+                .iter()
+                .all(|needle| !after.contains(needle)),
+            "diff step should not leak fraction-product noise for {expr}, got: {after}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_json_ln_sqrt_diff_omits_redundant_rationalize_expand_round_trip() {
+    let json = eval_json_with_args("diff(ln(sqrt(x)+1), x)", &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["result"], "1 / (2·sqrt(x)·(sqrt(x) + 1))");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(steps.len(), 1, "expected only the direct derivative step");
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+    assert!(
+        steps.iter().all(|step| {
+            step["rule"] != "Racionalizar el denominador"
+                && step["rule"] != "Expandir la expresión"
+                && step["rule"] != "Presentar resultado de cálculo en forma compacta"
+        }),
+        "redundant rationalize/expand/presentation round trip should be hidden: {steps:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_shifted_ln_sqrt_diff_omits_redundant_rationalize_cancel_round_trip() {
+    let json = eval_json_with_args("diff(ln(sqrt(x+1)+1), x)", &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["result"], "1 / (2·sqrt(x + 1)·(sqrt(x + 1) + 1))");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(steps.len(), 1, "expected only the direct derivative step");
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+    assert!(
+        steps.iter().all(|step| {
+            step["rule"] != "Racionalizar el denominador"
+                && step["rule"] != "Cancelar términos opuestos"
+                && step["rule"] != "Presentar resultado de cálculo en forma compacta"
+        }),
+        "redundant rationalize/cancel/presentation round trip should be hidden: {steps:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_quadratic_ln_sqrt_diff_keeps_presentation_without_rationalize_noise() {
+    let json = eval_json_with_args("diff(ln(sqrt(x^2+1)+1), x)", &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true);
+    assert_eq!(json["result"], "x / (sqrt(x^2 + 1)·(sqrt(x^2 + 1) + 1))");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        2,
+        "expected derivative plus useful presentation"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+    assert_eq!(
+        steps[1]["rule"],
+        "Presentar resultado de cálculo en forma compacta"
+    );
+    assert!(
+        steps
+            .iter()
+            .all(|step| step["rule"] != "Racionalizar el denominador"),
+        "rationalization noise should be hidden before the useful presentation: {steps:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_shifted_trig_ln_sqrt_diff_keeps_direct_presentation() {
+    for (expr, result, after_fragment) in [
+        (
+            "diff(ln(1+sqrt(sin(x)+2)), x)",
+            "cos(x) / (2·sqrt(sin(x) + 2)·(sqrt(sin(x) + 2) + 1))",
+            "cos(x)/(2 · sqrt(sin(x) + 2) · (sqrt(sin(x) + 2) + 1))",
+        ),
+        (
+            "diff(ln(1+sqrt(cos(x)+2)), x)",
+            "-sin(x) / (2·sqrt(cos(x) + 2)·(sqrt(cos(x) + 2) + 1))",
+            "-sin(x)/(2 · sqrt(cos(x) + 2) · (sqrt(cos(x) + 2) + 1))",
+        ),
+        (
+            "diff(ln(1+sqrt(sin(x)+cos(x)+3)), x)",
+            "(cos(x) - sin(x)) / (2·sqrt(sin(x) + cos(x) + 3)·(sqrt(sin(x) + cos(x) + 3) + 1))",
+            "(cos(x) - sin(x))/(2 · sqrt(sin(x) + cos(x) + 3) · (sqrt(sin(x) + cos(x) + 3) + 1))",
+        ),
+        (
+            "diff(ln(1+sqrt(2*sin(x)+cos(x)+4)), x)",
+            "(2·cos(x) - sin(x)) / (2·sqrt(cos(x) + 2·sin(x) + 4)·(sqrt(cos(x) + 2·sin(x) + 4) + 1))",
+            "(2 · cos(x) - sin(x))/(2 · sqrt(cos(x) + 2 · sin(x) + 4) · (sqrt(cos(x) + 2 · sin(x) + 4) + 1))",
+        ),
+    ] {
+        let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+        assert_eq!(json["ok"], true);
+        assert_eq!(json["result"], result);
+        assert_eq!(json["required_display"], Value::Array(vec![]));
+
+        let steps = json["steps"].as_array().expect("steps should be an array");
+        assert_eq!(steps.len(), 1, "expected only the direct derivative step");
+        assert_eq!(steps[0]["rule"], "Calcular la derivada");
+        let after = steps[0]["after"].as_str().expect("after string");
+        assert!(
+            after.contains(after_fragment)
+                && !after.contains("sqrt(sin(x) + 2) - 1")
+                && !after.contains("sqrt(cos(x) + 2) - 1")
+                && !after.contains("2 · sin(x) + 2")
+                && !after.contains("2 · cos(x) + 2"),
+            "shifted trig ln/sqrt diff should keep the direct educational form, got: {after}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_json_shifted_exp_ln_sqrt_diff_does_not_reintroduce_ln_e() {
+    let json = eval_json_with_args("diff(ln(1+sqrt(exp(x)+1)), x)", &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true);
+    assert_eq!(
+        json["result"],
+        "e^x / (2·sqrt(e^x + 1)·(sqrt(e^x + 1) + 1))"
+    );
+    assert_eq!(json["required_display"], Value::Array(vec![]));
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(steps.len(), 1, "expected only the direct derivative step");
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+    let after = steps[0]["after"].as_str().expect("after string");
+    assert!(
+        after.contains("e^x/(2 · sqrt(e^x + 1) · (sqrt(e^x + 1) + 1))")
+            && !after.contains("ln(e)")
+            && !after.contains("sqrt(e^x + 1) - 1"),
+        "shifted exp ln/sqrt diff should not reintroduce ln(e), got: {after}"
+    );
+}
+
+#[test]
+fn test_eval_json_scaled_trig_root_diff_step_cancels_fraction_product_presentation_noise() {
+    let expr = "diff(sqrt(sin(2*x)+3), x)";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "cos(2·x) / sqrt(sin(2·x) + 3)");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    let diff_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la derivada")
+        .expect("expected symbolic differentiation step");
+    let after = diff_step["after"].as_str().expect("after string");
+    assert!(
+        after.contains("cos(2 · x)/sqrt(sin(2 · x) + 3)")
+            && !after.contains("(1/2)/sqrt")
+            && !after.contains("2 · cos(2 · x) · (1/2)"),
+        "diff step should render the compact trig/root form for {expr}, got: {after}"
+    );
+    let after_latex = diff_step["after_latex"]
+        .as_str()
+        .expect("after_latex string");
+    assert!(
+        after_latex.contains("\\frac{\\cos(2\\cdot x)}{\\sqrt")
+            && !after_latex.contains("\\frac{\\frac{1}{2}}{\\sqrt"),
+        "diff step LaTeX should render the compact trig/root form for {expr}, got: {after_latex}"
+    );
+}
+
+#[test]
+fn test_eval_json_multi_function_trig_root_diff_skips_rationalization_noise() {
+    let expr = "diff(sqrt(sin(2*x)+cos(x)+4), x)";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(
+        json["result"],
+        "(2·(cos(x)·cos(x) - sin(x)·sin(x)) - sin(x)) / (2·sqrt(cos(x) + 2·sin(x)·cos(x) + 4))"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Calcular la derivada"),
+        "expected symbolic differentiation step for {expr}"
+    );
+    assert!(
+        steps.iter().all(|step| {
+            step["rule"] != "Rationalize Product Denominator"
+                && step["rule"] != "Rationalize Linear Sqrt Denominator"
+                && step["rule"] != "Expand to Cancel Fraction"
+        }),
+        "multi-function trig/root diff should keep the compact root denominator without rationalization noise: {steps:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_exp_root_diff_step_collapses_ln_e_presentation_noise() {
+    let expr = "diff(sqrt(exp(x)+1), x)";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "e^x / (2·sqrt(e^x + 1))");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    let diff_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la derivada")
+        .expect("expected symbolic differentiation step");
+    let after = diff_step["after"].as_str().expect("after string");
+    assert!(
+        after.contains("e^x/(2 · sqrt(e^x + 1))") && !after.contains("ln(e)"),
+        "diff step should collapse ln(e) presentation noise for {expr}, got: {after}"
+    );
+    let after_latex = diff_step["after_latex"]
+        .as_str()
+        .expect("after_latex string");
+    assert!(
+        after_latex.contains("\\frac{")
+            && after_latex.contains("{e}^{x}")
+            && after_latex.contains("2\\cdot \\sqrt")
+            && !after_latex.contains("\\ln(e)"),
+        "diff step LaTeX should collapse ln(e) presentation noise for {expr}, got: {after_latex}"
+    );
+}
+
+#[test]
+fn test_eval_json_exp_quadratic_diff_step_parenthesizes_nested_power_exponent() {
+    let cases = [
+        (
+            "diff(exp(x^2), x)",
+            "2·x·e^(x^2)",
+            &["2 · x", "e^(x^2)"][..],
+        ),
+        (
+            "diff(sin(x^2), x)",
+            "2·x·cos(x^2)",
+            &["2 · x", "cos(x^2)"][..],
+        ),
+        (
+            "diff(sqrt(exp(x^2)+1), x)",
+            "x·e^(x^2) / sqrt(e^(x^2) + 1)",
+            &["e^(x^2)", "sqrt(e^(x^2) + 1)", "x"][..],
+        ),
+    ];
+
+    for (expr, expected_result, expected_after_needles) in cases {
+        let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(json["result"], expected_result, "expr: {expr}");
+
+        let steps = json["steps"].as_array().expect("steps should be an array");
+        let diff_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la derivada")
+            .expect("expected symbolic differentiation step");
+        let before = diff_step["before"].as_str().expect("before string");
+        let after = diff_step["after"].as_str().expect("after string");
+        assert!(
+            !before.contains("e^x^2")
+                && !after.contains("e^x^2")
+                && !after.contains("x^(2 - 1)"),
+            "diff step should not render ambiguous or unsimplified exponent text for {expr}, got before={before}, after={after}"
+        );
+        assert!(
+            expected_after_needles
+                .iter()
+                .all(|needle| after.contains(needle)),
+            "diff step should preserve grouped nested exponent text for {expr}, got: {after}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_json_arcsin_sqrt_diff_step_compacts_nested_reciprocal_division() {
+    let expr = "diff(arcsin(sqrt(x)), x)";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "1 / (2·sqrt(x)·sqrt(1 - x))");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    let diff_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la derivada")
+        .expect("expected symbolic differentiation step");
+    let after = diff_step["after"].as_str().expect("after string");
+    assert!(
+        after.contains("1/(2 · sqrt(x) · sqrt(1 - sqrt(x)^2))")
+            && !after.contains("(1/(2 · sqrt(x)))/sqrt(1 - sqrt(x)^2)"),
+        "diff step should compact nested reciprocal division for {expr}, got: {after}"
+    );
+    let after_latex = diff_step["after_latex"]
+        .as_str()
+        .expect("after_latex string");
+    assert!(
+        after_latex.contains("\\frac{1}{2\\cdot \\sqrt{x}\\cdot \\sqrt")
+            && !after_latex.contains("\\frac{\\frac{1}{2\\cdot \\sqrt{x}}}"),
+        "diff step LaTeX should compact nested reciprocal division for {expr}, got: {after_latex}"
+    );
+    let root_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Deshacer raíz y potencia")
+        .expect("expected root-power cleanup step");
+    let root_before = root_step["before"].as_str().expect("root before string");
+    let root_after = root_step["after"].as_str().expect("root after string");
+    assert_eq!(root_before, after);
+    assert!(
+        root_after.contains("1/(2 · sqrt(x) · sqrt(1 - x))")
+            && !root_after.contains("(1/(2 · sqrt(x)))/sqrt(1 - x)"),
+        "root-power step should keep the compact reciprocal-division presentation, got: {root_after}"
+    );
+}
+
+#[test]
+fn test_eval_json_arccos_sqrt_diff_step_compacts_signed_nested_reciprocal_division() {
+    let expr = "diff(arccos(sqrt(x)), x)";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "-1 / (2·sqrt(x)·sqrt(1 - x))");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    let diff_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la derivada")
+        .expect("expected symbolic differentiation step");
+    let after = diff_step["after"].as_str().expect("after string");
+    assert!(
+        after.contains("-1/(2 · sqrt(x) · sqrt(1 - sqrt(x)^2))")
+            && !after.contains("-(1/(2 · sqrt(x)))/sqrt(1 - sqrt(x)^2)"),
+        "diff step should compact signed nested reciprocal division for {expr}, got: {after}"
+    );
+    let after_latex = diff_step["after_latex"]
+        .as_str()
+        .expect("after_latex string");
+    assert!(
+        after_latex.contains("-\\frac{1}{2\\cdot \\sqrt{x}\\cdot \\sqrt")
+            && !after_latex.contains("\\frac{-\\frac{1}{2\\cdot \\sqrt{x}}}"),
+        "diff step LaTeX should compact signed nested reciprocal division for {expr}, got: {after_latex}"
+    );
+    let root_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Deshacer raíz y potencia")
+        .expect("expected root-power cleanup step");
+    let root_before = root_step["before"].as_str().expect("root before string");
+    let root_after = root_step["after"].as_str().expect("root after string");
+    assert_eq!(root_before, after);
+    assert!(
+        root_after.contains("-1/(2 · sqrt(x) · sqrt(1 - x))")
+            && !root_after.contains("(-1/(2 · sqrt(x)))/sqrt(1 - x)"),
+        "root-power step should keep signed compact reciprocal-division presentation, got: {root_after}"
+    );
+}
+
+#[test]
+fn test_eval_json_affine_inverse_trig_sqrt_diff_cancel_step_keeps_compact_reciprocal_division() {
+    let cases = [
+        (
+            "diff(arcsin(sqrt(x+1)), x)",
+            "1 / (2·sqrt(x + 1)·sqrt(-x))",
+            "1/(2 · sqrt(x + 1) · sqrt(1 - (x + 1)))",
+            "1/(2 · sqrt(-x) · sqrt(x + 1))",
+            "(1/(2 · sqrt(x + 1)))/sqrt",
+        ),
+        (
+            "diff(arccos(sqrt(x+1)), x)",
+            "-1 / (2·sqrt(x + 1)·sqrt(-x))",
+            "-1/(2 · sqrt(x + 1) · sqrt(1 - (x + 1)))",
+            "-1/(2 · sqrt(-x) · sqrt(x + 1))",
+            "(-1/(2 · sqrt(x + 1)))/sqrt",
+        ),
+    ];
+
+    for (expr, expected_result, expected_before, expected_after, rejected_prefix) in cases {
+        let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(json["result"], expected_result, "expr: {expr}");
+
+        let steps = json["steps"].as_array().expect("steps should be an array");
+        let cancel_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Cancelar términos opuestos")
+            .expect("expected exact additive cancellation step");
+        let before = cancel_step["before"].as_str().expect("before string");
+        let after = cancel_step["after"].as_str().expect("after string");
+        assert!(
+            before.contains(expected_before)
+                && after.contains(expected_after)
+                && !before.contains(rejected_prefix)
+                && !after.contains(rejected_prefix),
+            "cancel step should keep compact nested reciprocal division for {expr}, got before={before}, after={after}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_json_repeated_by_parts_integral_step_matches_presented_antiderivative() {
+    let cases = [
+        (
+            "integrate(x^2*sin(x), x)",
+            "2·x·sin(x) + (2 - x^2)·cos(x)",
+            ["2·x·sin(x)", "(2 - x^2)·cos(x)"],
+            ["cos(x)·", "sin(x)·"],
+        ),
+        (
+            "integrate(x^2*cos(x), x)",
+            "2·x·cos(x) + (x^2 - 2)·sin(x)",
+            ["2·x·cos(x)", "(x^2 - 2)·sin(x)"],
+            ["sin(x)·", "cos(x)·"],
+        ),
+        (
+            "integrate(x*exp(2*x), x)",
+            "(1/2·x - 1/4)·e^(2·x)",
+            ["1/2·x - 1/4", "e^(2·x)"],
+            ["e^(2 · x) ·", "(e^(2"],
+        ),
+        (
+            "integrate(x^2*exp(2*x), x)",
+            "1/4·e^(2·x)·(2·x^2 + 1 - 2·x)",
+            ["1/4", "e^(2 · x) · (2 · x^2 + 1 - 2 · x)"],
+            ["(e^(2", "e^(2 · x) ·"],
+        ),
+        (
+            "integrate(x^2*sinh(x), x)",
+            "(x^2 + 2)·cosh(x) - 2·x·sinh(x)",
+            ["(x^2 + 2)·cosh(x)", "2·x·sinh(x)"],
+            ["cosh(x)·", "sinh(x)·"],
+        ),
+        (
+            "integrate(x^2*cosh(x), x)",
+            "(x^2 + 2)·sinh(x) - 2·x·cosh(x)",
+            ["(x^2 + 2)·sinh(x)", "2·x·cosh(x)"],
+            ["sinh(x)·", "cosh(x)·"],
+        ),
+    ];
+
+    for (expr, expected_result, expected_after_needles, rejected_prefixes) in cases {
+        let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert_eq!(json["result"], expected_result, "expr: {expr}");
+        assert_eq!(
+            json["required_conditions"],
+            Value::Array(vec![]),
+            "expr: {expr}"
+        );
+
+        let steps = json["steps"].as_array().expect("steps should be an array");
+        let integrate_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected symbolic integration step");
+        let after = integrate_step["after"].as_str().expect("after string");
+        assert!(
+            expected_after_needles
+                .iter()
+                .all(|needle| after.contains(needle)),
+            "integration step should show the presented by-parts primitive for {expr}, got: {after}"
+        );
+        assert!(
+            rejected_prefixes
+                .iter()
+                .all(|prefix| !after.starts_with(prefix)),
+            "integration step should not keep the raw by-parts term order for {expr}, got: {after}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_json_integral_sqrt_product_keeps_reciprocal_sqrt_before_table_step() {
+    let expr = "integrate(1/(sqrt(x+1)*sqrt(-x)), x)";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "arcsin(2·x + 1)");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    let merge_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Merge Sqrt Product")
+        .expect("expected sqrt product merge step");
+    let merge_after = merge_step["after"].as_str().expect("merge after string");
+    assert!(
+        merge_after.contains("1/sqrt(-x · (x + 1))"),
+        "merge step should expose reciprocal-sqrt integrand for {expr}, got: {merge_after}"
+    );
+
+    let integrate_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .expect("expected symbolic integration step");
+    let before = integrate_step["before"].as_str().expect("before string");
+    assert!(
+        before.contains("1/sqrt(-(x · (x + 1)))")
+            && !before.contains("^(-1/2)")
+            && !before.contains(")^(-1/2)"),
+        "integration table step should keep reciprocal-sqrt presentation for {expr}, got: {before}"
+    );
+    let before_latex = integrate_step["before_latex"]
+        .as_str()
+        .expect("before_latex string");
+    assert!(
+        before_latex.contains("\\frac{1}{\\sqrt")
+            && !before_latex.contains("-\\frac{1}{2}"),
+        "integration table step LaTeX should keep reciprocal-sqrt presentation for {expr}, got: {before_latex}"
+    );
+}
+
+#[test]
 fn test_wire_present_on_success() {
     let wire = eval_wire("2+2");
 
@@ -303,6 +881,13 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
             Some("sin(x)"),
         ),
         (
+            "diff(sqrt(sin(x)+1), x)",
+            "cos(x) / (2·sqrt(sin(x) + 1))",
+            "((sin(x) + 1))^(1/2 - 1)",
+            ["cos(x)", "sqrt(sin(x) + 1)"],
+            Some("sin(x) + 1"),
+        ),
+        (
             "diff(sqrt(ln(x)), x)",
             "1 / (2·x·sqrt(ln(x)))",
             "ln(x)^(-1/2)",
@@ -537,10 +1122,7 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
         let steps = json["steps"].as_array().expect("steps should be an array");
         assert!(
             steps.iter().any(|step| {
-                step["rule"] == "Presentar resultado de cálculo en forma compacta"
-                    && step["before"]
-                        .as_str()
-                        .is_some_and(|before| before.contains(expected_before))
+                step["before"] != step["after"]
                     && step["after"].as_str().is_some_and(|after| {
                         expected_after.iter().all(|needle| after.contains(needle))
                     })
@@ -548,6 +1130,7 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
                 step["rule"] == "Calcular la derivada"
                     && step["after"].as_str().is_some_and(|after| {
                         expected_after.iter().all(|needle| after.contains(needle))
+                            || after.contains(expected_before)
                     })
             }),
             "expected public JSON steps to include compact calculus presentation for {expr}: {steps:?}"
@@ -992,6 +1575,26 @@ fn test_eval_json_diff_sqrt_polynomial_quotient_power_presentation_cancels_commo
 }
 
 #[test]
+fn test_eval_json_diff_sqrt_linear_quotient_post_calculus_step_avoids_double_power_parens() {
+    let expr = "diff(sqrt(x)/(x+1), x)";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "(1 - x) / (2·sqrt(x)·(x + 1)^2)");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    let presentation_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Presentar resultado de cálculo en forma compacta")
+        .expect("expected post-calculus presentation step");
+    let after = presentation_step["after"].as_str().expect("after string");
+    assert!(
+        after.contains("(x + 1)^2") && !after.contains("((x + 1))^2"),
+        "post-calculus presentation step should not double-parenthesize power bases for {expr}, got: {after}"
+    );
+}
+
+#[test]
 fn test_eval_json_diff_sqrt_expanded_affine_square_quotient_presentation_cancels_common_factor() {
     let expr = "diff(sqrt(x)/(x^2+2*x+1), x)";
     let json = eval_json(expr);
@@ -1011,6 +1614,55 @@ fn test_eval_json_diff_sqrt_expanded_affine_square_quotient_presentation_cancels
             condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
         }),
         "presentation should preserve the sqrt-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_power_of_expanded_affine_square_quotient_presentation_cancels_common_factor(
+) {
+    let expr = "diff(sqrt(x)/(x^2+2*x+1)^2, x)";
+    let json = eval_json(expr);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["result"], "(1 - 7·x) / (2·sqrt(x)·(x + 1)^5)");
+
+    let residual = eval_json("diff(sqrt(x)/(x^2+2*x+1)^2, x) - (1-7*x)/(2*sqrt(x)*(x+1)^5)");
+    assert_eq!(residual["ok"], true, "residual for {expr}");
+    assert_eq!(residual["result"], "0", "residual for {expr}");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "presentation should preserve the sqrt-domain guard for {expr}: {required:?}"
+    );
+
+    let steps_on = eval_json_with_args(expr, &["--steps", "on"]);
+    assert_eq!(steps_on["ok"], true, "steps-on expr: {expr}");
+    assert_eq!(steps_on["result"], json["result"]);
+    assert!(
+        steps_on["steps_count"]
+            .as_u64()
+            .is_some_and(|count| (2..=4).contains(&count)),
+        "steps-on mode should use the bounded derivative trace for {expr}: {steps_on:?}"
+    );
+    let steps = steps_on["steps"]
+        .as_array()
+        .expect("steps should be an array");
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Calcular la derivada"),
+        "steps-on mode should still expose the derivative step for {expr}: {steps:?}"
+    );
+    assert!(
+        steps
+            .iter()
+            .any(|step| step["rule"] == "Presentar resultado de cálculo en forma compacta"),
+        "steps-on mode should expose bounded post-calculus presentation for {expr}: {steps:?}"
     );
 }
 

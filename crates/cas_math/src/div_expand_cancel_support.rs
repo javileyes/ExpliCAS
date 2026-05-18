@@ -296,6 +296,96 @@ pub fn has_expandable_product_on_either_side(ctx: &Context, num: ExprId, den: Ex
     contains_expandable_small_depth(ctx, num) || contains_expandable_small_depth(ctx, den)
 }
 
+fn contains_function_call(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(_, _) => true,
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            contains_function_call(ctx, *left) || contains_function_call(ctx, *right)
+        }
+        Expr::Neg(inner) => contains_function_call(ctx, *inner),
+        _ => false,
+    }
+}
+
+fn root_base_is_multi_function_sum(ctx: &Context, base: ExprId) -> bool {
+    let terms = add_terms_no_sign(ctx, base);
+    if terms.len() < 3 {
+        return false;
+    }
+
+    terms
+        .iter()
+        .filter(|term| contains_function_call(ctx, **term))
+        .count()
+        >= 2
+}
+
+fn contains_root_with_multi_function_sum(ctx: &Context, expr: ExprId) -> bool {
+    if let Some((base, _root_index)) = extract_root_family_signature(ctx, expr) {
+        if root_base_is_multi_function_sum(ctx, base) {
+            return true;
+        }
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            contains_root_with_multi_function_sum(ctx, *left)
+                || contains_root_with_multi_function_sum(ctx, *right)
+        }
+        Expr::Neg(inner) => contains_root_with_multi_function_sum(ctx, *inner),
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| contains_root_with_multi_function_sum(ctx, *arg)),
+        _ => false,
+    }
+}
+
+fn broad_opaque_root_expand_cancel_no_match(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+    shared: &[(ExprId, ExprId)],
+) -> bool {
+    let mut non_root_shared = 0;
+    for (num_call, den_call) in shared {
+        if let (None, None) = (
+            extract_root_family_signature(ctx, *num_call),
+            extract_root_family_signature(ctx, *den_call),
+        ) {
+            non_root_shared += 1;
+        }
+    }
+
+    non_root_shared >= 2
+        && (contains_root_with_multi_function_sum(ctx, num)
+            || contains_root_with_multi_function_sum(ctx, den))
+}
+
+/// Detect high-cost cases where several inner opaque calls are shared across a
+/// root over a multi-function sum. Callers still allow the cheap exact quotient
+/// check before using this signature to skip full simplify/expand callbacks.
+pub fn should_skip_broad_opaque_root_expand_cancel(
+    ctx: &Context,
+    num: ExprId,
+    den: ExprId,
+    depth_limit: usize,
+    shared_limit: usize,
+) -> bool {
+    let shared = find_shared_opaque_calls(ctx, num, den, depth_limit, shared_limit);
+    if shared.is_empty() {
+        return false;
+    }
+    broad_opaque_root_expand_cancel_no_match(ctx, num, den, &shared)
+}
+
 /// Node-budget guard for expensive expand-to-cancel strategies.
 pub fn within_div_expand_cancel_budget(
     ctx: &Context,
@@ -500,6 +590,17 @@ where
         return None;
     }
 
+    if let Some(quotient_expr) =
+        try_exact_poly_quotient_expr(&mut local_ctx, plan.substituted_num, plan.substituted_den)
+    {
+        let final_result =
+            substitute_back_opaque_temps(&mut local_ctx, quotient_expr, &plan.temp_vars);
+        return Some((local_ctx, final_result));
+    }
+    if broad_opaque_root_expand_cancel_no_match(ctx, num, den, &shared) {
+        return None;
+    }
+
     let sub_frac = local_ctx.add(Expr::Div(plan.substituted_num, plan.substituted_den));
     let (mut simplified_ctx, simplified) = simplify_sub_fraction(&local_ctx, sub_frac)?;
     if let Some(quotient_expr) = try_exact_poly_quotient_expr(
@@ -626,6 +727,9 @@ where
         return None;
     }
 
+    let skip_after_opaque_attempt =
+        should_skip_broad_opaque_root_expand_cancel(ctx, num, den, 4, 3);
+
     if let Some((new_ctx, final_result)) =
         try_opaque_substitution_cancel_with(ctx, num, den, 4, 3, |base_ctx, sub_frac| {
             strategy0_simplify_sub_fraction(base_ctx, sub_frac)
@@ -636,6 +740,9 @@ where
             rewritten: final_result,
             kind: DivExpandToCancelKind::OpaqueSubstitution,
         });
+    }
+    if skip_after_opaque_attempt {
+        return None;
     }
 
     if !has_expandable_product_on_either_side(ctx, num, den) {
@@ -809,6 +916,52 @@ mod tests {
         let den = parse("sin(x) + 1", &mut ctx).expect("parse den");
         let shared = find_shared_opaque_calls(&ctx, num, den, 4, 3);
         assert_eq!(shared.len(), 1);
+    }
+
+    #[test]
+    fn broad_opaque_root_expand_cancel_guard_skips_composite_root_no_match() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(sqrt(sin(x)+cos(x)+3)*(cos(x)-sin(x)))/((sqrt(sin(x)+cos(x)+3)+1)*(2*sin(x)+2*cos(x)+6))",
+            &mut ctx,
+        )
+        .expect("parse expr");
+        let (num, den) = as_fraction_like_num_den(&mut ctx, expr).expect("fraction");
+
+        assert!(should_skip_broad_opaque_root_expand_cancel(
+            &ctx, num, den, 4, 3
+        ));
+
+        let result = try_rewrite_div_expand_to_cancel_expr_with(
+            &mut ctx,
+            expr,
+            |_ctx, _frac| panic!("strategy0 should be skipped"),
+            |_ctx, _expr| panic!("expand should be skipped"),
+            |_ctx, _left, _right| panic!("strategy2 should be skipped"),
+        );
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn broad_opaque_root_expand_cancel_guard_keeps_exact_shared_root_quotient() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(sqrt(sin(x)+cos(x)+3)^2 + 2*sqrt(sin(x)+cos(x)+3))/(sqrt(sin(x)+cos(x)+3)+2)",
+            &mut ctx,
+        )
+        .expect("parse expr");
+        let rewrite = try_rewrite_div_expand_to_cancel_expr_with(
+            &mut ctx,
+            expr,
+            |_ctx, _frac| panic!("exact quotient should run before strategy0"),
+            |_ctx, _expr| panic!("expand should not be needed"),
+            |_ctx, _left, _right| panic!("strategy2 should not be needed"),
+        )
+        .expect("exact root quotient should still rewrite");
+        assert_eq!(
+            render_expr(&ctx, rewrite.rewritten),
+            "(sin(x) + cos(x) + 3)^(1/2)"
+        );
     }
 
     #[test]

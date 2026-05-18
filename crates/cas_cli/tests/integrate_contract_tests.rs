@@ -3846,11 +3846,37 @@ fn integrate_contract_polynomial_derivative_exp_substitution() {
 
 #[test]
 fn integrate_contract_polynomial_derivative_substitution_exposes_didactic_substep() {
-    for (input, expected_result) in [
-        ("integrate(2*x*exp(x^2), x)", "e^(x^2)"),
-        ("integrate(2*x*cos(x^2), x)", "sin(x^2)"),
-        ("integrate(2*x*sin(x^2), x)", "-cos(x^2)"),
-        ("integrate(2*x*sinh(x^2), x)", "cosh(x^2)"),
+    for (input, expected_result, expected_substep_title) in [
+        (
+            "integrate(2*x*exp(x^2), x)",
+            "e^(x^2)",
+            "Usar la regla de exp(u) -> exp(u)",
+        ),
+        (
+            "integrate(2*x*cos(x^2), x)",
+            "sin(x^2)",
+            "Usar la regla de cos(u) -> sin(u)",
+        ),
+        (
+            "integrate(2*x*sin(x^2), x)",
+            "-cos(x^2)",
+            "Usar la regla de sin(u) -> -cos(u)",
+        ),
+        (
+            "integrate(2*x*sinh(x^2), x)",
+            "cosh(x^2)",
+            "Usar la regla de sinh(u) -> cosh(u)",
+        ),
+        (
+            "integrate(2*x*cosh(x^2), x)",
+            "sinh(x^2)",
+            "Usar la regla de cosh(u) -> sinh(u)",
+        ),
+        (
+            "integrate(2*x*tanh(x^2), x)",
+            "ln(cosh(x^2))",
+            "Usar la regla de tanh(u) -> ln(cosh(u))",
+        ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
 
@@ -3871,11 +3897,6 @@ fn integrate_contract_polynomial_derivative_substitution_exposes_didactic_subste
         let steps = wire["steps"]
             .as_array()
             .expect("steps should be present with --steps on");
-        assert_eq!(
-            steps.len(),
-            1,
-            "expected compact direct substitution trace for {input}, got {steps:?}"
-        );
         let integration_step = steps
             .iter()
             .find(|step| step["rule"] == "Calcular la integral")
@@ -3886,8 +3907,20 @@ fn integrate_contract_polynomial_derivative_substitution_exposes_didactic_subste
         assert!(
             substeps
                 .iter()
-                .any(|substep| substep["title"] == "Usar sustitución"),
-            "expected substitution substep for {input}, got {substeps:?}"
+                .any(|substep| substep["title"] == expected_substep_title),
+            "expected {expected_substep_title} substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "polynomial derivative substitution should not use only the generic substitution substep for {input}: {substeps:?}"
         );
         assert_antiderivative_verifies(input);
     }
@@ -3895,15 +3928,21 @@ fn integrate_contract_polynomial_derivative_substitution_exposes_didactic_subste
 
 #[test]
 fn integrate_contract_log_power_product_substitution_exposes_didactic_substep() {
-    for (input, expected_result) in [
-        ("integrate(2*x*ln(x^2+1), x)", "(ln(x^2 + 1) - 1)·(x^2 + 1)"),
+    for (input, expected_result, expected_substep_title) in [
+        (
+            "integrate(2*x*ln(x^2+1), x)",
+            "(ln(x^2 + 1) - 1)·(x^2 + 1)",
+            "Usar la regla de u'·ln(u) -> u·(ln(u)-1)",
+        ),
         (
             "integrate(2*x*ln(x^2+1)^2, x)",
             "(x^2 + 1)·(ln(x^2 + 1)^2 - 2·ln(x^2 + 1) + 2)",
+            "Usar la regla de u'·ln(u)^n por partes",
         ),
         (
             "integrate(2*x*ln(x^2+1)^3, x)",
             "(ln(x^2 + 1)^3 - 3·ln(x^2 + 1)^2 + 6·ln(x^2 + 1) - 6)·(x^2 + 1)",
+            "Usar la regla de u'·ln(u)^n por partes",
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -3940,8 +3979,20 @@ fn integrate_contract_log_power_product_substitution_exposes_didactic_substep() 
         assert!(
             substeps
                 .iter()
-                .any(|substep| substep["title"] == "Usar sustitución"),
-            "expected substitution substep for {input}, got {substeps:?}"
+                .any(|substep| substep["title"] == expected_substep_title),
+            "expected log-power product table substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "log-power product table case should not use generic substitution substep for {input}: {substeps:?}"
         );
         assert_antiderivative_verifies(input);
     }
@@ -4293,21 +4344,24 @@ fn integrate_contract_polynomial_hyperbolic_tanh_derivative_square_substitution(
 
 #[test]
 fn integrate_contract_hyperbolic_quotient_substitution_exposes_didactic_substep() {
-    for (input, expected_result, expected_required_display) in [
+    for (input, expected_result, expected_required_display, expected_substep_title) in [
         (
             "integrate(2*x*cosh(x^2)/sinh(x^2), x)",
             "ln(|sinh(x^2)|)",
             serde_json::json!(["sinh(x^2) ≠ 0"]),
+            "Usar la regla de cosh(u)/sinh(u) -> ln|sinh(u)|",
         ),
         (
             "integrate(2*x/tanh(x^2), x)",
             "ln(|sinh(x^2)|)",
             serde_json::json!(["sinh(x^2) ≠ 0"]),
+            "Usar la regla de 1/tanh(u) -> ln|sinh(u)|",
         ),
         (
             "integrate(2*x/cosh(x^2)^2, x)",
             "tanh(x^2)",
             serde_json::json!([]),
+            "Usar la regla de 1/cosh(u)^2 -> tanh(u)",
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -4336,8 +4390,20 @@ fn integrate_contract_hyperbolic_quotient_substitution_exposes_didactic_substep(
         assert!(
             substeps
                 .iter()
-                .any(|substep| substep["title"] == "Usar sustitución"),
-            "expected substitution substep for {input}, got {substeps:?}"
+                .any(|substep| substep["title"] == expected_substep_title),
+            "expected hyperbolic quotient table substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "expected specific hyperbolic quotient trace without generic substitution for {input}, got {substeps:?}"
         );
         assert_antiderivative_verifies(input);
     }
@@ -4345,21 +4411,24 @@ fn integrate_contract_hyperbolic_quotient_substitution_exposes_didactic_substep(
 
 #[test]
 fn integrate_contract_trig_quotient_substitution_exposes_didactic_substep() {
-    for (input, expected_result, expected_required_display) in [
+    for (input, expected_result, expected_required_display, expected_substep_title) in [
         (
             "integrate(2*x*tan(x^2), x)",
             "-ln(|cos(x^2)|)",
             serde_json::json!(["cos(x^2) ≠ 0"]),
+            "Usar la regla de tan(u) -> -ln|cos(u)|",
         ),
         (
             "integrate(3*x^2*cot(x^3), x)",
             "ln(|sin(x^3)|)",
             serde_json::json!(["sin(x^3) ≠ 0"]),
+            "Usar la regla de cot(u) -> ln|sin(u)|",
         ),
         (
             "integrate(2*x/cos(x^2)^2, x)",
             "tan(x^2)",
             serde_json::json!(["cos(x^2) ≠ 0"]),
+            "Usar la regla de 1/cos(u)^2 -> tan(u)",
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -4388,8 +4457,20 @@ fn integrate_contract_trig_quotient_substitution_exposes_didactic_substep() {
         assert!(
             substeps
                 .iter()
-                .any(|substep| substep["title"] == "Usar sustitución"),
-            "expected substitution substep for {input}, got {substeps:?}"
+                .any(|substep| substep["title"] == expected_substep_title),
+            "expected trig quotient table substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected u/du identification substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "expected specific trig quotient trace without generic substitution for {input}, got {substeps:?}"
         );
         assert_antiderivative_verifies(input);
     }
@@ -4564,31 +4645,36 @@ fn integrate_contract_direct_trig_log_substitution_exposes_didactic_substep() {
 
 #[test]
 fn integrate_contract_polynomial_base_substitution_exposes_didactic_substep() {
-    for (input, expected_result, expected_required_display) in [
+    for (input, expected_result, expected_required_display, expected_rule_title) in [
         (
             "integrate((2*x+1)/(x^2+x-1), x)",
             "ln(|x^2 + x - 1|)",
             serde_json::json!(["x^2 + x - 1 ≠ 0"]),
+            "Usar la regla de u'/u -> ln|u|",
         ),
         (
             "integrate((2*x+1)/(x^2+x-1)^3, x)",
             "-1 / (2·(x^2 + x - 1)^2)",
             serde_json::json!(["x^2 + x - 1 ≠ 0"]),
+            "Usar la regla de u'/u^n -> u^(1-n)/(1-n)",
         ),
         (
             "integrate(x/sqrt(x^2+1), x)",
             "sqrt(x^2 + 1)",
             serde_json::json!([]),
+            "Usar la regla de u'/sqrt(u) -> 2*sqrt(u)",
         ),
         (
             "integrate(2*x/sqrt(x^2-1), x)",
             "2·sqrt(x^2 - 1)",
             serde_json::json!(["x < -1 or x > 1"]),
+            "Usar la regla de u'/sqrt(u) -> 2*sqrt(u)",
         ),
         (
             "integrate(2*x*(x^2-1)^(3/2), x)",
             "2/5·(x^2 - 1)^(5/2)",
             serde_json::json!(["x ≤ -1 or x ≥ 1"]),
+            "Usar la regla de u'·u^p -> u^(p+1)/(p+1)",
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -4617,8 +4703,20 @@ fn integrate_contract_polynomial_base_substitution_exposes_didactic_substep() {
         assert!(
             substeps
                 .iter()
-                .any(|substep| substep["title"] == "Usar sustitución"),
-            "expected substitution substep for {input}, got {substeps:?}"
+                .any(|substep| substep["title"] == expected_rule_title),
+            "expected polynomial-base table substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "polynomial-base table case should not use generic substitution substep for {input}: {substeps:?}"
         );
         assert!(
             steps.iter().filter(|step| step["rule"] != "Calcular la integral").all(|step| {
@@ -4656,26 +4754,30 @@ fn integrate_contract_polynomial_base_substitution_exposes_didactic_substep() {
 
 #[test]
 fn integrate_contract_nested_inverse_polynomial_substitution_exposes_didactic_substep() {
-    for (input, expected_result, expected_required_display) in [
+    for (input, expected_result, expected_required_display, expected_rule_title) in [
         (
             "integrate(2*x/sqrt(4-x^4), x)",
             "arcsin(x^2 / 2)",
             serde_json::json!(["4 - x^4 > 0"]),
+            "Usar la regla de u'/sqrt(1-u^2) -> arcsin(u)",
         ),
         (
             "integrate(2*x/sqrt(1+x^4), x)",
             "asinh(x^2)",
             serde_json::json!([]),
+            "Usar la regla de u'/sqrt(1+u^2) -> asinh(u)",
         ),
         (
             "integrate(2*x/(1+x^4), x)",
             "arctan(x^2)",
             serde_json::json!([]),
+            "Usar la regla de u'/(1+u^2) -> arctan(u)",
         ),
         (
             "integrate(2*x/(4-x^4), x)",
             "1/2·atanh(x^2 / 2)",
             serde_json::json!(["4 - x^4 > 0"]),
+            "Usar la regla de u'/(1-u^2) -> atanh(u)",
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -4704,8 +4806,20 @@ fn integrate_contract_nested_inverse_polynomial_substitution_exposes_didactic_su
         assert!(
             substeps
                 .iter()
-                .any(|substep| substep["title"] == "Usar sustitución"),
-            "expected substitution substep for {input}, got {substeps:?}"
+                .any(|substep| substep["title"] == expected_rule_title),
+            "expected nested inverse polynomial table substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "nested inverse polynomial table case should not use generic substitution substep for {input}: {substeps:?}"
         );
         assert!(
             steps.iter().filter(|step| step["rule"] != "Calcular la integral").all(|step| {
@@ -8188,7 +8302,7 @@ fn integrate_contract_arctan_sqrt_unit_shift_square_inverts_diff_output() {
         evaluated_expr_with_required_conditions("diff(8*arctan(2*sqrt(x)) + 4*sqrt(x)/(x+1/4), x)");
     assert_eq!(
         rational_shift_displayed_derivative,
-        "1 / (sqrt(x) * (x + 1/4)^2)"
+        "1 / ((x + 1/4)^2 * sqrt(x))"
     );
     assert_eq!(
         rational_shift_displayed_required,
@@ -12383,13 +12497,13 @@ fn integrate_contract_sqrt_chain_substitutions_expose_didactic_substep() {
             "integrate(1/(sqrt(x)*cosh(sqrt(x))^2), x)",
             "2·tanh(sqrt(x))",
             serde_json::json!(["x > 0"]),
-            "Usar sustitución",
+            "Usar la regla de 1/cosh(u)^2 -> tanh(u)",
         ),
         (
             "integrate(sinh(sqrt(x))/(sqrt(x)*cosh(sqrt(x))^2), x)",
             "-2 / cosh(sqrt(x))",
             serde_json::json!(["x > 0"]),
-            "Usar sustitución",
+            "Usar la regla de sinh(u)/cosh(u)^2 -> -1/cosh(u)",
         ),
     ] {
         let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
@@ -12751,6 +12865,98 @@ fn integrate_contract_sqrt_chain_tangent_cotangent_logs_verify() {
 }
 
 #[test]
+fn integrate_contract_sqrt_chain_reciprocal_trig_logs_verify_by_diff() {
+    let cases = [
+        (
+            "integrate(3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))), x)",
+            "ln(|tan(sqrt(3 * x + 1)) + sec(sqrt(3 * x + 1))|)",
+            vec![
+                "cos(sqrt(3 * x + 1)) ≠ 0",
+                "x > -1/3",
+                "tan(sqrt(3 * x + 1)) + sec(sqrt(3 * x + 1)) ≠ 0",
+            ],
+        ),
+        (
+            "integrate(3/(2*sqrt(3*x+1)*sin(sqrt(3*x+1))), x)",
+            "ln(|csc(sqrt(3 * x + 1)) - cot(sqrt(3 * x + 1))|)",
+            vec![
+                "sin(sqrt(3 * x + 1)) ≠ 0",
+                "x > -1/3",
+                "csc(sqrt(3 * x + 1)) - cot(sqrt(3 * x + 1)) ≠ 0",
+            ],
+        ),
+    ];
+
+    for (input, expected_result, expected_conditions) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected_result, "input: {input}");
+        assert_eq!(required, expected_conditions, "input: {input}");
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
+fn integrate_contract_sqrt_chain_reciprocal_trig_logs_explain_u_and_du() {
+    for (input, expected_result, expected_required_display, expected_rule_title) in [
+        (
+            "integrate(3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))), x)",
+            "ln(|tan(sqrt(3·x + 1)) + sec(sqrt(3·x + 1))|)",
+            serde_json::json!(["cos(sqrt(3·x + 1)) ≠ 0", "x > -1/3"]),
+            "Usar la regla de sec(u) -> ln|sec(u)+tan(u)|",
+        ),
+        (
+            "integrate(3/(2*sqrt(3*x+1)*sin(sqrt(3*x+1))), x)",
+            "ln(|csc(sqrt(3·x + 1)) - cot(sqrt(3·x + 1))|)",
+            serde_json::json!(["sin(sqrt(3·x + 1)) ≠ 0", "x > -1/3"]),
+            "Usar la regla de csc(u) -> ln|csc(u)-cot(u)|",
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "sqrt-chain reciprocal trig log trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == expected_rule_title),
+            "expected {expected_rule_title} substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "sqrt-chain reciprocal trig log table should not use the generic substitution substep for {input}: {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+}
+
+#[test]
 fn integrate_contract_sqrt_chain_hyperbolic_tangent_logs_verify() {
     let cases = [
         (
@@ -12807,6 +13013,67 @@ fn integrate_contract_sqrt_chain_hyperbolic_tangent_logs_verify() {
             nested_required, expected_conditions,
             "unexpected nested required_conditions for {input}: {nested_required:?}"
         );
+    }
+}
+
+#[test]
+fn integrate_contract_sqrt_chain_hyperbolic_tangent_logs_explain_u_and_du() {
+    for (input, expected_result, expected_required_display, expected_rule_title) in [
+        (
+            "integrate(tanh(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
+            "ln(cosh(sqrt(3·x + 1)))",
+            serde_json::json!(["x > -1/3"]),
+            "Usar la regla de tanh(u) -> ln(cosh(u))",
+        ),
+        (
+            "integrate(3/(2*sqrt(3*x+1)*tanh(sqrt(3*x+1))), x)",
+            "ln(|sinh(sqrt(3·x + 1))|)",
+            serde_json::json!(["sinh(sqrt(3·x + 1)) ≠ 0", "x > -1/3"]),
+            "Usar la regla de 1/tanh(u) -> ln|sinh(u)|",
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "sqrt-chain hyperbolic log trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == expected_rule_title),
+            "expected {expected_rule_title} substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "sqrt-chain hyperbolic log table should not use only the generic substitution substep for {input}: {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
     }
 }
 
@@ -12971,6 +13238,79 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_derivatives_verify() {
             required, expected_conditions,
             "unexpected nested required_conditions for {input}: {required:?}"
         );
+    }
+}
+
+#[test]
+fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_tables_explain_u_and_du() {
+    for (input, expected_result, expected_required_display, expected_rule_title) in [
+        (
+            "integrate(3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x)",
+            "tanh(sqrt(3·x + 1))",
+            serde_json::json!(["x > -1/3"]),
+            "Usar la regla de 1/cosh(u)^2 -> tanh(u)",
+        ),
+        (
+            "integrate(3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x)",
+            "-1 / tanh(sqrt(3·x + 1))",
+            serde_json::json!(["sinh(sqrt(3·x + 1)) ≠ 0", "x > -1/3"]),
+            "Usar la regla de 1/sinh(u)^2 -> -1/tanh(u)",
+        ),
+        (
+            "integrate(3*sinh(sqrt(3*x+1))/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2), x)",
+            "-1 / cosh(sqrt(3·x + 1))",
+            serde_json::json!(["x > -1/3"]),
+            "Usar la regla de sinh(u)/cosh(u)^2 -> -1/cosh(u)",
+        ),
+        (
+            "integrate(3*cosh(sqrt(3*x+1))/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x)",
+            "-1 / sinh(sqrt(3·x + 1))",
+            serde_json::json!(["x > -1/3", "sinh(sqrt(3·x + 1)) ≠ 0"]),
+            "Usar la regla de cosh(u)/sinh(u)^2 -> -1/sinh(u)",
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required_display,
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "sqrt-chain hyperbolic reciprocal trace should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == expected_rule_title),
+            "expected {expected_rule_title} substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "sqrt-chain hyperbolic reciprocal table should not use only the generic substitution substep for {input}: {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
     }
 }
 

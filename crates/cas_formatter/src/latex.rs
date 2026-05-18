@@ -250,6 +250,251 @@ mod tests {
     }
 
     #[test]
+    fn test_latex_reciprocal_sqrt_fraction_presentation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let minus_half = ctx.rational(-1, 2);
+        let numerator = ctx.add(Expr::Pow(x, minus_half));
+        let denominator = ctx.add(Expr::Add(x, one));
+        let expr = ctx.add(Expr::Div(numerator, denominator));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "\\frac{1}{(x + 1)\\cdot \\sqrt{x}}");
+    }
+
+    #[test]
+    fn test_latex_nested_reciprocal_sqrt_fraction_presentation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let minus_half = ctx.rational(-1, 2);
+        let reciprocal_sqrt = ctx.add(Expr::Pow(x, minus_half));
+        let scaled = ctx.add(Expr::Div(reciprocal_sqrt, two));
+        let denominator = ctx.add(Expr::Add(x, one));
+        let expr = ctx.add(Expr::Div(scaled, denominator));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{1}{2\\cdot (x + 1)\\cdot \\sqrt{x}}"
+        );
+    }
+
+    #[test]
+    fn test_latex_negated_half_reciprocal_sqrt_fraction_presentation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let half = ctx.rational(1, 2);
+        let negated_half = ctx.add(Expr::Neg(half));
+        let reciprocal_sqrt = ctx.add(Expr::Pow(x, negated_half));
+        let expr = ctx.add(Expr::Div(reciprocal_sqrt, two));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "\\frac{1}{2\\cdot \\sqrt{x}}");
+    }
+
+    #[test]
+    fn test_latex_fractional_coefficient_reciprocal_sqrt_product_presentation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let half = ctx.rational(1, 2);
+        let minus_half = ctx.rational(-1, 2);
+        let reciprocal_sqrt = ctx.add(Expr::Pow(x, minus_half));
+        let expr = ctx.add(Expr::Mul(half, reciprocal_sqrt));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "\\frac{1}{2\\cdot \\sqrt{x}}");
+    }
+
+    #[test]
+    fn test_latex_reciprocal_sqrt_times_unit_fraction_presentation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let minus_half = ctx.rational(-1, 2);
+        let reciprocal_sqrt = ctx.add(Expr::Pow(x, minus_half));
+        let cos_x = ctx.call("cos", vec![x]);
+        let sec_x = ctx.add(Expr::Div(one, cos_x));
+        let expr = ctx.add(Expr::Mul(reciprocal_sqrt, sec_x));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(latex.to_latex(), "\\frac{1}{\\cos(x)\\cdot \\sqrt{x}}");
+    }
+
+    #[test]
+    fn test_latex_reciprocal_sqrt_scaled_unit_fraction_with_raw_exponent() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let half = ctx.rational(1, 2);
+        let ln_x = ctx.call("ln", vec![x]);
+        let radicand = ctx.add(Expr::Add(ln_x, one));
+        let exponent = ctx.add_raw(Expr::Sub(half, one));
+        let reciprocal_sqrt = ctx.add_raw(Expr::Pow(radicand, exponent));
+        let scaled = ctx.add_raw(Expr::Div(reciprocal_sqrt, two));
+        let unit_x = ctx.add_raw(Expr::Div(one, x));
+        let expr = ctx.add_raw(Expr::Mul(scaled, unit_x));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{1}{2\\cdot x\\cdot \\sqrt{\\ln(x) + 1}}"
+        );
+    }
+
+    #[test]
+    fn test_latex_root_denominator_fraction_product_cancels_numeric_noise() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let ln_x = ctx.call("ln", vec![x]);
+        let two_ln_x = ctx.add(Expr::Mul(two, ln_x));
+        let radicand = ctx.add(Expr::Add(two_ln_x, three));
+        let sqrt_radicand = ctx.call("sqrt", vec![radicand]);
+        let denominator = ctx.add(Expr::Mul(x, sqrt_radicand));
+        let redundant_scale = ctx.add_raw(Expr::Div(two, two));
+        let unit_fraction = ctx.add_raw(Expr::Div(one, denominator));
+        let expr = ctx.add_raw(Expr::Mul(redundant_scale, unit_fraction));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{1}{x\\cdot \\sqrt{2\\cdot \\ln(x) + 3}}"
+        );
+    }
+
+    #[test]
+    fn test_latex_root_denominator_fraction_product_preserves_structural_numerator() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let half = ctx.rational(1, 2);
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let cos_2x = ctx.call("cos", vec![two_x]);
+        let two_x_again = ctx.add(Expr::Mul(two, x));
+        let sin_2x = ctx.call("sin", vec![two_x_again]);
+        let radicand = ctx.add(Expr::Add(sin_2x, three));
+        let sqrt_radicand = ctx.call("sqrt", vec![radicand]);
+        let scaled_cos = ctx.add_raw(Expr::Mul(two, cos_2x));
+        let reciprocal_root = ctx.add_raw(Expr::Div(half, sqrt_radicand));
+        let expr = ctx.add_raw(Expr::Mul(scaled_cos, reciprocal_root));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{\\cos(2\\cdot x)}{\\sqrt{\\sin(2\\cdot x) + 3}}"
+        );
+    }
+
+    #[test]
+    fn test_latex_root_denominator_fraction_product_merges_split_chain_factor() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let two_x = ctx.add(Expr::Mul(two, x));
+        let ln_arg = ctx.add(Expr::Add(two_x, one));
+        let ln_term = ctx.call("ln", vec![ln_arg]);
+        let radicand = ctx.add(Expr::Add(ln_term, one));
+        let sqrt_radicand = ctx.call("sqrt", vec![radicand]);
+        let left_denominator = ctx.add(Expr::Mul(two, sqrt_radicand));
+        let left = ctx.add_raw(Expr::Div(one, left_denominator));
+        let two_x_again = ctx.add(Expr::Mul(two, x));
+        let right_denominator = ctx.add(Expr::Add(two_x_again, one));
+        let right = ctx.add_raw(Expr::Div(two, right_denominator));
+        let expr = ctx.add_raw(Expr::Mul(left, right));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{1}{(2\\cdot x + 1)\\cdot \\sqrt{\\ln(2\\cdot x + 1) + 1}}"
+        );
+    }
+
+    #[test]
+    fn test_latex_root_denominator_fraction_product_merges_three_factor_chain() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let three = ctx.num(3);
+        let ln_x = ctx.call("ln", vec![x]);
+        let two_ln_x = ctx.add(Expr::Mul(two, ln_x));
+        let radicand = ctx.add(Expr::Add(two_ln_x, three));
+        let sqrt_radicand = ctx.call("sqrt", vec![radicand]);
+        let left_denominator = ctx.add(Expr::Mul(two, sqrt_radicand));
+        let left = ctx.add_raw(Expr::Div(one, left_denominator));
+        let scaled = ctx.add_raw(Expr::Mul(left, two));
+        let unit_x = ctx.add_raw(Expr::Div(one, x));
+        let expr = ctx.add_raw(Expr::Mul(scaled, unit_x));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{1}{x\\cdot \\sqrt{2\\cdot \\ln(x) + 3}}"
+        );
+    }
+
+    #[test]
+    fn test_latex_denominator_product_prefers_numeric_factor_first() {
+        let mut ctx = Context::new();
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let x = ctx.var("x");
+        let sqrt_x = ctx.call("sqrt", vec![x]);
+        let cos_sqrt_x = ctx.call("cos", vec![sqrt_x]);
+        let sqrt_times_two = ctx.add(Expr::Mul(sqrt_x, two));
+        let denominator = ctx.add(Expr::Mul(sqrt_times_two, cos_sqrt_x));
+        let expr = ctx.add(Expr::Div(one, denominator));
+
+        let latex = LaTeXExpr {
+            context: &ctx,
+            id: expr,
+        };
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{1}{2\\cdot \\cos(\\sqrt{x})\\cdot \\sqrt{x}}"
+        );
+    }
+
+    #[test]
     fn test_latex_negative_fraction() {
         let mut ctx = Context::new();
         let neg_half = ctx.rational(-1, 2);

@@ -170,6 +170,79 @@ fn is_strictly_positive_monic_square_with_constant_offset(ctx: &Context, expr: E
         .is_some_and(|lower_bound| lower_bound.is_positive())
 }
 
+fn scaled_bounded_sin_cos_term(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1
+                && (ctx.is_builtin(*fn_id, BuiltinFn::Sin)
+                    || ctx.is_builtin(*fn_id, BuiltinFn::Cos)) =>
+        {
+            Some(BigRational::one())
+        }
+        Expr::Neg(inner) => scaled_bounded_sin_cos_term(ctx, *inner).map(|value| -value),
+        Expr::Div(num, den) => {
+            let num_scale = scaled_bounded_sin_cos_term(ctx, *num)?;
+            let den_scale = crate::numeric_eval::as_rational_const(ctx, *den)?;
+            if den_scale.is_zero() {
+                None
+            } else {
+                Some(num_scale / den_scale)
+            }
+        }
+        Expr::Mul(_, _) => {
+            let mut numeric_scale = BigRational::one();
+            let mut trig_scale = None;
+            for factor in crate::expr_nary::mul_leaves(ctx, expr) {
+                if let Some(value) = crate::numeric_eval::as_rational_const(ctx, factor) {
+                    numeric_scale *= value;
+                    continue;
+                }
+
+                let factor_scale = scaled_bounded_sin_cos_term(ctx, factor)?;
+                if trig_scale.is_some() {
+                    return None;
+                }
+                trig_scale = Some(factor_scale);
+            }
+
+            trig_scale.map(|factor_scale| numeric_scale * factor_scale)
+        }
+        _ => None,
+    }
+}
+
+fn bounded_sin_cos_affine_margin(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    let mut constant = BigRational::zero();
+    let mut trig_bound = BigRational::zero();
+    let mut has_bounded_trig = false;
+
+    for (term, sign) in crate::expr_nary::add_terms_signed(ctx, expr) {
+        let signed = |value: BigRational| match sign {
+            crate::expr_nary::Sign::Pos => value,
+            crate::expr_nary::Sign::Neg => -value,
+        };
+
+        if let Some(value) = crate::numeric_eval::as_rational_const(ctx, term) {
+            constant += signed(value);
+            continue;
+        }
+
+        let value = signed(scaled_bounded_sin_cos_term(ctx, term)?);
+        trig_bound += value.abs();
+        has_bounded_trig = true;
+    }
+
+    has_bounded_trig.then_some(constant - trig_bound)
+}
+
+fn is_strictly_positive_bounded_sin_cos_affine(ctx: &Context, expr: ExprId) -> bool {
+    bounded_sin_cos_affine_margin(ctx, expr).is_some_and(|margin| margin.is_positive())
+}
+
+fn is_nonnegative_bounded_sin_cos_affine(ctx: &Context, expr: ExprId) -> bool {
+    bounded_sin_cos_affine_margin(ctx, expr).is_some_and(|margin| !margin.is_negative())
+}
+
 /// Prove whether an expression is strictly positive (`> 0`).
 ///
 /// `real_only = true` models a real-only value domain. `false` models a
@@ -244,6 +317,11 @@ where
         }
         Expr::Add(_, _) | Expr::Sub(_, _)
             if real_only && is_strictly_positive_monic_square_with_constant_offset(ctx, expr) =>
+        {
+            TriProof::Proven
+        }
+        Expr::Add(_, _) | Expr::Sub(_, _)
+            if real_only && is_strictly_positive_bounded_sin_cos_affine(ctx, expr) =>
         {
             TriProof::Proven
         }
@@ -438,6 +516,11 @@ where
         }
         Expr::Add(_, _) | Expr::Sub(_, _)
             if real_only && is_nonnegative_univariate_quadratic(ctx, expr) =>
+        {
+            TriProof::Proven
+        }
+        Expr::Add(_, _) | Expr::Sub(_, _)
+            if real_only && is_nonnegative_bounded_sin_cos_affine(ctx, expr) =>
         {
             TriProof::Proven
         }
@@ -682,6 +765,66 @@ mod tests {
     fn nonnegative_proves_expanded_perfect_square_quadratic() {
         let mut ctx = cas_ast::Context::new();
         let expr = parse("x^2 + 2*x + 1", &mut ctx).expect("parse");
+        let out = prove_nonnegative_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
+            TriProof::Unknown
+        });
+        assert_eq!(out, TriProof::Proven);
+    }
+
+    #[test]
+    fn real_positive_proves_bounded_trig_affine_with_strict_margin() {
+        let mut ctx = cas_ast::Context::new();
+        let sin_shift = parse("sin(x)+2", &mut ctx).expect("parse");
+        let cos_shift = parse("2-cos(x)", &mut ctx).expect("parse");
+        let multi_shift = parse("2*sin(x)+cos(y)+4", &mut ctx).expect("parse");
+
+        let sin_out =
+            prove_positive_depth_with(&ctx, sin_shift, 20, true, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+        let cos_out =
+            prove_positive_depth_with(&ctx, cos_shift, 20, true, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+        let multi_out =
+            prove_positive_depth_with(&ctx, multi_shift, 20, true, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+
+        assert_eq!(sin_out, TriProof::Proven);
+        assert_eq!(cos_out, TriProof::Proven);
+        assert_eq!(multi_out, TriProof::Proven);
+    }
+
+    #[test]
+    fn positive_bounded_trig_affine_rejects_boundary_and_complex_domain() {
+        let mut ctx = cas_ast::Context::new();
+        let boundary = parse("sin(x)+1", &mut ctx).expect("parse");
+        let multi_boundary = parse("sin(x)+cos(x)+2", &mut ctx).expect("parse");
+        let strict = parse("sin(x)+2", &mut ctx).expect("parse");
+
+        let boundary_out =
+            prove_positive_depth_with(&ctx, boundary, 20, true, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+        let multi_boundary_out =
+            prove_positive_depth_with(&ctx, multi_boundary, 20, true, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+        let complex_out =
+            prove_positive_depth_with(&ctx, strict, 20, false, |_ctx, _expr, _depth| {
+                TriProof::Unknown
+            });
+
+        assert_eq!(boundary_out, TriProof::Unknown);
+        assert_eq!(multi_boundary_out, TriProof::Unknown);
+        assert_eq!(complex_out, TriProof::Unknown);
+    }
+
+    #[test]
+    fn real_nonnegative_proves_bounded_trig_affine_boundary() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse("sin(x)+cos(y)+2", &mut ctx).expect("parse");
         let out = prove_nonnegative_depth_with(&ctx, expr, 20, true, |_ctx, _expr, _depth| {
             TriProof::Unknown
         });

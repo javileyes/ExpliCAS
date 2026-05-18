@@ -116,6 +116,30 @@ fn test_simple_add_order_canonical() {
     assert_eq!(display1, "x + 1", "Canonical order should be x + 1");
 }
 
+#[test]
+fn test_division_denominator_product_prefers_numeric_factor_first() {
+    let mut ctx = Context::new();
+
+    let one = ctx.num(1);
+    let two = ctx.num(2);
+    let x = ctx.var("x");
+    let sqrt_x = ctx.call("sqrt", vec![x]);
+    let cos_sqrt_x = ctx.call("cos", vec![sqrt_x]);
+    let sqrt_times_two = ctx.add(Expr::Mul(sqrt_x, two));
+    let denominator = ctx.add(Expr::Mul(sqrt_times_two, cos_sqrt_x));
+    let expr = ctx.add(Expr::Div(one, denominator));
+
+    let display = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: expr
+        }
+    );
+
+    assert_eq!(display, "1 / (2 * cos(sqrt(x)) * sqrt(x))");
+}
+
 // ============================================================================
 // Test 3: Determinism for non-polynomial expressions
 // ============================================================================

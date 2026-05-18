@@ -206,7 +206,11 @@ fn replace_next_parenthesized_power_base(value: &str) -> Option<String> {
                 }
 
                 let exponent_close = byte_index + 2 + exponent_end;
-                let replacement = format!("({base})^{}", &value[byte_index + 2..=exponent_close]);
+                let replacement = if has_single_outer_parentheses(base) {
+                    format!("{base}^{}", &value[byte_index + 2..=exponent_close])
+                } else {
+                    format!("({base})^{}", &value[byte_index + 2..=exponent_close])
+                };
                 return Some(format!(
                     "{}{}{}",
                     &value[..base_start],
@@ -252,10 +256,40 @@ fn needs_parenthesized_power_base(base: &str) -> bool {
         .any(|ch| matches!(ch, ' ' | '+' | '-' | '·' | '/'))
 }
 
+fn has_single_outer_parentheses(value: &str) -> bool {
+    let Some(inner) = value
+        .strip_prefix('(')
+        .and_then(|value| value.strip_suffix(')'))
+    else {
+        return false;
+    };
+    if inner.is_empty() {
+        return false;
+    }
+
+    let mut depth = 0usize;
+    for (index, ch) in value.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => {
+                depth = match depth.checked_sub(1) {
+                    Some(depth) => depth,
+                    None => return false,
+                };
+                if depth == 0 && index + ch.len_utf8() != value.len() {
+                    return false;
+                }
+            }
+            _ => {}
+        }
+    }
+    depth == 0
+}
+
 fn needs_parenthesized_exponent(exponent: &str) -> bool {
     exponent
         .chars()
-        .any(|ch| matches!(ch, ' ' | '+' | '-' | '·' | '/'))
+        .any(|ch| matches!(ch, ' ' | '+' | '-' | '·' | '/' | '^'))
 }
 
 fn find_balanced_braces(s: &str) -> Option<(String, usize)> {

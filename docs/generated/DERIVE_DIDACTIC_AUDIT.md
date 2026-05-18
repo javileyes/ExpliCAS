@@ -2238,7 +2238,7 @@ Result: log(b, (x * y)^(2))
 
 1. `Contraer logaritmos`
    - before: `2 · log_b(x) + 2 · log_b(y)`
-   - after: `log_b(((x · y))^2)`
+   - after: `log_b((x · y)^2)`
    - substeps: none
 
 ## contract_general_base_logs_to_grouped_power_with_passthrough (log_contract)
@@ -2272,7 +2272,7 @@ Result: log(b, (x * y)^(2)) + a
 
 1. `Contraer logaritmos`
    - before: `2 · log_b(x) + 2 · log_b(y) + a`
-   - after: `log_b(((x · y))^2) + a`
+   - after: `log_b((x · y)^2) + a`
    - substeps: none
 
 ## contract_hyperbolic_cosh_difference (simplify)
@@ -2802,7 +2802,7 @@ Result: ln((x * y)^(2))
 
 1. `Contraer logaritmos`
    - before: `ln(x^2) + ln(y^2)`
-   - after: `ln(((x · y))^2)`
+   - after: `ln((x · y)^2)`
    - substeps: none
 
 ## contract_log_grouped_power_with_passthrough (log_contract)
@@ -2835,7 +2835,7 @@ Result: ln((x * y)^(2)) + a
 
 1. `Contraer logaritmos`
    - before: `ln(x^2) + ln(y^2) + a`
-   - after: `ln(((x · y))^2) + a`
+   - after: `ln((x · y)^2) + a`
    - substeps: none
 
 ## contract_log_powered_two_denominator_factors (log_contract)
@@ -4619,7 +4619,7 @@ Result: x^(2) + 2 * x + 1
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((x + 1))^2`
+   - before: `(x + 1)^2`
    - after: `1 + x^2 + 2 · x`
    - substeps: none
 
@@ -5374,7 +5374,7 @@ Result: 1 / 4 + x^(2) + x
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((x + 1/2))^2`
+   - before: `(x + 1/2)^2`
    - after: `(1/2)^2 + x^2 + 2/2 · x`
    - substeps: none
 
@@ -6226,7 +6226,7 @@ Result: 2 * log(b, x) + 2 * log(b, y)
 ### Web / JSON Steps
 
 1. `Expandir logaritmos`
-   - before: `log_b(((x · y))^2)`
+   - before: `log_b((x · y)^2)`
    - after: `2 · log_b(x) + 2 · log_b(y)`
    - substeps: none
 
@@ -6260,7 +6260,7 @@ Result: 2 * log(b, x) + 2 * log(b, y) + a
 ### Web / JSON Steps
 
 1. `Expandir logaritmos`
-   - before: `log_b(((x · y))^2) + a`
+   - before: `log_b((x · y)^2) + a`
    - after: `2 · log_b(x) + 2 · log_b(y) + a`
    - substeps: none
 
@@ -6293,7 +6293,7 @@ Result: ln(x^(2)) + ln(y^(2))
 ### Web / JSON Steps
 
 1. `Expandir logaritmos`
-   - before: `ln(((x · y))^2)`
+   - before: `ln((x · y)^2)`
    - after: `ln(x^2) + ln(y^2)`
    - substeps: none
 
@@ -6326,7 +6326,7 @@ Result: ln(x^(2)) + ln(y^(2)) + a
 ### Web / JSON Steps
 
 1. `Expandir logaritmos`
-   - before: `ln(((x · y))^2) + a`
+   - before: `ln((x · y)^2) + a`
    - after: `ln(x^2) + ln(y^2) + a`
    - substeps: none
 
@@ -6877,7 +6877,7 @@ Result: a^(2) + b^(2) + 2 * a * b
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((a + b))^2`
+   - before: `(a + b)^2`
    - after: `a^2 + b^2 + 2 · a · b`
    - substeps: none
 
@@ -6907,7 +6907,7 @@ Result: a^(3) + b^(3) + 3 * a * b^(2) + 3 * b * a^(2)
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((a + b))^3`
+   - before: `(a + b)^3`
    - after: `a^3 + b^3 + 3 · a · b^2 + 3 · b · a^2`
    - substeps: none
 
@@ -6945,15 +6945,15 @@ Result: a^(3) + 3 * a * b^(2) - 3 * b * a^(2) - b^(3)
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((a - b))^3`
-   - after: `((-b))^3 + 3 · a · ((-b))^2 + a^3 - 3 · b · a^2`
+   - before: `(a - b)^3`
+   - after: `(-b)^3 + 3 · a · (-b)^2 + a^3 - 3 · b · a^2`
    - substeps: none
 2. `Negative Base Power`
-   - before: `((-b))^3 + 3 · a · ((-b))^2 + a^3 - 3 · b · a^2`
-   - after: `3 · a · ((-b))^2 + a^3 - 3 · b · a^2 - b^3`
+   - before: `(-b)^3 + 3 · a · (-b)^2 + a^3 - 3 · b · a^2`
+   - after: `3 · a · (-b)^2 + a^3 - 3 · b · a^2 - b^3`
    - substeps: none
 3. `Negative Base Power`
-   - before: `3 · a · ((-b))^2 + a^3 - 3 · b · a^2 - b^3`
+   - before: `3 · a · (-b)^2 + a^3 - 3 · b · a^2 - b^3`
    - after: `a^3 - 3 · b · a^2 + 3 · a · b^2 - b^3`
    - substeps: none
 
@@ -6987,11 +6987,11 @@ Result: a^(2) + b^(2) - 2 * a * b
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((a - b))^2`
-   - after: `((-b))^2 + a^2 - 2 · a · b`
+   - before: `(a - b)^2`
+   - after: `(-b)^2 + a^2 - 2 · a · b`
    - substeps: none
 2. `Negative Base Power`
-   - before: `((-b))^2 + a^2 - 2 · a · b`
+   - before: `(-b)^2 + a^2 - 2 · a · b`
    - after: `a^2 - 2 · a · b + b^2`
    - substeps: none
 
@@ -7085,7 +7085,7 @@ Result: a^(2) + b^(2) + c^(2) - 2 * a * b + 2 * a * c - 2 * b * c
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((a + c - b))^2`
+   - before: `(a + c - b)^2`
    - after: `a^2 + b^2 + c^2 - 2 · a · b + 2 · a · c - 2 · b · c`
    - substeps: none
 
@@ -7179,7 +7179,7 @@ Result: a^(3) + b^(3) + c^(3) + 3 * a * b^(2) + 3 * a * c^(2) + 3 * b * a^(2) + 
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((a + b + c))^3`
+   - before: `(a + b + c)^3`
    - after: `a^3 + b^3 + c^3 + 3 · a · b^2 + 3 · a · c^2 + 3 · b · a^2 + 3 · b · c^2 + 3 · c · a^2 + 3 · c · b^2 + 6 · a · b · c`
    - substeps: none
 
@@ -7209,7 +7209,7 @@ Result: a^(2) + b^(2) + c^(2) + 2 * a * b + 2 * a * c + 2 * b * c
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((a + b + c))^2`
+   - before: `(a + b + c)^2`
    - after: `a^2 + b^2 + c^2 + 2 · a · b + 2 · a · c + 2 · b · c`
    - substeps: none
 
@@ -7247,7 +7247,7 @@ Result: b^(2)
 ### Web / JSON Steps
 
 1. `Expandir binomio`
-   - before: `((a + b))^2 - a^2 - 2 · a · b`
+   - before: `(a + b)^2 - a^2 - 2 · a · b`
    - after: `a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b`
    - substeps: none
 2. `Cancelar términos opuestos`
@@ -9431,7 +9431,7 @@ Result: 1 - sin(2 * x)
 ### Web / JSON Steps
 
 1. `Aplicar identidad del cuadrado trigonométrico`
-   - before: `((sin(x) - cos(x)))^2`
+   - before: `(sin(x) - cos(x))^2`
    - after: `1 - sin(2 · x)`
    - substeps: none
 
@@ -9461,7 +9461,7 @@ Result: sin(2 * x) + 1
 ### Web / JSON Steps
 
 1. `Aplicar identidad del cuadrado trigonométrico`
-   - before: `((sin(x) + cos(x)))^2`
+   - before: `(sin(x) + cos(x))^2`
    - after: `sin(2 · x) + 1`
    - substeps: none
 
@@ -10750,7 +10750,7 @@ Result: (x + 1)^(2)
 
 1. `Factorizar`
    - before: `x^2 + 2 · x + 1`
-   - after: `((x + 1))^2`
+   - after: `(x + 1)^2`
    - substeps:
      1. `Usar a^2 + 2ab + b^2 = (a + b)^2`
 
@@ -10781,7 +10781,7 @@ Result: (a - b)^(2)
 
 1. `Factorizar`
    - before: `a^2 - 2 · a · b + b^2`
-   - after: `((a - b))^2`
+   - after: `(a - b)^2`
    - substeps:
      1. `Usar a^2 - 2ab + b^2 = (a - b)^2`
 
@@ -10812,7 +10812,7 @@ Result: (a + b)^(2)
 
 1. `Factorizar`
    - before: `a^2 + b^2 + 2 · a · b`
-   - after: `((a + b))^2`
+   - after: `(a + b)^2`
    - substeps:
      1. `Usar a^2 + 2ab + b^2 = (a + b)^2`
 
@@ -10906,7 +10906,7 @@ Result: (a + b)^(3)
 
 1. `Factorizar`
    - before: `a^3 + b^3 + 3 · a · b^2 + 3 · b · a^2`
-   - after: `((a + b))^3`
+   - after: `(a + b)^3`
    - substeps:
      1. `Usar a^3 + 3a^2b + 3ab^2 + b^3 = (a + b)^3`
 
@@ -10937,7 +10937,7 @@ Result: (a - b)^(3)
 
 1. `Factorizar`
    - before: `a^3 - 3 · b · a^2 + 3 · a · b^2 - b^3`
-   - after: `((a - b))^3`
+   - after: `(a - b)^3`
    - substeps:
      1. `Usar a^3 - 3a^2b + 3ab^2 - b^3 = (a - b)^3`
 
@@ -11162,7 +11162,7 @@ Result: (n! / (m - 1)!)^(3)
 
 1. `Aplicar producto de potencias`
    - before: `prod_k=m^n k^3`
-   - after: `((n!/(m - 1)!))^3`
+   - after: `(n!/(m - 1)!)^3`
    - substeps:
      1. `Escribir el producto con sus extremos`
      2. `Convertir el producto de potencias en potencia de factoriales`
@@ -11228,7 +11228,7 @@ Result: (n! / (m - 1)!)^(2)
 
 1. `Aplicar producto de potencias`
    - before: `prod_k=m^n k^2`
-   - after: `((n!/(m - 1)!))^2`
+   - after: `(n!/(m - 1)!)^2`
    - substeps:
      1. `Escribir el producto con sus extremos`
      2. `Convertir el producto de potencias en potencia de factoriales`
@@ -11452,7 +11452,7 @@ Result: (n * (n + 1) / 2)^(2)
 
 1. `Aplicar fórmula de suma de cubos`
    - before: `sum_k=1^n k^3`
-   - after: `(((n · (n + 1))/2))^2`
+   - after: `((n · (n + 1))/2)^2`
    - substeps:
      1. `Escribir la suma con sus extremos`
      2. `Usar la fórmula cerrada para la suma de cubos`
@@ -11484,7 +11484,7 @@ Result: (n * (n + 1) / 2)^(2) - (m * (m - 1) / 2)^(2)
 
 1. `Aplicar fórmula de suma de cubos`
    - before: `sum_k=m^n k^3`
-   - after: `(((n · (n + 1))/2))^2 - (((m · (m - 1))/2))^2`
+   - after: `((n · (n + 1))/2)^2 - ((m · (m - 1))/2)^2`
    - substeps:
      1. `Escribir la suma con sus extremos`
      2. `Usar la fórmula cerrada para la suma de cubos`
@@ -11652,7 +11652,7 @@ Result: (m + 1) * (n + 3) / ((m + 2) * (n + 2))
 ### Web / JSON Steps
 
 1. `Evaluar producto telescópico finito`
-   - before: `prod_k=m^n 1 - 1/((k + 2))^2`
+   - before: `prod_k=m^n 1 - 1/(k + 2)^2`
    - after: `((m + 1) · (n + 3))/((m + 2) · (n + 2))`
    - substeps:
      1. `Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2`
@@ -11688,7 +11688,7 @@ Result: (a + n + 1) * (a + m - 1) / ((a + m) * (a + n))
 ### Web / JSON Steps
 
 1. `Evaluar producto telescópico finito`
-   - before: `prod_k=m^n 1 - 1/((a + k))^2`
+   - before: `prod_k=m^n 1 - 1/(a + k)^2`
    - after: `((a + n + 1) · (a + m - 1))/((a + m) · (a + n))`
    - substeps:
      1. `Usar (u^2 - 1) / u^2 = ((u - 1) · (u + 1)) / u^2`
@@ -14688,13 +14688,13 @@ Result: (sqrt(x) + a) / (x - a^(2))
 
 1. `Racionalizar el denominador`
    - before: `1/(sqrt(x) - a)`
-   - after: `(sqrt(x) + a)/(sqrt(x)^2 - ((-a))^2)`
+   - after: `(sqrt(x) + a)/(sqrt(x)^2 + a^2)`
    - substeps:
      1. `Cambiar el signo para formar el conjugado`
      2. `Multiplicar numerador y denominador por ese conjugado`
      3. `En el denominador aparece una diferencia de cuadrados`
 2. `Deshacer raíz y potencia`
-   - before: `(sqrt(x) + a)/(sqrt(x)^2 - ((-a))^2)`
+   - before: `(sqrt(x) + a)/(sqrt(x)^2 + a^2)`
    - after: `(sqrt(x) + a)/(x - a^2)`
    - substeps:
      1. `Reemplazar ese bloque en la expresión`
@@ -14735,13 +14735,13 @@ Result: (sqrt(y) + a) / (y - a^(2))
 
 1. `Racionalizar el denominador`
    - before: `1/(sqrt(y) - a)`
-   - after: `(sqrt(y) + a)/(sqrt(y)^2 - ((-a))^2)`
+   - after: `(sqrt(y) + a)/(sqrt(y)^2 + a^2)`
    - substeps:
      1. `Cambiar el signo para formar el conjugado`
      2. `Multiplicar numerador y denominador por ese conjugado`
      3. `En el denominador aparece una diferencia de cuadrados`
 2. `Deshacer raíz y potencia`
-   - before: `(sqrt(y) + a)/(sqrt(y)^2 - ((-a))^2)`
+   - before: `(sqrt(y) + a)/(sqrt(y)^2 + a^2)`
    - after: `(sqrt(y) + a)/(y - a^2)`
    - substeps:
      1. `Reemplazar ese bloque en la expresión`
@@ -15162,7 +15162,7 @@ Result: a * (b / (2 * a) + y)^(2) + c - b^(2) / (4 * a)
 
 1. `Completar el cuadrado`
    - before: `a · y^2 + b · y + c`
-   - after: `a · ((b/(2 · a) + y))^2 + c - b^2/(4 · a)`
+   - after: `a · (b/(2 · a) + y)^2 + c - b^2/(4 · a)`
    - substeps:
      1. `Extraer el coeficiente líder de los términos cuadráticos`
      2. `Añadir y restar el cuadrado del semicoeficiente dentro del paréntesis`
@@ -15200,7 +15200,7 @@ Result: (3 / 2 + x)^(2) - 5 / 4
 
 1. `Completar el cuadrado`
    - before: `x^2 + 3 · x + 1`
-   - after: `((3/2 + x))^2 - 5/4`
+   - after: `(3/2 + x)^2 - 5/4`
    - substeps:
      1. `Añadir y restar el cuadrado del semicoeficiente`
      2. `Agrupar el trinomio como cuadrado perfecto`
@@ -15234,7 +15234,7 @@ Result: (b / a + x)^(2) * a / 2 + c - b^(2) / (2 * a)
 
 1. `Completar el cuadrado`
    - before: `x^2 · a/2 + b · x + c`
-   - after: `((b/a + x))^2 · a/2 + c - b^2/(2 · a)`
+   - after: `(b/a + x)^2 · a/2 + c - b^2/(2 · a)`
    - substeps:
      1. `Extraer el coeficiente líder de los términos cuadráticos`
      2. `Añadir y restar el cuadrado del semicoeficiente dentro del paréntesis`
@@ -15272,7 +15272,7 @@ Result: (x + 3)^(2) - 4
 
 1. `Completar el cuadrado`
    - before: `x^2 + 6 · x + 5`
-   - after: `((x + 3))^2 - 4`
+   - after: `(x + 3)^2 - 4`
    - substeps:
      1. `Añadir y restar el cuadrado del semicoeficiente`
      2. `Agrupar el trinomio como cuadrado perfecto`
@@ -15306,7 +15306,7 @@ Result: b^(2) / (4 * a) + c - a * (x - b / (2 * a))^(2)
 
 1. `Completar el cuadrado`
    - before: `b · x + c - a · x^2`
-   - after: `b^2/(4 · a) + c - a · ((x - b/(2 · a)))^2`
+   - after: `b^2/(4 · a) + c - a · (x - b/(2 · a))^2`
    - substeps:
      1. `Extraer el coeficiente líder de los términos cuadráticos`
      2. `Añadir y restar el cuadrado del semicoeficiente dentro del paréntesis`
@@ -15341,7 +15341,7 @@ Result: a * (b / (2 * a) + x)^(2) + c - b^(2) / (4 * a)
 
 1. `Completar el cuadrado`
    - before: `a · x^2 + b · x + c`
-   - after: `a · ((b/(2 · a) + x))^2 + c - b^2/(4 · a)`
+   - after: `a · (b/(2 · a) + x)^2 + c - b^2/(4 · a)`
    - substeps:
      1. `Extraer el coeficiente líder de los términos cuadráticos`
      2. `Añadir y restar el cuadrado del semicoeficiente dentro del paréntesis`
@@ -15379,7 +15379,7 @@ Result: (b + x)^(2) + c - b^(2)
 
 1. `Completar el cuadrado`
    - before: `x^2 + 2 · b · x + c`
-   - after: `((b + x))^2 + c - b^2`
+   - after: `(b + x)^2 + c - b^2`
    - substeps:
      1. `Añadir y restar el cuadrado del semicoeficiente`
      2. `Agrupar el trinomio como cuadrado perfecto`
@@ -15413,7 +15413,7 @@ Result: a * (x - b / (2 * a))^(2) + c - b^(2) / (4 * a)
 
 1. `Completar el cuadrado`
    - before: `a · x^2 - b · x + c`
-   - after: `a · ((x - b/(2 · a)))^2 + c - b^2/(4 · a)`
+   - after: `a · (x - b/(2 · a))^2 + c - b^2/(4 · a)`
    - substeps:
      1. `Extraer el coeficiente líder de los términos cuadráticos`
      2. `Añadir y restar el cuadrado del semicoeficiente dentro del paréntesis`

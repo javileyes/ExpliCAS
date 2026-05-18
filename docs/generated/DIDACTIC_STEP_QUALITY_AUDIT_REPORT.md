@@ -467,7 +467,7 @@ Steps:
 ```text
 Steps:
 1. Expandir el binomio
-   Before: ((a + b))^2 - a^2 - 2 · a · b
+   Before: (a + b)^2 - a^2 - 2 · a · b
    After: b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b
 2. Cancel exact additive pairs
    Before: b^2 + 2 · a · b + a^2 - a^2 - 2 · a · b
@@ -488,7 +488,7 @@ Steps:
 ### Wire / Web Steps
 
 1. `Expandir binomio`
-   - before: `((a + b))^2 - a^2 - 2 · a · b`
+   - before: `(a + b)^2 - a^2 - 2 · a · b`
    - after: `a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b`
    - before_latex: `{\color{red}{{(a + b)}^{2}}} - {a}^{2} - 2\cdot a\cdot b`
    - after_latex: `{\color{green}{{a}^{2} + {b}^{2} + 2\cdot a\cdot b}} - {a}^{2} - 2\cdot a\cdot b`

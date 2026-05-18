@@ -64,6 +64,34 @@ pub struct RationalizeProductDenominatorRewrite {
     pub rewritten: ExprId,
 }
 
+fn contains_function_call(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(_, _) => true,
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            contains_function_call(ctx, *left) || contains_function_call(ctx, *right)
+        }
+        Expr::Neg(inner) => contains_function_call(ctx, *inner),
+        _ => false,
+    }
+}
+
+fn root_base_is_multi_function_sum(ctx: &Context, base: ExprId) -> bool {
+    let terms = collect_additive_terms(ctx, base);
+    if terms.len() < 3 {
+        return false;
+    }
+
+    terms
+        .iter()
+        .filter(|term| contains_function_call(ctx, **term))
+        .count()
+        >= 2
+}
+
 /// Try to rationalize a binomial denominator with square roots using difference of squares.
 pub fn try_rewrite_rationalize_denominator_diff_squares_expr(
     ctx: &mut Context,
@@ -457,6 +485,9 @@ pub fn try_rewrite_rationalize_product_denominator_expr(
 
     if non_root_factors.is_empty() {
         let (radicand, _index) = extract_root_base(ctx, root)?;
+        if root_base_is_multi_function_sum(ctx, radicand) {
+            return None;
+        }
         let is_binomial_radical = matches!(ctx.get(radicand), Expr::Add(_, _) | Expr::Sub(_, _));
         if is_binomial_radical && contains_irrational(ctx, num) {
             return None;
@@ -477,6 +508,9 @@ pub fn try_rewrite_rationalize_product_denominator_expr(
     }
 
     let (radicand, index) = extract_root_base(ctx, root)?;
+    if root_base_is_multi_function_sum(ctx, radicand) {
+        return None;
+    }
     if let Expr::Div(_, radicand_den) = ctx.get(radicand) {
         if non_root_factors
             .iter()
@@ -752,6 +786,13 @@ mod tests {
             .expect("product-den rationalization should apply");
         let rendered = cas_formatter::render_expr(&ctx, rewrite.rewritten);
         assert!(rendered.contains("sqrt(y)") || rendered.contains("y^(1/2)"));
+    }
+
+    #[test]
+    fn skips_rationalize_product_denominator_multi_function_root_sum() {
+        let mut ctx = Context::new();
+        let expr = parse("1/(2*sqrt(cos(x)+2*sin(x)*cos(x)+4))", &mut ctx).expect("parse");
+        assert!(try_rewrite_rationalize_product_denominator_expr(&mut ctx, expr).is_none());
     }
 
     #[test]

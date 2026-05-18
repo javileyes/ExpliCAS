@@ -140,7 +140,7 @@ fn test_eval_plain_reciprocal_trig_log_diff_stays_off_depth_overflow_route() {
     let cases = [
         (
             "diff(ln(sec(sqrt(x))+tan(sqrt(x))), x)",
-            "1 / (sqrt(x)\u{00b7}2\u{00b7}cos(sqrt(x)))",
+            "1 / (2\u{00b7}sqrt(x)\u{00b7}cos(sqrt(x)))",
             vec![
                 "cos(sqrt(x)) \u{2260} 0",
                 "tan(sqrt(x)) + sec(sqrt(x)) > 0",
@@ -149,11 +149,29 @@ fn test_eval_plain_reciprocal_trig_log_diff_stays_off_depth_overflow_route() {
         ),
         (
             "diff(ln(csc(sqrt(x))-cot(sqrt(x))), x)",
-            "1 / (sqrt(x)\u{00b7}2\u{00b7}sin(sqrt(x)))",
+            "1 / (2\u{00b7}sqrt(x)\u{00b7}sin(sqrt(x)))",
             vec![
                 "sin(sqrt(x)) \u{2260} 0",
                 "csc(sqrt(x)) - cot(sqrt(x)) > 0",
                 "x > 0",
+            ],
+        ),
+        (
+            "diff(ln(sec(sqrt(3*x+1))+tan(sqrt(3*x+1))), x)",
+            "3 / (2\u{00b7}sqrt(3\u{00b7}x + 1)\u{00b7}cos(sqrt(3\u{00b7}x + 1)))",
+            vec![
+                "cos(sqrt(3\u{00b7}x + 1)) \u{2260} 0",
+                "tan(sqrt(3\u{00b7}x + 1)) + sec(sqrt(3\u{00b7}x + 1)) > 0",
+                "x > -1/3",
+            ],
+        ),
+        (
+            "diff(ln(csc(sqrt(3*x+1))-cot(sqrt(3*x+1))), x)",
+            "3 / (2\u{00b7}sqrt(3\u{00b7}x + 1)\u{00b7}sin(sqrt(3\u{00b7}x + 1)))",
+            vec![
+                "sin(sqrt(3\u{00b7}x + 1)) \u{2260} 0",
+                "csc(sqrt(3\u{00b7}x + 1)) - cot(sqrt(3\u{00b7}x + 1)) > 0",
+                "x > -1/3",
             ],
         ),
     ];
@@ -172,16 +190,26 @@ fn test_eval_plain_reciprocal_trig_log_diff_stays_off_depth_overflow_route() {
 
         assert_eq!(wire["ok"], true, "input: {input}");
         assert_eq!(wire["result"], expected_result, "input: {input}");
-        assert_eq!(
-            wire["required_display"]
-                .as_array()
-                .expect("required_display array"),
-            &expected_required_display
-                .iter()
-                .map(|condition| Value::String((*condition).to_string()))
-                .collect::<Vec<_>>(),
-            "input: {input}"
+        let result_latex = wire["result_latex"]
+            .as_str()
+            .expect("result_latex should be a string");
+        assert!(
+            result_latex.contains("\\sqrt") && !result_latex.contains("}^{-"),
+            "post-calculus LaTeX should mirror the compact reciprocal-root display for {input}, got: {result_latex}"
         );
+        let mut actual_required = wire["required_display"]
+            .as_array()
+            .expect("required_display array")
+            .iter()
+            .map(|condition| condition.as_str().expect("required condition").to_owned())
+            .collect::<Vec<_>>();
+        let mut expected_required = expected_required_display
+            .iter()
+            .map(|condition| (*condition).to_string())
+            .collect::<Vec<_>>();
+        actual_required.sort();
+        expected_required.sort();
+        assert_eq!(actual_required, expected_required, "input: {input}");
         assert!(
             wire.get("blocked_hints").is_none(),
             "successful reciprocal-trig log diff should not surface non-actionable cycle hints for {input}: {:?}",
@@ -191,6 +219,142 @@ fn test_eval_plain_reciprocal_trig_log_diff_stays_off_depth_overflow_route() {
             !stderr.contains("depth_overflow") && !stderr.contains("WARN"),
             "plain reciprocal-trig log diff should use the direct route for {input}, got stderr:\n{stderr}"
         );
+    }
+
+    let output = cli()
+        .args([
+            "eval",
+            "diff(ln(sec(sqrt(x))+tan(sqrt(x))), x)",
+            "--format",
+            "json",
+            "--steps",
+            "on",
+        ])
+        .output()
+        .expect("Failed to run CLI with steps enabled");
+    assert!(output.status.success());
+    let wire: Value =
+        serde_json::from_slice(&output.stdout).expect("Invalid wire output with steps enabled");
+    let final_step = wire["steps"]
+        .as_array()
+        .expect("steps array")
+        .last()
+        .expect("final step");
+    let final_after_latex = final_step["after_latex"]
+        .as_str()
+        .expect("final after_latex string");
+    assert!(
+        final_after_latex.contains("\\sqrt{x}") && !final_after_latex.contains("{x}^{-"),
+        "post-calculus step LaTeX should mirror the compact reciprocal-root display, got: {final_after_latex}"
+    );
+    for step in wire["steps"].as_array().expect("steps array") {
+        for field in ["rule_latex", "before_latex", "after_latex"] {
+            let Some(latex) = step[field].as_str() else {
+                continue;
+            };
+            assert!(
+                !latex.contains("{x}^{-"),
+                "calculus step {field} should not leak reciprocal-root power notation, got: {latex}"
+            );
+        }
+    }
+}
+
+#[test]
+fn test_eval_plain_log_tan_sqrt_diff_uses_sqrt_in_scaled_trig_argument() {
+    let output = cli()
+        .args(["eval", "diff(ln(tan(sqrt(x))), x)", "--format", "json"])
+        .output()
+        .expect("Failed to run CLI");
+
+    assert!(output.status.success());
+    let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "1 / (sin(2\u{00b7}sqrt(x))\u{00b7}sqrt(x))");
+    assert!(
+        !wire["result"]
+            .as_str()
+            .expect("result string")
+            .contains("x^(1/2)"),
+        "post-calculus display should not leak half-power notation in scaled trig arguments"
+    );
+    let mut required_display = wire["required_display"]
+        .as_array()
+        .expect("required_display array")
+        .iter()
+        .map(|value| value.as_str().expect("required_display string"))
+        .collect::<Vec<_>>();
+    required_display.sort_unstable();
+    assert_eq!(
+        required_display,
+        ["sin(sqrt(x)) / cos(sqrt(x)) > 0", "x > 0"]
+    );
+}
+
+#[test]
+fn test_eval_shifted_log_tan_sqrt_diff_finishes_without_depth_overflow() {
+    let cases = [
+        (
+            "diff(ln(tan(sqrt(x))+1), x)",
+            "1 / (2\u{00b7}sqrt(x)\u{00b7}cos(sqrt(x))^2\u{00b7}(tan(sqrt(x)) + 1))",
+            vec!["x > 0", "cos(sqrt(x)) \u{2260} 0", "tan(sqrt(x)) + 1 > 0"],
+        ),
+        (
+            "diff(ln(1-tan(sqrt(x))), x)",
+            "-1 / (2\u{00b7}sqrt(x)\u{00b7}cos(sqrt(x))^2\u{00b7}(1 - tan(sqrt(x))))",
+            vec!["x > 0", "cos(sqrt(x)) \u{2260} 0", "1 - tan(sqrt(x)) > 0"],
+        ),
+        (
+            "diff(ln(tan(sqrt(x))-1), x)",
+            "1 / (2\u{00b7}sqrt(x)\u{00b7}cos(sqrt(x))^2\u{00b7}(tan(sqrt(x)) - 1))",
+            vec!["x > 0", "cos(sqrt(x)) \u{2260} 0", "tan(sqrt(x)) - 1 > 0"],
+        ),
+        (
+            "diff(ln(2+tan(sqrt(x))), x)",
+            "1 / (2\u{00b7}sqrt(x)\u{00b7}cos(sqrt(x))^2\u{00b7}(tan(sqrt(x)) + 2))",
+            vec!["x > 0", "cos(sqrt(x)) \u{2260} 0", "tan(sqrt(x)) + 2 > 0"],
+        ),
+        (
+            "diff(ln(1+tan(sqrt(2*x+3))), x)",
+            "1 / (sqrt(2\u{00b7}x + 3)\u{00b7}cos(sqrt(2\u{00b7}x + 3))^2\u{00b7}(tan(sqrt(2\u{00b7}x + 3)) + 1))",
+            vec![
+                "x > -3/2",
+                "cos(sqrt(2\u{00b7}x + 3)) \u{2260} 0",
+                "tan(sqrt(2\u{00b7}x + 3)) + 1 > 0",
+            ],
+        ),
+    ];
+
+    for (input, expected_result, expected_required) in cases {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+
+        assert!(output.status.success(), "input: {input}");
+        let stderr = String::from_utf8(output.stderr).expect("stderr utf8");
+        let wire: Value = serde_json::from_slice(&output.stdout).expect("Invalid wire output");
+
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "shifted tan sqrt diff should stay off the fragile simplification route for {input}, got stderr:\n{stderr}"
+        );
+        let mut actual_required = wire["required_display"]
+            .as_array()
+            .expect("required_display array")
+            .iter()
+            .map(|value| value.as_str().expect("required string").to_owned())
+            .collect::<Vec<_>>();
+        let mut expected_required = expected_required
+            .into_iter()
+            .map(str::to_owned)
+            .collect::<Vec<_>>();
+        actual_required.sort();
+        expected_required.sort();
+        assert_eq!(actual_required, expected_required, "input: {input}");
     }
 }
 

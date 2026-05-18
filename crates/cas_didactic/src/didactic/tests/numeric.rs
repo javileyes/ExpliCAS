@@ -88,6 +88,20 @@ fn test_latex_to_plain_text_parenthesizes_power_base_when_needed() {
 }
 
 #[test]
+fn test_latex_to_plain_text_does_not_double_parenthesize_power_base() {
+    let input = r"\frac{1 - x}{2\cdot \sqrt{x}\cdot {(x + 1)}^{2}}";
+    let output = latex_to_plain_text(input);
+    assert!(
+        output.contains("(x + 1)^2"),
+        "expected already-parenthesized power base to stay single-wrapped, got: {output}"
+    );
+    assert!(
+        !output.contains("((x + 1))^2"),
+        "unexpected duplicated parentheses around power base, got: {output}"
+    );
+}
+
+#[test]
 fn test_latex_to_plain_text_humanizes_even_negative_literal_square() {
     let input = r"x - ((-1))^2";
     let output = latex_to_plain_text(input);
@@ -126,6 +140,20 @@ fn test_latex_to_plain_text_parenthesizes_grouped_symbolic_exponents() {
     assert!(
         output.contains("y^(a + b + c)"),
         "expected grouped symbolic exponent for y, got: {output}"
+    );
+}
+
+#[test]
+fn test_latex_to_plain_text_parenthesizes_nested_power_exponents() {
+    let input = r"{e}^{{x}^{2}} + \sqrt{{e}^{{x}^{2}} + 1}";
+    let output = latex_to_plain_text(input);
+    assert!(
+        output.contains("e^(x^2) + sqrt(e^(x^2) + 1)"),
+        "expected nested power exponent to stay grouped, got: {output}"
+    );
+    assert!(
+        !output.contains("e^x^2"),
+        "nested exponent should not become visually ambiguous, got: {output}"
     );
 }
 

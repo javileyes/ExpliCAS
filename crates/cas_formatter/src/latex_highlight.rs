@@ -363,4 +363,141 @@ mod tests {
         assert!(rendered.contains("!"));
         assert!(!rendered.contains("\\text{fact}"));
     }
+
+    #[test]
+    fn test_path_highlighted_reciprocal_sqrt_fraction_presentation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let minus_half = ctx.rational(-1, 2);
+        let numerator = ctx.add(Expr::Pow(x, minus_half));
+        let denominator = ctx.add(Expr::Add(x, one));
+        let expr = ctx.add(Expr::Div(numerator, denominator));
+
+        let mut config = PathHighlightConfig::new();
+        config.add(vec![0, 0], HighlightColor::Green);
+
+        let latex = crate::PathHighlightedLatexRenderer {
+            context: &ctx,
+            id: expr,
+            path_highlights: &config,
+            hints: None,
+            style_prefs: None,
+        };
+
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{1}{(1 + x)\\cdot \\sqrt{{\\color{green}{x}}}}"
+        );
+    }
+
+    #[test]
+    fn test_path_highlighted_nested_reciprocal_sqrt_fraction_presentation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let two = ctx.num(2);
+        let minus_half = ctx.rational(-1, 2);
+        let reciprocal_sqrt = ctx.add(Expr::Pow(x, minus_half));
+        let scaled = ctx.add(Expr::Div(reciprocal_sqrt, two));
+        let denominator = ctx.add(Expr::Add(x, one));
+        let expr = ctx.add(Expr::Div(scaled, denominator));
+
+        let mut config = PathHighlightConfig::new();
+        config.add(vec![0, 0, 0], HighlightColor::Green);
+
+        let latex = crate::PathHighlightedLatexRenderer {
+            context: &ctx,
+            id: expr,
+            path_highlights: &config,
+            hints: None,
+            style_prefs: None,
+        };
+
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{1}{2\\cdot (1 + x)\\cdot \\sqrt{{\\color{green}{x}}}}"
+        );
+    }
+
+    #[test]
+    fn test_path_highlighted_negated_half_reciprocal_sqrt_fraction_presentation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let two = ctx.num(2);
+        let half = ctx.rational(1, 2);
+        let negated_half = ctx.add(Expr::Neg(half));
+        let reciprocal_sqrt = ctx.add(Expr::Pow(x, negated_half));
+        let expr = ctx.add(Expr::Div(reciprocal_sqrt, two));
+
+        let mut config = PathHighlightConfig::new();
+        config.add(vec![0, 0], HighlightColor::Green);
+
+        let latex = crate::PathHighlightedLatexRenderer {
+            context: &ctx,
+            id: expr,
+            path_highlights: &config,
+            hints: None,
+            style_prefs: None,
+        };
+
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{1}{2\\cdot \\sqrt{{\\color{green}{x}}}}"
+        );
+    }
+
+    #[test]
+    fn test_path_highlighted_fractional_coefficient_reciprocal_sqrt_product_presentation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let half = ctx.rational(1, 2);
+        let minus_half = ctx.rational(-1, 2);
+        let reciprocal_sqrt = ctx.add(Expr::Pow(x, minus_half));
+        let expr = ctx.add(Expr::Mul(half, reciprocal_sqrt));
+
+        let mut config = PathHighlightConfig::new();
+        config.add(vec![1, 0], HighlightColor::Green);
+
+        let latex = crate::PathHighlightedLatexRenderer {
+            context: &ctx,
+            id: expr,
+            path_highlights: &config,
+            hints: None,
+            style_prefs: None,
+        };
+
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{1}{2\\cdot \\sqrt{{\\color{green}{x}}}}"
+        );
+    }
+
+    #[test]
+    fn test_path_highlighted_reciprocal_sqrt_times_unit_fraction_presentation() {
+        let mut ctx = Context::new();
+        let x = ctx.var("x");
+        let one = ctx.num(1);
+        let minus_half = ctx.rational(-1, 2);
+        let reciprocal_sqrt = ctx.add(Expr::Pow(x, minus_half));
+        let cos_x = ctx.call("cos", vec![x]);
+        let sec_x = ctx.add(Expr::Div(one, cos_x));
+        let expr = ctx.add(Expr::Mul(reciprocal_sqrt, sec_x));
+
+        let mut config = PathHighlightConfig::new();
+        config.add(vec![0, 0], HighlightColor::Green);
+
+        let latex = crate::PathHighlightedLatexRenderer {
+            context: &ctx,
+            id: expr,
+            path_highlights: &config,
+            hints: None,
+            style_prefs: None,
+        };
+
+        assert_eq!(
+            latex.to_latex(),
+            "\\frac{1}{\\cos(x)\\cdot \\sqrt{{\\color{green}{x}}}}"
+        );
+    }
 }

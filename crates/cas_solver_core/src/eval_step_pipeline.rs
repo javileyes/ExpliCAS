@@ -1,7 +1,9 @@
 //! Generic eval-step cleanup pipeline shared across crates.
 
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{hold::unwrap_internal_hold, BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_predicates::{is_one_expr, is_zero_expr};
+use num_rational::BigRational;
+use num_traits::{One, Zero};
 
 /// Clean raw eval steps for display:
 /// 1) Remove no-op steps (no global or focused local change),
@@ -102,7 +104,10 @@ fn redundant_post_calculus_rationalization_end_index(
     }
 
     let rationalize = steps.get(start)?;
-    if rationalize.rule_name.as_str() != "Rationalize Product Denominator" {
+    if !matches!(
+        rationalize.rule_name.as_str(),
+        "Rationalize Product Denominator" | "Rationalize Denominator"
+    ) {
         return None;
     }
 
@@ -125,13 +130,19 @@ fn redundant_post_calculus_rationalization_end_index(
 fn is_post_calculus_presentation_noise_step(step: &crate::step_model::Step) -> bool {
     matches!(
         step.rule_name.as_str(),
-        "Combine Constants"
+        "Cancel Common Factors"
+            | "Cancel Exact Additive Pairs"
+            | "Combine Constants"
+            | "Combine Like Terms"
             | "Distributive Property"
+            | "Evaluate Logarithms"
             | "Expand"
             | "Identity Property of Multiplication"
             | "N-ary Mul Combine Powers"
             | "Normalize Negation in Product"
             | "Pull Constant From Fraction"
+            | "Rationalize Binomial Denominator"
+            | "Rationalize Denominator"
             | "Rationalize Product Denominator"
             | "Simplify Multiplication with Division"
     )
@@ -213,7 +224,9 @@ pub fn normalize_expr_for_display(ctx: &mut Context, expr: ExprId) -> ExprId {
             } else if is_one_expr(ctx, rhs) {
                 lhs
             } else {
-                ctx.add(Expr::Mul(lhs, rhs))
+                let product = ctx.add(Expr::Mul(lhs, rhs));
+                compact_root_denominator_fraction_product_for_display(ctx, product)
+                    .unwrap_or(product)
             }
         }
         Expr::Div(lhs, rhs) => {
@@ -257,6 +270,260 @@ pub fn normalize_expr_for_display(ctx: &mut Context, expr: ExprId) -> ExprId {
             ctx.add(Expr::Hold(inner))
         }
         Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => expr,
+    }
+}
+
+fn compact_root_denominator_fraction_product_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let mut numerator_coeff = BigRational::one();
+    let mut numerator_factors = Vec::new();
+    let mut denominator_coeff = BigRational::one();
+    let mut denominator_factors = Vec::new();
+    let mut saw_root_denominator = false;
+
+    collect_display_fraction_product_parts(
+        ctx,
+        expr,
+        &mut numerator_coeff,
+        &mut numerator_factors,
+        &mut denominator_coeff,
+        &mut denominator_factors,
+        &mut saw_root_denominator,
+    )?;
+
+    if !saw_root_denominator || denominator_coeff.is_zero() {
+        return None;
+    }
+
+    let coefficient = numerator_coeff / denominator_coeff;
+    if coefficient.is_zero() {
+        return Some(ctx.num(0));
+    }
+
+    let coefficient_numerator = BigRational::from_integer(coefficient.numer().clone());
+    if !coefficient_numerator.is_one() || numerator_factors.is_empty() {
+        numerator_factors.insert(0, ctx.add(Expr::Number(coefficient_numerator)));
+    }
+    if !coefficient.denom().is_one() {
+        denominator_factors.insert(
+            0,
+            ctx.add(Expr::Number(BigRational::from_integer(
+                coefficient.denom().clone(),
+            ))),
+        );
+    }
+    let mut non_root_denominator_factors = Vec::new();
+    let mut root_denominator_factors = Vec::new();
+    for factor in denominator_factors {
+        if is_sqrt_like_display_factor(ctx, factor) {
+            root_denominator_factors.push(factor);
+        } else {
+            non_root_denominator_factors.push(factor);
+        }
+    }
+    let denominator_factors = non_root_denominator_factors
+        .into_iter()
+        .chain(root_denominator_factors)
+        .collect::<Vec<_>>();
+    let numerator = build_display_product(ctx, &numerator_factors);
+    let denominator = build_display_product(ctx, &denominator_factors);
+    Some(ctx.add(Expr::Div(numerator, denominator)))
+}
+
+fn collect_display_fraction_product_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    numerator_coeff: &mut BigRational,
+    numerator_factors: &mut Vec<ExprId>,
+    denominator_coeff: &mut BigRational,
+    denominator_factors: &mut Vec<ExprId>,
+    saw_root_denominator: &mut bool,
+) -> Option<()> {
+    let expr = unwrap_internal_hold(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Mul(left, right) => {
+            collect_display_fraction_product_parts(
+                ctx,
+                left,
+                numerator_coeff,
+                numerator_factors,
+                denominator_coeff,
+                denominator_factors,
+                saw_root_denominator,
+            )?;
+            collect_display_fraction_product_parts(
+                ctx,
+                right,
+                numerator_coeff,
+                numerator_factors,
+                denominator_coeff,
+                denominator_factors,
+                saw_root_denominator,
+            )
+        }
+        Expr::Div(num, den) => {
+            collect_display_fraction_numerator_part(
+                ctx,
+                num,
+                numerator_coeff,
+                numerator_factors,
+                denominator_factors,
+                saw_root_denominator,
+            )?;
+            collect_display_denominator_parts(
+                ctx,
+                den,
+                denominator_coeff,
+                denominator_factors,
+                saw_root_denominator,
+            )
+        }
+        Expr::Number(value) => {
+            *numerator_coeff *= value;
+            Some(())
+        }
+        Expr::Pow(base, exp) if is_negative_one_half_display_exponent(ctx, exp) => {
+            denominator_factors.push(ctx.call_builtin(BuiltinFn::Sqrt, vec![base]));
+            *saw_root_denominator = true;
+            Some(())
+        }
+        _ => {
+            numerator_factors.push(expr);
+            Some(())
+        }
+    }
+}
+
+fn collect_display_fraction_numerator_part(
+    ctx: &mut Context,
+    expr: ExprId,
+    numerator_coeff: &mut BigRational,
+    numerator_factors: &mut Vec<ExprId>,
+    denominator_factors: &mut Vec<ExprId>,
+    saw_root_denominator: &mut bool,
+) -> Option<()> {
+    let expr = unwrap_internal_hold(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Number(value) => {
+            *numerator_coeff *= value;
+            Some(())
+        }
+        Expr::Mul(left, right) => {
+            collect_display_fraction_numerator_part(
+                ctx,
+                left,
+                numerator_coeff,
+                numerator_factors,
+                denominator_factors,
+                saw_root_denominator,
+            )?;
+            collect_display_fraction_numerator_part(
+                ctx,
+                right,
+                numerator_coeff,
+                numerator_factors,
+                denominator_factors,
+                saw_root_denominator,
+            )
+        }
+        Expr::Pow(base, exp) if is_negative_one_half_display_exponent(ctx, exp) => {
+            denominator_factors.push(ctx.call_builtin(BuiltinFn::Sqrt, vec![base]));
+            *saw_root_denominator = true;
+            Some(())
+        }
+        _ => {
+            numerator_factors.push(expr);
+            Some(())
+        }
+    }
+}
+
+fn collect_display_denominator_parts(
+    ctx: &mut Context,
+    expr: ExprId,
+    denominator_coeff: &mut BigRational,
+    denominator_factors: &mut Vec<ExprId>,
+    saw_root_denominator: &mut bool,
+) -> Option<()> {
+    let expr = unwrap_internal_hold(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Mul(left, right) => {
+            collect_display_denominator_parts(
+                ctx,
+                left,
+                denominator_coeff,
+                denominator_factors,
+                saw_root_denominator,
+            )?;
+            collect_display_denominator_parts(
+                ctx,
+                right,
+                denominator_coeff,
+                denominator_factors,
+                saw_root_denominator,
+            )
+        }
+        Expr::Number(value) => {
+            *denominator_coeff *= value;
+            Some(())
+        }
+        _ => {
+            if is_sqrt_like_display_factor(ctx, expr) {
+                *saw_root_denominator = true;
+            }
+            denominator_factors.push(expr);
+            Some(())
+        }
+    }
+}
+
+fn is_sqrt_like_display_factor(ctx: &Context, expr: ExprId) -> bool {
+    let expr = unwrap_internal_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            args.len() == 1
+                && (ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) || ctx.sym_name(*fn_id) == "sqrt")
+        }
+        Expr::Pow(_, exp) => rational_display_constant(ctx, *exp)
+            .is_some_and(|value| value == BigRational::new(1.into(), 2.into())),
+        _ => false,
+    }
+}
+
+fn build_display_product(ctx: &mut Context, factors: &[ExprId]) -> ExprId {
+    let mut iter = factors.iter().copied();
+    let Some(first) = iter.next() else {
+        return ctx.num(1);
+    };
+    iter.fold(first, |acc, factor| ctx.add(Expr::Mul(acc, factor)))
+}
+
+fn is_negative_one_half_display_exponent(ctx: &Context, expr: ExprId) -> bool {
+    rational_display_constant(ctx, expr)
+        .is_some_and(|value| value == BigRational::new((-1).into(), 2.into()))
+}
+
+fn rational_display_constant(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Number(value) => Some(value.clone()),
+        Expr::Neg(inner) => Some(-rational_display_constant(ctx, *inner)?),
+        Expr::Add(left, right) => {
+            Some(rational_display_constant(ctx, *left)? + rational_display_constant(ctx, *right)?)
+        }
+        Expr::Sub(left, right) => {
+            Some(rational_display_constant(ctx, *left)? - rational_display_constant(ctx, *right)?)
+        }
+        Expr::Div(num, den) => {
+            let denominator = rational_display_constant(ctx, *den)?;
+            if denominator.is_zero() {
+                None
+            } else {
+                Some(rational_display_constant(ctx, *num)? / denominator)
+            }
+        }
+        _ => None,
     }
 }
 
@@ -482,6 +749,94 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(rules, vec!["Symbolic Differentiation", "Follow-up"]);
         assert_eq!(out[1].global_before, Some(compact));
+    }
+
+    #[test]
+    fn to_display_eval_steps_removes_redundant_diff_rationalize_denominator_round_trip() {
+        let mut ctx = Context::new();
+        let source = ctx.num(1);
+        let compact = ctx.num(2);
+        let rationalized = ctx.num(3);
+        let expanded = ctx.num(4);
+        let presented = ctx.num(5);
+
+        let mut diff = crate::step_model::Step::new_compact(
+            "diff",
+            "Symbolic Differentiation",
+            source,
+            compact,
+        );
+        diff.global_after = Some(compact);
+        let mut rationalize = crate::step_model::Step::new_compact(
+            "rationalize",
+            "Rationalize Denominator",
+            compact,
+            rationalized,
+        );
+        rationalize.global_after = Some(rationalized);
+        let mut expand =
+            crate::step_model::Step::new_compact("expand", "Expand", rationalized, expanded);
+        expand.global_after = Some(expanded);
+        let mut present = crate::step_model::Step::new_compact(
+            "present",
+            "Present calculus result in compact form",
+            expanded,
+            presented,
+        );
+        present.global_after = Some(presented);
+
+        let out = super::to_display_eval_steps(vec![diff, rationalize, expand, present]);
+        let rules = out
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(rules, vec!["Symbolic Differentiation"]);
+    }
+
+    #[test]
+    fn to_display_eval_steps_removes_redundant_post_diff_cancel_cleanup_round_trip() {
+        let mut ctx = Context::new();
+        let source = ctx.num(1);
+        let compact = ctx.num(2);
+        let rationalized = ctx.num(3);
+        let cancelled = ctx.num(4);
+        let presented = ctx.num(5);
+
+        let mut diff = crate::step_model::Step::new_compact(
+            "diff",
+            "Symbolic Differentiation",
+            source,
+            compact,
+        );
+        diff.global_after = Some(compact);
+        let mut rationalize = crate::step_model::Step::new_compact(
+            "rationalize",
+            "Rationalize Denominator",
+            compact,
+            rationalized,
+        );
+        rationalize.global_after = Some(rationalized);
+        let mut cancel = crate::step_model::Step::new_compact(
+            "cancel",
+            "Cancel Exact Additive Pairs",
+            rationalized,
+            cancelled,
+        );
+        cancel.global_after = Some(cancelled);
+        let mut present = crate::step_model::Step::new_compact(
+            "present",
+            "Present calculus result in compact form",
+            cancelled,
+            presented,
+        );
+        present.global_after = Some(presented);
+
+        let out = super::to_display_eval_steps(vec![diff, rationalize, cancel, present]);
+        let rules = out
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(rules, vec!["Symbolic Differentiation"]);
     }
 
     #[test]
