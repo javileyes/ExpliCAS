@@ -57,7 +57,7 @@ fn format_principal_branch_inverse_trig_desc(kind: PrincipalBranchInverseTrigKin
         }
     }
 }
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_math::inverse_trig_composition_support::{
     try_plan_atan_rational_add_expr, try_plan_inverse_atan_opposite_add_expr,
     try_plan_inverse_atan_reciprocal_add_expr, try_plan_inverse_trig_composition_expr,
@@ -65,6 +65,84 @@ use cas_math::inverse_trig_composition_support::{
     try_rewrite_arccot_to_arctan_expr, try_rewrite_arccsc_to_arcsin_expr,
     try_rewrite_arcsec_to_arccos_expr, try_rewrite_inverse_trig_negative_expr,
 };
+use num_rational::BigRational;
+
+fn sqrt_like_radicand(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) =>
+        {
+            Some(args[0])
+        }
+        Expr::Pow(base, exp)
+            if cas_ast::views::as_rational_const(ctx, *exp, 8)
+                == Some(BigRational::new(1.into(), 2.into())) =>
+        {
+            Some(*base)
+        }
+        _ => None,
+    }
+}
+
+fn is_negative_sqrt_like_argument(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Neg(inner) => sqrt_like_radicand(ctx, *inner).is_some(),
+        Expr::Mul(_, _) => {
+            let mut scale = BigRational::from_integer(1.into());
+            let mut saw_sqrt_like = false;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
+                    scale *= value;
+                    continue;
+                }
+                if !saw_sqrt_like && sqrt_like_radicand(ctx, factor).is_some() {
+                    saw_sqrt_like = true;
+                    continue;
+                }
+                return false;
+            }
+            saw_sqrt_like && scale < BigRational::from_integer(0.into())
+        }
+        _ => false,
+    }
+}
+
+fn is_scaled_sqrt_like_argument(ctx: &Context, expr: ExprId) -> bool {
+    if sqrt_like_radicand(ctx, expr).is_some() {
+        return true;
+    }
+    match ctx.get(expr) {
+        Expr::Neg(inner) => is_scaled_sqrt_like_argument(ctx, *inner),
+        Expr::Mul(_, _) => {
+            let mut saw_sqrt_like = false;
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if cas_ast::views::as_rational_const(ctx, factor, 8).is_some() {
+                    continue;
+                }
+                if !saw_sqrt_like && sqrt_like_radicand(ctx, factor).is_some() {
+                    saw_sqrt_like = true;
+                    continue;
+                }
+                return false;
+            }
+            saw_sqrt_like
+        }
+        _ => false,
+    }
+}
+
+fn arccot_has_sqrt_like_argument(ctx: &Context, expr: ExprId) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return false;
+    };
+    args.len() == 1
+        && matches!(
+            ctx.builtin_of(*fn_id),
+            Some(BuiltinFn::Acot | BuiltinFn::Arccot)
+        )
+        && (is_negative_sqrt_like_argument(ctx, args[0])
+            || is_scaled_sqrt_like_argument(ctx, args[0]))
+}
 
 // ==================== Inverse Trig Identity Rules ====================
 
@@ -279,6 +357,9 @@ define_rule!(
     "arccot(x) → arctan(1/x)",
     Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
+        if arccot_has_sqrt_like_argument(ctx, expr) {
+            return None;
+        }
         let rewrite = try_rewrite_arccot_to_arctan_expr(ctx, expr)?;
         Some(
             Rewrite::new(rewrite.rewritten).desc(format_inverse_trig_reciprocal_desc(rewrite.kind)),

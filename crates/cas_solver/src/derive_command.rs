@@ -187,6 +187,11 @@ fn build_strategy_fallback_step(
             "Simplify",
             crate::StepCategory::Simplify,
         ),
+        DeriveStrategy::CalculusDiff => (
+            "Evaluate the derivative",
+            "Symbolic Differentiation",
+            crate::StepCategory::Simplify,
+        ),
         DeriveStrategy::IntegratePrep => (
             "Prepare the expression for integration",
             "Cos Product Telescoping",
@@ -610,6 +615,15 @@ fn try_supported_derive_strategies_inner(
     {
         return Some(direct);
     }
+    if let Some(direct) = try_fast_direct_calculus_diff_derive(
+        simplifier,
+        resolved_expr,
+        target_expr,
+        collect_steps,
+        simplify_options,
+    ) {
+        return Some(direct);
+    }
     if let Some(direct) =
         try_fast_direct_inverse_trig_derive(simplifier, resolved_expr, target_expr, collect_steps)
     {
@@ -965,6 +979,7 @@ fn try_supported_derive_strategies_inner(
     for strategy in ordered_strategies_for_target(&profile) {
         match strategy {
             DeriveStrategy::Planner => continue,
+            DeriveStrategy::CalculusDiff => continue,
             DeriveStrategy::LogInversePower => continue,
             DeriveStrategy::NumberTheory => continue,
             DeriveStrategy::Simplify => {
@@ -2173,6 +2188,69 @@ fn try_fast_direct_integrate_prep_derive(
     };
 
     Some((rewrite.rewritten, steps, DeriveStrategy::IntegratePrep))
+}
+
+fn try_fast_direct_calculus_diff_derive(
+    simplifier: &mut crate::Simplifier,
+    expr: ExprId,
+    target_expr: ExprId,
+    collect_steps: bool,
+    simplify_options: &crate::SimplifyOptions,
+) -> Option<(ExprId, Vec<crate::Step>, DeriveStrategy)> {
+    if !contains_named_function_expr(&simplifier.context, expr, "diff") {
+        return None;
+    }
+
+    let mut stage = run_simplify_stage(
+        simplifier,
+        expr,
+        target_expr,
+        collect_steps,
+        simplify_options.clone(),
+    );
+    if !derive_target_match(simplifier, stage.expr, target_expr) {
+        return None;
+    }
+    if collect_steps && !stage.steps.iter().any(is_calculus_diff_step) {
+        return None;
+    }
+    if !collect_steps {
+        stage.steps.clear();
+    }
+    retarget_stage_output(&mut stage, target_expr);
+    let steps = finalize_steps(expr, target_expr, vec![stage], &mut simplifier.context);
+    Some((target_expr, steps, DeriveStrategy::CalculusDiff))
+}
+
+fn is_calculus_diff_step(step: &crate::Step) -> bool {
+    matches!(
+        step.rule_name.as_str(),
+        "Symbolic Differentiation" | "Calcular la derivada"
+    )
+}
+
+fn contains_named_function_expr(ctx: &cas_ast::Context, expr: ExprId, name: &str) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            ctx.sym_name(*fn_id) == name
+                || args
+                    .iter()
+                    .any(|arg| contains_named_function_expr(ctx, *arg, name))
+        }
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            contains_named_function_expr(ctx, *left, name)
+                || contains_named_function_expr(ctx, *right, name)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => contains_named_function_expr(ctx, *inner, name),
+        Expr::Matrix { data, .. } => data
+            .iter()
+            .any(|entry| contains_named_function_expr(ctx, *entry, name)),
+        _ => false,
+    }
 }
 
 fn try_fast_direct_inverse_trig_derive(
@@ -8982,6 +9060,35 @@ mod tests {
         assert_eq!(derived.2, DeriveStrategy::InverseTrigRewrite);
         assert_eq!(derived.1.len(), 1);
         assert_eq!(derived.1[0].rule_name, "Inverse Trig Composition");
+    }
+
+    #[test]
+    fn direct_derive_labels_calculus_diff_without_generic_simplify() {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let source = cas_parser::parse("diff(arcsin(2*x-1)/2,x)", &mut simplifier.context)
+            .expect("parse source");
+        let target = cas_parser::parse("1/(2*sqrt(x)*sqrt(1-x))", &mut simplifier.context)
+            .expect("parse target");
+
+        let derived = try_supported_derive_strategies_inner(
+            &mut simplifier,
+            source,
+            target,
+            true,
+            &crate::SimplifyOptions::default(),
+            true,
+            true,
+        )
+        .expect("derive should succeed");
+
+        assert_eq!(derived.0, target);
+        assert_eq!(derived.2, DeriveStrategy::CalculusDiff);
+        assert!(derived.1.iter().any(|step| {
+            matches!(
+                step.rule_name.as_str(),
+                "Symbolic Differentiation" | "Calcular la derivada"
+            )
+        }));
     }
 
     #[test]

@@ -8496,11 +8496,6 @@ fn exp_trig_same_linear_antiderivative(
             }
 
             if compare_expr(ctx, exp_arg, trig_arg) != Ordering::Equal {
-                if matches!(builtin, BuiltinFn::Cos)
-                    && pure_integer_multiple_angle_expansion_risk(&trig_poly)
-                {
-                    continue;
-                }
                 let sin_arg = ctx.call_builtin(BuiltinFn::Sin, vec![trig_arg]);
                 let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![trig_arg]);
                 let inner = match builtin {
@@ -8566,26 +8561,6 @@ pub fn integrate_symbolic_is_exp_trig_same_linear_target(
     var: &str,
 ) -> bool {
     exp_trig_same_linear_antiderivative(ctx, expr, var).is_some()
-}
-
-fn pure_integer_multiple_angle_expansion_risk(poly: &Polynomial) -> bool {
-    if poly.degree() != 1 {
-        return false;
-    }
-    let constant = poly
-        .coeffs
-        .first()
-        .cloned()
-        .unwrap_or_else(BigRational::zero);
-    if !constant.is_zero() {
-        return false;
-    }
-    let slope = poly
-        .coeffs
-        .get(1)
-        .cloned()
-        .unwrap_or_else(BigRational::zero);
-    slope.denom().is_one() && slope.abs() > BigRational::one()
 }
 
 fn is_polynomial_times_linear_function_target<F>(
@@ -13086,6 +13061,11 @@ fn arcsin_polynomial_substitution_div_antiderivative(
     var: &str,
 ) -> Option<ExprId> {
     if let Some(radicand) = sqrt_like_radicand(ctx, den) {
+        if let Some((scale, cofactor)) = split_variable_free_scale_from_product(ctx, num, var) {
+            let integral =
+                arcsin_polynomial_substitution_from_radicand(ctx, cofactor, radicand, var)?;
+            return Some(multiply_constant_integral_result(ctx, scale, integral));
+        }
         return arcsin_polynomial_substitution_from_radicand(ctx, num, radicand, var);
     }
 
@@ -13118,6 +13098,11 @@ fn asinh_polynomial_substitution_div_antiderivative(
     var: &str,
 ) -> Option<ExprId> {
     if let Some(radicand) = sqrt_like_radicand(ctx, den) {
+        if let Some((scale, cofactor)) = split_variable_free_scale_from_product(ctx, num, var) {
+            let integral =
+                asinh_polynomial_substitution_from_radicand(ctx, cofactor, radicand, var)?;
+            return Some(multiply_constant_integral_result(ctx, scale, integral));
+        }
         return asinh_polynomial_substitution_from_radicand(ctx, num, radicand, var);
     }
 
@@ -13141,6 +13126,34 @@ fn asinh_polynomial_substitution_div_antiderivative(
     };
 
     asinh_polynomial_substitution_from_radicand(ctx, cofactor, radicand, var)
+}
+
+fn split_variable_free_scale_from_product(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<(ExprId, ExprId)> {
+    if !matches!(ctx.get(expr), Expr::Mul(_, _)) {
+        return None;
+    }
+
+    let mut scale_factors = Vec::new();
+    let mut cofactor_factors = Vec::new();
+    for factor in mul_leaves(ctx, expr) {
+        if contains_named_var(ctx, factor, var) {
+            cofactor_factors.push(factor);
+        } else {
+            scale_factors.push(factor);
+        }
+    }
+
+    if scale_factors.is_empty() || cofactor_factors.is_empty() {
+        return None;
+    }
+
+    let scale = build_balanced_mul(ctx, &scale_factors);
+    let cofactor = build_balanced_mul(ctx, &cofactor_factors);
+    Some((scale, cofactor))
 }
 
 fn acosh_polynomial_substitution_div_antiderivative(
@@ -15790,7 +15803,11 @@ mod tests {
         );
 
         let expr = parse("exp(2*x)*cos(3*x)", &mut ctx).expect("parse");
-        assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/13 * e^(2 * x) * (2 * cos(3 * x) + 3 * sin(3 * x))"
+        );
     }
 
     #[test]

@@ -1285,6 +1285,11 @@ fn derive_engine_identity_shadow_pressure_reports_reachability() {
             stats.generic_simplify_strategy_ids.join(",")
         }
     );
+    assert!(
+        stats.generic_simplify_strategy_ids.is_empty(),
+        "derive shadow pressure should use specific strategies instead of generic simplify: {:?}",
+        stats.generic_simplify_strategy_ids
+    );
     eprintln!(
         "derive shadow pressure actual-strategy-counts: {:?}",
         stats.actual_strategy_counts

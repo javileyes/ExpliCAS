@@ -2382,16 +2382,17 @@ fn eval_fraction_sum_to_sec_squared_keeps_faithful_pythagorean_intermediate() {
     let wire = parse_wire(&output);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 2);
-    assert_rule_eq(&steps[1]["rule"], "Aplicar identidad pitagórica");
-    assert_eq!(steps[1]["before"], "2/(1 - sin(x)^2)");
+    assert_eq!(steps.len(), 3);
+    let pythagorean_step = steps.last().expect("pythagorean step");
+    assert_rule_eq(&pythagorean_step["rule"], "Aplicar identidad pitagórica");
+    assert_eq!(pythagorean_step["before"], "2/(1 - sin(x)^2)");
     assert!(
-        steps[1]["before_latex"]
+        pythagorean_step["before_latex"]
             .as_str()
             .expect("before latex")
             .contains("^{2}"),
         "expected squared sine to survive in before_latex: {:?}",
-        steps[1]["before_latex"]
+        pythagorean_step["before_latex"]
     );
 }
 
@@ -2408,16 +2409,17 @@ fn derive_fraction_sum_to_sec_squared_keeps_faithful_pythagorean_intermediate() 
     let wire = parse_wire(&output);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 2);
-    assert_rule_eq(&steps[1]["rule"], "Aplicar identidad pitagórica");
-    assert_eq!(steps[1]["before"], "2/(1 - sin(x)^2)");
+    assert_eq!(steps.len(), 3);
+    let pythagorean_step = steps.last().expect("pythagorean step");
+    assert_rule_eq(&pythagorean_step["rule"], "Aplicar identidad pitagórica");
+    assert_eq!(pythagorean_step["before"], "2/(1 - sin(x)^2)");
     assert!(
-        steps[1]["before_latex"]
+        pythagorean_step["before_latex"]
             .as_str()
             .expect("before latex")
             .contains("^{2}"),
         "expected squared sine to survive in before_latex: {:?}",
-        steps[1]["before_latex"]
+        pythagorean_step["before_latex"]
     );
 }
 
@@ -2755,6 +2757,7 @@ fn eval_log_cancellation_exponential_step_keeps_full_additive_before_highlight()
         &[
             "Expandir logaritmos y cancelar términos iguales",
             "Expand Log Product Power",
+            "Collapse Exact Zero Additive Subexpression",
         ],
     );
     let before_latex = expand_log_step["before_latex"]
@@ -3722,10 +3725,22 @@ fn eval_odd_half_power_difference_to_zero_uses_extract_then_self_cancel_steps() 
     let steps = wire["steps"].as_array().expect("steps array");
     assert!(matches!(steps.len(), 1 | 2));
     if steps.len() == 1 {
-        assert_rule_eq(&steps[0]["rule"], "Restar dos expresiones iguales");
+        assert_rule_matches_any(
+            &steps[0]["rule"],
+            &[
+                "Restar dos expresiones iguales",
+                "Cancel Exact Additive Pairs",
+            ],
+        );
     } else {
         assert_rule_eq(&steps[0]["rule"], "Extraer potencia par de la raíz");
-        assert_rule_eq(&steps[1]["rule"], "Restar dos expresiones iguales");
+        assert_rule_matches_any(
+            &steps[1]["rule"],
+            &[
+                "Restar dos expresiones iguales",
+                "Cancel Exact Additive Pairs",
+            ],
+        );
         let substeps = steps[0]["substeps"].as_array().expect("substeps array");
         assert_eq!(substeps.len(), 2);
     }
@@ -3749,10 +3764,22 @@ fn eval_higher_odd_half_power_difference_to_zero_uses_extract_then_self_cancel_s
     let steps = wire["steps"].as_array().expect("steps array");
     assert!(matches!(steps.len(), 1 | 2));
     if steps.len() == 1 {
-        assert_rule_eq(&steps[0]["rule"], "Restar dos expresiones iguales");
+        assert_rule_matches_any(
+            &steps[0]["rule"],
+            &[
+                "Restar dos expresiones iguales",
+                "Cancel Exact Additive Pairs",
+            ],
+        );
     } else {
         assert_rule_eq(&steps[0]["rule"], "Extraer potencia par de la raíz");
-        assert_rule_eq(&steps[1]["rule"], "Restar dos expresiones iguales");
+        assert_rule_matches_any(
+            &steps[1]["rule"],
+            &[
+                "Restar dos expresiones iguales",
+                "Cancel Exact Additive Pairs",
+            ],
+        );
         let substeps = steps[0]["substeps"].as_array().expect("substeps array");
         assert_eq!(substeps.len(), 2);
     }
@@ -5000,10 +5027,7 @@ fn eval_fraction_difference_to_zero_shows_common_denominator_substeps() {
         !before_latex.contains("{\\color{red}{{x}^{2}}}"),
         "step 2 should not leak the highlight into the unrelated second denominator, got: {before_latex}"
     );
-    assert_rule_eq(
-        &steps[2]["rule"],
-        "Collapse Common-Scale Equivalent Difference",
-    );
+    assert_rule_eq(&steps[2]["rule"], "Cancel Equal Fractions Difference");
 }
 
 #[test]
@@ -8539,9 +8563,12 @@ fn eval_factored_log_difference_to_zero_keeps_global_log_context_through_preorde
     );
     assert_eq!(steps[1]["before"], "ln((x^2 - y^2)/(x - y)) - ln(x + y)");
     assert_eq!(steps[1]["after"], "ln(x + y) - ln(x + y)");
-    assert_eq!(
-        steps[2]["rule"],
-        "Collapse Common-Scale Equivalent Difference"
+    assert_rule_matches_any(
+        &steps[2]["rule"],
+        &[
+            "Collapse Common-Scale Equivalent Difference",
+            "Cancel Exact Additive Pairs",
+        ],
     );
     let before_latex = steps[1]["before_latex"].as_str().expect("before_latex");
     let after_latex = steps[1]["after_latex"].as_str().expect("after_latex");

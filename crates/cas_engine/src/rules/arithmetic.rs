@@ -1907,6 +1907,11 @@ fn normalize_signed_add_term(
     term_expr: cas_ast::ExprId,
     term_sign: Sign,
 ) -> (cas_ast::ExprId, Sign) {
+    let unheld = cas_ast::hold::unwrap_internal_hold(ctx, term_expr);
+    if unheld != term_expr {
+        return normalize_signed_add_term(ctx, unheld, term_sign);
+    }
+
     if let Some(positive_expr) = strip_term_negation(ctx, term_expr) {
         return (positive_expr, term_sign.negate());
     }
@@ -1924,6 +1929,12 @@ fn normalize_signed_add_term(
                     build_scaled_expr(ctx, positive_rhs, lhs),
                     term_sign.negate(),
                 );
+            }
+            (term_expr, term_sign)
+        }
+        Expr::Div(num, den) => {
+            if let Some(positive_num) = strip_term_negation(ctx, num) {
+                return (ctx.add(Expr::Div(positive_num, den)), term_sign.negate());
             }
             (term_expr, term_sign)
         }
@@ -2734,6 +2745,19 @@ fn exprs_match_for_cancellation(
         return true;
     }
 
+    let lhs_unheld = cas_ast::hold::unwrap_internal_hold(ctx, lhs);
+    let rhs_unheld = cas_ast::hold::unwrap_internal_hold(ctx, rhs);
+    if (lhs_unheld != lhs || rhs_unheld != rhs)
+        && (compare_expr(ctx, lhs_unheld, rhs_unheld) == Ordering::Equal
+            || cas_math::expr_domain::exprs_equivalent(ctx, lhs_unheld, rhs_unheld)
+            || exprs_equal_up_to_add_term_order(ctx, lhs_unheld, rhs_unheld)
+            || exprs_equal_up_to_add_term_multiset_for_cancellation(ctx, lhs_unheld, rhs_unheld)
+            || exprs_equal_up_to_mul_factor_order_and_sign(ctx, lhs_unheld, rhs_unheld)
+            || exprs_equal_up_to_same_denominator(ctx, lhs_unheld, rhs_unheld))
+    {
+        return true;
+    }
+
     let lhs_normalized = cas_math::canonical_forms::normalize_core(ctx, lhs);
     let rhs_normalized = cas_math::canonical_forms::normalize_core(ctx, rhs);
     compare_expr(ctx, lhs_normalized, rhs_normalized) == Ordering::Equal
@@ -3211,6 +3235,14 @@ pub(crate) fn try_rewrite_exact_additive_term_cancellation_expr(
     expr: cas_ast::ExprId,
 ) -> Option<cas_ast::ExprId> {
     let view = AddView::from_expr(ctx, expr);
+    if view.terms.len() == 2 {
+        let (lhs_expr, lhs_sign) = normalize_signed_add_term(ctx, view.terms[0].0, view.terms[0].1);
+        let (rhs_expr, rhs_sign) = normalize_signed_add_term(ctx, view.terms[1].0, view.terms[1].1);
+        if lhs_sign != rhs_sign && exprs_match_for_cancellation(ctx, lhs_expr, rhs_expr) {
+            return Some(ctx.num(0));
+        }
+        return None;
+    }
     if view.terms.len() < 3 {
         return None;
     }
@@ -25840,19 +25872,22 @@ fn extract_same_denominator_residual_cores(
     let mut residual_terms = Vec::with_capacity(2);
 
     for (term_expr, term_sign) in view.terms.iter().copied() {
-        let Expr::Div(num, den) = ctx.get(term_expr) else {
+        let term_expr = cas_ast::hold::unwrap_internal_hold(ctx, term_expr);
+        let Expr::Div(num, den) = ctx.get(term_expr).clone() else {
             return None;
         };
 
         if let Some(existing_den) = denominator {
-            if compare_expr(ctx, *den, existing_den) != Ordering::Equal {
+            if compare_expr(ctx, den, existing_den) != Ordering::Equal
+                && !exprs_equal_up_to_mul_factor_order_and_sign(ctx, den, existing_den)
+            {
                 return None;
             }
         } else {
-            denominator = Some(*den);
+            denominator = Some(den);
         }
 
-        residual_terms.push((*num, term_sign));
+        residual_terms.push((num, term_sign));
     }
 
     if residual_terms.len() != 2 {

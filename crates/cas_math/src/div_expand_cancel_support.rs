@@ -18,7 +18,7 @@ use crate::opaque_atoms::{
 use crate::opaque_function_calls_support::match_shared_calls_structural;
 use crate::substitute::{substitute_power_aware, SubstituteOptions};
 use cas_ast::ordering::compare_expr;
-use cas_ast::{Context, Expr, ExprId};
+use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_rational::BigRational;
 use num_traits::Zero;
 use std::cell::Cell;
@@ -319,7 +319,7 @@ fn root_base_is_multi_function_sum(ctx: &Context, base: ExprId) -> bool {
 
     terms
         .iter()
-        .filter(|term| contains_function_call(ctx, **term))
+        .filter(|term| contains_function_call(ctx, **term) || contains_exp_function(ctx, **term))
         .count()
         >= 2
 }
@@ -364,9 +364,37 @@ fn broad_opaque_root_expand_cancel_no_match(
         }
     }
 
-    non_root_shared >= 2
-        && (contains_root_with_multi_function_sum(ctx, num)
-            || contains_root_with_multi_function_sum(ctx, den))
+    let contains_multi_function_root = contains_root_with_multi_function_sum(ctx, num)
+        || contains_root_with_multi_function_sum(ctx, den);
+    if non_root_shared >= 2 && contains_multi_function_root {
+        return true;
+    }
+
+    non_root_shared >= 1
+        && contains_multi_function_root
+        && (contains_exp_function(ctx, num) || contains_exp_function(ctx, den))
+}
+
+fn contains_exp_function(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            (ctx.builtin_of(*fn_id) == Some(BuiltinFn::Exp) && args.len() == 1)
+                || args.iter().any(|arg| contains_exp_function(ctx, *arg))
+        }
+        Expr::Pow(base, exp) => {
+            matches!(ctx.get(*base), Expr::Constant(Constant::E))
+                || contains_exp_function(ctx, *base)
+                || contains_exp_function(ctx, *exp)
+        }
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right) => {
+            contains_exp_function(ctx, *left) || contains_exp_function(ctx, *right)
+        }
+        Expr::Neg(inner) => contains_exp_function(ctx, *inner),
+        _ => false,
+    }
 }
 
 /// Detect high-cost cases where several inner opaque calls are shared across a
@@ -962,6 +990,21 @@ mod tests {
             render_expr(&ctx, rewrite.rewritten),
             "(sin(x) + cos(x) + 3)^(1/2)"
         );
+    }
+
+    #[test]
+    fn broad_opaque_root_expand_cancel_guard_skips_trig_exp_root_no_match() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(cos(x)^2 + exp(x)*cos(x)^2 + 1)/(2*cos(x)^2*sqrt(sin(x)/cos(x)+exp(x)+x))",
+            &mut ctx,
+        )
+        .expect("parse expr");
+        let (num, den) = as_fraction_like_num_den(&mut ctx, expr).expect("fraction");
+
+        assert!(should_skip_broad_opaque_root_expand_cancel(
+            &ctx, num, den, 4, 3
+        ));
     }
 
     #[test]

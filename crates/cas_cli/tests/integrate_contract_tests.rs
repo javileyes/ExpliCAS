@@ -763,19 +763,43 @@ fn integrate_contract_exp_trig_same_linear_antiderivatives_verify_by_differentia
 }
 
 #[test]
-fn integrate_contract_exp_trig_integer_multiple_cos_stays_unsupported_until_residual_verifies() {
+fn integrate_contract_exp_trig_integer_multiple_cos_verifies_by_public_residual() {
     let input = "integrate(exp(2*x)*cos(3*x), x)";
-    let (result, required, blocked_count) =
-        evaluated_expr_with_required_conditions_and_blocked_count(input);
+    let expected = "1/13 * e^(2 * x) * (2 * cos(3 * x) + 3 * sin(3 * x))";
 
-    assert_eq!(result, "integrate(cos(3 * x) * e^(2 * x), x)");
+    let (result, required) = evaluated_integral_with_required_conditions(input);
+    assert_eq!(result, expected);
     assert!(
         required.is_empty(),
-        "unsupported exp-trig integer-multiple cosine should not invent conditions: {required:?}"
+        "exp-trig integer-multiple cosine should not add domain conditions: {required:?}"
     );
     assert_eq!(
-        blocked_count, 0,
-        "unsupported exp-trig integer-multiple cosine should stay a quiet boundary"
+        assert_antiderivative_verifies(input),
+        AntiderivativeVerificationRoute::PublicResidual,
+        "{input} should verify through the bounded public residual route"
+    );
+    assert_rendered_antiderivative_verifies(input, expected);
+    assert_rendered_antiderivative_verifies(input, &format!("{expected} + 7"));
+    assert_rendered_antiderivative_verifies(input, &format!("{expected} + C"));
+}
+
+#[test]
+fn integrate_contract_exp_trig_wrong_sign_antiderivative_residual_compacts_without_depth_warning() {
+    let primitive = "1/13*exp(2*x)*(2*cos(3*x)+3*sin(3*x))";
+    let integrand = "exp(2*x)*cos(3*x)";
+    let input = format!("diff(7 - {primitive}, x) - {integrand}");
+
+    let (wire, stderr) = cli_eval_json_with_stderr(&input);
+    assert_eq!(wire["result"], "-2·cos(3·x)·e^(2·x)");
+    assert!(
+        wire["warnings"]
+            .as_array()
+            .is_some_and(|warnings| warnings.is_empty()),
+        "wrong-sign exp-trig residual should not emit warnings: {wire:#}"
+    );
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "wrong-sign exp-trig residual should not emit depth_overflow\nstderr:\n{stderr}"
     );
 }
 
@@ -2713,12 +2737,48 @@ fn integrate_contract_scaled_inverse_sqrt_polynomial_power_substitution() {
     assert_eq!(result, "arcsin((x^2 + x + 1)^2 / sqrt(2/3)) / sqrt(3)");
     assert_eq!(required, vec!["2 - 3 * (x^2 + x + 1)^4 > 0".to_string()]);
     assert_antiderivative_equiv_verifies(input);
+    assert_inverse_trig_polynomial_substitution_keeps_compact_steps(input);
 
     let scaled = "integrate(2*(2*x^3+3*x^2+3*x+1)*sqrt(3)/sqrt(2-3*(x^2+x+1)^4), x)";
     let (result, required) = evaluated_integral_with_required_conditions(scaled);
     assert_eq!(result, "arcsin((x^2 + x + 1)^2 / sqrt(2/3))");
     assert_eq!(required, vec!["2 - 3 * (x^2 + x + 1)^4 > 0".to_string()]);
     assert_antiderivative_equiv_verifies(scaled);
+    assert_inverse_trig_polynomial_substitution_keeps_compact_steps(scaled);
+}
+
+fn assert_inverse_trig_polynomial_substitution_keeps_compact_steps(input: &str) {
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "inverse-trig polynomial substitution should not emit depth_overflow warning for {input}\nstderr:\n{stderr}"
+    );
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    assert_eq!(
+        steps.len(),
+        1,
+        "expected compact direct substitution trace for {input}, got {steps:?}"
+    );
+    assert!(
+        steps.iter().all(|step| step["rule"] != "Expandir binomio"),
+        "inverse-trig polynomial substitution should not expand the radicand before integrating: {steps:?}"
+    );
+    let integration_step = steps
+        .iter()
+        .find(|step| step["rule"] == "Calcular la integral")
+        .expect("expected public symbolic integration step");
+    let substeps = integration_step["substeps"]
+        .as_array()
+        .expect("integration step should expose didactic substeps");
+    assert!(
+        substeps
+            .iter()
+            .any(|substep| substep["title"] == "Usar sustitución"),
+        "expected substitution substep for {input}, got {substeps:?}"
+    );
 }
 
 #[test]

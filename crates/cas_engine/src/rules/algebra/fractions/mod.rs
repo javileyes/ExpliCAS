@@ -26,8 +26,8 @@ mod addition_rules;
 
 // Re-export rules from addition_rules
 pub use addition_rules::{
-    AddFractionsRule, FoldAddIntoFractionRule, SubFractionsRule, SubTermMatchesDenomRule,
-    SymmetricReciprocalSumRule,
+    AddFractionsRule, CancelEqualFractionsDifferenceRule, CancelOppositeFractionsRule,
+    FoldAddIntoFractionRule, SubFractionsRule, SubTermMatchesDenomRule, SymmetricReciprocalSumRule,
 };
 
 // Cancel rules module (rationalization and cancellation)

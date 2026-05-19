@@ -55,9 +55,9 @@ Steps:
 2. Calcular potencia numérica
    Before: (sqrt(x) + 1)/(x - 1^2) - (sqrt(x) + 1)/(x - 1)
    After: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)
-3. Equivalent Residual Cancellation
+3. Cancel equal fractions
    Before: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)
-   Cambio local: sqrt(x) + 1 - (sqrt(x) + 1) -> 0
+   Cambio local: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1) -> 0
    After: 0
 ```
 
@@ -78,10 +78,10 @@ Steps:
      3. `En el denominador aparece una diferencia de cuadrados`
         - before_latex: `\frac{(\sqrt{x} + 1)}{(\sqrt{x} - 1) \cdot (\sqrt{x} + 1)}`
         - after_latex: `\frac{\sqrt{x} + 1}{x - 1^{2}}`
-2. `Collapse Common-Scale Equivalent Difference`
-   - before: `sqrt(x) + 1 - (sqrt(x) + 1)`
+2. `Cancel Equal Fractions Difference`
+   - before: `(sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)`
    - after: `0`
-   - before_latex: `{\color{red}{1 + \sqrt{x} - 1 - \sqrt{x}}}`
+   - before_latex: `{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}}`
    - after_latex: `{\color{green}{0}}`
    - substeps: none
 

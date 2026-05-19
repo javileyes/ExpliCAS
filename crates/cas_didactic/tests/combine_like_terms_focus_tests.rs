@@ -169,8 +169,9 @@ fn combine_like_terms_variable_cancellation_focus() {
                 r == "Add Inverse"
                     || r == "Subtraction Self-Cancel"
                     || r == "Polynomial Identity"
+                    || r == "Cancel Exact Additive Pairs"
             }),
-        "x - x should have a step showing → 0, or be handled by Add Inverse/Subtraction Self-Cancel/Polynomial Identity. Steps: {:?}",
+        "x - x should have a step showing → 0, or be handled by a visible self-cancellation rule. Steps: {:?}",
         steps
     );
 }
@@ -280,7 +281,9 @@ fn non_regression_complex_fraction_simplification_pipeline() {
             || rule_names.contains(&"Subtraction Self-Cancel")
             || rule_names.contains(&"Polynomial Identity")
             || rule_names.contains(&"Collapse Common-Scale Equivalent Difference")
-            || rule_names.contains(&"Polynomial-Denominator Fraction Residual"),
+            || rule_names.contains(&"Polynomial-Denominator Fraction Residual")
+            || rule_names.contains(&"Cancel Exact Additive Pairs")
+            || rule_names.contains(&"Cancel Equal Fractions Difference"),
         "Should apply a visible cancellation rule, got: {:?}",
         rule_names
     );

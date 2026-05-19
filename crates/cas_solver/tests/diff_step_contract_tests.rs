@@ -516,6 +516,146 @@ fn arctan_reciprocal_sqrt_product_diff_keeps_compact_root_fraction_presentation(
 }
 
 #[test]
+fn arctan_reciprocal_sqrt_product_diff_residual_collapses_after_child_expansion() {
+    let input = "diff(arctan(1/(sqrt(x)*(x+1))), x) + \
+        (6*x+2)/(4*sqrt(x)*(x*(x+1)^2+1))";
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse residual");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval residual");
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected residual expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "0", "residual did not collapse");
+    assert!(
+        output
+            .steps
+            .iter()
+            .any(|step| step.rule_name.as_str() == "Cancel Opposite Fractions"),
+        "residual should close through exact fraction cancellation after child expansion; steps: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        !output.steps.iter().any(|step| {
+            matches!(
+                step.rule_name.as_str(),
+                "Add Fractions" | "Zero Property of Division"
+            )
+        }),
+        "residual should not route through generic fraction addition/zero-division cleanup; steps: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+    assert_eq!(required, vec!["x > 0".to_string()]);
+}
+
+#[test]
+fn tan_exp_root_diff_residual_collapses_before_generic_cleanup() {
+    let input = "diff(sqrt(tan(x)+exp(x)+x), x) - \
+        (cos(x)^2+e^x*cos(x)^2+1)/(2*cos(x)^2*sqrt(tan(x)+e^x+x))";
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse residual");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval residual");
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected residual expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "0", "residual did not collapse");
+    let rules = output
+        .steps
+        .iter()
+        .map(|step| step.rule_name.as_str())
+        .collect::<Vec<_>>();
+    assert!(
+        rules.iter().any(|rule| matches!(
+            *rule,
+            "Resolve calculus calls and simplify matching residual before general simplification"
+                | "Post-calculus residual simplification"
+                | "Cancel Equal Fractions Difference"
+                | "Cancelar términos opuestos"
+        )),
+        "held post-calculus fraction residual should close before generic cleanup; steps: {rules:?}"
+    );
+    assert!(
+        rules.iter().all(|rule| !matches!(
+            *rule,
+            "Add Fractions"
+                | "Zero Property of Division"
+                | "Rationalize Denominator"
+                | "Rationalize Product Denominator"
+        )),
+        "residual should not enter generic fraction/rationalization cleanup: {rules:?}"
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+    assert_eq!(
+        required,
+        vec!["cos(x) ≠ 0".to_string(), "tan(x) + e^x + x > 0".to_string(),]
+    );
+}
+
+#[test]
 fn exp_trig_by_parts_primitive_diff_residual_collapses() {
     for input in [
         "diff(1/4*exp(2*x+1)*(sin(2*x+1)-cos(2*x+1)), x) - exp(2*x+1)*sin(2*x+1)",
@@ -1394,6 +1534,158 @@ fn scaled_arcsin_unit_interval_residual_collapses_inside_subtraction_context() {
         vec!["x > 0".to_string(), "x < 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
+}
+
+#[test]
+fn scaled_arcsin_unit_interval_diff_reuses_compact_direct_shortcut() {
+    for input in ["diff(1/2*arcsin(2*x-1), x)", "diff(arcsin(2*x-1)/2, x)"] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, "1 / (2 * sqrt(x) * sqrt(1 - x))", "input: {input}");
+        let rules = output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>();
+
+        assert!(
+            rules.contains(&"Symbolic Differentiation"),
+            "scaled unit-interval arcsin diff should use the direct diff shortcut for {input}: {rules:?}"
+        );
+        for noisy_rule in [
+            "Rationalize Product Denominator",
+            "Merge Sqrt Product",
+            "Cancel Power Fraction",
+            "Expand Binomial",
+        ] {
+            assert!(
+                !rules.contains(&noisy_rule),
+                "scaled unit-interval arcsin diff should avoid generic expansion/cancel noise for {input}: {rules:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn arctan_sqrt_variable_over_positive_affine_diff_uses_compact_direct_shortcut() {
+    for (input, expected) in [
+        (
+            "diff(arctan(sqrt(x)/(x+1)), x)",
+            "(1 - x) / (2 * sqrt(x) * (x^2 + 3 * x + 1))",
+        ),
+        (
+            "diff(arctan(sqrt(x)/(x+1))/2, x)",
+            "(1 - x) / (4 * (x^2 + 3 * x + 1) * sqrt(x))",
+        ),
+        (
+            "diff(2*arctan(sqrt(x)/(x+1)), x)",
+            "(1 - x) / ((x^2 + 3 * x + 1) * sqrt(x))",
+        ),
+        (
+            "diff(arctan(sqrt(2*x)/(x+1)), x)",
+            "(1 - x) / (sqrt(2 * x) * (x^2 + 4 * x + 1))",
+        ),
+        (
+            "diff(arctan(sqrt(3*x)/(2*x+1)), x)",
+            "(3 - 6 * x) / (2 * sqrt(3 * x) * (4 * x^2 + 7 * x + 1))",
+        ),
+        (
+            "diff(arctan(2*sqrt(x)/(x+1)), x)",
+            "(1 - x) / (sqrt(x) * (x^2 + 6 * x + 1))",
+        ),
+        (
+            "diff(arctan(3*sqrt(2*x)/(2*x+1)), x)",
+            "(3 - 6 * x) / (sqrt(2 * x) * (4 * x^2 + 22 * x + 1))",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected, "input: {input}");
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+        assert_eq!(required, vec!["x > 0".to_string()], "input: {input}");
+
+        let rules = output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>();
+        assert!(
+            rules.contains(&"Symbolic Differentiation"),
+            "expected direct symbolic differentiation for {input}: {rules:?}"
+        );
+        for noisy_rule in [
+            "Expand",
+            "Distributive Property",
+            "Simplify Nested Fraction",
+            "Power of a Product",
+            "Power of a Quotient",
+            "Present calculus result in compact form",
+        ] {
+            assert!(
+                !rules.contains(&noisy_rule),
+                "compact arctan sqrt/affine diff should avoid noisy post-calc route for {input}: {rules:?}"
+            );
+        }
+    }
 }
 
 #[test]
@@ -5565,9 +5857,19 @@ fn inverse_tangent_externally_scaled_sqrt_diff_uses_post_calculus_reciprocal_roo
             "x^(-1/2)/(x+4)",
         ),
         (
+            "diff(arctan(-2*sqrt(x)), x)",
+            "-1 / (sqrt(x) * (4 * x + 1))",
+            "-x^(-1/2)/(4*x+1)",
+        ),
+        (
             "diff(arccot(2*sqrt(x)), x)",
             "-1 / (sqrt(x) * (4 * x + 1))",
             "-x^(-1/2)/(4*x+1)",
+        ),
+        (
+            "diff(arccot(-2*sqrt(x)), x)",
+            "1 / (sqrt(x) * (4 * x + 1))",
+            "x^(-1/2)/(4*x+1)",
         ),
         (
             "diff(arccot(sqrt(x)/2), x)",
@@ -5635,11 +5937,133 @@ fn inverse_tangent_externally_scaled_sqrt_diff_uses_post_calculus_reciprocal_roo
             "expected the derivative to keep the ordinary symbolic differentiation trace"
         );
         assert!(
+            output.steps.iter().all(|step| {
+                step.rule_name != "Power of a Product"
+                    && step.rule_name != "Expand"
+                    && step.rule_name != "Rationalize Denominator"
+                    && step.rule_name != "Rationalize Product Denominator"
+            }),
+            "externally scaled inverse-trig sqrt diff should avoid generic product/rationalization cleanup: {:?}",
             output
                 .steps
                 .iter()
-                .any(|step| step.rule_name == "Present calculus result in compact form"),
-            "expected compact post-calculus presentation step for {input}"
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn scaled_arccot_sqrt_diff_residual_collapses_without_fraction_add_roundtrip() {
+    for (input, expected_required) in [
+        (
+            "diff(arccot(2*sqrt(x)), x) + 1/(sqrt(x)*(4*x+1))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(arccot(-2*sqrt(x)), x) - 1/(sqrt(x)*(4*x+1))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(arccot(2*sqrt(2*x+3)), x) + 2/(sqrt(2*x+3)*(8*x+13))",
+            vec!["x > -3/2".to_string()],
+        ),
+        (
+            "diff(arccot(-2*sqrt(2*x+3)), x) - 2/(sqrt(2*x+3)*(8*x+13))",
+            vec!["x > -3/2".to_string()],
+        ),
+        (
+            "diff(arccot(3*sqrt(2*x+1)), x) + 3/(sqrt(2*x+1)*(18*x+10))",
+            vec!["x > -1/2".to_string()],
+        ),
+        (
+            "diff(arctan(3*sqrt(2*x+1)), x) - 3/(sqrt(2*x+1)*(18*x+10))",
+            vec!["x > -1/2".to_string()],
+        ),
+        (
+            "diff(arccot(3*sqrt(2*x+1)), x) + 6/(4*sqrt(2*x+1)*(9*x+5))",
+            vec!["x > -1/2".to_string()],
+        ),
+        (
+            "diff(arctan(3*sqrt(2*x+1)), x) - 6/(4*sqrt(2*x+1)*(9*x+5))",
+            vec!["x > -1/2".to_string()],
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, "0", "input: {input}");
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_required,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert!(
+            output.steps.len() <= 5,
+            "scaled arccot sqrt residual should collapse without a long cleanup route: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            output.steps.iter().any(|step| {
+                step.rule_name == "Collapse Exact Zero Additive Subexpression"
+                    || step.rule_name == "Cancel Exact Additive Pairs"
+                    || step.rule_name == "Cancel Opposite Fractions"
+                    || step.rule_name == "Cancel Equal Fractions Difference"
+            }),
+            "scaled arccot sqrt residual should use exact additive cancellation: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            output.steps.iter().all(|step| {
+                step.rule_name != "Add Fractions"
+                    && step.rule_name != "Zero Property of Division"
+                    && step.rule_name != "Rationalize Denominator"
+                    && step.rule_name != "Rationalize Product Denominator"
+            }),
+            "scaled arccot sqrt residual should avoid fraction-add/rationalization cleanup: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
         );
     }
 }
@@ -6717,8 +7141,8 @@ fn arccot_polynomial_sqrt_diff_uses_negative_post_calculus_reciprocal_root_prese
                 output
                     .steps
                     .iter()
-                    .any(|step| step.rule_name == "arccot(x) → arctan(1/x)"),
-                "expected the arccot rewrite to remain visible"
+                    .all(|step| step.rule_name != "arccot(x) → arctan(1/x)"),
+                "arccot sqrt diff should use the direct arccot route instead of converting through arctan"
             );
             assert!(
                 output
@@ -6746,8 +7170,8 @@ fn arccot_polynomial_sqrt_diff_uses_negative_post_calculus_reciprocal_root_prese
                 output
                     .steps
                     .iter()
-                    .any(|step| step.rule_name == "arccot(x) → arctan(1/x)"),
-                "expected the arccot rewrite to remain visible"
+                    .all(|step| step.rule_name != "arccot(x) → arctan(1/x)"),
+                "arccot sqrt diff should use the direct arccot route instead of converting through arctan"
             );
             assert!(
                 output
@@ -6797,6 +7221,97 @@ fn arccot_polynomial_sqrt_diff_uses_negative_post_calculus_reciprocal_root_prese
                 "shifted reciprocal sqrt arccot diff should not route through abs-square/poly-normalize cleanup"
             );
         }
+    }
+}
+
+#[test]
+fn negative_arccot_sqrt_diff_uses_direct_positive_root_fraction_presentation() {
+    for (input, expected_render, canonical_equivalent, expected_required) in [
+        (
+            "diff(arccot(-sqrt(x)), x)",
+            "1 / (2 * sqrt(x) * (x + 1))",
+            "x^(-1/2)/(2*x+2)",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(arccot(-sqrt(x^2+1)), x)",
+            "x / (sqrt(x^2 + 1) * (x^2 + 2))",
+            "x*(x^2+1)^(-1/2)/(x^2+2)",
+            Vec::new(),
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let req = EvalRequest {
+            raw_input: input.to_string(),
+            parsed,
+            action: EvalAction::Simplify,
+            auto_store: false,
+        };
+
+        let output = engine.eval(&mut state, req).expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_render, "input: {input}");
+        assert!(
+            !result.contains("^(-1/2)") && !result.contains("^(-3/2)"),
+            "presentation should use a sqrt denominator, got: {result}"
+        );
+
+        let expected =
+            parse(canonical_equivalent, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected),
+            "post-calculus presentation must stay equivalent to the canonical derivative, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required, expected_required,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert!(
+            output.steps.len() <= 6,
+            "negative arccot sqrt diff should stay on a bounded direct route, got steps: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            output.steps.iter().all(|step| {
+                step.rule_name != "arccot(x) → arctan(1/x)"
+                    && step.rule_name != "Inverse Trig Negative Argument"
+                    && step.rule_name != "Simplify Complex Fraction"
+            }),
+            "negative arccot sqrt diff should avoid inverse-trig rewrite and nested-fraction cleanup: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
     }
 }
 
@@ -15682,6 +16197,554 @@ fn acosh_affine_fused_reciprocal_sqrt_residual_collapses_publicly() {
             "input: {input}, unexpected required_conditions: {required:?}"
         );
     }
+}
+
+#[test]
+fn additive_trig_root_diff_scaled_fraction_residual_collapses_before_trig_expansion() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let input =
+        "diff(sqrt(sin(2*x)+cos(x)+4), x) - (2*cos(2*x)-sin(x))/(2*sqrt(sin(2*x)+cos(x)+4))";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval failed");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "0");
+    assert_eq!(
+        output.steps.len(),
+        1,
+        "expected the residual to close before trig expansion, got: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        output.domain_warnings.is_empty(),
+        "warnings: {:?}",
+        output.domain_warnings
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert!(
+        required.is_empty(),
+        "bounded positive trig radicand should not surface new requirements: {required:?}"
+    );
+}
+
+#[test]
+fn raw_tangent_trig_root_diff_preserves_direct_presentation_and_residual() {
+    for (input, expected_result, expected_step_rule) in [
+        (
+            "diff(sqrt(tan(x)+sin(x)+x), x)",
+            "(cos(x)^2 + cos(x)^3 + 1) / (2 * cos(x)^2 * sqrt(sin(x) + tan(x) + x))",
+            "Calcular la derivada",
+        ),
+        (
+            "diff(sqrt(tan(x)+sin(x)+x), x) - (cos(x)^2+cos(x)^3+1)/(2*cos(x)^2*sqrt(sin(x)+tan(x)+x))",
+            "0",
+            "Resolve calculus calls and simplify matching residual before general simplification",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+
+        assert_eq!(result, expected_result, "input: {input}");
+        assert_eq!(
+            output.steps.len(),
+            1,
+            "raw tangent root diff should stay on a one-step presentation route: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(output.steps[0].rule_name, expected_step_rule, "input: {input}");
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec![
+                "cos(x) ≠ 0".to_string(),
+                "sin(x) + tan(x) + x > 0".to_string(),
+            ],
+            "input: {input}"
+        );
+    }
+}
+
+#[test]
+fn tan_exp_root_diff_scaled_fraction_residual_collapses_before_cleanup() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let input = "diff(sqrt(tan(x)+exp(x)+x), x) - (2*cos(x)^2+2*e^x*cos(x)^2+2)/(4*cos(x)^2*sqrt(tan(x)+e^x+x))";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval failed");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "0");
+    assert_eq!(
+        output.steps.len(),
+        1,
+        "expected the residual to close before cleanup, got: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec!["cos(x) ≠ 0".to_string(), "tan(x) + e^x + x > 0".to_string()]
+    );
+}
+
+#[test]
+fn tan_exp_linear_root_diff_scaled_fraction_residual_collapses_before_cleanup() {
+    for (input, expected_required) in [
+        (
+            "diff(sqrt(tan(x)+exp(2*x)+x), x) - (2*cos(x)^2+4*e^(2*x)*cos(x)^2+2)/(4*cos(x)^2*sqrt(tan(x)+e^(2*x)+x))",
+            vec![
+                "cos(x) ≠ 0".to_string(),
+                "tan(x) + e^(2 * x) + x > 0".to_string(),
+            ],
+        ),
+        (
+            "diff(sqrt(tan(x)+exp(2*x+1)+x), x) - (2*cos(x)^2+4*e^(2*x+1)*cos(x)^2+2)/(4*cos(x)^2*sqrt(tan(x)+e^(2*x+1)+x))",
+            vec![
+                "cos(x) ≠ 0".to_string(),
+                "tan(x) + e^(2 * x + 1) + x > 0".to_string(),
+            ],
+        ),
+        (
+            "diff(sqrt(tan(x)+exp(-2*x)+x), x) - (2*cos(x)^2+2-4*e^(-2*x)*cos(x)^2)/(4*cos(x)^2*sqrt(tan(x)+e^(-2*x)+x))",
+            vec![
+                "cos(x) ≠ 0".to_string(),
+                "tan(x) + e^(-2 * x) + x > 0".to_string(),
+            ],
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+
+        assert_eq!(result, "0", "input: {input}");
+        assert_eq!(
+            output.steps.len(),
+            1,
+            "expected the exp-linear residual to close before cleanup, got: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(required, expected_required, "input: {input}");
+    }
+}
+
+#[test]
+fn tan_exp_linear_root_diff_uses_direct_presentation_before_cleanup() {
+    for (input, expected_result, expected_required) in [
+        (
+            "diff(sqrt(tan(x)+exp(2*x)+x), x)",
+            "(cos(x)^2 + 2 * e^(2 * x) * cos(x)^2 + 1) / (2 * cos(x)^2 * sqrt(tan(x) + e^(2 * x) + x))",
+            vec![
+                "cos(x) ≠ 0".to_string(),
+                "tan(x) + e^(2 * x) + x > 0".to_string(),
+            ],
+        ),
+        (
+            "diff(sqrt(tan(x)+exp(2*x+1)+x), x)",
+            "(cos(x)^2 + 2 * e^(2 * x + 1) * cos(x)^2 + 1) / (2 * cos(x)^2 * sqrt(tan(x) + e^(2 * x + 1) + x))",
+            vec![
+                "cos(x) ≠ 0".to_string(),
+                "tan(x) + e^(2 * x + 1) + x > 0".to_string(),
+            ],
+        ),
+        (
+            "diff(sqrt(tan(x)+exp(-2*x)+x), x)",
+            "(cos(x)^2 + 1 - 2 * e^(-2 * x) * cos(x)^2) / (2 * cos(x)^2 * sqrt(tan(x) + e^(-2 * x) + x))",
+            vec![
+                "cos(x) ≠ 0".to_string(),
+                "tan(x) + e^(-2 * x) + x > 0".to_string(),
+            ],
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+
+        assert_eq!(result, expected_result, "input: {input}");
+        assert_eq!(
+            output.steps.len(),
+            1,
+            "expected direct presentation to avoid general cleanup, got: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(required, expected_required, "input: {input}");
+    }
+}
+
+#[test]
+fn additive_trig_root_diff_reciprocal_sqrt_scaled_residual_collapses_before_cleanup() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let input = "diff(sqrt(sin(2*x)+cos(x)+sqrt(x)), x) - (4*cos(2*x)+x^(-1/2)-2*sin(x))/(4*sqrt(sin(2*x)+cos(x)+sqrt(x)))";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval failed");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "0");
+    assert_eq!(
+        output.steps.len(),
+        1,
+        "expected the reciprocal-sqrt residual to close before cleanup, got: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        output.domain_warnings.is_empty(),
+        "warnings: {:?}",
+        output.domain_warnings
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec![
+            "sin(2 * x) + cos(x) + sqrt(x) > 0".to_string(),
+            "x > 0".to_string()
+        ]
+    );
+}
+
+#[test]
+fn tan_sqrt_root_diff_sec_sqrt_residual_collapses_before_cleanup() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let input = "diff(sqrt(tan(x)+sqrt(x)+x), x) - (2*x^(1/2)*sec(x)^2+1+2*x^(1/2))/(4*x^(1/2)*sqrt(tan(x)+sqrt(x)+x))";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval failed");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "0");
+    assert_eq!(
+        output.steps.len(),
+        1,
+        "expected the tan/sqrt residual to close before cleanup, got: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        output.domain_warnings.is_empty(),
+        "warnings: {:?}",
+        output.domain_warnings
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec![
+            "cos(x) ≠ 0".to_string(),
+            "tan(x) + sqrt(x) + x > 0".to_string(),
+            "x > 0".to_string()
+        ]
+    );
+}
+
+#[test]
+fn tan_sqrt_affine_root_diff_sec_sqrt_residual_collapses_before_cleanup() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+    let input = "diff(sqrt(tan(x)+sqrt(x)+2*x+1), x) - (2*x^(1/2)*sec(x)^2+1+4*x^(1/2))/(4*x^(1/2)*sqrt(tan(x)+sqrt(x)+2*x+1))";
+    let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval failed");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(result, "0");
+    assert_eq!(
+        output.steps.len(),
+        1,
+        "expected the affine tan/sqrt residual to close before cleanup, got: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        output.domain_warnings.is_empty(),
+        "warnings: {:?}",
+        output.domain_warnings
+    );
+
+    let required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+
+    assert_eq!(
+        required,
+        vec![
+            "cos(x) ≠ 0".to_string(),
+            "tan(x) + sqrt(x) + 2 * x + 1 > 0".to_string(),
+            "x > 0".to_string()
+        ]
+    );
 }
 
 #[test]

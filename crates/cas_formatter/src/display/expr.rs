@@ -118,6 +118,22 @@ impl<'a> fmt::Display for DisplayExpr<'a> {
                     return Ok(());
                 }
 
+                if let Some((coefficient, radicand)) =
+                    reciprocal_sqrt_numerator_for_display(self.context, self.id)
+                {
+                    if coefficient.is_positive()
+                        && coefficient.numer().is_one()
+                        && !coefficient.denom().is_one()
+                    {
+                        return format_scaled_reciprocal_sqrt_for_display(
+                            f,
+                            self.context,
+                            coefficient,
+                            radicand,
+                        );
+                    }
+                }
+
                 // P3: Try to display as fraction using FractionDisplayView
                 if let Some(frac) = FractionDisplayView::from(self.context, self.id) {
                     // Handle sign
@@ -886,7 +902,7 @@ fn reciprocal_sqrt_numerator_for_display(
 
     for factor in factors {
         match ctx.get(factor) {
-            Expr::Number(n) if n.is_positive() => coefficient *= n.clone(),
+            Expr::Number(n) => coefficient *= n.clone(),
             Expr::Pow(base, exp) if is_negative_one_half_exponent(ctx, *exp) => {
                 if radicand.replace(*base).is_some() {
                     return None;
@@ -1011,6 +1027,26 @@ fn format_reciprocal_sqrt_div_for_display(
         denominator_parts.push(sqrt_display);
     }
     write!(f, "{}", denominator_parts.join(mul_symbol()))?;
+    write!(f, ")")
+}
+
+fn format_scaled_reciprocal_sqrt_for_display(
+    f: &mut fmt::Formatter<'_>,
+    ctx: &Context,
+    coefficient: BigRational,
+    radicand: ExprId,
+) -> fmt::Result {
+    write!(f, "1 / (")?;
+    write!(f, "{}", coefficient.denom())?;
+    write!(f, "{}", mul_symbol())?;
+    write!(
+        f,
+        "sqrt({})",
+        DisplayExpr {
+            context: ctx,
+            id: radicand
+        }
+    )?;
     write!(f, ")")
 }
 
@@ -1415,6 +1451,16 @@ pub(super) fn format_term_absolute(
     ctx: &Context,
     id: ExprId,
 ) -> fmt::Result {
+    if let Some((coefficient, radicand)) = reciprocal_sqrt_numerator_for_display(ctx, id) {
+        let coefficient = coefficient.abs();
+        if coefficient.is_positive()
+            && coefficient.numer().is_one()
+            && !coefficient.denom().is_one()
+        {
+            return format_scaled_reciprocal_sqrt_for_display(f, ctx, coefficient, radicand);
+        }
+    }
+
     match ctx.get(id) {
         Expr::Neg(inner) => {
             let inner_is_add_sub = is_add_sub_after_internal_hold(ctx, *inner);

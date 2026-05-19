@@ -295,6 +295,37 @@ fn additive_term_multiset_matches(
     true
 }
 
+fn strip_additive_constants_for_antiderivative_match(
+    ctx: &mut Context,
+    expr: ExprId,
+    var_name: &str,
+) -> ExprId {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+    if terms.len() < 2 {
+        return expr;
+    }
+
+    let mut removed_constant = false;
+    let mut retained_terms = Vec::new();
+    for (term, sign) in terms {
+        if cas_math::expr_predicates::contains_named_var(ctx, term, var_name) {
+            let signed_term = match sign {
+                cas_math::expr_nary::Sign::Pos => term,
+                cas_math::expr_nary::Sign::Neg => ctx.add(Expr::Neg(term)),
+            };
+            retained_terms.push(signed_term);
+        } else {
+            removed_constant = true;
+        }
+    }
+
+    if removed_constant {
+        cas_math::expr_nary::build_balanced_add(ctx, &retained_terms)
+    } else {
+        expr
+    }
+}
+
 fn hyperbolic_polynomial_term_parts(
     ctx: &mut Context,
     term: ExprId,
@@ -3743,7 +3774,12 @@ fn explicit_positive_quadratic_cube_antiderivative_diff_matches(
         right,
         &diff_call.var_name,
     )?;
-    let target = cas_ast::hold::strip_all_holds(ctx, diff_call.target);
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
     let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
     if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
         return None;
@@ -3776,7 +3812,12 @@ fn explicit_positive_quadratic_square_antiderivative_diff_matches(
         right,
         &diff_call.var_name,
     )?;
-    let target = cas_ast::hold::strip_all_holds(ctx, diff_call.target);
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
     let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
     if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
         return None;
@@ -4766,6 +4807,126 @@ fn integrated_quadratic_exp_linear_diff_matches(
     }
 
     Some(Vec::new())
+}
+
+fn integrated_exp_trig_same_linear_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_exp_trig_same_linear_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+
+        if !term_shape_matches(ctx, integrate_call.target, right) {
+            return None;
+        }
+
+        return Some(Vec::new());
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_exp_trig_same_linear_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(Vec::new())
+}
+
+fn negative_exp_trig_antiderivative_residual_ordered(
+    ctx: &mut Context,
+    diff_side: ExprId,
+    integrand: ExprId,
+    result_scale: BigRational,
+) -> Option<ExprId> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, diff_side)?;
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_exp_trig_same_linear_target(
+        ctx,
+        integrand,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        integrand,
+        &diff_call.var_name,
+    )?;
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let positive_target = ctx.add(Expr::Neg(target));
+    let positive_target = cas_ast::hold::strip_all_holds(ctx, positive_target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(
+        ctx,
+        positive_target,
+        expected_antiderivative,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+
+    Some(scale_expr_by_rational(ctx, integrand, result_scale))
+}
+
+pub(crate) fn try_diff_integral_exp_trig_residual_compact_mismatch(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        _ => return None,
+    };
+
+    let two = BigRational::from_integer(2.into());
+    negative_exp_trig_antiderivative_residual_ordered(ctx, left, right, -two.clone())
+        .or_else(|| negative_exp_trig_antiderivative_residual_ordered(ctx, right, left, two))
+        .map(|result| (result, Vec::new()))
 }
 
 fn integrated_polynomial_log_reciprocal_derivative_diff_matches(
@@ -6744,7 +6905,8 @@ pub(crate) fn try_diff_integral_plain_trig_residual_zero_preorder(
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
     let required_conditions =
-        integrated_log_abs_plain_trig_diff_matches(ctx, diff_expr, divisor, right)
+        integrated_exp_trig_same_linear_diff_matches(ctx, diff_expr, divisor, right)
+            .or_else(|| integrated_log_abs_plain_trig_diff_matches(ctx, diff_expr, divisor, right))
             .or_else(|| {
                 integrated_affine_trig_fourth_power_diff_matches(ctx, diff_expr, divisor, right)
             })
@@ -6761,6 +6923,18 @@ pub(crate) fn try_diff_integral_plain_trig_residual_zero_preorder(
                 integrated_polynomial_trig_linear_diff_matches(ctx, diff_expr, divisor, right)
             })?;
     Some((ctx.num(0), required_conditions))
+}
+
+pub(crate) fn try_diff_integral_exp_trig_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_wrapped_root_zero(
+        ctx,
+        expr,
+        3,
+        try_diff_integral_plain_trig_residual_direct_root_zero,
+    )
 }
 
 pub(crate) fn try_diff_integral_quadratic_exp_residual_root_zero(
@@ -9584,6 +9758,22 @@ mod tests {
             .map(|(result, _required_conditions)| render(&ctx, result))
     }
 
+    fn integral_exp_trig_root_residual_result(input: &str) -> Option<String> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_integral_exp_trig_residual_root_zero(&mut ctx, expr)
+            .map(|(result, _required_conditions)| render(&ctx, result))
+    }
+
+    fn integral_exp_trig_compact_mismatch_result(input: &str) -> Option<String> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_diff_integral_exp_trig_residual_compact_mismatch(&mut ctx, expr)
+            .map(|(result, _required_conditions)| render(&ctx, result))
+    }
+
     fn integral_inverse_trig_root_residual_result(input: &str) -> Option<String> {
         let mut ctx = Context::new();
         let expr = parse(input, &mut ctx)
@@ -10620,6 +10810,55 @@ mod tests {
             integral_quadratic_exp_root_residual_result(
                 "diff(integrate((x^2+x+1)*exp(2*x+1), y), y) - (x^2+x+1)*exp(2*x+1)"
             ),
+            None
+        );
+    }
+
+    #[test]
+    fn diff_integral_exp_trig_residual_accepts_additive_constant_in_explicit_primitive() {
+        let primitive = "1/13*exp(2*x)*(2*cos(3*x)+3*sin(3*x))";
+        let target = "exp(2*x)*cos(3*x)";
+
+        for input in [
+            format!("diff({primitive} + 7, x) - {target}"),
+            format!("diff({primitive} + C, x) - {target}"),
+            format!("diff(7 + {primitive}, x) - {target}"),
+        ] {
+            assert_eq!(
+                integral_exp_trig_root_residual_result(&input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(&input), "0", "{input}");
+        }
+
+        assert_eq!(
+            integral_exp_trig_root_residual_result(&format!("diff(7 - {primitive}, x) - {target}")),
+            None
+        );
+    }
+
+    #[test]
+    fn diff_integral_exp_trig_residual_compacts_negative_antiderivative_mismatch() {
+        let primitive = "1/13*exp(2*x)*(2*cos(3*x)+3*sin(3*x))";
+        let target = "exp(2*x)*cos(3*x)";
+
+        assert_eq!(
+            integral_exp_trig_compact_mismatch_result(&format!(
+                "diff(7 - {primitive}, x) - {target}"
+            )),
+            Some("-2 * cos(3 * x) * e^(2 * x)".to_string())
+        );
+        assert_eq!(
+            integral_exp_trig_compact_mismatch_result(&format!(
+                "{target} - diff(7 - {primitive}, x)"
+            )),
+            Some("2 * cos(3 * x) * e^(2 * x)".to_string())
+        );
+        assert_eq!(
+            integral_exp_trig_compact_mismatch_result(&format!(
+                "diff({primitive} + 7, x) - {target}"
+            )),
             None
         );
     }

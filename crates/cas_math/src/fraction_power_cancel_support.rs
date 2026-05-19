@@ -530,8 +530,7 @@ mod tests {
         let rw = try_rewrite_cancel_power_fraction_expr(&mut ctx, expr).expect("rewrite");
         let rendered = cas_formatter::render_expr(&ctx, rw.rewritten);
 
-        assert!(rendered.contains("1/2"), "rendered={rendered}");
-        assert!(rendered.contains("sin(x)^(-1/2)"), "rendered={rendered}");
+        assert_eq!(rendered, "1 / (2 * sqrt(sin(x)))");
     }
 
     #[test]

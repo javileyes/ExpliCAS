@@ -4,6 +4,7 @@ use super::{DeriveTargetForm, DeriveTargetProfile};
 pub(crate) enum DeriveStrategy {
     Planner,
     Simplify,
+    CalculusDiff,
     IntegratePrep,
     SolvePrep,
     FiniteAggregate,
@@ -48,6 +49,7 @@ impl DeriveStrategy {
         match self {
             Self::Planner => "planner",
             Self::Simplify => "simplify",
+            Self::CalculusDiff => "calculus diff",
             Self::IntegratePrep => "integrate prep",
             Self::SolvePrep => "solve prep",
             Self::FiniteAggregate => "finite sums/products",

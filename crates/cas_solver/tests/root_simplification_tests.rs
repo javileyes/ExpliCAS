@@ -126,8 +126,7 @@ fn test_scaled_function_root_quotient_cancels_numeric_factors() {
         }
     );
     println!("scaled function root quotient => {}", res_str);
-    assert!(res_str.contains("1/2"), "got '{res_str}'");
-    assert!(res_str.contains("sin(x)^(-1/2)"), "got '{res_str}'");
+    assert_eq!(res_str, "1 / (2 * sqrt(sin(x)))");
 }
 
 #[test]

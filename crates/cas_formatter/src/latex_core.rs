@@ -256,6 +256,26 @@ pub trait LaTeXRenderer {
                 (true, positive_str)
             }
             Expr::Mul(ml, mr) => {
+                if let Some((coefficient, radicand)) = reciprocal_sqrt_numerator_for_latex(ctx, id)
+                {
+                    if !coefficient.is_negative() {
+                        return (false, self.expr_to_latex(id, false));
+                    }
+                    let coefficient = coefficient.abs();
+                    if coefficient.is_positive()
+                        && coefficient.numer().is_one()
+                        && !coefficient.denom().is_one()
+                    {
+                        let abs_latex =
+                            self.format_reciprocal_sqrt_div_latex(coefficient, radicand, &[]);
+                        let highlighted = if let Some(color) = self.get_highlight(id) {
+                            format!("{{\\color{{{}}}{{{}}}}}", color.to_latex(), abs_latex)
+                        } else {
+                            abs_latex
+                        };
+                        return (true, highlighted);
+                    }
+                }
                 if let Some(abs_latex) = self.direct_negative_mul_abs_latex(*ml, *mr) {
                     let highlighted = if let Some(color) = self.get_highlight(id) {
                         format!("{{\\color{{{}}}{{{}}}}}", color.to_latex(), abs_latex)
@@ -899,7 +919,7 @@ fn reciprocal_sqrt_numerator_for_latex(ctx: &Context, id: ExprId) -> Option<(Big
 
     for factor in factors {
         match ctx.get(factor) {
-            Expr::Number(n) if n.is_positive() => coefficient *= n.clone(),
+            Expr::Number(n) => coefficient *= n.clone(),
             Expr::Pow(base, exp) if is_negative_one_half_exponent_for_latex(ctx, *exp) => {
                 if radicand.replace(*base).is_some() {
                     return None;

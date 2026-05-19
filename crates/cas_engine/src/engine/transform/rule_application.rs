@@ -23,7 +23,7 @@ impl<'a> LocalSimplificationTransformer<'a> {
     /// and the result is shared by all rule attempts on that node. Previously, this
     /// construction was duplicated inside both the specific-rules and global-rules loops,
     /// causing O(rules × nodes × ancestors) redundant work.
-    fn build_parent_context(&self) -> crate::parent_context::ParentContext {
+    pub(super) fn build_parent_context(&self) -> crate::parent_context::ParentContext {
         self.initial_parent_ctx
             .clone()
             .with_runtime_ancestors(&self.ancestor_stack, self.context)

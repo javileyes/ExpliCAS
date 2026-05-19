@@ -130,6 +130,39 @@ fn test_eval_json_scaled_ln_diff_step_cancels_fraction_product_presentation_nois
 }
 
 #[test]
+fn test_eval_json_tan_exp_sqrt_diff_preserves_compact_presentation_without_timeout() {
+    let json = eval_json_with_args("diff(sqrt(tan(x)+exp(x)+x), x)", &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true);
+    assert_eq!(
+        json["result"],
+        "(cos(x)^2 + e^x·cos(x)^2 + 1) / (2·cos(x)^2·sqrt(tan(x) + e^x + x))"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(steps.len(), 1, "expected direct derivative step: {steps:?}");
+    let after = steps[0]["after"].as_str().expect("after string");
+    assert!(
+        after.contains("sqrt(tan(x) + e^x + x)")
+            && after.contains("cos(x)^2")
+            && !after.contains("sin(x) / cos(x)"),
+        "expected compact tan/exp sqrt derivative presentation, got: {after}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+        }) && required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "tan(x) + e^x + x"
+        }),
+        "expected cos nonzero and radicand positive guards: {required:?}"
+    );
+}
+
+#[test]
 fn test_eval_json_ln_sqrt_diff_omits_redundant_rationalize_expand_round_trip() {
     let json = eval_json_with_args("diff(ln(sqrt(x)+1), x)", &["--steps", "on"]);
 
@@ -318,6 +351,82 @@ fn test_eval_json_multi_function_trig_root_diff_skips_rationalization_noise() {
                 && step["rule"] != "Expand to Cancel Fraction"
         }),
         "multi-function trig/root diff should keep the compact root denominator without rationalization noise: {steps:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_trig_power_root_diff_uses_direct_presentation_without_cycle_noise() {
+    let expr = "diff(sqrt(sin(x)^2+cos(x)+4), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "trig power root diff should not hit depth overflow: {stderr}"
+    );
+    assert_eq!(
+        json["result"],
+        "(2·sin(x)·cos(x) - sin(x)) / (2·sqrt(cos(x) + sin(x)^2 + 4))"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "trig power root diff should stay on the direct derivative presentation route: {steps:?}"
+    );
+    assert!(
+        steps.iter().all(|step| !step["rule"]
+            .as_str()
+            .is_some_and(|rule| rule.contains("ángulo doble"))),
+        "trig power root diff should not cycle through double-angle expand/contract noise: {steps:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_trig_root_diff_compacts_numeric_presentation_factors() {
+    let scaled_expr = "diff(sqrt(2*sin(x)^2+cos(x)+4), x)";
+    let scaled_json = eval_json_with_args(scaled_expr, &["--steps", "on"]);
+
+    assert_eq!(scaled_json["ok"], true, "expr: {scaled_expr}");
+    assert_eq!(
+        scaled_json["result"],
+        "(4·sin(x)·cos(x) - sin(x)) / (2·sqrt(cos(x) + 2·sin(x)^2 + 4))"
+    );
+    let scaled_steps = scaled_json["steps"]
+        .as_array()
+        .expect("steps should be an array");
+    assert_eq!(
+        scaled_steps.len(),
+        1,
+        "scaled trig root diff should stay on the direct presentation route: {scaled_steps:?}"
+    );
+    let scaled_after = scaled_steps[0]["after"].as_str().expect("after string");
+    assert!(
+        !scaled_after.contains("2 · 2"),
+        "scaled trig root diff should combine numeric factors in the presentation result: {scaled_after}"
+    );
+
+    let half_expr = "diff(sqrt(sin(2*x)+cos(x)^2+4), x)";
+    let half_json = eval_json_with_args(half_expr, &["--steps", "on"]);
+
+    assert_eq!(half_json["ok"], true, "expr: {half_expr}");
+    assert_eq!(
+        half_json["result"],
+        "(cos(2·x) - sin(x)·cos(x)) / sqrt(sin(2·x) + cos(x)^2 + 4)"
+    );
+    let half_steps = half_json["steps"]
+        .as_array()
+        .expect("steps should be an array");
+    assert_eq!(
+        half_steps.len(),
+        1,
+        "half-distributed trig root diff should stay on the direct presentation route: {half_steps:?}"
+    );
+    let half_after = half_steps[0]["after"].as_str().expect("after string");
+    assert!(
+        !half_after.contains("2/2") && !half_after.contains("1 ·"),
+        "half-distributed trig root diff should not expose cancellable numeric factors: {half_after}"
     );
 }
 
@@ -1589,6 +1698,837 @@ fn test_eval_json_diff_sqrt_bounded_trig_positive_shift_uses_compact_trig_presen
         required.is_empty(),
         "positive shifted bounded trig radicand should not emit a redundant guard for {expr}: {required:?}"
     );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_trig_polynomial_sum_uses_direct_presentation_without_depth_overflow() {
+    let expr = "diff(sqrt(sin(2*x)+cos(x)+x), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "mixed trig/polynomial sqrt diff should avoid the generic depth-overflow route: {stderr}"
+    );
+    assert_eq!(
+        json["result"], "(cos(2·x) + 1/2 - 1/2·sin(x)) / sqrt(sin(2·x) + cos(x) + x)",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "expected one direct diff step for {expr}: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+    assert!(
+        steps.iter().all(|step| !step["rule"]
+            .as_str()
+            .is_some_and(|rule| rule.contains("ángulo doble"))),
+        "mixed trig/polynomial sqrt diff should keep the raw trig radicand: {steps:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "sin(2·x) + cos(x) + x"
+        }),
+        "unbounded mixed trig/polynomial radicand should expose a positive-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_tan_polynomial_sum_uses_direct_presentation_without_depth_overflow() {
+    let expr = "diff(sqrt(tan(x)+x+2), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "mixed tan/polynomial sqrt diff should avoid the generic depth-overflow route: {stderr}"
+    );
+    assert_eq!(
+        json["result"], "(cos(x)^2 + 1) / (2·cos(x)^2·sqrt(tan(x) + x + 2))",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "tan/polynomial sqrt diff should stay on the direct presentation route: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "tan(x) + x + 2"
+        }),
+        "tan/polynomial radicand should expose a positive-domain guard for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+        }),
+        "tan/polynomial radicand should expose the tangent pole guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_tan_sin_polynomial_sum_compacts_common_denominator_numerator() {
+    let expr = "diff(sqrt(tan(x)+sin(x)+x), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "mixed tan/sin/polynomial sqrt diff should stay out of the generic cleanup loop: {stderr}"
+    );
+    assert_eq!(
+        json["result"], "(cos(x)^2 + cos(x)^3 + 1) / (2·cos(x)^2·sqrt(sin(x) + tan(x) + x))",
+        "expr: {expr}"
+    );
+    assert!(
+        !json["result"]
+            .as_str()
+            .is_some_and(|result| result.contains("cos(x)·cos(x)^2")),
+        "post-calculus presentation should compact repeated cos factors: {json:?}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "tan/sin/polynomial sqrt diff should remain a direct presentation step: {steps:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "sin(x) + tan(x) + x"
+        }),
+        "tan/sin/polynomial radicand should expose a positive-domain guard for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+        }),
+        "tan/sin/polynomial radicand should expose the tangent pole guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_tan_cos_square_polynomial_sum_compacts_numerator_powers() {
+    let expr = "diff(sqrt(tan(x)+cos(x)^2+x), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "mixed tan/cos-power/polynomial sqrt diff should stay out of cleanup loops: {stderr}"
+    );
+    assert_eq!(
+        json["result"],
+        "(cos(x)^2 + 1 - 2·sin(x)·cos(x)^3) / (2·cos(x)^2·sqrt(tan(x) + cos(x)^2 + x))",
+        "expr: {expr}"
+    );
+    let result = json["result"].as_str().expect("result string");
+    assert!(
+        !result.contains("2 - 1") && !result.contains("cos(x)·cos(x)^2"),
+        "post-calculus presentation should compact local cos powers: {result}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "tan/cos-power/polynomial sqrt diff should remain a direct presentation step: {steps:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "tan(x) + cos(x)^2 + x"
+        }),
+        "tan/cos-power/polynomial radicand should expose a positive-domain guard for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+        }),
+        "tan/cos-power/polynomial radicand should expose the tangent pole guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_tan_ln_polynomial_sum_avoids_cycle_route() {
+    let expr = "diff(sqrt(tan(x)+ln(x)+x), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("cycle detected") && !stderr.contains("depth_overflow"),
+        "tan/ln/polynomial sqrt diff should stay out of cleanup loops: {stderr}"
+    );
+    assert!(
+        json.get("blocked_hints").is_none(),
+        "direct tan/ln/polynomial sqrt diff should not emit blocked hints: {json:?}"
+    );
+    assert_eq!(
+        json["result"], "(cos(x)^2 + x·cos(x)^2 + x) / (2·x·cos(x)^2·sqrt(tan(x) + ln(x) + x))",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "tan/ln/polynomial sqrt diff should use direct derivative presentation: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "ln(x) should expose x > 0 for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "tan(x) + ln(x) + x"
+        }),
+        "tan/ln/polynomial radicand should expose the compact positive-domain guard for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+        }),
+        "tan/ln/polynomial radicand should expose the tangent pole guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_tan_scaled_ln_polynomial_sum_uses_direct_route() {
+    let expr = "diff(sqrt(tan(x)+2*ln(x)+x), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("cycle detected") && !stderr.contains("depth_overflow"),
+        "scaled tan/ln/polynomial sqrt diff should stay out of cleanup loops: {stderr}"
+    );
+    assert!(
+        json.get("blocked_hints").is_none(),
+        "scaled direct tan/ln/polynomial sqrt diff should not emit blocked hints: {json:?}"
+    );
+    assert_eq!(
+        json["result"], "(2·cos(x)^2 + x·cos(x)^2 + x) / (2·x·cos(x)^2·sqrt(tan(x) + 2·ln(x) + x))",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "scaled tan/ln/polynomial sqrt diff should use direct derivative presentation: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "scaled ln(x) should expose x > 0 for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "tan(x) + 2·ln(x) + x"
+        }),
+        "scaled tan/ln/polynomial radicand should expose the compact positive-domain guard for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+        }),
+        "scaled tan/ln/polynomial radicand should expose the tangent pole guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_tan_negative_ln_polynomial_sum_uses_direct_route() {
+    let expr = "diff(sqrt(tan(x)-ln(x)+x), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("cycle detected") && !stderr.contains("depth_overflow"),
+        "negative-log tan/polynomial sqrt diff should stay out of cleanup loops: {stderr}"
+    );
+    assert!(
+        json.get("blocked_hints").is_none(),
+        "negative-log direct tan/polynomial sqrt diff should not emit blocked hints: {json:?}"
+    );
+    assert_eq!(
+        json["result"], "(x·cos(x)^2 + x - cos(x)^2) / (2·x·cos(x)^2·sqrt(tan(x) - ln(x) + x))",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "negative-log tan/polynomial sqrt diff should use direct derivative presentation: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "negative ln(x) should still expose x > 0 for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "tan(x) - ln(x) + x"
+        }),
+        "negative-log tan/polynomial radicand should expose the compact positive-domain guard for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+        }),
+        "negative-log tan/polynomial radicand should expose the tangent pole guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_tan_sqrt_variable_polynomial_sum_uses_direct_route() {
+    let expr = "diff(sqrt(tan(x)+sqrt(x)+x), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("cycle detected") && !stderr.contains("depth_overflow"),
+        "tan/sqrt-variable/polynomial sqrt diff should stay out of cleanup loops: {stderr}"
+    );
+    assert!(
+        json.get("blocked_hints").is_none(),
+        "direct tan/sqrt-variable/polynomial sqrt diff should not emit blocked hints: {json:?}"
+    );
+    assert_eq!(
+        json["result"],
+        "(cos(x)^2 + 1/2·x^(-1/2)·cos(x)^2 + 1) / (2·cos(x)^2·sqrt(tan(x) + sqrt(x) + x))",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "tan/sqrt-variable/polynomial sqrt diff should use direct derivative presentation: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "sqrt(x) derivative should expose x > 0 for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+        }),
+        "tan/sqrt-variable/polynomial radicand should expose the tangent pole guard for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "tan(x) + sqrt(x) + x"
+        }),
+        "tan/sqrt-variable/polynomial radicand should expose the compact positive-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_tan_reciprocal_sqrt_polynomial_sum_terminates_directly() {
+    for (expr, expected, radicand) in [
+        (
+            "diff(sqrt(tan(x)+1/sqrt(x)+x), x)",
+            "(cos(x)^2 + 1 - 1/2·x^(-3/2)·cos(x)^2) / (2·cos(x)^2·sqrt(tan(x) + 1 / sqrt(x) + x))",
+            "tan(x) + 1 / sqrt(x) + x",
+        ),
+        (
+            "diff(sqrt(tan(x)-1/sqrt(x)+x), x)",
+            "(cos(x)^2 + 1/2·x^(-3/2)·cos(x)^2 + 1) / (2·cos(x)^2·sqrt(tan(x) - 1 / sqrt(x) + x))",
+            "tan(x) - 1 / sqrt(x) + x",
+        ),
+    ] {
+        let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert!(
+            !stderr.contains("cycle detected") && !stderr.contains("depth_overflow"),
+            "tan/reciprocal-sqrt/polynomial sqrt diff should stay out of cleanup loops: {stderr}"
+        );
+        assert!(
+            json.get("blocked_hints").is_none(),
+            "direct tan/reciprocal-sqrt/polynomial sqrt diff should not emit blocked hints: {json:?}"
+        );
+        assert_eq!(json["result"], expected, "expr: {expr}");
+
+        let steps = json["steps"].as_array().expect("steps should be an array");
+        assert_eq!(
+            steps.len(),
+            1,
+            "tan/reciprocal-sqrt/polynomial sqrt diff should use direct derivative presentation: {steps:?}"
+        );
+        assert_eq!(steps[0]["rule"], "Calcular la derivada");
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+            }),
+            "reciprocal sqrt derivative should expose x > 0 for {expr}: {required:?}"
+        );
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+            }),
+            "tan/reciprocal-sqrt/polynomial radicand should expose the tangent pole guard for {expr}: {required:?}"
+        );
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == radicand
+            }),
+            "tan/reciprocal-sqrt/polynomial radicand should expose the compact positive-domain guard for {expr}: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_trig_quadratic_sum_keeps_direct_presentation() {
+    let expr = "diff(sqrt(sin(2*x)+cos(x)+x^2), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "mixed trig/quadratic sqrt diff should avoid the generic depth-overflow route: {stderr}"
+    );
+    assert_eq!(
+        json["result"], "(cos(2·x) + x - 1/2·sin(x)) / sqrt(sin(2·x) + cos(x) + x^2)",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "trig/quadratic sqrt diff should stay on the direct presentation route: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+    assert!(
+        steps.iter().all(|step| !step["rule"]
+            .as_str()
+            .is_some_and(|rule| rule.contains("ángulo doble"))),
+        "trig/quadratic sqrt diff should keep the raw trig radicand: {steps:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "sin(2·x) + cos(x) + x^2"
+        }),
+        "trig/quadratic radicand should expose a positive-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_trig_cubic_sum_keeps_direct_presentation() {
+    let expr = "diff(sqrt(sin(2*x)+cos(x)+x^3), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "mixed trig/cubic sqrt diff should avoid the generic depth-overflow route: {stderr}"
+    );
+    assert_eq!(
+        json["result"], "(cos(2·x) + 3/2·x^2 - 1/2·sin(x)) / sqrt(sin(2·x) + cos(x) + x^3)",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "trig/cubic sqrt diff should stay on the direct presentation route: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+    assert!(
+        steps.iter().all(|step| !step["rule"]
+            .as_str()
+            .is_some_and(|rule| rule.contains("ángulo doble"))),
+        "trig/cubic sqrt diff should keep the raw trig radicand: {steps:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "sin(2·x) + cos(x) + x^3"
+        }),
+        "trig/cubic radicand should expose a positive-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_trig_log_sum_keeps_direct_presentation() {
+    let expr = "diff(sqrt(sin(2*x)+cos(x)+ln(x)), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "mixed trig/log sqrt diff should avoid the generic depth-overflow route: {stderr}"
+    );
+    assert_eq!(
+        json["result"], "(2·x·cos(2·x) + 1 - x·sin(x)) / (2·x·sqrt(sin(2·x) + cos(x) + ln(x)))",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "trig/log sqrt diff should stay on the direct presentation route: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+    assert!(
+        steps.iter().all(|step| !step["rule"]
+            .as_str()
+            .is_some_and(|rule| rule.contains("ángulo doble"))),
+        "trig/log sqrt diff should keep the raw trig radicand: {steps:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "sin(2·x) + cos(x) + ln(x)"
+        }),
+        "trig/log radicand should expose a positive-domain guard for {expr}: {required:?}"
+    );
+    assert!(
+        required
+            .iter()
+            .any(|condition| condition["kind"] == "Positive" && condition["expr_canonical"] == "x"),
+        "ln term should preserve its positive-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_trig_exp_sum_keeps_direct_presentation() {
+    let expr = "diff(sqrt(sin(2*x)+cos(x)+exp(x)), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "mixed trig/exp sqrt diff should avoid the generic depth-overflow route: {stderr}"
+    );
+    assert_eq!(
+        json["result"], "(cos(2·x) + 1/2·e^x - 1/2·sin(x)) / sqrt(sin(2·x) + cos(x) + e^x)",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "trig/exp sqrt diff should stay on the direct presentation route: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+    assert!(
+        steps.iter().all(|step| !step["rule"]
+            .as_str()
+            .is_some_and(|rule| rule.contains("ángulo doble"))),
+        "trig/exp sqrt diff should keep the raw trig radicand: {steps:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "sin(2·x) + cos(x) + e^x"
+        }),
+        "trig/exp radicand should expose a positive-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_trig_sqrt_var_sum_keeps_direct_presentation() {
+    let expr = "diff(sqrt(sin(2*x)+cos(x)+sqrt(x)), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "mixed trig/sqrt-variable root diff should avoid the generic depth-overflow route: {stderr}"
+    );
+    assert_eq!(
+        json["result"],
+        "(cos(2·x) + 1 / (4·sqrt(x)) - 1/2·sin(x)) / sqrt(sin(2·x) + cos(x) + sqrt(x))",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "trig/sqrt-variable root diff should stay on the direct presentation route: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+    assert!(
+        steps.iter().all(|step| !step["rule"]
+            .as_str()
+            .is_some_and(|rule| rule.contains("ángulo doble"))),
+        "trig/sqrt-variable root diff should keep the raw trig radicand: {steps:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "sin(2·x) + cos(x) + sqrt(x)"
+        }),
+        "trig/sqrt-variable radicand should expose a positive-domain guard for {expr}: {required:?}"
+    );
+    assert!(
+        required
+            .iter()
+            .any(|condition| condition["kind"] == "Positive" && condition["expr_canonical"] == "x"),
+        "sqrt-variable term should preserve the derivative-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_trig_negative_sqrt_var_sum_keeps_direct_presentation() {
+    let expr = "diff(sqrt(sin(2*x)+cos(x)-sqrt(x)), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("depth_overflow"),
+        "mixed trig/negative-sqrt-variable root diff should avoid the generic depth-overflow route: {stderr}"
+    );
+    assert_eq!(
+        json["result"],
+        "(cos(2·x) - 1/2·sin(x) - 1 / (4·sqrt(x))) / sqrt(sin(2·x) + cos(x) - sqrt(x))",
+        "expr: {expr}"
+    );
+    assert!(
+        json["result_latex"]
+            .as_str()
+            .is_some_and(|latex| latex.contains("\\frac{1}{4\\cdot \\sqrt{x}}")),
+        "negative reciprocal sqrt term should stay compact in LaTeX too: {}",
+        json["result_latex"]
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "trig/negative-sqrt-variable root diff should stay on the direct presentation route: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "sin(2·x) + cos(x) - sqrt(x)"
+        }),
+        "trig/negative-sqrt-variable radicand should expose a positive-domain guard for {expr}: {required:?}"
+    );
+    assert!(
+        required
+            .iter()
+            .any(|condition| condition["kind"] == "Positive" && condition["expr_canonical"] == "x"),
+        "negative sqrt-variable term should preserve the derivative-domain guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_trig_scaled_sqrt_var_sum_keeps_direct_presentation() {
+    for (expr, expected_result, radicand) in [
+        (
+            "diff(sqrt(sin(2*x)+cos(x)+2*sqrt(x)), x)",
+            "(cos(2·x) + 1 / (2·sqrt(x)) - 1/2·sin(x)) / sqrt(sin(2·x) + cos(x) + 2·sqrt(x))",
+            "sin(2·x) + cos(x) + 2·sqrt(x)",
+        ),
+        (
+            "diff(sqrt(sin(2*x)+cos(x)-2*sqrt(x)), x)",
+            "(cos(2·x) - 1/2·sin(x) - 1 / (2·sqrt(x))) / sqrt(sin(2·x) + cos(x) - 2·sqrt(x))",
+            "sin(2·x) + cos(x) - 2·sqrt(x)",
+        ),
+    ] {
+        let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "scaled mixed trig/sqrt-variable root diff should avoid depth overflow for {expr}: {stderr}"
+        );
+        assert_eq!(json["result"], expected_result, "expr: {expr}");
+
+        let steps = json["steps"].as_array().expect("steps should be an array");
+        assert_eq!(
+            steps.len(),
+            1,
+            "scaled trig/sqrt-variable root diff should stay on the direct route for {expr}: {steps:?}"
+        );
+        assert_eq!(steps[0]["rule"], "Calcular la derivada");
+        assert!(
+            steps.iter().all(|step| !step["rule"]
+                .as_str()
+                .is_some_and(|rule| rule.contains("ángulo doble"))),
+            "scaled trig/sqrt-variable root diff should keep the raw trig radicand for {expr}: {steps:?}"
+        );
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == radicand
+            }),
+            "scaled trig/sqrt-variable radicand should expose a positive-domain guard for {expr}: {required:?}"
+        );
+        assert!(
+            required.iter().any(
+                |condition| condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+            ),
+            "scaled sqrt-variable term should preserve the derivative-domain guard for {expr}: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_trig_scaled_elementary_sum_keeps_direct_presentation() {
+    for (expr, expected_result, radicand, extra_condition) in [
+        (
+            "diff(sqrt(sin(2*x)+cos(x)+2*ln(x)), x)",
+            "(2·x·cos(2·x) + 2 - x·sin(x)) / (2·x·sqrt(sin(2·x) + cos(x) + 2·ln(x)))",
+            "sin(2·x) + cos(x) + 2·ln(x)",
+            Some("x"),
+        ),
+        (
+            "diff(sqrt(sin(2*x)+cos(x)-3*ln(x)), x)",
+            "(2·x·cos(2·x) - x·sin(x) - 3) / (2·x·sqrt(sin(2·x) + cos(x) - 3·ln(x)))",
+            "sin(2·x) + cos(x) - 3·ln(x)",
+            Some("x"),
+        ),
+        (
+            "diff(sqrt(sin(2*x)+cos(x)+2*exp(x)), x)",
+            "(cos(2·x) + e^x - 1/2·sin(x)) / sqrt(sin(2·x) + cos(x) + 2·e^x)",
+            "sin(2·x) + cos(x) + 2·e^x",
+            None,
+        ),
+        (
+            "diff(sqrt(sin(2*x)+cos(x)-3*exp(x)), x)",
+            "(cos(2·x) - 3/2·e^x - 1/2·sin(x)) / sqrt(sin(2·x) + cos(x) - 3·e^x)",
+            "sin(2·x) + cos(x) - 3·e^x",
+            None,
+        ),
+    ] {
+        let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+        assert_eq!(json["ok"], true, "expr: {expr}");
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "scaled elementary trig-root diff should avoid depth overflow for {expr}: {stderr}"
+        );
+        assert_eq!(json["result"], expected_result, "expr: {expr}");
+
+        let steps = json["steps"].as_array().expect("steps should be an array");
+        assert_eq!(
+            steps.len(),
+            1,
+            "scaled elementary trig-root diff should stay on the direct route for {expr}: {steps:?}"
+        );
+        assert_eq!(steps[0]["rule"], "Calcular la derivada");
+        assert!(
+            steps.iter().all(|step| !step["rule"]
+                .as_str()
+                .is_some_and(|rule| rule.contains("ángulo doble"))),
+            "scaled elementary trig-root diff should keep the raw trig radicand for {expr}: {steps:?}"
+        );
+
+        let required = json["required_conditions"]
+            .as_array()
+            .expect("required_conditions should be an array");
+        assert!(
+            required.iter().any(|condition| {
+                condition["kind"] == "Positive" && condition["expr_canonical"] == radicand
+            }),
+            "scaled elementary radicand should expose a positive-domain guard for {expr}: {required:?}"
+        );
+        if let Some(extra_condition) = extra_condition {
+            assert!(
+                required.iter().any(|condition| {
+                    condition["kind"] == "Positive"
+                        && condition["expr_canonical"] == extra_condition
+                }),
+                "scaled logarithmic term should preserve its derivative-domain guard for {expr}: {required:?}"
+            );
+        }
+    }
 }
 
 #[test]

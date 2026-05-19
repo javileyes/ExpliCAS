@@ -1,379 +1,23 @@
 {
-  "generated_at": "2026-05-18T10:03:21.123572+00:00",
+  "generated_at": "2026-05-19T07:40:20.992369+00:00",
   "generated_discovery": {
     "families": {},
     "observe_only_discoveries": 0,
     "recent": [],
     "wrappers": {}
   },
-  "generated_discovery_pressure": {
-    "blocked_low_families": {},
-    "blocked_low_family_count": 0,
-    "low_family_count": 0,
-    "unblocked_low_families": {}
-  },
+  "generated_discovery_pressure": {},
   "git": {
     "branch": "main",
-    "commit": "077e22d7691080fcb33d2e50e1a388d068ef8b0f"
+    "commit": "a26ea4b555d9790a3b4e922fbd97535521945e5b"
   },
   "orchestrator_profile_filter": null,
   "orchestrator_profile_limit": null,
   "orchestrator_profile_requested": false,
-  "profile": "guardrail",
+  "profile": "pressure",
   "suites": {
-    "calculus_diff_contract": {
-      "category": "calculus",
-      "command": [
-        "cargo",
-        "test",
-        "--release",
-        "-q",
-        "-p",
-        "cas_solver",
-        "--test",
-        "diff_step_contract_tests",
-        "--",
-        "--nocapture"
-      ],
-      "delta": {},
-      "elapsed_seconds": 6.256,
-      "env": {},
-      "guardrail": null,
-      "metrics": {
-        "cargo_status": "ok",
-        "failed": 0,
-        "filtered_out": 0,
-        "ignored": 1,
-        "measured": 0,
-        "passed": 205,
-        "timeouts": 0
-      },
-      "process_elapsed_seconds": 6.256,
-      "returncode": 0,
-      "status": "pass",
-      "timed_out": false,
-      "timeout_seconds": null
-    },
-    "calculus_integrate_contract": {
-      "category": "calculus",
-      "command": [
-        "cargo",
-        "test",
-        "--release",
-        "-q",
-        "-p",
-        "cas_cli",
-        "--test",
-        "integrate_contract_tests",
-        "--",
-        "--nocapture"
-      ],
-      "delta": {},
-      "elapsed_seconds": 4.077,
-      "env": {},
-      "guardrail": null,
-      "metrics": {
-        "cargo_status": "ok",
-        "failed": 0,
-        "filtered_out": 0,
-        "ignored": 1,
-        "measured": 0,
-        "passed": 316,
-        "timeouts": 0
-      },
-      "process_elapsed_seconds": 4.077,
-      "returncode": 0,
-      "status": "pass",
-      "timed_out": false,
-      "timeout_seconds": null
-    },
-    "calculus_limit_contract": {
-      "category": "calculus",
-      "command": [
-        "cargo",
-        "test",
-        "--release",
-        "-q",
-        "-p",
-        "cas_cli",
-        "--test",
-        "limit_contract_tests",
-        "--",
-        "--nocapture"
-      ],
-      "delta": {},
-      "elapsed_seconds": 1.068,
-      "env": {},
-      "guardrail": null,
-      "metrics": {
-        "cargo_status": "ok",
-        "failed": 0,
-        "filtered_out": 0,
-        "ignored": 0,
-        "measured": 0,
-        "passed": 75,
-        "timeouts": 0
-      },
-      "process_elapsed_seconds": 1.068,
-      "returncode": 0,
-      "status": "pass",
-      "timed_out": false,
-      "timeout_seconds": null
-    },
-    "calculus_limit_presimplify_contract": {
-      "category": "calculus",
-      "command": [
-        "cargo",
-        "test",
-        "--release",
-        "-q",
-        "-p",
-        "cas_cli",
-        "--test",
-        "presimplify_contract_tests",
-        "--",
-        "--nocapture"
-      ],
-      "delta": {},
-      "elapsed_seconds": 0.638,
-      "env": {},
-      "guardrail": null,
-      "metrics": {
-        "cargo_status": "ok",
-        "failed": 0,
-        "filtered_out": 0,
-        "ignored": 0,
-        "measured": 0,
-        "passed": 8,
-        "timeouts": 0
-      },
-      "process_elapsed_seconds": 0.638,
-      "returncode": 0,
-      "status": "pass",
-      "timed_out": false,
-      "timeout_seconds": null
-    },
-    "derive_contract": {
-      "category": "derive",
-      "command": [
-        "cargo",
-        "test",
-        "--release",
-        "-q",
-        "-p",
-        "cas_solver",
-        "--test",
-        "derive_contract_tests",
-        "derive_pairs_follow_expected_outcomes",
-        "--",
-        "--exact",
-        "--nocapture"
-      ],
-      "delta": {},
-      "elapsed_seconds": 5.064,
-      "env": {},
-      "guardrail": null,
-      "metrics": {
-        "derived": 390,
-        "distinct_expected_strategies": 28,
-        "generic_simplify_expected": 0,
-        "long_path_rate": 0.0,
-        "mean_step_count": 1.05,
-        "not_equivalent": 1,
-        "reachability_rate": 1.0,
-        "supported_equiv_rate": 1.0,
-        "unsupported": 0
-      },
-      "process_elapsed_seconds": 5.064,
-      "returncode": 0,
-      "status": "pass",
-      "timed_out": false,
-      "timeout_seconds": null
-    },
-    "derive_didactic_audit": {
-      "category": "didactic",
-      "command": [
-        "cargo",
-        "test",
-        "--release",
-        "-q",
-        "-p",
-        "cas_didactic",
-        "--test",
-        "derive_didactic_audit",
-        "derive_didactic_audit_generates_markdown_report",
-        "--",
-        "--ignored",
-        "--exact",
-        "--nocapture"
-      ],
-      "delta": {},
-      "elapsed_seconds": 28.517,
-      "env": {},
-      "guardrail": null,
-      "metrics": {
-        "cases": 472,
-        "flagged_cases": 0,
-        "flagged_rate": 0.0,
-        "mean_step_count": 1.06,
-        "no_web_steps": 0,
-        "no_web_substeps": 0,
-        "total_web_substeps": 482
-      },
-      "process_elapsed_seconds": 28.517,
-      "returncode": 0,
-      "status": "pass",
-      "timed_out": false,
-      "timeout_seconds": null
-    },
-    "derive_shadow_pressure": {
-      "category": "derive",
-      "command": [
-        "cargo",
-        "test",
-        "--release",
-        "-q",
-        "-p",
-        "cas_solver",
-        "--test",
-        "derive_contract_tests",
-        "derive_engine_identity_shadow_pressure_reports_reachability",
-        "--",
-        "--exact",
-        "--nocapture"
-      ],
-      "delta": {},
-      "elapsed_seconds": 0.273,
-      "env": {},
-      "guardrail": null,
-      "metrics": {
-        "actual_strategy_counts": {
-          "cancel fraction": 1,
-          "collect": 1,
-          "combine fraction": 2,
-          "combine like terms": 1,
-          "combine powers": 2,
-          "contract logs": 2,
-          "contract trig": 1,
-          "expand": 3,
-          "expand fraction": 3,
-          "expand odd half power": 2,
-          "expand trig": 4,
-          "expand_log": 2,
-          "factor": 2,
-          "factor out with division": 1,
-          "finite sums/products": 11,
-          "integrate prep": 1,
-          "log inverse power": 2,
-          "nested fraction": 2,
-          "number theory": 4,
-          "rationalize": 3,
-          "rewrite exponentials": 3,
-          "rewrite factorials": 1,
-          "rewrite hyperbolics": 3,
-          "rewrite inverse trigs": 1,
-          "rewrite radicals": 3,
-          "rewrite trigs": 1,
-          "solve prep": 2,
-          "split fraction": 2
-        },
-        "classification_rate": 1.0,
-        "classified": 66,
-        "derived": 66,
-        "derived_by_family": {
-          "Addition of fractions": 1,
-          "Binomial Expansion": 1,
-          "Binomial coefficients (choose function)": 1,
-          "Change of base": 1,
-          "Completing the square patterns": 1,
-          "Constant sum": 2,
-          "Difference of Squares": 1,
-          "Exponential of logs": 1,
-          "Factor-cancel patterns": 1,
-          "Fraction Simplification": 1,
-          "Fractional exponent combination": 1,
-          "Fundamental exp decomposition": 3,
-          "Geometric sum: sum(r^k, k, 0, n) = (r^(n+1) - 1)/(r - 1)": 1,
-          "Log of complex products": 1,
-          "Mixed fraction decomposition": 1,
-          "Nested radicals": 1,
-          "Partial fractions / telescoping patterns": 1,
-          "Pascal's identity: C(n,k) + C(n,k+1) = C(n+1,k+1)": 1,
-          "Power of roots": 1,
-          "Power tower identities": 1,
-          "Product = factorial: product(k, k, 1, n) = n!": 1,
-          "Product of constant: product(c, k, 1, n) = c^n": 1,
-          "Product of powers: product(k^2, k, 1, n)": 1,
-          "Pythagorean Identities": 2,
-          "Rationalize denominators with conjugates": 1,
-          "Rationalize with cube roots": 1,
-          "Root Rules": 1,
-          "Sqrt Arithmetic": 1,
-          "Sum of cubes: sum(k^3, k, 1, n) = (n*(n+1)/2)^2": 1,
-          "Sum of first n integers: sum(k, k, 1, n) = n*(n+1)/2": 1,
-          "Sum of squares: sum(k^2, k, 1, n) = n*(n+1)*(2n+1)/6": 1,
-          "Symmetry: C(n,k) = C(n,n-k)": 1,
-          "Tangent half-angle substitution": 1,
-          "Triple angle": 1,
-          "arctan compositions": 1,
-          "calculus_diff": 1,
-          "collect": 1,
-          "conditional_factor": 1,
-          "expand": 1,
-          "factor": 1,
-          "finite_aggregate": 1,
-          "finite_telescoping": 1,
-          "fraction_combine": 1,
-          "fraction_decompose": 1,
-          "fraction_expand": 1,
-          "integrate_prep": 1,
-          "log_contract": 1,
-          "log_exp_inverse": 2,
-          "log_expand": 1,
-          "log_inverse_power": 1,
-          "nested_fraction": 1,
-          "number_theory": 1,
-          "polynomial_product": 1,
-          "power_merge": 1,
-          "radical_power": 1,
-          "rationalize": 1,
-          "simplify": 1,
-          "solve_prep": 1,
-          "telescoping_fraction": 1,
-          "trig_contract": 1,
-          "trig_expand": 1
-        },
-        "distinct_actual_strategies": 28,
-        "embedded_family_missing": [],
-        "embedded_family_sampled_count": 26,
-        "embedded_family_total_count": 26,
-        "generic_simplify_strategy_ids": [],
-        "generic_simplify_strategy_successes": 0,
-        "mean_step_count": 1.11,
-        "multi_step_success_ids": [
-          "identity_log_product_root_cleanup:2",
-          "identity_nested_radical_denesting:2",
-          "identity_log_inverse_power_tower:2",
-          "embedded_calculus_diff_bounded_arcsin_residual:5",
-          "embedded_log_inverse_power_unary_natural_alias:2"
-        ],
-        "multi_step_successes": 5,
-        "not_equivalent": 0,
-        "not_equivalent_by_family": {},
-        "reachability_rate": 1.0,
-        "sampled": 66,
-        "single_step_successes": 61,
-        "unsupported": 0,
-        "unsupported_by_family": {}
-      },
-      "process_elapsed_seconds": 0.273,
-      "returncode": 0,
-      "status": "pass",
-      "timed_out": false,
-      "timeout_seconds": null
-    },
-    "embedded_equivalence_context": {
-      "category": "equivalence",
+    "simplify_zero_mixed": {
+      "category": "simplify",
       "command": [
         "cargo",
         "run",
@@ -382,1623 +26,210 @@
         "-p",
         "cas_solver",
         "--example",
-        "run_embedded_equivalence_context_corpus",
-        "--"
+        "run_simplify_zero_mixed_corpus",
+        "--",
+        "--window",
+        "sum:0:100",
+        "--window",
+        "sum:700:100",
+        "--window",
+        "difference:0:50",
+        "--window",
+        "product:0:100",
+        "--window",
+        "shifted_quotient:0:100"
       ],
       "delta": {},
-      "elapsed_seconds": 9.28,
+      "elapsed_seconds": 1.35,
       "env": {},
       "guardrail": null,
       "metrics": {
-        "average_wrapper_overhead_nodes": 13.49,
-        "complexity_level_count": 4,
-        "complexity_rows": {
-          "l0_root_pair": {
-            "avg_shell_depth": 0.0,
-            "avg_wrapper_overhead_nodes": 0.0,
+        "composition_rows": {
+          "difference": {
+            "avg_case_ms": 3.83,
+            "avg_parse_ms": 0.04,
+            "avg_simplify_ms": 0.29,
+            "avg_wire_ms": 0.33,
+            "elapsed_seconds": 0.19153,
             "failed": 0,
-            "max_shell_depth": 0,
-            "passed": 5,
-            "total": 5
+            "parse_elapsed_seconds": 0.00199,
+            "passed": 50,
+            "simplify_elapsed_seconds": 0.01434,
+            "total": 50,
+            "wire_elapsed_seconds": 0.01636
           },
-          "l1_single_wrapper": {
-            "avg_shell_depth": 1.0,
-            "avg_wrapper_overhead_nodes": 5.1,
+          "product": {
+            "avg_case_ms": 2.84,
+            "avg_parse_ms": 0.03,
+            "avg_simplify_ms": 0.22,
+            "avg_wire_ms": 0.25,
+            "elapsed_seconds": 0.28372,
             "failed": 0,
-            "max_shell_depth": 1,
-            "passed": 10,
-            "total": 10
+            "parse_elapsed_seconds": 0.0034700000000000004,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.02151,
+            "total": 100,
+            "wire_elapsed_seconds": 0.02504
           },
-          "l2_wrapper_plus_noise": {
-            "avg_shell_depth": 1.9,
-            "avg_wrapper_overhead_nodes": 10.18,
+          "shifted_quotient": {
+            "avg_case_ms": 4.75,
+            "avg_parse_ms": 0.05,
+            "avg_simplify_ms": 0.32,
+            "avg_wire_ms": 0.37,
+            "elapsed_seconds": 0.47536,
             "failed": 0,
-            "max_shell_depth": 2,
-            "passed": 1016,
-            "total": 1016
+            "parse_elapsed_seconds": 0.00529,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.03171,
+            "total": 100,
+            "wire_elapsed_seconds": 0.03705
           },
-          "l3_nested_or_composed": {
-            "avg_shell_depth": 2.62,
-            "avg_wrapper_overhead_nodes": 21.18,
+          "sum": {
+            "avg_case_ms": 2.01,
+            "avg_parse_ms": 0.03,
+            "avg_simplify_ms": 0.23,
+            "avg_wire_ms": 0.26,
+            "elapsed_seconds": 0.40259,
             "failed": 0,
-            "max_shell_depth": 5,
-            "passed": 457,
-            "total": 457
+            "parse_elapsed_seconds": 0.00628,
+            "passed": 200,
+            "simplify_elapsed_seconds": 0.046490000000000004,
+            "total": 200,
+            "wire_elapsed_seconds": 0.05289
           }
-        },
-        "corpus_structure": {
-          "combined_additive_zero": {
-            "above_min_family_counts": {
-              "calculus_integrate": 8,
-              "collect": 7,
-              "finite_aggregate": 7,
-              "integrate_prep": 7,
-              "number_theory": 7,
-              "simplify": 15
-            },
-            "collapse_family_count": 27,
-            "collapse_rows": 159,
-            "depth4_family_count": 27,
-            "depth4_missing_families": [],
-            "depth4_rows": 39,
-            "family_count": 27,
-            "family_counts": {
-              "calculus_diff": 6,
-              "calculus_integrate": 8,
-              "collect": 7,
-              "conditional_factor": 6,
-              "expand": 6,
-              "factor": 6,
-              "finite_aggregate": 7,
-              "finite_telescoping": 6,
-              "fraction_combine": 6,
-              "fraction_decompose": 6,
-              "fraction_expand": 6,
-              "integrate_prep": 7,
-              "log_contract": 6,
-              "log_exp_inverse": 6,
-              "log_expand": 6,
-              "log_inverse_power": 6,
-              "nested_fraction": 6,
-              "number_theory": 7,
-              "polynomial_product": 6,
-              "power_merge": 6,
-              "radical_power": 6,
-              "rationalize": 6,
-              "simplify": 15,
-              "solve_prep": 6,
-              "telescoping_fraction": 6,
-              "trig_contract": 6,
-              "trig_expand": 6
-            },
-            "low_family_count": 21,
-            "low_family_counts": {
-              "calculus_diff": 6,
-              "conditional_factor": 6,
-              "expand": 6,
-              "factor": 6,
-              "finite_telescoping": 6,
-              "fraction_combine": 6,
-              "fraction_decompose": 6,
-              "fraction_expand": 6,
-              "log_contract": 6,
-              "log_exp_inverse": 6,
-              "log_expand": 6,
-              "log_inverse_power": 6,
-              "nested_fraction": 6,
-              "polynomial_product": 6,
-              "power_merge": 6,
-              "radical_power": 6,
-              "rationalize": 6,
-              "solve_prep": 6,
-              "telescoping_fraction": 6,
-              "trig_contract": 6,
-              "trig_expand": 6
-            },
-            "min_family_case_count": 6,
-            "multi_core_family_count": 27,
-            "multi_core_missing_families": [],
-            "multi_core_rows": 45,
-            "orientation_family_count": 27,
-            "orientation_missing_families": [],
-            "orientation_rows": 48,
-            "target_family_case_count": 6,
-            "total": 177,
-            "under_target_family_count": 0,
-            "under_target_family_counts": {}
-          },
-          "family_count": 27,
-          "row_count": 1488
-        },
-        "coverage_saturation": {
-          "balanced_check_count": 5,
-          "checked_family_count": 27,
-          "checks": [
-            {
-              "name": "combined_additive_family_target",
-              "status": "balanced",
-              "under_target_families": [],
-              "under_target_family_count": 0
-            },
-            {
-              "missing_families": [],
-              "missing_family_count": 0,
-              "name": "combined_additive_depth4",
-              "status": "balanced"
-            },
-            {
-              "missing_families": [],
-              "missing_family_count": 0,
-              "name": "combined_additive_orientation",
-              "status": "balanced"
-            },
-            {
-              "missing_families": [],
-              "missing_family_count": 0,
-              "name": "combined_additive_multi_core",
-              "status": "balanced"
-            },
-            {
-              "missing_families": [],
-              "missing_family_count": 0,
-              "name": "reciprocal_shifted_difference_depth4",
-              "status": "balanced"
-            }
-          ],
-          "open_check_count": 0,
-          "recommendation": "defer embedded corpus padding unless a new reproducible failure appears; prefer calculus, robustness, or presentation candidates",
-          "status": "balanced"
         },
         "failed": 0,
-        "family_count": 27,
-        "largest_wrapper_complexity_share_percent": 16.9,
-        "largest_wrapper_share_percent": 19.8,
-        "max_expression_depth": 18,
-        "max_shell_depth": 5,
-        "passed": 1488,
-        "reported_elapsed": "9.28s",
-        "reported_elapsed_per_case_ms": 6.2366,
-        "reported_elapsed_seconds": 9.28,
-        "shell_depth_count": 6,
-        "shell_depth_rows": {
-          "0": {
-            "failed": 0,
-            "passed": 5,
-            "total": 5
-          },
-          "1": {
-            "failed": 0,
-            "passed": 141,
-            "total": 141
-          },
-          "2": {
-            "failed": 0,
-            "passed": 1126,
-            "total": 1126
-          },
-          "3": {
-            "failed": 0,
-            "passed": 124,
-            "total": 124
-          },
-          "4": {
-            "failed": 0,
-            "passed": 88,
-            "total": 88
-          },
-          "5": {
-            "failed": 0,
-            "passed": 4,
-            "total": 4
-          }
-        },
-        "sparse_wrapper_noise_budget_rows": [
+        "passed": 450,
+        "reported_elapsed": "1.35s",
+        "reported_elapsed_per_case_ms": 3.0,
+        "reported_elapsed_seconds": 1.35,
+        "steady_engine_heavy_rows": [
           {
-            "avg_shell_depth": 3.4,
-            "avg_wrapper_overhead_nodes": 20.15,
-            "failed": 0,
-            "max_shell_depth": 4,
-            "max_wrapper_overhead_nodes": 36,
-            "passed": 60,
-            "total": 60,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          }
-        ],
-        "total_cases": 1488,
-        "wrapper_complexity_family_rows": [
-          {
-            "failed": 0,
-            "family": "calculus_integrate",
-            "level": "l3_nested_or_composed",
-            "passed": 7,
-            "total": 7,
-            "wrapper": "reciprocal_shifted_difference_zero"
+            "case_number": 288,
+            "composition": "shifted_quotient",
+            "expression": "((1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) + 1)/((x^6 - 1 - (x-1)*(x^5+x^4+x^3+x^2+x+1)) + 1)",
+            "median_elapsed_seconds": 0.00933,
+            "median_parse_seconds": 8e-05,
+            "median_simplify_seconds": 0.0015,
+            "median_wire_seconds": 0.00157,
+            "runs": 3,
+            "window_label": "shifted_quotient@0+100"
           },
           {
-            "failed": 0,
-            "family": "calculus_diff",
-            "level": "l3_nested_or_composed",
-            "passed": 3,
-            "total": 3,
-            "wrapper": "reciprocal_shifted_difference_zero"
+            "case_number": 132,
+            "composition": "shifted_quotient",
+            "expression": "((ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + 1)/((x^6 - 1 - (x-1)*(x^5+x^4+x^3+x^2+x+1)) + 1)",
+            "median_elapsed_seconds": 0.0103,
+            "median_parse_seconds": 6e-05,
+            "median_simplify_seconds": 0.00143,
+            "median_wire_seconds": 0.00151,
+            "runs": 3,
+            "window_label": "shifted_quotient@0+100"
           },
           {
-            "failed": 0,
-            "family": "collect",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
+            "case_number": 18,
+            "composition": "difference",
+            "expression": "(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) - (ln(x^2 - y^2) - ln(x - y) - ln(x + y))",
+            "median_elapsed_seconds": 0.01027,
+            "median_parse_seconds": 3e-05,
+            "median_simplify_seconds": 0.00054,
+            "median_wire_seconds": 0.00058,
+            "runs": 3,
+            "window_label": "difference@0+50"
           },
           {
-            "failed": 0,
-            "family": "conditional_factor",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
+            "case_number": 20,
+            "composition": "shifted_quotient",
+            "expression": "((ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + 1)/((ln(x^2 - y^2) - ln(x - y) - ln(x + y)) + 1)",
+            "median_elapsed_seconds": 0.0137,
+            "median_parse_seconds": 5e-05,
+            "median_simplify_seconds": 0.0005200000000000001,
+            "median_wire_seconds": 0.00057,
+            "runs": 3,
+            "window_label": "shifted_quotient@0+100"
           },
           {
-            "failed": 0,
-            "family": "expand",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "factor",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "finite_aggregate",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "finite_telescoping",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_combine",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_decompose",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_expand",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "integrate_prep",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_contract",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_exp_inverse",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_expand",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_inverse_power",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "nested_fraction",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "number_theory",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "polynomial_product",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "power_merge",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "radical_power",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "rationalize",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "simplify",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "solve_prep",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "telescoping_fraction",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "trig_contract",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "trig_expand",
-            "level": "l3_nested_or_composed",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
+            "case_number": 176,
+            "composition": "shifted_quotient",
+            "expression": "((1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) + 1)/((ln(x^2 - y^2) - ln(x - y) - ln(x + y)) + 1)",
+            "median_elapsed_seconds": 0.02817,
+            "median_parse_seconds": 7.000000000000001e-05,
+            "median_simplify_seconds": 0.00066,
+            "median_wire_seconds": 0.00073,
+            "runs": 3,
+            "window_label": "shifted_quotient@0+100"
           }
         ],
-        "wrapper_complexity_rows": [
-          {
-            "avg_shell_depth": 2.0,
-            "avg_wrapper_overhead_nodes": 10.19,
+        "total_cases": 450,
+        "window_rows": {
+          "difference@0+50": {
+            "avg_case_ms": 3.83,
+            "avg_parse_ms": 0.04,
+            "avg_simplify_ms": 0.29,
+            "avg_wire_ms": 0.33,
+            "elapsed_seconds": 0.19153,
             "failed": 0,
-            "level": "l2_wrapper_plus_noise",
-            "max_shell_depth": 2,
-            "passed": 252,
-            "total": 252,
-            "wrapper": "common_denominator_zero"
+            "parse_elapsed_seconds": 0.00199,
+            "passed": 50,
+            "simplify_elapsed_seconds": 0.01434,
+            "total": 50,
+            "wire_elapsed_seconds": 0.01636
           },
-          {
-            "avg_shell_depth": 1.87,
-            "avg_wrapper_overhead_nodes": 10.18,
+          "product@0+100": {
+            "avg_case_ms": 2.84,
+            "avg_parse_ms": 0.03,
+            "avg_simplify_ms": 0.22,
+            "avg_wire_ms": 0.25,
+            "elapsed_seconds": 0.28372,
             "failed": 0,
-            "level": "l2_wrapper_plus_noise",
-            "max_shell_depth": 2,
-            "passed": 252,
-            "total": 252,
-            "wrapper": "scaled_difference_zero"
+            "parse_elapsed_seconds": 0.0034700000000000004,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.02151,
+            "total": 100,
+            "wire_elapsed_seconds": 0.02504
           },
-          {
-            "avg_shell_depth": 1.88,
-            "avg_wrapper_overhead_nodes": 10.19,
+          "shifted_quotient@0+100": {
+            "avg_case_ms": 4.75,
+            "avg_parse_ms": 0.05,
+            "avg_simplify_ms": 0.32,
+            "avg_wire_ms": 0.37,
+            "elapsed_seconds": 0.47536,
             "failed": 0,
-            "level": "l2_wrapper_plus_noise",
-            "max_shell_depth": 2,
-            "passed": 252,
-            "total": 252,
-            "wrapper": "shifted_quotient_one"
+            "parse_elapsed_seconds": 0.00529,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.03171,
+            "total": 100,
+            "wire_elapsed_seconds": 0.03705
           },
-          {
-            "avg_shell_depth": 1.88,
-            "avg_wrapper_overhead_nodes": 10.18,
+          "sum@0+100": {
+            "avg_case_ms": 2.84,
+            "avg_parse_ms": 0.03,
+            "avg_simplify_ms": 0.24,
+            "avg_wire_ms": 0.28,
+            "elapsed_seconds": 0.28441000000000005,
             "failed": 0,
-            "level": "l2_wrapper_plus_noise",
-            "max_shell_depth": 2,
-            "passed": 251,
-            "total": 251,
-            "wrapper": "additive_passthrough_zero"
+            "parse_elapsed_seconds": 0.00337,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.024149999999999998,
+            "total": 100,
+            "wire_elapsed_seconds": 0.02758
           },
-          {
-            "avg_shell_depth": 2.83,
-            "avg_wrapper_overhead_nodes": 27.38,
+          "sum@700+100": {
+            "avg_case_ms": 1.18,
+            "avg_parse_ms": 0.03,
+            "avg_simplify_ms": 0.22,
+            "avg_wire_ms": 0.25,
+            "elapsed_seconds": 0.11818000000000001,
             "failed": 0,
-            "level": "l3_nested_or_composed",
-            "max_shell_depth": 5,
-            "passed": 154,
-            "total": 154,
-            "wrapper": "combined_additive_zero"
-          },
-          {
-            "avg_shell_depth": 3.32,
-            "avg_wrapper_overhead_nodes": 16.66,
-            "failed": 0,
-            "level": "l3_nested_or_composed",
-            "max_shell_depth": 4,
-            "passed": 76,
-            "total": 76,
-            "wrapper": "squared_passthrough_zero"
-          },
-          {
-            "avg_shell_depth": 3.4,
-            "avg_wrapper_overhead_nodes": 20.15,
-            "failed": 0,
-            "level": "l3_nested_or_composed",
-            "max_shell_depth": 4,
-            "passed": 60,
-            "total": 60,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "avg_shell_depth": 1.7,
-            "avg_wrapper_overhead_nodes": 17.95,
-            "failed": 0,
-            "level": "l3_nested_or_composed",
-            "max_shell_depth": 2,
-            "passed": 43,
-            "total": 43,
-            "wrapper": "additive_passthrough_zero"
-          },
-          {
-            "avg_shell_depth": 2.0,
-            "avg_wrapper_overhead_nodes": 17.83,
-            "failed": 0,
-            "level": "l3_nested_or_composed",
-            "max_shell_depth": 2,
-            "passed": 42,
-            "total": 42,
-            "wrapper": "common_denominator_zero"
-          },
-          {
-            "avg_shell_depth": 1.9,
-            "avg_wrapper_overhead_nodes": 17.88,
-            "failed": 0,
-            "level": "l3_nested_or_composed",
-            "max_shell_depth": 2,
-            "passed": 41,
-            "total": 41,
-            "wrapper": "scaled_difference_zero"
-          },
-          {
-            "avg_shell_depth": 1.68,
-            "avg_wrapper_overhead_nodes": 17.88,
-            "failed": 0,
-            "level": "l3_nested_or_composed",
-            "max_shell_depth": 2,
-            "passed": 41,
-            "total": 41,
-            "wrapper": "shifted_quotient_one"
-          },
-          {
-            "avg_shell_depth": 1.0,
-            "avg_wrapper_overhead_nodes": 5.33,
-            "failed": 0,
-            "level": "l1_single_wrapper",
-            "max_shell_depth": 1,
-            "passed": 9,
-            "total": 9,
-            "wrapper": "combined_additive_zero"
-          },
-          {
-            "avg_shell_depth": 1.0,
-            "avg_wrapper_overhead_nodes": 10.22,
-            "failed": 0,
-            "level": "l2_wrapper_plus_noise",
-            "max_shell_depth": 1,
-            "passed": 9,
-            "total": 9,
-            "wrapper": "combined_additive_zero"
-          },
-          {
-            "avg_shell_depth": 0.0,
-            "avg_wrapper_overhead_nodes": 0.0,
-            "failed": 0,
-            "level": "l0_root_pair",
-            "max_shell_depth": 0,
-            "passed": 5,
-            "total": 5,
-            "wrapper": "combined_additive_zero"
-          },
-          {
-            "avg_shell_depth": 1.0,
-            "avg_wrapper_overhead_nodes": 3.0,
-            "failed": 0,
-            "level": "l1_single_wrapper",
-            "max_shell_depth": 1,
-            "passed": 1,
-            "total": 1,
-            "wrapper": "additive_passthrough_zero"
+            "parse_elapsed_seconds": 0.0029100000000000003,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.02234,
+            "total": 100,
+            "wire_elapsed_seconds": 0.02531
           }
-        ],
-        "wrapper_count": 7,
-        "wrapper_family_rows": [
-          {
-            "failed": 0,
-            "family": "calculus_integrate",
-            "passed": 7,
-            "total": 7,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "calculus_diff",
-            "passed": 3,
-            "total": 3,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "collect",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "conditional_factor",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "expand",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "factor",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "finite_aggregate",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "finite_telescoping",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_combine",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_decompose",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_expand",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "integrate_prep",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_contract",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_exp_inverse",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_expand",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_inverse_power",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "nested_fraction",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "number_theory",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "polynomial_product",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "power_merge",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "radical_power",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "rationalize",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "simplify",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "solve_prep",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "telescoping_fraction",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "trig_contract",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "trig_expand",
-            "passed": 2,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          }
-        ],
-        "wrapper_names": [
-          "additive_passthrough_zero",
-          "combined_additive_zero",
-          "common_denominator_zero",
-          "reciprocal_shifted_difference_zero",
-          "scaled_difference_zero",
-          "shifted_quotient_one",
-          "squared_passthrough_zero"
-        ],
-        "wrapper_rows": {
-          "additive_passthrough_zero": {
-            "failed": 0,
-            "passed": 295,
-            "total": 295
-          },
-          "combined_additive_zero": {
-            "failed": 0,
-            "passed": 177,
-            "total": 177
-          },
-          "common_denominator_zero": {
-            "failed": 0,
-            "passed": 294,
-            "total": 294
-          },
-          "reciprocal_shifted_difference_zero": {
-            "failed": 0,
-            "passed": 60,
-            "total": 60
-          },
-          "scaled_difference_zero": {
-            "failed": 0,
-            "passed": 293,
-            "total": 293
-          },
-          "shifted_quotient_one": {
-            "failed": 0,
-            "passed": 293,
-            "total": 293
-          },
-          "squared_passthrough_zero": {
-            "failed": 0,
-            "passed": 76,
-            "total": 76
-          }
-        },
-        "wrapper_shell_depth_family_rows": [
-          {
-            "failed": 0,
-            "family": "calculus_integrate",
-            "passed": 1,
-            "shell_depth": 2,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "collect",
-            "passed": 1,
-            "shell_depth": 2,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_decompose",
-            "passed": 1,
-            "shell_depth": 2,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "calculus_integrate",
-            "passed": 5,
-            "shell_depth": 3,
-            "total": 5,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "calculus_diff",
-            "passed": 2,
-            "shell_depth": 3,
-            "total": 2,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "conditional_factor",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "expand",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "factor",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "finite_aggregate",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "finite_telescoping",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_combine",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_expand",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "integrate_prep",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_contract",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_exp_inverse",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_expand",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_inverse_power",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "nested_fraction",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "number_theory",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "polynomial_product",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "power_merge",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "radical_power",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "rationalize",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "simplify",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "solve_prep",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "telescoping_fraction",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "trig_contract",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "trig_expand",
-            "passed": 1,
-            "shell_depth": 3,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "calculus_diff",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "calculus_integrate",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "collect",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "conditional_factor",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "expand",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "factor",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "finite_aggregate",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "finite_telescoping",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_combine",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_decompose",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "fraction_expand",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "integrate_prep",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_contract",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_exp_inverse",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_expand",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "log_inverse_power",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "nested_fraction",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "number_theory",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "polynomial_product",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "power_merge",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "radical_power",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "rationalize",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "simplify",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "solve_prep",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "telescoping_fraction",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "trig_contract",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "family": "trig_expand",
-            "passed": 1,
-            "shell_depth": 4,
-            "total": 1,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          }
-        ],
-        "wrapper_shell_depth_rows": [
-          {
-            "failed": 0,
-            "passed": 3,
-            "shell_depth": 2,
-            "total": 3,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "passed": 30,
-            "shell_depth": 3,
-            "total": 30,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          },
-          {
-            "failed": 0,
-            "passed": 27,
-            "shell_depth": 4,
-            "total": 27,
-            "wrapper": "reciprocal_shifted_difference_zero"
-          }
-        ]
+        }
       },
-      "process_elapsed_seconds": 10.559,
-      "returncode": 0,
-      "status": "pass",
-      "timed_out": false,
-      "timeout_seconds": null
-    },
-    "simplify_didactic_audit": {
-      "category": "didactic",
-      "command": [
-        "cargo",
-        "test",
-        "--release",
-        "-q",
-        "-p",
-        "cas_didactic",
-        "--test",
-        "didactic_step_quality_audit",
-        "didactic_step_quality_audit_generates_markdown_report",
-        "--",
-        "--ignored",
-        "--exact",
-        "--nocapture"
-      ],
-      "delta": {},
-      "elapsed_seconds": 0.992,
-      "env": {},
-      "guardrail": null,
-      "metrics": {
-        "cases": 14,
-        "flagged_cases": 0,
-        "flagged_rate": 0.0,
-        "mean_step_count": 2.07,
-        "missing_math_sides": 0,
-        "no_wire_substeps": 0,
-        "single_step_no_substeps": 0,
-        "total_wire_substeps": 24
-      },
-      "process_elapsed_seconds": 0.992,
-      "returncode": 0,
-      "status": "pass",
-      "timed_out": false,
-      "timeout_seconds": null
-    },
-    "simplify_strict": {
-      "category": "simplify",
-      "command": [
-        "cargo",
-        "test",
-        "--release",
-        "-p",
-        "cas_solver",
-        "--test",
-        "metamorphic_simplification_tests",
-        "metatest_unified_benchmark",
-        "--",
-        "--ignored",
-        "--exact",
-        "--nocapture"
-      ],
-      "delta": {},
-      "elapsed_seconds": 19.821,
-      "env": {
-        "METATEST_MAX_EXAMPLES": "20",
-        "METATEST_PROGRESS_EVERY": "1000",
-        "METATEST_VERBOSE": "1"
-      },
-      "guardrail": null,
-      "metrics": {
-        "cycles": 0,
-        "effective_combos": 16519,
-        "failed": 0,
-        "inconclusive": 0,
-        "inconclusive_rate_percent": 0.0,
-        "nf_convergent": 0,
-        "nf_rate_percent": 0.0,
-        "normalization_gap": 16519,
-        "normalization_gap_rate_percent": 100.0,
-        "numeric_only": 0,
-        "numeric_only_rate_percent": 0.0,
-        "proof_shape_mix": {
-          "composed_share_percent": 78.8,
-          "non_composed_share_percent": 21.2,
-          "non_composed_symbolic": 3498
-        },
-        "proved_breakdown": {
-          "composed": 13021,
-          "difference": 0,
-          "quotient": 3498
-        },
-        "proved_symbolic": 16519,
-        "proved_symbolic_rate_percent": 100.0,
-        "skipped": 0,
-        "suite_rows": {
-          "add": {
-            "combos": 435,
-            "cycles": 0,
-            "effective_combos": 435,
-            "failed": 0,
-            "inconclusive": 0,
-            "inconclusive_rate_percent": 0.0,
-            "nf_convergent": 0,
-            "nf_rate_percent": 0.0,
-            "normalization_gap": 435,
-            "normalization_gap_rate_percent": 100.0,
-            "numeric_only": 0,
-            "numeric_only_rate_percent": 0.0,
-            "proved_symbolic": 435,
-            "proved_symbolic_rate_percent": 100.0,
-            "skipped": 0,
-            "symbolic_closure": 435,
-            "symbolic_closure_rate_percent": 100.0,
-            "timeouts": 0
-          },
-          "div": {
-            "combos": 976,
-            "cycles": 0,
-            "effective_combos": 976,
-            "failed": 0,
-            "inconclusive": 0,
-            "inconclusive_rate_percent": 0.0,
-            "nf_convergent": 0,
-            "nf_rate_percent": 0.0,
-            "normalization_gap": 976,
-            "normalization_gap_rate_percent": 100.0,
-            "numeric_only": 0,
-            "numeric_only_rate_percent": 0.0,
-            "proved_symbolic": 976,
-            "proved_symbolic_rate_percent": 100.0,
-            "skipped": 0,
-            "symbolic_closure": 976,
-            "symbolic_closure_rate_percent": 100.0,
-            "timeouts": 0
-          },
-          "mul": {
-            "combos": 11175,
-            "cycles": 0,
-            "effective_combos": 11175,
-            "failed": 0,
-            "inconclusive": 0,
-            "inconclusive_rate_percent": 0.0,
-            "nf_convergent": 0,
-            "nf_rate_percent": 0.0,
-            "normalization_gap": 11175,
-            "normalization_gap_rate_percent": 100.0,
-            "numeric_only": 0,
-            "numeric_only_rate_percent": 0.0,
-            "proved_symbolic": 11175,
-            "proved_symbolic_rate_percent": 100.0,
-            "skipped": 0,
-            "symbolic_closure": 11175,
-            "symbolic_closure_rate_percent": 100.0,
-            "timeouts": 0
-          },
-          "sub": {
-            "combos": 435,
-            "cycles": 0,
-            "effective_combos": 435,
-            "failed": 0,
-            "inconclusive": 0,
-            "inconclusive_rate_percent": 0.0,
-            "nf_convergent": 0,
-            "nf_rate_percent": 0.0,
-            "normalization_gap": 435,
-            "normalization_gap_rate_percent": 100.0,
-            "numeric_only": 0,
-            "numeric_only_rate_percent": 0.0,
-            "proved_symbolic": 435,
-            "proved_symbolic_rate_percent": 100.0,
-            "skipped": 0,
-            "symbolic_closure": 435,
-            "symbolic_closure_rate_percent": 100.0,
-            "timeouts": 0
-          },
-          "\u21c4ctx": {
-            "combos": 64,
-            "cycles": 0,
-            "effective_combos": 64,
-            "failed": 0,
-            "inconclusive": 0,
-            "inconclusive_rate_percent": 0.0,
-            "nf_convergent": 0,
-            "nf_rate_percent": 0.0,
-            "normalization_gap": 64,
-            "normalization_gap_rate_percent": 100.0,
-            "numeric_only": 0,
-            "numeric_only_rate_percent": 0.0,
-            "proved_symbolic": 64,
-            "proved_symbolic_rate_percent": 100.0,
-            "skipped": 0,
-            "symbolic_closure": 64,
-            "symbolic_closure_rate_percent": 100.0,
-            "timeouts": 0
-          },
-          "\u21c4ctx#2": {
-            "combos": 21,
-            "cycles": 0,
-            "effective_combos": 21,
-            "failed": 0,
-            "inconclusive": 0,
-            "inconclusive_rate_percent": 0.0,
-            "nf_convergent": 0,
-            "nf_rate_percent": 0.0,
-            "normalization_gap": 21,
-            "normalization_gap_rate_percent": 100.0,
-            "numeric_only": 0,
-            "numeric_only_rate_percent": 0.0,
-            "proved_symbolic": 21,
-            "proved_symbolic_rate_percent": 100.0,
-            "skipped": 0,
-            "symbolic_closure": 21,
-            "symbolic_closure_rate_percent": 100.0,
-            "timeouts": 0
-          },
-          "\u21c4ctx#3": {
-            "combos": 19,
-            "cycles": 0,
-            "effective_combos": 19,
-            "failed": 0,
-            "inconclusive": 0,
-            "inconclusive_rate_percent": 0.0,
-            "nf_convergent": 0,
-            "nf_rate_percent": 0.0,
-            "normalization_gap": 19,
-            "normalization_gap_rate_percent": 100.0,
-            "numeric_only": 0,
-            "numeric_only_rate_percent": 0.0,
-            "proved_symbolic": 19,
-            "proved_symbolic_rate_percent": 100.0,
-            "skipped": 0,
-            "symbolic_closure": 19,
-            "symbolic_closure_rate_percent": 100.0,
-            "timeouts": 0
-          },
-          "\u21c4ctx#4": {
-            "combos": 19,
-            "cycles": 0,
-            "effective_combos": 19,
-            "failed": 0,
-            "inconclusive": 0,
-            "inconclusive_rate_percent": 0.0,
-            "nf_convergent": 0,
-            "nf_rate_percent": 0.0,
-            "normalization_gap": 19,
-            "normalization_gap_rate_percent": 100.0,
-            "numeric_only": 0,
-            "numeric_only_rate_percent": 0.0,
-            "proved_symbolic": 19,
-            "proved_symbolic_rate_percent": 100.0,
-            "skipped": 0,
-            "symbolic_closure": 19,
-            "symbolic_closure_rate_percent": 100.0,
-            "timeouts": 0
-          },
-          "\u21c4ctx#5": {
-            "combos": 15,
-            "cycles": 0,
-            "effective_combos": 15,
-            "failed": 0,
-            "inconclusive": 0,
-            "inconclusive_rate_percent": 0.0,
-            "nf_convergent": 0,
-            "nf_rate_percent": 0.0,
-            "normalization_gap": 15,
-            "normalization_gap_rate_percent": 100.0,
-            "numeric_only": 0,
-            "numeric_only_rate_percent": 0.0,
-            "proved_symbolic": 15,
-            "proved_symbolic_rate_percent": 100.0,
-            "skipped": 0,
-            "symbolic_closure": 15,
-            "symbolic_closure_rate_percent": 100.0,
-            "timeouts": 0
-          },
-          "\u21c4sub": {
-            "combos": 2016,
-            "cycles": 0,
-            "effective_combos": 2016,
-            "failed": 0,
-            "inconclusive": 0,
-            "inconclusive_rate_percent": 0.0,
-            "nf_convergent": 0,
-            "nf_rate_percent": 0.0,
-            "normalization_gap": 2016,
-            "normalization_gap_rate_percent": 100.0,
-            "numeric_only": 0,
-            "numeric_only_rate_percent": 0.0,
-            "proved_symbolic": 2016,
-            "proved_symbolic_rate_percent": 100.0,
-            "skipped": 0,
-            "symbolic_closure": 2016,
-            "symbolic_closure_rate_percent": 100.0,
-            "timeouts": 0
-          },
-          "\u21c4sub+": {
-            "combos": 1344,
-            "cycles": 0,
-            "effective_combos": 1344,
-            "failed": 0,
-            "inconclusive": 0,
-            "inconclusive_rate_percent": 0.0,
-            "nf_convergent": 0,
-            "nf_rate_percent": 0.0,
-            "normalization_gap": 1344,
-            "normalization_gap_rate_percent": 100.0,
-            "numeric_only": 0,
-            "numeric_only_rate_percent": 0.0,
-            "proved_symbolic": 1344,
-            "proved_symbolic_rate_percent": 100.0,
-            "skipped": 0,
-            "symbolic_closure": 1344,
-            "symbolic_closure_rate_percent": 100.0,
-            "timeouts": 0
-          }
-        },
-        "symbolic_closure": 16519,
-        "symbolic_closure_rate_percent": 100.0,
-        "timeouts": 0,
-        "total_combos": 16519
-      },
-      "process_elapsed_seconds": 19.821,
+      "process_elapsed_seconds": 2.61,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,

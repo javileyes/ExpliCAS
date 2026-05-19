@@ -4,6 +4,7 @@
 //! size of `transform_expr_recursive`.
 
 use super::*;
+use crate::rule::Rule;
 use cas_math::expr_predicates::contains_named_var;
 use cas_math::factoring_support::{
     try_rewrite_difference_of_squares_product_expr, DifferenceOfSquaresProductRewriteKind,
@@ -57,6 +58,7 @@ fn integrate_call_should_preserve_raw_target_for_direct_integration(
         || integrate_target_is_sqrt_trig_reciprocal_derivative(ctx, args[0], var_name)
         || integrate_target_is_sqrt_trig_log_derivative(ctx, args[0], var_name)
         || integrate_target_is_sqrt_reciprocal_trig_log_derivative(ctx, args[0], var_name)
+        || integrate_target_is_inverse_trig_polynomial_substitution(ctx, args[0], var_name)
         || integrate_target_is_repeated_trig_by_parts_kernel(ctx, args[0], var_name)
         || integrate_target_is_repeated_exp_by_parts_kernel(ctx, args[0], var_name)
         || (crate::rule::steps_enabled()
@@ -217,6 +219,7 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
         || diff_target_is_bounded_trig_positive_shift_sqrt(ctx, target)
+        || diff_target_is_additive_trig_polynomial_sqrt(ctx, target, var_name)
         || diff_target_is_scaled_bounded_inverse_trig_surd_quotient(ctx, target, var_name)
         || diff_target_is_bounded_inverse_trig_self_normalized_projection(ctx, target, var_name)
         || expr_is_positive_integer_power_of_low_degree_polynomial(ctx, target, var_name)
@@ -230,6 +233,181 @@ fn diff_target_is_bounded_trig_positive_shift_sqrt(ctx: &cas_ast::Context, targe
         return false;
     };
     bounded_sin_cos_shift_margin_for_direct_diff_route(ctx, radicand).is_some()
+}
+
+fn diff_target_is_additive_trig_polynomial_sqrt(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Some(radicand) = extract_square_root_base(ctx, target) else {
+        return false;
+    };
+    let terms = cas_math::expr_nary::add_terms_no_sign(ctx, radicand);
+    if terms.len() < 2 || terms.len() > 6 {
+        return false;
+    }
+
+    let mut has_trig_term = false;
+    let mut has_tan_term = false;
+    let mut has_ln_term = false;
+    let mut has_sqrt_variable_term = false;
+    let mut has_reciprocal_sqrt_variable_term = false;
+    let mut has_variable_dependency = false;
+    for term in terms {
+        has_variable_dependency |= contains_named_var(ctx, term, var_name);
+        if bounded_sin_cos_term_bound_for_direct_diff_route(ctx, term).is_some() {
+            has_trig_term = true;
+            continue;
+        }
+        if term_is_tan_of_diff_var(ctx, term, var_name) {
+            has_trig_term = true;
+            has_tan_term = true;
+            continue;
+        }
+        if cas_ast::views::as_rational_const(ctx, term, 8).is_some() {
+            continue;
+        }
+        if term_is_ln_of_diff_var(ctx, term, var_name) {
+            has_ln_term = true;
+            continue;
+        }
+        if term_is_exp_of_diff_var(ctx, term, var_name) {
+            continue;
+        }
+        if term_is_sqrt_of_diff_var(ctx, term, var_name) {
+            has_sqrt_variable_term = true;
+            continue;
+        }
+        if term_is_reciprocal_sqrt_of_diff_var(ctx, term, var_name) {
+            has_reciprocal_sqrt_variable_term = true;
+            continue;
+        }
+        let Ok(poly) = Polynomial::from_expr(ctx, term, var_name) else {
+            return false;
+        };
+        if poly.degree() > 3 || poly.coeffs.len() > 5 {
+            return false;
+        }
+    }
+
+    has_trig_term
+        && has_variable_dependency
+        && !(has_tan_term
+            && has_ln_term
+            && (has_sqrt_variable_term || has_reciprocal_sqrt_variable_term))
+}
+
+fn term_is_tan_of_diff_var(ctx: &cas_ast::Context, term: ExprId, var_name: &str) -> bool {
+    let term = constant_scaled_single_factor_for_diff_target(ctx, term, var_name).unwrap_or(term);
+    let term = cas_ast::hold::unwrap_internal_hold(ctx, term);
+    let Expr::Function(fn_id, args) = ctx.get(term) else {
+        return false;
+    };
+    if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(cas_ast::BuiltinFn::Tan) {
+        return false;
+    }
+    let Expr::Variable(sym_id) = ctx.get(args[0]) else {
+        return false;
+    };
+    ctx.sym_name(*sym_id) == var_name
+}
+
+fn term_is_ln_of_diff_var(ctx: &cas_ast::Context, term: ExprId, var_name: &str) -> bool {
+    let term = constant_scaled_single_factor_for_diff_target(ctx, term, var_name).unwrap_or(term);
+    let term = cas_ast::hold::unwrap_internal_hold(ctx, term);
+    let Expr::Function(fn_id, args) = ctx.get(term) else {
+        return false;
+    };
+    if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(cas_ast::BuiltinFn::Ln) {
+        return false;
+    }
+    let Expr::Variable(sym_id) = ctx.get(args[0]) else {
+        return false;
+    };
+    ctx.sym_name(*sym_id) == var_name
+}
+
+fn term_is_exp_of_diff_var(ctx: &cas_ast::Context, term: ExprId, var_name: &str) -> bool {
+    let term = constant_scaled_single_factor_for_diff_target(ctx, term, var_name).unwrap_or(term);
+    let term = cas_ast::hold::unwrap_internal_hold(ctx, term);
+    match ctx.get(term) {
+        Expr::Function(fn_id, args) => {
+            if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(cas_ast::BuiltinFn::Exp) {
+                return false;
+            }
+            let Expr::Variable(sym_id) = ctx.get(args[0]) else {
+                return false;
+            };
+            ctx.sym_name(*sym_id) == var_name
+        }
+        Expr::Pow(base, exp) if matches!(ctx.get(*base), Expr::Constant(cas_ast::Constant::E)) => {
+            let Expr::Variable(sym_id) = ctx.get(*exp) else {
+                return false;
+            };
+            ctx.sym_name(*sym_id) == var_name
+        }
+        _ => false,
+    }
+}
+
+fn term_is_sqrt_of_diff_var(ctx: &cas_ast::Context, term: ExprId, var_name: &str) -> bool {
+    let term = constant_scaled_single_factor_for_diff_target(ctx, term, var_name).unwrap_or(term);
+    let term = cas_ast::hold::unwrap_internal_hold(ctx, term);
+    let Some(radicand) = extract_square_root_base(ctx, term) else {
+        return false;
+    };
+    let Expr::Variable(sym_id) = ctx.get(radicand) else {
+        return false;
+    };
+    ctx.sym_name(*sym_id) == var_name
+}
+
+fn term_is_reciprocal_sqrt_of_diff_var(
+    ctx: &cas_ast::Context,
+    term: ExprId,
+    var_name: &str,
+) -> bool {
+    let term = cas_ast::hold::unwrap_internal_hold(ctx, term);
+    if let Expr::Neg(inner) = ctx.get(term) {
+        return term_is_reciprocal_sqrt_of_diff_var(ctx, *inner, var_name);
+    }
+
+    let core = if let Expr::Mul(_, _) = ctx.get(term) {
+        let mut nonconstant = None;
+        for factor in cas_math::expr_nary::mul_leaves(ctx, term) {
+            if cas_ast::views::as_rational_const(ctx, factor, 4).is_some() {
+                continue;
+            }
+            if nonconstant.replace(factor).is_some() {
+                return false;
+            }
+        }
+        nonconstant.unwrap_or(term)
+    } else {
+        term
+    };
+    let core = cas_ast::hold::unwrap_internal_hold(ctx, core);
+
+    let radicand = match ctx.get(core) {
+        Expr::Div(num, den) if cas_ast::views::as_rational_const(ctx, *num, 4).is_some() => {
+            let Some(radicand) = extract_square_root_base(ctx, *den) else {
+                return false;
+            };
+            radicand
+        }
+        Expr::Pow(base, exp)
+            if cas_ast::views::as_rational_const(ctx, *exp, 8)
+                == Some(BigRational::new((-1).into(), 2.into())) =>
+        {
+            *base
+        }
+        _ => return false,
+    };
+    let Expr::Variable(sym_id) = ctx.get(radicand) else {
+        return false;
+    };
+    ctx.sym_name(*sym_id) == var_name
 }
 
 fn bounded_sin_cos_shift_margin_for_direct_diff_route(
@@ -290,15 +468,20 @@ fn bounded_sin_cos_term_bound_for_direct_diff_route(
 
 fn bounded_sin_cos_unit_factor_for_direct_diff_route(ctx: &cas_ast::Context, expr: ExprId) -> bool {
     let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
-    matches!(
-        ctx.get(expr),
-        Expr::Function(fn_id, args)
-            if args.len() == 1
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            args.len() == 1
                 && matches!(
                     ctx.builtin_of(*fn_id),
                     Some(cas_ast::BuiltinFn::Sin | cas_ast::BuiltinFn::Cos)
                 )
-    )
+        }
+        Expr::Pow(base, exp) if bounded_sin_cos_unit_factor_for_direct_diff_route(ctx, *base) => {
+            cas_ast::views::as_rational_const(ctx, *exp, 8)
+                .is_some_and(|value| value.is_integer() && value > BigRational::zero())
+        }
+        _ => false,
+    }
 }
 
 fn diff_target_is_rational_linear_partial_fraction_integrate_call(
@@ -469,6 +652,59 @@ mod tests {
             let target = cas_parser::parse(raw, &mut ctx).unwrap();
             assert!(
                 diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_raw_diff_target_for_additive_trig_polynomial_sqrt() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in [
+            "sqrt(sin(2*x)+cos(x)+x)",
+            "sqrt(cos(x)+2*sin(x)*cos(x)+x)",
+            "sqrt(tan(x)+x+2)",
+            "sqrt(tan(x)+exp(x)+x)",
+            "sqrt(tan(x)+2*exp(x)+x)",
+            "sqrt(tan(x)+ln(x)+x)",
+            "sqrt(tan(x)+2*ln(x)+x)",
+            "sqrt(tan(x)-ln(x)+x)",
+            "sqrt(tan(x)+sqrt(x)+x)",
+            "sqrt(tan(x)+1/sqrt(x)+x)",
+            "sqrt(tan(x)+2/sqrt(x)+x)",
+            "sqrt(sin(2*x)+cos(x)+x^3)",
+            "sqrt(sin(2*x)+cos(x)+ln(x))",
+            "sqrt(sin(2*x)+cos(x)+2*ln(x))",
+            "sqrt(sin(2*x)+cos(x)-3*ln(x))",
+            "sqrt(sin(2*x)+cos(x)+exp(x))",
+            "sqrt(sin(2*x)+cos(x)+2*exp(x))",
+            "sqrt(sin(2*x)+cos(x)-3*exp(x))",
+            "sqrt(sin(2*x)+cos(x)+sqrt(x))",
+            "sqrt(sin(2*x)+cos(x)+2*sqrt(x))",
+            "sqrt(sin(2*x)+cos(x)-2*sqrt(x))",
+        ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn avoids_raw_diff_target_for_tan_ln_sqrt_mixed_denominator_sqrt() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in [
+            "sqrt(tan(x)+ln(x)+sqrt(x)+x)",
+            "sqrt(tan(x)+ln(x)+1/sqrt(x)+x)",
+        ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                !diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
                 "{raw}"
             );
         }
@@ -1902,6 +2138,27 @@ fn integrate_target_is_sqrt_reciprocal_trig_log_derivative(
     )
 }
 
+fn integrate_target_is_inverse_trig_polynomial_substitution(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let mut probe_ctx = ctx.clone();
+    cas_math::symbolic_integration_support::integrate_symbolic_is_arcsin_polynomial_substitution_target(
+        &mut probe_ctx,
+        target,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_asinh_polynomial_substitution_target(
+        &mut probe_ctx,
+        target,
+        var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_nested_inverse_polynomial_substitution_target(
+        &mut probe_ctx,
+        target,
+        var_name,
+    )
+}
+
 fn expr_is_positive_surd_times_positive_quadratic(
     ctx: &cas_ast::Context,
     expr: ExprId,
@@ -2261,6 +2518,27 @@ impl<'a> LocalSimplificationTransformer<'a> {
                 return zero;
             }
         }
+        // PRE-ORDER: Exact fraction-pair cancellation must run before child
+        // simplification can expand denominator products and destroy the compact
+        // pair shape produced by calculus rules.
+        if matches!(op, BinaryOp::Add | BinaryOp::Sub)
+            && !self.initial_parent_ctx.is_solve_context()
+        {
+            let parent_ctx = self.build_parent_context();
+            if matches!(op, BinaryOp::Add) {
+                let rule = crate::rules::algebra::fractions::CancelOppositeFractionsRule;
+                if let Some(rewrite) = rule.apply(self.context, id, &parent_ctx) {
+                    let result = self.record_rewrite_step(&rule, id, rewrite);
+                    return result;
+                }
+            } else {
+                let rule = crate::rules::algebra::fractions::CancelEqualFractionsDifferenceRule;
+                if let Some(rewrite) = rule.apply(self.context, id, &parent_ctx) {
+                    let result = self.record_rewrite_step(&rule, id, rewrite);
+                    return result;
+                }
+            }
+        }
         // PRE-ORDER: For Mul, detect conjugate pairs in the factor chain BEFORE
         // child simplification. This prevents canonicalization (sqrt→Pow) from
         // breaking structural matching, and prevents DistributeRule from splitting
@@ -2365,6 +2643,33 @@ impl<'a> LocalSimplificationTransformer<'a> {
         }
 
         let new_l = self.transform_child_at(id, crate::step::PathStep::Left, l);
+        if matches!(op, BinaryOp::Add | BinaryOp::Sub) && new_l != l {
+            let partially_rebuilt = match op {
+                BinaryOp::Add => self.context.add(Expr::Add(new_l, r)),
+                BinaryOp::Sub => self.context.add(Expr::Sub(new_l, r)),
+                _ => unreachable!(),
+            };
+            let parent_ctx = self.build_parent_context();
+            if matches!(op, BinaryOp::Add) {
+                let rule = crate::rules::algebra::fractions::CancelOppositeFractionsRule;
+                if let Some(rewrite) = rule.apply(self.context, partially_rebuilt, &parent_ctx) {
+                    let result = self.record_rewrite_step(&rule, partially_rebuilt, rewrite);
+                    return result;
+                }
+            } else {
+                let rule = crate::rules::algebra::fractions::CancelEqualFractionsDifferenceRule;
+                if let Some(rewrite) = rule.apply(self.context, partially_rebuilt, &parent_ctx) {
+                    let result = self.record_rewrite_step(&rule, partially_rebuilt, rewrite);
+                    return result;
+                }
+            }
+
+            let rule = crate::rules::arithmetic::CollapseExactZeroThreeTermSubsetRule;
+            if let Some(rewrite) = rule.apply(self.context, partially_rebuilt, &parent_ctx) {
+                let result = self.record_rewrite_step(&rule, partially_rebuilt, rewrite);
+                return result;
+            }
+        }
         let new_r = self.transform_child_at(id, crate::step::PathStep::Right, r);
 
         let rebuilt = if new_l != l || new_r != r {
@@ -2399,6 +2704,21 @@ impl<'a> LocalSimplificationTransformer<'a> {
             }
         }
         if matches!(op, BinaryOp::Add | BinaryOp::Sub) && rebuilt != id {
+            let parent_ctx = self.build_parent_context();
+            if matches!(op, BinaryOp::Add) {
+                let rule = crate::rules::algebra::fractions::CancelOppositeFractionsRule;
+                if let Some(rewrite) = rule.apply(self.context, rebuilt, &parent_ctx) {
+                    let result = self.record_rewrite_step(&rule, rebuilt, rewrite);
+                    return result;
+                }
+            } else {
+                let rule = crate::rules::algebra::fractions::CancelEqualFractionsDifferenceRule;
+                if let Some(rewrite) = rule.apply(self.context, rebuilt, &parent_ctx) {
+                    let result = self.record_rewrite_step(&rule, rebuilt, rewrite);
+                    return result;
+                }
+            }
+
             if let Some(rewrite) =
                 crate::rules::arithmetic::try_build_direct_small_zero_additive_combination_rewrite(
                     self.context,

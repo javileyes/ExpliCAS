@@ -95,6 +95,129 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-19 - Observe-only negative scaled elementary trig-root diff still loops
+
+- area:
+  - calculus / differentiation / post-calculus presentation / mixed radicands
+- status:
+  - `resolved`
+- candidate:
+  - extend the direct `diff(sqrt(sin(2*x)+cos(x)+k*f(x)), x)` presentation
+    route from positive scaled `ln(x)` and `exp(x)` terms to negative scaled
+    variants such as `-3*ln(x)` and `-3*exp(x)`
+- observation:
+  - positive scaled probes now terminate directly:
+    `diff(sqrt(sin(2*x)+cos(x)+2*ln(x)), x)` and
+    `diff(sqrt(sin(2*x)+cos(x)+2*exp(x)), x)`
+  - the negative scaled probes still entered depth-overflow/post-cleanup loops
+    before producing stable JSON under the same `--steps on` public route:
+    `diff(sqrt(sin(2*x)+cos(x)-3*ln(x)), x)` and
+    `diff(sqrt(sin(2*x)+cos(x)-3*exp(x)), x)`
+- learning:
+  - this is not a parser typo or duplicate test; the remaining weakness is a
+    signed elementary-term presentation/post-cleanup interaction after the
+    direct derivative form is constructed
+  - do not promote negative signed elementary radicands until the result can be
+    returned without re-entering trig expansion/factorization cleanup
+- follow-up:
+  - resolved by a narrow rationalization guard for square-root denominators
+    whose radicand combines trig terms with `ln`/`exp` terms; the negative
+    `ln` and `exp` probes now return in one direct derivative step with no
+    `depth_overflow`
+
+## 2026-05-19 - Observe-only non-polynomial trig-root diff can timeout
+
+- area:
+  - calculus / differentiation / post-calculus presentation / mixed radicands
+- status:
+  - `resolved`
+- candidate:
+  - extend the direct `diff(sqrt(sin(2*x)+cos(x)+p(x)), x)` presentation route
+    beyond polynomial terms to non-polynomial additive terms such as `ln(x)`
+- observation:
+  - the logarithmic probe timed out before producing JSON:
+    `timeout 12s cargo run -q -p cas_cli -- eval 'diff(sqrt(sin(2*x)+cos(x)+ln(x)), x)' --format json --steps on`
+  - nearby polynomial probes terminate, and the cubic polynomial case was
+    promoted separately with a bounded degree gate
+- learning:
+  - the safe retained move is to broaden the polynomial gate conservatively;
+    non-polynomial radicand terms need a separate robustness/presentation route
+    with explicit termination guards
+- follow-up:
+  - resolved by the bounded `ln(x)`-only direct presentation route for
+    `diff(sqrt(sin(2*x)+cos(x)+ln(x)), x)`, guarded by a wire smoke that
+    requires one step, no `depth_overflow`, and both `radicand > 0` plus
+    `x > 0`
+  - keep `exp`/nested-root additive terms as separate candidates; they were not
+    promoted by this fix
+
+## 2026-05-19 - Observe-only raw tangent sqrt diff route can loop
+
+- area:
+  - calculus / differentiation / post-calculus presentation / tangent domains
+- status:
+  - `resolved`
+- candidate:
+  - preserve raw `tan` inside `diff(sqrt(tan(x)+sin(x)+x), x)` and present the
+    result directly as `(cos(x) + 1/cos(x)^2 + 1)/(2*sqrt(sin(x)+tan(x)+x))`
+  - intended domain cleanup was to keep `sin(x)+tan(x)+x > 0` and add
+    `cos(x) != 0` while dropping the transformed-radicand guard
+    `sin(x)+sin(x)/cos(x)+x >= 0`
+- observation:
+  - the direct raw route hung before producing JSON under a short smoke probe:
+    `timeout 8s cargo run -q -p cas_cli -- eval 'diff(sqrt(tan(x)+sin(x)+x), x)' --steps on --format json`
+  - the previous expanded route terminates, but has noisy steps and a leaked
+    transformed-radicand condition
+- learning:
+  - tangent-bearing root derivatives need a domain/presentation route that can
+    preserve `tan` publicly without sending the simplifier into a raw
+    tangent/root loop
+  - do not promote raw tangent preservation until a cheaper structural gate or
+    presentation-only wrapper avoids that loop
+- follow-up:
+  - resolved by promoting an isolated public diff/residual contract for
+    `diff(sqrt(tan(x)+sin(x)+x), x)`: the route now preserves public `tan`,
+    returns in one step, keeps only `cos(x) != 0` plus outer radicand
+    positivity, and avoids the transformed-radicand guard.
+
+## 2026-05-18 - Observe-only scaled inverse-trig polynomial substitution trace gap
+
+- area:
+  - calculus / integration / post-calculus presentation / didactic trace
+- status:
+  - `resolved`
+  - resolved in the 2026-05-18 retained calculus cycle that taught the
+    inverse-trig polynomial substitution integrator to split algebraic
+    variable-free numerator factors before matching the square-root kernel.
+- local lane:
+  - direct retained probe:
+    `cargo run -q -p cas_cli -- eval 'integrate((4*x^3+6*x^2+6*x+2)/sqrt(2-3*(x^2+x+1)^4), x)' --format json --steps on`
+  - rejected scaled probe:
+    `cargo run -q -p cas_cli -- eval 'integrate(2*(2*x^3+3*x^2+3*x+1)*sqrt(3)/sqrt(2-3*(x^2+x+1)^4), x)' --format json --steps on`
+- local win:
+  - preserving the raw integrand for the unscaled arcsin polynomial
+    substitution removes a noisy `Expandir binomio` step and leaves a single
+    direct integration step with the same result and domain requirement.
+- global result:
+  - only the unscaled semantic detector was retained. A broader syntactic
+    raw-preservation guard for nested polynomial powers under square-root
+    denominators was rejected before promotion because it made the scaled
+    `sqrt(3)` variant stop integrating.
+- why it regressed globally:
+  - the scaled variant is mathematically in the same family, but the current
+    direct recognizer still depends on pre-integration normalization/expansion
+    to expose the supported shape. Preserving the raw scaled integrand too
+    early hides the form from the existing integration matcher.
+- what could make it combinable later:
+  - teach the inverse-trig polynomial substitution recognizer to handle
+    algebraic constant factors such as `sqrt(3)` directly, then re-enable raw
+    preservation for that narrower semantic family instead of a broad syntactic
+    radicand-power guard.
+- resolution:
+  - the scaled probe now integrates directly with one `Calcular la integral`
+    step, no `Expandir binomio`, the same real-domain requirement, and
+    antiderivative verification retained in the integration contract.
+
 ## 2026-05-18 - Observe-only multi-trig ln/sqrt diff trace cost
 
 - area:
@@ -13240,3 +13363,104 @@ The burden of proof stays the same:
   - implement a shape-preserving anti-expansion or held-presentation route for
     pure integer multiple-angle exp-trig primitives, then promote the cosine
     sibling with derivative verification
+
+## 2026-05-19 - Retained robustness: trig-root diff with sqrt-variable term
+
+- area:
+  - calculus / differentiation / post-calculus presentation / radical
+    denominator pressure
+- status:
+  - `retained-robustness`
+- retained:
+  - `diff(sqrt(sin(2*x)+cos(x)+sqrt(x)), x)` now stays on the bounded direct
+    presentation route instead of entering the generic depth-overflow path
+  - public result:
+    `(cos(2·x) + 1/4·x^(-1/2) - 1/2·sin(x)) / sqrt(sin(2·x) + cos(x) + sqrt(x))`
+  - required conditions preserve both the outer radicand positivity and `x > 0`
+    for differentiating `sqrt(x)`
+- rejected subcandidate:
+  - a prettier common-denominator presentation using explicit
+    `2*sqrt(x)*sqrt(radicand)` repeatedly triggered radical rationalization and
+    OPQ-style depth-overflow during smoke before promotion
+- retained learning:
+  - for this family, half-power presentation is currently the safer retained
+    public form than forcing a reciprocal `sqrt(x)` denominator
+  - future pretty-printing of this result should first add a bounded
+    post-calculus radical-denominator presentation route, not rely on global
+    rationalization
+
+## 2026-05-19 - Discovery observe-only: tan-root diff elementary-term boundary
+
+- area:
+  - calculus / differentiation / post-calculus presentation / mixed
+    tan-root elementary terms
+- status:
+  - `discovery-observe-only`
+- observed:
+  - `diff(sqrt(tan(x)+sqrt(x)+x), x)` still reaches repeated
+    `depth_overflow` warnings and times out during local smoke
+  - `diff(sqrt(tan(x)+exp(x)+x), x)` also times out before a retained direct
+    presentation route can be promoted
+- rejected subcandidates:
+  - adding `sqrt(x)` to the existing tan-root direct route via an explicit
+    `sqrt(x)` denominator triggered radical rationalization and deeper cleanup
+    loops
+  - representing the same derivative as `x^(-1/2)` in the numerator still
+    allowed the denominator-rationalization path to reopen
+  - adding `exp(x)` as a simple derivative term did not intercept the timeout
+    early enough to pass smoke
+- retained learning:
+  - this boundary is not a missing derivative formula; it is a route-ordering
+    and post-calculus radical-denominator cleanup issue around mixed tan-root
+    expressions
+  - future work should add a bounded, held presentation route for these mixed
+    tan-root outputs before widening the family to `sqrt(x)` or `exp(x)`
+
+## 2026-05-19 - Retained robustness: tan-root diff with sqrt-variable term
+
+- area:
+  - calculus / differentiation / post-calculus presentation / mixed
+    tan-root elementary terms
+- status:
+  - `retained-robustness`
+- retained:
+  - `diff(sqrt(tan(x)+sqrt(x)+x), x)` now uses the bounded direct tan-root
+    presentation route and no longer reaches repeated `depth_overflow` during
+    smoke
+  - the route preserves the tangent pole guard, the `sqrt(x)` derivative
+    guard, and the outer radicand positivity
+- still open:
+  - `diff(sqrt(tan(x)+exp(x)+x), x)` remains a timeout candidate and still
+    needs a separate route-ordering or held-presentation iteration
+- retained learning:
+  - adding `sqrt(x)` safely required both a narrow direct derivative term and a
+    post-calculus rationalization guard for trig-plus-`sqrt(variable)`
+    radicands; either piece alone was not enough to retain the fix
+
+## 2026-05-19 - Discovery observe-only: diff residual after child expansion
+
+- area:
+  - calculus / differentiation / exact fraction residual cancellation
+- status:
+  - `discovery-observe-only`
+- observed:
+  - the compact algebraic residual
+    `-(3*x+1)/(2*sqrt(x)*(x*(x+1)^2+1)) + (6*x+2)/(4*sqrt(x)*(x*(x+1)^2+1))`
+    now collapses to `0`
+  - the embedded calculus residual
+    `diff(arctan(1/(sqrt(x)*(x+1))), x) + (6*x+2)/(4*sqrt(x)*(x*(x+1)^2+1))`
+    still fails to collapse after the right-hand denominator is simplified
+    independently before the root additive cancellation can see the compact pair
+- retained:
+  - exact fraction-pair cancellation now recognizes a single rationally scaled
+    numerator factor, including distributed negative linear factors
+  - a narrow pre-order path lets already-compact exact fraction pairs collapse
+    before denominator expansion
+- rejected subcandidate:
+  - promoting the nested `diff(...) + residual` contract in this iteration; the
+    route still needs a shape-preserving residual comparison across one compact
+    denominator and one child-expanded denominator
+- follow-up:
+  - add a bounded denominator-product-vs-expanded-product equivalence probe for
+    exact fraction-pair cancellation, then promote the nested diff residual only
+    if guardrail and pressure stay at `failed = 0`
