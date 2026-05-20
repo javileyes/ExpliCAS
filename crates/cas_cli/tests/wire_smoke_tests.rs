@@ -2042,7 +2042,7 @@ fn test_eval_json_diff_sqrt_tan_sqrt_variable_polynomial_sum_uses_direct_route()
     );
     assert_eq!(
         json["result"],
-        "(cos(x)^2 + 1/2·x^(-1/2)·cos(x)^2 + 1) / (2·cos(x)^2·sqrt(tan(x) + sqrt(x) + x))",
+        "(2·sqrt(x) + 2·sqrt(x)·sec(x)^2 + 1) / (4·sqrt(x)·sqrt(tan(x) + sqrt(x) + x))",
         "expr: {expr}"
     );
 
@@ -2083,12 +2083,12 @@ fn test_eval_json_diff_sqrt_tan_reciprocal_sqrt_polynomial_sum_terminates_direct
     for (expr, expected, radicand) in [
         (
             "diff(sqrt(tan(x)+1/sqrt(x)+x), x)",
-            "(cos(x)^2 + 1 - 1/2·x^(-3/2)·cos(x)^2) / (2·cos(x)^2·sqrt(tan(x) + 1 / sqrt(x) + x))",
+            "(2·x·sqrt(x) + 2·x·sqrt(x)·sec(x)^2 - 1) / (4·x·sqrt(x)·sqrt(tan(x) + 1 / sqrt(x) + x))",
             "tan(x) + 1 / sqrt(x) + x",
         ),
         (
             "diff(sqrt(tan(x)-1/sqrt(x)+x), x)",
-            "(cos(x)^2 + 1/2·x^(-3/2)·cos(x)^2 + 1) / (2·cos(x)^2·sqrt(tan(x) - 1 / sqrt(x) + x))",
+            "(2·x·sqrt(x) + 2·x·sqrt(x)·sec(x)^2 + 1) / (4·x·sqrt(x)·sqrt(tan(x) - 1 / sqrt(x) + x))",
             "tan(x) - 1 / sqrt(x) + x",
         ),
     ] {

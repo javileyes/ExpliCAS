@@ -951,6 +951,496 @@ fn test_limit_polynomial_over_sqrt_pos_infinity() {
 }
 
 #[test]
+fn test_limit_sqrt_quadratic_over_linear_pos_and_neg_infinity() {
+    let (success_pos, stdout_pos) = run_limit("sqrt(x^2+1)/x", "x", "infinity", "json");
+    assert!(success_pos, "Command should succeed");
+    assert!(
+        stdout_pos.contains("\"result\":\"1\""),
+        "sqrt(x^2+1)/x should resolve to 1 at +∞, got: {}",
+        stdout_pos
+    );
+    assert!(
+        !stdout_pos.contains("\"warning\""),
+        "Resolved sqrt-polynomial ratio should not warn at +∞, got: {}",
+        stdout_pos
+    );
+
+    let (success_neg, stdout_neg) = run_limit("sqrt(x^2+1)/x", "x", "-infinity", "json");
+    assert!(success_neg, "Command should succeed");
+    assert!(
+        stdout_neg.contains("\"result\":\"-1\""),
+        "sqrt(x^2+1)/x should resolve to -1 at -∞, got: {}",
+        stdout_neg
+    );
+    assert!(
+        !stdout_neg.contains("\"warning\""),
+        "Resolved sqrt-polynomial ratio should not warn at -∞, got: {}",
+        stdout_neg
+    );
+}
+
+#[test]
+fn test_limit_sqrt_quadratic_with_surd_leading_coeff_over_linear() {
+    let (success_pos, stdout_pos) = run_limit("sqrt(2*x^2+1)/x", "x", "infinity", "json");
+    assert!(success_pos, "Command should succeed");
+    assert!(
+        stdout_pos.contains("\"result\":\"sqrt(2)\""),
+        "sqrt(2*x^2+1)/x should resolve to sqrt(2) at +∞, got: {}",
+        stdout_pos
+    );
+    assert!(
+        !stdout_pos.contains("\"warning\""),
+        "Resolved surd sqrt-polynomial ratio should not warn at +∞, got: {}",
+        stdout_pos
+    );
+
+    let (success_neg, stdout_neg) = run_limit("sqrt(2*x^2+1)/x", "x", "-infinity", "json");
+    assert!(success_neg, "Command should succeed");
+    assert!(
+        stdout_neg.contains("\"result\":\"-sqrt(2)\""),
+        "sqrt(2*x^2+1)/x should resolve to -sqrt(2) at -∞, got: {}",
+        stdout_neg
+    );
+    assert!(
+        !stdout_neg.contains("\"warning\""),
+        "Resolved surd sqrt-polynomial ratio should not warn at -∞, got: {}",
+        stdout_neg
+    );
+}
+
+#[test]
+fn test_limit_sqrt_quadratic_with_surd_over_scaled_linear_denominator() {
+    let (success_pos, stdout_pos) = run_limit("sqrt(2*x^2+1)/(3*x)", "x", "infinity", "json");
+    assert!(success_pos, "Command should succeed");
+    assert!(
+        stdout_pos.contains("\"result\":\"sqrt(2) / 3\""),
+        "sqrt(2*x^2+1)/(3*x) should resolve to sqrt(2)/3 at +∞, got: {}",
+        stdout_pos
+    );
+    assert!(
+        !stdout_pos.contains("\"warning\""),
+        "Resolved scaled-denominator sqrt-polynomial ratio should not warn at +∞, got: {}",
+        stdout_pos
+    );
+
+    let (success_neg, stdout_neg) = run_limit("sqrt(2*x^2+1)/(-3*x)", "x", "-infinity", "json");
+    assert!(success_neg, "Command should succeed");
+    assert!(
+        stdout_neg.contains("\"result\":\"sqrt(2) / 3\""),
+        "sqrt(2*x^2+1)/(-3*x) should resolve to sqrt(2)/3 at -∞, got: {}",
+        stdout_neg
+    );
+    assert!(
+        !stdout_neg.contains("\"warning\""),
+        "Resolved negative scaled-denominator sqrt-polynomial ratio should not warn at -∞, got: {}",
+        stdout_neg
+    );
+}
+
+#[test]
+fn test_limit_sqrt_quadratic_over_noisy_scaled_linear_denominator() {
+    let (success_pos, stdout_pos) = run_limit("sqrt(2*x^2+x+1)/(3*x+1)", "x", "infinity", "json");
+    assert!(success_pos, "Command should succeed");
+    assert!(
+        stdout_pos.contains("\"result\":\"sqrt(2) / 3\""),
+        "sqrt(2*x^2+x+1)/(3*x+1) should resolve to sqrt(2)/3 at +∞, got: {}",
+        stdout_pos
+    );
+    assert!(
+        !stdout_pos.contains("\"warning\""),
+        "Resolved noisy scaled-denominator sqrt-polynomial ratio should not warn at +∞, got: {}",
+        stdout_pos
+    );
+
+    let (success_neg, stdout_neg) = run_limit("sqrt(2*x^2+x+1)/(3*x+1)", "x", "-infinity", "json");
+    assert!(success_neg, "Command should succeed");
+    assert!(
+        stdout_neg.contains("\"result\":\"-sqrt(2) / 3\""),
+        "sqrt(2*x^2+x+1)/(3*x+1) should resolve to -sqrt(2)/3 at -∞, got: {}",
+        stdout_neg
+    );
+    assert!(
+        !stdout_neg.contains("\"warning\""),
+        "Resolved noisy scaled-denominator negative-orientation sqrt-polynomial ratio should not warn at -∞, got: {}",
+        stdout_neg
+    );
+}
+
+#[test]
+fn test_limit_sqrt_quadratic_with_bounded_radicand_noise() {
+    let (success_pos, stdout_pos) =
+        run_limit("sqrt((3*x+1)^2+sin(x))/(2*x+1)", "x", "infinity", "json");
+    assert!(success_pos, "Command should succeed");
+    assert!(
+        stdout_pos.contains("\"result\":\"3/2\""),
+        "sqrt((3*x+1)^2+sin(x))/(2*x+1) should resolve to 3/2 at +∞, got: {}",
+        stdout_pos
+    );
+    assert!(
+        !stdout_pos.contains("\"warning\""),
+        "Resolved bounded-noise sqrt-polynomial ratio should not warn at +∞, got: {}",
+        stdout_pos
+    );
+
+    let (success_neg, stdout_neg) =
+        run_limit("sqrt((3*x+1)^2+sin(x))/(2*x+1)", "x", "-infinity", "json");
+    assert!(success_neg, "Command should succeed");
+    assert!(
+        stdout_neg.contains("\"result\":\"-3/2\""),
+        "sqrt((3*x+1)^2+sin(x))/(2*x+1) should resolve to -3/2 at -∞, got: {}",
+        stdout_neg
+    );
+    assert!(
+        !stdout_neg.contains("\"warning\""),
+        "Resolved bounded-noise negative-orientation sqrt-polynomial ratio should not warn at -∞, got: {}",
+        stdout_neg
+    );
+}
+
+#[test]
+fn test_limit_sqrt_quadratic_with_bounded_external_noise() {
+    let (success_pos, stdout_pos) = run_limit(
+        "sqrt((3*x+1)^2+sin(x))/(2*x+1+cos(x))",
+        "x",
+        "infinity",
+        "json",
+    );
+    assert!(success_pos, "Command should succeed");
+    assert!(
+        stdout_pos.contains("\"result\":\"3/2\""),
+        "sqrt((3*x+1)^2+sin(x))/(2*x+1+cos(x)) should resolve to 3/2 at +∞, got: {}",
+        stdout_pos
+    );
+    assert!(
+        !stdout_pos.contains("\"warning\""),
+        "Resolved bounded external denominator noise should not warn at +∞, got: {}",
+        stdout_pos
+    );
+
+    let (success_neg, stdout_neg) = run_limit(
+        "sqrt((3*x+1)^2+sin(x))/(2*x+1+cos(x))",
+        "x",
+        "-infinity",
+        "json",
+    );
+    assert!(success_neg, "Command should succeed");
+    assert!(
+        stdout_neg.contains("\"result\":\"-3/2\""),
+        "sqrt((3*x+1)^2+sin(x))/(2*x+1+cos(x)) should resolve to -3/2 at -∞, got: {}",
+        stdout_neg
+    );
+    assert!(
+        !stdout_neg.contains("\"warning\""),
+        "Resolved bounded external denominator noise should not warn at -∞, got: {}",
+        stdout_neg
+    );
+
+    let (success_inverse_pos, stdout_inverse_pos) = run_limit(
+        "(2*x+1+cos(x))/sqrt((3*x+1)^2+sin(x))",
+        "x",
+        "infinity",
+        "json",
+    );
+    assert!(success_inverse_pos, "Command should succeed");
+    assert!(
+        stdout_inverse_pos.contains("\"result\":\"2/3\""),
+        "(2*x+1+cos(x))/sqrt((3*x+1)^2+sin(x)) should resolve to 2/3 at +∞, got: {}",
+        stdout_inverse_pos
+    );
+    assert!(
+        !stdout_inverse_pos.contains("\"warning\""),
+        "Resolved bounded external numerator noise should not warn at +∞, got: {}",
+        stdout_inverse_pos
+    );
+
+    let (success_inverse_neg, stdout_inverse_neg) = run_limit(
+        "(2*x+1+cos(x))/sqrt((3*x+1)^2+sin(x))",
+        "x",
+        "-infinity",
+        "json",
+    );
+    assert!(success_inverse_neg, "Command should succeed");
+    assert!(
+        stdout_inverse_neg.contains("\"result\":\"-2/3\""),
+        "(2*x+1+cos(x))/sqrt((3*x+1)^2+sin(x)) should resolve to -2/3 at -∞, got: {}",
+        stdout_inverse_neg
+    );
+    assert!(
+        !stdout_inverse_neg.contains("\"warning\""),
+        "Resolved bounded external numerator noise should not warn at -∞, got: {}",
+        stdout_inverse_neg
+    );
+}
+
+#[test]
+fn test_limit_sqrt_quadratic_with_negative_bounded_external_noise() {
+    let (success_pos, stdout_pos) = run_limit(
+        "sqrt((3*x+1)^2+sin(x))/(1-2*x+cos(x))",
+        "x",
+        "infinity",
+        "json",
+    );
+    assert!(success_pos, "Command should succeed");
+    assert!(
+        stdout_pos.contains("\"result\":\"-3/2\""),
+        "sqrt((3*x+1)^2+sin(x))/(1-2*x+cos(x)) should resolve to -3/2 at +∞, got: {}",
+        stdout_pos
+    );
+    assert!(
+        !stdout_pos.contains("\"warning\""),
+        "Resolved negative bounded external denominator noise should not warn at +∞, got: {}",
+        stdout_pos
+    );
+
+    let (success_neg, stdout_neg) = run_limit(
+        "sqrt((3*x+1)^2+sin(x))/(1-2*x+cos(x))",
+        "x",
+        "-infinity",
+        "json",
+    );
+    assert!(success_neg, "Command should succeed");
+    assert!(
+        stdout_neg.contains("\"result\":\"3/2\""),
+        "sqrt((3*x+1)^2+sin(x))/(1-2*x+cos(x)) should resolve to 3/2 at -∞, got: {}",
+        stdout_neg
+    );
+    assert!(
+        !stdout_neg.contains("\"warning\""),
+        "Resolved negative bounded external denominator noise should not warn at -∞, got: {}",
+        stdout_neg
+    );
+
+    let (success_inverse_pos, stdout_inverse_pos) = run_limit(
+        "(1-2*x+cos(x))/sqrt((3*x+1)^2+sin(x))",
+        "x",
+        "infinity",
+        "json",
+    );
+    assert!(success_inverse_pos, "Command should succeed");
+    assert!(
+        stdout_inverse_pos.contains("\"result\":\"-2/3\""),
+        "(1-2*x+cos(x))/sqrt((3*x+1)^2+sin(x)) should resolve to -2/3 at +∞, got: {}",
+        stdout_inverse_pos
+    );
+    assert!(
+        !stdout_inverse_pos.contains("\"warning\""),
+        "Resolved negative bounded external numerator noise should not warn at +∞, got: {}",
+        stdout_inverse_pos
+    );
+
+    let (success_inverse_neg, stdout_inverse_neg) = run_limit(
+        "(1-2*x+cos(x))/sqrt((3*x+1)^2+sin(x))",
+        "x",
+        "-infinity",
+        "json",
+    );
+    assert!(success_inverse_neg, "Command should succeed");
+    assert!(
+        stdout_inverse_neg.contains("\"result\":\"2/3\""),
+        "(1-2*x+cos(x))/sqrt((3*x+1)^2+sin(x)) should resolve to 2/3 at -∞, got: {}",
+        stdout_inverse_neg
+    );
+    assert!(
+        !stdout_inverse_neg.contains("\"warning\""),
+        "Resolved negative bounded external numerator noise should not warn at -∞, got: {}",
+        stdout_inverse_neg
+    );
+}
+
+#[test]
+fn test_limit_sqrt_quadratic_with_constant_scaled_bounded_external_noise() {
+    let (success_scaled_num, stdout_scaled_num) = run_limit(
+        "5*sqrt((3*x+1)^2+sin(x))/(2*x+1+cos(x))",
+        "x",
+        "infinity",
+        "json",
+    );
+    assert!(success_scaled_num, "Command should succeed");
+    assert!(
+        stdout_scaled_num.contains("\"result\":\"15/2\""),
+        "5*sqrt((3*x+1)^2+sin(x))/(2*x+1+cos(x)) should resolve to 15/2 at +∞, got: {}",
+        stdout_scaled_num
+    );
+    assert!(
+        !stdout_scaled_num.contains("\"warning\""),
+        "Resolved scaled bounded numerator noise should not warn at +∞, got: {}",
+        stdout_scaled_num
+    );
+
+    let (success_scaled_den, stdout_scaled_den) = run_limit(
+        "sqrt((3*x+1)^2+sin(x))/(2*(2*x+1+cos(x)))",
+        "x",
+        "infinity",
+        "json",
+    );
+    assert!(success_scaled_den, "Command should succeed");
+    assert!(
+        stdout_scaled_den.contains("\"result\":\"3/4\""),
+        "sqrt((3*x+1)^2+sin(x))/(2*(2*x+1+cos(x))) should resolve to 3/4 at +∞, got: {}",
+        stdout_scaled_den
+    );
+    assert!(
+        !stdout_scaled_den.contains("\"warning\""),
+        "Resolved scaled bounded denominator noise should not warn at +∞, got: {}",
+        stdout_scaled_den
+    );
+}
+
+#[test]
+fn test_limit_sqrt_quadratic_composes_with_explicit_rational_constants() {
+    let (success_sum, stdout_sum) = run_limit(
+        "sqrt((3*x+1)^2+sin(x))/(2*x+1+cos(x))+1/6",
+        "x",
+        "infinity",
+        "json",
+    );
+    assert!(success_sum, "Command should succeed");
+    assert!(
+        stdout_sum.contains("\"result\":\"5/3\""),
+        "resolved bounded sqrt ratio plus 1/6 should fold to 5/3, got: {}",
+        stdout_sum
+    );
+    assert!(
+        !stdout_sum.contains("\"warning\""),
+        "resolved bounded sqrt ratio plus rational constant should not warn, got: {}",
+        stdout_sum
+    );
+
+    let (success_diff, stdout_diff) = run_limit(
+        "sqrt((3*x+1)^2+sin(x))/(2*x+1+cos(x))-1/2",
+        "x",
+        "infinity",
+        "json",
+    );
+    assert!(success_diff, "Command should succeed");
+    assert!(
+        stdout_diff.contains("\"result\":\"1\""),
+        "resolved bounded sqrt ratio minus 1/2 should fold to 1, got: {}",
+        stdout_diff
+    );
+    assert!(
+        !stdout_diff.contains("\"warning\""),
+        "resolved bounded sqrt ratio minus rational constant should not warn, got: {}",
+        stdout_diff
+    );
+
+    let (success_product, stdout_product) = run_limit(
+        "sqrt((3*x+1)^2+sin(x))/(2*x+1+cos(x))*(2/3)",
+        "x",
+        "infinity",
+        "json",
+    );
+    assert!(success_product, "Command should succeed");
+    assert!(
+        stdout_product.contains("\"result\":\"1\""),
+        "resolved bounded sqrt ratio times 2/3 should fold to 1, got: {}",
+        stdout_product
+    );
+    assert!(
+        !stdout_product.contains("\"warning\""),
+        "resolved bounded sqrt ratio times rational constant should not warn, got: {}",
+        stdout_product
+    );
+
+    let (success_quotient, stdout_quotient) = run_limit(
+        "sqrt((3*x+1)^2+sin(x))/(2*x+1+cos(x))/(3/2)",
+        "x",
+        "infinity",
+        "json",
+    );
+    assert!(success_quotient, "Command should succeed");
+    assert!(
+        stdout_quotient.contains("\"result\":\"1\""),
+        "resolved bounded sqrt ratio divided by 3/2 should fold to 1, got: {}",
+        stdout_quotient
+    );
+    assert!(
+        !stdout_quotient.contains("\"warning\""),
+        "resolved bounded sqrt ratio divided by rational constant should not warn, got: {}",
+        stdout_quotient
+    );
+}
+
+#[test]
+fn test_limit_sqrt_quadratic_does_not_treat_symbolic_addend_as_numeric_constant() {
+    let (success, stdout) = run_limit(
+        "sqrt((3*x+1)^2+sin(x))/(2*x+1+cos(x))+y",
+        "x",
+        "infinity",
+        "json",
+    );
+    assert!(success, "Command should succeed");
+    assert!(
+        stdout.contains("\"result\":\"y + 3/2\""),
+        "symbolic addend should remain symbolic after resolved limit, got: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("\"warning\""),
+        "resolved bounded sqrt ratio plus symbolic addend should not warn, got: {}",
+        stdout
+    );
+}
+
+#[test]
+fn test_limit_linear_over_sqrt_quadratic_with_surd_coefficient() {
+    let (success_pos, stdout_pos) = run_limit("x/sqrt(2*x^2+1)", "x", "infinity", "json");
+    assert!(success_pos, "Command should succeed");
+    assert!(
+        stdout_pos.contains("\"result\":\"sqrt(2) / 2\""),
+        "x/sqrt(2*x^2+1) should resolve to sqrt(2)/2 at +∞, got: {}",
+        stdout_pos
+    );
+    assert!(
+        !stdout_pos.contains("\"warning\""),
+        "Resolved polynomial-over-sqrt ratio should not warn at +∞, got: {}",
+        stdout_pos
+    );
+
+    let (success_neg, stdout_neg) = run_limit("x/sqrt(2*x^2+1)", "x", "-infinity", "json");
+    assert!(success_neg, "Command should succeed");
+    assert!(
+        stdout_neg.contains("\"result\":\"-sqrt(2) / 2\""),
+        "x/sqrt(2*x^2+1) should resolve to -sqrt(2)/2 at -∞, got: {}",
+        stdout_neg
+    );
+    assert!(
+        !stdout_neg.contains("\"warning\""),
+        "Resolved negative-orientation polynomial-over-sqrt ratio should not warn at -∞, got: {}",
+        stdout_neg
+    );
+}
+
+#[test]
+fn test_limit_polynomial_over_sqrt_quadratic_ignores_lower_order_noise() {
+    let (success_pos, stdout_pos) = run_limit("(3*x+1)/sqrt(2*x^2+x+1)", "x", "infinity", "json");
+    assert!(success_pos, "Command should succeed");
+    assert!(
+        stdout_pos.contains("\"result\":\"3·sqrt(2) / 2\""),
+        "(3*x+1)/sqrt(2*x^2+x+1) should resolve to 3*sqrt(2)/2 at +∞, got: {}",
+        stdout_pos
+    );
+    assert!(
+        !stdout_pos.contains("\"warning\""),
+        "Resolved noisy polynomial-over-sqrt ratio should not warn at +∞, got: {}",
+        stdout_pos
+    );
+
+    let (success_neg, stdout_neg) = run_limit("(3*x+1)/sqrt(2*x^2+x+1)", "x", "-infinity", "json");
+    assert!(success_neg, "Command should succeed");
+    assert!(
+        stdout_neg.contains("\"result\":\"-3·sqrt(2) / 2\""),
+        "(3*x+1)/sqrt(2*x^2+x+1) should resolve to -3*sqrt(2)/2 at -∞, got: {}",
+        stdout_neg
+    );
+    assert!(
+        !stdout_neg.contains("\"warning\""),
+        "Resolved noisy negative-orientation polynomial-over-sqrt ratio should not warn at -∞, got: {}",
+        stdout_neg
+    );
+}
+
+#[test]
 fn test_limit_polynomial_over_ln_negative_orientation() {
     let (success, stdout) = run_limit("x/ln(1 - x)", "x", "-infinity", "json");
     assert!(success, "Command should succeed");

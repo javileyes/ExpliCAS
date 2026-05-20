@@ -1018,6 +1018,25 @@ fn test_positive_condition_keeps_opposite_orientation_distinct() {
     assert_eq!(rendered, vec!["x > 0", "x < 0"]);
 }
 
+#[test]
+fn test_positive_condition_dedupes_sqrt_and_half_power_notation_in_sum() {
+    let mut ctx = Context::new();
+    let sqrt_form = cas_parser::parse("ln(x) + sqrt(x) + e^sin(x)", &mut ctx)
+        .expect("parse sqrt-form condition");
+    let pow_form = cas_parser::parse("ln(x) + e^sin(x) + x^(1/2)", &mut ctx)
+        .expect("parse half-power condition");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::Positive(sqrt_form),
+            ImplicitCondition::Positive(pow_form),
+        ],
+    );
+
+    assert_eq!(rendered, vec!["ln(x) + sqrt(x) + e^sin(x) > 0"]);
+}
+
 /// Test that x - 2 and 2 - x are deduplicated as equivalent
 #[test]
 fn test_equivalent_conditions_dedupe() {

@@ -95,6 +95,12 @@ fn factors_match_for_denominator(
         return true;
     }
 
+    if power_factors_match_for_denominator(ctx, lhs, rhs)
+        || additive_factors_match_for_denominator(ctx, lhs, rhs)
+    {
+        return true;
+    }
+
     let Some(lhs_base) = sqrt_or_half_power_base(ctx, lhs) else {
         return false;
     };
@@ -103,6 +109,66 @@ fn factors_match_for_denominator(
     };
     compare_expr(ctx, lhs_base, rhs_base) == std::cmp::Ordering::Equal
         || cas_math::expr_domain::exprs_equivalent(ctx, lhs_base, rhs_base)
+}
+
+fn power_factors_match_for_denominator(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    let (Expr::Pow(lhs_base, lhs_exp), Expr::Pow(rhs_base, rhs_exp)) =
+        (ctx.get(lhs).clone(), ctx.get(rhs).clone())
+    else {
+        return false;
+    };
+
+    let exponents_match = compare_expr(ctx, lhs_exp, rhs_exp) == std::cmp::Ordering::Equal
+        || cas_ast::views::as_rational_const(ctx, lhs_exp, 8)
+            .zip(cas_ast::views::as_rational_const(ctx, rhs_exp, 8))
+            .is_some_and(|(lhs_value, rhs_value)| lhs_value == rhs_value);
+    exponents_match && factors_match_for_denominator(ctx, lhs_base, rhs_base)
+}
+
+fn additive_factors_match_for_denominator(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    let lhs_is_additive = matches!(
+        ctx.get(lhs),
+        Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Neg(_)
+    );
+    let rhs_is_additive = matches!(
+        ctx.get(rhs),
+        Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Neg(_)
+    );
+    if !lhs_is_additive || !rhs_is_additive {
+        return false;
+    }
+
+    let mut lhs_terms = Vec::new();
+    let mut rhs_terms = Vec::new();
+    collect_signed_add_terms(ctx, lhs, 1, &mut lhs_terms);
+    collect_signed_add_terms(ctx, rhs, 1, &mut rhs_terms);
+    if lhs_terms.len() != rhs_terms.len() {
+        return false;
+    }
+
+    let mut rhs_used = vec![false; rhs_terms.len()];
+    'lhs: for (lhs_sign, lhs_term) in lhs_terms {
+        for (rhs_index, (rhs_sign, rhs_term)) in rhs_terms.iter().copied().enumerate() {
+            if rhs_used[rhs_index] || lhs_sign != rhs_sign {
+                continue;
+            }
+            if exprs_equal_up_to_mul_factor_order_and_sign(ctx, lhs_term, rhs_term) {
+                rhs_used[rhs_index] = true;
+                continue 'lhs;
+            }
+        }
+        return false;
+    }
+
+    true
 }
 
 fn exprs_equal_up_to_mul_factor_order_and_sign(
@@ -1407,6 +1473,20 @@ mod tests {
         let expr = parse(
             "-(3*x+1)/(2*sqrt(x)*(x*(x+1)^2+1)) + \
                 (6*x+2)/(4*x^(1/2)+4*x^(3/2)*(x+1)^2)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite = CancelOppositeFractionsRule.apply(&mut ctx, expr, &ParentContext::root());
+        assert!(rewrite.is_some());
+    }
+
+    #[test]
+    fn detects_opposite_fraction_pair_with_shifted_sqrt_half_power_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "-(2*sqrt(x)-1)/(2*x*sqrt(x)*(sqrt(x)-1)^2) + \
+                (2*x^(1/2)-1)/(2*x^(3/2)*(x^(1/2)-1)^2)",
             &mut ctx,
         )
         .unwrap_or_else(|err| panic!("parse: {err}"));

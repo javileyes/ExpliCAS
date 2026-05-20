@@ -95,6 +95,850 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-20 - Retained robustness: additive-pair residual closure for sec-log reciprocal-root arctan
+
+- area:
+  - calculus / differentiation / post-calculus residuals / wrapper spread
+- status:
+  - `retained`
+- candidate:
+  - resolve a small opposite-signed additive pair that contains a post-calculus
+    residual before the general simplifier handles the surrounding wrapper
+- retained:
+  - `((diff(arctan(sqrt(sec(x)+ln(x)+1/sqrt(x)+x)),x) - ...)+1)/(x+2)`
+    now returns `1 / (x + 2)` in 0.237s instead of timing out with an 8s smoke
+    budget
+  - the retained rewrite carries the wrapper denominator guard internally; the
+    public JSON suppresses `x + 2 != 0` because existing requires include
+    `x > 0`, which makes `x + 2 != 0` redundant
+  - the existing promoted `arctan_sqrt_additive_trig` matrix stays
+    `pass=11`, `fail=0`, `timeout=0`
+  - `engine-fast`, `engine-scorecard`, and `engine-scorecard-pressure` remain
+    green
+- partial rejection:
+  - the same generated residual still times out in `one_minus` and
+    `minus_const` wrappers with a 4s smoke budget; those orientations need a
+    separate bounded candidate rather than broadening this retained patch
+- learning:
+  - for this family, direct naked residual closure was already available; the
+    missing capability was additive-context pair extraction before the wrapper
+    enters general simplification
+
+## 2026-05-20 - Retained observability: custom residual wrapper smoke matrix
+
+- area:
+  - tooling / calculus residual discovery / wrapper matrix
+- status:
+  - `retained`
+- candidate:
+  - add `--matrix-residual` and `--matrix-residual-name` to
+    `engine_calculus_residual_probe_smoke.py` so a generated calculus residual
+    can be wrapped through the standard smoke matrix without a one-off Python
+    probe
+- retained:
+  - custom residual runs can be filtered with `--matrix-wrapper` and can reuse
+    `--require`, timeout, warning, slow, and JSON status checks
+  - the previous observe-only residual
+    `diff(arctan(sqrt(sec(x)+ln(x)+1/sqrt(x)+x)),x) - ...` is now reproducible
+    as `arctan_sqrt_sec_log_recip_root:plus` and reports `timeout=1` with a
+    2s budget
+  - the existing `arctan_sqrt_additive_trig` filtered matrix remains
+    `pass=11`, `timeout=0`
+  - `engine-fast` remains green
+- learning:
+  - the attempted engine patch that merely enabled the small-additive arctan
+    resolver for child residuals did not change the timeout, so the next engine
+    iteration needs matcher-level inspection rather than another registration
+    change
+
+## 2026-05-20 - Retained observability: calculus residual smoke matrix filters
+
+- area:
+  - tooling / calculus residual discovery / wrapper matrix
+- status:
+  - `retained`
+- candidate:
+  - add `--matrix-base` and `--matrix-wrapper` filters to
+    `engine_calculus_residual_probe_smoke.py`
+- retained:
+  - the smoke harness can isolate a single residual family such as
+    `arctan_sqrt_additive_trig` with 11 cases instead of running the full
+    matrix
+  - filtered run `--default-matrix --matrix-base arctan_sqrt_additive_trig`
+    reports `pass=11`, `fail=0`, `timeout=0`
+  - `engine-fast` and guardrail remain green
+- learning:
+  - wrapper-spread discovery needs first-class filters; ad hoc probes made it
+    too easy to conflate a failed generated candidate with a retained engine
+    change
+
+## 2026-05-20 - Observe-only discovery: sec-log reciprocal-root arctan residual wrapper timeouts
+
+- area:
+  - calculus / differentiation / post-calculus residuals / wrapper spread
+- status:
+  - `observe-only`
+- candidate:
+  - extend child-level residual closure from `arctan(sqrt(additive trig))` to
+    `arctan(sqrt(sec(x)+ln(x)+1/sqrt(x)+x))`
+- local probe:
+  - naked residual resolves to `0` with required `x > 0`,
+    `sec(x)+ln(x)+1/sqrt(x)+x > 0`, `cos(x) != 0`
+  - all 11 smoke-style wrappers around the residual timed out at 8s before
+    promotion
+- why not retained:
+  - adding `try_diff_arctan_sqrt_small_additive_elementary_residual_zero_local`
+    to child-level closure did not change the wrapper timeouts, so the real
+    matching signature is not the same as the previous retained family
+- next useful probe:
+  - use the new smoke matrix filters plus a minimal temporary base to inspect
+    which matcher closes the naked residual before attempting another engine
+    patch
+
+## 2026-05-20 - Retained robustness: arctan sqrt additive-trig residual wrapper spread
+
+- area:
+  - calculus / differentiation / post-calculus residuals / wrapper spread
+- status:
+  - `retained`
+- candidate:
+  - resolve the narrow `diff(arctan(sqrt(additive trig polynomial)), x)` residual when it appears as a child inside simple additive, multiplicative, and denominator wrappers, then let the existing simplifier process the wrapper
+- retained:
+  - the residual for `diff(arctan(sqrt(sin(2*x)+cos(x)+4)), x)` now passes all default smoke wrappers instead of timing out under `(({residual})+1)/(x+2)` and related contexts
+  - the calculus residual smoke matrix expanded from 201 to 212 cases and passes with `fail=0`, `timeout=0`, `slow=0`
+  - existing integration/trig nested-denominator presentation expectations remain unchanged after narrowing the rewrite to the new arctan-sqrt family
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - direct residual closure is not enough; post-calculus residuals need narrow child-level closure for wrapper spread, but broad child rewriting can regress presentation of unrelated families
+
+## 2026-05-20 - Retained robustness: arctan sqrt additive-trig residual short-circuit
+
+- area:
+  - calculus / differentiation / post-calculus residuals / arctan root denominators
+- status:
+  - `retained`
+- candidate:
+  - add a narrow early residual resolver for `diff(arctan(sqrt(additive trig polynomial)), x)` so the compact derivative presentation can cancel against a factored expected target without entering general simplification
+- retained:
+  - `diff(arctan(sqrt(sin(2*x)+cos(x)+4)), x) - (cos(2*x)-sin(x)/2)/(sqrt(sin(2*x)+cos(x)+4)*(sin(2*x)+cos(x)+5))` now resolves to `0` in the focused contract
+  - direct presentation remains compact as `(cos(2*x)-1/2*sin(x))/(sqrt(sin(2*x)+cos(x)+4)*(sin(2*x)+cos(x)+5))`
+  - bounded-positive radicands keep no public required conditions
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - direct post-calculus presentation and residual cancellation need separate early hooks; relying on general fraction/equivalence cleanup can turn a correct residual into a timeout
+
+## 2026-05-20 - Retained calculus: arctan sqrt additive-trig radicand presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / arctan root
+    denominators
+- status:
+  - `retained`
+- candidate:
+  - reuse the compact additive-trig square-root derivative presentation for
+    `arctan(sqrt(radicand))` so the public derivative keeps the denominator as
+    `sqrt(radicand) * (radicand + 1)` instead of expanding the shifted radicand
+- retained:
+  - `diff(arctan(sqrt(sin(x^2)+cos(x)+4)), x)` now renders as
+    `(2*x*cos(x^2)-sin(x))/(2*sqrt(sin(x^2)+cos(x)+4)*(sin(x^2)+cos(x)+5))`
+  - the compact residual for that promoted expression collapses to `0`
+  - the bounded-positive radicand keeps `required_conditions` empty
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- partial rejection:
+  - `diff(arctan(sqrt(sin(2*x)+cos(x)+4)), x)` also renders compactly, but the
+    matching residual
+    `diff(arctan(sqrt(sin(2*x)+cos(x)+4)), x) - (cos(2*x)-sin(x)/2)/(sqrt(sin(2*x)+cos(x)+4)*(sin(2*x)+cos(x)+5))`
+    was not promoted because the focused residual contract did not complete in
+    a reasonable inner-loop window
+- learning:
+  - direct post-calculus presentation can be improved safely by reusing the
+    existing root derivative route, but residual cancellation for half-scaled
+    double-angle arctan/root fractions still needs a separate bounded
+    cancellation candidate before promotion
+
+## 2026-05-20 - Retained coverage: non-unit exp-chain root derivative factor
+
+- area:
+  - calculus / differentiation / post-calculus presentation / exp-chain root
+    denominators
+- status:
+  - `retained`
+- candidate:
+  - promote the `exp(sin(2*x))` orientation of the bounded exp-chain root
+    derivative presentation so the chain factor `2*cos(2*x)` is preserved in
+    the compact common-denominator numerator
+- retained:
+  - `diff(sqrt(exp(sin(2*x))+ln(x)+sqrt(x)+1/sqrt(x)+x), x)` stays compact as
+    `(2*sqrt(x)+2*x*sqrt(x)+4*x*cos(2*x)*sqrt(x)*e^sin(2*x)+x-1)/(4*x*sqrt(x)*sqrt(ln(x)+sqrt(x)+e^sin(2*x)+1/sqrt(x)+x))`
+  - `diff(arctan(sqrt(exp(sin(2*x))+ln(x)+sqrt(x)+1/sqrt(x)+x)), x)` reuses
+    the same compact numerator and denominator with the expected
+    `(radicand+1)` factor
+  - residuals for both promoted expressions collapse to `0`
+  - required conditions remain explicit: `x > 0` and radicand positivity
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the bounded exp-chain route handles simple non-unit chain factors without
+    new engine code; promoting this orientation protects a distinct chain-rule
+    path beyond unit `sin(x)` and sign-only variants
+
+## 2026-05-20 - Retained coverage: negative-scale exp-chain root derivative orientation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / exp-chain root
+    denominators
+- status:
+  - `retained`
+- candidate:
+  - promote the `-exp(sin(x))` orientation of the bounded exp-chain root
+    derivative presentation so a negative external scale is preserved in the
+    compact common-denominator numerator
+- retained:
+  - `diff(sqrt(-exp(sin(x))+ln(x)+sqrt(x)+1/sqrt(x)+x), x)` stays compact as
+    `(2*sqrt(x)+2*x*sqrt(x)+x-2*x*cos(x)*sqrt(x)*e^sin(x)-1)/(4*x*sqrt(x)*sqrt(ln(x)+sqrt(x)+1/sqrt(x)+x-e^sin(x)))`
+  - `diff(arctan(sqrt(-exp(sin(x))+ln(x)+sqrt(x)+1/sqrt(x)+x)), x)` reuses
+    the same compact numerator and denominator with the expected
+    `(radicand+1)` factor
+  - residuals for both promoted expressions collapse to `0`
+  - required conditions remain explicit: `x > 0` and radicand positivity
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the bounded exp-chain route handles negative external scale separately
+    from negative inner derivative; promoting this orientation protects a
+    distinct sign path without new engine code
+
+## 2026-05-20 - Retained coverage: negative exp-chain root derivative orientation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / exp-chain root
+    denominators
+- status:
+  - `retained`
+- candidate:
+  - promote the `exp(cos(x))` orientation of the bounded exp-chain root
+    derivative presentation so the negative inner derivative is preserved in
+    the compact common-denominator numerator
+- retained:
+  - `diff(sqrt(exp(cos(x))+ln(x)+sqrt(x)+1/sqrt(x)+x), x)` stays compact as
+    `(2*sqrt(x)+2*x*sqrt(x)+x-2*x*sin(x)*sqrt(x)*e^cos(x)-1)/(4*x*sqrt(x)*sqrt(ln(x)+sqrt(x)+e^cos(x)+1/sqrt(x)+x))`
+  - `diff(arctan(sqrt(exp(cos(x))+ln(x)+sqrt(x)+1/sqrt(x)+x)), x)` reuses
+    the same compact numerator and denominator with the expected
+    `(radicand+1)` factor
+  - residuals for both promoted expressions collapse to `0`
+  - required conditions remain explicit: `x > 0` and radicand positivity
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the bounded exp-chain route handles negative inner derivatives without a
+    new engine patch; promoting this orientation protects the sign behavior
+    that `exp(sin(x))` alone did not cover
+
+## 2026-05-20 - Retained robustness: bounded exp-chain root derivative presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / exp-chain root
+    denominators
+- status:
+  - `retained`
+- candidate:
+  - add a narrow exponential-chain derivative collector for bounded trig
+    inners so `exp(sin(x))` can reuse the already-retained
+    `ln(x)+sqrt(x)+1/sqrt(x)` common-denominator presentation
+- retained:
+  - `diff(sqrt(exp(sin(x))+ln(x)+sqrt(x)+1/sqrt(x)+x), x)` now returns with
+    the compact denominator
+    `4*x*sqrt(x)*sqrt(ln(x)+sqrt(x)+e^sin(x)+1/sqrt(x)+x)`
+  - `diff(arctan(sqrt(exp(sin(x))+ln(x)+sqrt(x)+1/sqrt(x)+x)), x)` reuses
+    the compact inner denominator and appends the expected `(radicand+1)`
+    factor
+  - residuals for both promoted expressions collapse to `0`
+  - required conditions remain explicit: `x > 0` and radicand positivity;
+    `exp(sin(x))` adds no domain condition
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the timeout was not a missing global chain-rule capability; it was a
+    presentation extractor boundary where only linear exponential arguments
+    were admitted into the bounded denominator route
+  - collecting only bounded trig inners keeps the route narrow and avoids
+    broad expression search
+
+## 2026-05-20 - Retained robustness: exp-log sqrt reciprocal-root derivative presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / mixed root
+    denominators
+- status:
+  - `retained`
+- candidate:
+  - let the bounded common-denominator root derivative presentation handle
+    `exp(x)+ln(x)+sqrt(x)+1/sqrt(x)+x`, even without a reciprocal-trig term,
+    when the already-supported `ln(x)`, `sqrt(x)`, and `1/sqrt(x)` components
+    provide the full denominator witness
+- retained:
+  - `diff(sqrt(exp(x)+ln(x)+sqrt(x)+1/sqrt(x)+x), x)` now returns with the
+    compact denominator
+    `4*x*sqrt(x)*sqrt(ln(x)+sqrt(x)+e^x+1/sqrt(x)+x)`
+  - `diff(arctan(sqrt(exp(x)+ln(x)+sqrt(x)+1/sqrt(x)+x)), x)` reuses the
+    compact inner denominator and appends the expected `(radicand+1)` factor
+  - residuals for both promoted expressions collapse to `0`
+  - required conditions remain explicit: `x > 0` and radicand positivity
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the common-denominator `ln+sqrt+1/sqrt` route was artificially tied to
+    reciprocal-trig terms; removing that requirement for the already-bounded
+    denominator witness avoids a timeout without broadening global
+    simplification
+
+## 2026-05-20 - Observe-only discovery: nonlinear exp-chain in mixed root denominator
+
+- area:
+  - calculus / differentiation / post-calculus presentation / exp-chain root
+    denominators
+- status:
+  - `superseded`
+- discovery:
+  - `diff(sqrt(exp(sin(x))+ln(x)+sqrt(x)+1/sqrt(x)+x), x)` and the matching
+    `arctan(sqrt(...))` wrapper still time out after the retained `exp(x)`
+    route
+  - a residual probe exposed repeated depth-overflow warnings around the
+    derivative of `e^sin(x)` inside the same denominator shape
+- reason not retained:
+  - this is not the same capability as the retained linear-exponential route;
+    the current presentation extractor recognizes linear exponential terms, so
+    `exp(sin(x))` needs a separate bounded chain-derivative presentation
+    hypothesis
+- next combinable hypothesis:
+  - add a narrow exp-chain derivative collector for bounded inner derivatives
+    such as `sin(x)` only if it can reuse the same denominator construction and
+    preserve `failed = 0` in embedded and pressure profiles
+- superseded by:
+  - `2026-05-20 - Retained robustness: bounded exp-chain root derivative
+    presentation`
+
+## 2026-05-20 - Retained robustness: triple root-denominator derivative presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / mixed root
+    denominators
+- status:
+  - `retained`
+- candidate:
+  - compose the bounded reciprocal-trig root derivative presentation when a
+    radicand contains `ln(x)`, `sqrt(x)`, `1/sqrt(x)`, and a linear term, so
+    the result uses the compact denominator
+    `4*x*sqrt(x)*sqrt(radicand)` instead of falling into a timeout
+- retained:
+  - `diff(sqrt(sec(x)+ln(x)+sqrt(x)+1/sqrt(x)+x), x)` now returns with the
+    compact denominator
+    `4*x*sqrt(x)*sqrt(sec(x)+ln(x)+sqrt(x)+1/sqrt(x)+x)`
+  - `diff(sqrt(csc(x)+ln(x)+sqrt(x)+1/sqrt(x)+x), x)` now returns with the
+    compact denominator
+    `4*x*sqrt(x)*sqrt(csc(x)+ln(x)+sqrt(x)+1/sqrt(x)+x)`
+  - the corresponding `arctan(sqrt(...))` wrappers reuse the compact inner
+    denominator and append the expected `(radicand+1)` factor
+  - residuals for all four promoted expressions collapse to `0`
+  - required conditions remain explicit: `x > 0`, radicand positivity, and
+    `sin(x) != 0` or `cos(x) != 0`
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the previously retained `ln+sqrt` and `ln+1/sqrt` routes were not
+    automatically composable; explicit bounded composition avoids a
+    no-termination path without changing global simplification
+
+## 2026-05-20 - Retained calculus: reciprocal-sqrt log orientation presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / term-order
+    robustness
+- status:
+  - `retained`
+- candidate:
+  - preserve a discovered `1/sqrt(x)` component when it appears before the
+    `ln(x)` term that establishes the common denominator, instead of degrading
+    it immediately to an `x^(-3/2)` derivative term
+- retained:
+  - `diff(sqrt(csc(x)-2*ln(x)+3/sqrt(x)+x), x)` now returns with the compact
+    denominator `4*x*sqrt(x)*sqrt(csc(x)-2*ln(x)+3/sqrt(x)+x)`
+  - the corresponding `arctan(sqrt(...))` derivative reuses that compact inner
+    denominator and appends the expected `(radicand+1)` factor
+  - residuals for both promoted expressions collapse to `0` before generic
+    cleanup
+  - required conditions remain explicit: `x > 0`, radicand positivity, and
+    `sin(x) != 0`
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the previous reciprocal-sqrt presentation route was correct only when the
+    log denominator was discovered before the reciprocal-root term; retaining
+    the structural reciprocal-root signal until route selection makes the
+    presentation orientation-robust
+
+## 2026-05-20 - Retained calculus: reciprocal-sqrt log root derivative presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / reciprocal
+    square-root denominators
+- status:
+  - `retained`
+- candidate:
+  - keep `1/sqrt(x)` as a structured reciprocal-root component when a
+    reciprocal-trig square-root radicand also contains `ln(x)`, so the final
+    derivative can common-denominate over `4*x*sqrt(x)*sqrt(radicand)` instead
+    of exposing `x*x^(-3/2)` in the numerator
+- retained:
+  - `diff(sqrt(sec(x)+ln(x)+1/sqrt(x)+x), x)` now returns
+    `(2*sqrt(x)+2*x*sqrt(x)+2*x*tan(x)*sec(x)*sqrt(x)-1)/(4*x*sqrt(x)*sqrt(sec(x)+ln(x)+1/sqrt(x)+x))`
+  - the `csc/cot` dual uses the same compact denominator and avoids raw
+    half-powers
+  - the corresponding `arctan(sqrt(...))` derivatives reuse the compact inner
+    denominator and add the expected `(radicand+1)` factor
+  - residuals for all four promoted expressions collapse to `0` before generic
+    cleanup
+  - required conditions remain explicit: `x > 0`, radicand positivity, and the
+    relevant reciprocal-trig nonzero denominator
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the derivative was already correct; the retained value is preserving a
+    reciprocal-root presentation invariant instead of letting the local route
+    degrade into `x^(-3/2)` noise
+
+## 2026-05-20 - Retained robustness: sec/csc log-sqrt root derivative presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / reciprocal trig
+    with mixed log and radical denominators
+- status:
+  - `retained`
+- candidate:
+  - extend the bounded reciprocal-trig square-root derivative presentation so
+    radicands such as `sec(x)+ln(x)+sqrt(x)+x` and
+    `csc(x)+ln(x)+sqrt(x)+x` can combine the `ln(x)` denominator and the
+    `sqrt(x)` derivative denominator directly
+- retained:
+  - `diff(sqrt(sec(x)+ln(x)+sqrt(x)+x), x)` now returns directly as
+    `(2*sqrt(x)+2*x*sqrt(x)+2*x*tan(x)*sec(x)*sqrt(x)+x)/(4*x*sqrt(x)*sqrt(sec(x)+ln(x)+sqrt(x)+x))`
+    instead of falling into a slow unresolved route
+  - the `csc/cot` dual returns directly as
+    `(2*sqrt(x)+2*x*sqrt(x)+x-2*x*csc(x)*cot(x)*sqrt(x))/(4*x*sqrt(x)*sqrt(csc(x)+ln(x)+sqrt(x)+x))`
+  - residual checks against both displayed forms collapse to `0` through the
+    post-calculus residual route
+  - required conditions remain explicit: `x > 0`, square-root radicand
+    positivity, and the relevant reciprocal-trig nonzero denominator
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the missing capability was not a new derivative rule; it was a missing
+    local composition of two already-supported presentation denominators
+    (`ln(x)` and `sqrt(x)`) inside a reciprocal-trig square-root result
+
+## 2026-05-20 - Retained robustness: cot-csc root derivative residual
+
+- area:
+  - calculus / differentiation / post-calculus presentation / reciprocal trig
+    residuals
+- status:
+  - `retained`
+- candidate:
+  - extend the bounded tan/sec square-root derivative presentation to its
+    cot/csc dual when the radicand is a small additive expression with `cot`,
+    `exp`, and polynomial terms
+  - teach the local residual matcher that `csc(x)^2*sin(x)^2` can cancel to
+    `1` in the same bounded post-calculus residual context that already handles
+    `sec(x)^2*cos(x)^2`
+- retained:
+  - `diff(sqrt(cot(x)+exp(x)+x), x)` now returns directly as
+    `(sin(x)^2 + e^x*sin(x)^2 - 1) / (2*sin(x)^2*sqrt(cot(x)+e^x+x))`
+    instead of timing out
+  - `diff(sqrt(cot(x)+exp(x)+x), x) - (1-csc(x)^2+e^x)/(2*sqrt(cot(x)+exp(x)+x))`
+    now collapses to `0` before general cleanup
+  - the affine negative exp sibling with `exp(-2*x)` also returns quickly and
+    its `csc^2` residual collapses to `0`
+  - required conditions remain explicit: `sin(x) != 0` and the square-root
+    radicand is positive
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the timeout was not a missing derivative rule for `cot`; it was a missing
+    presentation/residual route for the reciprocal-trig dual of an already
+    supported tan/sec family
+
+## 2026-05-20 - Retained robustness: sec-squared tan-exp root derivative residual
+
+- area:
+  - calculus / differentiation / post-calculus residuals / reciprocal trig
+    presentation
+- status:
+  - `retained`
+- candidate:
+  - teach the bounded post-calculus residual matcher that `sec(x)^2*cos(x)^2`
+    can cancel to `1` when comparing a direct derivative rendered over
+    `cos(x)^2` with an educational target rendered with `sec(x)^2`
+- retained:
+  - `diff(sqrt(tan(x)+exp(x)+x), x) - (sec(x)^2+e^x+1)/(2*sqrt(tan(x)+exp(x)+x))`
+    now collapses to `0` before general cleanup instead of timing out after
+    repeated depth overflows
+  - the negative affine exp sibling
+    `diff(sqrt(tan(x)+exp(-2*x)+x), x) - (sec(x)^2-2*e^(-2*x)+1)/(2*sqrt(tan(x)+exp(-2*x)+x))`
+    also collapses to `0`
+  - required conditions remain explicit: `cos(x) != 0` and the square-root
+    radicand is positive
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the direct derivative route was already correct; the retained value was
+    preventing equivalent educational residual forms from falling through into
+    fragile deep trig cleanup
+
+## 2026-05-20 - Retained robustness: negative sqrt term common-denominator trig-root residual
+
+- area:
+  - calculus / differentiation / post-calculus residuals / signed radical
+    denominator factors
+- status:
+  - `retained`
+- candidate:
+  - allow the local exact denominator-factor remover used by post-calculus
+    residual matching to pair `sqrt(...)` factors whose radicands are the same
+    signed additive terms, even when the AST orientation differs
+- retained:
+  - `diff(sqrt(sin(2*x)+cos(x)-sqrt(x)), x) - (4*sqrt(x)*cos(2*x)-1-2*sqrt(x)*sin(x))/(4*sqrt(x)*sqrt(sin(2*x)+cos(x)-sqrt(x)))`
+    now collapses to `0` before generic cleanup
+  - the rebuilt debug CLI probe passes in about 0.49s with required conditions
+    `x > 0` and `sin(2*x)+cos(x)-sqrt(x) > 0`
+  - the existing positive `+sqrt(x)` common-denominator sibling still passes
+    in about 0.48s
+  - `fast`, `guardrail`, and `pressure` profiles stay at `failed = 0`
+- learning:
+  - the derivative and the inline residual were already correct; the timeout
+    was caused by a too-strict factor-removal step inside the bounded
+    denominator-commoning residual matcher
+  - the retained change stays local to post-calculus residual verification and
+    does not change global simplification or the public derivative form
+
+## 2026-05-20 - Retained robustness: signed sqrt term in elementary sqrt derivative residual
+
+- area:
+  - calculus / differentiation / post-calculus residuals / sign orientation
+- status:
+  - `retained`
+- candidate:
+  - compare square-root denominator factors whose radicands are equivalent
+    signed additive sums in different orders, without changing global
+    simplification order
+- retained:
+  - `diff(sqrt(exp(sin(x))+ln(x)-sqrt(x)), x) - (2*sqrt(x)+2*x*sqrt(x)*cos(x)*e^sin(x)-x)/(4*x*sqrt(x)*sqrt(ln(x)-sqrt(x)+e^sin(x)))`
+    now collapses to `0` before generic cleanup
+  - the rebuilt debug CLI probe passes in about 0.53s with the real-domain
+    requirements `x > 0` and `ln(x)-sqrt(x)+e^sin(x) > 0`
+  - the retained change is local to the post-calculus residual matcher and
+    leaves promoted embedded, strict, diff, limit, and integrate lanes green
+- learning:
+  - the public derivative was already correct; the brittle point was matching
+    `sqrt(ln(x)+e^sin(x)-sqrt(x))` against
+    `sqrt(ln(x)-sqrt(x)+e^sin(x))` inside a denominator factor
+  - a bounded signed-additive comparison for square-root radicands is enough
+    here and avoids broad signed-product equivalence in global simplification
+
+## 2026-05-20 - Observe-only discovery: signed sqrt term in elementary sqrt derivative residual
+
+- area:
+  - calculus / differentiation / post-calculus residuals / sign orientation
+- status:
+  - `superseded`
+- observed:
+  - the positive polynomial sibling was retained in this cycle, but
+    `diff(sqrt(exp(sin(x))+ln(x)-sqrt(x)), x) - (2*sqrt(x)+2*x*sqrt(x)*cos(x)*e^sin(x)-x)/(4*x*sqrt(x)*sqrt(ln(x)-sqrt(x)+e^sin(x)))`
+    still times out under the 4s calculus residual probe
+- superseded by:
+  - the retained signed-radicand residual matcher entry above
+- why it was not promoted:
+  - it adds a signed-radicand orientation issue on top of the product-power
+    residual gap fixed here
+  - retaining both would mix two hypotheses in one cycle
+- next candidate:
+  - investigate signed additive terms in the elementary sqrt derivative
+    residual matcher, preserving the explicit radicand positivity condition
+    and avoiding broad signed-product equivalence in global simplification
+
+## 2026-05-20 - Retained robustness: polynomial power term in exp-trig-log sqrt derivative residual
+
+- area:
+  - calculus / differentiation / post-calculus residuals / product-power
+    matching
+- status:
+  - `retained`
+- candidate:
+  - allow the bounded residual matcher to compare product terms such as
+    `x*x*sqrt(x)` with user-facing terms such as `x^2*sqrt(x)`
+- retained:
+  - `diff(sqrt(exp(sin(x))+ln(x)+sqrt(x)+x^2), x) - (2*sqrt(x)+2*x*sqrt(x)*cos(x)*e^sin(x)+x+4*x^2*sqrt(x))/(4*x*sqrt(x)*sqrt(ln(x)+sqrt(x)+e^sin(x)+x^2))`
+    now collapses to `0` before generic cleanup
+  - the arctan wrapper sibling with the same radicand also collapses quickly
+  - the probe on the rebuilt debug CLI passes in about 0.52s with required
+    conditions `x > 0` and `ln(x)+sqrt(x)+e^sin(x)+x^2 > 0`
+- learning:
+  - the derivative presentation intentionally emits repeated factors in some
+    polynomial terms, while educational targets often use small powers
+  - keeping the expansion bounded to small positive integer powers inside the
+    residual matcher avoids a global simplification preference change
+
+## 2026-05-20 - Retained robustness: exp-trig-log sqrt derivative residual
+
+- area:
+  - calculus / differentiation / post-calculus residuals / sqrt presentation
+- status:
+  - `retained`
+- candidate:
+  - add a bounded early residual route for
+    `diff(sqrt(exp(sin(x))+ln(x)+sqrt(x)), x)` when the target derivative is
+    written as an equivalent common-denominator fraction
+- retained:
+  - the direct residual
+    `diff(sqrt(exp(sin(x))+ln(x)+sqrt(x)), x) - (2*sqrt(x)+2*x*sqrt(x)*cos(x)*e^sin(x)+x)/(4*x*sqrt(x)*sqrt(ln(x)+sqrt(x)+e^sin(x)))`
+    now collapses to `0` before generic cleanup
+  - the route preserves the real-domain requirements `x > 0` and
+    `ln(x)+sqrt(x)+e^sin(x) > 0`
+  - the CLI probe moved from a 4s timeout on the stale route to a pass on the
+    rebuilt debug CLI in about 0.53s
+- learning:
+  - the calculus result was already mathematically available; the fragile part
+    was residual comparison after denominator alignment
+  - the retained fix reuses the existing elementary sqrt derivative
+    presentation and bounded post-calculus residual matchers instead of
+    expanding or invoking broader simplification
+
+## 2026-05-20 - Retained positive-shift nonzero suppression for calculus conditions
+
+- area:
+  - calculus / differentiation / post-calculus presentation / domain conditions
+- status:
+  - `retained`
+- candidate:
+  - suppress the redundant public `NonZero(R+1)` denominator witness when a
+    visible real-domain condition already contains `Positive(R)`
+- retained:
+  - `diff(arctan(sqrt(tan(x)+sqrt(x)+1/sqrt(x)+x)), x)` still renders the
+    compact common-denominator derivative, but its public requirements now keep
+    only `x > 0`, `tan(x)+sqrt(x)+1/sqrt(x)+x > 0`, and `cos(x) != 0`
+  - the scaled sibling
+    `diff(arctan(sqrt(tan(x)+2*sqrt(x)-3/sqrt(x)+x)), x)` gets the same
+    cleanup
+  - matching residuals still collapse to `0` before cleanup
+- learning:
+  - this is a condition-presentation improvement, not a new calculus rule:
+    over the real domain, `R > 0` is enough to prove `R + c != 0` for a
+    strictly positive constant `c`
+  - the rule is intentionally bounded to exact additive positive-constant
+    shifts; it keeps `R-1 != 0` under `R > 0`
+
+## 2026-05-20 - Retained arctan-sqrt wrapper over mixed tan-root presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / wrapper robustness
+- status:
+  - `retained`
+- candidate:
+  - extend the retained
+    `sqrt(tan(x)+sqrt(x)+1/sqrt(x)+x)` presentation through the public wrapper
+    `arctan(sqrt(...))`, where the direct CLI probe and matching residual both
+    timed out before promotion
+- retained:
+  - `diff(arctan(sqrt(tan(x)+sqrt(x)+1/sqrt(x)+x)), x)` now reuses the inner
+    common-denominator derivative and renders:
+    `(2*x*sqrt(x) + 2*x*sqrt(x)*sec(x)^2 + x - 1)/(4*x*sqrt(x)*sqrt(tan(x)+sqrt(x)+1/sqrt(x)+x)*(tan(x)+sqrt(x)+1/sqrt(x)+x+1))`
+  - the scaled sibling
+    `diff(arctan(sqrt(tan(x)+2*sqrt(x)-3/sqrt(x)+x)), x)` uses the same
+    route
+  - matching residuals against both compact forms collapse to `0` before the
+    general simplification pipeline
+- learning:
+  - this is a wrapper robustness/presentation issue, not a new derivative
+    formula: the derivative is the compact `sqrt(R)` derivative divided by
+    `R+1`
+  - preserving the raw `diff` target and resolving the public direct/residual
+    path before general simplification avoids repeated depth-overflow traffic
+  - public conditions currently include an explicit `R+1 != 0` denominator
+    witness in addition to `R > 0`; it is sound but redundant, and a future
+    domain-presentation cleanup can suppress `NonZero(R+1)` when `R > 0` is
+    already visible
+
+## 2026-05-20 - Retained tan-root mixed sqrt/reciprocal-sqrt presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / radical fractions
+- status:
+  - `retained`
+- candidate:
+  - improve the public presentation for
+    `diff(sqrt(tan(x)+sqrt(x)+1/sqrt(x)+x), x)`, which already computed the
+    derivative but exposed `sqrt(x)*x^(-3/2)` and timed out when embedded in a
+    residual against the compact common-denominator form
+- retained:
+  - the direct derivative now keeps both radical contributions under a shared
+    `x*sqrt(x)` denominator:
+    `(2*x*sqrt(x) + 2*x*sqrt(x)*sec(x)^2 + x - 1)/(4*x*sqrt(x)*sqrt(tan(x)+sqrt(x)+1/sqrt(x)+x))`
+  - the scaled sibling
+    `diff(sqrt(tan(x)+2*sqrt(x)-3/sqrt(x)+x), x)` uses the same route and
+    renders the numerator as `2*x*sqrt(x) + 2*x*sqrt(x)*sec(x)^2 + 2*x + 3`
+  - residual checks against both compact forms collapse to `0`; required
+    conditions remain `x > 0`, outer radicand positivity, and `cos(x) != 0`
+- learning:
+  - when `sqrt(x)` and `1/sqrt(x)` appear together, flushing the reciprocal
+    component into generic derivative terms is too early and leaves half-power
+    noise in the public result
+  - keeping both local components until presentation time fixes the visible
+    result without changing global simplification policy for fractional powers
+
+## 2026-05-20 - Retained tan-root reciprocal-sqrt post-calculus presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / radical fractions
+- status:
+  - `retained`
+- candidate:
+  - improve the public presentation for
+    `diff(sqrt(tan(x)+1/sqrt(x)+x), x)` and its signed sibling, which already
+    computed the derivative but exposed `x^(-3/2)` and could timeout when
+    embedded in a residual against the expected educational form
+- retained:
+  - the direct derivative now uses a local `x*sqrt(x)` denominator:
+    `(2*x*sqrt(x) + 2*x*sqrt(x)*sec(x)^2 - 1)/(4*x*sqrt(x)*sqrt(tan(x)+1/sqrt(x)+x))`
+  - the negative reciprocal-sqrt sibling keeps the same compact shape with the
+    final `+ 1` numerator term
+  - residual checks against both compact forms collapse to `0` before the
+    general simplifier; required conditions remain `x > 0`, outer radicand
+    positivity, and `cos(x) != 0`
+- learning:
+  - this is a retained post-calculus presentation route, not a broad
+    simplifier policy for all negative fractional powers
+  - treating `k/sqrt(x)` as an explicit local derivative component avoids a
+    fragile `x^(-3/2)` residual without changing the internal canonical forms
+
+## 2026-05-20 - Retained tan-root sqrt-variable post-calculus presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / radical fractions
+- status:
+  - `retained`
+- candidate:
+  - improve the direct public presentation for
+    `diff(sqrt(tan(x)+sqrt(x)+x), x)`, which already terminated and verified
+    but still exposed `x^(-1/2)` inside the numerator
+- retained:
+  - the direct derivative now uses a local `sqrt(x)` denominator:
+    `(2*sqrt(x) + 2*sqrt(x)*sec(x)^2 + 1)/(4*sqrt(x)*sqrt(tan(x)+sqrt(x)+x))`
+  - the affine sibling
+    `diff(sqrt(tan(x)+sqrt(x)+2*x+1), x)` keeps the same compact shape
+  - residual checks still collapse to `0`, and required conditions remain
+    `cos(x) != 0`, outer radicand positivity, and `x > 0`
+- learning:
+  - this is a presentation improvement, not a new derivative rule: the calculus
+    route already knew the derivative, but needed a local common-denominator
+    shape for `sqrt(x)` to avoid half-power noise in public output
+  - keep this local to the tan-root presentation path; do not promote a global
+    preference for rewriting every `x^(-1/2)` into a displayed root
+
+## 2026-05-20 - Observe-only reciprocal trig-root diff subtraction orientation still times out
+
+- area:
+  - calculus / differentiation / post-calculus presentation / reciprocal
+    radicand orientation
+- status:
+  - `resolved`
+- candidate:
+  - while promoting the bounded direct route for
+    `diff(sqrt(sin(2*x)+cos(x)+k/x), x)`, probe the sign-oriented sibling
+    `diff(sqrt(sin(2*x)+cos(x)-2/x), x)`
+- observation:
+  - the additive forms now terminate directly:
+    `diff(sqrt(sin(2*x)+cos(x)+1/x), x)` and
+    `diff(sqrt(sin(2*x)+cos(x)+2/x), x)`
+  - the equivalent negative-coefficient spelling
+    `diff(sqrt(sin(2*x)+cos(x)+(-2)/x), x)` also terminates directly
+  - the subtraction spelling
+    `diff(sqrt(sin(2*x)+cos(x)-2/x), x)` still times out under the same
+    public smoke probe
+- learning:
+  - this is an orientation/AST-shape gap, not a missing derivative formula:
+    the retained presentation path can handle a negative reciprocal
+    coefficient once it is represented as an additive negative term
+  - do not broaden the retained `k/x` promotion to claim subtraction-oriented
+    coverage until the raw derivative gate and presentation recognizer agree on
+    `Sub`-shaped radicands
+- follow-up:
+  - resolved by teaching the raw derivative gate and additive trig-root
+    presentation path to treat `Sub` radicands as signed add terms, while
+    keeping the derivative route local to post-calculus presentation
+  - retained contract:
+    `diff(sqrt(sin(2*x)+cos(x)-2/x), x)` now returns the compact one-step
+    derivative
+    `(2*cos(2*x)*x^2 + 2 - sin(x)*x^2)/(2*x^2*sqrt(sin(2*x)+cos(x)-2/x))`
+    with `x != 0` and `sin(2*x)+cos(x)-2/x > 0`
+  - the matching residual now collapses to `0`; domain-condition display also
+    drops the redundant `radicand >= 0` when the same radicand is already
+    required positive
+
+## 2026-05-20 - Observe-only shifted sqrt residual does not bridge sqrt and half-power forms
+
+- area:
+  - calculus / differentiation / post-calculus presentation / residual
+    equivalence
+- status:
+  - `resolved`
+- candidate:
+  - after promoting the compact negative shifted-root derivative
+    `diff(1/(sqrt(x)*(sqrt(x)-1)), x)`, verify the residual against the same
+    expression typed manually:
+    `diff(1/(sqrt(x)*(sqrt(x)-1)), x) + (2*sqrt(x)-1)/(2*x*sqrt(x)*(sqrt(x)-1)^2)`
+- observation:
+  - the public derivative now returns compactly with minimal conditions:
+    `-(2*sqrt(x)-1)/(2*x*sqrt(x)*(sqrt(x)-1)^2)`,
+    requiring `x > 0` and `sqrt(x)-1 != 0`
+  - the residual probe does not yet collapse to `0`; the manually parsed
+    denominator normalizes parts of the expression to `x^(1/2)` and
+    `x^(3/2)`, so exact fraction cancellation misses the match
+- learning:
+  - this is not a calculus rule failure; it is a reusable bridgeability gap
+    between protected post-calculus `sqrt` presentation and canonical
+    half-power denominator forms
+  - do not broaden the retained derivative route further to hide this; handle
+    it as a separate simplification/equivalence bridge candidate
+- follow-up:
+  - resolved by extending fraction-denominator matching so powers with
+    equivalent `sqrt`/half-power additive bases can participate in opposite
+    fraction cancellation, while preserving the public post-calculus `sqrt`
+    presentation
+  - retained contract:
+    `diff(1/(sqrt(x)*(sqrt(x)-1)), x) + (2*sqrt(x)-1)/(2*x*sqrt(x)*(sqrt(x)-1)^2)`
+    now collapses to `0`
+
+## 2026-05-20 - Observe-only quadratic arctan reciprocal-root diff has redundant domain guard
+
+- area:
+  - calculus / differentiation / domain-condition minimization / post-calculus
+    presentation
+- status:
+  - `resolved`
+- candidate:
+  - promote the non-linear cofactor variant
+    `diff(arctan(1/(sqrt(x)*(x^2+1))), x)` alongside the existing
+    `sqrt(x)*(x+1)` arctan reciprocal-root contracts
+- observation:
+  - the public derivative is correct and compact:
+    `-(5*x^2 + 1)/(2*sqrt(x)*(x*(x^2+1)^2+1))`
+  - the composed residual also collapses to `0`:
+    `diff(arctan(1/(sqrt(x)*(x^2+1))), x) + (10*x^2+2)/(4*sqrt(x)*(x*(x^2+1)^2+1))`
+  - both probes retain an extra required condition
+    `x^5 + 2*x^3 + x + 1 != 0`
+  - under the already-required `x > 0`, that condition is redundant because
+    `x*(x^2+1)^2 + 1` is strictly positive
+- learning:
+  - this is not a calculus capability failure; it is a reusable
+    domain-condition minimization gap for positive products plus a positive
+    offset after denominator expansion
+  - do not promote the quadratic cofactor contract until the required
+    conditions collapse to the minimal real-domain frontier, expected here as
+    `x > 0`
+- follow-up:
+  - resolved by extending required-condition normalization so positive powers
+    of a nonnegative base are also recognized as nonnegative under display
+    conditions; this lets `x > 0` prove the expanded denominator
+    `x^5 + 2*x^3 + x + 1` is positive and drops the redundant nonzero guard
+
 ## 2026-05-19 - Observe-only negative scaled elementary trig-root diff still loops
 
 - area:
@@ -13464,3 +14308,217 @@ The burden of proof stays the same:
   - add a bounded denominator-product-vs-expanded-product equivalence probe for
     exact fraction-pair cancellation, then promote the nested diff residual only
     if guardrail and pressure stay at `failed = 0`
+
+## 2026-05-20 - Discovery observe-only: inline reciprocal term in trig-root diff presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation / additive
+    trig-root reciprocal terms
+- status:
+  - `discovery-observe-only`
+- observed:
+  - trying to present `diff(sqrt(sin(2*x)+cos(x)+1/x), x)` as a chain-rule
+    numerator containing an inline `-1/x^2` term reopens deep simplification of
+    the radicand and repeatedly hits `depth_overflow` during local smoke
+  - the existing common-denominator presentation
+    `(2*cos(2*x)*x^2 - sin(x)*x^2 - 1)/(2*x^2*sqrt(sin(2*x)+cos(x)+1/x))`
+    remains stable and preserves the required `x != 0` condition
+- retained:
+  - a focused unit guard now freezes the stable direct presentation for the
+    added reciprocal case so a prettier but fragile inline-division route is
+    not reintroduced accidentally
+- follow-up:
+  - improve this presentation only through a bounded held post-calculus display
+    route that does not feed nested `Div` terms back into general simplification
+
+## 2026-05-20 - Retained robustness: inline reciprocal trig-root diff residual
+
+- area:
+  - calculus / differentiation / post-calculus residual simplification /
+    additive trig-root reciprocal terms
+- status:
+  - `retained-robustness`
+- retained:
+  - the direct public result for `diff(sqrt(sin(2*x)+cos(x)+1/x), x)` stays in
+    the stable common-denominator presentation
+  - the equivalent user-facing residual
+    `diff(sqrt(sin(2*x)+cos(x)+1/x), x) -
+    (cos(2*x)-sin(x)/2-1/(2*x^2))/sqrt(sin(2*x)+cos(x)+1/x)`
+    now closes to `0` before general simplification
+  - required conditions remain the outer radicand positivity and `x != 0`
+- retained learning:
+  - for this family, the safe bridge is not to make the public derivative more
+    inline; it is to compare the inline numerator against the stable
+    common-denominator numerator by canceling exact extra denominator factors
+    locally
+
+## 2026-05-20 - Discovery observe-only: reciprocal-sqrt trig-root residual orientation
+
+- area:
+  - calculus / differentiation / post-calculus residual simplification /
+    additive trig-root `sqrt(x)` terms
+- status:
+  - `discovery-observe-only`
+- observed:
+  - the public derivative
+    `diff(sqrt(sin(2*x)+cos(x)+sqrt(x)), x)` remains fast and domain-safe
+  - the already-supported residual with numerator term `x^(-1/2)` closes
+    before cleanup
+  - the mathematically equivalent common-denominator residual
+    `diff(sqrt(sin(2*x)+cos(x)+sqrt(x)), x) -
+    (4*sqrt(x)*cos(2*x)+1-2*sqrt(x)*sin(x))/
+    (4*sqrt(x)*sqrt(sin(2*x)+cos(x)+sqrt(x)))`
+    still times out in the public route
+- rejected subcandidate:
+  - simply making the existing denominator-factor matcher symmetric is not a
+    retained fix; the isolated matcher can compare the shapes, but the public
+    route still enters a deeper residual/simplification path before producing a
+    result
+- retained learning:
+  - this is a route-ordering/early-exit problem as much as a presentation
+    equivalence problem
+  - the next retained attempt should add a bounded pre-order residual route for
+    the exact `sqrt(x)` common-denominator presentation instead of widening the
+    general post-calculus fraction matcher
+
+## 2026-05-20 - Retained robustness: reciprocal-sqrt trig-root common-denominator residual
+
+- area:
+  - calculus / differentiation / post-calculus residual simplification /
+    additive trig-root `sqrt(x)` terms
+- status:
+  - `retained-robustness`
+- retained:
+  - the public derivative
+    `diff(sqrt(sin(2*x)+cos(x)+sqrt(x)), x)` keeps its compact
+    common-denominator presentation
+  - the common-denominator residual
+    `diff(sqrt(sin(2*x)+cos(x)+sqrt(x)), x) -
+    (4*sqrt(x)*cos(2*x)+1-2*sqrt(x)*sin(x))/
+    (4*sqrt(x)*sqrt(sin(2*x)+cos(x)+sqrt(x)))`
+    now closes to `0` before general cleanup
+  - required conditions remain the radicand positivity and `x > 0`
+- retained learning:
+  - the retained fix is an exact early residual route: remove exact denominator
+    factors, scale the additive numerator locally, and cancel the bounded
+    `sqrt(P) * P^(-1/2)` pair produced by common-denominator presentation
+  - this avoids retrying the rejected symmetric broad matcher while closing the
+    reusable educational residual shape
+
+## 2026-05-20 - Retained robustness: tan-exp-sqrt inline derivative residual
+
+- area:
+  - calculus / differentiation / post-calculus residual simplification /
+    cross-family tan + exp + sqrt terms
+- status:
+  - `retained-robustness`
+- retained:
+  - the public residual
+    `diff(sqrt(tan(x)+exp(x)+sqrt(x)+x), x) -
+    (sec(x)^2+e^x+1+1/(2*sqrt(x)))/
+    (2*sqrt(tan(x)+exp(x)+sqrt(x)+x))`
+    now closes to `0` before general simplification
+  - the retained route preserves the existing public derivative presentation
+    and the required conditions `cos(x) != 0`, radicand positivity, and `x > 0`
+- retained learning:
+  - the slow path was not missing calculus knowledge; it was a residual
+    comparison gap after scaling an inline target numerator into the engine's
+    common-denominator presentation
+  - accepting commutative product cores inside the already-bounded additive
+    residual matcher is enough to close this family without expanding
+    `tan(x)` into `sin(x)/cos(x)` or widening global simplification
+
+## 2026-05-20 - Retained robustness: cot-sqrt root derivative csc presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation /
+    additive trig-root `cot(x)` plus `sqrt(x)` terms
+- status:
+  - `retained-robustness`
+- retained:
+  - the public derivative `diff(sqrt(cot(x)+sqrt(x)+x), x)` now uses the
+    direct `csc(x)^2` presentation instead of expanding `cot(x)` through
+    `cos(x)/sin(x)` and entering the cleanup path
+  - the matching residual
+    `diff(sqrt(cot(x)+sqrt(x)+x), x) -
+    (2*sqrt(x)+1-2*sqrt(x)*csc(x)^2)/
+    (4*sqrt(x)*sqrt(cot(x)+sqrt(x)+x))`
+    now closes to `0` in the public route
+  - required conditions remain explicit: radicand positivity, `sin(x) != 0`,
+    and `x > 0`
+- retained learning:
+  - the presentation helper was structurally reusable but still hardcoded
+    `sec`; parameterizing the reciprocal trig function lets the cot route
+    reuse the same bounded derivative shape with `csc`
+  - this is a retained presentation/residual robustness improvement, not new
+    calculus semantics and not a global trig rewrite
+
+## 2026-05-20 - Retained robustness: sec/csc root derivative presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation /
+    additive reciprocal-trig root terms with `sqrt(x)`
+- status:
+  - `retained-robustness`
+- retained:
+  - `diff(sqrt(sec(x)+sqrt(x)+x), x)` no longer enters the general trig
+    expansion/cleanup path and now presents directly with `sec(x)*tan(x)`
+  - `diff(sqrt(csc(x)+sqrt(x)+x), x)` now presents directly with
+    `-csc(x)*cot(x)` instead of expanding through `sin(x)`
+  - both matching residuals close to `0` in the public route
+  - required conditions remain explicit: radicand positivity, `x > 0`, and
+    the relevant reciprocal-trig domain condition (`cos(x) != 0` or
+    `sin(x) != 0`)
+- retained learning:
+  - this was not missing differentiation semantics; it was a missing bounded
+    presentation route for elementary reciprocal trig terms inside root
+    derivatives
+  - recognizing `sec/csc` locally avoids a timeout-prone cleanup route without
+    widening global trig simplification or changing canonical internal forms
+
+## 2026-05-20 - Retained robustness: sec/csc exp-root derivative presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation /
+    additive reciprocal-trig root terms with `exp(x)` and polynomial noise
+- status:
+  - `retained-robustness`
+- retained:
+  - `diff(sqrt(sec(x)+exp(x)+x), x)` no longer times out and now presents as
+    `(e^x + tan(x)*sec(x) + 1)/(2*sqrt(sec(x)+e^x+x))`
+  - `diff(sqrt(csc(x)+exp(x)+x), x)` no longer times out and now presents as
+    `(e^x + 1 - csc(x)*cot(x))/(2*sqrt(csc(x)+e^x+x))`
+  - both matching residuals close to `0` in the public route
+  - required conditions remain explicit: radicand positivity plus the relevant
+    reciprocal-trig domain condition (`cos(x) != 0` or `sin(x) != 0`)
+- retained learning:
+  - the previous reciprocal-trig presentation route was still too dependent on
+    seeing `sqrt(x)` or `1/sqrt(x)` as a special denominator builder
+  - once the radicand derivative terms are already known, the reusable bounded
+    exit is the ordinary calculus shape `radicand'/(2*sqrt(radicand))`; using
+    that avoids the timeout-prone general cleanup route without broadening
+    global trig simplification
+
+## 2026-05-20 - Retained robustness: sec/csc log-root derivative presentation
+
+- area:
+  - calculus / differentiation / post-calculus presentation /
+    additive reciprocal-trig root terms with `ln(x)` and polynomial noise
+- status:
+  - `retained-robustness`
+- retained:
+  - `diff(sqrt(sec(x)+ln(x)+x), x)` no longer times out and now presents as
+    `(x*tan(x)*sec(x) + x + 1)/(2*x*sqrt(sec(x)+ln(x)+x))`
+  - `diff(sqrt(csc(x)+ln(x)+x), x)` no longer times out and now presents as
+    `(x + 1 - x*csc(x)*cot(x))/(2*x*sqrt(csc(x)+ln(x)+x))`
+  - both matching residuals close to `0` in the public route
+  - required conditions remain explicit: radicand positivity, `x > 0`, and
+    the relevant reciprocal-trig domain condition (`cos(x) != 0` or
+    `sin(x) != 0`)
+- retained learning:
+  - the previous retained `sec/csc` exit covered numerator-only radicand
+    derivatives, but `ln(x)` introduces a common denominator that must be
+    represented directly in the post-calculus fraction
+  - scaling known derivative terms by the common denominator and appending the
+    logarithmic reciprocal contribution closes this family without entering
+    the timeout-prone general cleanup route

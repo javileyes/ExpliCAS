@@ -1245,6 +1245,7 @@ fn positive_ordered_exprs_equivalent(ctx: &Context, left: ExprId, right: ExprId)
     is_positive_multiple_of(ctx, left, right)
         || is_positive_multiple_of(ctx, right, left)
         || inverse_trig_alias_calls_equivalent(ctx, left, right)
+        || positive_distributive_display_signatures_equivalent(ctx, left, right)
 }
 
 fn inverse_trig_alias_calls_equivalent(ctx: &Context, left: ExprId, right: ExprId) -> bool {
@@ -1656,6 +1657,11 @@ fn nonzero_is_dominated_by_positive_condition(
         let normalized_positive = normalize_condition_expr_preserve_sign(ctx, *pos_expr);
         exprs_equivalent_up_to_nonzero_scalar(ctx, normalized_expr, normalized_positive)
             || positive_condition_dominates_sqrt_nonzero(ctx, normalized_positive, normalized_expr)
+            || positive_condition_dominates_positive_constant_shift_nonzero(
+                ctx,
+                normalized_positive,
+                normalized_expr,
+            )
             || positive_condition_dominates_affine_nonzero_offset(
                 ctx,
                 normalized_positive,
@@ -1672,6 +1678,44 @@ fn nonzero_is_dominated_by_positive_condition(
                 normalized_expr,
             )
     })
+}
+
+fn positive_condition_dominates_positive_constant_shift_nonzero(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    let positive_terms = AddView::from_expr(ctx, positive_expr).terms;
+    let mut remaining_terms = AddView::from_expr(ctx, nonzero_expr)
+        .terms
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    for (positive_term, positive_sign) in positive_terms {
+        let Some(index) = remaining_terms.iter().position(|(term, sign)| {
+            *sign == positive_sign && exprs_equivalent(ctx, *term, positive_term)
+        }) else {
+            return false;
+        };
+        remaining_terms.remove(index);
+    }
+
+    if remaining_terms.is_empty() {
+        return false;
+    }
+
+    let mut shift = BigRational::zero();
+    for (term, sign) in remaining_terms {
+        let Some(value) = as_rational_const(ctx, term) else {
+            return false;
+        };
+        match sign {
+            Sign::Pos => shift += value,
+            Sign::Neg => shift -= value,
+        }
+    }
+
+    shift.is_positive()
 }
 
 fn positive_condition_dominates_sqrt_nonzero(
@@ -2619,6 +2663,20 @@ fn is_nonnegative_under_display_conditions(
         );
     }
 
+    if let Expr::Pow(base, exp) = ctx.get(expr) {
+        if as_rational_const(ctx, *exp).is_some_and(|n| n.is_positive())
+            && is_nonnegative_under_display_conditions(
+                ctx,
+                conditions,
+                skip_index,
+                *base,
+                depth - 1,
+            )
+        {
+            return true;
+        }
+    }
+
     match ctx.get(expr) {
         Expr::Add(left, right) => {
             is_nonnegative_under_display_conditions(ctx, conditions, skip_index, *left, depth - 1)
@@ -2962,6 +3020,21 @@ fn distributive_display_signatures_equivalent(ctx: &Context, left: ExprId, right
     signatures_equal_up_to_sign(&left_signature, &right_signature)
 }
 
+fn positive_distributive_display_signatures_equivalent(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let Some(left_signature) = bounded_distributive_display_signature(ctx, left) else {
+        return false;
+    };
+    let Some(right_signature) = bounded_distributive_display_signature(ctx, right) else {
+        return false;
+    };
+
+    left_signature == right_signature
+}
+
 type DisplayTermSignature = Vec<String>;
 type DisplayLinearSignature = BTreeMap<DisplayTermSignature, BigRational>;
 
@@ -3066,6 +3139,16 @@ fn signed_numeric_factor(ctx: &Context, expr: ExprId) -> Option<(BigRational, Op
 
 fn condition_factor_key(ctx: &Context, expr: ExprId) -> String {
     use cas_formatter::DisplayExpr;
+
+    if let Some(base) = extract_sqrt_like_base(ctx, expr) {
+        return format!(
+            "sqrt({})",
+            DisplayExpr {
+                context: ctx,
+                id: base,
+            }
+        );
+    }
 
     DisplayExpr {
         context: ctx,
@@ -4937,6 +5020,9 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                         || positive_condition_dominates_affine_nonzero_offset(
                             ctx, *pos_expr, *nz_expr,
                         )
+                        || positive_condition_dominates_positive_constant_shift_nonzero(
+                            ctx, *pos_expr, *nz_expr,
+                        )
                         || positive_log_condition_dominates_argument_minus_one_nonzero(
                             ctx, *pos_expr, *nz_expr,
                         )
@@ -5009,6 +5095,8 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                     ImplicitCondition::Positive(pos_expr),
                 ) => {
                     if exprs_equivalent(ctx, *nn_expr, *pos_expr)
+                        || condition_factor_key(ctx, *nn_expr)
+                            == condition_factor_key(ctx, *pos_expr)
                         || is_odd_power_of(ctx, *nn_expr, *pos_expr)
                         || is_positive_multiple_of(ctx, *nn_expr, *pos_expr)
                         || positive_affine_product_dominates_quotient_nonnegative(
@@ -6309,6 +6397,32 @@ mod tests {
     }
 
     #[test]
+    fn positive_variable_dominates_positive_product_plus_offset_nonzero_condition() {
+        let mut ctx = Context::new();
+        let positive_var = parse("x", &mut ctx).expect("parse positive variable");
+        let denominator =
+            parse("x^5 + 2*x^3 + x + 1", &mut ctx).expect("parse positive product plus offset");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(positive_var),
+                ImplicitCondition::NonZero(denominator),
+            ],
+        );
+
+        assert_eq!(
+            normalized,
+            vec![ImplicitCondition::Positive(positive_var)],
+            "got: {:?}",
+            normalized
+                .iter()
+                .map(|condition| condition.display(&ctx))
+                .collect::<Vec<_>>()
+        );
+    }
+
+    #[test]
     fn positive_polynomial_known_factor_dominates_product_with_positive_quotient() {
         let mut ctx = Context::new();
         let known_factor = parse("x^2 + x - 2", &mut ctx).expect("parse known factor");
@@ -7470,6 +7584,54 @@ mod tests {
             &normalized[0],
             &ImplicitCondition::Positive(base)
         ));
+    }
+
+    #[test]
+    fn positive_composite_base_dominates_positive_constant_shift_nonzero() {
+        let mut ctx = Context::new();
+        let base = parse("tan(x)+sqrt(x)+1/sqrt(x)+x", &mut ctx).expect("parse base");
+        let shifted = parse("tan(x)+sqrt(x)+1/sqrt(x)+x+1", &mut ctx).expect("parse shifted");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(base),
+                ImplicitCondition::NonZero(shifted),
+            ],
+        );
+
+        assert_eq!(normalized.len(), 1, "got: {normalized:?}");
+        assert!(conditions_equivalent(
+            &ctx,
+            &normalized[0],
+            &ImplicitCondition::Positive(base)
+        ));
+    }
+
+    #[test]
+    fn positive_composite_base_keeps_negative_constant_shift_nonzero() {
+        let mut ctx = Context::new();
+        let base = parse("tan(x)+sqrt(x)+1/sqrt(x)+x", &mut ctx).expect("parse base");
+        let shifted = parse("tan(x)+sqrt(x)+1/sqrt(x)+x-1", &mut ctx).expect("parse shifted");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(base),
+                ImplicitCondition::NonZero(shifted),
+            ],
+        );
+
+        assert!(normalized.iter().any(|condition| conditions_equivalent(
+            &ctx,
+            condition,
+            &ImplicitCondition::Positive(base)
+        )));
+        assert!(normalized.iter().any(|condition| conditions_equivalent(
+            &ctx,
+            condition,
+            &ImplicitCondition::NonZero(shifted)
+        )));
     }
 
     #[test]

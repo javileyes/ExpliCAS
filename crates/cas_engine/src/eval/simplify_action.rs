@@ -2,7 +2,7 @@
 
 use super::*;
 use cas_ast::{BuiltinFn, Expr};
-use num_traits::Zero;
+use num_traits::{ToPrimitive, Zero};
 
 fn expr_contains_any_builtin_local(
     ctx: &cas_ast::Context,
@@ -117,12 +117,138 @@ fn commutative_products_equivalent_ignoring_internal_holds_local(
             .enumerate()
             .find(|(index, right_factor)| {
                 !matched[*index]
-                    && exprs_equivalent_ignoring_internal_holds_local(
+                    && residual_factor_equivalent_ignoring_internal_holds_local(
                         ctx,
                         left_factor,
                         **right_factor,
                     )
             })
+        else {
+            return false;
+        };
+        matched[index] = true;
+    }
+    true
+}
+
+fn commutative_products_equivalent_expanding_small_integer_powers_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let Some(left_factors) = product_factors_with_small_integer_powers_expanded_local(ctx, left)
+    else {
+        return false;
+    };
+    let Some(right_factors) = product_factors_with_small_integer_powers_expanded_local(ctx, right)
+    else {
+        return false;
+    };
+    if left_factors.len() != right_factors.len() || left_factors.len() <= 1 {
+        return false;
+    }
+
+    let mut matched = vec![false; right_factors.len()];
+    for left_factor in left_factors {
+        let Some((index, _)) = right_factors
+            .iter()
+            .enumerate()
+            .find(|(index, right_factor)| {
+                !matched[*index]
+                    && residual_factor_equivalent_ignoring_internal_holds_local(
+                        ctx,
+                        left_factor,
+                        **right_factor,
+                    )
+            })
+        else {
+            return false;
+        };
+        matched[index] = true;
+    }
+    true
+}
+
+fn product_factors_with_small_integer_powers_expanded_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<Vec<ExprId>> {
+    let mut expanded = Vec::new();
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        let factor = cas_ast::hold::strip_all_holds(ctx, factor);
+        let Expr::Pow(base, exp) = ctx.get(factor).clone() else {
+            expanded.push(factor);
+            continue;
+        };
+        let exponent = cas_ast::views::as_rational_const(ctx, exp, 8)?;
+        if !exponent.is_integer() {
+            expanded.push(factor);
+            continue;
+        }
+        let power = exponent.to_integer().to_usize()?;
+        if !(2..=4).contains(&power) {
+            expanded.push(factor);
+            continue;
+        }
+        expanded.extend(std::iter::repeat_n(base, power));
+    }
+    Some(expanded)
+}
+
+fn residual_factor_equivalent_ignoring_internal_holds_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    exprs_equivalent_ignoring_internal_holds_local(ctx, left, right)
+        || sqrt_factors_have_signed_additive_radicands_equivalent_local(ctx, left, right)
+}
+
+fn sqrt_factors_have_signed_additive_radicands_equivalent_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let Some(left_radicand) = cas_math::root_forms::extract_square_root_base(ctx, left) else {
+        return false;
+    };
+    let Some(right_radicand) = cas_math::root_forms::extract_square_root_base(ctx, right) else {
+        return false;
+    };
+    signed_additive_terms_equivalent_ignoring_internal_holds_local(
+        ctx,
+        left_radicand,
+        right_radicand,
+    )
+}
+
+fn signed_additive_terms_equivalent_ignoring_internal_holds_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let left_terms = cas_math::expr_nary::add_terms_signed(ctx, left);
+    let right_terms = cas_math::expr_nary::add_terms_signed(ctx, right);
+    if left_terms.len() != right_terms.len() || !(2..=6).contains(&left_terms.len()) {
+        return false;
+    }
+
+    let mut matched = vec![false; right_terms.len()];
+    for (left_term, left_sign) in left_terms {
+        let Some((index, _)) =
+            right_terms
+                .iter()
+                .enumerate()
+                .find(|(index, (right_term, right_sign))| {
+                    !matched[*index]
+                        && left_sign == *right_sign
+                        && exprs_equivalent_ignoring_internal_holds_local(
+                            ctx,
+                            left_term,
+                            *right_term,
+                        )
+                })
         else {
             return false;
         };
@@ -286,9 +412,93 @@ fn additive_residual_term_cores_equivalent_local(
     right: ExprId,
 ) -> bool {
     exprs_equivalent_ignoring_internal_holds_local(ctx, left, right)
+        || commutative_products_equivalent_ignoring_internal_holds_local(ctx, left, right)
+        || commutative_products_equivalent_expanding_small_integer_powers_local(ctx, left, right)
         || same_power_with_equal_rational_exponent_local(ctx, left, right)
+        || reciprocal_trig_square_base_square_product_matches_one_local(ctx, left, right)
+        || reciprocal_trig_square_base_square_product_matches_one_local(ctx, right, left)
         || reciprocal_sqrt_matches_negative_half_power_local(ctx, left, right)
         || reciprocal_sqrt_matches_negative_half_power_local(ctx, right, left)
+}
+
+fn reciprocal_trig_square_base_square_product_matches_one_local(
+    ctx: &mut cas_ast::Context,
+    maybe_one: ExprId,
+    product: ExprId,
+) -> bool {
+    if cas_ast::views::as_rational_const(ctx, maybe_one, 8)
+        .is_none_or(|value| value != num_rational::BigRational::from_integer(1.into()))
+    {
+        return false;
+    }
+
+    let factors = cas_math::expr_nary::mul_leaves(ctx, product);
+    if factors.len() != 2 {
+        return false;
+    }
+
+    let mut reciprocal_trig = None;
+    let mut base_trig = None;
+    for factor in factors {
+        if let Some(arg) = squared_builtin_arg_local(ctx, factor, BuiltinFn::Sec) {
+            if reciprocal_trig.replace((BuiltinFn::Sec, arg)).is_some() {
+                return false;
+            }
+            continue;
+        }
+        if let Some(arg) = squared_builtin_arg_local(ctx, factor, BuiltinFn::Csc) {
+            if reciprocal_trig.replace((BuiltinFn::Csc, arg)).is_some() {
+                return false;
+            }
+            continue;
+        }
+        if let Some(arg) = squared_builtin_arg_local(ctx, factor, BuiltinFn::Cos) {
+            if base_trig.replace((BuiltinFn::Cos, arg)).is_some() {
+                return false;
+            }
+            continue;
+        }
+        if let Some(arg) = squared_builtin_arg_local(ctx, factor, BuiltinFn::Sin) {
+            if base_trig.replace((BuiltinFn::Sin, arg)).is_some() {
+                return false;
+            }
+            continue;
+        }
+        return false;
+    }
+
+    match (reciprocal_trig, base_trig) {
+        (Some((BuiltinFn::Sec, reciprocal_arg)), Some((BuiltinFn::Cos, base_arg)))
+        | (Some((BuiltinFn::Csc, reciprocal_arg)), Some((BuiltinFn::Sin, base_arg))) => {
+            exprs_equivalent_ignoring_internal_holds_local(ctx, reciprocal_arg, base_arg)
+        }
+        _ => false,
+    }
+}
+
+fn squared_builtin_arg_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
+        return None;
+    };
+    let expected = num_rational::BigRational::from_integer(2.into());
+    if cas_ast::views::as_rational_const(ctx, exp, 8).is_none_or(|value| value != expected) {
+        return None;
+    }
+
+    let base = cas_ast::hold::strip_all_holds(ctx, base);
+    let Expr::Function(fn_id, args) = ctx.get(base) else {
+        return None;
+    };
+    if args.len() == 1 && ctx.is_builtin(*fn_id, builtin) {
+        Some(args[0])
+    } else {
+        None
+    }
 }
 
 fn same_power_with_equal_rational_exponent_local(
@@ -1074,7 +1284,9 @@ fn try_diff_sqrt_additive_tan_polynomial_residual_zero_ordered_local(
             call.target,
             &call.var_name,
         )?;
-    if !sqrt_shifted_diff_result_matches_target_local(ctx, result, target)
+    if !sqrt_denominator_common_factor_target_variant_exact_local(ctx, result, target)
+        && !sqrt_denominator_common_factor_target_variant_exact_local(ctx, target, result)
+        && !sqrt_shifted_diff_result_matches_target_local(ctx, result, target)
         && !sqrt_additive_tan_sqrt_variable_sec_target_variant_matches_local(
             ctx,
             call.target,
@@ -1086,6 +1298,70 @@ fn try_diff_sqrt_additive_tan_polynomial_residual_zero_ordered_local(
     }
 
     required_conditions.insert(0, crate::ImplicitCondition::Positive(radicand));
+    Some((ctx.num(0), required_conditions))
+}
+
+fn try_diff_arctan_sqrt_additive_tan_polynomial_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = residual_difference_terms_local(ctx, expr)?;
+    try_diff_arctan_sqrt_additive_tan_polynomial_residual_zero_ordered_local(ctx, left, right)
+        .or_else(|| {
+            try_diff_arctan_sqrt_additive_tan_polynomial_residual_zero_ordered_local(
+                ctx, right, left,
+            )
+        })
+}
+
+fn try_diff_arctan_sqrt_additive_tan_polynomial_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    diff_expr: ExprId,
+    target: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (result, required_conditions) =
+        crate::rules::calculus::arctan_sqrt_additive_tan_polynomial_derivative_presentation_with_domain(
+            ctx,
+            call.target,
+            &call.var_name,
+        )?;
+    if !sqrt_shifted_diff_result_matches_target_local(ctx, result, target) {
+        return None;
+    }
+
+    Some((ctx.num(0), required_conditions))
+}
+
+fn try_diff_arctan_sqrt_additive_trig_polynomial_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = residual_difference_terms_local(ctx, expr)?;
+    try_diff_arctan_sqrt_additive_trig_polynomial_residual_zero_ordered_local(ctx, left, right)
+        .or_else(|| {
+            try_diff_arctan_sqrt_additive_trig_polynomial_residual_zero_ordered_local(
+                ctx, right, left,
+            )
+        })
+}
+
+fn try_diff_arctan_sqrt_additive_trig_polynomial_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    diff_expr: ExprId,
+    target: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (result, required_conditions) =
+        crate::rules::calculus::arctan_sqrt_additive_trig_polynomial_derivative_presentation_with_domain(
+            ctx,
+            call.target,
+            &call.var_name,
+        )?;
+    if !sqrt_shifted_diff_result_matches_target_local(ctx, result, target) {
+        return None;
+    }
+
     Some((ctx.num(0), required_conditions))
 }
 
@@ -1203,7 +1479,10 @@ fn try_diff_sqrt_additive_trig_polynomial_residual_zero_ordered_local(
             call.target,
             &call.var_name,
         )?;
-    if !sqrt_shifted_diff_result_matches_target_local(ctx, result, target) {
+    if !sqrt_denominator_common_factor_target_variant_exact_local(ctx, result, target)
+        && !sqrt_denominator_common_factor_target_variant_exact_local(ctx, target, result)
+        && !sqrt_shifted_diff_result_matches_target_local(ctx, result, target)
+    {
         return None;
     }
 
@@ -1220,6 +1499,335 @@ fn sqrt_shifted_diff_result_matches_target_local(
         || sqrt_denominator_reciprocal_variant_local(ctx, result).is_some_and(|variant| {
             exprs_equivalent_for_post_calculus_residual_local(ctx, variant, target)
         })
+        || sqrt_denominator_common_factor_target_variant_local(ctx, result, target)
+}
+
+fn sqrt_denominator_common_factor_target_variant_local(
+    ctx: &mut cas_ast::Context,
+    result: ExprId,
+    target: ExprId,
+) -> bool {
+    let result = cas_ast::hold::strip_all_holds(ctx, result);
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let (result_num, result_den) = match ctx.get(result).clone() {
+        Expr::Div(num, den) => (num, den),
+        _ => return false,
+    };
+    let (target_num, target_den) = match ctx.get(target).clone() {
+        Expr::Div(num, den) => (num, den),
+        _ => return false,
+    };
+    if !denominator_has_sqrt_factor_local(ctx, target_den) {
+        return false;
+    }
+
+    let (result_den_scale, result_den_core) =
+        split_numeric_scale_product_for_residual_local(ctx, result_den);
+    let (target_den_scale, target_den_core) =
+        split_numeric_scale_product_for_residual_local(ctx, target_den);
+    if target_den_scale.is_zero() {
+        return false;
+    }
+    let extra_scale = result_den_scale / target_den_scale;
+    let Some(extra_factors) =
+        remove_factor_multiset_for_residual_match_local(ctx, result_den_core, target_den_core)
+    else {
+        return false;
+    };
+    if extra_factors.is_empty() || extra_factors.len() > 4 {
+        return false;
+    }
+
+    let Some(scaled_target_num) = multiply_additive_numerator_by_extra_factors_local(
+        ctx,
+        target_num,
+        extra_scale,
+        &extra_factors,
+    ) else {
+        return false;
+    };
+
+    exprs_equivalent_for_post_calculus_residual_local(ctx, result_num, scaled_target_num)
+        || scaled_additive_terms_equivalent_for_residual_match_local(
+            ctx,
+            result_num,
+            num_rational::BigRational::from_integer(1.into()),
+            scaled_target_num,
+            num_rational::BigRational::from_integer(1.into()),
+        )
+}
+
+fn sqrt_denominator_common_factor_target_variant_exact_local(
+    ctx: &mut cas_ast::Context,
+    result: ExprId,
+    target: ExprId,
+) -> bool {
+    let result = cas_ast::hold::strip_all_holds(ctx, result);
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let (result_num, result_den) = match ctx.get(result).clone() {
+        Expr::Div(num, den) => (num, den),
+        _ => return false,
+    };
+    let (target_num, target_den) = match ctx.get(target).clone() {
+        Expr::Div(num, den) => (num, den),
+        _ => return false,
+    };
+    if !denominator_has_sqrt_factor_local(ctx, result_den)
+        || !denominator_has_sqrt_factor_local(ctx, target_den)
+    {
+        return false;
+    }
+
+    let (result_den_scale, result_den_core) =
+        split_numeric_scale_product_for_residual_local(ctx, result_den);
+    let (target_den_scale, target_den_core) =
+        split_numeric_scale_product_for_residual_local(ctx, target_den);
+    if target_den_scale.is_zero() {
+        return false;
+    }
+    let extra_scale = result_den_scale / target_den_scale;
+    let Some(extra_factors) = remove_factor_multiset_exact_for_residual_match_local(
+        ctx,
+        result_den_core,
+        target_den_core,
+    ) else {
+        return false;
+    };
+    if extra_factors.is_empty() || extra_factors.len() > 4 {
+        return false;
+    }
+
+    let Some(scaled_target_num) = multiply_additive_numerator_by_extra_factors_exact_local(
+        ctx,
+        target_num,
+        extra_scale,
+        &extra_factors,
+    ) else {
+        return false;
+    };
+    exprs_equivalent_for_post_calculus_residual_local(ctx, result_num, scaled_target_num)
+        || scaled_additive_terms_equivalent_for_residual_match_local(
+            ctx,
+            result_num,
+            num_rational::BigRational::from_integer(1.into()),
+            scaled_target_num,
+            num_rational::BigRational::from_integer(1.into()),
+        )
+}
+
+fn denominator_has_sqrt_factor_local(ctx: &mut cas_ast::Context, expr: ExprId) -> bool {
+    cas_math::expr_nary::mul_leaves(ctx, expr)
+        .into_iter()
+        .any(|factor| cas_math::root_forms::extract_square_root_base(ctx, factor).is_some())
+}
+
+fn non_unit_mul_factors_for_residual_match_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Vec<ExprId> {
+    let one = num_rational::BigRational::from_integer(1.into());
+    if cas_ast::views::as_rational_const(ctx, expr, 8).is_some_and(|value| value == one) {
+        return Vec::new();
+    }
+    cas_math::expr_nary::mul_leaves(ctx, expr)
+        .into_iter()
+        .filter(|factor| {
+            cas_ast::views::as_rational_const(ctx, *factor, 8).is_none_or(|value| value != one)
+        })
+        .collect()
+}
+
+fn remove_factor_multiset_for_residual_match_local(
+    ctx: &mut cas_ast::Context,
+    superset: ExprId,
+    subset: ExprId,
+) -> Option<Vec<ExprId>> {
+    let mut remaining = non_unit_mul_factors_for_residual_match_local(ctx, superset);
+    for subset_factor in non_unit_mul_factors_for_residual_match_local(ctx, subset) {
+        let index = remaining.iter().position(|factor| {
+            exprs_equivalent_ignoring_internal_holds_local(ctx, *factor, subset_factor)
+                || commutative_products_equivalent_ignoring_internal_holds_local(
+                    ctx,
+                    *factor,
+                    subset_factor,
+                )
+        })?;
+        remaining.remove(index);
+    }
+    Some(remaining)
+}
+
+fn remove_factor_multiset_exact_for_residual_match_local(
+    ctx: &mut cas_ast::Context,
+    superset: ExprId,
+    subset: ExprId,
+) -> Option<Vec<ExprId>> {
+    let mut remaining = non_unit_mul_factors_for_residual_match_local(ctx, superset);
+    for subset_factor in non_unit_mul_factors_for_residual_match_local(ctx, subset) {
+        let index = remaining.iter().position(|factor| {
+            exprs_exact_ignoring_internal_holds_local(ctx, *factor, subset_factor)
+                || sqrt_factors_have_signed_additive_radicands_equivalent_local(
+                    ctx,
+                    *factor,
+                    subset_factor,
+                )
+        })?;
+        remaining.remove(index);
+    }
+    Some(remaining)
+}
+
+fn quotient_factor_parts_for_residual_match_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> (Vec<ExprId>, Vec<ExprId>) {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let one = num_rational::BigRational::from_integer(1.into());
+    match ctx.get(expr).clone() {
+        Expr::Div(num, den) => {
+            let numerator_factors = if cas_ast::views::as_rational_const(ctx, num, 8)
+                .is_some_and(|value| value == one)
+            {
+                Vec::new()
+            } else {
+                non_unit_mul_factors_for_residual_match_local(ctx, num)
+            };
+            (
+                numerator_factors,
+                non_unit_mul_factors_for_residual_match_local(ctx, den),
+            )
+        }
+        _ => (
+            non_unit_mul_factors_for_residual_match_local(ctx, expr),
+            Vec::new(),
+        ),
+    }
+}
+
+fn multiply_additive_numerator_by_extra_factors_local(
+    ctx: &mut cas_ast::Context,
+    numerator: ExprId,
+    extra_scale: num_rational::BigRational,
+    extra_factors: &[ExprId],
+) -> Option<ExprId> {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, numerator);
+    if terms.is_empty() || terms.len() > 8 {
+        return None;
+    }
+
+    let mut scaled_terms = Vec::with_capacity(terms.len());
+    for (term, sign) in terms {
+        let (term_scale, term_core) = split_numeric_scale_product_for_residual_local(ctx, term);
+        let mut scale = extra_scale.clone() * term_scale;
+        if sign == cas_math::expr_nary::Sign::Neg {
+            scale = -scale;
+        }
+        let (mut numerator_factors, denominator_factors) =
+            quotient_factor_parts_for_residual_match_local(ctx, term_core);
+        let mut remaining_extra = extra_factors.to_vec();
+        for denominator_factor in denominator_factors {
+            let index = remaining_extra.iter().position(|factor| {
+                exprs_equivalent_ignoring_internal_holds_local(ctx, *factor, denominator_factor)
+                    || commutative_products_equivalent_ignoring_internal_holds_local(
+                        ctx,
+                        *factor,
+                        denominator_factor,
+                    )
+            })?;
+            remaining_extra.remove(index);
+        }
+        numerator_factors.extend(remaining_extra);
+        let core = if numerator_factors.is_empty() {
+            ctx.num(1)
+        } else {
+            cas_math::expr_nary::build_balanced_mul(ctx, &numerator_factors)
+        };
+        scaled_terms.push(scale_expr_for_residual_match_local(ctx, scale, core));
+    }
+
+    Some(cas_math::expr_nary::build_balanced_add(ctx, &scaled_terms))
+}
+
+fn multiply_additive_numerator_by_extra_factors_exact_local(
+    ctx: &mut cas_ast::Context,
+    numerator: ExprId,
+    extra_scale: num_rational::BigRational,
+    extra_factors: &[ExprId],
+) -> Option<ExprId> {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, numerator);
+    if terms.is_empty() || terms.len() > 8 {
+        return None;
+    }
+
+    let mut scaled_terms = Vec::with_capacity(terms.len());
+    for (term, sign) in terms {
+        let (term_scale, term_core) = split_numeric_scale_product_for_residual_local(ctx, term);
+        let mut scale = extra_scale.clone() * term_scale;
+        if sign == cas_math::expr_nary::Sign::Neg {
+            scale = -scale;
+        }
+        let (mut numerator_factors, denominator_factors) =
+            quotient_factor_parts_for_residual_match_local(ctx, term_core);
+        let mut remaining_extra = extra_factors.to_vec();
+        for denominator_factor in denominator_factors {
+            let index = remaining_extra.iter().position(|factor| {
+                exprs_exact_ignoring_internal_holds_local(ctx, *factor, denominator_factor)
+            })?;
+            remaining_extra.remove(index);
+        }
+        let mut kept_numerator_factors = Vec::with_capacity(numerator_factors.len());
+        for numerator_factor in numerator_factors {
+            let Some(index) = remaining_extra.iter().position(|extra_factor| {
+                sqrt_factor_matches_negative_half_power_local(ctx, *extra_factor, numerator_factor)
+                    || sqrt_factor_matches_negative_half_power_local(
+                        ctx,
+                        numerator_factor,
+                        *extra_factor,
+                    )
+            }) else {
+                kept_numerator_factors.push(numerator_factor);
+                continue;
+            };
+            remaining_extra.remove(index);
+        }
+        numerator_factors = kept_numerator_factors;
+        numerator_factors.extend(remaining_extra);
+        let core = if numerator_factors.is_empty() {
+            ctx.num(1)
+        } else {
+            cas_math::expr_nary::build_balanced_mul(ctx, &numerator_factors)
+        };
+        scaled_terms.push(scale_expr_for_residual_match_local(ctx, scale, core));
+    }
+
+    Some(cas_math::expr_nary::build_balanced_add(ctx, &scaled_terms))
+}
+
+fn sqrt_factor_matches_negative_half_power_local(
+    ctx: &mut cas_ast::Context,
+    sqrt_factor: ExprId,
+    power_factor: ExprId,
+) -> bool {
+    let Some(sqrt_base) = cas_math::root_forms::extract_square_root_base(ctx, sqrt_factor) else {
+        return false;
+    };
+    let power_factor = cas_ast::hold::strip_all_holds(ctx, power_factor);
+    let Expr::Pow(power_base, power_exp) = ctx.get(power_factor).clone() else {
+        return false;
+    };
+    let expected_exp = num_rational::BigRational::new((-1).into(), 2.into());
+    cas_ast::views::as_rational_const(ctx, power_exp, 8).is_some_and(|value| value == expected_exp)
+        && exprs_equivalent_ignoring_internal_holds_local(ctx, sqrt_base, power_base)
+}
+
+fn exprs_exact_ignoring_internal_holds_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let left = cas_ast::hold::strip_all_holds(ctx, left);
+    let right = cas_ast::hold::strip_all_holds(ctx, right);
+    cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
 }
 
 fn expr_is_named_function_call_local(ctx: &cas_ast::Context, expr: ExprId, names: &[&str]) -> bool {
@@ -1296,11 +1904,30 @@ fn expr_is_post_calculus_residual_candidate_local(ctx: &cas_ast::Context, expr: 
                 .is_none_or(|value| value != num_rational::BigRational::from_integer(0.into()))
                 && expr_is_post_calculus_residual_candidate_local(ctx, *num)
         }
+        Expr::Mul(left, right) => {
+            (expr_contains_named_function_local(ctx, *left, &["diff", "integrate", "int"])
+                || expr_contains_symbolic_calculus_call_local(ctx, *left))
+                && expr_is_post_calculus_residual_candidate_local(ctx, *left)
+                || (expr_contains_named_function_local(ctx, *right, &["diff", "integrate", "int"])
+                    || expr_contains_symbolic_calculus_call_local(ctx, *right))
+                    && expr_is_post_calculus_residual_candidate_local(ctx, *right)
+        }
         _ => false,
     }
 }
 
-fn try_resolve_post_calculus_residual_before_general_simplify_local(
+fn expr_is_zero_const_local(ctx: &mut cas_ast::Context, expr: ExprId) -> bool {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    cas_ast::views::as_rational_const(ctx, expr, 8).is_some_and(|value| value.is_zero())
+}
+
+fn expr_is_exact_zero_identity_local(ctx: &mut cas_ast::Context, expr: ExprId) -> bool {
+    expr_is_zero_const_local(ctx, expr)
+        || crate::rules::arithmetic::try_build_exact_zero_identity_rewrite(ctx, expr)
+            .is_some_and(|rewrite| expr_is_zero_const_local(ctx, rewrite.final_expr()))
+}
+
+fn try_resolve_post_calculus_residual_before_general_simplify_core_local(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
@@ -1316,12 +1943,329 @@ fn try_resolve_post_calculus_residual_before_general_simplify_local(
     .or_else(|| {
         crate::calculus_residual_support::try_diff_integral_exp_trig_residual_root_zero(ctx, expr)
     })
+    .or_else(|| try_diff_sqrt_small_additive_elementary_residual_zero_local(ctx, expr))
+    .or_else(|| try_diff_arctan_sqrt_small_additive_elementary_residual_zero_local(ctx, expr))
+    .or_else(|| try_diff_arctan_sqrt_additive_trig_polynomial_residual_zero_local(ctx, expr))
+    .or_else(|| try_diff_arctan_sqrt_additive_tan_polynomial_residual_zero_local(ctx, expr))
     .or_else(|| try_diff_sqrt_additive_tan_polynomial_residual_zero_local(ctx, expr))
     .or_else(|| try_diff_sqrt_additive_trig_polynomial_residual_zero_local(ctx, expr))
     .or_else(|| try_diff_integrate_arctan_sqrt_unit_shift_square_residual_zero_local(ctx, expr))
     .or_else(|| {
         try_diff_arctan_sqrt_plus_sqrt_over_x_plus_one_residual_zero_local(ctx, expr)
     })
+}
+
+fn try_resolve_or_rewrite_post_calculus_residual_child_before_general_simplify_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    depth: usize,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    if let Some(result) =
+        try_diff_arctan_sqrt_small_additive_elementary_residual_zero_local(ctx, expr)
+    {
+        return Some(result);
+    }
+    if let Some(result) =
+        try_diff_arctan_sqrt_additive_trig_polynomial_residual_zero_local(ctx, expr)
+    {
+        return Some(result);
+    }
+    try_rewrite_post_calculus_residual_child_context_before_general_simplify_local(ctx, expr, depth)
+}
+
+fn build_additive_remainder_for_post_calculus_residual_local(
+    ctx: &mut cas_ast::Context,
+    terms: &[(ExprId, cas_math::expr_nary::Sign)],
+    removed_left: usize,
+    removed_right: usize,
+) -> ExprId {
+    let mut remaining = Vec::new();
+    for (index, (term, sign)) in terms.iter().enumerate() {
+        if index == removed_left || index == removed_right {
+            continue;
+        }
+        remaining.push(if *sign == cas_math::expr_nary::Sign::Neg {
+            ctx.add(Expr::Neg(*term))
+        } else {
+            *term
+        });
+    }
+
+    match remaining.as_slice() {
+        [] => ctx.num(0),
+        [only] => *only,
+        _ => cas_math::expr_nary::build_balanced_add(ctx, &remaining),
+    }
+}
+
+fn try_resolve_post_calculus_residual_pair_inside_additive_context_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
+    if terms.len() < 3 || terms.len() > 6 {
+        return None;
+    }
+
+    for left_index in 0..terms.len() {
+        for right_index in 0..terms.len() {
+            if left_index == right_index || terms[left_index].1 == terms[right_index].1 {
+                continue;
+            }
+
+            let (positive_term, negative_term) =
+                if terms[left_index].1 == cas_math::expr_nary::Sign::Pos {
+                    (terms[left_index].0, terms[right_index].0)
+                } else {
+                    (terms[right_index].0, terms[left_index].0)
+                };
+            let pair_contains_calculus =
+                expr_contains_named_function_local(
+                    ctx,
+                    positive_term,
+                    &["diff", "integrate", "int"],
+                ) || expr_contains_symbolic_calculus_call_local(ctx, positive_term)
+                    || expr_contains_named_function_local(
+                        ctx,
+                        negative_term,
+                        &["diff", "integrate", "int"],
+                    )
+                    || expr_contains_symbolic_calculus_call_local(ctx, negative_term);
+            if !pair_contains_calculus {
+                continue;
+            }
+
+            let residual_pair = ctx.add(Expr::Sub(positive_term, negative_term));
+            let Some((rewritten_pair, required_conditions)) =
+                try_resolve_post_calculus_residual_before_general_simplify_core_local(
+                    ctx,
+                    residual_pair,
+                )
+            else {
+                continue;
+            };
+            if !expr_is_zero_const_local(ctx, rewritten_pair) {
+                continue;
+            }
+
+            let rebuilt = build_additive_remainder_for_post_calculus_residual_local(
+                ctx,
+                &terms,
+                left_index,
+                right_index,
+            );
+            return Some((rebuilt, required_conditions));
+        }
+    }
+
+    None
+}
+
+fn try_rewrite_post_calculus_residual_child_context_before_general_simplify_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    depth: usize,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    if depth > 8 {
+        return None;
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            if let Some((rewritten, required_conditions)) =
+                try_resolve_post_calculus_residual_pair_inside_additive_context_local(ctx, expr)
+            {
+                return Some((rewritten, required_conditions));
+            }
+
+            if let Some((rewritten_left, required_conditions)) =
+                try_resolve_or_rewrite_post_calculus_residual_child_before_general_simplify_local(
+                    ctx,
+                    left,
+                    depth + 1,
+                )
+            {
+                if expr_is_zero_const_local(ctx, rewritten_left)
+                    || expr_is_exact_zero_identity_local(ctx, right)
+                {
+                    return Some((right, required_conditions));
+                }
+                let rebuilt = ctx.add(Expr::Add(rewritten_left, right));
+                return Some((rebuilt, required_conditions));
+            }
+
+            if let Some((rewritten_right, required_conditions)) =
+                try_resolve_or_rewrite_post_calculus_residual_child_before_general_simplify_local(
+                    ctx,
+                    right,
+                    depth + 1,
+                )
+            {
+                if expr_is_zero_const_local(ctx, rewritten_right)
+                    || expr_is_exact_zero_identity_local(ctx, left)
+                {
+                    return Some((left, required_conditions));
+                }
+                let rebuilt = ctx.add(Expr::Add(left, rewritten_right));
+                return Some((rebuilt, required_conditions));
+            }
+            None
+        }
+        Expr::Sub(left, right) => {
+            if let Some((rewritten_left, required_conditions)) =
+                try_resolve_or_rewrite_post_calculus_residual_child_before_general_simplify_local(
+                    ctx,
+                    left,
+                    depth + 1,
+                )
+            {
+                if expr_is_zero_const_local(ctx, rewritten_left) {
+                    let negated = ctx.add(Expr::Neg(right));
+                    return Some((negated, required_conditions));
+                }
+                if expr_is_exact_zero_identity_local(ctx, right) {
+                    return Some((rewritten_left, required_conditions));
+                }
+                let rebuilt = ctx.add(Expr::Sub(rewritten_left, right));
+                return Some((rebuilt, required_conditions));
+            }
+
+            if let Some((rewritten_right, required_conditions)) =
+                try_resolve_or_rewrite_post_calculus_residual_child_before_general_simplify_local(
+                    ctx,
+                    right,
+                    depth + 1,
+                )
+            {
+                if expr_is_zero_const_local(ctx, rewritten_right) {
+                    return Some((left, required_conditions));
+                }
+                if expr_is_exact_zero_identity_local(ctx, left) {
+                    let negated = ctx.add(Expr::Neg(rewritten_right));
+                    return Some((negated, required_conditions));
+                }
+                let rebuilt = ctx.add(Expr::Sub(left, rewritten_right));
+                return Some((rebuilt, required_conditions));
+            }
+            None
+        }
+        Expr::Mul(left, right) => {
+            if let Some((rewritten_left, required_conditions)) =
+                try_resolve_or_rewrite_post_calculus_residual_child_before_general_simplify_local(
+                    ctx,
+                    left,
+                    depth + 1,
+                )
+            {
+                let rebuilt = ctx.add(Expr::Mul(rewritten_left, right));
+                return Some((rebuilt, required_conditions));
+            }
+            if let Some((rewritten_right, required_conditions)) =
+                try_resolve_or_rewrite_post_calculus_residual_child_before_general_simplify_local(
+                    ctx,
+                    right,
+                    depth + 1,
+                )
+            {
+                let rebuilt = ctx.add(Expr::Mul(left, rewritten_right));
+                return Some((rebuilt, required_conditions));
+            }
+            None
+        }
+        Expr::Div(num, den) => {
+            let (rewritten_num, mut required_conditions) =
+                try_resolve_or_rewrite_post_calculus_residual_child_before_general_simplify_local(
+                    ctx,
+                    num,
+                    depth + 1,
+                )?;
+            required_conditions.push(crate::ImplicitCondition::NonZero(den));
+            let rebuilt = ctx.add(Expr::Div(rewritten_num, den));
+            Some((rebuilt, required_conditions))
+        }
+        Expr::Neg(inner) => {
+            let (rewritten_inner, required_conditions) =
+                try_resolve_or_rewrite_post_calculus_residual_child_before_general_simplify_local(
+                    ctx,
+                    inner,
+                    depth + 1,
+                )?;
+            let rebuilt = ctx.add(Expr::Neg(rewritten_inner));
+            Some((rebuilt, required_conditions))
+        }
+        _ => None,
+    }
+}
+
+fn try_resolve_post_calculus_residual_before_general_simplify_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_resolve_post_calculus_residual_before_general_simplify_core_local(ctx, expr)
+}
+
+fn try_diff_sqrt_small_additive_elementary_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = residual_difference_terms_local(ctx, expr)?;
+    try_diff_sqrt_small_additive_elementary_residual_zero_ordered_local(ctx, left, right).or_else(
+        || try_diff_sqrt_small_additive_elementary_residual_zero_ordered_local(ctx, right, left),
+    )
+}
+
+fn try_diff_sqrt_small_additive_elementary_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    diff_expr: ExprId,
+    target: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (result, required_conditions) =
+        crate::rules::calculus::sqrt_small_additive_elementary_derivative_presentation_with_domain(
+            ctx,
+            call.target,
+            &call.var_name,
+        )?;
+    if !sqrt_denominator_common_factor_target_variant_exact_local(ctx, result, target)
+        && !sqrt_denominator_common_factor_target_variant_exact_local(ctx, target, result)
+        && !sqrt_shifted_diff_result_matches_target_local(ctx, result, target)
+    {
+        return None;
+    }
+
+    Some((ctx.num(0), required_conditions))
+}
+
+fn try_diff_arctan_sqrt_small_additive_elementary_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = residual_difference_terms_local(ctx, expr)?;
+    try_diff_arctan_sqrt_small_additive_elementary_residual_zero_ordered_local(ctx, left, right)
+        .or_else(|| {
+            try_diff_arctan_sqrt_small_additive_elementary_residual_zero_ordered_local(
+                ctx, right, left,
+            )
+        })
+}
+
+fn try_diff_arctan_sqrt_small_additive_elementary_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    diff_expr: ExprId,
+    target: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (result, required_conditions) =
+        crate::rules::calculus::arctan_sqrt_small_additive_elementary_derivative_presentation_with_domain(
+            ctx,
+            call.target,
+            &call.var_name,
+        )?;
+    if !sqrt_shifted_diff_result_matches_target_local(ctx, result, target) {
+        return None;
+    }
+
+    Some((ctx.num(0), required_conditions))
 }
 
 fn try_resolve_direct_post_calculus_before_general_simplify_local(
@@ -1521,6 +2465,52 @@ impl Engine {
             &self.simplifier.context,
             resolved,
         ) {
+            if let Some((result, required_conditions)) =
+                crate::rules::calculus::arctan_sqrt_additive_tan_polynomial_derivative_presentation_with_domain(
+                    &mut self.simplifier.context,
+                    call.target,
+                    &call.var_name,
+                )
+            {
+                let desc = crate::symbolic_calculus_call_support::render_diff_desc_with(
+                    &call,
+                    |id| {
+                        format!(
+                            "{}",
+                            cas_formatter::DisplayExpr {
+                                context: &self.simplifier.context,
+                                id
+                            }
+                        )
+                    },
+                );
+                let mut steps = Vec::new();
+                if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                    let mut step = crate::Step::new(
+                        &desc,
+                        "Symbolic Differentiation",
+                        resolved,
+                        result,
+                        Vec::new(),
+                        Some(&self.simplifier.context),
+                    );
+                    step.meta_mut()
+                        .required_conditions
+                        .extend(required_conditions.iter().cloned());
+                    steps.push(step);
+                }
+
+                return Ok((
+                    crate::EvalResult::Expr(result),
+                    Vec::new(),
+                    steps,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    required_conditions,
+                ));
+            }
             if effective_opts.steps_mode != crate::options::StepsMode::Off
                 && crate::rules::calculus::sqrt_polynomial_quotient_has_powered_expanded_affine_square_denominator(
                     &mut self.simplifier.context,
@@ -1960,7 +2950,7 @@ impl Engine {
         ctx_simplifier.set_step_listener(inherited_step_listener);
 
         let mut simplify_opts = effective_opts.to_simplify_options();
-        let (expr_to_simplify, expand_log_events) =
+        let (mut expr_to_simplify, expand_log_events) =
             if let Expr::Function(fn_id, args) = ctx_simplifier.context.get(resolved).clone() {
                 match ctx_simplifier.context.sym_name(fn_id) {
                     "collect" => {
@@ -2006,6 +2996,21 @@ impl Engine {
             simplify_opts.suppress_depth_overflow_warnings = true;
         }
 
+        let pre_resolved_calculus_context = if input_embedded_calculus_residual {
+            let original_expr = expr_to_simplify;
+            try_rewrite_post_calculus_residual_child_context_before_general_simplify_local(
+                &mut ctx_simplifier.context,
+                expr_to_simplify,
+                0,
+            )
+            .filter(|(rewritten, _)| *rewritten != original_expr)
+            .map(|(rewritten, required_conditions)| {
+                expr_to_simplify = rewritten;
+                (original_expr, rewritten, required_conditions)
+            })
+        } else {
+            None
+        };
         let pre_simplify_calculus = if input_embedded_calculus_residual {
             try_resolve_post_calculus_residual_before_general_simplify_local(
                 &mut ctx_simplifier.context,
@@ -2060,6 +3065,24 @@ impl Engine {
             } else {
                 ctx_simplifier.simplify_with_stats(expr_to_simplify, simplify_opts.clone())
             };
+
+        if let Some((original_expr, rewritten, required_conditions)) = pre_resolved_calculus_context
+        {
+            ctx_simplifier.extend_required_conditions(required_conditions.clone());
+            if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                let mut step = crate::Step::new(
+                    "Post-calculus residual simplification",
+                    "Resolve a matching calculus residual inside its wrapper before general simplification",
+                    original_expr,
+                    rewritten,
+                    Vec::new(),
+                    Some(&ctx_simplifier.context),
+                );
+                step.importance = crate::ImportanceLevel::Medium;
+                step.meta_mut().required_conditions = required_conditions;
+                steps.insert(0, step);
+            }
+        }
 
         let hyperbolic_zero_rewrite =
             crate::rules::hyperbolic::try_build_atanh_square_ratio_log_zero_rewrite(
@@ -2389,6 +3412,22 @@ mod tests {
         assert!(sqrt_shifted_diff_result_matches_target_local(
             &mut ctx, result, target
         ));
+
+        let result_with_sqrt_term = parse(
+            "(cos(2*x)-1/2*sin(x)+1/(4*sqrt(x)))/sqrt(sin(2*x)+cos(x)+sqrt(x))",
+            &mut ctx,
+        )
+        .unwrap();
+        let target = parse(
+            "(4*sqrt(x)*cos(2*x)+1-2*sqrt(x)*sin(x))/(4*sqrt(x)*sqrt(sin(2*x)+cos(x)+sqrt(x)))",
+            &mut ctx,
+        )
+        .unwrap();
+        assert!(sqrt_denominator_common_factor_target_variant_exact_local(
+            &mut ctx,
+            target,
+            result_with_sqrt_term
+        ));
     }
 
     #[test]
@@ -2477,6 +3516,116 @@ mod tests {
             "0"
         );
         assert_eq!(required_conditions.len(), 2);
+
+        let expr = parse(
+            "diff(sqrt(sin(2*x)+cos(x)+sqrt(x)), x) - (4*sqrt(x)*cos(2*x)+1-2*sqrt(x)*sin(x))/(4*sqrt(x)*sqrt(sin(2*x)+cos(x)+sqrt(x)))",
+            &mut ctx,
+        )
+        .unwrap();
+        let (left, right) = match residual_difference_terms_local(&ctx, expr) {
+            Some(terms) => terms,
+            None => panic!("expected common-denominator residual difference terms"),
+        };
+        let call = crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, left)
+            .or_else(|| crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, right));
+        let call = match call {
+            Some(call) => call,
+            None => panic!("expected common-denominator diff call"),
+        };
+        let (presentation, _, _) =
+            crate::rules::calculus::sqrt_additive_trig_polynomial_derivative_presentation(
+                &mut ctx,
+                call.target,
+                &call.var_name,
+            )
+            .unwrap_or_else(|| panic!("expected common-denominator presentation"));
+        assert!(
+            sqrt_denominator_common_factor_target_variant_exact_local(
+                &mut ctx,
+                right,
+                presentation
+            ),
+            "presentation={} target={}",
+            DisplayExpr {
+                context: &ctx,
+                id: presentation
+            },
+            DisplayExpr {
+                context: &ctx,
+                id: right
+            }
+        );
+        let (result, required_conditions) =
+            match try_diff_sqrt_additive_trig_polynomial_residual_zero_local(&mut ctx, expr) {
+                Some(result) => result,
+                None => panic!("expected common-denominator trig-root residual route"),
+            };
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: result
+                }
+            ),
+            "0"
+        );
+        assert_eq!(required_conditions.len(), 2);
+
+        let expr = parse(
+            "diff(sqrt(sin(2*x)+cos(x)-sqrt(x)), x) - (4*sqrt(x)*cos(2*x)-1-2*sqrt(x)*sin(x))/(4*sqrt(x)*sqrt(sin(2*x)+cos(x)-sqrt(x)))",
+            &mut ctx,
+        )
+        .unwrap();
+        let (left, right) = match residual_difference_terms_local(&ctx, expr) {
+            Some(terms) => terms,
+            None => panic!("expected negative common-denominator residual difference terms"),
+        };
+        let call = crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, left)
+            .or_else(|| crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, right));
+        let call = match call {
+            Some(call) => call,
+            None => panic!("expected negative common-denominator diff call"),
+        };
+        let (presentation, _, _) =
+            crate::rules::calculus::sqrt_additive_trig_polynomial_derivative_presentation(
+                &mut ctx,
+                call.target,
+                &call.var_name,
+            )
+            .unwrap_or_else(|| panic!("expected negative common-denominator presentation"));
+        assert!(
+            sqrt_denominator_common_factor_target_variant_exact_local(
+                &mut ctx,
+                right,
+                presentation
+            ),
+            "presentation={} target={}",
+            DisplayExpr {
+                context: &ctx,
+                id: presentation
+            },
+            DisplayExpr {
+                context: &ctx,
+                id: right
+            }
+        );
+        let (result, required_conditions) =
+            match try_diff_sqrt_additive_trig_polynomial_residual_zero_local(&mut ctx, expr) {
+                Some(result) => result,
+                None => panic!("expected negative common-denominator trig-root residual route"),
+            };
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: result
+                }
+            ),
+            "0"
+        );
+        assert_eq!(required_conditions.len(), 2);
     }
 
     #[test]
@@ -2533,6 +3682,265 @@ mod tests {
             "0"
         );
         assert_eq!(required_conditions.len(), 3);
+    }
+
+    #[test]
+    fn post_calculus_residual_route_accepts_tan_exp_sqrt_inline_target_variant() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse(
+            "diff(sqrt(tan(x)+exp(x)+sqrt(x)+x), x) - (sec(x)^2+e^x+1+1/(2*sqrt(x)))/(2*sqrt(tan(x)+exp(x)+sqrt(x)+x))",
+            &mut ctx,
+        )
+        .unwrap();
+
+        let (left, right) = match residual_difference_terms_local(&ctx, expr) {
+            Some(terms) => terms,
+            None => panic!("expected residual difference terms"),
+        };
+        let call = crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, left)
+            .or_else(|| crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, right));
+        let call = match call {
+            Some(call) => call,
+            None => panic!("expected diff call"),
+        };
+        let (presentation, _, _) =
+            crate::rules::calculus::sqrt_additive_tan_polynomial_derivative_presentation(
+                &mut ctx,
+                call.target,
+                &call.var_name,
+            )
+            .unwrap_or_else(|| panic!("expected tan/exp/sqrt presentation"));
+        assert!(sqrt_shifted_diff_result_matches_target_local(
+            &mut ctx,
+            presentation,
+            right
+        ));
+
+        let (result, required_conditions) =
+            match try_diff_sqrt_additive_tan_polynomial_residual_zero_local(&mut ctx, expr) {
+                Some(result) => result,
+                None => panic!("expected direct tan/exp/sqrt inline residual route"),
+            };
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: result
+                }
+            ),
+            "0"
+        );
+        assert_eq!(required_conditions.len(), 3);
+    }
+
+    #[test]
+    fn post_calculus_residual_route_accepts_exp_trig_log_sqrt_common_denominator_variant() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse(
+            "diff(sqrt(exp(sin(x))+ln(x)+sqrt(x)), x) - (2*sqrt(x)+2*x*sqrt(x)*cos(x)*e^sin(x)+x)/(4*x*sqrt(x)*sqrt(ln(x)+sqrt(x)+e^sin(x)))",
+            &mut ctx,
+        )
+        .unwrap();
+
+        let (left, right) = match residual_difference_terms_local(&ctx, expr) {
+            Some(terms) => terms,
+            None => panic!("expected residual difference terms"),
+        };
+        let call = crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, left)
+            .or_else(|| crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, right));
+        let call = match call {
+            Some(call) => call,
+            None => panic!("expected diff call"),
+        };
+        let (presentation, _) =
+            crate::rules::calculus::sqrt_small_additive_elementary_derivative_presentation_with_domain(
+                &mut ctx,
+                call.target,
+                &call.var_name,
+            )
+            .unwrap_or_else(|| panic!("expected exp/trig/log/sqrt presentation"));
+        assert!(sqrt_shifted_diff_result_matches_target_local(
+            &mut ctx,
+            presentation,
+            right
+        ));
+
+        let (result, required_conditions) =
+            match try_diff_sqrt_small_additive_elementary_residual_zero_local(&mut ctx, expr) {
+                Some(result) => result,
+                None => panic!("expected direct exp/trig/log/sqrt residual route"),
+            };
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: result
+                }
+            ),
+            "0"
+        );
+        assert_eq!(required_conditions.len(), 3);
+    }
+
+    #[test]
+    fn post_calculus_residual_route_accepts_polynomial_power_term_variant() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse(
+            "diff(sqrt(exp(sin(x))+ln(x)+sqrt(x)+x^2), x) - (2*sqrt(x)+2*x*sqrt(x)*cos(x)*e^sin(x)+x+4*x^2*sqrt(x))/(4*x*sqrt(x)*sqrt(ln(x)+sqrt(x)+e^sin(x)+x^2))",
+            &mut ctx,
+        )
+        .unwrap();
+
+        let (left, right) = match residual_difference_terms_local(&ctx, expr) {
+            Some(terms) => terms,
+            None => panic!("expected residual difference terms"),
+        };
+        let call = crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, left)
+            .or_else(|| crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, right));
+        let call = match call {
+            Some(call) => call,
+            None => panic!("expected diff call"),
+        };
+        let (presentation, _) =
+            crate::rules::calculus::sqrt_small_additive_elementary_derivative_presentation_with_domain(
+                &mut ctx,
+                call.target,
+                &call.var_name,
+            )
+            .unwrap_or_else(|| panic!("expected exp/trig/log/sqrt polynomial presentation"));
+        assert!(sqrt_shifted_diff_result_matches_target_local(
+            &mut ctx,
+            presentation,
+            right
+        ));
+
+        let (result, required_conditions) =
+            match try_diff_sqrt_small_additive_elementary_residual_zero_local(&mut ctx, expr) {
+                Some(result) => result,
+                None => panic!("expected direct polynomial-term residual route"),
+            };
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: result
+                }
+            ),
+            "0"
+        );
+        assert_eq!(required_conditions.len(), 3);
+    }
+
+    #[test]
+    fn post_calculus_residual_route_accepts_signed_sqrt_term_radicand_orientation() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse(
+            "diff(sqrt(exp(sin(x))+ln(x)-sqrt(x)), x) - (2*sqrt(x)+2*x*sqrt(x)*cos(x)*e^sin(x)-x)/(4*x*sqrt(x)*sqrt(ln(x)-sqrt(x)+e^sin(x)))",
+            &mut ctx,
+        )
+        .unwrap();
+
+        let (left, right) = match residual_difference_terms_local(&ctx, expr) {
+            Some(terms) => terms,
+            None => panic!("expected residual difference terms"),
+        };
+        let call = crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, left)
+            .or_else(|| crate::symbolic_calculus_call_support::try_extract_diff_call(&ctx, right));
+        let call = match call {
+            Some(call) => call,
+            None => panic!("expected diff call"),
+        };
+        let (presentation, _) =
+            crate::rules::calculus::sqrt_small_additive_elementary_derivative_presentation_with_domain(
+                &mut ctx,
+                call.target,
+                &call.var_name,
+            )
+            .unwrap_or_else(|| panic!("expected signed sqrt-term presentation"));
+        assert!(sqrt_shifted_diff_result_matches_target_local(
+            &mut ctx,
+            presentation,
+            right
+        ));
+
+        let (result, required_conditions) =
+            match try_diff_sqrt_small_additive_elementary_residual_zero_local(&mut ctx, expr) {
+                Some(result) => result,
+                None => panic!("expected direct signed sqrt-term residual route"),
+            };
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: result
+                }
+            ),
+            "0"
+        );
+        assert_eq!(required_conditions.len(), 3);
+    }
+
+    #[test]
+    fn post_calculus_residual_child_rewrite_preserves_wrapper_denominator_condition() {
+        let mut ctx = cas_ast::Context::new();
+        let expr = parse(
+            "((diff(arctan(sqrt(sec(x)+ln(x)+1/sqrt(x)+x)),x)-(2*sqrt(x)+2*x*sqrt(x)+2*x*tan(x)*sec(x)*sqrt(x)-1)/(4*x*sqrt(x)*sqrt(sec(x)+ln(x)+1/sqrt(x)+x)*(sec(x)+ln(x)+1/sqrt(x)+x+1)))+1)/(x+2)",
+            &mut ctx,
+        )
+        .unwrap();
+
+        let (rewritten, required_conditions) =
+            try_rewrite_post_calculus_residual_child_context_before_general_simplify_local(
+                &mut ctx, expr, 0,
+            )
+            .unwrap_or_else(|| panic!("expected wrapped residual rewrite"));
+        let required_display: Vec<_> = required_conditions
+            .iter()
+            .map(|condition| match condition {
+                crate::ImplicitCondition::NonZero(id)
+                | crate::ImplicitCondition::Positive(id)
+                | crate::ImplicitCondition::NonNegative(id) => format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &ctx,
+                        id: *id
+                    }
+                ),
+                crate::ImplicitCondition::LowerBound(id, bound) => format!(
+                    "{} >= {}",
+                    DisplayExpr {
+                        context: &ctx,
+                        id: *id
+                    },
+                    bound
+                ),
+            })
+            .collect();
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewritten
+                }
+            ),
+            "1 / (x + 2)"
+        );
+        assert!(
+            required_display
+                .iter()
+                .any(|condition| condition == "x + 2"),
+            "missing wrapper denominator condition: {required_display:?}"
+        );
     }
 
     #[test]

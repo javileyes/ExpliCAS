@@ -1,6 +1,8 @@
 use crate::infinity_support::{mk_infinity, InfSign};
 use crate::limit_types::{Approach, LimitEvalOutcome, LimitOptions, PreSimplifyMode};
+use crate::perfect_square_support::rational_sqrt;
 use crate::polynomial::Polynomial;
+use crate::root_forms::extract_square_root_base;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
@@ -357,6 +359,23 @@ fn negate_limit_result(ctx: &mut Context, expr: ExprId) -> ExprId {
 fn numeric_limit_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     match ctx.get(expr) {
         Expr::Number(value) => Some(value.clone()),
+        Expr::Neg(inner) => numeric_limit_value(ctx, *inner).map(|value| -value),
+        Expr::Add(lhs, rhs) => {
+            Some(numeric_limit_value(ctx, *lhs)? + numeric_limit_value(ctx, *rhs)?)
+        }
+        Expr::Sub(lhs, rhs) => {
+            Some(numeric_limit_value(ctx, *lhs)? - numeric_limit_value(ctx, *rhs)?)
+        }
+        Expr::Mul(lhs, rhs) => {
+            Some(numeric_limit_value(ctx, *lhs)? * numeric_limit_value(ctx, *rhs)?)
+        }
+        Expr::Div(num, den) => {
+            let den_value = numeric_limit_value(ctx, *den)?;
+            if den_value.is_zero() {
+                return None;
+            }
+            Some(numeric_limit_value(ctx, *num)? / den_value)
+        }
         _ => None,
     }
 }
@@ -434,6 +453,256 @@ fn polynomial_growth_info(
         degree,
         leading_coeff,
     })
+}
+
+fn negate_polynomial_growth_info(mut growth: PolynomialGrowthInfo) -> PolynomialGrowthInfo {
+    growth.leading_coeff = -growth.leading_coeff;
+    growth
+}
+
+fn scale_polynomial_growth_info(
+    mut growth: PolynomialGrowthInfo,
+    scale: BigRational,
+) -> Option<PolynomialGrowthInfo> {
+    if scale.is_zero() {
+        return None;
+    }
+    growth.leading_coeff *= scale;
+    Some(growth)
+}
+
+fn polynomial_growth_info_with_bounded_additive_noise(
+    ctx: &Context,
+    expr: ExprId,
+    var: ExprId,
+) -> Option<PolynomialGrowthInfo> {
+    if let Some(growth) = polynomial_growth_info(ctx, expr, var) {
+        return Some(growth);
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) => {
+            if let Some(growth) = polynomial_growth_info_with_bounded_additive_noise(ctx, lhs, var)
+            {
+                if is_bounded_elementary_expr_at_infinity(ctx, rhs, var) {
+                    return Some(growth);
+                }
+            }
+            if let Some(growth) = polynomial_growth_info_with_bounded_additive_noise(ctx, rhs, var)
+            {
+                if is_bounded_elementary_expr_at_infinity(ctx, lhs, var) {
+                    return Some(growth);
+                }
+            }
+            None
+        }
+        Expr::Sub(lhs, rhs) => {
+            if let Some(growth) = polynomial_growth_info_with_bounded_additive_noise(ctx, lhs, var)
+            {
+                if is_bounded_elementary_expr_at_infinity(ctx, rhs, var) {
+                    return Some(growth);
+                }
+            }
+            if let Some(growth) = polynomial_growth_info_with_bounded_additive_noise(ctx, rhs, var)
+            {
+                if is_bounded_elementary_expr_at_infinity(ctx, lhs, var) {
+                    return Some(negate_polynomial_growth_info(growth));
+                }
+            }
+            None
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = numeric_limit_value(ctx, lhs) {
+                return scale_polynomial_growth_info(
+                    polynomial_growth_info_with_bounded_additive_noise(ctx, rhs, var)?,
+                    scale,
+                );
+            }
+            if let Some(scale) = numeric_limit_value(ctx, rhs) {
+                return scale_polynomial_growth_info(
+                    polynomial_growth_info_with_bounded_additive_noise(ctx, lhs, var)?,
+                    scale,
+                );
+            }
+            None
+        }
+        Expr::Neg(inner) => Some(negate_polynomial_growth_info(
+            polynomial_growth_info_with_bounded_additive_noise(ctx, inner, var)?,
+        )),
+        _ => None,
+    }
+}
+
+fn scaled_square_root_base(ctx: &Context, expr: ExprId) -> Option<(BigRational, ExprId)> {
+    if let Some(radicand) = extract_square_root_base(ctx, expr) {
+        return Some((BigRational::from_integer(BigInt::from(1)), radicand));
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Mul(lhs, rhs) => {
+            if let Some(scale) = numeric_limit_value(ctx, lhs) {
+                if scale.is_zero() {
+                    return None;
+                }
+                return extract_square_root_base(ctx, rhs).map(|radicand| (scale, radicand));
+            }
+            if let Some(scale) = numeric_limit_value(ctx, rhs) {
+                if scale.is_zero() {
+                    return None;
+                }
+                return extract_square_root_base(ctx, lhs).map(|radicand| (scale, radicand));
+            }
+            None
+        }
+        Expr::Neg(inner) => {
+            scaled_square_root_base(ctx, inner).map(|(scale, radicand)| (-scale, radicand))
+        }
+        _ => None,
+    }
+}
+
+fn sqrt_polynomial_ratio_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let (sqrt_scale, radicand) = scaled_square_root_base(ctx, num)?;
+    let radicand_growth = polynomial_growth_info_with_bounded_additive_noise(ctx, radicand, var)?;
+    let den_growth = polynomial_growth_info_with_bounded_additive_noise(ctx, den, var)?;
+
+    if radicand_growth.degree == 0 || radicand_growth.degree % 2 != 0 {
+        return None;
+    }
+    if !radicand_growth.leading_coeff.is_positive() || den_growth.leading_coeff.is_zero() {
+        return None;
+    }
+
+    let sqrt_degree = radicand_growth.degree / 2;
+    if den_growth.degree != sqrt_degree {
+        return None;
+    }
+
+    if let Some(sqrt_leading_coeff) = rational_sqrt(&radicand_growth.leading_coeff) {
+        let mut ratio = sqrt_scale * sqrt_leading_coeff / den_growth.leading_coeff;
+        if approach == InfSign::Neg && sqrt_degree % 2 == 1 {
+            ratio = -ratio;
+        }
+        return Some(ctx.add(Expr::Number(ratio)));
+    }
+
+    let leading_coeff = ctx.add(Expr::Number(radicand_growth.leading_coeff));
+    let sqrt_leading_coeff = ctx.call_builtin(BuiltinFn::Sqrt, vec![leading_coeff]);
+    let denominator_abs = den_growth.leading_coeff.abs();
+    let scale_abs = sqrt_scale.abs();
+    let one = BigRational::from_integer(BigInt::from(1));
+    let scaled_sqrt = if scale_abs == one {
+        sqrt_leading_coeff
+    } else {
+        let multiplier = ctx.add(Expr::Number(scale_abs));
+        ctx.add(Expr::Mul(multiplier, sqrt_leading_coeff))
+    };
+    let unsigned_result = if denominator_abs == one {
+        scaled_sqrt
+    } else {
+        let denominator = ctx.add(Expr::Number(denominator_abs));
+        ctx.add(Expr::Div(scaled_sqrt, denominator))
+    };
+
+    let flips_at_neg_infinity = approach == InfSign::Neg && sqrt_degree % 2 == 1;
+    let needs_negation =
+        sqrt_scale.is_negative() ^ den_growth.leading_coeff.is_negative() ^ flips_at_neg_infinity;
+    if needs_negation {
+        Some(ctx.add(Expr::Neg(unsigned_result)))
+    } else {
+        Some(unsigned_result)
+    }
+}
+
+fn rationalized_surd_product(
+    ctx: &mut Context,
+    coeff: BigRational,
+    radicand: BigRational,
+) -> ExprId {
+    if coeff.is_zero() {
+        return ctx.add(Expr::Number(coeff));
+    }
+
+    let sqrt_radicand = ctx.add(Expr::Number(radicand));
+    let sqrt_expr = ctx.call_builtin(BuiltinFn::Sqrt, vec![sqrt_radicand]);
+    let abs_coeff = coeff.abs();
+    let one_int = BigInt::from(1);
+
+    let numerator = if abs_coeff.numer() == &one_int {
+        sqrt_expr
+    } else {
+        let multiplier = ctx.add(Expr::Number(BigRational::from_integer(
+            abs_coeff.numer().clone(),
+        )));
+        ctx.add(Expr::Mul(multiplier, sqrt_expr))
+    };
+
+    let unsigned = if abs_coeff.denom() == &one_int {
+        numerator
+    } else {
+        let denominator = ctx.add(Expr::Number(BigRational::from_integer(
+            abs_coeff.denom().clone(),
+        )));
+        ctx.add(Expr::Div(numerator, denominator))
+    };
+
+    if coeff.is_negative() {
+        ctx.add(Expr::Neg(unsigned))
+    } else {
+        unsigned
+    }
+}
+
+fn polynomial_sqrt_ratio_limit_at_infinity(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    approach: InfSign,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    let radicand = extract_square_root_base(ctx, den)?;
+    let num_growth = polynomial_growth_info_with_bounded_additive_noise(ctx, num, var)?;
+    let radicand_growth = polynomial_growth_info_with_bounded_additive_noise(ctx, radicand, var)?;
+
+    if radicand_growth.degree == 0 || radicand_growth.degree % 2 != 0 {
+        return None;
+    }
+    if !radicand_growth.leading_coeff.is_positive() || num_growth.leading_coeff.is_zero() {
+        return None;
+    }
+
+    let sqrt_degree = radicand_growth.degree / 2;
+    if num_growth.degree != sqrt_degree {
+        return None;
+    }
+
+    let mut signed_num_lc = num_growth.leading_coeff;
+    if approach == InfSign::Neg && sqrt_degree % 2 == 1 {
+        signed_num_lc = -signed_num_lc;
+    }
+
+    if let Some(sqrt_leading_coeff) = rational_sqrt(&radicand_growth.leading_coeff) {
+        return Some(ctx.add(Expr::Number(signed_num_lc / sqrt_leading_coeff)));
+    }
+
+    let coeff = signed_num_lc / radicand_growth.leading_coeff.clone();
+    Some(rationalized_surd_product(
+        ctx,
+        coeff,
+        radicand_growth.leading_coeff,
+    ))
 }
 
 fn combine_add_limit_results(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> Option<ExprId> {
@@ -1419,11 +1688,13 @@ pub fn rational_poly_limit(
 /// 6. Additive combination
 /// 7. Determinate multiplicative combination
 /// 8. Bounded trig over divergent denominator
-/// 9. Exact exponential-vs-polynomial dominance
-/// 10. Exact subpolynomial-vs-polynomial dominance
-/// 11. Exact exponential-vs-subpolynomial dominance
-/// 12. Polynomial
-/// 13. Rational polynomial
+/// 9. Square-root polynomial ratio with matching growth
+/// 10. Polynomial over square-root polynomial with matching growth
+/// 11. Exact exponential-vs-polynomial dominance
+/// 12. Exact subpolynomial-vs-polynomial dominance
+/// 13. Exact exponential-vs-subpolynomial dominance
+/// 14. Polynomial
+/// 15. Rational polynomial
 pub fn try_limit_rules_at_infinity(
     ctx: &mut Context,
     expr: ExprId,
@@ -1457,6 +1728,12 @@ pub fn try_limit_rules_at_infinity(
     if let Some(r) =
         bounded_elementary_times_decaying_exp_limit_at_infinity(ctx, expr, var, approach)
     {
+        return Some(r);
+    }
+    if let Some(r) = sqrt_polynomial_ratio_limit_at_infinity(ctx, expr, var, approach) {
+        return Some(r);
+    }
+    if let Some(r) = polynomial_sqrt_ratio_limit_at_infinity(ctx, expr, var, approach) {
         return Some(r);
     }
     if let Some(r) = exponential_polynomial_dominance_limit_at_infinity(ctx, expr, var, approach) {
@@ -1735,6 +2012,332 @@ mod tests {
 
         assert!(out1.is_none());
         assert!(out2.is_none());
+    }
+
+    #[test]
+    fn sqrt_polynomial_ratio_limit_at_infinity_handles_matching_growth() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+
+        let pos = parse_expr(&mut ctx, "sqrt(x^2 + 1)/x");
+        let neg = parse_expr(&mut ctx, "sqrt(x^2 + 1)/x");
+        let scaled = parse_expr(&mut ctx, "sqrt(4*x^2 + 1)/(2*x)");
+        let even_den = parse_expr(&mut ctx, "sqrt(x^4 + 1)/x^2");
+        let irrational_coeff = parse_expr(&mut ctx, "sqrt(2*x^2 + 1)/x");
+        let scaled_surd_den = parse_expr(&mut ctx, "sqrt(2*x^2 + 1)/(3*x)");
+        let neg_scaled_surd_den = parse_expr(&mut ctx, "sqrt(2*x^2 + 1)/(-3*x)");
+        let noisy_scaled_surd_den = parse_expr(&mut ctx, "sqrt(2*x^2 + x + 1)/(3*x + 1)");
+        let bounded_noise_surd_den = parse_expr(&mut ctx, "sqrt((3*x + 1)^2 + sin(x))/(2*x + 1)");
+        let bounded_noise_surd_noisy_den =
+            parse_expr(&mut ctx, "sqrt((3*x + 1)^2 + sin(x))/(2*x + 1 + cos(x))");
+        let scaled_bounded_noise_surd_noisy_den =
+            parse_expr(&mut ctx, "5*sqrt((3*x + 1)^2 + sin(x))/(2*x + 1 + cos(x))");
+        let bounded_noise_surd_scaled_noisy_den = parse_expr(
+            &mut ctx,
+            "sqrt((3*x + 1)^2 + sin(x))/(2*(2*x + 1 + cos(x)))",
+        );
+
+        let pos_out =
+            sqrt_polynomial_ratio_limit_at_infinity(&mut ctx, pos, x, InfSign::Pos).expect("+inf");
+        let neg_out =
+            sqrt_polynomial_ratio_limit_at_infinity(&mut ctx, neg, x, InfSign::Neg).expect("-inf");
+        let scaled_out = sqrt_polynomial_ratio_limit_at_infinity(&mut ctx, scaled, x, InfSign::Pos)
+            .expect("scaled");
+        let even_den_out =
+            sqrt_polynomial_ratio_limit_at_infinity(&mut ctx, even_den, x, InfSign::Neg)
+                .expect("even denominator degree");
+        let irrational_coeff_out =
+            sqrt_polynomial_ratio_limit_at_infinity(&mut ctx, irrational_coeff, x, InfSign::Pos)
+                .expect("irrational leading coefficient");
+        let scaled_surd_den_out =
+            sqrt_polynomial_ratio_limit_at_infinity(&mut ctx, scaled_surd_den, x, InfSign::Pos)
+                .expect("scaled surd denominator");
+        let neg_scaled_surd_den_out =
+            sqrt_polynomial_ratio_limit_at_infinity(&mut ctx, neg_scaled_surd_den, x, InfSign::Neg)
+                .expect("negative scaled surd denominator");
+        let noisy_scaled_surd_den_pos_out = sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            noisy_scaled_surd_den,
+            x,
+            InfSign::Pos,
+        )
+        .expect("noisy scaled surd denominator at +inf");
+        let noisy_scaled_surd_den_neg_out = sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            noisy_scaled_surd_den,
+            x,
+            InfSign::Neg,
+        )
+        .expect("noisy scaled surd denominator at -inf");
+        let bounded_noise_surd_den_pos_out = sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            bounded_noise_surd_den,
+            x,
+            InfSign::Pos,
+        )
+        .expect("bounded radicand noise at +inf");
+        let bounded_noise_surd_den_neg_out = sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            bounded_noise_surd_den,
+            x,
+            InfSign::Neg,
+        )
+        .expect("bounded radicand noise at -inf");
+        let bounded_noise_surd_noisy_den_pos_out = sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            bounded_noise_surd_noisy_den,
+            x,
+            InfSign::Pos,
+        )
+        .expect("bounded radicand and denominator noise at +inf");
+        let bounded_noise_surd_noisy_den_neg_out = sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            bounded_noise_surd_noisy_den,
+            x,
+            InfSign::Neg,
+        )
+        .expect("bounded radicand and denominator noise at -inf");
+        let scaled_bounded_noise_surd_noisy_den_pos_out = sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            scaled_bounded_noise_surd_noisy_den,
+            x,
+            InfSign::Pos,
+        )
+        .expect("scaled bounded radicand and denominator noise at +inf");
+        let bounded_noise_surd_scaled_noisy_den_pos_out = sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            bounded_noise_surd_scaled_noisy_den,
+            x,
+            InfSign::Pos,
+        )
+        .expect("bounded radicand and scaled denominator noise at +inf");
+
+        let one = BigRational::from_integer(BigInt::from(1));
+        let minus_one = -one.clone();
+        let two = BigRational::from_integer(BigInt::from(2));
+        let three = BigRational::from_integer(BigInt::from(3));
+        let three_halves = BigRational::new(BigInt::from(3), BigInt::from(2));
+        let minus_three_halves = -three_halves.clone();
+        let fifteen_halves = BigRational::new(BigInt::from(15), BigInt::from(2));
+        let three_quarters = BigRational::new(BigInt::from(3), BigInt::from(4));
+        assert!(matches!(ctx.get(pos_out), Expr::Number(n) if n == &one));
+        assert!(matches!(ctx.get(neg_out), Expr::Number(n) if n == &minus_one));
+        assert!(matches!(ctx.get(scaled_out), Expr::Number(n) if n == &one));
+        assert!(matches!(ctx.get(even_den_out), Expr::Number(n) if n == &one));
+        assert!(matches!(
+            ctx.get(irrational_coeff_out),
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt)
+                    && matches!(args.as_slice(), [arg] if matches!(ctx.get(*arg), Expr::Number(n) if n == &two))
+        ));
+        assert!(matches!(
+            ctx.get(scaled_surd_den_out),
+            Expr::Div(num, den)
+                if matches!(ctx.get(*num), Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt))
+                    && matches!(ctx.get(*den), Expr::Number(n) if n == &three)
+        ));
+        assert!(matches!(
+            ctx.get(neg_scaled_surd_den_out),
+            Expr::Div(num, den)
+                if matches!(ctx.get(*num), Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt))
+                    && matches!(ctx.get(*den), Expr::Number(n) if n == &three)
+        ));
+        assert!(matches!(
+            ctx.get(noisy_scaled_surd_den_pos_out),
+            Expr::Div(num, den)
+                if matches!(ctx.get(*num), Expr::Function(fn_id, args)
+                    if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt)
+                        && matches!(args.as_slice(), [arg] if matches!(ctx.get(*arg), Expr::Number(n) if n == &two)))
+                    && matches!(ctx.get(*den), Expr::Number(n) if n == &three)
+        ));
+        assert!(matches!(
+            ctx.get(noisy_scaled_surd_den_neg_out),
+            Expr::Neg(inner)
+                if matches!(ctx.get(*inner), Expr::Div(num, den)
+                    if matches!(ctx.get(*num), Expr::Function(fn_id, args)
+                        if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt)
+                            && matches!(args.as_slice(), [arg] if matches!(ctx.get(*arg), Expr::Number(n) if n == &two)))
+                        && matches!(ctx.get(*den), Expr::Number(n) if n == &three))
+        ));
+        assert!(
+            matches!(ctx.get(bounded_noise_surd_den_pos_out), Expr::Number(n) if n == &three_halves)
+        );
+        assert!(
+            matches!(ctx.get(bounded_noise_surd_den_neg_out), Expr::Number(n) if n == &minus_three_halves)
+        );
+        assert!(
+            matches!(ctx.get(bounded_noise_surd_noisy_den_pos_out), Expr::Number(n) if n == &three_halves)
+        );
+        assert!(
+            matches!(ctx.get(bounded_noise_surd_noisy_den_neg_out), Expr::Number(n) if n == &minus_three_halves)
+        );
+        assert!(
+            matches!(ctx.get(scaled_bounded_noise_surd_noisy_den_pos_out), Expr::Number(n) if n == &fifteen_halves)
+        );
+        assert!(
+            matches!(ctx.get(bounded_noise_surd_scaled_noisy_den_pos_out), Expr::Number(n) if n == &three_quarters)
+        );
+    }
+
+    #[test]
+    fn sqrt_polynomial_ratio_limit_at_infinity_rejects_unsafe_shapes() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+
+        let negative_leading_coeff = parse_expr(&mut ctx, "sqrt(1 - 2*x^2)/x");
+        let odd_radicand_degree = parse_expr(&mut ctx, "sqrt(x^3 + 1)/x");
+        let mismatched_growth = parse_expr(&mut ctx, "sqrt(x^2 + 1)/x^2");
+        let unbounded_noise = parse_expr(&mut ctx, "sqrt((3*x + 1)^2 + x*sin(x))/(2*x + 1)");
+        let unbounded_den_noise =
+            parse_expr(&mut ctx, "sqrt((3*x + 1)^2 + sin(x))/(2*x + 1 + x*cos(x))");
+
+        assert!(sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            negative_leading_coeff,
+            x,
+            InfSign::Pos
+        )
+        .is_none());
+        assert!(sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            odd_radicand_degree,
+            x,
+            InfSign::Pos
+        )
+        .is_none());
+        assert!(sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            mismatched_growth,
+            x,
+            InfSign::Pos
+        )
+        .is_none());
+        assert!(sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            unbounded_noise,
+            x,
+            InfSign::Pos
+        )
+        .is_none());
+        assert!(sqrt_polynomial_ratio_limit_at_infinity(
+            &mut ctx,
+            unbounded_den_noise,
+            x,
+            InfSign::Pos
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn polynomial_sqrt_ratio_limit_at_infinity_handles_matching_growth() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+
+        let pos = parse_expr(&mut ctx, "x/sqrt(2*x^2 + 1)");
+        let neg = parse_expr(&mut ctx, "x/sqrt(2*x^2 + 1)");
+        let even_degree = parse_expr(&mut ctx, "x^2/sqrt(2*x^4 + 1)");
+        let rational_coeff = parse_expr(&mut ctx, "x/sqrt(4*x^2 + 1)");
+        let noisy = parse_expr(&mut ctx, "(3*x + 1)/sqrt(2*x^2 + x + 1)");
+        let bounded_noise_num =
+            parse_expr(&mut ctx, "(2*x + 1 + cos(x))/sqrt((3*x + 1)^2 + sin(x))");
+
+        let pos_out =
+            polynomial_sqrt_ratio_limit_at_infinity(&mut ctx, pos, x, InfSign::Pos).expect("+inf");
+        let neg_out =
+            polynomial_sqrt_ratio_limit_at_infinity(&mut ctx, neg, x, InfSign::Neg).expect("-inf");
+        let even_degree_out =
+            polynomial_sqrt_ratio_limit_at_infinity(&mut ctx, even_degree, x, InfSign::Neg)
+                .expect("even degree");
+        let rational_coeff_out =
+            polynomial_sqrt_ratio_limit_at_infinity(&mut ctx, rational_coeff, x, InfSign::Pos)
+                .expect("rational sqrt coefficient");
+        let noisy_out = polynomial_sqrt_ratio_limit_at_infinity(&mut ctx, noisy, x, InfSign::Pos)
+            .expect("lower-order polynomial noise");
+        let bounded_noise_num_pos_out =
+            polynomial_sqrt_ratio_limit_at_infinity(&mut ctx, bounded_noise_num, x, InfSign::Pos)
+                .expect("bounded numerator and radicand noise at +inf");
+        let bounded_noise_num_neg_out =
+            polynomial_sqrt_ratio_limit_at_infinity(&mut ctx, bounded_noise_num, x, InfSign::Neg)
+                .expect("bounded numerator and radicand noise at -inf");
+
+        let two = BigRational::from_integer(BigInt::from(2));
+        let three = BigRational::from_integer(BigInt::from(3));
+        let two_thirds = BigRational::new(BigInt::from(2), BigInt::from(3));
+        let minus_two_thirds = -two_thirds.clone();
+        assert!(matches!(
+            ctx.get(pos_out),
+            Expr::Div(num, den)
+                if matches!(ctx.get(*num), Expr::Function(fn_id, args)
+                    if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt)
+                        && matches!(args.as_slice(), [arg] if matches!(ctx.get(*arg), Expr::Number(n) if n == &two)))
+                    && matches!(ctx.get(*den), Expr::Number(n) if n == &two)
+        ));
+        assert!(matches!(ctx.get(neg_out), Expr::Neg(_)));
+        assert!(matches!(
+            ctx.get(even_degree_out),
+            Expr::Div(num, den)
+                if matches!(ctx.get(*num), Expr::Function(fn_id, _) if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt))
+                    && matches!(ctx.get(*den), Expr::Number(n) if n == &two)
+        ));
+        assert!(matches!(
+            ctx.get(rational_coeff_out),
+            Expr::Number(n) if n == &BigRational::new(BigInt::from(1), BigInt::from(2))
+        ));
+        assert!(matches!(
+            ctx.get(noisy_out),
+            Expr::Div(num, den)
+                if matches!(ctx.get(*num), Expr::Mul(coeff, sqrt)
+                    if matches!(ctx.get(*coeff), Expr::Number(n) if n == &three)
+                        && matches!(ctx.get(*sqrt), Expr::Function(fn_id, args)
+                            if ctx.is_builtin(*fn_id, BuiltinFn::Sqrt)
+                                && matches!(args.as_slice(), [arg] if matches!(ctx.get(*arg), Expr::Number(n) if n == &two))))
+                    && matches!(ctx.get(*den), Expr::Number(n) if n == &two)
+        ));
+        assert!(matches!(ctx.get(bounded_noise_num_pos_out), Expr::Number(n) if n == &two_thirds));
+        assert!(
+            matches!(ctx.get(bounded_noise_num_neg_out), Expr::Number(n) if n == &minus_two_thirds)
+        );
+    }
+
+    #[test]
+    fn polynomial_sqrt_ratio_limit_at_infinity_rejects_unsafe_shapes() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+
+        let negative_leading_coeff = parse_expr(&mut ctx, "x/sqrt(1 - 2*x^2)");
+        let odd_radicand_degree = parse_expr(&mut ctx, "x/sqrt(x^3 + 1)");
+        let mismatched_growth = parse_expr(&mut ctx, "x/sqrt(x^4 + 1)");
+        let unbounded_num_noise =
+            parse_expr(&mut ctx, "(2*x + 1 + x*cos(x))/sqrt((3*x + 1)^2 + sin(x))");
+
+        assert!(polynomial_sqrt_ratio_limit_at_infinity(
+            &mut ctx,
+            negative_leading_coeff,
+            x,
+            InfSign::Pos
+        )
+        .is_none());
+        assert!(polynomial_sqrt_ratio_limit_at_infinity(
+            &mut ctx,
+            odd_radicand_degree,
+            x,
+            InfSign::Pos
+        )
+        .is_none());
+        assert!(polynomial_sqrt_ratio_limit_at_infinity(
+            &mut ctx,
+            mismatched_growth,
+            x,
+            InfSign::Pos
+        )
+        .is_none());
+        assert!(polynomial_sqrt_ratio_limit_at_infinity(
+            &mut ctx,
+            unbounded_num_noise,
+            x,
+            InfSign::Pos
+        )
+        .is_none());
     }
 
     #[test]

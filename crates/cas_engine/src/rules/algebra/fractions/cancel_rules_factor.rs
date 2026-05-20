@@ -27,6 +27,7 @@ define_rule!(
             || is_post_calculus_reciprocal_trig_sqrt_denominator(ctx, expr)
             || is_post_calculus_unit_interval_sqrt_product_denominator(ctx, expr)
             || is_post_calculus_sqrt_variable_polynomial_denominator(ctx, expr)
+            || is_post_calculus_sqrt_variable_shifted_sqrt_denominator(ctx, expr)
             || is_post_calculus_trig_elementary_sqrt_denominator(ctx, expr)
             || is_post_calculus_tan_sum_sqrt_denominator_with_matching_cos_square(ctx, expr)
         {
@@ -72,6 +73,100 @@ fn is_post_calculus_sqrt_variable_polynomial_denominator(ctx: &mut Context, expr
         Polynomial::from_expr(ctx, *factor, &var_name)
             .is_ok_and(|poly| poly.degree() >= 1 && poly.degree() <= 3)
     })
+}
+
+fn is_post_calculus_sqrt_variable_shifted_sqrt_denominator(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> bool {
+    let fp = FractionParts::from(&*ctx, expr);
+    if !fp.is_fraction() {
+        return false;
+    }
+
+    let (num, den, _) = fp.to_num_den(ctx);
+    let factors = collect_mul_factors_flat(ctx, den);
+    let Some((sqrt_base, _var_name)) = factors.iter().find_map(|factor| {
+        let base = extract_square_root_base(ctx, *factor)?;
+        positive_scaled_variable_root_base(ctx, base).map(|var_name| (base, var_name))
+    }) else {
+        return false;
+    };
+
+    if !expr_contains_matching_sqrt(ctx, num, sqrt_base, 0) {
+        return false;
+    }
+
+    let has_base_factor = factors
+        .iter()
+        .any(|factor| cas_ast::ordering::compare_expr(ctx, *factor, sqrt_base).is_eq());
+    let has_shifted_sqrt_power = factors
+        .iter()
+        .any(|factor| is_nonzero_shifted_sqrt_power_of_base(ctx, *factor, sqrt_base));
+
+    has_base_factor && has_shifted_sqrt_power
+}
+
+fn is_nonzero_shifted_sqrt_power_of_base(ctx: &Context, expr: ExprId, sqrt_base: ExprId) -> bool {
+    let shifted = match ctx.get(expr) {
+        Expr::Pow(base, exp)
+            if cas_ast::views::as_rational_const(ctx, *exp, 8).is_some_and(|value| {
+                value.is_integer() && value > num_rational::BigRational::from_integer(0.into())
+            }) =>
+        {
+            *base
+        }
+        _ => expr,
+    };
+
+    nonzero_shifted_sqrt_of_base(ctx, shifted, sqrt_base)
+}
+
+fn nonzero_shifted_sqrt_of_base(ctx: &Context, expr: ExprId, sqrt_base: ExprId) -> bool {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Add(left, right) | Expr::Sub(left, right) => (*left, *right),
+        _ => return false,
+    };
+
+    (nonzero_rational_const(ctx, left) && is_sqrt_of_base(ctx, right, sqrt_base))
+        || (nonzero_rational_const(ctx, right) && is_sqrt_of_base(ctx, left, sqrt_base))
+}
+
+fn nonzero_rational_const(ctx: &Context, expr: ExprId) -> bool {
+    cas_ast::views::as_rational_const(ctx, expr, 8)
+        .is_some_and(|value| value != num_rational::BigRational::from_integer(0.into()))
+}
+
+fn is_sqrt_of_base(ctx: &Context, expr: ExprId, sqrt_base: ExprId) -> bool {
+    extract_square_root_base(ctx, expr)
+        .is_some_and(|base| cas_ast::ordering::compare_expr(ctx, base, sqrt_base).is_eq())
+}
+
+fn expr_contains_matching_sqrt(ctx: &Context, expr: ExprId, sqrt_base: ExprId, depth: u8) -> bool {
+    if depth > 8 {
+        return false;
+    }
+    if is_sqrt_of_base(ctx, expr, sqrt_base) {
+        return true;
+    }
+
+    match ctx.get(expr) {
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            expr_contains_matching_sqrt(ctx, *left, sqrt_base, depth + 1)
+                || expr_contains_matching_sqrt(ctx, *right, sqrt_base, depth + 1)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            expr_contains_matching_sqrt(ctx, *inner, sqrt_base, depth + 1)
+        }
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| expr_contains_matching_sqrt(ctx, *arg, sqrt_base, depth + 1)),
+        _ => false,
+    }
 }
 
 fn positive_scaled_variable_root_base(ctx: &Context, base: ExprId) -> Option<String> {

@@ -218,8 +218,10 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_scaled_inverse_tangent_reciprocal_sqrt_product(ctx, target, var_name)
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
+        || diff_target_is_reciprocal_sqrt_times_nonzero_shifted_sqrt(ctx, target, var_name)
         || diff_target_is_bounded_trig_positive_shift_sqrt(ctx, target)
         || diff_target_is_additive_trig_polynomial_sqrt(ctx, target, var_name)
+        || diff_target_is_arctan_sqrt_additive_trig_polynomial(ctx, target, var_name)
         || diff_target_is_scaled_bounded_inverse_trig_surd_quotient(ctx, target, var_name)
         || diff_target_is_bounded_inverse_trig_self_normalized_projection(ctx, target, var_name)
         || expr_is_positive_integer_power_of_low_degree_polynomial(ctx, target, var_name)
@@ -243,7 +245,37 @@ fn diff_target_is_additive_trig_polynomial_sqrt(
     let Some(radicand) = extract_square_root_base(ctx, target) else {
         return false;
     };
-    let terms = cas_math::expr_nary::add_terms_no_sign(ctx, radicand);
+    diff_radicand_is_additive_trig_polynomial(ctx, radicand, var_name)
+}
+
+fn diff_target_is_arctan_sqrt_additive_trig_polynomial(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return false;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(cas_ast::BuiltinFn::Atan | cas_ast::BuiltinFn::Arctan)
+        )
+    {
+        return false;
+    }
+    let Some(radicand) = extract_square_root_base(ctx, args[0]) else {
+        return false;
+    };
+    diff_radicand_is_additive_trig_polynomial(ctx, radicand, var_name)
+}
+
+fn diff_radicand_is_additive_trig_polynomial(
+    ctx: &cas_ast::Context,
+    radicand: ExprId,
+    var_name: &str,
+) -> bool {
+    let terms = cas_math::expr_nary::add_terms_signed(ctx, radicand);
     if terms.len() < 2 || terms.len() > 6 {
         return false;
     }
@@ -253,8 +285,9 @@ fn diff_target_is_additive_trig_polynomial_sqrt(
     let mut has_ln_term = false;
     let mut has_sqrt_variable_term = false;
     let mut has_reciprocal_sqrt_variable_term = false;
+    let mut has_reciprocal_variable_term = false;
     let mut has_variable_dependency = false;
-    for term in terms {
+    for (term, _) in terms {
         has_variable_dependency |= contains_named_var(ctx, term, var_name);
         if bounded_sin_cos_term_bound_for_direct_diff_route(ctx, term).is_some() {
             has_trig_term = true;
@@ -283,6 +316,10 @@ fn diff_target_is_additive_trig_polynomial_sqrt(
             has_reciprocal_sqrt_variable_term = true;
             continue;
         }
+        if term_is_reciprocal_of_diff_var(ctx, term, var_name) {
+            has_reciprocal_variable_term = true;
+            continue;
+        }
         let Ok(poly) = Polynomial::from_expr(ctx, term, var_name) else {
             return false;
         };
@@ -296,6 +333,7 @@ fn diff_target_is_additive_trig_polynomial_sqrt(
         && !(has_tan_term
             && has_ln_term
             && (has_sqrt_variable_term || has_reciprocal_sqrt_variable_term))
+        && !(has_tan_term && has_reciprocal_variable_term)
 }
 
 fn term_is_tan_of_diff_var(ctx: &cas_ast::Context, term: ExprId, var_name: &str) -> bool {
@@ -405,6 +443,44 @@ fn term_is_reciprocal_sqrt_of_diff_var(
         _ => return false,
     };
     let Expr::Variable(sym_id) = ctx.get(radicand) else {
+        return false;
+    };
+    ctx.sym_name(*sym_id) == var_name
+}
+
+fn term_is_reciprocal_of_diff_var(ctx: &cas_ast::Context, term: ExprId, var_name: &str) -> bool {
+    let term = cas_ast::hold::unwrap_internal_hold(ctx, term);
+    if let Expr::Neg(inner) = ctx.get(term) {
+        return term_is_reciprocal_of_diff_var(ctx, *inner, var_name);
+    }
+
+    let core = if let Expr::Mul(_, _) = ctx.get(term) {
+        let mut nonconstant = None;
+        for factor in cas_math::expr_nary::mul_leaves(ctx, term) {
+            if cas_ast::views::as_rational_const(ctx, factor, 4).is_some() {
+                continue;
+            }
+            if nonconstant.replace(factor).is_some() {
+                return false;
+            }
+        }
+        nonconstant.unwrap_or(term)
+    } else {
+        term
+    };
+    let core = cas_ast::hold::unwrap_internal_hold(ctx, core);
+
+    let base = match ctx.get(core) {
+        Expr::Div(num, den) if cas_ast::views::as_rational_const(ctx, *num, 4).is_some() => *den,
+        Expr::Pow(base, exp)
+            if cas_ast::views::as_rational_const(ctx, *exp, 8)
+                == Some(BigRational::new((-1).into(), 1.into())) =>
+        {
+            *base
+        }
+        _ => return false,
+    };
+    let Expr::Variable(sym_id) = ctx.get(base) else {
         return false;
     };
     ctx.sym_name(*sym_id) == var_name
@@ -684,6 +760,9 @@ mod tests {
             "sqrt(sin(2*x)+cos(x)+sqrt(x))",
             "sqrt(sin(2*x)+cos(x)+2*sqrt(x))",
             "sqrt(sin(2*x)+cos(x)-2*sqrt(x))",
+            "sqrt(sin(2*x)+cos(x)+1/x)",
+            "sqrt(sin(2*x)+cos(x)+2/x)",
+            "sqrt(sin(2*x)+cos(x)-2/x)",
         ] {
             let target = cas_parser::parse(raw, &mut ctx).unwrap();
             assert!(
@@ -691,6 +770,20 @@ mod tests {
                 "{raw}"
             );
         }
+    }
+
+    #[test]
+    fn preserves_raw_diff_call_for_subtracted_reciprocal_trig_sqrt() {
+        let mut ctx = cas_ast::Context::new();
+        let call = cas_parser::parse("diff(sqrt(sin(2*x)+cos(x)-2/x), x)", &mut ctx).unwrap();
+        let Expr::Function(fn_id, args) = ctx.get(call) else {
+            panic!("expected function");
+        };
+        assert!(diff_call_should_preserve_raw_target_for_direct_derivative(
+            &ctx,
+            ctx.sym_name(*fn_id),
+            args
+        ));
     }
 
     #[test]
@@ -705,6 +798,23 @@ mod tests {
             let target = cas_parser::parse(raw, &mut ctx).unwrap();
             assert!(
                 !diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_raw_diff_target_for_arctan_sqrt_additive_trig_polynomial() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in [
+            "arctan(sqrt(tan(x)+sqrt(x)+1/sqrt(x)+x))",
+            "arctan(sqrt(tan(x)+2*sqrt(x)-3/sqrt(x)+x))",
+        ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
                 "{raw}"
             );
         }
@@ -1244,10 +1354,52 @@ fn diff_target_is_reciprocal_positive_shifted_sqrt(
     shift.is_positive() && contains_named_var(ctx, radicand, var_name)
 }
 
+fn diff_target_is_reciprocal_sqrt_times_nonzero_shifted_sqrt(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let Expr::Div(num, den) = ctx.get(target) else {
+        return false;
+    };
+    if cas_ast::views::as_rational_const(ctx, *num, 8).is_none_or(|value| value.is_zero()) {
+        return false;
+    }
+
+    let factors: Vec<_> = cas_math::expr_nary::mul_leaves(ctx, *den)
+        .into_iter()
+        .collect();
+    if factors.len() != 2 {
+        return false;
+    }
+
+    [(factors[0], factors[1]), (factors[1], factors[0])]
+        .into_iter()
+        .any(|(sqrt_factor, shifted_factor)| {
+            let Some(sqrt_radicand) = extract_square_root_base(ctx, sqrt_factor) else {
+                return false;
+            };
+            let Some((shifted_radicand, shift)) =
+                shifted_sqrt_positive_constant_parts(ctx, shifted_factor)
+            else {
+                return false;
+            };
+            !shift.is_zero()
+                && contains_named_var(ctx, sqrt_radicand, var_name)
+                && cas_math::expr_domain::exprs_equivalent(ctx, sqrt_radicand, shifted_radicand)
+        })
+}
+
 fn shifted_sqrt_positive_constant_parts(
     ctx: &cas_ast::Context,
     expr: ExprId,
 ) -> Option<(ExprId, BigRational)> {
+    if let Expr::Sub(left, right) = ctx.get(expr) {
+        let radicand = extract_square_root_base(ctx, *left)?;
+        let shift = -cas_ast::views::as_rational_const(ctx, *right, 8)?;
+        return Some((radicand, shift));
+    }
+
     let Expr::Add(left, right) = ctx.get(expr) else {
         return None;
     };
@@ -1715,6 +1867,10 @@ fn diff_target_is_inverse_tangent_reciprocal_sqrt_product(
         )
     {
         return false;
+    }
+
+    if diff_target_is_reciprocal_sqrt_times_nonzero_shifted_sqrt(ctx, args[0], var_name) {
+        return true;
     }
 
     let Expr::Div(num, den) = ctx.get(args[0]) else {
