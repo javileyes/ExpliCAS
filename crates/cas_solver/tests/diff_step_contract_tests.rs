@@ -10248,8 +10248,10 @@ fn variable_base_log_abs_diff_uses_direct_domain_safe_arg_rule() {
     .map(|cond| cond.display(&engine.simplifier.context))
     .collect();
 
+    let mut sorted_required = required.clone();
+    sorted_required.sort();
     assert_eq!(
-        required,
+        sorted_required,
         vec!["x > 0".to_string(), "x ≠ 1".to_string()],
         "unexpected required_conditions: {required:?}"
     );
@@ -16819,7 +16821,7 @@ fn raw_tangent_trig_root_diff_preserves_direct_presentation_and_residual() {
     for (input, expected_result, expected_step_rule) in [
         (
             "diff(sqrt(tan(x)+sin(x)+x), x)",
-            "(cos(x)^2 + cos(x)^3 + 1) / (2 * cos(x)^2 * sqrt(sin(x) + tan(x) + x))",
+            "(cos(x) + sec(x)^2 + 1) / (2 * sqrt(sin(x) + tan(x) + x))",
             "Calcular la derivada",
         ),
         (
@@ -16983,7 +16985,7 @@ fn cot_exp_root_diff_uses_direct_presentation_and_residual() {
 
     assert_eq!(
         result,
-        "(sin(x)^2 + e^x * sin(x)^2 - 1) / (2 * sin(x)^2 * sqrt(cot(x) + e^x + x))"
+        "(e^x + 1 - csc(x)^2) / (2 * sqrt(cot(x) + e^x + x))"
     );
     assert_eq!(
         output.steps.len(),
@@ -17079,7 +17081,7 @@ fn cot_sqrt_root_diff_uses_direct_csc_presentation_and_residual() {
 
     assert_eq!(
         result,
-        "(2 * sqrt(x) + 1 - 2 * sqrt(x) * csc(x)^2) / (4 * sqrt(x) * sqrt(cot(x) + sqrt(x) + x))"
+        "(1 / (2 * sqrt(x)) + 1 - csc(x)^2) / (2 * sqrt(cot(x) + sqrt(x) + x))"
     );
     assert_eq!(
         output.steps.len(),
@@ -17150,23 +17152,23 @@ fn sec_csc_sqrt_root_diff_uses_direct_reciprocal_trig_presentation_and_residual(
     for (direct_input, expected, expected_required, residual_input) in [
         (
             "diff(sqrt(sec(x)+sqrt(x)+x), x)",
-            "(2 * sqrt(x) + 2 * tan(x) * sec(x) * sqrt(x) + 1) / (4 * sqrt(x) * sqrt(sec(x) + sqrt(x) + x))",
+            "(tan(x) * sec(x) + 1 / (2 * sqrt(x)) + 1) / (2 * sqrt(sec(x) + sqrt(x) + x))",
             vec![
                 "cos(x) ≠ 0".to_string(),
                 "sec(x) + sqrt(x) + x > 0".to_string(),
                 "x > 0".to_string(),
             ],
-            "diff(sqrt(sec(x)+sqrt(x)+x), x) - (2*sqrt(x)+1+2*sqrt(x)*sec(x)*tan(x))/(4*sqrt(x)*sqrt(sec(x)+sqrt(x)+x))",
+            "diff(sqrt(sec(x)+sqrt(x)+x), x) - (sec(x)*tan(x)+1/(2*sqrt(x))+1)/(2*sqrt(sec(x)+sqrt(x)+x))",
         ),
         (
             "diff(sqrt(csc(x)+sqrt(x)+x), x)",
-            "(2 * sqrt(x) + 1 - 2 * csc(x) * cot(x) * sqrt(x)) / (4 * sqrt(x) * sqrt(csc(x) + sqrt(x) + x))",
+            "(1 / (2 * sqrt(x)) + 1 - csc(x) * cot(x)) / (2 * sqrt(csc(x) + sqrt(x) + x))",
             vec![
                 "csc(x) + sqrt(x) + x > 0".to_string(),
                 "sin(x) ≠ 0".to_string(),
                 "x > 0".to_string(),
             ],
-            "diff(sqrt(csc(x)+sqrt(x)+x), x) - (2*sqrt(x)+1-2*sqrt(x)*csc(x)*cot(x))/(4*sqrt(x)*sqrt(csc(x)+sqrt(x)+x))",
+            "diff(sqrt(csc(x)+sqrt(x)+x), x) - (1/(2*sqrt(x))+1-csc(x)*cot(x))/(2*sqrt(csc(x)+sqrt(x)+x))",
         ),
     ] {
         let mut engine = Engine::new();
@@ -17270,6 +17272,26 @@ fn sec_csc_exp_root_diff_uses_direct_reciprocal_trig_presentation_and_residual()
             vec!["csc(x) + e^x + x > 0".to_string(), "sin(x) ≠ 0".to_string()],
             "diff(sqrt(csc(x)+exp(x)+x), x) - (e^x+1-csc(x)*cot(x))/(2*sqrt(csc(x)+e^x+x))",
         ),
+        (
+            "diff(sqrt(sec(x)+exp(x)+sqrt(x)+x), x)",
+            "(e^x + tan(x) * sec(x) + 1 / (2 * sqrt(x)) + 1) / (2 * sqrt(sec(x) + sqrt(x) + e^x + x))",
+            vec![
+                "cos(x) ≠ 0".to_string(),
+                "sec(x) + sqrt(x) + e^x + x > 0".to_string(),
+                "x > 0".to_string(),
+            ],
+            "diff(sqrt(sec(x)+exp(x)+sqrt(x)+x), x) - (e^x+sec(x)*tan(x)+1/(2*sqrt(x))+1)/(2*sqrt(sec(x)+sqrt(x)+e^x+x))",
+        ),
+        (
+            "diff(sqrt(csc(x)+exp(x)+sqrt(x)+x), x)",
+            "(e^x + 1 / (2 * sqrt(x)) + 1 - csc(x) * cot(x)) / (2 * sqrt(csc(x) + sqrt(x) + e^x + x))",
+            vec![
+                "csc(x) + sqrt(x) + e^x + x > 0".to_string(),
+                "sin(x) ≠ 0".to_string(),
+                "x > 0".to_string(),
+            ],
+            "diff(sqrt(csc(x)+exp(x)+sqrt(x)+x), x) - (e^x+1/(2*sqrt(x))+1-csc(x)*cot(x))/(2*sqrt(csc(x)+sqrt(x)+e^x+x))",
+        ),
     ] {
         let mut engine = Engine::new();
         let mut state = SessionState::new();
@@ -17348,6 +17370,116 @@ fn sec_csc_exp_root_diff_uses_direct_reciprocal_trig_presentation_and_residual()
             output.steps.len(),
             1,
             "reciprocal trig exp residual should close before cleanup, got: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn arctan_sec_csc_exp_sqrt_root_diff_uses_inline_reciprocal_trig_presentation_and_residual() {
+    for (direct_input, expected, expected_required, residual_input) in [
+        (
+            "diff(arctan(sqrt(sec(x)+exp(x)+sqrt(x)+x)), x)",
+            "(e^x + tan(x) * sec(x) + 1 / (2 * sqrt(x)) + 1) / (2 * sqrt(sec(x) + sqrt(x) + e^x + x) * (sec(x) + sqrt(x) + e^x + x + 1))",
+            vec![
+                "sec(x) + sqrt(x) + e^x + x > 0".to_string(),
+                "cos(x) ≠ 0".to_string(),
+                "x > 0".to_string(),
+            ],
+            "diff(arctan(sqrt(sec(x)+exp(x)+sqrt(x)+x)), x) - (e^x+sec(x)*tan(x)+1/(2*sqrt(x))+1)/(2*sqrt(sec(x)+sqrt(x)+e^x+x)*(sec(x)+sqrt(x)+e^x+x+1))",
+        ),
+        (
+            "diff(arctan(sqrt(csc(x)+exp(x)+sqrt(x)+x)), x)",
+            "(e^x + 1 / (2 * sqrt(x)) + 1 - csc(x) * cot(x)) / (2 * sqrt(csc(x) + sqrt(x) + e^x + x) * (csc(x) + sqrt(x) + e^x + x + 1))",
+            vec![
+                "csc(x) + sqrt(x) + e^x + x > 0".to_string(),
+                "sin(x) ≠ 0".to_string(),
+                "x > 0".to_string(),
+            ],
+            "diff(arctan(sqrt(csc(x)+exp(x)+sqrt(x)+x)), x) - (e^x+1/(2*sqrt(x))+1-csc(x)*cot(x))/(2*sqrt(csc(x)+sqrt(x)+e^x+x)*(csc(x)+sqrt(x)+e^x+x+1))",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+
+        let parsed = parse(direct_input, &mut engine.simplifier.context).expect("parse direct");
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: direct_input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval direct");
+
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+
+        assert_eq!(result, expected, "input: {direct_input}");
+        assert_eq!(
+            output.steps.len(),
+            1,
+            "arctan reciprocal trig root diff should stay on direct presentation: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+        assert_eq!(required, expected_required, "input: {direct_input}");
+
+        let parsed = parse(residual_input, &mut engine.simplifier.context).expect("parse residual");
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: residual_input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval residual");
+
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        assert_eq!(result, "0", "input: {residual_input}");
+        assert_eq!(
+            output.steps.len(),
+            1,
+            "arctan reciprocal trig residual should close before cleanup, got: {:?}",
             output
                 .steps
                 .iter()
@@ -17848,7 +17980,7 @@ fn tan_exp_linear_root_diff_uses_direct_presentation_before_cleanup() {
     for (input, expected_result, expected_required) in [
         (
             "diff(sqrt(tan(x)+exp(2*x)+x), x)",
-            "(cos(x)^2 + 2 * e^(2 * x) * cos(x)^2 + 1) / (2 * cos(x)^2 * sqrt(tan(x) + e^(2 * x) + x))",
+            "(sec(x)^2 + 2 * e^(2 * x) + 1) / (2 * sqrt(tan(x) + e^(2 * x) + x))",
             vec![
                 "cos(x) ≠ 0".to_string(),
                 "tan(x) + e^(2 * x) + x > 0".to_string(),
@@ -17856,7 +17988,7 @@ fn tan_exp_linear_root_diff_uses_direct_presentation_before_cleanup() {
         ),
         (
             "diff(sqrt(tan(x)+exp(2*x+1)+x), x)",
-            "(cos(x)^2 + 2 * e^(2 * x + 1) * cos(x)^2 + 1) / (2 * cos(x)^2 * sqrt(tan(x) + e^(2 * x + 1) + x))",
+            "(sec(x)^2 + 2 * e^(2 * x + 1) + 1) / (2 * sqrt(tan(x) + e^(2 * x + 1) + x))",
             vec![
                 "cos(x) ≠ 0".to_string(),
                 "tan(x) + e^(2 * x + 1) + x > 0".to_string(),
@@ -17864,7 +17996,7 @@ fn tan_exp_linear_root_diff_uses_direct_presentation_before_cleanup() {
         ),
         (
             "diff(sqrt(tan(x)+exp(-2*x)+x), x)",
-            "(cos(x)^2 + 1 - 2 * e^(-2 * x) * cos(x)^2) / (2 * cos(x)^2 * sqrt(tan(x) + e^(-2 * x) + x))",
+            "(sec(x)^2 + 1 - 2 * e^(-2 * x)) / (2 * sqrt(tan(x) + e^(-2 * x) + x))",
             vec![
                 "cos(x) ≠ 0".to_string(),
                 "tan(x) + e^(-2 * x) + x > 0".to_string(),
@@ -17933,7 +18065,7 @@ fn tan_exp_sqrt_root_diff_cross_family_contract_stays_compact() {
     for (input, expected_result, expected_required) in [
         (
             "diff(sqrt(tan(x)+exp(x)+sqrt(x)+x), x)",
-            "(2 * sqrt(x) + 2 * sqrt(x) * e^x + 2 * sqrt(x) * sec(x)^2 + 1) / (4 * sqrt(x) * sqrt(tan(x) + sqrt(x) + e^x + x))",
+            "(e^x + sec(x)^2 + 1 / (2 * sqrt(x)) + 1) / (2 * sqrt(tan(x) + sqrt(x) + e^x + x))",
             vec![
                 "cos(x) ≠ 0".to_string(),
                 "tan(x) + sqrt(x) + e^x + x > 0".to_string(),
@@ -17942,7 +18074,7 @@ fn tan_exp_sqrt_root_diff_cross_family_contract_stays_compact() {
         ),
         (
             "diff(arctan(sqrt(tan(x)+exp(x)+sqrt(x)+x)), x)",
-            "(2 * sqrt(x) + 2 * sqrt(x) * e^x + 2 * sqrt(x) * sec(x)^2 + 1) / (4 * sqrt(x) * sqrt(tan(x) + sqrt(x) + e^x + x) * (tan(x) + sqrt(x) + e^x + x + 1))",
+            "(e^x + sec(x)^2 + 1 / (2 * sqrt(x)) + 1) / (2 * sqrt(tan(x) + sqrt(x) + e^x + x) * (tan(x) + sqrt(x) + e^x + x + 1))",
             vec![
                 "x > 0".to_string(),
                 "tan(x) + sqrt(x) + e^x + x > 0".to_string(),
@@ -17995,13 +18127,16 @@ fn tan_exp_sqrt_root_diff_cross_family_contract_stays_compact() {
             output.domain_warnings
         );
 
-        let required: Vec<String> = normalize_and_dedupe_conditions(
+        let mut required: Vec<String> = normalize_and_dedupe_conditions(
             &mut engine.simplifier.context,
             &output.required_conditions,
         )
         .iter()
         .map(|cond| cond.display(&engine.simplifier.context))
         .collect();
+        let mut expected_required = expected_required;
+        required.sort();
+        expected_required.sort();
         assert_eq!(required, expected_required, "input: {input}");
     }
 }
@@ -18030,6 +18165,14 @@ fn tan_exp_sqrt_root_diff_cross_family_residuals_collapse_before_cleanup() {
             vec![
                 "x > 0".to_string(),
                 "tan(x) + sqrt(x) + e^x + x > 0".to_string(),
+                "cos(x) ≠ 0".to_string(),
+            ],
+        ),
+        (
+            "(e^x + sec(x)^2 + 1/(2*sqrt(x)) + 1)/(2*sqrt(tan(x)+sqrt(x)+e^x+x)) - (2*sqrt(x)+2*sqrt(x)*e^x+2*sqrt(x)*sec(x)^2+1)/(4*sqrt(x)*sqrt(tan(x)+sqrt(x)+e^x+x))",
+            vec![
+                "tan(x) + sqrt(x) + e^x + x > 0".to_string(),
+                "x > 0".to_string(),
                 "cos(x) ≠ 0".to_string(),
             ],
         ),
@@ -18079,13 +18222,16 @@ fn tan_exp_sqrt_root_diff_cross_family_residuals_collapse_before_cleanup() {
             output.domain_warnings
         );
 
-        let required: Vec<String> = normalize_and_dedupe_conditions(
+        let mut required: Vec<String> = normalize_and_dedupe_conditions(
             &mut engine.simplifier.context,
             &output.required_conditions,
         )
         .iter()
         .map(|cond| cond.display(&engine.simplifier.context))
         .collect();
+        let mut expected_required = expected_required;
+        required.sort();
+        expected_required.sort();
         assert_eq!(required, expected_required, "input: {input}");
     }
 }
@@ -18983,11 +19129,11 @@ fn additive_trig_root_diff_reciprocal_sqrt_scaled_residual_collapses_before_clea
 }
 
 #[test]
-fn tan_sqrt_root_diff_uses_sqrt_denominator_presentation() {
+fn tan_sqrt_root_diff_uses_inline_post_calculus_presentation() {
     for (input, expected, expected_required) in [
         (
             "diff(sqrt(tan(x)+sqrt(x)+x), x)",
-            "(2 * sqrt(x) + 2 * sqrt(x) * sec(x)^2 + 1) / (4 * sqrt(x) * sqrt(tan(x) + sqrt(x) + x))",
+            "(sec(x)^2 + 1 / (2 * sqrt(x)) + 1) / (2 * sqrt(tan(x) + sqrt(x) + x))",
             vec![
                 "cos(x) ≠ 0".to_string(),
                 "tan(x) + sqrt(x) + x > 0".to_string(),
@@ -18996,7 +19142,7 @@ fn tan_sqrt_root_diff_uses_sqrt_denominator_presentation() {
         ),
         (
             "diff(sqrt(tan(x)+sqrt(x)+2*x+1), x)",
-            "(2 * sqrt(x) * sec(x)^2 + 4 * sqrt(x) + 1) / (4 * sqrt(x) * sqrt(tan(x) + sqrt(x) + 2 * x + 1))",
+            "(sec(x)^2 + 1 / (2 * sqrt(x)) + 2) / (2 * sqrt(tan(x) + sqrt(x) + 2 * x + 1))",
             vec![
                 "cos(x) ≠ 0".to_string(),
                 "tan(x) + sqrt(x) + 2 * x + 1 > 0".to_string(),

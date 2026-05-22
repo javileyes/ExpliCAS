@@ -12408,7 +12408,7 @@ The burden of proof stays the same:
 - area:
   - calculus / post-calculus presentation
 - status:
-  - `discovery/observe-only`
+  - `resolved`
 - candidate:
   - render `diff(sqrt(tan(x)), x)` as
     `1 / (2*cos(x)^2*sqrt(tan(x)))`
@@ -12431,7 +12431,7 @@ The burden of proof stays the same:
 - area:
   - coverage / calculus-integrate contextual embedding
 - status:
-  - `discovery/observe-only`
+  - `resolved`
 - candidate:
   - promote the squared passthrough wrapper
     `(((integrate(x^2*sin(x),x))^2)+m) - (((2*x*sin(x)+(2-x^2)*cos(x))^2)+m)`
@@ -14522,3 +14522,102 @@ The burden of proof stays the same:
   - scaling known derivative terms by the common denominator and appending the
     logarithmic reciprocal contribution closes this family without entering
     the timeout-prone general cleanup route
+
+## 2026-05-20 - Observe-only discovery: hyperbolic double-nested denominator residual timeout
+
+- area:
+  - calculus / integration residual smoke / post-calculus presentation /
+    shell-depth 3 denominator wrappers
+- status:
+  - `discovery/observe-only`
+- observed:
+  - after preserving compact triple binomial denominator products, the
+    `double_nested_den` wrapper passes quickly for representative polynomial,
+    arctan-root, and fractional-power residuals
+  - the same wrapper times out for the hyperbolic by-parts residual families
+    `hyperbolic_sinh` and `hyperbolic_cosh` under the 6s smoke timeout
+- decision:
+  - do not promote the hyperbolic depth-3 wrapper into the default smoke matrix
+    in this iteration
+  - retain only the minimal passing representatives as discovery pressure
+- retained learning:
+  - shell-depth 3 denominator presentation is not uniformly cheap across
+    integration residual families
+  - the hyperbolic by-parts residual path needs a narrower residual/presentation
+    exit before it is safe to expand the wrapper globally
+- resolved by:
+  - 2026-05-20 robustness iteration widened only the hyperbolic
+    constant-passthrough quotient residual adapter to depth-2 nested quotients
+  - `hyperbolic_sinh:double_nested_den` and `hyperbolic_cosh:double_nested_den`
+    now pass the focused smoke under 6s and were promoted as minimal
+    representatives
+
+## 2026-05-20 - Observe-only discovery: non-corpus rational quadratic wrapper warning
+
+- area:
+  - calculus / integration residual smoke / rational quadratic antiderivative
+    verification / shell-depth 3 denominator wrappers
+- status:
+  - `discovery/observe-only`
+- observed:
+  - a generated rational quadratic wrapper around
+    `diff(integrate((3*x + 5)/(x^2 + x + 1),x),x)-((3*x + 5)/(x^2 + x + 1))`
+    returns the compact expected quotient, but emits a `depth_overflow` warning
+    in the rationalization phase under `forbid_warnings`
+  - the retained corpus representative `rational_quad:double_nested_den`
+    remains clean: it preserves `x + 1`, `x + 2`, `x + 3`, `x + 4` conditions
+    and passes without warnings
+- decision:
+  - do not promote the non-corpus rational quadratic variant in this iteration
+  - promote only the existing stable `rational_quad` representative as the
+    minimal shell-depth 3 coverage case
+- retained learning:
+  - rational quadratic antiderivative residuals can be mathematically closed
+    while still leaking a rationalization-depth warning on some non-canonical
+    denominators
+  - a future iteration should address this as robustness/presentation only if
+    the warning is reproduced by a minimal stable representative
+- resolved by:
+  - 2026-05-20 robustness iteration widened only the rational quadratic
+    constant-passthrough quotient residual adapter to depth-2 nested quotients
+  - `rational_quad_positive_quadratic:double_nested_den` now passes under
+    `forbid_warnings` with only `x + 2`, `x + 3`, and `x + 4` conditions
+
+## 2026-05-21 - Discovery observe-only: inline sqrt-variable tan-root presentation residual timeout
+
+- area:
+  - calculus / differentiation / post-calculus presentation /
+    additive `tan` root terms with `sqrt(x)`
+- status:
+  - `discovery/observe-only`
+- observed:
+  - a local presentation candidate rewrote
+    `diff(sqrt(tan(x)+sqrt(x)+x), x)` from the stable common-denominator form
+    `(2*sqrt(x)+2*sqrt(x)*sec(x)^2+1)/(4*sqrt(x)*sqrt(tan(x)+sqrt(x)+x))`
+    to the more chain-rule-like
+    `(sec(x)^2 + 1/(2*sqrt(x)) + 1)/(2*sqrt(tan(x)+sqrt(x)+x))`
+  - direct public diff probing produced the prettier form with the same domain
+    conditions and no warnings
+  - the matching residual contract for the cross-family sibling
+    `diff(sqrt(tan(x)+exp(x)+sqrt(x)+x), x)` timed out after more than 60s
+    when the inline `1/(2*sqrt(x))` numerator term was used
+- decision:
+  - do not retain or promote the inline numerator presentation in this
+    iteration
+  - keep the current common-denominator presentation for `tan + sqrt(x)` root
+    derivatives because its residual contracts close before cleanup
+- retained learning:
+  - for this family, prettier chain-rule display is not enough; the displayed
+    form must also have a bounded residual comparison route
+  - future work should first add an exact early residual route for inline
+    `1/(2*sqrt(x))` terms in `tan` root derivatives, then revisit the public
+    presentation
+- partial follow-up:
+  - 2026-05-21 robustness iteration retained an exact, presentation-only
+    residual route for the pure inline-vs-common-denominator equality
+  - this removes the depth-overflow route for the standalone presentation
+    identity
+  - later 2026-05-21 robustness iteration wired the same exact matcher into
+    the private `diff(...) - target` residual route, so the embedded inline
+    target direction is now bounded without changing the public `diff`
+    presentation yet

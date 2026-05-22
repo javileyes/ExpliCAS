@@ -252,11 +252,13 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
     def test_default_matrix_contains_representative_wrapped_residuals(self) -> None:
         cases = SMOKE.build_default_matrix_cases()
 
-        self.assertEqual(len(cases), 212)
+        self.assertEqual(len(cases), 221)
         self.assertIn("arctan_sqrt_additive_trig:plus", {case.name for case in cases})
         self.assertIn("arctan_sqrt_additive_trig:nested_den", {case.name for case in cases})
+        self.assertIn("arctan_sqrt_additive_trig:double_nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_sin:plus", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_sin:nested_den", {case.name for case in cases})
+        self.assertIn("integrate_exp_trig_sin:double_nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_cos:plus", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_cos:nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_neg_sin:plus", {case.name for case in cases})
@@ -264,12 +266,18 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertIn("integrate_exp_trig_neg_cos:plus", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_neg_cos:nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_neg_sin:plus", {case.name for case in cases})
+        self.assertIn("plain_trig_sin:double_nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_neg_sin:nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_neg_cos:plus", {case.name for case in cases})
         self.assertIn("plain_trig_neg_cos:nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_sparse_neg_sin:plus", {case.name for case in cases})
         self.assertIn("plain_trig_sparse_neg_sin:nested_den", {case.name for case in cases})
         self.assertIn("rational_quad:plus", {case.name for case in cases})
+        self.assertIn("rational_quad:double_nested_den", {case.name for case in cases})
+        self.assertIn(
+            "rational_quad_positive_quadratic:double_nested_den",
+            {case.name for case in cases},
+        )
         self.assertIn("hyperbolic_sinh:scaled_negative", {case.name for case in cases})
         self.assertIn("hyperbolic_sinh:minus_const", {case.name for case in cases})
         self.assertIn("hyperbolic_sinh:plus_noise", {case.name for case in cases})
@@ -284,6 +292,8 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             {case.name for case in cases},
         )
         self.assertIn("hyperbolic_sinh:nested_den", {case.name for case in cases})
+        self.assertIn("hyperbolic_sinh:double_nested_den", {case.name for case in cases})
+        self.assertIn("hyperbolic_cosh:double_nested_den", {case.name for case in cases})
         self.assertIn("hyperbolic_sinh_over_cosh_shifted_quotient", {case.name for case in cases})
         self.assertIn(
             "hyperbolic_sinh_over_cosh_negative_shifted_quotient",
@@ -322,6 +332,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         )
         self.assertIn("fractional_den_power:plus", {case.name for case in cases})
         self.assertIn("fractional_den_power:nested_den", {case.name for case in cases})
+        self.assertIn("fractional_den_power:double_nested_den", {case.name for case in cases})
         rational_case = next(case for case in cases if case.name == "rational_quad:plus")
         self.assertEqual(rational_case.expected_result, "1 / (x + 2)")
         self.assertEqual(rational_case.required_conditions, ("x + 1", "x + 2"))
@@ -363,17 +374,51 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         )
         self.assertEqual(product_noise_case.expected_result, "1 / ((x + 2)·(x + 3))")
         self.assertEqual(product_noise_case.required_conditions, ("x + 1", "x + 2", "x + 3"))
+        rational_quad_double_nested_case = next(
+            case for case in cases if case.name == "rational_quad:double_nested_den"
+        )
+        self.assertEqual(
+            rational_quad_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            rational_quad_double_nested_case.required_conditions,
+            ("x + 1", "x + 2", "x + 3", "x + 4"),
+        )
+        rational_quad_positive_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "rational_quad_positive_quadratic:double_nested_den"
+        )
+        self.assertEqual(
+            rational_quad_positive_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            rational_quad_positive_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
         exp_nested_case = next(case for case in cases if case.name == "exp_poly:nested_den")
-        self.assertEqual(exp_nested_case.expected_result, "1 / (x·(x + 2) + 3·x + 6)")
+        self.assertEqual(exp_nested_case.expected_result, "1 / ((x + 2)·(x + 3))")
         self.assertEqual(exp_nested_case.required_conditions, ("x + 2", "x + 3"))
         arctan_sqrt_nested_case = next(
             case for case in cases if case.name == "arctan_sqrt_additive_trig:nested_den"
         )
         self.assertEqual(
             arctan_sqrt_nested_case.expected_result,
-            "1 / (x·(x + 2) + 3·x + 6)",
+            "1 / ((x + 2)·(x + 3))",
         )
         self.assertEqual(arctan_sqrt_nested_case.required_conditions, ("x + 2", "x + 3"))
+        arctan_sqrt_double_nested_case = next(
+            case for case in cases if case.name == "arctan_sqrt_additive_trig:double_nested_den"
+        )
+        self.assertEqual(
+            arctan_sqrt_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            arctan_sqrt_double_nested_case.required_conditions, ("x + 2", "x + 3", "x + 4")
+        )
         exp_trig_nested_case = next(
             case for case in cases if case.name == "integrate_exp_trig_sin:nested_den"
         )
@@ -382,6 +427,16 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             "1 / ((x + 2)·(x + 3))",
         )
         self.assertEqual(exp_trig_nested_case.required_conditions, ("x + 2", "x + 3"))
+        exp_trig_double_nested_case = next(
+            case for case in cases if case.name == "integrate_exp_trig_sin:double_nested_den"
+        )
+        self.assertEqual(
+            exp_trig_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            exp_trig_double_nested_case.required_conditions, ("x + 2", "x + 3", "x + 4")
+        )
         exp_trig_neg_nested_case = next(
             case for case in cases if case.name == "integrate_exp_trig_neg_sin:nested_den"
         )
@@ -390,6 +445,16 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             "1 / ((x + 2)·(x + 3))",
         )
         self.assertEqual(exp_trig_neg_nested_case.required_conditions, ("x + 2", "x + 3"))
+        plain_trig_double_nested_case = next(
+            case for case in cases if case.name == "plain_trig_sin:double_nested_den"
+        )
+        self.assertEqual(
+            plain_trig_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            plain_trig_double_nested_case.required_conditions, ("x + 2", "x + 3", "x + 4")
+        )
         plain_trig_neg_nested_case = next(
             case for case in cases if case.name == "plain_trig_neg_sin:nested_den"
         )
@@ -411,7 +476,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
 
     def test_default_matrix_filters_by_base_and_wrapper(self) -> None:
         base_cases = SMOKE.build_default_matrix_cases(base_filters=("arctan_sqrt_additive_trig",))
-        self.assertEqual(len(base_cases), 11)
+        self.assertEqual(len(base_cases), 12)
         self.assertTrue(
             all(case.name.startswith("arctan_sqrt_additive_trig:") for case in base_cases)
         )
@@ -419,6 +484,13 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         wrapper_cases = SMOKE.build_default_matrix_cases(wrapper_filters=("nested_den",))
         self.assertTrue(wrapper_cases)
         self.assertTrue(all(case.name.endswith(":nested_den") for case in wrapper_cases))
+        double_nested_wrapper_cases = SMOKE.build_default_matrix_cases(
+            wrapper_filters=("double_nested_den",)
+        )
+        self.assertTrue(double_nested_wrapper_cases)
+        self.assertTrue(
+            all(case.name.endswith(":double_nested_den") for case in double_nested_wrapper_cases)
+        )
 
         exact_case = SMOKE.build_default_matrix_cases(
             base_filters=("hyperbolic_sinh_over_cosh_shifted_quotient",)
@@ -437,9 +509,20 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         )
         self.assertEqual(
             fractional_den_power_nested_case.expected_result,
-            "1 / (x·(x + 2) + 3·x + 6)",
+            "1 / ((x + 2)·(x + 3))",
         )
         self.assertEqual(fractional_den_power_nested_case.required_conditions, ("x + 2", "x + 3"))
+        fractional_den_power_double_nested_case = next(
+            case for case in cases if case.name == "fractional_den_power:double_nested_den"
+        )
+        self.assertEqual(
+            fractional_den_power_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            fractional_den_power_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
         shifted_quotient_case = next(
             case for case in cases if case.name == "rational_quad_over_recip_trig_shifted_quotient"
         )
@@ -657,9 +740,29 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"-3·(x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
+                    *"^(3/2)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"^(3/2)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"^(3/2)"*"/(x+2))/(x+3)"*)
                     cat <<'OUT'
-                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
                     *"^(3/2)"*"x+3"*)
@@ -727,9 +830,14 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1","required_conditions":[{"expr_display":"x + 1"}],"warnings":[]}
                     OUT
                     ;;
+                    *"^(3/2)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"^(3/2)"*"/(x+2))/(x+3)"*)
                     cat <<'OUT'
-                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
                     *"^(3/2)"*"x+3"*)
@@ -757,9 +865,29 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
+                    *arctan*sqrt*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *arctan*sqrt*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *arctan*sqrt*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *arctan*sqrt*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *arctan*sqrt*"/(x+2))/(x+3)"*)
                     cat <<'OUT'
-                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
                     *arctan*sqrt*"/(x+3)"*)
@@ -767,9 +895,49 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
+                    *sin*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *sin*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *sin*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *sin*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *sin*"/(x+3)"*)
                     cat <<'OUT'
                     {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *cos*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *cos*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *cos*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *cos*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
                     OUT
                     ;;
                     *cos*"/(x+3)"*)
@@ -777,9 +945,49 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
+                    *"exp("*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"exp("*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"exp("*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"exp("*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"exp("*"/(x+3)"*)
                     cat <<'OUT'
-                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
                     OUT
                     ;;
                     *"/(x+3)"*)
@@ -812,8 +1020,8 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(matrix["status"], "pass", matrix)
-        self.assertEqual(matrix["total"], 212)
-        self.assertEqual(matrix["status_counts"]["pass"], 212)
+        self.assertEqual(matrix["total"], 221)
+        self.assertEqual(matrix["status_counts"]["pass"], 221)
 
     def test_cli_accepts_repeated_require_flags(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -855,7 +1063,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     ;;
                     *"^(3/2)"*"/(x+2))/(x+3)"*)
                     cat <<'OUT'
-                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
                     *"^(3/2)"*"x+3"*)
@@ -925,7 +1133,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     ;;
                     *"^(3/2)"*"/(x+2))/(x+3)"*)
                     cat <<'OUT'
-                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
                     *"^(3/2)"*"x+3"*)
@@ -953,9 +1161,14 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
+                    *arctan*sqrt*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *arctan*sqrt*"/(x+2))/(x+3)"*)
                     cat <<'OUT'
-                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
                     *arctan*sqrt*"/(x+3)"*)
@@ -963,9 +1176,19 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
+                    *sin*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *sin*"/(x+3)"*)
                     cat <<'OUT'
                     {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *cos*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
                     OUT
                     ;;
                     *cos*"/(x+3)"*)
@@ -973,9 +1196,19 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
+                    *"exp("*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"exp("*"/(x+3)"*)
                     cat <<'OUT'
-                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
                     OUT
                     ;;
                     *"/(x+3)"*)
@@ -1108,9 +1341,14 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1","required_conditions":[{"expr_display":"x + 1"}],"warnings":[]}
                     OUT
                     ;;
+                    *"^(3/2)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"^(3/2)"*"/(x+2))/(x+3)"*)
                     cat <<'OUT'
-                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
                     *"^(3/2)"*"x+3"*)
@@ -1138,9 +1376,14 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
+                    *arctan*sqrt*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *arctan*sqrt*"/(x+2))/(x+3)"*)
                     cat <<'OUT'
-                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
                     *arctan*sqrt*"/(x+3)"*)
@@ -1160,7 +1403,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     ;;
                     *"exp("*"/(x+3)"*)
                     cat <<'OUT'
-                    {"result":"1 / (x·(x + 2) + 3·x + 6)","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
                     *"/(x+3)"*)
@@ -1209,7 +1452,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             f"stdout:\n{completed.stdout}\nstderr:\n{completed.stderr}",
         )
         self.assertIn('"base_filters": ["arctan_sqrt_additive_trig"]', completed.stdout)
-        self.assertIn('"total": 11', completed.stdout)
+        self.assertIn('"total": 12', completed.stdout)
 
 
 if __name__ == "__main__":

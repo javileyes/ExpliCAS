@@ -136,7 +136,7 @@ fn test_eval_json_tan_exp_sqrt_diff_preserves_compact_presentation_without_timeo
     assert_eq!(json["ok"], true);
     assert_eq!(
         json["result"],
-        "(cos(x)^2 + e^x·cos(x)^2 + 1) / (2·cos(x)^2·sqrt(tan(x) + e^x + x))"
+        "(e^x + sec(x)^2 + 1) / (2·sqrt(tan(x) + e^x + x))"
     );
 
     let steps = json["steps"].as_array().expect("steps should be an array");
@@ -144,7 +144,7 @@ fn test_eval_json_tan_exp_sqrt_diff_preserves_compact_presentation_without_timeo
     let after = steps[0]["after"].as_str().expect("after string");
     assert!(
         after.contains("sqrt(tan(x) + e^x + x)")
-            && after.contains("cos(x)^2")
+            && after.contains("sec(x)^2")
             && !after.contains("sin(x) / cos(x)"),
         "expected compact tan/exp sqrt derivative presentation, got: {after}"
     );
@@ -1752,7 +1752,7 @@ fn test_eval_json_diff_sqrt_tan_polynomial_sum_uses_direct_presentation_without_
         "mixed tan/polynomial sqrt diff should avoid the generic depth-overflow route: {stderr}"
     );
     assert_eq!(
-        json["result"], "(cos(x)^2 + 1) / (2·cos(x)^2·sqrt(tan(x) + x + 2))",
+        json["result"], "(sec(x)^2 + 1) / (2·sqrt(tan(x) + x + 2))",
         "expr: {expr}"
     );
 
@@ -1792,7 +1792,7 @@ fn test_eval_json_diff_sqrt_tan_sin_polynomial_sum_compacts_common_denominator_n
         "mixed tan/sin/polynomial sqrt diff should stay out of the generic cleanup loop: {stderr}"
     );
     assert_eq!(
-        json["result"], "(cos(x)^2 + cos(x)^3 + 1) / (2·cos(x)^2·sqrt(sin(x) + tan(x) + x))",
+        json["result"], "(cos(x) + sec(x)^2 + 1) / (2·sqrt(sin(x) + tan(x) + x))",
         "expr: {expr}"
     );
     assert!(
@@ -1838,8 +1838,7 @@ fn test_eval_json_diff_sqrt_tan_cos_square_polynomial_sum_compacts_numerator_pow
         "mixed tan/cos-power/polynomial sqrt diff should stay out of cleanup loops: {stderr}"
     );
     assert_eq!(
-        json["result"],
-        "(cos(x)^2 + 1 - 2·sin(x)·cos(x)^3) / (2·cos(x)^2·sqrt(tan(x) + cos(x)^2 + x))",
+        json["result"], "(sec(x)^2 + 1 - 2·cos(x)·sin(x)) / (2·sqrt(tan(x) + cos(x)^2 + x))",
         "expr: {expr}"
     );
     let result = json["result"].as_str().expect("result string");
@@ -2041,8 +2040,7 @@ fn test_eval_json_diff_sqrt_tan_sqrt_variable_polynomial_sum_uses_direct_route()
         "direct tan/sqrt-variable/polynomial sqrt diff should not emit blocked hints: {json:?}"
     );
     assert_eq!(
-        json["result"],
-        "(2·sqrt(x) + 2·sqrt(x)·sec(x)^2 + 1) / (4·sqrt(x)·sqrt(tan(x) + sqrt(x) + x))",
+        json["result"], "(sec(x)^2 + 1 / (2·sqrt(x)) + 1) / (2·sqrt(tan(x) + sqrt(x) + x))",
         "expr: {expr}"
     );
 

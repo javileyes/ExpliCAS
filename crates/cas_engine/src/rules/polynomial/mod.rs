@@ -131,6 +131,10 @@ define_rule!(
             return None;
         }
 
+        if should_preserve_compact_binomial_factor_chain(ctx, l, r, parent_ctx) {
+            return None;
+        }
+
         if should_preserve_compact_asinh_self_product(ctx, l, r) {
             return None;
         }
@@ -186,6 +190,36 @@ fn should_preserve_compact_power_product_with_factorable_integer_add(
         && binary_add_has_variable_common_integer_factor(ctx, right))
         || (side_has_compact_low_degree_polynomial_power(ctx, right)
             && binary_add_has_variable_common_integer_factor(ctx, left))
+}
+
+fn should_preserve_compact_binomial_factor_chain(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+) -> bool {
+    if parent_ctx.is_expand_mode() || parent_ctx.is_auto_expand() {
+        return false;
+    }
+
+    (is_additive_binomial(ctx, left) && product_contains_additive_binomial(ctx, right))
+        || (is_additive_binomial(ctx, right) && product_contains_additive_binomial(ctx, left))
+}
+
+fn is_additive_binomial(ctx: &Context, expr: ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Sub(_, _))
+}
+
+fn product_contains_additive_binomial(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Mul(left, right) => {
+            is_additive_binomial(ctx, *left)
+                || is_additive_binomial(ctx, *right)
+                || product_contains_additive_binomial(ctx, *left)
+                || product_contains_additive_binomial(ctx, *right)
+        }
+        _ => false,
+    }
 }
 
 fn should_preserve_compact_asinh_self_product(ctx: &Context, left: ExprId, right: ExprId) -> bool {

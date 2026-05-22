@@ -17,20 +17,21 @@ use crate::solve_outcome::{
     derive_sub_isolation_operands,
     execute_division_denominator_sign_split_or_term_isolation_plan_with_optional_items_and_merge_with_existing_steps_with_single_solver_with_state,
     execute_isolated_denominator_sign_split_or_division_denominator_plan_with_optional_items_and_merge_with_existing_steps_with_state,
-    execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot,
     execute_term_isolation_plan_and_merge_with_existing_steps_with,
     execute_term_isolation_plan_with_rewritten_rhs_and_merge_with_existing_steps_with,
-    merge_optional_solved_with_existing_steps_append_mut, mul_rhs_contains_variable,
-    plan_add_operand_isolation_step_with, plan_div_denominator_isolation_with_zero_rhs_guard,
+    merge_optional_solved_with_existing_steps_append_mut, merge_solved_with_existing_steps_prepend,
+    mul_rhs_contains_variable, plan_add_operand_isolation_step_with,
+    plan_div_denominator_isolation_with_zero_rhs_guard,
     plan_division_denominator_sign_split_or_div_numerator_isolation_with,
     plan_isolated_denominator_sign_split_or_division_denominator,
     plan_mul_factor_isolation_step_with, plan_product_zero_inequality_split_if_applicable,
-    plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with, AddIsolationOperands,
-    AddIsolationRoute, DivIsolationRoute, DivisionDenominatorDidacticPlan,
-    DivisionDenominatorSignSplitPlan, DivisionDenominatorSignSplitSolvedCases,
-    DivisionDidacticExecutionItem, IsolatedDenominatorSignSplitPlan,
-    IsolatedDenominatorSignSplitSolvedCases, MulIsolationOperands, ProductZeroInequalityPlan,
-    ProductZeroInequalitySolvedSets, TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
+    plan_sub_isolation_step_with, resolve_div_denominator_isolation_rhs_with,
+    solve_product_zero_inequality_split_execution_with, AddIsolationOperands, AddIsolationRoute,
+    DivIsolationRoute, DivisionDenominatorDidacticPlan, DivisionDenominatorSignSplitPlan,
+    DivisionDenominatorSignSplitSolvedCases, DivisionDidacticExecutionItem,
+    IsolatedDenominatorSignSplitPlan, IsolatedDenominatorSignSplitSolvedCases,
+    MulIsolationOperands, ProductZeroInequalityPlan, ProductZeroInequalitySolvedSets,
+    TermIsolationRewriteExecutionItem, TermIsolationRewritePlan,
 };
 
 /// Execute additive isolation `(l + r) = rhs` with an optional
@@ -550,14 +551,15 @@ where
 {
     let split_plan = plan_product_split_if_applicable(state, left, right, rhs, op.clone(), var);
     if let Some(split_plan) = split_plan {
+        let solved = solve_product_zero_inequality_split_execution_with(&split_plan, |equation| {
+            solve_split_case(state, equation)
+        })?;
         let snapshot = context_snapshot(state);
-        return execute_product_zero_inequality_split_pipeline_with_existing_steps_with_context_snapshot(
-            &split_plan,
+        let final_set = finalize_split_with_context(&snapshot, solved.solved_sets);
+        return Ok(merge_solved_with_existing_steps_prepend(
+            (final_set, solved.steps),
             existing_steps,
-            |equation| solve_split_case(state, equation),
-            || snapshot.clone(),
-            |ctx, solved_sets| finalize_split_with_context(ctx, solved_sets),
-        );
+        ));
     }
 
     if rhs_contains_variable(state, rhs, var) {

@@ -265,10 +265,16 @@ fn try_rewrite_nested_fraction_forward_target_aware(
     if strong_target_match(ctx, rewritten, target_expr) {
         return Some(rewritten);
     }
+    if fraction_parts_match(ctx, rewritten, target_expr) {
+        return Some(target_expr);
+    }
 
     let normalized = cas_math::canonical_forms::normalize_core(ctx, rewritten);
     if strong_target_match(ctx, normalized, target_expr) {
         return Some(rewritten);
+    }
+    if fraction_parts_match(ctx, normalized, target_expr) {
+        return Some(target_expr);
     }
 
     strip_division_by_one(ctx, rewritten)
@@ -287,15 +293,39 @@ fn try_rewrite_nested_fraction_reverse_target_aware(
     if strong_target_match(ctx, simplified_target, source_expr) {
         return Some(target_expr);
     }
+    if fraction_parts_match(ctx, simplified_target, source_expr) {
+        return Some(target_expr);
+    }
 
     let normalized = cas_math::canonical_forms::normalize_core(ctx, simplified_target);
     if strong_target_match(ctx, normalized, source_expr) {
+        return Some(target_expr);
+    }
+    if fraction_parts_match(ctx, normalized, source_expr) {
         return Some(target_expr);
     }
 
     strip_division_by_one(ctx, simplified_target)
         .filter(|stripped| strong_target_match(ctx, *stripped, source_expr))
         .map(|_| target_expr)
+}
+
+fn fraction_parts_match(ctx: &mut Context, actual_expr: ExprId, target_expr: ExprId) -> bool {
+    let Some((actual_num, actual_den)) = as_div(ctx, actual_expr) else {
+        return false;
+    };
+    let Some((target_num, target_den)) = as_div(ctx, target_expr) else {
+        return false;
+    };
+
+    fraction_component_matches(ctx, actual_num, target_num)
+        && fraction_component_matches(ctx, actual_den, target_den)
+}
+
+fn fraction_component_matches(ctx: &mut Context, actual: ExprId, target: ExprId) -> bool {
+    strong_target_match(ctx, actual, target)
+        || poly_eq(ctx, actual, target)
+        || simplified_difference_matches_zero(ctx, actual, target)
 }
 
 fn try_rewrite_unit_over_unit_fraction(ctx: &Context, expr: ExprId) -> Option<ExprId> {
@@ -1317,6 +1347,7 @@ mod tests {
             ("a - 1/(1/x + 1/y)", "a - (x*y)/(x+y)"),
             ("a/(b + c/d)", "a*d/(b*d+c)"),
             ("(a + b/c)/d", "(a*c+b)/(c*d)"),
+            ("(a+b)/(c + d/e)", "(a*e+b*e)/(c*e+d)"),
             ("z/(x*z+y)", "1/(x + y/z)"),
             ("a*d/(b*d+c)", "a/(b + c/d)"),
             ("(a*c+b)/(c*d)", "(a + b/c)/d"),

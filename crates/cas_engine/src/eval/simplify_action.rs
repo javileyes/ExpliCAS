@@ -406,6 +406,74 @@ fn scaled_additive_terms_equivalent_for_residual_match_local(
     true
 }
 
+fn scaled_additive_terms_exact_for_residual_match_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    left_scale: num_rational::BigRational,
+    right: ExprId,
+    right_scale: num_rational::BigRational,
+) -> bool {
+    let Some(left_terms) = scaled_additive_terms_for_residual_match_local(ctx, left, left_scale)
+    else {
+        return false;
+    };
+    let Some(right_terms) = scaled_additive_terms_for_residual_match_local(ctx, right, right_scale)
+    else {
+        return false;
+    };
+    if left_terms.len() != right_terms.len() {
+        return false;
+    }
+
+    let mut matched = vec![false; right_terms.len()];
+    for (left_scale, left_core) in left_terms {
+        let Some((index, _)) =
+            right_terms
+                .iter()
+                .enumerate()
+                .find(|(index, (right_scale, right_core))| {
+                    !matched[*index]
+                        && left_scale == *right_scale
+                        && additive_residual_term_cores_exact_local(ctx, left_core, *right_core)
+                })
+        else {
+            return false;
+        };
+        matched[index] = true;
+    }
+    true
+}
+
+fn additive_residual_term_cores_exact_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    exprs_exact_ignoring_internal_holds_local(ctx, left, right)
+        || commutative_products_exact_ignoring_internal_holds_local(ctx, left, right)
+}
+
+fn commutative_products_exact_ignoring_internal_holds_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let left_factors = non_unit_mul_factors_for_residual_match_local(ctx, left);
+    let mut right_factors = non_unit_mul_factors_for_residual_match_local(ctx, right);
+    if left_factors.len() != right_factors.len() {
+        return false;
+    }
+    for left_factor in left_factors {
+        let Some(index) = right_factors.iter().position(|right_factor| {
+            exprs_exact_ignoring_internal_holds_local(ctx, left_factor, *right_factor)
+        }) else {
+            return false;
+        };
+        right_factors.remove(index);
+    }
+    true
+}
+
 fn additive_residual_term_cores_equivalent_local(
     ctx: &mut cas_ast::Context,
     left: ExprId,
@@ -1293,6 +1361,14 @@ fn try_diff_sqrt_additive_tan_polynomial_residual_zero_ordered_local(
             &call.var_name,
             target,
         )
+        && tan_sqrt_inline_common_denominator_presentation_residual_zero_ordered_local(
+            ctx, result, target,
+        )
+        .is_none()
+        && tan_sqrt_inline_common_denominator_presentation_residual_zero_ordered_local(
+            ctx, target, result,
+        )
+        .is_none()
     {
         return None;
     }
@@ -1488,6 +1564,150 @@ fn try_diff_sqrt_additive_trig_polynomial_residual_zero_ordered_local(
 
     required_conditions.insert(0, crate::ImplicitCondition::Positive(radicand));
     Some((ctx.num(0), required_conditions))
+}
+
+fn try_tan_sqrt_inline_common_denominator_presentation_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = residual_difference_terms_local(ctx, expr)?;
+    tan_sqrt_inline_common_denominator_presentation_residual_zero_ordered_local(ctx, left, right)
+        .or_else(|| {
+            tan_sqrt_inline_common_denominator_presentation_residual_zero_ordered_local(
+                ctx, right, left,
+            )
+        })
+        .map(|required_conditions| (ctx.num(0), required_conditions))
+}
+
+fn tan_sqrt_inline_common_denominator_presentation_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    inline_expr: ExprId,
+    common_denominator_expr: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let inline_expr = cas_ast::hold::strip_all_holds(ctx, inline_expr);
+    let common_denominator_expr = cas_ast::hold::strip_all_holds(ctx, common_denominator_expr);
+    let (inline_num, inline_den) = match ctx.get(inline_expr).clone() {
+        Expr::Div(num, den) => (num, den),
+        _ => return None,
+    };
+    let (common_num, common_den) = match ctx.get(common_denominator_expr).clone() {
+        Expr::Div(num, den) => (num, den),
+        _ => return None,
+    };
+    if !expr_contains_any_builtin_local(ctx, inline_num, &[BuiltinFn::Sec])
+        || !expr_contains_any_builtin_local(ctx, inline_den, &[BuiltinFn::Tan])
+        || !expr_contains_any_builtin_local(ctx, common_den, &[BuiltinFn::Tan])
+    {
+        return None;
+    }
+
+    let (inline_den_scale, inline_den_core) =
+        split_numeric_scale_product_for_residual_local(ctx, inline_den);
+    let (common_den_scale, common_den_core) =
+        split_numeric_scale_product_for_residual_local(ctx, common_den);
+    if inline_den_scale.is_zero() {
+        return None;
+    }
+    let extra_scale = common_den_scale / inline_den_scale;
+    if extra_scale != num_rational::BigRational::from_integer(2.into()) {
+        return None;
+    }
+    let extra_factors = remove_factor_multiset_exact_for_residual_match_local(
+        ctx,
+        common_den_core,
+        inline_den_core,
+    )?;
+    if extra_factors.len() != 1
+        || cas_math::root_forms::extract_square_root_base(ctx, extra_factors[0]).is_none()
+    {
+        return None;
+    }
+
+    let scaled_inline_num = multiply_additive_numerator_by_extra_factors_exact_local(
+        ctx,
+        inline_num,
+        extra_scale,
+        &extra_factors,
+    )?;
+    if !scaled_additive_terms_exact_for_residual_match_local(
+        ctx,
+        scaled_inline_num,
+        num_rational::BigRational::from_integer(1.into()),
+        common_num,
+        num_rational::BigRational::from_integer(1.into()),
+    ) {
+        return None;
+    }
+
+    let mut required_conditions = Vec::new();
+    for factor in non_unit_mul_factors_for_residual_match_local(ctx, common_den_core) {
+        push_nonzero_condition_exact_unique_local(ctx, &mut required_conditions, factor);
+    }
+    collect_tan_sec_nonzero_conditions_local(ctx, inline_num, &mut required_conditions);
+    collect_tan_sec_nonzero_conditions_local(ctx, inline_den, &mut required_conditions);
+    collect_tan_sec_nonzero_conditions_local(ctx, common_den, &mut required_conditions);
+    Some(required_conditions)
+}
+
+fn expr_is_tan_sqrt_inline_common_denominator_presentation_residual_candidate_local(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+) -> bool {
+    residual_difference_terms_local(ctx, expr).is_some()
+        && expr_contains_any_builtin_local(ctx, expr, &[BuiltinFn::Tan])
+        && expr_contains_any_builtin_local(ctx, expr, &[BuiltinFn::Sec])
+        && expr_contains_any_builtin_local(ctx, expr, &[BuiltinFn::Sqrt])
+}
+
+fn push_nonzero_condition_exact_unique_local(
+    ctx: &mut cas_ast::Context,
+    conditions: &mut Vec<crate::ImplicitCondition>,
+    expr: ExprId,
+) {
+    if conditions.iter().any(|condition| {
+        matches!(
+            condition,
+            crate::ImplicitCondition::NonZero(existing)
+                if exprs_exact_ignoring_internal_holds_local(ctx, *existing, expr)
+        )
+    }) {
+        return;
+    }
+    conditions.push(crate::ImplicitCondition::NonZero(expr));
+}
+
+fn collect_tan_sec_nonzero_conditions_local(
+    ctx: &mut cas_ast::Context,
+    root: ExprId,
+    conditions: &mut Vec<crate::ImplicitCondition>,
+) {
+    let mut stack = vec![root];
+    while let Some(expr) = stack.pop() {
+        match ctx.get(expr).clone() {
+            Expr::Function(fn_id, args) => {
+                if args.len() == 1
+                    && (ctx.is_builtin(fn_id, BuiltinFn::Tan)
+                        || ctx.is_builtin(fn_id, BuiltinFn::Sec))
+                {
+                    let cos = ctx.call_builtin(BuiltinFn::Cos, vec![args[0]]);
+                    push_nonzero_condition_exact_unique_local(ctx, conditions, cos);
+                }
+                stack.extend(args);
+            }
+            Expr::Add(lhs, rhs)
+            | Expr::Sub(lhs, rhs)
+            | Expr::Mul(lhs, rhs)
+            | Expr::Div(lhs, rhs)
+            | Expr::Pow(lhs, rhs) => {
+                stack.push(lhs);
+                stack.push(rhs);
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push(inner),
+            Expr::Matrix { data, .. } => stack.extend(data),
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
 }
 
 fn sqrt_shifted_diff_result_matches_target_local(
@@ -1949,6 +2169,9 @@ fn try_resolve_post_calculus_residual_before_general_simplify_core_local(
     .or_else(|| try_diff_arctan_sqrt_additive_tan_polynomial_residual_zero_local(ctx, expr))
     .or_else(|| try_diff_sqrt_additive_tan_polynomial_residual_zero_local(ctx, expr))
     .or_else(|| try_diff_sqrt_additive_trig_polynomial_residual_zero_local(ctx, expr))
+    .or_else(|| {
+        try_tan_sqrt_inline_common_denominator_presentation_residual_zero_local(ctx, expr)
+    })
     .or_else(|| try_diff_integrate_arctan_sqrt_unit_shift_square_residual_zero_local(ctx, expr))
     .or_else(|| {
         try_diff_arctan_sqrt_plus_sqrt_over_x_plus_one_residual_zero_local(ctx, expr)
@@ -2273,12 +2496,24 @@ fn try_resolve_direct_post_calculus_before_general_simplify_local(
     expr: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, expr)?;
-    let (result, radicand, mut required_conditions) =
+    let (mut result, radicand, mut required_conditions) =
         crate::rules::calculus::sqrt_additive_tan_polynomial_derivative_presentation(
             ctx,
             call.target,
             &call.var_name,
         )?;
+    if let Some((inline_result, inline_radicand, inline_required_conditions)) =
+        crate::rules::calculus::sqrt_additive_tan_polynomial_derivative_inline_presentation(
+            ctx,
+            call.target,
+            &call.var_name,
+        )
+    {
+        if inline_radicand == radicand {
+            result = inline_result;
+            required_conditions = inline_required_conditions;
+        }
+    }
     required_conditions.insert(0, crate::ImplicitCondition::Positive(radicand));
     Some((result, required_conditions))
 }
@@ -2465,16 +2700,24 @@ impl Engine {
             &self.simplifier.context,
             resolved,
         ) {
-            if let Some((result, required_conditions)) =
+            let tan_arctan_presentation =
+                crate::rules::calculus::arctan_sqrt_additive_tan_polynomial_derivative_inline_presentation_with_domain(
+                    &mut self.simplifier.context,
+                    call.target,
+                    &call.var_name,
+                );
+            let tan_arctan_presentation = if tan_arctan_presentation.is_some() {
+                tan_arctan_presentation
+            } else {
                 crate::rules::calculus::arctan_sqrt_additive_tan_polynomial_derivative_presentation_with_domain(
                     &mut self.simplifier.context,
                     call.target,
                     &call.var_name,
                 )
-            {
-                let desc = crate::symbolic_calculus_call_support::render_diff_desc_with(
-                    &call,
-                    |id| {
+            };
+            if let Some((result, required_conditions)) = tan_arctan_presentation {
+                let desc =
+                    crate::symbolic_calculus_call_support::render_diff_desc_with(&call, |id| {
                         format!(
                             "{}",
                             cas_formatter::DisplayExpr {
@@ -2482,8 +2725,7 @@ impl Engine {
                                 id
                             }
                         )
-                    },
-                );
+                    });
                 let mut steps = Vec::new();
                 if effective_opts.steps_mode != crate::options::StepsMode::Off {
                     let mut step = crate::Step::new(
@@ -2992,11 +3234,18 @@ impl Engine {
                 &ctx_simplifier.context,
                 expr_to_simplify,
             );
-        if input_embedded_calculus_residual {
+        let input_post_calculus_presentation_residual =
+            expr_is_tan_sqrt_inline_common_denominator_presentation_residual_candidate_local(
+                &ctx_simplifier.context,
+                expr_to_simplify,
+            );
+        let input_post_calculus_residual =
+            input_embedded_calculus_residual || input_post_calculus_presentation_residual;
+        if input_post_calculus_residual {
             simplify_opts.suppress_depth_overflow_warnings = true;
         }
 
-        let pre_resolved_calculus_context = if input_embedded_calculus_residual {
+        let pre_resolved_calculus_context = if input_post_calculus_residual {
             let original_expr = expr_to_simplify;
             try_rewrite_post_calculus_residual_child_context_before_general_simplify_local(
                 &mut ctx_simplifier.context,
@@ -3011,7 +3260,7 @@ impl Engine {
         } else {
             None
         };
-        let pre_simplify_calculus = if input_embedded_calculus_residual {
+        let pre_simplify_calculus = if input_post_calculus_residual {
             try_resolve_post_calculus_residual_before_general_simplify_local(
                 &mut ctx_simplifier.context,
                 expr_to_simplify,
@@ -3715,6 +3964,15 @@ mod tests {
             presentation,
             right
         ));
+        assert!(
+            tan_sqrt_inline_common_denominator_presentation_residual_zero_ordered_local(
+                &mut ctx,
+                right,
+                presentation,
+            )
+            .is_some(),
+            "expected exact inline-to-common presentation residual route"
+        );
 
         let (result, required_conditions) =
             match try_diff_sqrt_additive_tan_polynomial_residual_zero_local(&mut ctx, expr) {

@@ -117,9 +117,9 @@ DEFAULT_MATRIX_WRAPPERS = (
 )
 
 NESTED_DEN_EXPECTED_RESULTS = {
-    "exp_poly": "1 / (x·(x + 2) + 3·x + 6)",
-    "exp_affine": "1 / (x·(x + 2) + 3·x + 6)",
-    "arctan_sqrt_additive_trig": "1 / (x·(x + 2) + 3·x + 6)",
+    "exp_poly": "1 / ((x + 2)·(x + 3))",
+    "exp_affine": "1 / ((x + 2)·(x + 3))",
+    "arctan_sqrt_additive_trig": "1 / ((x + 2)·(x + 3))",
     "integrate_exp_trig_sin": "1 / ((x + 2)·(x + 3))",
     "integrate_exp_trig_cos": "1 / ((x + 2)·(x + 3))",
     "integrate_exp_trig_neg_sin": "1 / ((x + 2)·(x + 3))",
@@ -134,7 +134,7 @@ NESTED_DEN_EXPECTED_RESULTS = {
     "inverse_trig_arctan": "1 / ((x + 2)·(x + 3))",
     "rational_quad": "1 / ((x + 2)·(x + 3))",
     "recip_trig": "1 / ((x + 2)·(x + 3))",
-    "fractional_den_power": "1 / (x·(x + 2) + 3·x + 6)",
+    "fractional_den_power": "1 / ((x + 2)·(x + 3))",
 }
 
 DEFAULT_MATRIX_BASES = (
@@ -221,6 +221,17 @@ DEFAULT_MATRIX_BASES = (
         ),
         (),
     ),
+)
+
+DEFAULT_DOUBLE_NESTED_DEN_BASES = (
+    "exp_poly",
+    "arctan_sqrt_additive_trig",
+    "fractional_den_power",
+    "hyperbolic_sinh",
+    "hyperbolic_cosh",
+    "integrate_exp_trig_sin",
+    "rational_quad",
+    "plain_trig_sin",
 )
 
 DEFAULT_SHIFTED_QUOTIENT_RESIDUAL_DEN_CASES = (
@@ -317,6 +328,18 @@ DEFAULT_SHIFTED_QUOTIENT_RESIDUAL_DEN_CASES = (
     ),
 )
 
+DEFAULT_RATIONAL_QUADRATIC_NONCANONICAL_CASES = (
+    MatrixProbeCase(
+        name="rational_quad_positive_quadratic:double_nested_den",
+        expr=(
+            "(((((diff(integrate((3*x + 5)/(x^2+x+1),x),x)"
+            "-((3*x + 5)/(x^2+x+1)))+1)/(x+2))/(x+3))/(x+4))"
+        ),
+        expected_result="1 / ((x + 2)·(x + 3)·(x + 4))",
+        required_conditions=("x + 2", "x + 3", "x + 4"),
+    ),
+)
+
 DEFAULT_PRODUCT_ZERO_FACTOR_CASES = (
     MatrixProbeCase(
         name="recip_trig_csc_product_zero_factor",
@@ -372,6 +395,10 @@ def build_default_matrix_cases(
     wrapper_filters: tuple[str, ...] = (),
 ) -> tuple[MatrixProbeCase, ...]:
     cases: list[MatrixProbeCase] = []
+    base_by_family = {
+        family: (residual, extra_required)
+        for family, residual, extra_required in DEFAULT_MATRIX_BASES
+    }
     for family, residual, extra_required in DEFAULT_MATRIX_BASES:
         for wrapper_name, template, expected_result, wrapper_required in DEFAULT_MATRIX_WRAPPERS:
             if expected_result is None:
@@ -384,7 +411,18 @@ def build_default_matrix_cases(
                     required_conditions=(*extra_required, *wrapper_required),
                 )
             )
+    for family in DEFAULT_DOUBLE_NESTED_DEN_BASES:
+        residual, extra_required = base_by_family[family]
+        cases.append(
+            MatrixProbeCase(
+                name=f"{family}:double_nested_den",
+                expr=f"((((({residual})+1)/(x+2))/(x+3))/(x+4))",
+                expected_result="1 / ((x + 2)·(x + 3)·(x + 4))",
+                required_conditions=(*extra_required, "x + 2", "x + 3", "x + 4"),
+            )
+        )
     cases.extend(DEFAULT_SHIFTED_QUOTIENT_RESIDUAL_DEN_CASES)
+    cases.extend(DEFAULT_RATIONAL_QUADRATIC_NONCANONICAL_CASES)
     cases.extend(DEFAULT_PRODUCT_ZERO_FACTOR_CASES)
     if base_filters or wrapper_filters:
         cases = [

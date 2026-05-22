@@ -2,6 +2,7 @@ use super::*;
 use crate::rule::Rule;
 use cas_ast::Context;
 use cas_formatter::DisplayExpr;
+use cas_parser::parse;
 
 #[test]
 fn test_distribute() {
@@ -33,6 +34,24 @@ fn test_distribute() {
             }
         ),
         "x^2 * x + x^2 * 3" // Canonical: polynomial order (x terms before constants)
+    );
+}
+
+#[test]
+fn test_distribute_preserves_nested_binomial_factor_chain() {
+    let mut ctx = Context::new();
+    let rule = DistributeRule;
+    let expr = parse("((x+3)*(x+4))*(x+2)", &mut ctx).expect("parse");
+
+    let rewrite = rule.apply(
+        &mut ctx,
+        expr,
+        &crate::parent_context::ParentContext::root(),
+    );
+
+    assert!(
+        rewrite.is_none(),
+        "default simplification should preserve compact nested binomial products"
     );
 }
 
