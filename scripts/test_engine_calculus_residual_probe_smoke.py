@@ -71,6 +71,24 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
         )
 
+        self.assertEqual(
+            SMOKE.classify_error_kind("expected result 'a', got 'b'"),
+            "result_mismatch",
+        )
+        self.assertEqual(
+            SMOKE.classify_error_kind("missing required conditions: x + 2"),
+            "missing_required_conditions",
+        )
+        self.assertEqual(
+            SMOKE.classify_error_kind("impossible required conditions: NonZero(0)"),
+            "impossible_required_conditions",
+        )
+        self.assertEqual(
+            SMOKE.classify_error_kind("unexpected warnings: diagnostic"),
+            "unexpected_warnings",
+        )
+        self.assertEqual(SMOKE.classify_error_kind("timeout"), "timeout")
+
         self.assertIn(
             "missing required conditions",
             SMOKE.classify_error(
@@ -165,6 +183,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(result.status, "slow")
+        self.assertEqual(result.error_kind, "slow")
         self.assertEqual(result.returncode, 0)
         self.assertEqual(result.result, "1 / (x + 2)")
         self.assertEqual(result.required_conditions, ("x + 2",))
@@ -194,6 +213,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(result.status, "fail")
+        self.assertEqual(result.error_kind, "impossible_required_conditions")
         self.assertEqual(result.impossible_required_conditions, ("NonZero(0)",))
         self.assertIn("impossible required conditions", result.error or "")
 
@@ -224,6 +244,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(result.status, "fail")
+        self.assertEqual(result.error_kind, "unexpected_warnings")
         self.assertIn("depth_overflow", result.error or "")
         self.assertEqual(
             result.warnings,
@@ -241,8 +262,105 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             elapsed = time.monotonic() - started
 
         self.assertEqual(result.status, "timeout")
+        self.assertEqual(result.error_kind, "timeout")
         self.assertIsNone(result.returncode)
         self.assertLess(elapsed, 3.0)
+
+    def test_matrix_aggregates_issue_kind_counts(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cas_cli = Path(temp_dir) / "cas_cli"
+            cas_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    cat <<'OUT'
+                    {"result":"actual","required_conditions":[],"warnings":[]}
+                    OUT
+                    """
+                ),
+                encoding="utf-8",
+            )
+            cas_cli.chmod(cas_cli.stat().st_mode | stat.S_IXUSR)
+
+            matrix = SMOKE.run_matrix_cases(
+                (
+                    SMOKE.MatrixProbeCase(
+                        name="mismatch",
+                        expr="ignored",
+                        expected_result="expected",
+                        required_conditions=(),
+                    ),
+                ),
+                timeout_seconds=2.0,
+                cas_cli=cas_cli,
+            )
+
+        self.assertEqual(matrix["status"], "fail")
+        self.assertEqual(matrix["status_counts"]["fail"], 1)
+        self.assertEqual(matrix["issue_kind_counts"], {"result_mismatch": 1})
+        self.assertEqual(matrix["cases"][0]["error_kind"], "result_mismatch")
+
+    def test_summarize_matrix_omits_passing_cases_but_keeps_problem_cases(self) -> None:
+        matrix = {
+            "status": "fail",
+            "total": 2,
+            "status_counts": {"pass": 1, "slow": 0, "fail": 1, "timeout": 0},
+            "issue_kind_counts": {"result_mismatch": 1},
+            "cases": [
+                {
+                    "name": "passing",
+                    "status": "pass",
+                    "error_kind": None,
+                    "result": "1",
+                    "wall_elapsed_seconds": 0.01,
+                    "required_conditions": [],
+                },
+                {
+                    "name": "mismatch",
+                    "status": "fail",
+                    "error_kind": "result_mismatch",
+                    "error": "expected result '1', got '2'",
+                    "result": "2",
+                    "wall_elapsed_seconds": 0.02,
+                    "required_conditions": ["x + 2"],
+                },
+            ],
+        }
+
+        summary = SMOKE.summarize_matrix(matrix)
+
+        self.assertNotIn("cases", summary)
+        self.assertEqual(summary["total"], 2)
+        self.assertEqual(summary["problem_case_count"], 1)
+        self.assertEqual(
+            summary["problem_cases"],
+            [
+                {
+                    "name": "mismatch",
+                    "status": "fail",
+                    "error_kind": "result_mismatch",
+                    "error": "expected result '1', got '2'",
+                    "wall_elapsed_seconds": 0.02,
+                    "result": "2",
+                    "required_conditions": ["x + 2"],
+                }
+            ],
+        )
+
+    def test_empty_matrices_fail_with_no_matching_cases(self) -> None:
+        matrix = SMOKE.run_matrix_cases((), timeout_seconds=2.0, cas_cli="/unused/cas_cli")
+        self.assertEqual(matrix["status"], "fail")
+        self.assertEqual(matrix["total"], 0)
+        self.assertEqual(matrix["issue_kind_counts"], {"no_matching_cases": 1})
+
+        default_matrix = SMOKE.run_default_matrix(
+            timeout_seconds=2.0,
+            cas_cli="/unused/cas_cli",
+            base_filters=("missing_base",),
+        )
+        self.assertEqual(default_matrix["status"], "fail")
+        self.assertEqual(default_matrix["total"], 0)
+        self.assertEqual(default_matrix["issue_kind_counts"], {"no_matching_cases": 1})
 
     def test_expected_status_matches_any(self) -> None:
         self.assertTrue(SMOKE.expected_status_matches("timeout", "any"))
@@ -252,10 +370,11 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
     def test_default_matrix_contains_representative_wrapped_residuals(self) -> None:
         cases = SMOKE.build_default_matrix_cases()
 
-        self.assertEqual(len(cases), 221)
+        self.assertEqual(len(cases), 247)
         self.assertIn("arctan_sqrt_additive_trig:plus", {case.name for case in cases})
         self.assertIn("arctan_sqrt_additive_trig:nested_den", {case.name for case in cases})
         self.assertIn("arctan_sqrt_additive_trig:double_nested_den", {case.name for case in cases})
+        self.assertIn("inverse_trig_arctan:double_nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_sin:plus", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_sin:nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_sin:double_nested_den", {case.name for case in cases})
@@ -263,10 +382,17 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertIn("integrate_exp_trig_cos:nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_neg_sin:plus", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_neg_sin:nested_den", {case.name for case in cases})
+        self.assertIn("integrate_exp_trig_neg_sin:double_nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_neg_cos:plus", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_neg_cos:nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_neg_sin:plus", {case.name for case in cases})
         self.assertIn("plain_trig_sin:double_nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_cot_fourth:plus", {case.name for case in cases})
+        self.assertIn("plain_trig_cot_fourth:nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_cot_fourth:double_nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_sec_fourth:plus", {case.name for case in cases})
+        self.assertIn("plain_trig_sec_fourth:nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_sec_fourth:double_nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_neg_sin:nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_neg_cos:plus", {case.name for case in cases})
         self.assertIn("plain_trig_neg_cos:nested_den", {case.name for case in cases})
@@ -419,6 +545,17 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(
             arctan_sqrt_double_nested_case.required_conditions, ("x + 2", "x + 3", "x + 4")
         )
+        inverse_trig_double_nested_case = next(
+            case for case in cases if case.name == "inverse_trig_arctan:double_nested_den"
+        )
+        self.assertEqual(
+            inverse_trig_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            inverse_trig_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
         exp_trig_nested_case = next(
             case for case in cases if case.name == "integrate_exp_trig_sin:nested_den"
         )
@@ -445,6 +582,16 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             "1 / ((x + 2)·(x + 3))",
         )
         self.assertEqual(exp_trig_neg_nested_case.required_conditions, ("x + 2", "x + 3"))
+        exp_trig_neg_double_nested_case = next(
+            case for case in cases if case.name == "integrate_exp_trig_neg_sin:double_nested_den"
+        )
+        self.assertEqual(
+            exp_trig_neg_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            exp_trig_neg_double_nested_case.required_conditions, ("x + 2", "x + 3", "x + 4")
+        )
         plain_trig_double_nested_case = next(
             case for case in cases if case.name == "plain_trig_sin:double_nested_den"
         )
@@ -454,6 +601,50 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         )
         self.assertEqual(
             plain_trig_double_nested_case.required_conditions, ("x + 2", "x + 3", "x + 4")
+        )
+        plain_trig_cot_fourth_nested_case = next(
+            case for case in cases if case.name == "plain_trig_cot_fourth:nested_den"
+        )
+        self.assertEqual(
+            plain_trig_cot_fourth_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            plain_trig_cot_fourth_nested_case.required_conditions,
+            ("sin(2·x + 1)", "x + 2", "x + 3"),
+        )
+        plain_trig_cot_fourth_double_nested_case = next(
+            case for case in cases if case.name == "plain_trig_cot_fourth:double_nested_den"
+        )
+        self.assertEqual(
+            plain_trig_cot_fourth_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            plain_trig_cot_fourth_double_nested_case.required_conditions,
+            ("sin(2·x + 1)", "x + 2", "x + 3", "x + 4"),
+        )
+        plain_trig_sec_fourth_nested_case = next(
+            case for case in cases if case.name == "plain_trig_sec_fourth:nested_den"
+        )
+        self.assertEqual(
+            plain_trig_sec_fourth_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            plain_trig_sec_fourth_nested_case.required_conditions,
+            ("cos(2·x + 1)", "x + 2", "x + 3"),
+        )
+        plain_trig_sec_fourth_double_nested_case = next(
+            case for case in cases if case.name == "plain_trig_sec_fourth:double_nested_den"
+        )
+        self.assertEqual(
+            plain_trig_sec_fourth_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            plain_trig_sec_fourth_double_nested_case.required_conditions,
+            ("cos(2·x + 1)", "x + 2", "x + 3", "x + 4"),
         )
         plain_trig_neg_nested_case = next(
             case for case in cases if case.name == "plain_trig_neg_sin:nested_den"
@@ -659,6 +850,52 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(cases[0].expected_result, "1 / (x + 2)")
         self.assertEqual(cases[0].required_conditions, ("x > 0", "x + 2"))
 
+    def test_custom_residual_matrix_can_suppress_wrapper_required_conditions(self) -> None:
+        cases = SMOKE.build_custom_residual_matrix_cases(
+            "candidate",
+            "diff(f(x),x)-g(x)",
+            required_conditions=("x",),
+            wrapper_filters=("plus",),
+            include_wrapper_required=False,
+        )
+
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0].name, "candidate:plus")
+        self.assertEqual(cases[0].expected_result, "1 / (x + 2)")
+        self.assertEqual(cases[0].required_conditions, ("x",))
+
+    def test_custom_residual_matrix_checks_nested_den_result(self) -> None:
+        cases = SMOKE.build_custom_residual_matrix_cases(
+            "candidate",
+            "diff(f(x),x)-g(x)",
+            wrapper_filters=("nested_den",),
+        )
+
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0].name, "candidate:nested_den")
+        self.assertEqual(
+            cases[0].expr,
+            "(((diff(f(x),x)-g(x))+1)/(x+2))/(x+3)",
+        )
+        self.assertEqual(cases[0].expected_result, "1 / ((x + 2)·(x + 3))")
+        self.assertEqual(cases[0].required_conditions, ("x + 2", "x + 3"))
+
+    def test_custom_residual_matrix_checks_double_nested_den_result(self) -> None:
+        cases = SMOKE.build_custom_residual_matrix_cases(
+            "candidate",
+            "diff(f(x),x)-g(x)",
+            wrapper_filters=("double_nested_den",),
+        )
+
+        self.assertEqual(len(cases), 1)
+        self.assertEqual(cases[0].name, "candidate:double_nested_den")
+        self.assertEqual(
+            cases[0].expr,
+            "(((((diff(f(x),x)-g(x))+1)/(x+2))/(x+3))/(x+4))",
+        )
+        self.assertEqual(cases[0].expected_result, "1 / ((x + 2)·(x + 3)·(x + 4))")
+        self.assertEqual(cases[0].required_conditions, ("x + 2", "x + 3", "x + 4"))
+
     def test_cli_accepts_custom_residual_matrix(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             cas_cli = Path(temp_dir) / "cas_cli"
@@ -702,6 +939,168 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertIn('"total": 1', completed.stdout)
         self.assertIn('"status": "pass"', completed.stdout)
 
+    def test_cli_summary_json_omits_matrix_cases(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cas_cli = Path(temp_dir) / "cas_cli"
+            cas_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    """
+                ),
+                encoding="utf-8",
+            )
+            cas_cli.chmod(cas_cli.stat().st_mode | stat.S_IXUSR)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_PATH),
+                    "--matrix-residual",
+                    "diff(f(x),x)-g(x)",
+                    "--matrix-residual-name",
+                    "candidate",
+                    "--matrix-wrapper",
+                    "plus",
+                    "--cas-cli",
+                    str(cas_cli),
+                    "--timeout-seconds",
+                    "2",
+                    "--json",
+                    "--summary-json",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+        self.assertIn('"custom_residual_name": "candidate"', completed.stdout)
+        self.assertIn('"problem_case_count": 0', completed.stdout)
+        self.assertIn('"problem_cases": []', completed.stdout)
+        self.assertNotIn('"cases"', completed.stdout)
+
+    def test_cli_accepts_custom_residual_matrix_double_nested_den(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cas_cli = Path(temp_dir) / "cas_cli"
+            cas_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    """
+                ),
+                encoding="utf-8",
+            )
+            cas_cli.chmod(cas_cli.stat().st_mode | stat.S_IXUSR)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_PATH),
+                    "--matrix-residual",
+                    "diff(f(x),x)-g(x)",
+                    "--matrix-residual-name",
+                    "candidate",
+                    "--matrix-wrapper",
+                    "double_nested_den",
+                    "--cas-cli",
+                    str(cas_cli),
+                    "--timeout-seconds",
+                    "2",
+                    "--json",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+        self.assertIn('"custom_residual_name": "candidate"', completed.stdout)
+        self.assertIn('"total": 1', completed.stdout)
+        self.assertIn('"status": "pass"', completed.stdout)
+        self.assertIn('"candidate:double_nested_den"', completed.stdout)
+
+    def test_cli_rejects_custom_residual_matrix_with_no_matching_cases(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cas_cli = Path(temp_dir) / "cas_cli"
+            cas_cli.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+            cas_cli.chmod(cas_cli.stat().st_mode | stat.S_IXUSR)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_PATH),
+                    "--matrix-residual",
+                    "diff(f(x),x)-g(x)",
+                    "--matrix-residual-name",
+                    "candidate",
+                    "--matrix-wrapper",
+                    "missing_wrapper",
+                    "--cas-cli",
+                    str(cas_cli),
+                    "--timeout-seconds",
+                    "2",
+                    "--json",
+                ],
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        self.assertEqual(completed.returncode, 1)
+        self.assertIn('"custom_residual_name": "candidate"', completed.stdout)
+        self.assertIn('"total": 0', completed.stdout)
+        self.assertIn('"status": "fail"', completed.stdout)
+        self.assertIn('"no_matching_cases": 1', completed.stdout)
+
+    def test_cli_accepts_custom_residual_matrix_with_suppressed_wrapper_requires(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cas_cli = Path(temp_dir) / "cas_cli"
+            cas_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x"}],"warnings":[]}
+                    OUT
+                    """
+                ),
+                encoding="utf-8",
+            )
+            cas_cli.chmod(cas_cli.stat().st_mode | stat.S_IXUSR)
+
+            completed = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT_PATH),
+                    "--matrix-residual",
+                    "diff(f(x),x)-g(x)",
+                    "--matrix-residual-name",
+                    "candidate",
+                    "--matrix-wrapper",
+                    "plus",
+                    "--require",
+                    "x",
+                    "--matrix-suppress-wrapper-requires",
+                    "--cas-cli",
+                    str(cas_cli),
+                    "--timeout-seconds",
+                    "2",
+                    "--json",
+                ],
+                text=True,
+                capture_output=True,
+                check=True,
+            )
+
+        self.assertIn('"custom_residual_name": "candidate"', completed.stdout)
+        self.assertIn('"total": 1', completed.stdout)
+        self.assertIn('"status": "pass"', completed.stdout)
+
     def test_run_default_matrix_summarizes_all_cases(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             cas_cli = Path(temp_dir) / "cas_cli"
@@ -723,6 +1122,66 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     *"*(y-y)"*)
                     cat <<'OUT'
                     {"result":"0","required_conditions":[],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sec(2*x+1)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sec(2*x+1)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sec(2*x+1)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sec(2*x+1)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"sec(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sec(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(2*x+1)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(2*x+1)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(2*x+1)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(2*x+1)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"cot(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
                     *"3*(("*")/(((diff("*")-1)/(x^2+1)"*)
@@ -1020,8 +1479,8 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(matrix["status"], "pass", matrix)
-        self.assertEqual(matrix["total"], 221)
-        self.assertEqual(matrix["status_counts"]["pass"], 221)
+        self.assertEqual(matrix["total"], 247)
+        self.assertEqual(matrix["status_counts"]["pass"], 247)
 
     def test_cli_accepts_repeated_require_flags(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

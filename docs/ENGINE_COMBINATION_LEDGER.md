@@ -178,6 +178,11 @@ The burden of proof stays the same:
   - calculus / differentiation / post-calculus residuals / wrapper spread
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 coverage promotion:
+    `sec_log_reciprocal_sqrt_arctan_residual_subtractive_wrappers_stay_bounded`
+    covers the minimal `one_minus` and `minus_const` public wrappers after the
+    bounded child-residual rewrite was retained
 - candidate:
   - extend child-level residual closure from `arctan(sqrt(additive trig))` to
     `arctan(sqrt(sec(x)+ln(x)+1/sqrt(x)+x))`
@@ -859,7 +864,7 @@ The burden of proof stays the same:
   - do not broaden the retained `k/x` promotion to claim subtraction-oriented
     coverage until the raw derivative gate and presentation recognizer agree on
     `Sub`-shaped radicands
-- follow-up:
+- resolved by:
   - resolved by teaching the raw derivative gate and additive trig-root
     presentation path to treat `Sub` radicands as signed add terms, while
     keeping the derivative route local to post-calculus presentation
@@ -1276,6 +1281,11 @@ The burden of proof stays the same:
   - calculus / integration / post-calculus presentation / domain presentation
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability close-out:
+    current public integration contracts and release probes cover the compact
+    `sec`/`csc` logarithmic primitives without redundant nonzero requirements;
+    the scorecard entry was stale discovery signal, not an open engine gap
 - generated candidate:
   - protect the `sec(u)` and `csc(u)` logarithmic primitive arguments with
     `__hold`, so public integration could render the same form used in the
@@ -1846,6 +1856,12 @@ The burden of proof stays the same:
   - calculus / integration / by-parts log powers / residual simplification
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 calculus promotion:
+    high log-power product integration now allows positive-leading quadratic
+    bases at powers `4..=5` only with the existing explicit `f(x) > 0` domain
+    condition, and the bounded public residual verifier closes the promoted
+    conditional cases to `0`
 - discovered case:
   - `integrate((2*x+1)*ln(x^2+x+1)^5, x)`
   - `integrate(2*x*ln(x^2-1)^4, x)`
@@ -1971,6 +1987,13 @@ The burden of proof stays the same:
   - calculus / residual simplification / discovery harness
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability close-out:
+    later retained robustness work covers the deeper hyperbolic
+    constant-passthrough quotient residual wrappers; current public probes and
+    the focused smoke matrix show `hyperbolic_sinh:double_nested_den` and
+    `hyperbolic_cosh:double_nested_den` passing quickly without warnings while
+    preserving `x + 2`, `x + 3`, and `x + 4` nonzero requirements
 - discovered case:
   - generated wrapper probes around public antiderivative residuals:
     `2*(((diff(integrate(x^5*sinh(2*x+1),x),x)-x^5*sinh(2*x+1))+1)/(x+2))`
@@ -10851,6 +10874,13 @@ The burden of proof stays the same:
   - calculus / integration / hyperbolic simplification
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability close-out:
+    later retained integration and presentation work covers the displaced
+    positive-affine hyperbolic by-parts cases; current public probes for
+    `integrate((2*x+3)*sinh/cosh(2*x+1), x)` return compact antiderivatives
+    quickly without warnings or required conditions, and the focused integration
+    contracts preserve the visible by-parts substep
 - attempted case:
   - promote `integrate((2*x+3)*sinh(2*x+1), x)` and
     `integrate((2*x+3)*cosh(2*x+1), x)` while adding hyperbolic integration by
@@ -10891,6 +10921,14 @@ The burden of proof stays the same:
   - calculus / integration / hyperbolic simplification / orientation robustness
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 robustness promotion:
+    the public residual gate now accepts the existing
+    `linear_times_hyperbolic_linear` integration detector in addition to the
+    polynomial-by-parts detector, so
+    `diff(integrate((2*x+3)*sinh/cosh(1-2*x), x), x) - ...` closes through the
+    bounded shortcut in milliseconds without `depth_overflow` while preserving
+    the compact public antiderivative and visible by-parts substep
 - attempted case:
   - reduce runtime for `integrate((2*x+3)*sinh(1-2*x), x)` and
     `integrate((2*x+3)*cosh(1-2*x), x)` after shifted positive-affine
@@ -10934,6 +10972,13 @@ The burden of proof stays the same:
   - calculus / integration / pre-simplification boundary
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: the current low-level
+    `cas_math` unit now retains the raw rational-affine hyperbolic by-parts
+    helper path for `(x+1)*sinh((3*x+2)/2)` and the analogous `cosh`
+    case; the public CLI contract also verifies positive and negative
+    rational-affine forms through the bounded public residual route with no
+    required conditions.
 - attempted case:
   - add a low-level `cas_math` unit for
     `integrate_symbolic_expr((x+1)*sinh((3*x+2)/2), x)` and the analogous
@@ -10981,6 +11026,12 @@ The burden of proof stays the same:
   - calculus / integration / antiderivative verification / hyperbolic simplification
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: the current rational-affine hyperbolic
+    by-parts contract evaluates residuals such as
+    `diff(integrate((x+1)*sinh((3*x+2)/2), x), x) - (x+1)*sinh((3*x+2)/2)`
+    to `0` through the bounded public residual route in milliseconds, so this
+    stale slow-verifier discovery should no longer steer candidate selection.
 - attempted case:
   - after teaching polynomial extraction to accept division by a constant
     polynomial, re-probe the residual for
@@ -11011,6 +11062,16 @@ The burden of proof stays the same:
   - calculus / integration / antiderivative verification / hyperbolic reciprocal simplification
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: current bounded public residual routes and
+    compact hyperbolic log-abs residual support close the original reciprocal
+    cases to `0` without `depth_overflow`, `cycle_detected`, or budget
+    warnings. The public probes for `1/sinh(2*x+1)^2`,
+    `sinh(2*x+1)/cosh(2*x+1)^2`,
+    `cosh(2*x+1)/sinh(2*x+1)^2`, `1/tanh(2*x+1)`, and the direct
+    `diff(ln(abs(sinh(2*x+1)))/2,x)-1/tanh(2*x+1)` residual now terminate
+    under a 250 ms CLI time budget while preserving the expected
+    `sinh(2*x+1) != 0` domain condition where applicable.
 - attempted case:
   - promote linear hyperbolic reciprocal antiderivatives such as
     `integrate(1/sinh(2*x+1)^2, x)`,
@@ -11046,6 +11107,13 @@ The burden of proof stays the same:
   - calculus / integration / traversal order / expanded denominator powers
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: the retained follow-up is now verified by
+    current contracts and CLI probes. The public syntactic form
+    `integrate((2*x+1)/(x^2+x-1)^2, x)` reaches the direct `u'/u^n`
+    integration step, returns `-1 / (x^2 + x - 1)`, emits no budget warnings,
+    and preserves the compact `x^2 + x - 1 != 0` domain condition without a
+    child `Small Multinomial Expansion` detour.
 - attempted case:
   - promote the syntactic public form
     `integrate((2*x+1)/(x^2+x-1)^2, x)` after adding exact expanded-square
@@ -11117,6 +11185,15 @@ The burden of proof stays the same:
   - calculus / differentiation / traversal order / product-rule trig
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: current affine linear-times-`tan`
+    differentiation contracts and strict public probes retain the broader
+    product-rule shape without `Simplification Time Budget`. The public forms
+    `diff((x+1)*tan(2*x+1), x)`, `diff(2*x*tan(2*x+1), x)`, and
+    `diff((3*x+2)*tan(2*x+1), x)` now return compact `tan(u) + p/cos(u)^2`
+    outputs under a 50 ms time budget while preserving the single
+    `cos(2*x+1) != 0` condition. The earlier integration coupling is also
+    retained: `sec(u)*tan(u)` and `tan(u)/cos(u)` integrate to `sec(u)/2`.
 - attempted case:
   - broaden the narrow `diff` target preservation from `x*tan(u)` to
     `linear-polynomial*tan(u)`
@@ -11142,6 +11219,12 @@ The burden of proof stays the same:
   - calculus / differentiation / hyperbolic quotient / post-diff simplification
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 robustness cycle: exposed the direct
+    `cas_math` affine hyperbolic coth product derivative to the public
+    pre-simplification `diff` path, preserving the visible
+    `Symbolic Differentiation` step while bypassing the expensive compact
+    reciprocal-hyperbolic sum simplification route.
 - attempted case:
   - directly differentiate affine cofactors around
     `cosh(2*x+1)/sinh(2*x+1)`, for example
@@ -11169,9 +11252,9 @@ The burden of proof stays the same:
   - the public no-artificial-budget contract now returns compactly as
     `1/tanh(2*x+1) - (2*x+2)/sinh(2*x+1)^2` with required condition
     `sinh(2*x+1) != 0`
-  - the strict `--time-budget-ms 50` probe still reports a post-simplification
-    budget warning, so the remaining work is presentation/runtime for compact
-    reciprocal-hyperbolic sums rather than derivative correctness
+  - the strict `--time-budget-ms 50` public probe now also returns the compact
+    derivative in the direct path without `Simplification Time Budget`,
+    preserving `sinh(2*x+1) != 0`
 
 ## 2026-05-01 - Discovery observe-only: reciprocal tanh fraction guard does not bound compact coth diff sum
 
@@ -11179,6 +11262,13 @@ The burden of proof stays the same:
   - calculus / differentiation / fraction combination / post-diff runtime
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 robustness cycle: the public eval path now preserves compact
+    same-argument reciprocal-hyperbolic sums shaped like
+    `1/tanh(u) - p/sinh(u)^2` before the general simplifier. The original
+    strict probe for `1/tanh(2*x+1) - (2*x+2)/sinh(2*x+1)^2` returns the same
+    compact form without `Simplification Time Budget` under a 50 ms budget,
+    while the public required conditions normalize to `sinh(2*x+1) != 0`.
 - attempted case:
   - block `AddFractions` only for compact same-argument reciprocal-hyperbolic
     sums shaped like `1/tanh(u) - p/sinh(u)^2`
@@ -11206,6 +11296,14 @@ The burden of proof stays the same:
     normalization
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 robustness cycle: the public `steps_off` diff path now reuses
+    the existing positive-quadratic surd-scale presentation before general
+    simplification for `arcsec/arccsc(sqrt(c)*q(x))`. The original product-form
+    probes for `sqrt(2)*(x^2+x+3)` return the compact
+    `+/- (2*x+1)/((x^2+x+3)*sqrt(2*(x^2+x+3)^2-1))` form under a 50 ms budget
+    with no `Simplification Time Budget`, no `depth_overflow`, and empty
+    required conditions.
 - attempted case:
   - use the product form `sqrt(2)*(x^2+x+3)` as the argument of `arcsec` and
     `arccsc`
@@ -11241,6 +11339,13 @@ The burden of proof stays the same:
   - calculus / integration / inverse trig / affine-shifted by-parts
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: the documented public residual probes for
+    `integrate(arcsin/arccos(2*x+1), x)` and
+    `integrate(arcsin/arccos(1-2*x), x)` now all simplify through
+    `diff(integrate(...), x) - integrand` to `0` without warnings, while
+    preserving the explicit real-domain conditions for the shifted bounded
+    inverse-trig representatives.
 - attempted case:
   - broaden the retained scaled-variable rule from `integrate(arcsin(2*x), x)`
     to shifted affine arguments such as `integrate(arcsin(2*x+1), x)`
@@ -11283,6 +11388,14 @@ The burden of proof stays the same:
   - calculus / integration / logarithmic by-parts / post-diff simplification
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: current public integration and
+    differentiation contracts retain the compact factored log-cube by-parts
+    primitive for `integrate(2*x*ln(x^2+1)^3, x)`. The original direct
+    `diff((x^2+1)*P(ln(x^2+1)), x) - 2*x*ln(x^2+1)^3` probe and the nested
+    `diff(integrate(...), x) - integrand` probe both simplify to `0` without
+    warnings or required conditions, so this entry is closed as stale
+    discovery signal rather than open engine work.
 - attempted case:
   - promote `integrate(2*x*ln(x^2+1)^3, x)` using the compact factored
     antiderivative `(x^2+1)*(ln(x^2+1)^3 - 3*ln(x^2+1)^2 + 6*ln(x^2+1) - 6)`
@@ -11327,6 +11440,14 @@ The burden of proof stays the same:
   - calculus / differentiation / reciprocal trig / post-cleanup presentation
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: current public differentiation contracts
+    retain the rational-affine `sec`/`csc` derivative presentation. The
+    strict probes for `diff(sec((3*x+2)/2), x)` and
+    `diff(csc((2-3*x)/2), x)` return compact `3/2*sec(u)*tan(u)` and
+    `3/2*csc(u)*cot(u)` forms under a 50 ms budget with no `depth_overflow`,
+    no half-angle `+ 1 - 1` cleanup residue, and the expected
+    `cos(u) != 0` / `sin(u) != 0` pole conditions.
 - attempted case:
   - extend the retained rational-affine `tan`/`cot` derivative construction to
     product-shaped reciprocal trig derivatives:
@@ -11359,6 +11480,19 @@ The burden of proof stays the same:
     reciprocal trig sqrt chains
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: current public calculus lanes retain the
+    compact sqrt-chain reciprocal-trig product presentation that motivated this
+    discovery. The reproduced probes
+    `diff(integrate(csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x), x)` and
+    `diff(integrate(sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x), x)` now render
+    as the compact product-over-`sqrt(x)` forms with no warnings and deduped
+    `sin(sqrt(x)) != 0` / `cos(sqrt(x)) != 0` plus `x > 0` requirements;
+    `diff(-csc(sqrt(x)), x)` also retains
+    `csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x))`. Direct simplification of the raw
+    integrand can still choose the canonical `sin`/`cos` quotient, so this
+    closeout is scoped to the public differentiation/integration verification
+    lanes rather than promoted as a general trig presentation simplifier.
 - attempted case:
   - make `diff(integrate(csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x), x)`
     render directly as `csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x))`
@@ -11395,6 +11529,18 @@ The burden of proof stays the same:
     trig sqrt-chain log derivatives
 - status:
   - `observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: current public calculus lanes retain the
+    compact sqrt-chain `tan`/`cot` log-derivative presentation that motivated
+    this discovery. The reproduced probes
+    `diff(integrate(tan(sqrt(x))/(2*sqrt(x)), x), x)`,
+    `diff(integrate(cot(sqrt(x))/(2*sqrt(x)), x), x)`, and
+    `diff(integrate(tan(sqrt(2*x))/sqrt(2*x), x), x)` now render as the
+    compact `tan`/`cot` over explicit `sqrt(...)` forms with no warnings and
+    normalized domain requirements. Direct simplification of
+    `tan(sqrt(x))/(2*sqrt(x))` and `cot(sqrt(x))/(2*sqrt(x))` also preserves
+    the compact form, so the old reconstruction signature is stale for the
+    promoted public integration verification lanes.
 - attempted case:
   - preserve compact nested results for
     `diff(integrate(tan(sqrt(x))/(2*sqrt(x)), x), x)` and
@@ -11489,6 +11635,18 @@ The burden of proof stays the same:
   - calculus / integrate-by-diff verification / sign-orientation robustness
 - status:
   - `discovery-observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: current public integration verification
+    lanes retain the negative-slope affine `arctan(sqrt(...))` capability that
+    motivated this discovery. The reproduced
+    `integrate(-1/(2*sqrt(5-3*x)*(2-x)), x)` probe returns
+    `arctan(sqrt(5 - 3*x))` with the explicit `x < 5/3` condition, and
+    `diff(integrate(-1/(2*sqrt(5-3*x)*(2-x)), x), x) -
+    (-1/(2*sqrt(5-3*x)*(2-x)))` now simplifies to `0` under the small public
+    budget with no warnings. Direct `diff(arctan(sqrt(5-3*x)), x)` also renders
+    the compact negative-orientation derivative; the slower direct residual
+    written without the `integrate(...)` context remains a separate runtime/NF
+    candidate rather than an open integration verification blocker.
 - observed case:
   - `integrate(-1/(2*sqrt(5-3*x)*(2-x)), x)` structurally matches the same
     affine inverse-derivative family as `arctan(sqrt(q))` with `q = 5 - 3*x`
@@ -11543,6 +11701,18 @@ The burden of proof stays the same:
   - calculus / diff runtime / inverse tangent reciprocal sqrt presentation
 - status:
   - `discovery-observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: current public differentiation lanes retain
+    the bounded shifted reciprocal-sqrt `arccot` route that motivated this
+    discovery. The reproduced
+    `diff(arccot(sqrt(1/(x+1))), x)` probe returns
+    `1/(2*sqrt(x+1)*(x+2))` with `x > -1`, no warnings, and a 3-step trace;
+    the residual against `1/(2*sqrt(x+1)*(x+2))` simplifies to `0` under the
+    small public budget. The retained contract also guards that this case avoids
+    the old `Abs Squared Identity` / `Heuristic Poly Normalize` cleanup route.
+    The public trace may still show the bounded `arccot(x) -> arctan(1/x)`
+    transition, so this closeout is scoped to the resolved runtime cleanup gap,
+    not to a pure arccot-only didactic route.
 - observed case:
   - `diff(arccot(sqrt(1/(x+1))), x)` returns the compact result
     `1 / (2*sqrt(x+1)*(x+2))` with required condition `x + 1 > 0`, but still
@@ -11584,6 +11754,19 @@ The burden of proof stays the same:
   - calculus / post-calculus presentation / didactic trace quality
 - status:
   - `discovery-observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: current public differentiation lanes retain
+    the compact post-calculus presentation trace that motivated this discovery.
+    The reproduced
+    `diff(arcsin((x^2+x+1)^2/sqrt(2/3))*1/sqrt(3), x)` probe returns
+    `2*(2*x^3 + 3*x^2 + 3*x + 1)/sqrt(2 - 3*(x^2+x+1)^4)` with
+    `2 - 3*(x^2+x+1)^4 > 0`, no warnings, and a single public
+    `Symbolic Differentiation` step; the residual against the compact target
+    simplifies to `0` under the small public budget. The retained contract
+    also guards that the public trace suppresses redundant `Expand Expression`,
+    `Expand Binomial`, and `Present calculus result in compact form` repair
+    noise. This closeout is scoped to the promoted public trace case, not to a
+    general terminal-presentation phase policy.
 - observed case:
   - `diff(arcsin((x^2+x+1)^2/sqrt(2/3))*1/sqrt(3), x)` now starts with the
     direct `Symbolic Differentiation` step and returns the compact result
@@ -11669,6 +11852,15 @@ The burden of proof stays the same:
   - robustness / domain-regime / sign-aware abs cleanup
 - status:
   - `discovery-observe-only`
+- resolved by:
+  - 2026-05-22 observability cycle: current public domain lanes retain the
+    lower-bound representation this discovery required. The reproduced
+    `abs(x)-x+acosh(x)-acosh(x)` and
+    `sqrt(x^2)-x+acosh(x)-acosh(x)` probes now both simplify to `0` while
+    publishing the explicit `x >= 1` lower-bound requirement with no warnings.
+    The retained wire contract also covers affine lower-bound implication and
+    the negative-orientation guard, so this scorecard entry is stale discovery
+    signal rather than an open domain-model blocker.
 - observed probes:
   - `abs(x)-x+acosh(x)-acosh(x)` returns `|x| - x` with no required
     conditions
@@ -11698,8 +11890,7 @@ The burden of proof stays the same:
   - `abs(x)-x+acosh(x)-acosh(x)` -> `0`, requiring `x >= 1`
   - `abs(x)-x+acosh(2*x+1)-acosh(2*x+1)` -> `0`, requiring
     `2*x + 1 >= 1`
-  - `abs(x)-x+acosh(1-x)-acosh(1-x)` stays `|x| - x`, requiring
-    `1 - x >= 1`
+  - `abs(x)-x+acosh(1-x)-acosh(1-x)` -> `-2*x`, requiring `x <= 0`
 - decision:
   - supersedes the observe-only row above for the bounded `acosh` lower-bound
     case
@@ -11738,6 +11929,17 @@ The burden of proof stays the same:
   - calculus / integrate / post-calculus presentation / residual simplification
 - status:
   - `superseded-by-retained`
+- superseded by:
+  - 2026-05-22 observability cycle: current public integration and residual
+    lanes retain the bounded rational residual matcher from the follow-up row.
+    The reproduced `integrate(1/(4*x^2+1)^2, x)` probe still renders the
+    compact `1/4*arctan(2*x) + x/(2*(4*x^2+1))` primitive with no synthetic
+    required conditions, and both
+    `diff(integrate(1/(4*x^2+1)^2, x), x) - 1/(4*x^2+1)^2` and
+    `diff(1/4*arctan(2*x)+x/(2*(4*x^2+1)), x) - 1/(4*x^2+1)^2` now simplify
+    to `0` under the small public budget with no warnings. The remaining note
+    about the lower-level exhaustive helper stays a separate harness/core
+    alignment concern rather than an open public integration blocker.
 - observed probes:
   - `integrate(1/(4*x^2+1)^2, x)` now renders the compact primitive
     `1/4*arctan(2*x) + x/(2*(4*x^2+1))`
@@ -11900,6 +12102,16 @@ The burden of proof stays the same:
   - calculus / diff / post-calculus presentation / residual simplification
 - status:
   - `superseded-by-retained`
+- superseded by:
+  - 2026-05-22 observability cycle: current public differentiation and
+    residual lanes retain the bounded reciprocal half-power matcher from the
+    follow-up row. The reproduced `diff(sqrt(ln(x)), x)` probe now renders as
+    `1/(2*x*sqrt(ln(x)))`, and both
+    `ln(x)^(-1/2)/(2*x) - ln(x)^(1/2)/(2*x*ln(x))` and
+    `diff(sqrt(ln(x)), x) - 1/(2*x*sqrt(ln(x)))` simplify to `0` under the
+    small public budget with no warnings while preserving `ln(x) > 0` and
+    `x > 0`. The plus-constant follow-up also keeps the same bounded residual
+    route covered for `diff(sqrt(ln(x)+c), x)` forms.
 - observed probes:
   - `diff(sqrt(ln(x)), x)` returns the correct internal form
     `ln(x)^(-1/2) / (2*x)` with `ln(x) > 0` and `x > 0`
@@ -11967,6 +12179,14 @@ The burden of proof stays the same:
   - calculus / integrate / rational partial fractions / residual simplification
 - status:
   - `superseded-by-retained`
+- superseded by:
+  - 2026-05-22 observability cycle: the adjacent retained residual closure now
+    covers this discovery in the public calculus path. Reproduced probes show
+    `integrate(1/((x+1)^3*(x^2+2*x+2)), x)` still renders the compact primitive
+    `1/2*ln(x^2+2*x+2) - ln(abs(x+1)) - 1/(2*(x+1)^2)`, while both the nested
+    `diff(integrate(...), x)` residual and the explicit rendered primitive
+    residual simplify to `0` under the small public budget with no warnings and
+    only the retained `x + 1 != 0` domain condition.
 - observed probes:
   - `integrate(1/((x+1)^3*(x^2+2*x+2)), x)` now constructs a compact
     primitive:
@@ -12004,6 +12224,16 @@ The burden of proof stays the same:
   - calculus / integrate / inverse trig by parts / residual simplification
 - status:
   - `observe-only`
+- superseded by:
+  - 2026-05-22 observability cycle: current public calculus residual lanes now
+    cover the exact shifted affine polynomial-arctan probe cheaply. Reproduced
+    probes show `integrate((x+1)*arctan(2*x+1), x)` returns an explicit
+    primitive with no required conditions, while both
+    `diff(integrate((x+1)*arctan(2*x+1), x), x) - (x+1)*arctan(2*x+1)` and
+    `equiv(diff(integrate((x+1)*arctan(2*x+1), x), x), (x+1)*arctan(2*x+1))`
+    complete under the small public budget with no warnings. This is covered by
+    the retained inverse-trig antiderivative residual shortcut and the
+    polynomial-arctan affine by-parts family rather than a new integration rule.
 - observed probes:
   - `integrate((x+1)*arctan(2*x+1), x)` can construct an explicit primitive
     through the same by-parts identity used for unshifted polynomial-arctan
@@ -12026,6 +12256,17 @@ The burden of proof stays the same:
   - calculus / integrate / inverse trig by parts / residual simplification
 - status:
   - `superseded-by-retained`
+- superseded by:
+  - 2026-05-22 observability cycle: the adjacent retained symbolic
+    polynomial-denominator residual closure now covers this discovery in the
+    public calculus path. Reproduced probes show
+    `integrate(x^6*arctan(x), x)` still returns the compact degree-six
+    by-parts primitive, while both
+    `diff(integrate(x^6*arctan(x), x), x) - x^6*arctan(x)` and the explicit
+    rendered-primitive residual simplify to `0` under the small public budget
+    with no warnings and no required conditions. The later inverse-trig
+    antiderivative residual shortcut keeps the same case cheap without
+    broadening integration.
 - observed probes:
   - temporary promotion of `integrate(x^6*arctan(x), x)` constructed a compact
     primitive:
@@ -12454,6 +12695,17 @@ The burden of proof stays the same:
   - coverage / calculus-integrate contextual embedding
 - status:
   - `discovery/observe-only`
+- superseded by:
+  - 2026-05-22 observability cycle: the adjacent retained signed common-factor
+    residual work now covers this reversed orientation in the public embedded
+    calculus-integrate lane. Reproduced probes show
+    `((2*x*sin(x)+(2-x^2)*cos(x)) - integrate(x^2*sin(x),x)) + (u*v + u*w - u*(v+w))`
+    simplifies to `0` under the small public budget with no warnings and no
+    required conditions, and the promoted
+    `calculus_integrate_poly_sin_by_parts_reversed_collect_combined_zero`
+    embedded row is present in the live corpus. The retained value is the
+    algebraic signed common-factor cancellation, not a broader integration
+    shortcut.
 - candidate:
   - promote the reversed combined residual
     `((2*x*sin(x)+(2-x^2)*cos(x)) - integrate(x^2*sin(x),x)) + (u*v + u*w - u*(v+w))`
@@ -12518,6 +12770,16 @@ The burden of proof stays the same:
   - calculus / integrate / residual verification
 - status:
   - `discovery/observe-only`
+- superseded by:
+  - 2026-05-22 calculus cycle: the bounded quadratic affine-log by-parts path now
+    accepts nonzero affine slopes, including the negative-slope representative
+    `integrate(x^2*ln(1-2*x), x)`, while preserving the explicit real-domain
+    condition `x < 1/2`. A narrow residual shortcut for the same supported
+    `diff(integrate(target,x),x) - target` family keeps the public verification
+    at `0` under the small budget with no warnings. The earlier mixed positive
+    cofactor representative `integrate((x^2+x)*ln(x+1), x)` also verifies
+    cleanly, so the retained value is the bounded affine-log by-parts vertical
+    plus residual closure, not a general integration search.
 - candidate:
   - broaden affine-log integration by parts from `x^2*ln(2*x+1)` to mixed
     quadratic cofactors and negative affine arguments, such as
@@ -12542,6 +12804,17 @@ The burden of proof stays the same:
   - calculus / post-calculus presentation / inverse-trig orientation
 - status:
   - `discovery/observe-only`
+- superseded by:
+  - 2026-05-22 observability cycle: current public calculus and simplification
+    paths already close the reproducible arctan-orientation signature. The
+    primitive for `integrate(x^2*arctan(1-x), x)` renders with `arctan(1-x)`,
+    `diff(integrate(x^2*arctan(1-x),x),x) - x^2*arctan(1-x)` collapses to
+    `0`, the composed residual
+    `diff(integrate(x^2*arctan(1-x)+x*arctan(1-x),x),x) - (x^2*arctan(1-x)+x*arctan(1-x))`
+    also collapses to `0`, and the public simplifier proves
+    `arctan(1-x)+arctan(x-1) -> 0` under the small budget with no warnings. The
+    retained value is therefore ledger hygiene and scorecard signal accuracy,
+    not a new integration or orientation rewrite.
 - candidate:
   - orient the rational correction inside
     `integrate(x^2*arctan(1-x), x)` from `arctan(x-1)` to `arctan(1-x)` using
@@ -12595,6 +12868,18 @@ The burden of proof stays the same:
   - calculus / diff-integrate presentation / rational partial fractions
 - status:
   - `discovery/observe-only`
+- superseded by:
+  - 2026-05-13 retained follow-up plus 2026-05-22 observability revalidation:
+    current public calculus presentation already preserves the raw supported
+    `diff(integrate(...), x)` target for the rational linear partial-fraction
+    representative. Reproduced probes show
+    `diff(integrate(1/((x-2)*(x-1)*x*(x+1)*(x+2)), x), x)` returns the compact
+    integrand directly, the residual against the same integrand simplifies to
+    `0`, and the public `equiv(...)` probe returns `true`, all under the small
+    budget with no warnings while preserving the five expected nonzero
+    conditions. The retained value is therefore the adjacent robustness
+    follow-up; this discovery is closed as stale scorecard signal rather than a
+    new calculus implementation target.
 - candidate:
   - route `diff(integrate(f,x),x)` for rational linear partial-fraction targets
     directly to `f`, using the same detector as public residual verification
@@ -12643,6 +12928,18 @@ The burden of proof stays the same:
   - calculus / post-calculus presentation / trig residual verification
 - status:
   - `discovery/observe-only`
+- superseded by:
+  - 2026-05-22 observability cycle: current public integration presentation and
+    residual verification already retain the square primitive that motivated
+    this discovery. Reproduced probes show
+    `integrate(3*sin(2*x+1)*cos(2*x+1), x)` renders as
+    `3/4*sin(2*x+1)^2`, the nested public residual
+    `diff(integrate(3*sin(2*x+1)*cos(2*x+1), x), x) - 3*sin(2*x+1)*cos(2*x+1)`
+    simplifies to `0`, and the explicit square-primitive residual
+    `diff(3/4*sin(2*x+1)^2, x) - 3*sin(2*x+1)*cos(2*x+1)` also simplifies to
+    `0`, all under the small budget with no warnings or required conditions.
+    The retained value is therefore the existing bounded affine
+    trig-product integration and residual route, not a new presentation rule.
 - candidate:
   - render `integrate(sin(u)*cos(u), x)` as the compact square primitive
     `sin(u)^2/(2*u')` for affine `u`
@@ -12686,6 +12983,18 @@ The burden of proof stays the same:
   - do not promote the affine negative hyperbolic-power representative until
     explicit derivative residual normalization handles this shape directly and
     cheaply
+- superseded by:
+  - 2026-05-22 observability cycle: the retained follow-up below already
+    promoted the bounded affine hyperbolic cubic residual route. Reproduced
+    public probes now show
+    `integrate(-2*cosh(2*x+1)*sinh(2*x+1)^2, x)` renders as
+    `-1/3*sinh(2*x+1)^3`, the explicit subtractive residual
+    `diff(-1/3*sinh(2*x+1)^3, x) - (-2*cosh(2*x+1)*sinh(2*x+1)^2)` collapses
+    to `0`, and the nested public residual
+    `diff(integrate(-2*cosh(2*x+1)*sinh(2*x+1)^2, x), x) - (-2*cosh(2*x+1)*sinh(2*x+1)^2)`
+    also collapses to `0`, all under the small budget with no warnings or
+    required conditions. The retained value is therefore the already-promoted
+    explicit affine `sinh`/`cosh` cubic residual matcher, not a new rule.
 
 ## 2026-05-14 - Retained follow-up: negative affine hyperbolic power residual verification
 
@@ -12729,6 +13038,19 @@ The burden of proof stays the same:
     needs residual/domain normalization before public promotion
   - keep `x^2-1` as a future robustness candidate rather than widening the
     integration rule or weakening the verification contract
+- superseded by:
+  - 2026-05-22 observability cycle: the retained follow-up below already
+    promoted the sign-sensitive reciprocal log-power residual route.
+    Reproduced public probes now show
+    `integrate(2*x/((x^2-1)*ln(x^2-1)^2), x)` renders as
+    `-1/ln(x^2-1)`, the nested public residual
+    `diff(integrate(2*x/((x^2-1)*ln(x^2-1)^2), x), x) - 2*x/((x^2-1)*ln(x^2-1)^2)`
+    collapses to `0`, and the explicit primitive residual
+    `diff(-1/ln(x^2-1), x) - 2*x/((x^2-1)*ln(x^2-1)^2)` also collapses to
+    `0`, all under the small budget with no warnings. The retained domain
+    requirements remain explicit as `x^2 - 2 != 0` and `x^2 - 1 > 0`, so this
+    discovery is stale scorecard signal rather than an open integration or
+    residual blocker.
 
 ## 2026-05-14 - Retained follow-up: sign-sensitive reciprocal log-power residual
 
@@ -12823,6 +13145,12 @@ The burden of proof stays the same:
   - coverage / calculus-integrate / reciprocal shifted wrapper
 - status:
   - `discovery/observe-only`
+- superseded by:
+  - `2026-05-14 - Retained follow-up: reciprocal wrapper re-entry for partial-fraction diff residual`
+  - current public probes for the direct residual and the reciprocal shifted
+    wrapper collapse to `0`, and the representative is present as the live
+    embedded row
+    `calculus_integrate_repeated_linear_partial_fraction_reciprocal_shifted_difference_zero`
 - candidate:
   - promote
     `1/((diff(integrate((3*x+5)/(x^3-x^2-x+1),x),x))+c) - 1/(((3*x+5)/(x^3-x^2-x+1))+c)`
@@ -13129,6 +13457,14 @@ The burden of proof stays the same:
   - calculus / integrate / trig power reduction / antiderivative verification
 - status:
   - `observe-only`
+- resolved by:
+  - `2026-05-14 - Retained robustness: trig fourth-power primitive residual`
+  - `2026-05-14 - Retained calculus: trig fourth-power integration`
+  - current public probes for `integrate(sin(x)^4, x)`,
+    `integrate(cos(2*x+1)^4, x)`, the nested
+    `diff(integrate(...), x) - ...` residual, and the explicit primitive
+    residual return compact results or `0` without required conditions or
+    `depth_overflow`
 - candidate:
   - add direct support for `integrate(sin(linear)^4, x)` and
     `integrate(cos(linear)^4, x)` using the standard fourth-power reduction
@@ -13313,6 +13649,13 @@ The burden of proof stays the same:
   - calculus / integrate / antiderivative verification
 - status:
   - `discovery/observe-only`
+- resolved by:
+  - `2026-05-14 - Retained calculus: sextic polynomial-times-trig by-parts`
+  - `2026-05-14 - Retained calculus: sparse affine sextic trig by-parts trace`
+  - current public probes for `integrate(x^6*sin(x), x)`,
+    `diff(integrate(x^6*sin(x), x), x) - x^6*sin(x)`, and the sparse affine
+    `(x^6+1)*sin(2*x+1)` variant return compact primitives or `0` without
+    required conditions or `depth_overflow`
 - observed result:
   - finite derivative-series construction can produce primitives for
     `integrate(x^6*sin(x), x)` and `integrate(x^6*cos(x), x)`
@@ -13958,7 +14301,7 @@ The burden of proof stays the same:
     public wire/JSON route, not only a display rewrite
   - the candidate should remain unpromoted until antiderivative verification is
     stable in the promoted contract path
-- follow-up:
+- resolved by:
   - resolved by a bounded residual-normalization extension for exact
     polynomial-power denominators plus a retained post-integration presentation
     contract for the `7/2 -> 5/2` reciprocal-power primitive
@@ -14013,10 +14356,12 @@ The burden of proof stays the same:
     shared affine argument
   - this is a reusable simplification/runtime weakness, not a malformed case
     or display-only issue
-- follow-up:
-  - before promoting affine exp-trig integration, add a bounded residual
-    simplification route for same-affine exp-trig products or another verified
-    fast path that keeps the derivative check cheap
+- resolved by:
+  - current public integration contracts verify same-affine exp-trig
+    antiderivatives through the bounded public residual route, including
+    `integrate(exp(2*x+1)*sin(2*x+1), x)`
+  - the original slow residual now collapses to `0` quickly without warnings or
+    required conditions
 
 ## 2026-05-17 - Refined condition dominance: positive quadratic interval vs exterior
 
@@ -14134,6 +14479,18 @@ The burden of proof stays the same:
   - add a direct residual route for `d/dx(e^(a*x+b)*(A*cos(c*x+d)+B*sin(c*x+d)))`
     minus an `exp(linear)*cos(linear)` target before enabling the cosine
     sibling
+- resolved by:
+  - current public integration contracts now promote
+    `integrate(exp(2*x)*cos(3*x), x)` with the compact primitive
+    `1/13*e^(2*x)*(2*cos(3*x)+3*sin(3*x))`
+  - the nested public residual
+    `diff(integrate(exp(2*x)*cos(3*x), x), x) - exp(2*x)*cos(3*x)` and the
+    explicit primitive residual both close to `0` through the bounded public
+    residual route, with no warnings, `depth_overflow`, or real-domain
+    conditions
+  - additive constants in the displayed primitive are also accepted by the same
+    verification route, so the retained value is the bounded exp-trig
+    antiderivative verification path rather than a broad trig expansion rule
 
 ## 2026-05-18 - Retained: distinct-slope exp-cos without multiple-angle expansion
 
@@ -14259,6 +14616,15 @@ The burden of proof stays the same:
     expressions
   - future work should add a bounded, held presentation route for these mixed
     tan-root outputs before widening the family to `sqrt(x)` or `exp(x)`
+- resolved by:
+  - later retained tan-root presentation/residual routes bound both original
+    subcases without entering generic cleanup:
+    `diff(sqrt(tan(x)+sqrt(x)+x), x)` and
+    `diff(sqrt(tan(x)+exp(x)+x), x)`
+  - the educational residual
+    `diff(sqrt(tan(x)+exp(x)+x), x) -
+    (sec(x)^2+e^x+1)/(2*sqrt(tan(x)+exp(x)+x))` now closes to `0` before
+    cleanup while preserving `cos(x) != 0` and radicand positivity
 
 ## 2026-05-19 - Retained robustness: tan-root diff with sqrt-variable term
 
@@ -14273,9 +14639,9 @@ The burden of proof stays the same:
     smoke
   - the route preserves the tangent pole guard, the `sqrt(x)` derivative
     guard, and the outer radicand positivity
-- still open:
-  - `diff(sqrt(tan(x)+exp(x)+x), x)` remains a timeout candidate and still
-    needs a separate route-ordering or held-presentation iteration
+- later resolved:
+  - `diff(sqrt(tan(x)+exp(x)+x), x)` was subsequently bounded by the retained
+    sec-squared tan-exp root derivative presentation/residual route
 - retained learning:
   - adding `sqrt(x)` safely required both a narrow direct derivative term and a
     post-calculus rationalization guard for trig-plus-`sqrt(variable)`
@@ -14308,6 +14674,14 @@ The burden of proof stays the same:
   - add a bounded denominator-product-vs-expanded-product equivalence probe for
     exact fraction-pair cancellation, then promote the nested diff residual only
     if guardrail and pressure stay at `failed = 0`
+- resolved by:
+  - the nested residual was promoted as
+    `arctan_reciprocal_sqrt_product_diff_residual_collapses_after_child_expansion`
+  - the public residual now closes to `0` through `Cancel Opposite Fractions`
+    after the derivative step, without warnings or generic fraction cleanup,
+    while preserving the required `x > 0` condition
+  - the quadratic sibling is also covered by
+    `arctan_reciprocal_sqrt_quadratic_product_diff_residual_collapses_after_child_expansion`
 
 ## 2026-05-20 - Discovery observe-only: inline reciprocal term in trig-root diff presentation
 
@@ -14330,6 +14704,16 @@ The burden of proof stays the same:
 - follow-up:
   - improve this presentation only through a bounded held post-calculus display
     route that does not feed nested `Div` terms back into general simplification
+- resolved by:
+  - the following retained robustness iteration kept the stable
+    common-denominator public presentation for
+    `diff(sqrt(sin(2*x)+cos(x)+1/x), x)` and added a bounded residual bridge
+    for the equivalent inline numerator target
+  - the inline educational residual now closes to `0` before general cleanup
+    while preserving the outer radicand positivity and `x != 0` conditions
+  - no public inline-division presentation was promoted; the retained policy is
+    that this family should stay on the stable denominator-cleared display
+    unless a future held display route can prove equally bounded
 
 ## 2026-05-20 - Retained robustness: inline reciprocal trig-root diff residual
 
@@ -14380,6 +14764,12 @@ The burden of proof stays the same:
   - the next retained attempt should add a bounded pre-order residual route for
     the exact `sqrt(x)` common-denominator presentation instead of widening the
     general post-calculus fraction matcher
+- resolved by:
+  - the immediately following retained robustness iteration added the bounded
+    early residual route for the exact `sqrt(x)` common-denominator
+    presentation
+  - the public residual now closes to `0` before general cleanup, without
+    warnings, while preserving the radicand positivity and `x > 0` conditions
 
 ## 2026-05-20 - Retained robustness: reciprocal-sqrt trig-root common-denominator residual
 
@@ -14551,6 +14941,10 @@ The burden of proof stays the same:
   - `hyperbolic_sinh:double_nested_den` and `hyperbolic_cosh:double_nested_den`
     now pass the focused smoke under 6s and were promoted as minimal
     representatives
+  - 2026-05-22 robustness iteration revalidated the default smoke signature
+    after it reproduced locally; the retained fix keeps the depth-2 quotient
+    allowance scoped to the hyperbolic adapter and preserves all three
+    denominator `NonZero` conditions
 
 ## 2026-05-20 - Observe-only discovery: non-corpus rational quadratic wrapper warning
 
@@ -14582,6 +14976,9 @@ The burden of proof stays the same:
     constant-passthrough quotient residual adapter to depth-2 nested quotients
   - `rational_quad_positive_quadratic:double_nested_den` now passes under
     `forbid_warnings` with only `x + 2`, `x + 3`, and `x + 4` conditions
+  - 2026-05-22 robustness iteration revalidated the current default smoke
+    signature after it reproduced locally; the retained fix keeps the depth-2
+    quotient allowance scoped to supported rational-quadratic residuals
 
 ## 2026-05-21 - Discovery observe-only: inline sqrt-variable tan-root presentation residual timeout
 
@@ -14621,3 +15018,13 @@ The burden of proof stays the same:
     the private `diff(...) - target` residual route, so the embedded inline
     target direction is now bounded without changing the public `diff`
     presentation yet
+- resolved by:
+  - current public `diff` contracts now retain the inline presentation for
+    `diff(sqrt(tan(x)+exp(x)+sqrt(x)+x), x)` directly, with the tangent pole,
+    radicand positivity, and `x > 0` requirements intact
+  - both the inline target residual and the common-denominator target residual
+    close to `0` through the bounded post-calculus residual route before
+    generic cleanup, with no warnings or `depth_overflow`
+  - the retained value is the exact tan/exp/sqrt-root presentation-residual
+    bridge already covered by the public differentiation contracts, not a
+    broader global rule for arbitrary inline radical numerators

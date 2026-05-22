@@ -180,16 +180,63 @@ Current contract:
   points only when the denominator evaluates explicitly to a nonzero value at
   that point; zero denominators, including removable-looking holes, remain
   residual until a dedicated finite-point continuity/cancellation policy exists
-- `sqrt(p(x))` and `ln(p(x))` may evaluate at numeric rational finite points
-  only when `p(x)` is polynomial in the limit variable and `p(a)` is
-  strictly positive; zero and negative argument values remain residual to
-  avoid endpoint, side, branch, or domain-path assumptions
+- `exp(p(x))`, `sin(p(x))`, `cos(p(x))`, `sinh(p(x))`, `cosh(p(x))`,
+  `tanh(p(x))`, `atan(p(x))`/`arctan(p(x))`, `asinh(p(x))`, `cbrt(p(x))`,
+  and `abs(p(x))` may evaluate at numeric rational finite points when `p(x)`
+  is polynomial in the limit variable, because these functions are continuous
+  and total on the real line; only exact special values such as a zero
+  argument, exact rational cube roots, or exact rational absolute values may
+  collapse to rational constants in this local rule
+- `sqrt(p(x))`, `ln(p(x))`, `log2(p(x))`, and `log10(p(x))` may evaluate at
+  numeric rational finite points only when `p(x)` is polynomial in the limit
+  variable and `p(a)` is strictly positive; zero and negative argument values
+  remain residual to avoid endpoint, side, branch, or domain-path assumptions
 - arithmetic compositions of already-resolved safe finite sublimits may
   evaluate through `+`, `-`, `*`, unary negation, and division only when the
   computed denominator is either an explicit nonzero numeric value or is proven
   structurally positive by the existing sign prover; if any sublimit is
   unresolved or a denominator is not proven safe, the whole finite limit remains
-  residual
+  residual; after all operands are safe, this local rule may fold exact rational
+  arithmetic and structural identities such as `g - g -> 0`, `0 + g -> g`,
+  `1*g -> g`, and `g/g -> 1` only after the denominator has been proven
+  nonzero
+- total-real continuous unary compositions already in the finite allowlist
+  (`exp`, `sin`, `cos`, `sinh`, `cosh`, `tanh`, `atan`/`arctan`, `asinh`,
+  `cbrt`, and `abs`) may evaluate when their argument has already resolved to a
+  safe finite sublimit; this does not add support for discontinuous functions
+  (`sign`, `floor`, `ceil`) or domain-partial outer functions (`ln`, `sqrt`,
+  `asin`/`acos`, `atanh`, `acosh`)
+- `ln(g(x))`, `log2(g(x))`, `log10(g(x))`, and `sqrt(g(x))` may evaluate when
+  `g(x)` has already resolved to a safe finite sublimit that is explicitly
+  numeric positive or is proven strictly positive by the existing sign prover;
+  zero, negative, or unproven positive sublimits remain residual, including
+  endpoint-looking cases such as `sqrt(abs(x))` at `x -> 0`
+- after those finite composition checks succeed, local exact presentation folds
+  may reduce `ln(exp(g))` to `g`, `exp(ln(g))` to `g` only when `g` is
+  explicitly or structurally proven strictly positive, and `abs(g)`/`abs(-g)`
+  to `g` only when `g` is explicitly or structurally proven strictly positive;
+  these are finite-limit result folds, not global simplification or
+  pre-simplification rules
+- binary `log(b(x), g(x))` may evaluate only when `b(x)` has already resolved
+  to an explicit rational finite sublimit with `b > 0` and `b != 1`, and
+  `g(x)` has already resolved to a safe strictly positive finite sublimit;
+  invalid base sublimits, base sublimit `1`, non-rational or unresolved base
+  sublimits, zero arguments, negative arguments, or unproven positive arguments
+  remain residual
+- integer powers `g(x)^n` may evaluate when `g(x)` has already resolved to a
+  safe finite sublimit; positive integer exponents are total over real finite
+  base sublimits, while zero and negative integer exponents require the base
+  sublimit to be explicitly or structurally proven nonzero so the engine does
+  not promote `0^0` or division by zero; exact rational square-root sublimits
+  such as `sqrt(q)` with `q > 0` may present even integer powers as `q^k` or
+  `1/q^k`, while odd powers and broader root algebra remain in the explicit
+  root/power form; exact rational cube-root sublimits such as `cbrt(q)` may
+  present integer powers that are multiples of three as `q^k` or `1/q^k`, with
+  reciprocal forms allowed only when `q != 0`; non-multiple powers remain in
+  explicit root/power form
+- real one-third powers, written as `(p(x))^(1/3)`, follow the same finite
+  cube-root rule as `cbrt(p(x))`; this does not promote arbitrary fractional
+  powers or even roots over negative values
 - unresolved finite-point limits carry a warning that finite point limits are
   not supported safely yet
 - unresolved finite-point residuals must not surface literal-impossible public

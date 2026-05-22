@@ -3176,14 +3176,27 @@ fn try_linear_times_hyperbolic_coth_linear_div_derivative(
     let slope_poly = Polynomial::new(vec![arg_slope], var.to_string());
     let scaled_cofactor = cofactor_poly.mul(&slope_poly);
 
-    let cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![sinh_arg]);
-    let quotient = div_pruned(ctx, cosh, den);
-    let term_from_cofactor = polynomial_times_builtin(ctx, &cofactor_derivative, quotient);
+    let one = ctx.num(1);
+    let tanh = ctx.call_builtin(BuiltinFn::Tanh, vec![sinh_arg]);
+    let reciprocal_tanh = div_pruned(ctx, one, tanh);
+    let term_from_cofactor = polynomial_times_builtin(ctx, &cofactor_derivative, reciprocal_tanh);
     let sinh_sq = squared_builtin_call(ctx, BuiltinFn::Sinh, sinh_arg);
     let numerator = scaled_cofactor.to_expr(ctx);
     let term_from_chain = div_pruned(ctx, numerator, sinh_sq);
 
     Some(sub_pruned(ctx, term_from_cofactor, term_from_chain))
+}
+
+pub fn differentiate_symbolic_linear_times_hyperbolic_coth_linear_div_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let Expr::Div(num, den) = ctx.get(expr).clone() else {
+        return None;
+    };
+
+    try_linear_times_hyperbolic_coth_linear_div_derivative(ctx, num, den, var)
 }
 
 fn try_constant_scaled_hyperbolic_reciprocal_tanh_div_derivative(
@@ -4383,7 +4396,10 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
 
 #[cfg(test)]
 mod tests {
-    use super::differentiate_symbolic_expr;
+    use super::{
+        differentiate_symbolic_expr,
+        differentiate_symbolic_linear_times_hyperbolic_coth_linear_div_derivative,
+    };
     use crate::eval_f64;
     use cas_ast::Context;
     use cas_formatter::DisplayExpr;
@@ -5052,11 +5068,11 @@ mod tests {
             ("cosh(x)/sinh(x)", "-1 / sinh(x)^2"),
             (
                 "(x+1)*cosh(2*x+1)/sinh(2*x+1)",
-                "cosh(2 * x + 1) / sinh(2 * x + 1) - (2 * x + 2) / sinh(2 * x + 1)^2",
+                "1 / tanh(2 * x + 1) - (2 * x + 2) / sinh(2 * x + 1)^2",
             ),
             (
                 "(x*cosh(2*x+1)+cosh(2*x+1))/sinh(2*x+1)",
-                "cosh(2 * x + 1) / sinh(2 * x + 1) - (2 * x + 2) / sinh(2 * x + 1)^2",
+                "1 / tanh(2 * x + 1) - (2 * x + 2) / sinh(2 * x + 1)^2",
             ),
             ("1/tanh(x)", "-1 / sinh(x)^2"),
             ("(-1)/(2*tanh(2*x+1))", "1 / sinh(2 * x + 1)^2"),
@@ -5071,6 +5087,17 @@ mod tests {
 
             assert_eq!(rendered(&ctx, out), expected, "input: {input}");
         }
+
+        let mut ctx = Context::new();
+        let expr = parse("(x+1)*cosh(2*x+1)/sinh(2*x+1)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_linear_times_hyperbolic_coth_linear_div_derivative(
+            &mut ctx, expr, "x",
+        )
+        .expect("direct coth product derivative");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1 / tanh(2 * x + 1) - (2 * x + 2) / sinh(2 * x + 1)^2"
+        );
     }
 
     #[test]

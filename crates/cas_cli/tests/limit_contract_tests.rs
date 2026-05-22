@@ -316,6 +316,421 @@ fn test_eval_finite_elementary_polynomial_limit_requires_positive_argument_at_po
 }
 
 #[test]
+fn test_eval_finite_total_real_elementary_polynomial_limits_json() {
+    let cases = [
+        ("limit(exp(x), x, 0)", "1"),
+        ("limit(sin(x), x, 0)", "0"),
+        ("limit(cos(x), x, 0)", "1"),
+        ("limit(sin(x^2 + 1), x, -1)", "sin(2)"),
+        ("limit(sinh(x), x, 0)", "0"),
+        ("limit(cosh(x), x, 0)", "1"),
+        ("limit(tanh(x), x, 0)", "0"),
+        ("limit(tanh(x^2 + 1), x, -1)", "tanh(2)"),
+        ("limit(atan(x), x, 0)", "0"),
+        ("limit(arctan(x), x, 0)", "0"),
+        ("limit(atan(x^2 + 1), x, -1)", "atan(2)"),
+        ("limit(arctan(x^2 + 1), x, -1)", "arctan(2)"),
+        ("limit(asinh(x), x, 0)", "0"),
+        ("limit(asinh(x^2 + 1), x, -1)", "asinh(2)"),
+        ("limit(cbrt(x), x, -8)", "-2"),
+        ("limit(cbrt(x), x, 0)", "0"),
+        ("limit(cbrt(x^2 + 1), x, -1)", "cbrt(2)"),
+        ("limit((x^2 - 9)^(1/3), x, 1)", "-2"),
+        ("limit(sin(cbrt(x)), x, 8)", "sin(2)"),
+        ("limit(abs(x), x, -2)", "2"),
+        ("limit(abs(x), x, 0)", "0"),
+        ("limit(abs(x^2 - 1), x, 0)", "1"),
+        ("limit(cos(sin(x)), x, 0)", "1"),
+        ("limit(sin(sqrt(x^2 + 1)), x, -2)", "sin(sqrt(5))"),
+        ("limit(exp(abs(x)), x, -2)", "exp(2)"),
+    ];
+
+    for (input, expected) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "Command should succeed for {input}");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}, wire: {wire:?}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert!(
+            !wire["result"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("limit("),
+            "finite elementary limit should not remain residual for {input}: {wire:?}"
+        );
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert_eq!(wire["required_display"], json!([]), "input: {input}");
+    }
+}
+
+#[test]
+fn test_eval_finite_partial_domain_inverse_elementary_limits_stay_residual_json() {
+    let (success, stdout) = run_eval("limit(arcsin(x), x, 2)", "json");
+    assert!(
+        success,
+        "Command should keep out-of-domain finite arcsin limit residual"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "limit(arcsin(x), x, 2)");
+    assert!(
+        wire["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("Finite point limits are not supported safely yet")
+                    })
+            })
+        }),
+        "Partial-domain inverse limit should remain residual with warning, got: {wire:?}"
+    );
+}
+
+#[test]
+fn test_eval_finite_discontinuous_elementary_limits_stay_residual_json() {
+    for input in ["limit(sign(x), x, 0)", "limit(sin(sign(x)), x, 0)"] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should keep discontinuous finite sign limit residual for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], input, "input: {input}");
+        assert!(
+            wire["warnings"].as_array().is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning["rule"] == "Limit Evaluation"
+                        && warning["assumption"].as_str().is_some_and(|message| {
+                            message.contains("Finite point limits are not supported safely yet")
+                        })
+                })
+            }),
+            "Discontinuous finite limit should remain residual with warning for {input}, got: {wire:?}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_positive_domain_unary_composition_limits_json() {
+    let cases = [
+        ("limit(ln(sqrt(x^2 + 1)), x, -2)", "ln(sqrt(5))", json!([])),
+        ("limit(sqrt(abs(x) + 1), x, -2)", "sqrt(3)", json!([])),
+        ("limit(ln(abs(x)), x, -2)", "ln(2)", json!(["x ≠ 0"])),
+        ("limit(log2(x^2 + 1), x, -2)", "log2(5)", json!([])),
+        (
+            "limit(log10(sqrt(x^2 + 1)), x, -2)",
+            "log10(sqrt(5))",
+            json!([]),
+        ),
+        ("limit(log2(abs(x)), x, -2)", "log2(2)", json!(["x ≠ 0"])),
+    ];
+
+    for (input, expected, expected_required) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "Command should succeed for {input}");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}, wire: {wire:?}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert!(
+            !wire["result"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("limit("),
+            "finite positive-domain composition should not remain residual for {input}: {wire:?}"
+        );
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required,
+            "input: {input}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_positive_domain_exact_value_limits_fold_locally_json() {
+    let cases = [
+        ("limit(sqrt(x^2 + 1), x, 0)", "1", json!([])),
+        ("limit(sqrt(x^2 + 4*x + 4), x, 0)", "2", json!([])),
+        ("limit(ln(x^2 + 1), x, 0)", "0", json!([])),
+        ("limit(log2(x^2 + 1), x, 0)", "0", json!([])),
+        ("limit(log10(x^2 + 1), x, 0)", "0", json!([])),
+        ("limit(log(2, x^2 + 1), x, 0)", "0", json!([])),
+        ("limit(log(x^2 + 3, x^2 + 3), x, -1)", "1", json!([])),
+    ];
+
+    for (input, expected, expected_required) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "Command should succeed for {input}");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}, wire: {wire:?}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required,
+            "input: {input}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_unary_inverse_and_abs_limits_fold_locally_json() {
+    let cases = [
+        ("limit(exp(ln(abs(x))), x, -2)", "2", json!(["x ≠ 0"])),
+        ("limit(ln(exp(abs(x))), x, -2)", "2", json!([])),
+        ("limit(ln(exp(x^2 + 1)), x, 0)", "1", json!([])),
+        ("limit(abs(sqrt(x^2 + 1)), x, -2)", "sqrt(5)", json!([])),
+        ("limit(abs(-sqrt(x^2 + 1)), x, -2)", "sqrt(5)", json!([])),
+    ];
+
+    for (input, expected, expected_required) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "Command should succeed for {input}");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}, wire: {wire:?}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required,
+            "input: {input}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_unary_inverse_limits_keep_unsafe_boundaries_residual_json() {
+    for input in ["limit(exp(ln(abs(x))), x, 0)", "limit(exp(ln(x)), x, 0)"] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should keep unsafe finite inverse-wrapper residual for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert!(
+            wire["result"]
+                .as_str()
+                .is_some_and(|result| result.contains("limit(")),
+            "unsafe finite inverse-wrapper should remain residual for {input}: {wire:?}"
+        );
+        assert!(
+            wire["warnings"].as_array().is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning["rule"] == "Limit Evaluation"
+                        && warning["assumption"].as_str().is_some_and(|message| {
+                            message.contains("Finite point limits are not supported safely yet")
+                        })
+                })
+            }),
+            "Unsafe finite inverse-wrapper should remain residual with warning for {input}, got: {wire:?}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_positive_domain_unary_composition_rejects_nonpositive_sublimits_json() {
+    for input in [
+        "limit(sqrt(abs(x)), x, 0)",
+        "limit(ln(sin(x)), x, 0)",
+        "limit(log10(abs(x)), x, 0)",
+    ] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should keep nonpositive finite {input} residual"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert!(
+            wire["result"]
+                .as_str()
+                .is_some_and(|result| result.contains("limit(")),
+            "nonpositive positive-domain composition should remain residual for {input}: {wire:?}"
+        );
+        assert!(
+            wire["warnings"].as_array().is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning["rule"] == "Limit Evaluation"
+                        && warning["assumption"].as_str().is_some_and(|message| {
+                            message.contains("Finite point limits are not supported safely yet")
+                        })
+                })
+            }),
+            "Nonpositive finite limit should remain residual with warning for {input}, got: {wire:?}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_binary_log_composition_limits_json() {
+    let cases = [
+        ("limit(log(2, x^2 + 1), x, -2)", "log(2, 5)", json!([])),
+        (
+            "limit(log(1/2, sqrt(x^2 + 1)), x, -2)",
+            "log(1 / 2, sqrt(5))",
+            json!([]),
+        ),
+        ("limit(log(2, abs(x)), x, -2)", "1", json!(["x ≠ 0"])),
+        (
+            "limit(log(x^2 + 3, x^2 + 1), x, -2)",
+            "log(7, 5)",
+            json!([]),
+        ),
+        (
+            "limit(log(x^2 + 3, sqrt(x^2 + 1)), x, -2)",
+            "log(7, sqrt(5))",
+            json!([]),
+        ),
+    ];
+
+    for (input, expected, expected_required) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "Command should succeed for {input}");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}, wire: {wire:?}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert!(
+            !wire["result"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("limit("),
+            "finite binary log should not remain residual for {input}: {wire:?}"
+        );
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required,
+            "input: {input}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_binary_log_composition_rejects_unsafe_cases_json() {
+    for input in [
+        "limit(log(2, abs(x)), x, 0)",
+        "limit(log(1, x^2 + 1), x, -2)",
+        "limit(log(-2, x^2 + 1), x, -2)",
+        "limit(log(x^2 - 3, x^2 + 1), x, -2)",
+        "limit(log(x^2 - 4, x^2 + 1), x, -2)",
+    ] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should keep unsafe finite binary log residual for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert!(
+            wire["result"]
+                .as_str()
+                .is_some_and(|result| result.contains("limit(")),
+            "unsafe binary log should remain residual for {input}: {wire:?}"
+        );
+        assert!(
+            wire["warnings"].as_array().is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning["rule"] == "Limit Evaluation"
+                        && warning["assumption"].as_str().is_some_and(|message| {
+                            message.contains("Finite point limits are not supported safely yet")
+                        })
+                })
+            }),
+            "Unsafe finite binary log should remain residual with warning for {input}, got: {wire:?}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_integer_power_composition_limits_json() {
+    let cases = [
+        ("limit((abs(x)+1)^2, x, -2)", "9"),
+        ("limit((sqrt(x^2 + 1))^2, x, -2)", "5"),
+        ("limit((sqrt(x^2 + 1))^3, x, -2)", "sqrt(5)^3"),
+        ("limit((abs(x)+1)^(-2), x, -2)", "1/9"),
+        ("limit((sqrt(x^2 + 1))^(-1), x, -2)", "1 / sqrt(5)"),
+        ("limit((sqrt(x^2 + 1))^(-2), x, -2)", "1/5"),
+        ("limit((cbrt(x^2 + 1))^3, x, -1)", "2"),
+        ("limit((cbrt(x^2 + 1))^2, x, -1)", "cbrt(2)^2"),
+        ("limit((cbrt(x^2 + 1))^(-3), x, -1)", "1/2"),
+        ("limit((cbrt(x^2 + 1))^0, x, -1)", "1"),
+        ("limit((abs(x)+1)^0, x, -2)", "1"),
+    ];
+
+    for (input, expected) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "Command should succeed for {input}");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}, wire: {wire:?}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert!(
+            !wire["result"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("limit("),
+            "finite integer power should not remain residual for {input}: {wire:?}"
+        );
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+    }
+}
+
+#[test]
+fn test_eval_finite_integer_power_composition_rejects_unsafe_cases_json() {
+    for input in [
+        "limit((abs(x)-2)^(-1), x, -2)",
+        "limit(abs(x)^0, x, 0)",
+        "limit((sqrt(x))^2, x, 0)",
+        "limit((cbrt(x))^(-3), x, 0)",
+    ] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should keep unsafe finite integer power residual for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert!(
+            wire["result"]
+                .as_str()
+                .is_some_and(|result| result.contains("limit(")),
+            "unsafe integer power should remain residual for {input}: {wire:?}"
+        );
+        assert!(
+            wire["warnings"].as_array().is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning["rule"] == "Limit Evaluation"
+                        && warning["assumption"].as_str().is_some_and(|message| {
+                            message.contains("Finite point limits are not supported safely yet")
+                        })
+                })
+            }),
+            "Unsafe finite integer power should remain residual with warning for {input}, got: {wire:?}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_arithmetic_composition_folds_safe_results_json() {
+    let cases = [
+        ("limit(abs(x)+1, x, -2)", "3"),
+        ("limit(sqrt(x^2 + 1) - sqrt(x^2 + 1), x, -2)", "0"),
+        (
+            "limit((sqrt(x^2 + 1) - sqrt(x^2 + 1))/(abs(x)+1), x, -2)",
+            "0",
+        ),
+        ("limit(sqrt(x^2 + 1) + ln(x + 5), x, -2)", "ln(3) + sqrt(5)"),
+    ];
+
+    for (input, expected) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "Command should succeed for {input}");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}, wire: {wire:?}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+    }
+}
+
+#[test]
 fn test_eval_finite_composite_limit_requires_all_subterms_safe_json() {
     let (success, stdout) = run_eval("limit(sqrt(x^2 + 1) + ln(x + 5), x, -2)", "json");
     assert!(
@@ -356,6 +771,20 @@ fn test_eval_finite_composite_limit_requires_all_subterms_safe_json() {
             })
         }),
         "Composite finite limit with unsafe sublimit should remain residual, got: {wire:?}"
+    );
+
+    let (success, stdout) = run_eval("limit(0*sqrt(x), x, 0)", "json");
+    assert!(
+        success,
+        "Command should keep finite zero product residual when a sublimit is unsafe"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert!(
+        wire["result"]
+            .as_str()
+            .is_some_and(|result| result.contains("limit(")),
+        "Finite zero product with unsafe sublimit should remain residual, got: {wire:?}"
     );
 }
 

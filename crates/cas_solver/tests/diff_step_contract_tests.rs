@@ -17490,6 +17490,421 @@ fn arctan_sec_csc_exp_sqrt_root_diff_uses_inline_reciprocal_trig_presentation_an
 }
 
 #[test]
+fn tan_ln_root_diff_uses_inline_presentation_and_residual() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+
+    let direct_input = "diff(sqrt(tan(x)+ln(x)+x), x)";
+    let parsed = parse(direct_input, &mut engine.simplifier.context).expect("parse direct");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: direct_input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval direct");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(
+        result,
+        "(sec(x)^2 + 1 / x + 1) / (2 * sqrt(tan(x) + ln(x) + x))"
+    );
+    assert_eq!(
+        output.steps.len(),
+        1,
+        "tan ln root diff should stay on a direct inline presentation route: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+
+    let mut required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+    required.sort();
+    assert_eq!(
+        required,
+        vec![
+            "cos(x) ≠ 0".to_string(),
+            "tan(x) + ln(x) + x > 0".to_string(),
+            "x > 0".to_string(),
+        ],
+        "input: {direct_input}"
+    );
+
+    let residual_input =
+        "diff(sqrt(tan(x)+ln(x)+x), x) - (sec(x)^2+1/x+1)/(2*sqrt(tan(x)+ln(x)+x))";
+    let parsed = parse(residual_input, &mut engine.simplifier.context).expect("parse residual");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: residual_input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval residual");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    assert_eq!(result, "0", "input: {residual_input}");
+    assert_eq!(
+        output.steps.len(),
+        1,
+        "tan ln root residual should close before cleanup, got: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn scaled_tan_ln_root_diff_uses_inline_presentation_and_residual() {
+    for (direct_input, expected, expected_positive_radicand, residual_input) in [
+        (
+            "diff(sqrt(tan(x)+2*ln(x)+x), x)",
+            "(sec(x)^2 + 2 / x + 1) / (2 * sqrt(tan(x) + 2 * ln(x) + x))",
+            "tan(x) + 2 * ln(x) + x > 0",
+            "diff(sqrt(tan(x)+2*ln(x)+x), x) - (sec(x)^2+2/x+1)/(2*sqrt(tan(x)+2*ln(x)+x))",
+        ),
+        (
+            "diff(sqrt(tan(x)-ln(x)+x), x)",
+            "(sec(x)^2 + 1 - 1 / x) / (2 * sqrt(tan(x) - ln(x) + x))",
+            "tan(x) - ln(x) + x > 0",
+            "diff(sqrt(tan(x)-ln(x)+x), x) - (sec(x)^2-1/x+1)/(2*sqrt(tan(x)-ln(x)+x))",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+
+        let parsed = parse(direct_input, &mut engine.simplifier.context).expect("parse direct");
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: direct_input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval direct");
+
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+
+        assert_eq!(result, expected, "input: {direct_input}");
+        assert_eq!(
+            output.steps.len(),
+            1,
+            "scaled tan ln root diff should stay on a direct inline presentation route: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+
+        let mut required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+        required.sort();
+        assert_eq!(
+            required,
+            vec![
+                "cos(x) ≠ 0".to_string(),
+                expected_positive_radicand.to_string(),
+                "x > 0".to_string(),
+            ],
+            "input: {direct_input}"
+        );
+
+        let parsed = parse(residual_input, &mut engine.simplifier.context).expect("parse residual");
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: residual_input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval residual");
+
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        assert_eq!(result, "0", "input: {residual_input}");
+        assert_eq!(
+            output.steps.len(),
+            1,
+            "scaled tan ln root residual should close before cleanup, got: {:?}",
+            output
+                .steps
+                .iter()
+                .map(|step| step.rule_name.as_str())
+                .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn tan_ln_sqrt_root_diff_uses_inline_presentation_and_residual() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+
+    let direct_input = "diff(sqrt(tan(x)+ln(x)+sqrt(x)+x), x)";
+    let parsed = parse(direct_input, &mut engine.simplifier.context).expect("parse direct");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: direct_input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval direct");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(
+        result,
+        "(sec(x)^2 + 1 / x + 1 / (2 * sqrt(x)) + 1) / (2 * sqrt(tan(x) + ln(x) + sqrt(x) + x))"
+    );
+    assert_eq!(
+        output.steps.len(),
+        1,
+        "tan ln sqrt root diff should stay on a direct inline presentation route: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+
+    let mut required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+    required.sort();
+    assert_eq!(
+        required,
+        vec![
+            "cos(x) ≠ 0".to_string(),
+            "tan(x) + ln(x) + sqrt(x) + x > 0".to_string(),
+            "x > 0".to_string(),
+        ],
+        "input: {direct_input}"
+    );
+
+    let residual_input = "diff(sqrt(tan(x)+ln(x)+sqrt(x)+x), x) - (sec(x)^2+1/x+1/(2*sqrt(x))+1)/(2*sqrt(tan(x)+ln(x)+sqrt(x)+x))";
+    let parsed = parse(residual_input, &mut engine.simplifier.context).expect("parse residual");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: residual_input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval residual");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    assert_eq!(result, "0", "input: {residual_input}");
+    assert_eq!(
+        output.steps.len(),
+        1,
+        "tan ln sqrt root residual should close before cleanup, got: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn tan_ln_reciprocal_sqrt_root_diff_uses_inline_presentation_and_residual() {
+    let mut engine = Engine::new();
+    let mut state = SessionState::new();
+    state.options_mut().steps_mode = StepsMode::On;
+
+    let direct_input = "diff(sqrt(tan(x)+ln(x)+1/sqrt(x)+x), x)";
+    let parsed = parse(direct_input, &mut engine.simplifier.context).expect("parse direct");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: direct_input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval direct");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+
+    assert_eq!(
+        result,
+        "(sec(x)^2 + 1 / x + 1 - 1/2 * x^(-3/2)) / (2 * sqrt(tan(x) + ln(x) + 1 / sqrt(x) + x))"
+    );
+    assert_eq!(
+        output.steps.len(),
+        1,
+        "tan ln reciprocal-sqrt root diff should stay on a direct inline presentation route: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+
+    let mut required: Vec<String> = normalize_and_dedupe_conditions(
+        &mut engine.simplifier.context,
+        &output.required_conditions,
+    )
+    .iter()
+    .map(|cond| cond.display(&engine.simplifier.context))
+    .collect();
+    required.sort();
+    assert_eq!(
+        required,
+        vec![
+            "cos(x) ≠ 0".to_string(),
+            "tan(x) + ln(x) + 1 / sqrt(x) + x > 0".to_string(),
+            "x > 0".to_string(),
+        ],
+        "input: {direct_input}"
+    );
+
+    let residual_input = "diff(sqrt(tan(x)+ln(x)+1/sqrt(x)+x), x) - (sec(x)^2+1/x-1/(2*x^(3/2))+1)/(2*sqrt(tan(x)+ln(x)+1/sqrt(x)+x))";
+    let parsed = parse(residual_input, &mut engine.simplifier.context).expect("parse residual");
+    let output = engine
+        .eval(
+            &mut state,
+            EvalRequest {
+                raw_input: residual_input.to_string(),
+                parsed,
+                action: EvalAction::Simplify,
+                auto_store: false,
+            },
+        )
+        .expect("eval residual");
+
+    let result = match output.result {
+        EvalResult::Expr(expr) => format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: expr,
+            }
+        ),
+        other => panic!("expected expression result, got {other:?}"),
+    };
+    assert_eq!(result, "0", "input: {residual_input}");
+    assert_eq!(
+        output.steps.len(),
+        1,
+        "tan ln reciprocal-sqrt root residual should close before cleanup, got: {:?}",
+        output
+            .steps
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn sec_csc_ln_root_diff_uses_direct_common_denominator_presentation_and_residual() {
     for (direct_input, expected, expected_required, residual_input) in [
         (
@@ -17889,6 +18304,67 @@ fn sec_csc_ln_reciprocal_sqrt_root_diff_uses_compact_common_denominator_presenta
                 .iter()
                 .map(|step| step.rule_name.as_str())
                 .collect::<Vec<_>>()
+        );
+    }
+}
+
+#[test]
+fn sec_log_reciprocal_sqrt_arctan_residual_subtractive_wrappers_stay_bounded() {
+    let residual = "diff(arctan(sqrt(sec(x)+ln(x)+1/sqrt(x)+x)),x)-(2*sqrt(x)+2*x*sqrt(x)+2*x*tan(x)*sec(x)*sqrt(x)-1)/(4*x*sqrt(x)*sqrt(sec(x)+ln(x)+1/sqrt(x)+x)*(sec(x)+ln(x)+1/sqrt(x)+x+1))";
+
+    for (input, expected) in [
+        (format!("(1-({residual}))/(x+2)"), "1 / (x + 2)"),
+        (format!("(({residual})-1)/(x+2)"), "-1 / (x + 2)"),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        let parsed = parse(&input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.clone(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+
+        let result = match output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            output.domain_warnings.is_empty(),
+            "warnings: {:?}",
+            output.domain_warnings
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+
+        assert_eq!(
+            required,
+            vec![
+                "x > 0".to_string(),
+                "sec(x) + ln(x) + 1 / sqrt(x) + x > 0".to_string(),
+                "cos(x) ≠ 0".to_string(),
+            ],
+            "input: {input}"
         );
     }
 }

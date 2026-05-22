@@ -135,7 +135,7 @@ SAMPLE_DISCOVERY_LEDGER = """# Engine Combination Ledger
 
 
 class EngineImprovementScorecardTests(unittest.TestCase):
-    def test_orchestrator_profile_env_and_command_only_apply_to_embedded_suite(self):
+    def test_orchestrator_profile_env_and_command_apply_to_embedded_and_mixed_suites(self):
         args = argparse.Namespace(
             orchestrator_profile=True,
             orchestrator_profile_filter="pipeline.,root.",
@@ -160,8 +160,19 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             embedded_env["CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER"], "pipeline.,root."
         )
         self.assertEqual(embedded_command[-2:], ["--limit", "17"])
-        self.assertIsNone(pressure_env)
-        self.assertIsNone(pressure_command)
+        self.assertEqual(pressure_env["CAS_PROFILE_ORCHESTRATOR_SHORTCUTS"], "1")
+        self.assertEqual(
+            pressure_env["CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER"], "pipeline.,root."
+        )
+        self.assertEqual(
+            pressure_command,
+            MODULE.SUITES["simplify_zero_mixed"].command,
+        )
+        self.assertIsNone(
+            MODULE.orchestrator_profile_case_limit(
+                MODULE.SUITES["simplify_zero_mixed"], args
+            )
+        )
 
     def test_orchestrator_profile_env_and_command_accept_custom_filter_and_limit(self):
         args = argparse.Namespace(
@@ -176,12 +187,19 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         embedded_command = MODULE.orchestrator_profile_command(
             MODULE.SUITES["embedded_equivalence_context"], args
         )
+        mixed_env = MODULE.orchestrator_profile_env(
+            MODULE.SUITES["simplify_zero_mixed"], args
+        )
 
         self.assertEqual(
             embedded_env["CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER"],
             "rule.direct_identity.",
         )
         self.assertEqual(embedded_command[-2:], ["--limit", "9"])
+        self.assertEqual(
+            mixed_env["CAS_PROFILE_ORCHESTRATOR_SHORTCUT_FILTER"],
+            "rule.direct_identity.",
+        )
 
     def test_pressure_profile_stays_bounded_and_full_keeps_nf_first(self):
         pressure_args = argparse.Namespace(profile="pressure", suite=[])
@@ -190,7 +208,14 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         pressure_names = [spec.name for spec in MODULE.selected_suites(pressure_args)]
         full_names = [spec.name for spec in MODULE.selected_suites(full_args)]
 
-        self.assertEqual(pressure_names, ["simplify_zero_mixed"])
+        self.assertEqual(
+            pressure_names,
+            [
+                "simplify_zero_mixed",
+                "calculus_diff_exhaustive_contract",
+                "calculus_integrate_exhaustive_contract",
+            ],
+        )
         self.assertIn("simplify_nf_first", full_names)
         self.assertIn("simplify_zero_mixed", full_names)
         self.assertEqual(
@@ -215,14 +240,18 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                 "contextual_radical_fast",
                 "calculus_diff_contract",
                 "calculus_integrate_compact_contract",
+                "calculus_residual_matrix_smoke",
             ],
         )
         self.assertIn("contextual_radical_fast", fast_embedded_names)
         self.assertIn("calculus_diff_contract", fast_embedded_names)
         self.assertIn("calculus_integrate_compact_contract", fast_embedded_names)
+        self.assertIn("calculus_residual_matrix_smoke", fast_embedded_names)
         self.assertNotIn("calculus_limit_contract", fast_names)
         self.assertNotIn("calculus_limit_presimplify_contract", fast_names)
         self.assertNotIn("calculus_integrate_contract", fast_names)
+        self.assertNotIn("calculus_diff_exhaustive_contract", fast_names)
+        self.assertNotIn("calculus_integrate_exhaustive_contract", fast_names)
 
     def test_calculus_contracts_are_visible_in_guardrail_and_full_profiles(self):
         guardrail_args = argparse.Namespace(profile="guardrail", suite=[])
@@ -235,13 +264,23 @@ class EngineImprovementScorecardTests(unittest.TestCase):
 
         self.assertIn("calculus_diff_contract", guardrail_names)
         self.assertIn("calculus_diff_contract", full_names)
+        self.assertNotIn("calculus_diff_exhaustive_contract", guardrail_names)
+        self.assertIn("calculus_diff_exhaustive_contract", full_names)
         self.assertIn("calculus_limit_contract", guardrail_names)
         self.assertIn("calculus_limit_contract", full_names)
         self.assertIn("calculus_limit_presimplify_contract", guardrail_names)
         self.assertIn("calculus_limit_presimplify_contract", full_names)
+        self.assertIn("calculus_residual_matrix_smoke", guardrail_names)
+        self.assertIn("calculus_residual_matrix_smoke", full_names)
         self.assertIn("calculus_integrate_contract", guardrail_names)
         self.assertIn("calculus_integrate_contract", full_names)
+        self.assertNotIn("calculus_integrate_exhaustive_contract", guardrail_names)
+        self.assertIn("calculus_integrate_exhaustive_contract", full_names)
         self.assertEqual(MODULE.SUITES["calculus_diff_contract"].category, "calculus")
+        self.assertEqual(
+            MODULE.SUITES["calculus_diff_exhaustive_contract"].category,
+            "calculus",
+        )
         self.assertEqual(MODULE.SUITES["calculus_limit_contract"].category, "calculus")
         self.assertEqual(
             MODULE.SUITES["calculus_limit_presimplify_contract"].category,
@@ -255,6 +294,14 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             MODULE.SUITES["calculus_integrate_contract"].category,
             "calculus",
         )
+        self.assertEqual(
+            MODULE.SUITES["calculus_integrate_exhaustive_contract"].category,
+            "calculus",
+        )
+        self.assertEqual(
+            MODULE.SUITES["calculus_residual_matrix_smoke"].category,
+            "calculus",
+        )
         integrate_compact_command = MODULE.SUITES[
             "calculus_integrate_compact_contract"
         ].command
@@ -266,6 +313,86 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         integrate_command = MODULE.SUITES["calculus_integrate_contract"].command
         self.assertIn("integrate_contract_tests", integrate_command)
         self.assertNotIn("test_enhanced_integration", integrate_command)
+        diff_exhaustive_command = MODULE.SUITES[
+            "calculus_diff_exhaustive_contract"
+        ].command
+        self.assertIn("diff_step_contract_tests", diff_exhaustive_command)
+        self.assertIn(
+            "inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions_exhaustive",
+            diff_exhaustive_command,
+        )
+        self.assertIn("--ignored", diff_exhaustive_command)
+        integrate_exhaustive_command = MODULE.SUITES[
+            "calculus_integrate_exhaustive_contract"
+        ].command
+        self.assertIn("integrate_contract_tests", integrate_exhaustive_command)
+        self.assertIn(
+            "integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive",
+            integrate_exhaustive_command,
+        )
+        self.assertIn("--ignored", integrate_exhaustive_command)
+        residual_command = MODULE.SUITES["calculus_residual_matrix_smoke"].command
+        self.assertIn("engine_calculus_residual_probe_smoke.py", residual_command[1])
+        self.assertIn("--default-matrix", residual_command)
+        self.assertIn("--ensure-release-cas-cli", residual_command)
+        self.assertIn("--summary-json", residual_command)
+
+    def test_parse_calculus_residual_matrix_extracts_status_counts(self):
+        metrics = MODULE.parse_calculus_residual_matrix(
+            """
+{"status":"pass","total":247,"status_counts":{"pass":247,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{}}
+"""
+        )
+
+        self.assertEqual(metrics["matrix_status"], "pass")
+        self.assertEqual(metrics["total_cases"], 247)
+        self.assertEqual(metrics["passed"], 247)
+        self.assertEqual(metrics["failed"], 0)
+        self.assertEqual(metrics["slow"], 0)
+        self.assertEqual(metrics["timeouts"], 0)
+        self.assertEqual(metrics["problem_case_count"], 0)
+        self.assertEqual(metrics["problem_cases"], [])
+        self.assertEqual(
+            MODULE.suite_status("calculus_residual_matrix_smoke", metrics, 0),
+            "pass",
+        )
+
+    def test_parse_calculus_residual_matrix_counts_slow_and_timeout_as_failures(self):
+        metrics = MODULE.parse_calculus_residual_matrix(
+            """
+{"status":"slow","total":3,"status_counts":{"pass":1,"slow":1,"fail":0,"timeout":1},"issue_kind_counts":{"slow":1,"timeout":1},"problem_case_count":2,"problem_cases":[{"name":"slow_case","status":"slow","error_kind":"slow","wall_elapsed_seconds":9.1,"result":"1","required_conditions":["x + 2"],"verbose_payload":{"ignored":true}},{"name":"timeout_case","status":"timeout","error_kind":"timeout","error":"timeout"}]}
+"""
+        )
+
+        self.assertEqual(metrics["passed"], 1)
+        self.assertEqual(metrics["failed"], 2)
+        self.assertEqual(metrics["slow"], 1)
+        self.assertEqual(metrics["timeouts"], 1)
+        self.assertEqual(metrics["problem_case_count"], 2)
+        self.assertEqual(
+            metrics["problem_cases"],
+            [
+                {
+                    "name": "slow_case",
+                    "status": "slow",
+                    "error_kind": "slow",
+                    "result": "1",
+                    "wall_elapsed_seconds": 9.1,
+                    "required_conditions": ["x + 2"],
+                },
+                {
+                    "name": "timeout_case",
+                    "status": "timeout",
+                    "error_kind": "timeout",
+                    "error": "timeout",
+                },
+            ],
+        )
+        self.assertEqual(metrics["issue_kind_counts"], {"slow": 1, "timeout": 1})
+        self.assertEqual(
+            MODULE.suite_status("calculus_residual_matrix_smoke", metrics, 0),
+            "fail",
+        )
 
     def test_format_runtime_duration_preserves_subsecond_signal(self):
         self.assertEqual(MODULE.format_runtime_duration(0.00025), "0.25ms")
@@ -334,6 +461,24 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 138 filtered out; fi
             MODULE.render_markdown(scorecard),
         )
 
+    def test_parse_ignored_rust_tests_extracts_names_and_reasons(self):
+        source = """
+#[test]
+#[ignore = "debug slow"]
+fn slow_case() {}
+
+    #[ignore]
+    fn reasonless_case() {}
+"""
+
+        self.assertEqual(
+            MODULE.parse_ignored_rust_tests(source),
+            [
+                {"name": "slow_case", "reason": "debug slow"},
+                {"name": "reasonless_case", "reason": ""},
+            ],
+        )
+
     def test_parse_derive_extracts_strategy_specificity_metrics(self):
         metrics = MODULE.parse_derive(
             """
@@ -341,12 +486,19 @@ derive corpus summary: derived=291 unsupported=0 not_equivalent=1
 derive stats: reachability_rate=1.000 supported_equiv_rate=1.000 mean_step_count=1.05 long_path_rate=0.000
 derive strategy specificity: generic_simplify_expected=0 distinct_expected_strategies=27
 derive expected-strategy-counts: {"expand": 30}
+derive derived-by-family: {"expand": 30}
+derive unsupported-equivalent-by-family: {}
+derive not-equivalent-by-family: {"negative": 1}
 """
         )
 
         self.assertEqual(metrics["derived"], 291)
         self.assertEqual(metrics["generic_simplify_expected"], 0)
         self.assertEqual(metrics["distinct_expected_strategies"], 27)
+        self.assertEqual(metrics["expected_strategy_counts"], {"expand": 30})
+        self.assertEqual(metrics["derived_by_family"]["expand"], 30)
+        self.assertEqual(metrics["unsupported_by_family"], {})
+        self.assertEqual(metrics["not_equivalent_by_family"], {"negative": 1})
 
     def test_parse_derive_shadow_extracts_strategy_specificity_metrics(self):
         metrics = MODULE.parse_derive_shadow(
@@ -805,9 +957,17 @@ root.direct_small_zero_composition.candidate.three_core_groups
         metrics = MODULE.parse_generated_discovery_ledger(SAMPLE_DISCOVERY_LEDGER)
 
         self.assertEqual(metrics["observe_only_discoveries"], 2)
+        self.assertEqual(
+            metrics["areas"]["generated discovery / embedded equivalence candidate smoke"],
+            2,
+        )
         self.assertEqual(metrics["families"]["integrate_prep"], 1)
         self.assertEqual(metrics["families"]["radical_power"], 1)
         self.assertEqual(metrics["wrappers"]["combined_additive_zero"], 2)
+        self.assertEqual(
+            metrics["recent"][0]["area"],
+            "generated discovery / embedded equivalence candidate smoke",
+        )
         self.assertEqual(metrics["recent"][0]["family"], "integrate_prep")
 
         scorecard = {
@@ -821,9 +981,105 @@ root.direct_small_zero_composition.candidate.three_core_groups
 
         self.assertIn("## Generated Discovery Ledger", markdown)
         self.assertIn("Observe-only discoveries: total=2", markdown)
+        self.assertIn(
+            "generated discovery / embedded equivalence candidate smoke:2",
+            markdown,
+        )
         self.assertIn("integrate_prep:1", markdown)
         self.assertIn("combined_additive_zero:2", markdown)
         self.assertIn("Recent 1: `integrate_prep`", markdown)
+
+    def test_generated_discovery_ledger_parses_current_heading_and_status_variants(self):
+        text = """# Engine Combination Ledger
+
+## Current Entries
+
+## 2026-05-21 - Discovery observe-only: inline sqrt-variable tan-root presentation residual timeout
+
+- area:
+  - calculus / differentiation
+- status:
+  - `discovery/observe-only`
+
+## 2026-05-20 - Observe-only discovery: non-corpus rational quadratic wrapper warning
+
+- area:
+  - generated discovery
+  - `combined_additive_zero` x `integrate_prep`
+- status:
+  - `observe-only`
+
+## 2026-05-20 - Retained robustness: resolved discovery
+
+- status:
+  - `retained`
+- retained learning:
+  - mentions a previous observe-only discovery without reopening it
+
+## 2026-05-19 - Discovery observe-only: closed generated candidate
+
+- area:
+  - generated discovery
+  - `combined_additive_zero` x `collect`
+- status:
+  - `discovery/observe-only`
+- resolved by:
+  - later retained coverage made this candidate obsolete
+
+## 2026-04-27: `radical_power` Passthrough Discovery
+
+- area:
+  - generated discovery
+  - `squared_passthrough_zero` x `radical_power`
+- status:
+  - `discovery-observe-only`
+"""
+        metrics = MODULE.parse_generated_discovery_ledger(text)
+
+        self.assertEqual(metrics["observe_only_discoveries"], 3)
+        self.assertEqual(metrics["areas"]["calculus / differentiation"], 1)
+        self.assertEqual(metrics["areas"]["generated discovery"], 2)
+        self.assertEqual(metrics["families"]["integrate_prep"], 1)
+        self.assertEqual(metrics["families"]["radical_power"], 1)
+        self.assertEqual(metrics["wrappers"]["combined_additive_zero"], 1)
+        self.assertEqual(metrics["wrappers"]["squared_passthrough_zero"], 1)
+        self.assertEqual(metrics["recent"][0]["area"], "calculus / differentiation")
+        self.assertEqual(metrics["recent"][0]["family"], "unknown")
+        self.assertEqual(metrics["recent"][1]["family"], "integrate_prep")
+
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "generated_discovery": metrics,
+            "suites": {},
+        }
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn(
+            "Recent 1: `calculus / differentiation` - 2026-05-21 - Discovery observe-only",
+            markdown,
+        )
+        self.assertIn("Recent 2: `integrate_prep` in `combined_additive_zero`", markdown)
+        self.assertNotIn("`unknown` in `unknown`", markdown)
+
+    def test_generated_discovery_area_bucket_normalizes_calculus_command_aliases(self):
+        self.assertEqual(
+            MODULE.discovery_area_bucket("calculus / integrate / residual verification"),
+            "calculus / integration",
+        )
+        self.assertEqual(
+            MODULE.discovery_area_bucket("calculus / diff / post-calculus presentation"),
+            "calculus / differentiation",
+        )
+        self.assertEqual(
+            MODULE.discovery_area_bucket("calculus / diff runtime / inverse tangent"),
+            "calculus / diff runtime",
+        )
+        self.assertEqual(
+            MODULE.discovery_area_bucket("calculus / integration contract / nested log"),
+            "calculus / integration contract",
+        )
 
     def test_generated_discovery_ledger_markdown_reports_clean_state(self):
         metrics = MODULE.parse_generated_discovery_ledger(
@@ -986,6 +1242,55 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertIn("unsupported=branch_sensitive:1", markdown)
         self.assertIn("not_equivalent=none", markdown)
 
+    def test_render_markdown_labels_derive_expected_negative_controls(self):
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "suites": {
+                "derive_contract": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.2,
+                    "metrics": {
+                        "derived": 10,
+                        "unsupported": 0,
+                        "not_equivalent": 1,
+                        "reachability_rate": 1.0,
+                        "supported_equiv_rate": 1.0,
+                        "mean_step_count": 1.2,
+                        "long_path_rate": 0.0,
+                        "generic_simplify_expected": 0,
+                        "distinct_expected_strategies": 4,
+                        "expected_strategy_counts": {"expand trig": 4, "factor": 2},
+                        "unsupported_by_family": {},
+                        "not_equivalent_by_family": {"negative": 1},
+                    },
+                    "delta": {},
+                },
+            },
+        }
+
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn("## Derive Reachability Guardrail", markdown)
+        self.assertIn(
+            "Expected-status breakdown: derived=10 unsupported=0 not_equivalent=1",
+            markdown,
+        )
+        self.assertIn(
+            "Non-derived expected families: unsupported=none not_equivalent=negative:1",
+            markdown,
+        )
+        self.assertIn(
+            "Expected strategy counts: expand trig:4, factor:2",
+            markdown,
+        )
+        self.assertIn(
+            "| `derive_contract` | `pass` | 0.20s | derived=10 unsupported=0 "
+            "expected_not_equivalent=1 mean_step_count=1.20",
+            markdown,
+        )
+
     def test_render_markdown_includes_simplify_didactic_trace_audit(self):
         scorecard = {
             "generated_at": "2026-04-20T00:00:00+00:00",
@@ -1058,13 +1363,33 @@ root.direct_small_zero_composition.candidate.three_core_groups
                 "calculus_diff_contract": {
                     "status": "pass",
                     "elapsed_seconds": 0.1,
-                        "metrics": {
-                            "cargo_status": "ok",
-                            "passed": 30,
-                            "failed": 0,
-                            "ignored": 0,
-                            "measured": 0,
-                            "filtered_out": 0,
+                    "metrics": {
+                        "cargo_status": "ok",
+                        "passed": 30,
+                        "failed": 0,
+                        "ignored": 1,
+                        "measured": 0,
+                        "filtered_out": 0,
+                        "timeouts": 0,
+                        "ignored_tests": [
+                            {
+                                "name": "inverse_reciprocal_trig_diff_exhaustive",
+                                "reason": "debug-slow",
+                            }
+                        ],
+                    },
+                    "delta": {},
+                },
+                "calculus_diff_exhaustive_contract": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.7,
+                    "metrics": {
+                        "cargo_status": "ok",
+                        "passed": 1,
+                        "failed": 0,
+                        "ignored": 0,
+                        "measured": 0,
+                        "filtered_out": 256,
                         "timeouts": 0,
                     },
                     "delta": {},
@@ -1079,6 +1404,20 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "ignored": 0,
                         "measured": 0,
                         "filtered_out": 0,
+                        "timeouts": 0,
+                    },
+                    "delta": {},
+                },
+                "calculus_integrate_exhaustive_contract": {
+                    "status": "pass",
+                    "elapsed_seconds": 1.7,
+                    "metrics": {
+                        "cargo_status": "ok",
+                        "passed": 1,
+                        "failed": 0,
+                        "ignored": 0,
+                        "measured": 0,
+                        "filtered_out": 321,
                         "timeouts": 0,
                     },
                     "delta": {},
@@ -1111,6 +1450,23 @@ root.direct_small_zero_composition.candidate.three_core_groups
                     },
                     "delta": {},
                 },
+                "calculus_residual_matrix_smoke": {
+                    "status": "pass",
+                    "elapsed_seconds": 3.2,
+                    "metrics": {
+                        "matrix_status": "pass",
+                        "total_cases": 247,
+                        "passed": 247,
+                        "failed": 0,
+                        "raw_failed": 0,
+                        "slow": 0,
+                        "timeouts": 0,
+                        "problem_case_count": 0,
+                        "problem_cases": [],
+                        "issue_kind_counts": {},
+                    },
+                    "delta": {},
+                },
             },
         }
 
@@ -1119,12 +1475,89 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertIn("## Calculus Contract Signal", markdown)
         self.assertIn("public calculus behavior", markdown)
         self.assertIn("`diff`: passed=30 failed=0", markdown)
+        self.assertIn(
+            "`diff` ignored tests: `inverse_reciprocal_trig_diff_exhaustive` (debug-slow)",
+            markdown,
+        )
+        self.assertIn(
+            "`diff_exhaustive`: passed=1 failed=0 ignored=0 filtered_out=256",
+            markdown,
+        )
         self.assertIn("`limit`: passed=6 failed=0", markdown)
         self.assertIn("`limit_presimplify_safe`: passed=8 failed=0", markdown)
+        self.assertIn("`residual_matrix`: passed=247 failed=0 total=247", markdown)
+        self.assertNotIn("`residual_matrix` problem cases:", markdown)
         self.assertIn("`integrate`: passed=23 failed=0", markdown)
+        self.assertIn(
+            "`integrate_exhaustive`: passed=1 failed=0 ignored=0 filtered_out=321",
+            markdown,
+        )
+        self.assertIn(
+            "| `calculus_diff_contract` | `pass` | 0.10s | passed=30 failed=0 ignored=1 |",
+            markdown,
+        )
+
+    def test_render_markdown_reports_residual_problem_cases(self):
+        scorecard = {
+            "generated_at": "2026-04-20T00:00:00+00:00",
+            "profile": "guardrail",
+            "git": {"branch": "main", "commit": "abc123"},
+            "generated_discovery": {},
+            "suites": {
+                "calculus_residual_matrix_smoke": {
+                    "status": "fail",
+                    "elapsed_seconds": 3.2,
+                    "metrics": {
+                        "matrix_status": "slow",
+                        "total_cases": 3,
+                        "passed": 1,
+                        "failed": 2,
+                        "raw_failed": 0,
+                        "slow": 1,
+                        "timeouts": 1,
+                        "problem_case_count": 2,
+                        "problem_cases": [
+                            {
+                                "name": "slow_case",
+                                "status": "slow",
+                                "error_kind": "slow",
+                            },
+                            {
+                                "name": "timeout_case",
+                                "status": "timeout",
+                                "error_kind": "timeout",
+                            },
+                        ],
+                        "issue_kind_counts": {"slow": 1, "timeout": 1},
+                    },
+                    "delta": {},
+                },
+            },
+        }
+
+        markdown = MODULE.render_markdown(scorecard)
+
+        self.assertIn(
+            "`residual_matrix`: passed=1 failed=2 total=3 slow=1 timeouts=1",
+            markdown,
+        )
+        self.assertIn(
+            "`residual_matrix` problem cases: "
+            "slow_case status=slow kind=slow; "
+            "timeout_case status=timeout kind=timeout",
+            markdown,
+        )
 
     def test_render_markdown_includes_mixed_pressure_and_proof_shape_caveat(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
+        metrics["orchestrator_profile_slice"] = {
+            "elapsed_seconds": 0.568,
+            "family_count": 0,
+            "filter": "root.div.",
+            "limit": None,
+            "total_cases": 4,
+            "wrapper_count": 0,
+        }
         strict_metrics = {
             "total_combos": 100,
             "nf_convergent": 0,
@@ -1193,6 +1626,16 @@ root.direct_small_zero_composition.candidate.three_core_groups
             markdown,
         )
         self.assertIn("expr=a*b - b*a", markdown)
+        self.assertIn("## Mixed Zero Orchestrator Profile", markdown)
+        self.assertIn(
+            "Profiled slice: 4 cases, 0.57s elapsed, filter `root.div.`.",
+            markdown,
+        )
+        self.assertIn("Hot 1: `pipeline.phase.core`", markdown)
+        self.assertIn(
+            "No-match hotspot 1: `root.div.01.shifted_quotient_exact_one_gate`",
+            markdown,
+        )
         self.assertIn("sum total=3 failed=0 elapsed=12.00ms", markdown)
         self.assertIn("simplify=0.90ms", markdown)
         self.assertIn("sum simplify=0.90ms", markdown)

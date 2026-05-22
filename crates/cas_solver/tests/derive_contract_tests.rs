@@ -286,6 +286,7 @@ struct DeriveOutcomeStats {
     generic_simplify_expected_ids: Vec<String>,
     expected_strategy_counts: BTreeMap<String, usize>,
     unsupported_by_family: BTreeMap<String, usize>,
+    not_equivalent_by_family: BTreeMap<String, usize>,
     derived_by_family: BTreeMap<String, usize>,
 }
 
@@ -770,6 +771,10 @@ fn assert_case_matches_expected_outcome(case: &DeriveCase, stats: &mut DeriveOut
         }
         "not_equivalent" => {
             stats.not_equivalent += 1;
+            *stats
+                .not_equivalent_by_family
+                .entry(case.family.clone())
+                .or_default() += 1;
             assert!(
                 lines.iter().any(|line| {
                     line.contains("Derive unavailable: the two expressions are not equivalent.")
@@ -1182,6 +1187,10 @@ fn derive_pairs_follow_expected_outcomes() {
     eprintln!(
         "derive unsupported-equivalent-by-family: {:?}",
         stats.unsupported_by_family
+    );
+    eprintln!(
+        "derive not-equivalent-by-family: {:?}",
+        stats.not_equivalent_by_family
     );
 }
 

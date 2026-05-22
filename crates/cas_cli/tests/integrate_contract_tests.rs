@@ -108,6 +108,14 @@ fn should_verify_antiderivative_with_public_integrate_residual(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_hyperbolic_quotient_substitution_target(
         ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_tan_fourth_affine_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_cot_fourth_affine_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_sec_fourth_affine_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_csc_fourth_affine_target(
+        ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_arctan_affine_target(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_positive_quadratic_cube_target(
@@ -693,6 +701,42 @@ fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_f
 }
 
 #[test]
+fn integrate_contract_hyperbolic_by_parts_double_nested_residual_compacts_without_timeout() {
+    for input in [
+        "((((diff(integrate(x^5*sinh(2*x+1), x), x) - x^5*sinh(2*x+1)) + 1)/(x+2))/(x+3))/(x+4)",
+        "((((diff(integrate(x^4*cosh(2*x+1), x), x) - x^4*cosh(2*x+1)) + 1)/(x+2))/(x+3))/(x+4)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(
+            stderr.is_empty(),
+            "unexpected stderr for hyperbolic double-nested residual: {stderr}"
+        );
+        assert_eq!(wire["result"], "1 / ((x + 2)·(x + 3)·(x + 4))", "{input}");
+        assert_eq!(
+            wire["required_display"],
+            serde_json::json!(["x ≠ -2", "x ≠ -3", "x ≠ -4"]),
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_positive_quadratic_rational_double_nested_residual_stays_quiet() {
+    let input =
+        "(((((diff(integrate((3*x + 5)/(x^2+x+1),x),x)-((3*x + 5)/(x^2+x+1)))+1)/(x+2))/(x+3))/(x+4))";
+    let (wire, stderr) = cli_eval_json_with_stderr(input);
+    assert!(
+        stderr.is_empty(),
+        "positive-quadratic rational residual should avoid depth overflow: {stderr}"
+    );
+    assert_eq!(wire["result"], "1 / ((x + 2)·(x + 3)·(x + 4))");
+    assert_eq!(
+        wire["required_display"],
+        serde_json::json!(["x ≠ -2", "x ≠ -3", "x ≠ -4"])
+    );
+}
+
+#[test]
 fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_exp_by_parts() {
     for input in [
         "integrate(x^2*exp(x), x)",
@@ -924,6 +968,21 @@ fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_f
 }
 
 #[test]
+fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_for_hyperbolic_reciprocal_fourth_subset(
+) {
+    for input in [
+        "integrate(1/cosh(2*x+1)^4, x)",
+        "integrate(2*x/cosh(x^2)^4, x)",
+    ] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_nonlinear_hyperbolic_reciprocal_square_residual_survives_wrappers() {
     for (input, expected_result, expected_required_display) in [
         (
@@ -957,6 +1016,43 @@ fn integrate_contract_nonlinear_hyperbolic_reciprocal_square_residual_survives_w
             wire["required_display"], expected_required_display,
             "unexpected required_display for {input}: {:?}",
             wire["required_display"]
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_hyperbolic_reciprocal_fourth_substitution_verifies() {
+    let cases = [
+        (
+            "integrate(1/cosh(x)^4, x)",
+            "1/3 * (3 * tanh(x) - tanh(x)^3)",
+            "diff(integrate(1/cosh(x)^4, x), x) - 1/cosh(x)^4",
+        ),
+        (
+            "integrate(1/cosh(2*x+1)^4, x)",
+            "1/6 * (3 * tanh(2 * x + 1) - tanh(2 * x + 1)^3)",
+            "diff(integrate(1/cosh(2*x+1)^4, x), x) - 1/cosh(2*x+1)^4",
+        ),
+        (
+            "integrate(2*x/cosh(x^2)^4, x)",
+            "1/3 * (3 * tanh(x^2) - tanh(x^2)^3)",
+            "diff(integrate(2*x/cosh(x^2)^4, x), x) - 2*x/cosh(x^2)^4",
+        ),
+    ];
+
+    for (input, expected, residual) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            required.is_empty(),
+            "reciprocal cosh fourth should not add domain conditions for {input}: {required:?}"
+        );
+        let (residual_result, residual_required) =
+            evaluated_integral_with_required_conditions(residual);
+        assert_eq!(residual_result, "0", "residual: {residual}");
+        assert!(
+            residual_required.is_empty(),
+            "reciprocal cosh fourth residual should not add domain conditions for {input}: {residual_required:?}"
         );
     }
 }
@@ -2996,10 +3092,42 @@ fn integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaus
             "integrate((x+1)*cos((3*x+2)/2), x)",
             "integrate((x+1)*sin((2-3*x)/2), x)",
             "integrate((x+1)*cos((2-3*x)/2), x)",
+            "integrate(x*sinh(x), x)",
+            "integrate(x*cosh(x), x)",
+            "integrate((2*x+3)*sinh(2*x+1), x)",
+            "integrate((2*x+3)*cosh(2*x+1), x)",
+            "integrate((x+1)*sinh((3*x+2)/2), x)",
+            "integrate((x+1)*cosh((3*x+2)/2), x)",
+            "integrate((x+1)*sinh((2-3*x)/2), x)",
+            "integrate((x+1)*cosh((2-3*x)/2), x)",
             "integrate(x^2*sinh(x), x)",
             "integrate(x^2*cosh(x), x)",
+            "integrate(sinh(2*x + 1)/cosh(2*x + 1), x)",
+            "integrate(cosh(2*x + 1)/sinh(2*x + 1), x)",
+            "integrate(1/tanh(2*x + 1), x)",
+            "integrate(2*x*cosh(x^2)/sinh(x^2), x)",
+            "integrate(2*x/tanh(x^2), x)",
+            "integrate(1/cosh(2*x + 1)^2, x)",
+            "integrate(1/sinh(2*x + 1)^2, x)",
+            "integrate(2*x/cosh(x^2)^2, x)",
+            "integrate(2*x/sinh(x^2)^2, x)",
+            "integrate(sinh(2*x + 1)/cosh(2*x + 1)^2, x)",
+            "integrate(2*x*sinh(x^2)/cosh(x^2)^2, x)",
+            "integrate(-x*sinh(x^2)/cosh(x^2)^2, x)",
+            "integrate(cosh(2*x + 1)/sinh(2*x + 1)^2, x)",
+            "integrate(2*x*cosh(x^2)/sinh(x^2)^2, x)",
+            "integrate(-x*cosh(x^2)/sinh(x^2)^2, x)",
+            "integrate(2*x*ln(x^2+1), x)",
+            "integrate((2*x+1)*ln(x^2+x+1), x)",
+            "integrate((3*x+5)/(2*sqrt(x+2)), x)",
+            "integrate(sec(x), x)",
+            "integrate(csc(x), x)",
+            "integrate(tan(2*x + 1), x)",
+            "integrate(cot(2*x + 1), x)",
+            "integrate(sec((3*x+2)/2), x)",
+            "integrate(csc((2-3*x)/2), x)",
         ],
-        "exhaustive debug antiderivative verification should only use the bounded public residual route for known exp, trig, and hyperbolic by-parts smoke cases"
+        "exhaustive debug antiderivative verification should only use the bounded public residual route for known public-residual families"
     );
 }
 
@@ -3068,6 +3196,9 @@ fn integrate_contract_affine_hyperbolic_square_power_reduction() {
             "integrate(cosh(2*x + 1)^2, x)",
             "1/4 * sinh(2 * x + 1) * cosh(2 * x + 1) + x / 2",
         ),
+        ("integrate(tanh(x)^2, x)", "x - tanh(x)"),
+        ("integrate(tanh(2*x + 1)^2, x)", "x - 1/2 * tanh(2 * x + 1)"),
+        ("integrate(tanh(1-2*x)^2, x)", "1/2 * tanh(1 - 2 * x) + x"),
         (
             "integrate(4*sinh(x)^2*cosh(x)^2, x)",
             "1/8 * sinh(4 * x) - 1/2 * x",
@@ -3098,6 +3229,51 @@ fn integrate_contract_affine_trig_ratio_square_power_reduction() {
             "1/2 * (tan(2 * x + 1) - 2 * x)",
             vec!["cos(2 * x + 1) ≠ 0"],
         ),
+        (
+            "integrate(tan(x)^4, x)",
+            "tan(x)^3 / 3 + x - tan(x)",
+            vec!["cos(x) ≠ 0"],
+        ),
+        (
+            "integrate(tan(2*x + 1)^4, x)",
+            "-tan(2 * x + 1) / 2 + tan(2 * x + 1)^3 / 6 + x",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(sin(2*x + 1)^4/cos(2*x + 1)^4, x)",
+            "-tan(2 * x + 1) / 2 + tan(2 * x + 1)^3 / 6 + x",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(sec(x)^4, x)",
+            "tan(x) + tan(x)^3 / 3",
+            vec!["cos(x) ≠ 0"],
+        ),
+        (
+            "integrate(1/cos(2*x + 1)^4, x)",
+            "tan(2 * x + 1) / 2 + tan(2 * x + 1)^3 / 6",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(csc(x)^4, x)",
+            "-cot(x)^3 / 3 - cot(x)",
+            vec!["sin(x) ≠ 0"],
+        ),
+        (
+            "integrate(1/sin(2*x + 1)^4, x)",
+            "-cot(2 * x + 1)^3 / 6 - cot(2 * x + 1) / 2",
+            vec!["sin(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(cot(x)^4, x)",
+            "cot(x) + x - cot(x)^3 / 3",
+            vec!["sin(x) ≠ 0"],
+        ),
+        (
+            "integrate(cos(2*x + 1)^4/sin(2*x + 1)^4, x)",
+            "cot(2 * x + 1) / 2 + x - cot(2 * x + 1)^3 / 6",
+            vec!["sin(2 * x + 1) ≠ 0"],
+        ),
         ("integrate(cot(x)^2, x)", "-cot(x) - x", vec!["sin(x) ≠ 0"]),
         (
             "integrate(cot(2*x + 1)^2, x)",
@@ -3111,6 +3287,24 @@ fn integrate_contract_affine_trig_ratio_square_power_reduction() {
         assert_eq!(result, expected, "input: {input}");
         assert_eq!(required, expected_required, "input: {input}");
         assert_rendered_antiderivative_verifies(input, expected);
+    }
+
+    for input in [
+        "integrate(tan(x)^4, x)",
+        "integrate(tan(2*x + 1)^4, x)",
+        "integrate(sin(2*x + 1)^4/cos(2*x + 1)^4, x)",
+        "integrate(sec(x)^4, x)",
+        "integrate(1/cos(2*x + 1)^4, x)",
+        "integrate(csc(x)^4, x)",
+        "integrate(1/sin(2*x + 1)^4, x)",
+        "integrate(cot(x)^4, x)",
+        "integrate(cos(2*x + 1)^4/sin(2*x + 1)^4, x)",
+    ] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
     }
 }
 
@@ -3712,6 +3906,22 @@ fn integrate_contract_linear_times_hyperbolic_linear_by_parts() {
         "unexpected required_conditions: {required:?}"
     );
 
+    for (input, expected) in [
+        (
+            "integrate((2*x+3)*sinh(1-2*x), x)",
+            "1/2·(-sinh(1 - 2·x) - cosh(1 - 2·x)·(2·x + 3))",
+        ),
+        (
+            "integrate((2*x+3)*cosh(1-2*x), x)",
+            "1/2·(-cosh(1 - 2·x) - sinh(1 - 2·x)·(2·x + 3))",
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(stderr.is_empty(), "unexpected stderr for {input}: {stderr}");
+        assert_eq!(wire["result"], expected, "{input}");
+        assert_eq!(wire["required_display"], serde_json::json!([]), "{input}");
+    }
+
     let (result, required) =
         evaluated_integral_with_required_conditions("integrate((x+1)*sinh(2*x+1), x)");
     assert_eq!(
@@ -3730,6 +3940,23 @@ fn integrate_contract_linear_times_hyperbolic_linear_by_parts() {
         residual_required.is_empty(),
         "linear hyperbolic residual should not add conditions: {residual_required:?}"
     );
+
+    for residual in [
+        "diff(integrate((2*x+3)*sinh(1-2*x), x), x) - (2*x+3)*sinh(1-2*x)",
+        "diff(integrate((2*x+3)*cosh(1-2*x), x), x) - (2*x+3)*cosh(1-2*x)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr(residual);
+        assert!(
+            stderr.is_empty(),
+            "negative-affine hyperbolic residual should not emit stderr: {stderr}"
+        );
+        assert_eq!(wire["result"], "0", "{residual}");
+        assert_eq!(
+            wire["required_display"],
+            serde_json::json!([]),
+            "{residual}"
+        );
+    }
 }
 
 #[test]
@@ -5941,6 +6168,41 @@ fn integrate_contract_quadratic_monomial_times_affine_log_by_parts_verifies() {
     assert_eq!(
         residual_wire["required_display"],
         serde_json::json!(["x > -1/2"])
+    );
+
+    let negative_input = "integrate(x^2*ln(1-2*x), x)";
+    let (negative_wire, negative_stderr) = cli_eval_json_with_stderr_args(
+        negative_input,
+        &["--budget", "small", "--time-budget-ms", "100"],
+    );
+
+    assert!(
+        negative_stderr.is_empty(),
+        "negative-slope quadratic affine-log integration should stay quiet\nstderr:\n{negative_stderr}"
+    );
+    assert_eq!(
+        negative_wire["result"],
+        "1/3·x^3·ln(1 - 2·x) - (1/24·ln(1 - 2·x) + 1/9·x^3 + 1/12·x^2 + 1/12·x)"
+    );
+    assert_eq!(
+        negative_wire["required_display"],
+        serde_json::json!(["x < 1/2"])
+    );
+
+    let negative_residual = "diff(integrate(x^2*ln(1-2*x), x), x) - x^2*ln(1-2*x)";
+    let (negative_residual_wire, negative_residual_stderr) = cli_eval_json_with_stderr_args(
+        negative_residual,
+        &["--budget", "small", "--time-budget-ms", "100"],
+    );
+
+    assert!(
+        negative_residual_stderr.is_empty(),
+        "negative-slope quadratic affine-log residual should stay quiet\nstderr:\n{negative_residual_stderr}"
+    );
+    assert_eq!(negative_residual_wire["result"], "0");
+    assert_eq!(
+        negative_residual_wire["required_display"],
+        serde_json::json!(["x < 1/2"])
     );
 }
 
@@ -10301,16 +10563,54 @@ fn integrate_contract_log_high_power_product_by_parts_verifies() {
 }
 
 #[test]
-fn integrate_contract_conditional_high_log_power_stays_unsupported_until_residual_verifies() {
-    let input = "integrate(2*x*ln(x^2-1)^4, x)";
-    let (result, required) = evaluated_integral_with_required_conditions(input);
+fn integrate_contract_conditional_high_log_power_product_by_parts_verifies() {
+    let cases: [(&str, &str, &[&str], &str); 3] = [
+        (
+            "integrate(2*x*ln(x^2-1)^4, x)",
+            "(x^2 - 1) * (ln(x^2 - 1)^4 - 4 * ln(x^2 - 1)^3 + 12 * ln(x^2 - 1)^2 - 24 * ln(x^2 - 1) + 24)",
+            &["x < -1 or x > 1"],
+            "diff(integrate(2*x*ln(x^2-1)^4, x), x) - 2*x*ln(x^2-1)^4",
+        ),
+        (
+            "integrate(2*x*ln(x^2-1)^5, x)",
+            "(x^2 - 1) * (ln(x^2 - 1)^5 - 5 * ln(x^2 - 1)^4 + 20 * ln(x^2 - 1)^3 - 60 * ln(x^2 - 1)^2 + 120 * ln(x^2 - 1) - 120)",
+            &["x < -1 or x > 1"],
+            "diff(integrate(2*x*ln(x^2-1)^5, x), x) - 2*x*ln(x^2-1)^5",
+        ),
+        (
+            "integrate((2*x+1)*ln(x^2+x-1)^4, x)",
+            "(x^2 + x - 1) * (ln(x^2 + x - 1)^4 - 4 * ln(x^2 + x - 1)^3 + 12 * ln(x^2 + x - 1)^2 - 24 * ln(x^2 + x - 1) + 24)",
+            &["x < -1/2 - sqrt(5)/2 or x > -1/2 + sqrt(5)/2"],
+            "diff(integrate((2*x+1)*ln(x^2+x-1)^4, x), x) - (2*x+1)*ln(x^2+x-1)^4",
+        ),
+    ];
 
-    assert_eq!(result, "integrate(2 * x * ln(x^2 - 1)^4, x)");
-    assert_eq!(
-        required,
-        vec!["x < -1 or x > 1".to_string()],
-        "unsupported conditional high-log-power integration should still publish its source domain"
-    );
+    for (input, expected, expected_required, residual_input) in cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        let expected_required: Vec<String> = expected_required
+            .iter()
+            .map(|condition| condition.to_string())
+            .collect();
+        assert_eq!(
+            required, expected_required,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+
+        let (residual_wire, residual_stderr) = cli_eval_json_with_stderr(residual_input);
+        assert!(
+            residual_stderr.is_empty(),
+            "conditional high-log-power residual should stay quiet for {input}\nstderr:\n{residual_stderr}"
+        );
+        assert_eq!(residual_wire["result"], "0", "input: {input}");
+        assert_eq!(
+            residual_wire["required_display"],
+            serde_json::json!(expected_required),
+            "unexpected residual required_display for {input}: {:?}",
+            residual_wire["required_display"]
+        );
+    }
 }
 
 #[test]

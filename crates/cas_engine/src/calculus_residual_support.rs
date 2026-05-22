@@ -3665,6 +3665,84 @@ fn integral_required_conditions(
     required_nonzero.chain(required_positive).collect()
 }
 
+fn push_unique_implicit_condition(
+    ctx: &Context,
+    conditions: &mut Vec<crate::ImplicitCondition>,
+    condition: crate::ImplicitCondition,
+) {
+    let already_present = conditions
+        .iter()
+        .any(|existing| match (existing, &condition) {
+            (
+                crate::ImplicitCondition::NonZero(existing_expr),
+                crate::ImplicitCondition::NonZero(condition_expr),
+            )
+            | (
+                crate::ImplicitCondition::Positive(existing_expr),
+                crate::ImplicitCondition::Positive(condition_expr),
+            ) => expr_eq(ctx, *existing_expr, *condition_expr),
+            _ => false,
+        });
+    if !already_present {
+        conditions.push(condition);
+    }
+}
+
+fn collect_plain_ln_positive_conditions(
+    ctx: &mut Context,
+    expr: ExprId,
+    conditions: &mut Vec<crate::ImplicitCondition>,
+) {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln) =>
+        {
+            if let Expr::Function(abs_fn_id, abs_args) = ctx.get(args[0]) {
+                if abs_args.len() == 1 && ctx.builtin_of(*abs_fn_id) == Some(BuiltinFn::Abs) {
+                    return;
+                }
+            }
+            push_unique_implicit_condition(
+                ctx,
+                conditions,
+                crate::ImplicitCondition::Positive(args[0]),
+            );
+        }
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            collect_plain_ln_positive_conditions(ctx, left, conditions);
+            collect_plain_ln_positive_conditions(ctx, right, conditions);
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            collect_plain_ln_positive_conditions(ctx, inner, conditions);
+        }
+        Expr::Function(_, args) => {
+            for arg in args {
+                collect_plain_ln_positive_conditions(ctx, arg, conditions);
+            }
+        }
+        Expr::Number(_)
+        | Expr::Constant(_)
+        | Expr::Variable(_)
+        | Expr::SessionRef(_)
+        | Expr::Matrix { .. } => {}
+    }
+}
+
+fn quadratic_affine_log_required_conditions(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Vec<crate::ImplicitCondition> {
+    let mut conditions = integral_required_conditions(ctx, target, var_name);
+    collect_plain_ln_positive_conditions(ctx, target, &mut conditions);
+    conditions
+}
+
 fn supported_rational_polynomial_integral_required_conditions(
     ctx: &mut Context,
     target: ExprId,
@@ -3880,6 +3958,66 @@ fn explicit_high_log_power_product_antiderivative_diff_matches(
     }
 
     Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
+fn explicit_quadratic_affine_log_antiderivative_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_affine_ln_by_parts_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+        return Some(quadratic_affine_log_required_conditions(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ));
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_affine_ln_by_parts_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = cas_ast::hold::strip_all_holds(ctx, diff_call.target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(quadratic_affine_log_required_conditions(
         ctx,
         right,
         &diff_call.var_name,
@@ -4777,6 +4915,282 @@ fn integrated_affine_trig_eighth_power_diff_matches(
         .map(|_| Vec::new())
 }
 
+fn integrated_or_explicit_tan_fourth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_tan_fourth_affine_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(integral_required_conditions(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ));
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_tan_fourth_affine_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
+fn integrated_or_explicit_cot_fourth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_cot_fourth_affine_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(integral_required_conditions(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ));
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_cot_fourth_affine_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
+fn integrated_or_explicit_sec_fourth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_sec_fourth_affine_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(integral_required_conditions(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ));
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_sec_fourth_affine_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
+fn integrated_or_explicit_csc_fourth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_csc_fourth_affine_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(integral_required_conditions(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ));
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_csc_fourth_affine_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
 fn integrated_quadratic_exp_linear_diff_matches(
     ctx: &mut Context,
     diff_expr: ExprId,
@@ -5198,6 +5612,10 @@ fn integrated_polynomial_hyperbolic_linear_diff_matches(
     }
 
     if !cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_hyperbolic_linear_target(
+        ctx,
+        integrate_call.target,
+        &integrate_call.var_name,
+    ) && !cas_math::symbolic_integration_support::integrate_symbolic_is_linear_times_hyperbolic_linear_target(
         ctx,
         integrate_call.target,
         &integrate_call.var_name,
@@ -6917,6 +7335,18 @@ pub(crate) fn try_diff_integral_plain_trig_residual_zero_preorder(
                 integrated_affine_trig_eighth_power_diff_matches(ctx, diff_expr, divisor, right)
             })
             .or_else(|| {
+                integrated_or_explicit_tan_fourth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_or_explicit_cot_fourth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_or_explicit_sec_fourth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_or_explicit_csc_fourth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
                 integrated_affine_trig_fifth_power_diff_matches(ctx, diff_expr, divisor, right)
             })
             .or_else(|| {
@@ -7010,9 +7440,12 @@ pub(crate) fn try_diff_integral_hyperbolic_residual_constant_passthrough_quotien
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
-    try_diff_integral_residual_constant_passthrough_quotient(
+    // Hyperbolic by-parts residuals are already guarded by the direct matcher;
+    // allow exactly two quotient shells for the retained double-nested smoke cases.
+    try_diff_integral_residual_constant_passthrough_quotient_with_nested_depth(
         ctx,
         expr,
+        2,
         2,
         try_diff_integral_hyperbolic_residual_direct_root_zero,
     )
@@ -7522,9 +7955,12 @@ pub(crate) fn try_diff_integral_rational_quadratic_residual_constant_passthrough
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
-    try_diff_integral_residual_constant_passthrough_quotient(
+    // Keep this widening local to supported rational-polynomial integration
+    // residuals; the direct matcher is what prevents a broad quotient search.
+    try_diff_integral_residual_constant_passthrough_quotient_with_nested_depth(
         ctx,
         expr,
+        2,
         2,
         try_diff_integral_rational_quadratic_residual_direct_root_zero,
     )
@@ -7684,6 +8120,45 @@ pub(crate) fn try_explicit_high_log_power_product_antiderivative_residual_consta
         2,
         try_explicit_high_log_power_product_antiderivative_residual_direct_root_zero,
     )
+}
+
+pub(crate) fn try_explicit_quadratic_affine_log_antiderivative_residual_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    try_diff_integral_residual_wrapped_root_zero(
+        ctx,
+        expr,
+        3,
+        try_explicit_quadratic_affine_log_antiderivative_residual_direct_root_zero,
+    )
+}
+
+fn try_explicit_quadratic_affine_log_antiderivative_residual_direct_root_zero(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        _ => return None,
+    };
+    try_explicit_quadratic_affine_log_antiderivative_residual_zero_preorder(ctx, left, right)
+        .or_else(|| {
+            try_explicit_quadratic_affine_log_antiderivative_residual_zero_preorder(
+                ctx, right, left,
+            )
+        })
+}
+
+fn try_explicit_quadratic_affine_log_antiderivative_residual_zero_preorder(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (diff_expr, divisor) = diff_call_with_optional_divisor(ctx, left)?;
+    let required_conditions =
+        explicit_quadratic_affine_log_antiderivative_diff_matches(ctx, diff_expr, divisor, right)?;
+    Some((ctx.num(0), required_conditions))
 }
 
 pub(crate) fn try_explicit_quadratic_positive_quadratic_log_antiderivative_residual_root_zero(
@@ -10099,6 +10574,25 @@ mod tests {
         })
     }
 
+    fn explicit_quadratic_affine_log_antiderivative_residual_result(
+        input: &str,
+    ) -> Option<(String, Vec<String>)> {
+        let mut ctx = Context::new();
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        try_explicit_quadratic_affine_log_antiderivative_residual_root_zero(&mut ctx, expr).map(
+            |(result, required_conditions)| {
+                (
+                    render(&ctx, result),
+                    required_conditions
+                        .into_iter()
+                        .map(|condition| condition.display(&ctx))
+                        .collect(),
+                )
+            },
+        )
+    }
+
     #[test]
     fn explicit_positive_quadratic_cube_antiderivative_residual_cancels_scaled_affine_quartic() {
         assert_eq!(
@@ -10202,6 +10696,26 @@ mod tests {
         assert_eq!(
             explicit_high_log_power_product_antiderivative_residual_result(residual),
             Some(("0".to_string(), vec![]))
+        );
+        assert_eq!(simplify_text(residual), "0");
+    }
+
+    #[test]
+    fn explicit_high_log_power_product_antiderivative_residual_cancels_conditional_quadratic() {
+        let residual = "diff(integrate(2*x*ln(x^2-1)^4, x), x) - 2*x*ln(x^2-1)^4";
+        assert_eq!(
+            explicit_high_log_power_product_antiderivative_residual_result(residual),
+            Some(("0".to_string(), vec!["x < -1 or x > 1".to_string()]))
+        );
+        assert_eq!(simplify_text(residual), "0");
+    }
+
+    #[test]
+    fn explicit_quadratic_affine_log_antiderivative_residual_cancels_negative_slope() {
+        let residual = "diff(integrate(x^2*ln(1-2*x), x), x) - x^2*ln(1-2*x)";
+        assert_eq!(
+            explicit_quadratic_affine_log_antiderivative_residual_result(residual),
+            Some(("0".to_string(), vec!["x < 1/2".to_string()]))
         );
         assert_eq!(simplify_text(residual), "0");
     }
@@ -10612,6 +11126,83 @@ mod tests {
     }
 
     #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_tan_fourth_without_global_detour() {
+        let cases = [
+            "diff(integrate(tan(x)^4, x), x) - tan(x)^4",
+            "diff(tan(x)^3/3 + x - tan(x), x) - tan(x)^4",
+            "diff(integrate(tan(2*x+1)^4, x), x) - tan(2*x+1)^4",
+            "diff(-tan(2*x+1)/2 + tan(2*x+1)^3/6 + x, x) - tan(2*x+1)^4",
+            "diff(-tan(2*x+1)/2 + tan(2*x+1)^3/6 + x, x) - sin(2*x+1)^4/cos(2*x+1)^4",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_cot_fourth_without_global_detour() {
+        let cases = [
+            "diff(integrate(cot(x)^4, x), x) - cot(x)^4",
+            "diff(x + cot(x) - cot(x)^3/3, x) - cot(x)^4",
+            "diff(integrate(cos(2*x+1)^4/sin(2*x+1)^4, x), x) - cos(2*x+1)^4/sin(2*x+1)^4",
+            "diff(x + cot(2*x+1)/2 - cot(2*x+1)^3/6, x) - cos(2*x+1)^4/sin(2*x+1)^4",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_sec_fourth_without_global_detour() {
+        let cases = [
+            "diff(integrate(sec(x)^4, x), x) - sec(x)^4",
+            "diff(tan(x) + tan(x)^3/3, x) - sec(x)^4",
+            "diff(integrate(1/cos(2*x+1)^4, x), x) - 1/cos(2*x+1)^4",
+            "diff(tan(2*x+1)/2 + tan(2*x+1)^3/6, x) - 1/cos(2*x+1)^4",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_csc_fourth_without_global_detour() {
+        let cases = [
+            "diff(integrate(csc(x)^4, x), x) - csc(x)^4",
+            "diff(-cot(x) - cot(x)^3/3, x) - csc(x)^4",
+            "diff(integrate(1/sin(2*x+1)^4, x), x) - 1/sin(2*x+1)^4",
+            "diff(-cot(2*x+1)/2 - cot(2*x+1)^3/6, x) - 1/sin(2*x+1)^4",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
     fn diff_integral_plain_trig_residual_root_verifies_sixth_power_reduction() {
         let cases = [
             "diff(integrate(sin(x)^6, x), x) - sin(x)^6",
@@ -10907,6 +11498,21 @@ mod tests {
     }
 
     #[test]
+    fn diff_integral_hyperbolic_residual_root_cancels_negative_affine_linear_by_parts() {
+        for input in [
+            "diff(integrate((2*x+3)*sinh(1-2*x), x), x) - (2*x+3)*sinh(1-2*x)",
+            "diff(integrate((2*x+3)*cosh(1-2*x), x), x) - (2*x+3)*cosh(1-2*x)",
+        ] {
+            assert_eq!(
+                integral_hyperbolic_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
     fn diff_integral_hyperbolic_residual_root_cancels_csch_square_without_global_detour() {
         let input = "diff(integrate(1/sinh(2*x+1)^2, x), x) - 1/sinh(2*x+1)^2";
         assert_eq!(
@@ -10952,13 +11558,21 @@ mod tests {
     }
 
     #[test]
-    fn diff_integral_hyperbolic_residual_rejects_deeper_passthrough_quotient_shortcut() {
+    fn diff_integral_hyperbolic_residual_compacts_deeper_passthrough_quotient_shortcut() {
         let residual = "diff(integrate(x^5*sinh(2*x+1), x), x) - x^5*sinh(2*x+1)";
         let input = format!("((((({residual}) + 1)/(x+2))/(x+3))/(x+4))");
         assert_eq!(
             integral_hyperbolic_passthrough_quotient_result(&input),
-            None
+            Some((
+                "1 / ((x + 2) * (x + 3) * (x + 4))".to_string(),
+                vec![
+                    "x ≠ -2".to_string(),
+                    "x ≠ -3".to_string(),
+                    "x ≠ -4".to_string(),
+                ],
+            ))
         );
+        assert_eq!(simplify_text(&input), "1 / ((x + 2) * (x + 3) * (x + 4))");
     }
 
     #[test]
@@ -11310,6 +11924,24 @@ mod tests {
             );
             assert_eq!(simplify_text(&input), "1 / (x + 2)", "{input}");
         }
+    }
+
+    #[test]
+    fn diff_integral_rational_residual_compacts_positive_quadratic_double_nested_quotient() {
+        let residual = "diff(integrate((3*x + 5)/(x^2+x+1), x), x) - ((3*x + 5)/(x^2+x+1))";
+        let input = format!("((((({residual}) + 1)/(x+2))/(x+3))/(x+4))");
+        assert_eq!(
+            integral_rational_passthrough_quotient_result(&input),
+            Some((
+                "1 / ((x + 2) * (x + 3) * (x + 4))".to_string(),
+                vec![
+                    "x ≠ -2".to_string(),
+                    "x ≠ -3".to_string(),
+                    "x ≠ -4".to_string(),
+                ],
+            ))
+        );
+        assert_eq!(simplify_text(&input), "1 / ((x + 2) * (x + 3) * (x + 4))");
     }
 
     #[test]

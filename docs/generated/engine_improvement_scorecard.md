@@ -1,16 +1,16 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-05-21T22:43:33.243980+00:00
+- Generated: 2026-05-22T18:47:00.516136+00:00
 - Git branch: main
-- Git commit: `ae16f3f2f4aef0f1efb6adcce2318d6e237f6ad9`
+- Git commit: `59038c2c708626072b5d74864150da7f6fb09283`
 - Profile: `guardrail`
 
 ## Embedded Runtime Guardrail
 
 - Dimension: contextual simplify/equivalence under real wrappers.
 - Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 9.77s
-- Per-case runtime: 6.566ms/case
+- Elapsed: 9.80s
+- Per-case runtime: 6.586ms/case
 - Coverage axes: 7 wrappers across 27 families
 - Context axes: 4 complexity levels across 6 shell depths
 - Largest wrapper share: 19.8%
@@ -43,9 +43,11 @@
 
 - Dimension: source-to-target bridgeability and path quality.
 - Interpretation: measures planner/strategy reachability; not contextual wrapper strength.
-- Outcomes: derived=390 unsupported=0 not_equivalent=1
+- Expected-status breakdown: derived=390 unsupported=0 not_equivalent=1
 - Path quality: mean_step_count=1.05 long_path_rate=0.00
 - Strategy specificity: generic_simplify_expected=0 distinct_expected_strategies=28
+- Expected strategy counts: expand trig:94, contract trig:48, rewrite hyperbolics:35, expand:31, finite sums/products:22, expand_log:17, contract logs:14, factor:13, rewrite exponentials:13, rewrite trigs:13, expand fraction:11, combine fraction:10, +16 more
+- Non-derived expected families: unsupported=none not_equivalent=negative:1
 
 ## Derive Shadow Pressure
 
@@ -81,10 +83,13 @@
 
 - Dimension: public calculus behavior, result simplification, domain conditions, and step noise.
 - Interpretation: small executable calculus vertical slices; failures should be classified before broadening pre-calculus rules.
-- `diff`: passed=251 failed=0 ignored=1 filtered_out=0
-- `limit`: passed=87 failed=0 ignored=0 filtered_out=0
+- `diff`: passed=256 failed=0 ignored=1 filtered_out=0
+- `diff` ignored tests: `inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions_exhaustive` (exhaustive inverse reciprocal trig diff contract is debug-slow; CI keeps representative structural smoke)
+- `limit`: passed=100 failed=0 ignored=0 filtered_out=0
 - `limit_presimplify_safe`: passed=8 failed=0 ignored=0 filtered_out=0
-- `integrate`: passed=317 failed=0 ignored=1 filtered_out=0
+- `residual_matrix`: passed=247 failed=0 total=247 slow=0 timeouts=0
+- `integrate`: passed=321 failed=0 ignored=1 filtered_out=0
+- `integrate` ignored tests: `integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive` (exhaustive debug verification is intentionally slower; CI runs the representative smoke test)
 
 ## Simplify Closure Signal
 
@@ -102,13 +107,14 @@
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 9.77s | passed=1488 failed=0 total=1488 wrappers=7 families=27 avg_case=6.566ms |
-| `derive_contract` | `pass` | 5.67s | derived=390 unsupported=0 not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
-| `derive_shadow_pressure` | `pass` | 0.29s | sampled=66 derived=66 unsupported=0 not_equivalent=0 mean_step_count=1.05 generic_simplify_strategy_successes=0 single_step=62 multi_step_ids=4 embedded_families=26/26 |
-| `derive_didactic_audit` | `pass` | 32.26s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 |
-| `simplify_didactic_audit` | `pass` | 1.01s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
-| `simplify_strict` | `pass` | 22.07s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
-| `calculus_diff_contract` | `pass` | 5.25s | passed=251 failed=0 |
-| `calculus_limit_contract` | `pass` | 1.17s | passed=87 failed=0 |
-| `calculus_limit_presimplify_contract` | `pass` | 0.66s | passed=8 failed=0 |
-| `calculus_integrate_contract` | `pass` | 4.50s | passed=317 failed=0 |
+| `embedded_equivalence_context` | `pass` | 9.80s | passed=1488 failed=0 total=1488 wrappers=7 families=27 avg_case=6.586ms |
+| `derive_contract` | `pass` | 4.56s | derived=390 unsupported=0 expected_not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 |
+| `derive_shadow_pressure` | `pass` | 0.28s | sampled=66 derived=66 unsupported=0 not_equivalent=0 mean_step_count=1.05 generic_simplify_strategy_successes=0 single_step=62 multi_step_ids=4 embedded_families=26/26 |
+| `derive_didactic_audit` | `pass` | 13.84s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 |
+| `simplify_didactic_audit` | `pass` | 0.12s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
+| `simplify_strict` | `pass` | 20.76s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
+| `calculus_diff_contract` | `pass` | 5.59s | passed=256 failed=0 ignored=1 |
+| `calculus_limit_contract` | `pass` | 0.49s | passed=100 failed=0 |
+| `calculus_limit_presimplify_contract` | `pass` | 0.34s | passed=8 failed=0 |
+| `calculus_residual_matrix_smoke` | `pass` | 2.18s | passed=247 failed=0 total=247 |
+| `calculus_integrate_contract` | `pass` | 4.29s | passed=321 failed=0 ignored=1 |

@@ -1887,7 +1887,7 @@ fn test_eval_json_diff_sqrt_tan_ln_polynomial_sum_avoids_cycle_route() {
         "direct tan/ln/polynomial sqrt diff should not emit blocked hints: {json:?}"
     );
     assert_eq!(
-        json["result"], "(cos(x)^2 + x·cos(x)^2 + x) / (2·x·cos(x)^2·sqrt(tan(x) + ln(x) + x))",
+        json["result"], "(sec(x)^2 + 1 / x + 1) / (2·sqrt(tan(x) + ln(x) + x))",
         "expr: {expr}"
     );
 
@@ -1938,7 +1938,7 @@ fn test_eval_json_diff_sqrt_tan_scaled_ln_polynomial_sum_uses_direct_route() {
         "scaled direct tan/ln/polynomial sqrt diff should not emit blocked hints: {json:?}"
     );
     assert_eq!(
-        json["result"], "(2·cos(x)^2 + x·cos(x)^2 + x) / (2·x·cos(x)^2·sqrt(tan(x) + 2·ln(x) + x))",
+        json["result"], "(sec(x)^2 + 2 / x + 1) / (2·sqrt(tan(x) + 2·ln(x) + x))",
         "expr: {expr}"
     );
 
@@ -1989,7 +1989,7 @@ fn test_eval_json_diff_sqrt_tan_negative_ln_polynomial_sum_uses_direct_route() {
         "negative-log direct tan/polynomial sqrt diff should not emit blocked hints: {json:?}"
     );
     assert_eq!(
-        json["result"], "(x·cos(x)^2 + x - cos(x)^2) / (2·x·cos(x)^2·sqrt(tan(x) - ln(x) + x))",
+        json["result"], "(sec(x)^2 + 1 - 1 / x) / (2·sqrt(tan(x) - ln(x) + x))",
         "expr: {expr}"
     );
 
@@ -2022,6 +2022,110 @@ fn test_eval_json_diff_sqrt_tan_negative_ln_polynomial_sum_uses_direct_route() {
             condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
         }),
         "negative-log tan/polynomial radicand should expose the tangent pole guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_tan_ln_sqrt_polynomial_sum_uses_direct_route() {
+    let expr = "diff(sqrt(tan(x)+ln(x)+sqrt(x)+x), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("cycle detected") && !stderr.contains("depth_overflow"),
+        "tan/ln/sqrt/polynomial sqrt diff should stay out of cleanup loops: {stderr}"
+    );
+    assert!(
+        json.get("blocked_hints").is_none(),
+        "direct tan/ln/sqrt/polynomial sqrt diff should not emit blocked hints: {json:?}"
+    );
+    assert_eq!(
+        json["result"],
+        "(sec(x)^2 + 1 / x + 1 / (2·sqrt(x)) + 1) / (2·sqrt(tan(x) + ln(x) + sqrt(x) + x))",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "tan/ln/sqrt/polynomial sqrt diff should use direct derivative presentation: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "ln/sqrt(x) should expose x > 0 for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "tan(x) + ln(x) + sqrt(x) + x"
+        }),
+        "tan/ln/sqrt/polynomial radicand should expose the compact positive-domain guard for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+        }),
+        "tan/ln/sqrt/polynomial radicand should expose the tangent pole guard for {expr}: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_diff_sqrt_tan_ln_reciprocal_sqrt_polynomial_sum_uses_direct_route() {
+    let expr = "diff(sqrt(tan(x)+ln(x)+1/sqrt(x)+x), x)";
+    let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert!(
+        !stderr.contains("cycle detected") && !stderr.contains("depth_overflow"),
+        "tan/ln/reciprocal-sqrt/polynomial sqrt diff should stay out of cleanup loops: {stderr}"
+    );
+    assert!(
+        json.get("blocked_hints").is_none(),
+        "direct tan/ln/reciprocal-sqrt/polynomial sqrt diff should not emit blocked hints: {json:?}"
+    );
+    assert_eq!(
+        json["result"],
+        "(sec(x)^2 + 1 / x + 1 - 1/2·x^(-3/2)) / (2·sqrt(tan(x) + ln(x) + 1 / sqrt(x) + x))",
+        "expr: {expr}"
+    );
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(
+        steps.len(),
+        1,
+        "tan/ln/reciprocal-sqrt/polynomial sqrt diff should use direct derivative presentation: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Calcular la derivada");
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "ln/reciprocal-sqrt should expose x > 0 for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive"
+                && condition["expr_canonical"] == "tan(x) + ln(x) + 1 / sqrt(x) + x"
+        }),
+        "tan/ln/reciprocal-sqrt/polynomial radicand should expose the compact positive-domain guard for {expr}: {required:?}"
+    );
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "NonZero" && condition["expr_canonical"] == "cos(x)"
+        }),
+        "tan/ln/reciprocal-sqrt/polynomial radicand should expose the tangent pole guard for {expr}: {required:?}"
     );
 }
 

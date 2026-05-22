@@ -1542,6 +1542,62 @@ fn trig_ratio_square_affine_antiderivative(
     ))
 }
 
+fn trig_tan_fourth_affine_antiderivative(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if !is_number(ctx, exp, 4) {
+        return None;
+    }
+
+    let (fn_id, args) = match ctx.get(base).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => (fn_id, args),
+        _ => return None,
+    };
+    if ctx.builtin_of(fn_id) != Some(BuiltinFn::Tan) {
+        return None;
+    }
+
+    let arg = args[0];
+    let (a, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    if a.is_zero() {
+        return None;
+    }
+
+    Some(trig_tan_fourth_antiderivative_from_parts(ctx, arg, a, var))
+}
+
+fn trig_cot_fourth_affine_antiderivative(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if !is_number(ctx, exp, 4) {
+        return None;
+    }
+
+    let (fn_id, args) = match ctx.get(base).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => (fn_id, args),
+        _ => return None,
+    };
+    if ctx.builtin_of(fn_id) != Some(BuiltinFn::Cot) {
+        return None;
+    }
+
+    let arg = args[0];
+    let (a, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    if a.is_zero() {
+        return None;
+    }
+
+    Some(trig_cot_fourth_antiderivative_from_parts(ctx, arg, a, var))
+}
+
 fn hyperbolic_square_affine_antiderivative(
     ctx: &mut Context,
     base: ExprId,
@@ -1558,7 +1614,7 @@ fn hyperbolic_square_affine_antiderivative(
     };
 
     let builtin = ctx.builtin_of(fn_id)?;
-    if !matches!(builtin, BuiltinFn::Sinh | BuiltinFn::Cosh) {
+    if !matches!(builtin, BuiltinFn::Sinh | BuiltinFn::Cosh | BuiltinFn::Tanh) {
         return None;
     }
 
@@ -1567,6 +1623,13 @@ fn hyperbolic_square_affine_antiderivative(
     let a = rational_constant_value(ctx, a)?;
     if a.is_zero() {
         return None;
+    }
+
+    if matches!(builtin, BuiltinFn::Tanh) {
+        let var_expr = ctx.var(var);
+        let tanh_arg = ctx.call_builtin(BuiltinFn::Tanh, vec![arg]);
+        let correction = scale_rational_term(ctx, -BigRational::one() / a, tanh_arg);
+        return Some(ctx.add(Expr::Add(var_expr, correction)));
     }
 
     let sinh_arg = ctx.call_builtin(BuiltinFn::Sinh, vec![arg]);
@@ -1698,14 +1761,199 @@ fn trig_ratio_square_antiderivative_from_parts(
     ctx.add(Expr::Sub(scaled_primitive, var_expr))
 }
 
-fn squared_unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+fn trig_tan_fourth_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+    var: &str,
+) -> ExprId {
+    let tan_arg = ctx.call_builtin(BuiltinFn::Tan, vec![arg]);
+    let three = ctx.num(3);
+    let tan_cubed = ctx.add(Expr::Pow(tan_arg, three));
+    let cubic = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / (BigRational::from_integer(3.into()) * a.clone()),
+        tan_cubed,
+    );
+    let linear_tan = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        -BigRational::one() / a,
+        tan_arg,
+    );
+    let variable = ctx.var(var);
+    let tan_terms = ctx.add(Expr::Add(cubic, linear_tan));
+    ctx.add(Expr::Add(tan_terms, variable))
+}
+
+fn trig_cot_fourth_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+    var: &str,
+) -> ExprId {
+    let cot_arg = ctx.call_builtin(BuiltinFn::Cot, vec![arg]);
+    let three = ctx.num(3);
+    let cot_cubed = ctx.add(Expr::Pow(cot_arg, three));
+    let variable = ctx.var(var);
+
+    if a.is_positive() {
+        let linear = scale_reciprocal_integration_result_preserving_presentation(
+            ctx,
+            BigRational::one() / a.clone(),
+            cot_arg,
+        );
+        let cubic = scale_reciprocal_integration_result_preserving_presentation(
+            ctx,
+            BigRational::one() / (BigRational::from_integer(3.into()) * a),
+            cot_cubed,
+        );
+        let variable_plus_linear = ctx.add(Expr::Add(variable, linear));
+        return ctx.add(Expr::Sub(variable_plus_linear, cubic));
+    }
+
+    let linear = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        -BigRational::one() / a.clone(),
+        cot_arg,
+    );
+    let cubic = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        -BigRational::one() / (BigRational::from_integer(3.into()) * a),
+        cot_cubed,
+    );
+    let variable_minus_linear = ctx.add(Expr::Sub(variable, linear));
+    ctx.add(Expr::Add(variable_minus_linear, cubic))
+}
+
+fn trig_sec_fourth_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+) -> ExprId {
+    let tan_arg = ctx.call_builtin(BuiltinFn::Tan, vec![arg]);
+    let three = ctx.num(3);
+    let tan_cubed = ctx.add(Expr::Pow(tan_arg, three));
+    let linear = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / a.clone(),
+        tan_arg,
+    );
+    let cubic = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        BigRational::one() / (BigRational::from_integer(3.into()) * a),
+        tan_cubed,
+    );
+    ctx.add(Expr::Add(linear, cubic))
+}
+
+fn trig_sec_fourth_affine_antiderivative(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if !is_number(ctx, exp, 4) {
+        return None;
+    }
+
+    let (fn_id, args) = match ctx.get(base).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => (fn_id, args),
+        _ => return None,
+    };
+    if ctx.builtin_of(fn_id) != Some(BuiltinFn::Sec) {
+        return None;
+    }
+
+    let arg = args[0];
+    let (a, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    if a.is_zero() {
+        return None;
+    }
+
+    Some(trig_sec_fourth_antiderivative_from_parts(ctx, arg, a))
+}
+
+fn trig_csc_fourth_antiderivative_from_parts(
+    ctx: &mut Context,
+    arg: ExprId,
+    a: BigRational,
+) -> ExprId {
+    let cot_arg = ctx.call_builtin(BuiltinFn::Cot, vec![arg]);
+    let three = ctx.num(3);
+    let cot_cubed = ctx.add(Expr::Pow(cot_arg, three));
+    if a.is_positive() {
+        let linear = scale_reciprocal_integration_result_preserving_presentation(
+            ctx,
+            BigRational::one() / a.clone(),
+            cot_arg,
+        );
+        let cubic = scale_reciprocal_integration_result_preserving_presentation(
+            ctx,
+            -BigRational::one() / (BigRational::from_integer(3.into()) * a),
+            cot_cubed,
+        );
+        return ctx.add(Expr::Sub(cubic, linear));
+    }
+
+    let linear = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        -BigRational::one() / a.clone(),
+        cot_arg,
+    );
+    let cubic = scale_reciprocal_integration_result_preserving_presentation(
+        ctx,
+        -BigRational::one() / (BigRational::from_integer(3.into()) * a),
+        cot_cubed,
+    );
+    ctx.add(Expr::Add(linear, cubic))
+}
+
+fn trig_csc_fourth_affine_antiderivative(
+    ctx: &mut Context,
+    base: ExprId,
+    exp: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if !is_number(ctx, exp, 4) {
+        return None;
+    }
+
+    let (fn_id, args) = match ctx.get(base).clone() {
+        Expr::Function(fn_id, args) if args.len() == 1 => (fn_id, args),
+        _ => return None,
+    };
+    if ctx.builtin_of(fn_id) != Some(BuiltinFn::Csc) {
+        return None;
+    }
+
+    let arg = args[0];
+    let (a, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    if a.is_zero() {
+        return None;
+    }
+
+    Some(trig_csc_fourth_antiderivative_from_parts(ctx, arg, a))
+}
+
+fn powered_unary_builtin_arg(
+    ctx: &Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+    power: i64,
+) -> Option<ExprId> {
     let Expr::Pow(base, exp) = ctx.get(expr) else {
         return None;
     };
-    if !is_number(ctx, *exp, 2) {
+    if !is_number(ctx, *exp, power) {
         return None;
     }
     unary_builtin_arg(ctx, *base, builtin)
+}
+
+fn squared_unary_builtin_arg(ctx: &Context, expr: ExprId, builtin: BuiltinFn) -> Option<ExprId> {
+    powered_unary_builtin_arg(ctx, expr, builtin, 2)
 }
 
 fn trig_ratio_square_quotient_parts(
@@ -1737,6 +1985,38 @@ fn trig_ratio_square_quotient_parts(
     (!a.is_zero()).then_some((builtin, num_arg, a))
 }
 
+fn trig_tan_fourth_quotient_parts(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<(ExprId, BigRational)> {
+    let num_arg = powered_unary_builtin_arg(ctx, num, BuiltinFn::Sin, 4)?;
+    let den_arg = powered_unary_builtin_arg(ctx, den, BuiltinFn::Cos, 4)?;
+    if compare_expr(ctx, num_arg, den_arg) != Ordering::Equal {
+        return None;
+    }
+    let (a, _) = get_linear_coeffs(ctx, num_arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    (!a.is_zero()).then_some((num_arg, a))
+}
+
+fn trig_cot_fourth_quotient_parts(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<(ExprId, BigRational)> {
+    let num_arg = powered_unary_builtin_arg(ctx, num, BuiltinFn::Cos, 4)?;
+    let den_arg = powered_unary_builtin_arg(ctx, den, BuiltinFn::Sin, 4)?;
+    if compare_expr(ctx, num_arg, den_arg) != Ordering::Equal {
+        return None;
+    }
+    let (a, _) = get_linear_coeffs(ctx, num_arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    (!a.is_zero()).then_some((num_arg, a))
+}
+
 fn trig_ratio_square_quotient_antiderivative(
     ctx: &mut Context,
     num: ExprId,
@@ -1747,6 +2027,62 @@ fn trig_ratio_square_quotient_antiderivative(
     Some(trig_ratio_square_antiderivative_from_parts(
         ctx, builtin, arg, a, var,
     ))
+}
+
+fn trig_tan_fourth_quotient_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (arg, a) = trig_tan_fourth_quotient_parts(ctx, num, den, var)?;
+    Some(trig_tan_fourth_antiderivative_from_parts(ctx, arg, a, var))
+}
+
+fn trig_cot_fourth_quotient_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let (arg, a) = trig_cot_fourth_quotient_parts(ctx, num, den, var)?;
+    Some(trig_cot_fourth_antiderivative_from_parts(ctx, arg, a, var))
+}
+
+fn trig_sec_fourth_quotient_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if !is_number(ctx, num, 1) {
+        return None;
+    }
+    let arg = powered_unary_builtin_arg(ctx, den, BuiltinFn::Cos, 4)?;
+    let (a, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    if a.is_zero() {
+        return None;
+    }
+    Some(trig_sec_fourth_antiderivative_from_parts(ctx, arg, a))
+}
+
+fn trig_csc_fourth_quotient_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    if !is_number(ctx, num, 1) {
+        return None;
+    }
+    let arg = powered_unary_builtin_arg(ctx, den, BuiltinFn::Sin, 4)?;
+    let (a, _) = get_linear_coeffs(ctx, arg, var)?;
+    let a = rational_constant_value(ctx, a)?;
+    if a.is_zero() {
+        return None;
+    }
+    Some(trig_csc_fourth_antiderivative_from_parts(ctx, arg, a))
 }
 
 fn trig_sine_cosine_same_affine_product_antiderivative(
@@ -2393,11 +2729,20 @@ fn reciprocal_hyperbolic_square_arg(
     den: ExprId,
     builtin: BuiltinFn,
 ) -> Option<ExprId> {
+    reciprocal_hyperbolic_power_arg(ctx, den, builtin, 2)
+}
+
+fn reciprocal_hyperbolic_power_arg(
+    ctx: &Context,
+    den: ExprId,
+    builtin: BuiltinFn,
+    power: i64,
+) -> Option<ExprId> {
     let (base, exp) = match ctx.get(den) {
         Expr::Pow(base, exp) => (*base, *exp),
         _ => return None,
     };
-    if !is_number(ctx, exp, 2) {
+    if !is_number(ctx, exp, power) {
         return None;
     }
 
@@ -2413,6 +2758,10 @@ fn reciprocal_hyperbolic_square_arg(
 
 fn reciprocal_hyperbolic_cosh_square_arg(ctx: &Context, den: ExprId) -> Option<ExprId> {
     reciprocal_hyperbolic_square_arg(ctx, den, BuiltinFn::Cosh)
+}
+
+fn reciprocal_hyperbolic_cosh_fourth_arg(ctx: &Context, den: ExprId) -> Option<ExprId> {
+    reciprocal_hyperbolic_power_arg(ctx, den, BuiltinFn::Cosh, 4)
 }
 
 fn reciprocal_hyperbolic_sinh_square_arg(ctx: &Context, den: ExprId) -> Option<ExprId> {
@@ -2445,6 +2794,37 @@ fn hyperbolic_tanh_reciprocal_square_antiderivative(
 
     let scale_expr = ctx.add(Expr::Number(scale));
     Some(mul2_raw(ctx, scale_expr, tanh_arg))
+}
+
+fn hyperbolic_tanh_reciprocal_fourth_antiderivative(
+    ctx: &mut Context,
+    num: ExprId,
+    den: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let arg = reciprocal_hyperbolic_cosh_fourth_arg(ctx, den)?;
+    if !contains_named_var(ctx, arg, var) {
+        return None;
+    }
+
+    let numerator = Polynomial::from_expr(ctx, num, var).ok()?;
+    let arg_poly = Polynomial::from_expr(ctx, arg, var).ok()?;
+    let derivative = arg_poly.derivative();
+    let scale = constant_polynomial_ratio(&numerator, &derivative)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let tanh_arg = ctx.call_builtin(BuiltinFn::Tanh, vec![arg]);
+    let three = ctx.num(3);
+    let tanh_cubed = ctx.add(Expr::Pow(tanh_arg, three));
+    let linear_term = scale_rational_term(ctx, scale.clone(), tanh_arg);
+    let cubic_term = scale_rational_term(
+        ctx,
+        -scale / BigRational::from_integer(3.into()),
+        tanh_cubed,
+    );
+    Some(ctx.add(Expr::Add(linear_term, cubic_term)))
 }
 
 fn hyperbolic_coth_reciprocal_square_antiderivative(
@@ -2779,6 +3159,7 @@ fn hyperbolic_reciprocal_square_antiderivative(
     var: &str,
 ) -> Option<ExprId> {
     hyperbolic_tanh_reciprocal_square_antiderivative(ctx, num, den, var)
+        .or_else(|| hyperbolic_tanh_reciprocal_fourth_antiderivative(ctx, num, den, var))
         .or_else(|| hyperbolic_coth_reciprocal_square_antiderivative(ctx, num, den, var))
         .or_else(|| hyperbolic_cosh_reciprocal_derivative_antiderivative(ctx, num, den, var))
         .or_else(|| hyperbolic_sinh_reciprocal_derivative_antiderivative(ctx, num, den, var))
@@ -2822,6 +3203,8 @@ pub fn integrate_symbolic_is_trig_quotient_substitution_target(
                 || polynomial_trig_reciprocal_derivative_antiderivative(ctx, num, den, var)
                     .is_some()
                 || polynomial_trig_reciprocal_factor_antiderivative(ctx, num, den, var).is_some()
+                || trig_tan_fourth_quotient_antiderivative(ctx, num, den, var).is_some()
+                || trig_cot_fourth_quotient_antiderivative(ctx, num, den, var).is_some()
         }
         Expr::Mul(left, right) => {
             (!contains_named_var(ctx, left, var)
@@ -2831,6 +3214,70 @@ pub fn integrate_symbolic_is_trig_quotient_substitution_target(
         }
         Expr::Neg(inner) => {
             integrate_symbolic_is_trig_quotient_substitution_target(ctx, inner, var)
+        }
+        _ => false,
+    }
+}
+
+pub fn integrate_symbolic_is_tan_fourth_affine_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => {
+            trig_tan_fourth_affine_antiderivative(ctx, base, exp, var).is_some()
+        }
+        Expr::Div(num, den) => {
+            trig_tan_fourth_quotient_antiderivative(ctx, num, den, var).is_some()
+        }
+        _ => false,
+    }
+}
+
+pub fn integrate_symbolic_is_cot_fourth_affine_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => {
+            trig_cot_fourth_affine_antiderivative(ctx, base, exp, var).is_some()
+        }
+        Expr::Div(num, den) => {
+            trig_cot_fourth_quotient_antiderivative(ctx, num, den, var).is_some()
+        }
+        _ => false,
+    }
+}
+
+pub fn integrate_symbolic_is_sec_fourth_affine_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => {
+            trig_sec_fourth_affine_antiderivative(ctx, base, exp, var).is_some()
+        }
+        Expr::Div(num, den) => {
+            trig_sec_fourth_quotient_antiderivative(ctx, num, den, var).is_some()
+        }
+        _ => false,
+    }
+}
+
+pub fn integrate_symbolic_is_csc_fourth_affine_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    match ctx.get(expr).clone() {
+        Expr::Pow(base, exp) => {
+            trig_csc_fourth_affine_antiderivative(ctx, base, exp, var).is_some()
+        }
+        Expr::Div(num, den) => {
+            trig_csc_fourth_quotient_antiderivative(ctx, num, den, var).is_some()
         }
         _ => false,
     }
@@ -2870,6 +3317,38 @@ fn reciprocal_trig_square_required_nonzero(
         BuiltinFn::Sin => ctx.call_builtin(BuiltinFn::Sin, vec![arg]),
         _ => return None,
     })
+}
+
+fn sec_fourth_required_nonzero(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Div(num, den) if is_number(ctx, num, 1) => {
+            let arg = powered_unary_builtin_arg(ctx, den, BuiltinFn::Cos, 4)?;
+            get_linear_coeffs(ctx, arg, var)?;
+            Some(ctx.call_builtin(BuiltinFn::Cos, vec![arg]))
+        }
+        Expr::Pow(base, exp) if is_number(ctx, exp, 4) => {
+            let arg = unary_builtin_arg(ctx, base, BuiltinFn::Sec)?;
+            get_linear_coeffs(ctx, arg, var)?;
+            Some(ctx.call_builtin(BuiltinFn::Cos, vec![arg]))
+        }
+        _ => None,
+    }
+}
+
+fn csc_fourth_required_nonzero(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    match ctx.get(expr).clone() {
+        Expr::Div(num, den) if is_number(ctx, num, 1) => {
+            let arg = powered_unary_builtin_arg(ctx, den, BuiltinFn::Sin, 4)?;
+            get_linear_coeffs(ctx, arg, var)?;
+            Some(ctx.call_builtin(BuiltinFn::Sin, vec![arg]))
+        }
+        Expr::Pow(base, exp) if is_number(ctx, exp, 4) => {
+            let arg = unary_builtin_arg(ctx, base, BuiltinFn::Csc)?;
+            get_linear_coeffs(ctx, arg, var)?;
+            Some(ctx.call_builtin(BuiltinFn::Sin, vec![arg]))
+        }
+        _ => None,
+    }
 }
 
 fn polynomial_reciprocal_trig_square_required_nonzero_from_parts(
@@ -4526,21 +5005,26 @@ fn trig_ratio_square_required_nonzero(
     var: &str,
 ) -> Option<ExprId> {
     if let Expr::Div(num, den) = ctx.get(expr).clone() {
-        let (builtin, arg, _) = trig_ratio_square_quotient_parts(ctx, num, den, var)?;
-        let required_builtin = match builtin {
-            BuiltinFn::Tan => BuiltinFn::Cos,
-            BuiltinFn::Cot => BuiltinFn::Sin,
-            _ => return None,
-        };
-        return Some(ctx.call_builtin(required_builtin, vec![arg]));
+        if let Some((builtin, arg, _)) = trig_ratio_square_quotient_parts(ctx, num, den, var) {
+            let required_builtin = match builtin {
+                BuiltinFn::Tan => BuiltinFn::Cos,
+                BuiltinFn::Cot => BuiltinFn::Sin,
+                _ => return None,
+            };
+            return Some(ctx.call_builtin(required_builtin, vec![arg]));
+        }
+
+        if let Some((arg, _)) = trig_tan_fourth_quotient_parts(ctx, num, den, var) {
+            return Some(ctx.call_builtin(BuiltinFn::Cos, vec![arg]));
+        }
+
+        let (arg, _) = trig_cot_fourth_quotient_parts(ctx, num, den, var)?;
+        return Some(ctx.call_builtin(BuiltinFn::Sin, vec![arg]));
     }
 
     let Expr::Pow(base, exp) = ctx.get(expr).clone() else {
         return None;
     };
-    if !is_number(ctx, exp, 2) {
-        return None;
-    }
 
     let (fn_id, args) = match ctx.get(base).clone() {
         Expr::Function(fn_id, args) if args.len() == 1 => (fn_id, args),
@@ -4548,8 +5032,8 @@ fn trig_ratio_square_required_nonzero(
     };
     let builtin = ctx.builtin_of(fn_id)?;
     let required_builtin = match builtin {
-        BuiltinFn::Tan => BuiltinFn::Cos,
-        BuiltinFn::Cot => BuiltinFn::Sin,
+        BuiltinFn::Tan if is_number(ctx, exp, 2) || is_number(ctx, exp, 4) => BuiltinFn::Cos,
+        BuiltinFn::Cot if is_number(ctx, exp, 2) || is_number(ctx, exp, 4) => BuiltinFn::Sin,
         _ => return None,
     };
     let arg = args[0];
@@ -7387,7 +7871,7 @@ fn quadratic_times_affine_ln_by_parts_antiderivative(
         };
         let (arg_slope, arg_offset) = get_linear_coeffs(ctx, log_arg, var)?;
         let arg_slope = rational_constant_value(ctx, arg_slope)?;
-        if !arg_slope.is_positive() {
+        if arg_slope.is_zero() {
             continue;
         }
         let arg_offset = rational_constant_value(ctx, arg_offset)?;
@@ -7872,7 +8356,7 @@ fn build_polynomial_log_power_product_substitution_integral(
     if base_poly.degree() == 0 {
         return None;
     }
-    if power >= 4 && !is_strictly_positive_quadratic(&base_poly) {
+    if power >= 4 && !is_positive_leading_quadratic(&base_poly) {
         return None;
     }
     let derivative = base_poly.derivative();
@@ -7898,8 +8382,15 @@ fn build_polynomial_log_power_product_substitution_integral(
     Some(mul2_raw(ctx, scale_expr, integral))
 }
 
-fn is_strictly_positive_quadratic(poly: &Polynomial) -> bool {
+fn is_positive_leading_quadratic(poly: &Polynomial) -> bool {
     if poly.degree() != 2 || poly.coeffs.len() != 3 || !poly.coeffs[2].is_positive() {
+        return false;
+    }
+    true
+}
+
+fn is_strictly_positive_quadratic(poly: &Polynomial) -> bool {
+    if !is_positive_leading_quadratic(poly) {
         return false;
     }
 
@@ -7907,6 +8398,40 @@ fn is_strictly_positive_quadratic(poly: &Polynomial) -> bool {
     let discriminant = poly.coeffs[1].clone() * poly.coeffs[1].clone()
         - four * poly.coeffs[2].clone() * poly.coeffs[0].clone();
     discriminant.is_negative()
+}
+
+fn polynomial_log_power_product_required_positive_condition(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Vec<ExprId> {
+    if !integrate_symbolic_is_log_power_product_substitution_target(ctx, expr, var) {
+        return Vec::new();
+    }
+
+    let log_base = polynomial_log_power_product_log_base(ctx, expr);
+    let Some(log_base) = log_base else {
+        return Vec::new();
+    };
+    let Ok(base_poly) = Polynomial::from_expr(ctx, log_base, var) else {
+        return vec![log_base];
+    };
+    if is_strictly_positive_quadratic(&base_poly) {
+        Vec::new()
+    } else {
+        vec![log_base]
+    }
+}
+
+fn polynomial_log_power_product_log_base(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    for factor in mul_leaves(ctx, expr) {
+        if let Some((_, log_base, _)) = natural_log_power_factor_parts(ctx, factor) {
+            return Some(log_base);
+        }
+    }
+
+    let (_, log_base, _, _) = additive_common_log_power_cofactor(ctx, expr)?;
+    Some(log_base)
 }
 
 fn polynomial_log_power_by_parts_integral(
@@ -14246,6 +14771,8 @@ pub fn integrate_symbolic_required_nonzero_conditions(
             ctx, expr, var,
         ))
         .chain(polynomial_sec_csc_square_required_nonzero(ctx, expr, var))
+        .chain(sec_fourth_required_nonzero(ctx, expr, var))
+        .chain(csc_fourth_required_nonzero(ctx, expr, var))
         .chain(trig_ratio_square_required_nonzero(ctx, expr, var))
         .chain(reciprocal_trig_square_required_nonzero(ctx, expr, var))
         .chain(polynomial_denominator_power_substitution_required_nonzero(
@@ -14328,6 +14855,9 @@ pub fn integrate_symbolic_required_positive_conditions(
     conditions.extend(
         polynomial_fractional_denominator_power_substitution_required_positive(ctx, expr, var),
     );
+    conditions.extend(polynomial_log_power_product_required_positive_condition(
+        ctx, expr, var,
+    ));
     conditions.extend(atanh_polynomial_substitution_denominator(ctx, expr, var));
     conditions.extend(acosh_affine_radicands(ctx, expr, var));
     conditions
@@ -14847,6 +15377,22 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
             return Some(integral);
         }
 
+        if let Some(integral) = trig_tan_fourth_affine_antiderivative(ctx, base, exp, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_cot_fourth_affine_antiderivative(ctx, base, exp, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_sec_fourth_affine_antiderivative(ctx, base, exp, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_csc_fourth_affine_antiderivative(ctx, base, exp, var) {
+            return Some(integral);
+        }
+
         if let Some(integral) = hyperbolic_square_affine_antiderivative(ctx, base, exp, var) {
             return Some(integral);
         }
@@ -14974,6 +15520,22 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         }
 
         if let Some(integral) = trig_ratio_square_quotient_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_tan_fourth_quotient_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_cot_fourth_quotient_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_sec_fourth_quotient_antiderivative(ctx, num, den, var) {
+            return Some(integral);
+        }
+
+        if let Some(integral) = trig_csc_fourth_quotient_antiderivative(ctx, num, den, var) {
             return Some(integral);
         }
 
@@ -15649,6 +16211,16 @@ mod tests {
             "(x^2 + 1) * (ln(x^2 + 1)^5 - 5 * ln(x^2 + 1)^4 + 20 * ln(x^2 + 1)^3 - 60 * ln(x^2 + 1)^2 + 120 * ln(x^2 + 1) - 120)"
         );
 
+        let expr = parse("2*x*ln(x^2-1)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^2 - 1) * (ln(x^2 - 1)^4 - 4 * ln(x^2 - 1)^3 + 12 * ln(x^2 - 1)^2 - 24 * ln(x^2 - 1) + 24)"
+        );
+        let conditions = integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "x^2 - 1");
+
         let expr = parse("(2*x+1)*ln(x^2+x+1)^3", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
@@ -16235,6 +16807,21 @@ mod tests {
         let expr = parse("x/cosh(x^2)^2", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "1/2 * tanh(x^2)");
+    }
+
+    #[test]
+    fn integrates_hyperbolic_tanh_reciprocal_fourth_substitution() {
+        let mut ctx = Context::new();
+        let expr = parse("1/cosh(2*x + 1)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "1/2 * tanh(2 * x + 1) - 1/6 * tanh(2 * x + 1)^3"
+        );
+
+        let expr = parse("2*x/cosh(x^2)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "tanh(x^2) - 1/3 * tanh(x^2)^3");
     }
 
     #[test]
@@ -17740,6 +18327,73 @@ mod tests {
         let expr = parse("tan(2*x + 1)^2", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "tan(2 * x + 1) / 2 - x");
+
+        let expr = parse("tan(x)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "tan(x)^3 / 3 + x - tan(x)");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(rendered(&ctx, conditions[0]), "cos(x)");
+
+        let expr = parse("tan(2*x + 1)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "-tan(2 * x + 1) / 2 + tan(2 * x + 1)^3 / 6 + x"
+        );
+
+        let expr = parse("sin(2*x + 1)^4/cos(2*x + 1)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "-tan(2 * x + 1) / 2 + tan(2 * x + 1)^3 / 6 + x"
+        );
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(rendered(&ctx, conditions[0]), "cos(2 * x + 1)");
+
+        let expr = parse("sec(x)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "tan(x) + tan(x)^3 / 3");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(rendered(&ctx, conditions[0]), "cos(x)");
+
+        let expr = parse("1/cos(2*x + 1)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "tan(2 * x + 1) / 2 + tan(2 * x + 1)^3 / 6"
+        );
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(rendered(&ctx, conditions[0]), "cos(2 * x + 1)");
+
+        let expr = parse("csc(x)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "-cot(x)^3 / 3 - cot(x)");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(rendered(&ctx, conditions[0]), "sin(x)");
+
+        let expr = parse("1/sin(2*x + 1)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "-cot(2 * x + 1)^3 / 6 - cot(2 * x + 1) / 2"
+        );
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(rendered(&ctx, conditions[0]), "sin(2 * x + 1)");
+
+        let expr = parse("cot(x)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "cot(x) + x - cot(x)^3 / 3");
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(rendered(&ctx, conditions[0]), "sin(x)");
+
+        let expr = parse("cos(2*x + 1)^4/sin(2*x + 1)^4", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "cot(2 * x + 1) / 2 + x - cot(2 * x + 1)^3 / 6"
+        );
+        let conditions = super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+        assert_eq!(rendered(&ctx, conditions[0]), "sin(2 * x + 1)");
 
         let expr = parse("cot(x)^2", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");

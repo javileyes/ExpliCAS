@@ -2,11 +2,11 @@ use crate::infinity_support::{mk_infinity, InfSign};
 use crate::limit_types::{Approach, LimitEvalOutcome, LimitOptions, PreSimplifyMode};
 use crate::perfect_square_support::rational_sqrt;
 use crate::polynomial::Polynomial;
-use crate::root_forms::extract_square_root_base;
+use crate::root_forms::{extract_square_root_base, rational_cbrt_exact};
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
-use num_traits::{Signed, Zero};
+use num_traits::{One, Signed, Zero};
 
 /// Check if an expression depends on a specific variable id.
 ///
@@ -164,6 +164,381 @@ fn apply_finite_rational_polynomial_rule(
     Some(ctx.add(Expr::Number(value)))
 }
 
+fn is_finite_total_real_unary_builtin(builtin: BuiltinFn) -> bool {
+    matches!(
+        builtin,
+        BuiltinFn::Exp
+            | BuiltinFn::Sin
+            | BuiltinFn::Cos
+            | BuiltinFn::Sinh
+            | BuiltinFn::Cosh
+            | BuiltinFn::Tanh
+            | BuiltinFn::Atan
+            | BuiltinFn::Arctan
+            | BuiltinFn::Asinh
+            | BuiltinFn::Cbrt
+            | BuiltinFn::Abs
+    )
+}
+
+fn is_finite_positive_domain_unary_builtin(builtin: BuiltinFn) -> bool {
+    matches!(
+        builtin,
+        BuiltinFn::Ln | BuiltinFn::Log2 | BuiltinFn::Log10 | BuiltinFn::Sqrt
+    )
+}
+
+fn finite_total_real_unary_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument_limit: ExprId,
+) -> ExprId {
+    if let Some(argument_value) = numeric_limit_value(ctx, argument_limit) {
+        if matches!(builtin, BuiltinFn::Cbrt) {
+            if let Some(root) = rational_cbrt_exact(&argument_value) {
+                return ctx.add(Expr::Number(root));
+            }
+            let value_expr = ctx.add(Expr::Number(argument_value));
+            return ctx.call_builtin(BuiltinFn::Cbrt, vec![value_expr]);
+        }
+        if matches!(builtin, BuiltinFn::Abs) {
+            return ctx.add(Expr::Number(argument_value.abs()));
+        }
+        if matches!(
+            builtin,
+            BuiltinFn::Sin
+                | BuiltinFn::Sinh
+                | BuiltinFn::Tanh
+                | BuiltinFn::Atan
+                | BuiltinFn::Arctan
+                | BuiltinFn::Asinh
+        ) && argument_value.is_zero()
+        {
+            return ctx.num(0);
+        }
+        if matches!(builtin, BuiltinFn::Exp | BuiltinFn::Cos | BuiltinFn::Cosh)
+            && argument_value.is_zero()
+        {
+            return ctx.num(1);
+        }
+
+        let value_expr = ctx.add(Expr::Number(argument_value));
+        return ctx.call_builtin(builtin, vec![value_expr]);
+    }
+
+    if let Some(exact_result) =
+        finite_total_real_unary_exact_expr_result(ctx, builtin, argument_limit)
+    {
+        return exact_result;
+    }
+
+    ctx.call_builtin(builtin, vec![argument_limit])
+}
+
+fn finite_total_real_unary_exact_expr_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument_limit: ExprId,
+) -> Option<ExprId> {
+    match builtin {
+        BuiltinFn::Abs => finite_abs_exact_expr_result(ctx, argument_limit),
+        BuiltinFn::Exp => finite_exp_exact_expr_result(ctx, argument_limit),
+        _ => None,
+    }
+}
+
+fn finite_abs_exact_expr_result(ctx: &mut Context, argument_limit: ExprId) -> Option<ExprId> {
+    if finite_expr_proven_positive(ctx, argument_limit) {
+        return Some(argument_limit);
+    }
+
+    let Expr::Neg(inner) = ctx.get(argument_limit).clone() else {
+        return None;
+    };
+    finite_expr_proven_positive(ctx, inner).then_some(inner)
+}
+
+fn finite_exp_exact_expr_result(ctx: &mut Context, argument_limit: ExprId) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(argument_limit).clone() else {
+        return None;
+    };
+    if !ctx.is_builtin(fn_id, BuiltinFn::Ln) || args.len() != 1 {
+        return None;
+    }
+
+    let inner = args[0];
+    finite_expr_proven_positive(ctx, inner).then_some(inner)
+}
+
+fn finite_positive_domain_unary_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument_limit: ExprId,
+) -> Option<ExprId> {
+    if let Some(argument_value) = numeric_limit_value(ctx, argument_limit) {
+        if !argument_value.is_positive() {
+            return None;
+        }
+        if let Some(exact_result) =
+            finite_positive_domain_unary_exact_numeric_result(ctx, builtin, &argument_value)
+        {
+            return Some(exact_result);
+        }
+        let value_expr = ctx.add(Expr::Number(argument_value));
+        return Some(ctx.call_builtin(builtin, vec![value_expr]));
+    }
+
+    if let Some(exact_result) =
+        finite_positive_domain_unary_exact_expr_result(ctx, builtin, argument_limit)
+    {
+        return Some(exact_result);
+    }
+
+    finite_expr_proven_positive(ctx, argument_limit)
+        .then(|| ctx.call_builtin(builtin, vec![argument_limit]))
+}
+
+fn finite_positive_domain_unary_exact_numeric_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument_value: &BigRational,
+) -> Option<ExprId> {
+    match builtin {
+        BuiltinFn::Sqrt => rational_sqrt(argument_value).map(|root| ctx.add(Expr::Number(root))),
+        BuiltinFn::Ln | BuiltinFn::Log2 | BuiltinFn::Log10 if argument_value.is_one() => {
+            Some(ctx.num(0))
+        }
+        _ => None,
+    }
+}
+
+fn finite_positive_domain_unary_exact_expr_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument_limit: ExprId,
+) -> Option<ExprId> {
+    match builtin {
+        BuiltinFn::Ln => finite_ln_exact_expr_result(ctx, argument_limit),
+        _ => None,
+    }
+}
+
+fn finite_ln_exact_expr_result(ctx: &mut Context, argument_limit: ExprId) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(argument_limit).clone() else {
+        return None;
+    };
+    if ctx.is_builtin(fn_id, BuiltinFn::Exp) && args.len() == 1 {
+        Some(args[0])
+    } else {
+        None
+    }
+}
+
+fn finite_log_base_limit_is_valid(ctx: &Context, base_limit: ExprId) -> bool {
+    let Some(base_value) = numeric_limit_value(ctx, base_limit) else {
+        return false;
+    };
+    base_value.is_positive() && base_value != rational_one()
+}
+
+fn finite_log_result(
+    ctx: &mut Context,
+    base_limit: ExprId,
+    argument_limit: ExprId,
+) -> Option<ExprId> {
+    if !finite_log_base_limit_is_valid(ctx, base_limit) {
+        return None;
+    }
+    if let Some(argument_value) = numeric_limit_value(ctx, argument_limit) {
+        if !argument_value.is_positive() {
+            return None;
+        }
+        if let Some(exact_result) =
+            finite_log_exact_numeric_result(ctx, base_limit, &argument_value)
+        {
+            return Some(exact_result);
+        }
+        let value_expr = ctx.add(Expr::Number(argument_value));
+        return Some(ctx.call_builtin(BuiltinFn::Log, vec![base_limit, value_expr]));
+    }
+
+    finite_expr_proven_positive(ctx, argument_limit)
+        .then(|| ctx.call_builtin(BuiltinFn::Log, vec![base_limit, argument_limit]))
+}
+
+fn finite_log_exact_numeric_result(
+    ctx: &mut Context,
+    base_limit: ExprId,
+    argument_value: &BigRational,
+) -> Option<ExprId> {
+    if argument_value.is_one() {
+        return Some(ctx.num(0));
+    }
+
+    let base_value = numeric_limit_value(ctx, base_limit)?;
+    if base_value == *argument_value {
+        return Some(ctx.num(1));
+    }
+
+    None
+}
+
+const FINITE_INTEGER_POWER_EXACT_FOLD_LIMIT: u64 = 32;
+
+fn rational_pow_nonnegative(base: &BigRational, exponent: u64) -> BigRational {
+    let mut result = BigRational::one();
+    let mut factor = base.clone();
+    let mut remaining = exponent;
+
+    while remaining > 0 {
+        if remaining % 2 == 1 {
+            result *= factor.clone();
+        }
+        remaining /= 2;
+        if remaining > 0 {
+            factor = factor.clone() * factor;
+        }
+    }
+
+    result
+}
+
+fn finite_sqrt_even_power_result(
+    ctx: &mut Context,
+    base_limit: ExprId,
+    exponent: i64,
+) -> Option<ExprId> {
+    if exponent % 2 != 0 {
+        return None;
+    }
+
+    let radicand = extract_square_root_base(ctx, base_limit)?;
+    let radicand_value = numeric_limit_value(ctx, radicand)?;
+    if !radicand_value.is_positive() {
+        return None;
+    }
+
+    let half_exponent = exponent.unsigned_abs() / 2;
+    if half_exponent > FINITE_INTEGER_POWER_EXACT_FOLD_LIMIT {
+        return None;
+    }
+
+    let mut value = rational_pow_nonnegative(&radicand_value, half_exponent);
+    if exponent < 0 {
+        if value.is_zero() {
+            return None;
+        }
+        value = BigRational::one() / value;
+    }
+
+    Some(ctx.add(Expr::Number(value)))
+}
+
+fn finite_cbrt_multiple_power_result(
+    ctx: &mut Context,
+    base_limit: ExprId,
+    exponent: i64,
+) -> Option<ExprId> {
+    if exponent % 3 != 0 {
+        return None;
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(base_limit).clone() else {
+        return None;
+    };
+    if !ctx.is_builtin(fn_id, BuiltinFn::Cbrt) || args.len() != 1 {
+        return None;
+    }
+
+    let radicand_value = numeric_limit_value(ctx, args[0])?;
+    if exponent <= 0 && radicand_value.is_zero() {
+        return None;
+    }
+
+    let reduced_exponent = exponent.unsigned_abs() / 3;
+    if reduced_exponent > FINITE_INTEGER_POWER_EXACT_FOLD_LIMIT {
+        return None;
+    }
+
+    let mut value = rational_pow_nonnegative(&radicand_value, reduced_exponent);
+    if exponent < 0 {
+        if value.is_zero() {
+            return None;
+        }
+        value = BigRational::one() / value;
+    }
+
+    Some(ctx.add(Expr::Number(value)))
+}
+
+fn finite_integer_power_result(
+    ctx: &mut Context,
+    base_limit: ExprId,
+    exponent: i64,
+) -> Option<ExprId> {
+    if let Some(result) = finite_cbrt_multiple_power_result(ctx, base_limit, exponent) {
+        return Some(result);
+    }
+
+    let base_nonzero = finite_denominator_proven_nonzero(ctx, base_limit);
+    if exponent <= 0 && !base_nonzero {
+        return None;
+    }
+
+    if exponent == 0 {
+        return Some(ctx.num(1));
+    }
+
+    if let Some(result) = finite_sqrt_even_power_result(ctx, base_limit, exponent) {
+        return Some(result);
+    }
+
+    if let Some(base_value) = numeric_limit_value(ctx, base_limit) {
+        let abs_exponent = exponent.unsigned_abs();
+        if abs_exponent <= FINITE_INTEGER_POWER_EXACT_FOLD_LIMIT {
+            let mut value = rational_pow_nonnegative(&base_value, abs_exponent);
+            if exponent < 0 {
+                if value.is_zero() {
+                    return None;
+                }
+                value = BigRational::one() / value;
+            }
+            return Some(ctx.add(Expr::Number(value)));
+        }
+    }
+
+    let exponent_expr = if exponent > 0 {
+        ctx.add(Expr::Number(BigRational::from_integer(BigInt::from(
+            exponent,
+        ))))
+    } else {
+        let positive_exponent = exponent.checked_neg()?;
+        let positive_exponent_expr = ctx.add(Expr::Number(BigRational::from_integer(
+            BigInt::from(positive_exponent),
+        )));
+        let denominator = if positive_exponent == 1 {
+            base_limit
+        } else {
+            ctx.add(Expr::Pow(base_limit, positive_exponent_expr))
+        };
+        let one = ctx.num(1);
+        return Some(ctx.add(Expr::Div(one, denominator)));
+    };
+
+    Some(ctx.add(Expr::Pow(base_limit, exponent_expr)))
+}
+
+fn apply_finite_integer_power_composition_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    let (base_expr, exponent) = parse_pow_int(ctx, expr)?;
+    let base_limit = try_limit_rules_at_finite(ctx, base_expr, var, point)?;
+    finite_integer_power_result(ctx, base_limit, exponent)
+}
+
 fn apply_finite_elementary_polynomial_rule(
     ctx: &mut Context,
     expr: ExprId,
@@ -181,6 +556,122 @@ fn apply_finite_elementary_polynomial_rule(
         return None;
     };
     let point_value = point_value.clone();
+    let (builtin, argument_expr) = match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) => {
+            if args.len() != 1 {
+                return None;
+            }
+            (ctx.builtin_of(fn_id)?, args[0])
+        }
+        Expr::Pow(base, exp) if matches!(ctx.get(base), Expr::Constant(Constant::E)) => {
+            (BuiltinFn::Exp, exp)
+        }
+        _ => return None,
+    };
+    if !matches!(
+        builtin,
+        BuiltinFn::Exp
+            | BuiltinFn::Sin
+            | BuiltinFn::Cos
+            | BuiltinFn::Sinh
+            | BuiltinFn::Cosh
+            | BuiltinFn::Tanh
+            | BuiltinFn::Atan
+            | BuiltinFn::Arctan
+            | BuiltinFn::Asinh
+            | BuiltinFn::Cbrt
+            | BuiltinFn::Abs
+            | BuiltinFn::Ln
+            | BuiltinFn::Log2
+            | BuiltinFn::Log10
+            | BuiltinFn::Sqrt
+    ) {
+        return None;
+    }
+
+    let argument = Polynomial::from_expr(ctx, argument_expr, var_name).ok()?;
+    let argument_value = argument.eval(&point_value);
+    if is_finite_total_real_unary_builtin(builtin) {
+        let argument_limit = ctx.add(Expr::Number(argument_value));
+        return Some(finite_total_real_unary_result(ctx, builtin, argument_limit));
+    }
+    if is_finite_positive_domain_unary_builtin(builtin) {
+        let argument_limit = ctx.add(Expr::Number(argument_value));
+        return finite_positive_domain_unary_result(ctx, builtin, argument_limit);
+    }
+
+    None
+}
+
+fn pow_one_third_argument(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    match ctx.get(*exp) {
+        Expr::Number(value) if *value.numer() == 1.into() && *value.denom() == 3.into() => {
+            Some(*base)
+        }
+        Expr::Div(num, den) => {
+            let (Expr::Number(num_value), Expr::Number(den_value)) = (ctx.get(*num), ctx.get(*den))
+            else {
+                return None;
+            };
+            if num_value.is_one() && den_value.is_integer() && *den_value.numer() == 3.into() {
+                return Some(*base);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn apply_finite_cube_root_power_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    let argument_expr = pow_one_third_argument(ctx, expr)?;
+    let argument_limit = try_limit_rules_at_finite(ctx, argument_expr, var, point)?;
+    Some(finite_total_real_unary_result(
+        ctx,
+        BuiltinFn::Cbrt,
+        argument_limit,
+    ))
+}
+
+fn apply_finite_total_real_unary_composition_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    let (builtin, argument_expr) = match ctx.get(expr).clone() {
+        Expr::Function(fn_id, args) => {
+            if args.len() != 1 {
+                return None;
+            }
+            (ctx.builtin_of(fn_id)?, args[0])
+        }
+        Expr::Pow(base, exp) if matches!(ctx.get(base), Expr::Constant(Constant::E)) => {
+            (BuiltinFn::Exp, exp)
+        }
+        _ => return None,
+    };
+    if !is_finite_total_real_unary_builtin(builtin) {
+        return None;
+    }
+
+    let argument_limit = try_limit_rules_at_finite(ctx, argument_expr, var, point)?;
+    Some(finite_total_real_unary_result(ctx, builtin, argument_limit))
+}
+
+fn apply_finite_positive_domain_unary_composition_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
     let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
         return None;
     };
@@ -188,18 +679,30 @@ fn apply_finite_elementary_polynomial_rule(
         return None;
     }
     let builtin = ctx.builtin_of(fn_id)?;
-    if !matches!(builtin, BuiltinFn::Ln | BuiltinFn::Sqrt) {
+    if !is_finite_positive_domain_unary_builtin(builtin) {
         return None;
     }
 
-    let argument = Polynomial::from_expr(ctx, args[0], var_name).ok()?;
-    let argument_value = argument.eval(&point_value);
-    if !argument_value.is_positive() {
+    let argument_limit = try_limit_rules_at_finite(ctx, args[0], var, point)?;
+    finite_positive_domain_unary_result(ctx, builtin, argument_limit)
+}
+
+fn apply_finite_binary_log_composition_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if !ctx.is_builtin(fn_id, BuiltinFn::Log) || args.len() != 2 {
         return None;
     }
 
-    let value_expr = ctx.add(Expr::Number(argument_value));
-    Some(ctx.call_builtin(builtin, vec![value_expr]))
+    let base_limit = try_limit_rules_at_finite(ctx, args[0], var, point)?;
+    let argument_limit = try_limit_rules_at_finite(ctx, args[1], var, point)?;
+    finite_log_result(ctx, base_limit, argument_limit)
 }
 
 fn try_limit_rules_at_finite(
@@ -223,34 +726,47 @@ fn try_limit_rules_at_finite(
     if let Some(result) = apply_finite_elementary_polynomial_rule(ctx, expr, var, point) {
         return Some(result);
     }
+    if let Some(result) = apply_finite_cube_root_power_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_integer_power_composition_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_positive_domain_unary_composition_rule(ctx, expr, var, point)
+    {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_binary_log_composition_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_total_real_unary_composition_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
 
     match ctx.get(expr).clone() {
         Expr::Add(lhs, rhs) => {
             let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
             let rhs_limit = try_limit_rules_at_finite(ctx, rhs, var, point)?;
-            Some(ctx.add(Expr::Add(lhs_limit, rhs_limit)))
+            Some(finite_add_result(ctx, lhs_limit, rhs_limit))
         }
         Expr::Sub(lhs, rhs) => {
             let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
             let rhs_limit = try_limit_rules_at_finite(ctx, rhs, var, point)?;
-            Some(ctx.add(Expr::Sub(lhs_limit, rhs_limit)))
+            Some(finite_sub_result(ctx, lhs_limit, rhs_limit))
         }
         Expr::Mul(lhs, rhs) => {
             let lhs_limit = try_limit_rules_at_finite(ctx, lhs, var, point)?;
             let rhs_limit = try_limit_rules_at_finite(ctx, rhs, var, point)?;
-            Some(ctx.add(Expr::Mul(lhs_limit, rhs_limit)))
+            Some(finite_mul_result(ctx, lhs_limit, rhs_limit))
         }
         Expr::Div(num, den) => {
             let num_limit = try_limit_rules_at_finite(ctx, num, var, point)?;
             let den_limit = try_limit_rules_at_finite(ctx, den, var, point)?;
-            if !finite_denominator_proven_nonzero(ctx, den_limit) {
-                return None;
-            }
-            Some(ctx.add(Expr::Div(num_limit, den_limit)))
+            finite_div_result(ctx, num_limit, den_limit)
         }
         Expr::Neg(inner) => {
             let inner_limit = try_limit_rules_at_finite(ctx, inner, var, point)?;
-            Some(ctx.add(Expr::Neg(inner_limit)))
+            Some(finite_neg_result(ctx, inner_limit))
         }
         _ => None,
     }
@@ -378,6 +894,100 @@ fn numeric_limit_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
         }
         _ => None,
     }
+}
+
+fn finite_numeric_expr(ctx: &mut Context, value: BigRational) -> ExprId {
+    ctx.add(Expr::Number(value))
+}
+
+fn finite_limit_is_numeric_zero(ctx: &Context, expr: ExprId) -> bool {
+    numeric_limit_value(ctx, expr).is_some_and(|value| value.is_zero())
+}
+
+fn finite_limit_is_numeric_one(ctx: &Context, expr: ExprId) -> bool {
+    numeric_limit_value(ctx, expr).is_some_and(|value| value.is_one())
+}
+
+fn finite_add_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> ExprId {
+    if let (Some(lhs_value), Some(rhs_value)) =
+        (numeric_limit_value(ctx, lhs), numeric_limit_value(ctx, rhs))
+    {
+        return finite_numeric_expr(ctx, lhs_value + rhs_value);
+    }
+    if finite_limit_is_numeric_zero(ctx, lhs) {
+        return rhs;
+    }
+    if finite_limit_is_numeric_zero(ctx, rhs) {
+        return lhs;
+    }
+    ctx.add(Expr::Add(lhs, rhs))
+}
+
+fn finite_sub_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> ExprId {
+    if lhs == rhs {
+        return ctx.num(0);
+    }
+    if let (Some(lhs_value), Some(rhs_value)) =
+        (numeric_limit_value(ctx, lhs), numeric_limit_value(ctx, rhs))
+    {
+        return finite_numeric_expr(ctx, lhs_value - rhs_value);
+    }
+    if finite_limit_is_numeric_zero(ctx, rhs) {
+        return lhs;
+    }
+    if finite_limit_is_numeric_zero(ctx, lhs) {
+        return negate_limit_result(ctx, rhs);
+    }
+    ctx.add(Expr::Sub(lhs, rhs))
+}
+
+fn finite_mul_result(ctx: &mut Context, lhs: ExprId, rhs: ExprId) -> ExprId {
+    if let (Some(lhs_value), Some(rhs_value)) =
+        (numeric_limit_value(ctx, lhs), numeric_limit_value(ctx, rhs))
+    {
+        return finite_numeric_expr(ctx, lhs_value * rhs_value);
+    }
+    if finite_limit_is_numeric_zero(ctx, lhs) || finite_limit_is_numeric_zero(ctx, rhs) {
+        return ctx.num(0);
+    }
+    if finite_limit_is_numeric_one(ctx, lhs) {
+        return rhs;
+    }
+    if finite_limit_is_numeric_one(ctx, rhs) {
+        return lhs;
+    }
+    ctx.add(Expr::Mul(lhs, rhs))
+}
+
+fn finite_div_result(ctx: &mut Context, num: ExprId, den: ExprId) -> Option<ExprId> {
+    if !finite_denominator_proven_nonzero(ctx, den) {
+        return None;
+    }
+    if num == den {
+        return Some(ctx.num(1));
+    }
+    if let (Some(num_value), Some(den_value)) =
+        (numeric_limit_value(ctx, num), numeric_limit_value(ctx, den))
+    {
+        if den_value.is_zero() {
+            return None;
+        }
+        return Some(finite_numeric_expr(ctx, num_value / den_value));
+    }
+    if finite_limit_is_numeric_zero(ctx, num) {
+        return Some(ctx.num(0));
+    }
+    if finite_limit_is_numeric_one(ctx, den) {
+        return Some(num);
+    }
+    Some(ctx.add(Expr::Div(num, den)))
+}
+
+fn finite_neg_result(ctx: &mut Context, inner: ExprId) -> ExprId {
+    if let Some(value) = numeric_limit_value(ctx, inner) {
+        return finite_numeric_expr(ctx, -value);
+    }
+    negate_limit_result(ctx, inner)
 }
 
 fn finite_expr_proven_positive(ctx: &Context, expr: ExprId) -> bool {
@@ -1922,10 +2532,19 @@ pub fn presimplify_safe_for_limit(ctx: &mut Context, expr: ExprId) -> ExprId {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
     fn parse_expr(ctx: &mut Context, s: &str) -> ExprId {
         parse(s, ctx).expect("parse failed")
+    }
+
+    fn display_expr(ctx: &Context, expr: ExprId) -> String {
+        DisplayExpr {
+            context: ctx,
+            id: expr,
+        }
+        .to_string()
     }
 
     #[test]
@@ -1983,6 +2602,544 @@ mod tests {
             }
             _ => panic!("expected negative infinity argument"),
         }
+    }
+
+    #[test]
+    fn finite_elementary_polynomial_limit_handles_total_real_functions() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point = parse_expr(&mut ctx, "-1");
+
+        let cases = [
+            ("exp(x^2 + 1)", BuiltinFn::Exp),
+            ("sin(x^2 + 1)", BuiltinFn::Sin),
+            ("cos(x^2 + 1)", BuiltinFn::Cos),
+            ("sinh(x^2 + 1)", BuiltinFn::Sinh),
+            ("cosh(x^2 + 1)", BuiltinFn::Cosh),
+            ("tanh(x^2 + 1)", BuiltinFn::Tanh),
+            ("atan(x^2 + 1)", BuiltinFn::Atan),
+            ("arctan(x^2 + 1)", BuiltinFn::Arctan),
+            ("asinh(x^2 + 1)", BuiltinFn::Asinh),
+            ("cbrt(x^2 + 1)", BuiltinFn::Cbrt),
+        ];
+
+        for (input, expected_builtin) in cases {
+            let expr = parse_expr(&mut ctx, input);
+            let out = apply_finite_elementary_polynomial_rule(&mut ctx, expr, x, point)
+                .unwrap_or_else(|| panic!("expected finite elementary limit for {input}"));
+
+            let Expr::Function(fn_id, args) = ctx.get(out).clone() else {
+                panic!("expected function output for {input}");
+            };
+            assert_eq!(ctx.builtin_of(fn_id), Some(expected_builtin));
+            assert_eq!(args.len(), 1);
+
+            let Expr::Number(value) = ctx.get(args[0]) else {
+                panic!("expected numeric function argument for {input}");
+            };
+            assert_eq!(value, &BigRational::from_integer(2.into()));
+        }
+    }
+
+    #[test]
+    fn finite_elementary_polynomial_limit_evaluates_zero_special_values() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point = parse_expr(&mut ctx, "0");
+
+        let cases = [
+            ("exp(x)", 1),
+            ("sin(x)", 0),
+            ("cos(x)", 1),
+            ("sinh(x)", 0),
+            ("cosh(x)", 1),
+            ("tanh(x)", 0),
+            ("atan(x)", 0),
+            ("arctan(x)", 0),
+            ("asinh(x)", 0),
+            ("cbrt(x)", 0),
+            ("abs(x)", 0),
+        ];
+
+        for (input, expected) in cases {
+            let expr = parse_expr(&mut ctx, input);
+            let out = apply_finite_elementary_polynomial_rule(&mut ctx, expr, x, point)
+                .unwrap_or_else(|| panic!("expected finite elementary limit for {input}"));
+
+            let Expr::Number(value) = ctx.get(out) else {
+                panic!("expected numeric special value for {input}");
+            };
+            assert_eq!(value, &BigRational::from_integer(expected.into()));
+        }
+    }
+
+    #[test]
+    fn finite_abs_polynomial_limit_evaluates_exact_rational_absolute_value() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point = parse_expr(&mut ctx, "0");
+
+        let cases = [("abs(x^2 - 1)", 1), ("abs(x - 2)", 2)];
+
+        for (input, expected) in cases {
+            let expr = parse_expr(&mut ctx, input);
+            let out = apply_finite_elementary_polynomial_rule(&mut ctx, expr, x, point)
+                .unwrap_or_else(|| panic!("expected finite abs polynomial limit for {input}"));
+
+            let Expr::Number(value) = ctx.get(out) else {
+                panic!("expected numeric absolute value for {input}");
+            };
+            assert_eq!(value, &BigRational::from_integer(expected.into()));
+        }
+    }
+
+    #[test]
+    fn finite_real_cube_root_limit_evaluates_exact_and_symbolic_values() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+
+        let point_neg_two = parse_expr(&mut ctx, "-2");
+        let exact_builtin = parse_expr(&mut ctx, "cbrt(x^3)");
+        let exact_builtin_out =
+            try_limit_rules_at_finite(&mut ctx, exact_builtin, x, point_neg_two)
+                .expect("expected exact finite cbrt limit");
+        let Expr::Number(value) = ctx.get(exact_builtin_out) else {
+            panic!("expected exact cbrt limit to collapse to a number");
+        };
+        assert_eq!(value, &BigRational::from_integer((-2).into()));
+
+        let point_one = parse_expr(&mut ctx, "1");
+        let exact_power = parse_expr(&mut ctx, "(x^2 - 9)^(1/3)");
+        let exact_power_out = try_limit_rules_at_finite(&mut ctx, exact_power, x, point_one)
+            .expect("expected exact finite one-third power limit");
+        let Expr::Number(value) = ctx.get(exact_power_out) else {
+            panic!("expected exact one-third power limit to collapse to a number");
+        };
+        assert_eq!(value, &BigRational::from_integer((-2).into()));
+
+        let point_neg_one = parse_expr(&mut ctx, "-1");
+        let symbolic_builtin = parse_expr(&mut ctx, "cbrt(x^2 + 1)");
+        let symbolic_builtin_out =
+            try_limit_rules_at_finite(&mut ctx, symbolic_builtin, x, point_neg_one)
+                .expect("expected symbolic finite cbrt limit");
+        assert_eq!(display_expr(&ctx, symbolic_builtin_out), "cbrt(2)");
+    }
+
+    #[test]
+    fn finite_total_real_unary_composition_limit_reuses_resolved_sublimits() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+
+        let point_zero = parse_expr(&mut ctx, "0");
+        let nested_trig = parse_expr(&mut ctx, "cos(sin(x))");
+        let nested_trig_out = try_limit_rules_at_finite(&mut ctx, nested_trig, x, point_zero)
+            .expect("expected nested total-real trig finite limit");
+        let Expr::Number(value) = ctx.get(nested_trig_out) else {
+            panic!("expected cos(sin(x)) at 0 to collapse to a number");
+        };
+        assert_eq!(value, &BigRational::from_integer(1.into()));
+
+        let point_neg_two = parse_expr(&mut ctx, "-2");
+        let sin_sqrt = parse_expr(&mut ctx, "sin(sqrt(x^2 + 1))");
+        let sin_sqrt_out = try_limit_rules_at_finite(&mut ctx, sin_sqrt, x, point_neg_two)
+            .expect("expected total-real unary composition over safe sqrt sublimit");
+        assert_eq!(display_expr(&ctx, sin_sqrt_out), "sin(sqrt(5))");
+
+        let exp_abs = parse_expr(&mut ctx, "exp(abs(x))");
+        let exp_abs_out = try_limit_rules_at_finite(&mut ctx, exp_abs, x, point_neg_two)
+            .expect("expected exp over resolved abs sublimit");
+        let Expr::Function(fn_id, args) = ctx.get(exp_abs_out).clone() else {
+            panic!("expected exp(abs(x)) finite limit to remain an exp function");
+        };
+        assert_eq!(ctx.builtin_of(fn_id), Some(BuiltinFn::Exp));
+        assert_eq!(args.len(), 1);
+        let Expr::Number(value) = ctx.get(args[0]) else {
+            panic!("expected exp argument to be exact numeric absolute value");
+        };
+        assert_eq!(value, &BigRational::from_integer(2.into()));
+
+        let point_eight = parse_expr(&mut ctx, "8");
+        let sin_cbrt = parse_expr(&mut ctx, "sin(cbrt(x))");
+        let sin_cbrt_out = try_limit_rules_at_finite(&mut ctx, sin_cbrt, x, point_eight)
+            .expect("expected total-real unary composition over exact cbrt sublimit");
+        assert_eq!(display_expr(&ctx, sin_cbrt_out), "sin(2)");
+    }
+
+    #[test]
+    fn finite_arithmetic_composition_folds_safe_numeric_and_structural_results() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_neg_two = parse_expr(&mut ctx, "-2");
+
+        let numeric_sum = parse_expr(&mut ctx, "abs(x) + 1");
+        let numeric_sum_out = try_limit_rules_at_finite(&mut ctx, numeric_sum, x, point_neg_two)
+            .expect("expected safe numeric finite sum");
+        let Expr::Number(value) = ctx.get(numeric_sum_out) else {
+            panic!("expected exact numeric finite sum");
+        };
+        assert_eq!(value, &BigRational::from_integer(3.into()));
+
+        let structural_zero = parse_expr(&mut ctx, "sqrt(x^2 + 1) - sqrt(x^2 + 1)");
+        let structural_zero_out =
+            try_limit_rules_at_finite(&mut ctx, structural_zero, x, point_neg_two)
+                .expect("expected safe structural zero finite difference");
+        let Expr::Number(value) = ctx.get(structural_zero_out) else {
+            panic!("expected structural zero finite difference to fold");
+        };
+        assert_eq!(value, &BigRational::zero());
+
+        let zero_quotient = parse_expr(&mut ctx, "(sqrt(x^2 + 1) - sqrt(x^2 + 1))/(abs(x) + 1)");
+        let zero_quotient_out =
+            try_limit_rules_at_finite(&mut ctx, zero_quotient, x, point_neg_two)
+                .expect("expected safe zero quotient finite limit");
+        let Expr::Number(value) = ctx.get(zero_quotient_out) else {
+            panic!("expected safe zero quotient to fold");
+        };
+        assert_eq!(value, &BigRational::zero());
+
+        let symbolic_sum = parse_expr(&mut ctx, "sqrt(x^2 + 1) + ln(x + 5)");
+        let symbolic_sum_out = try_limit_rules_at_finite(&mut ctx, symbolic_sum, x, point_neg_two)
+            .expect("expected safe symbolic finite sum");
+        assert_eq!(display_expr(&ctx, symbolic_sum_out), "ln(3) + sqrt(5)");
+
+        let unsafe_zero_product = parse_expr(&mut ctx, "0 * sqrt(x)");
+        let point_zero = parse_expr(&mut ctx, "0");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, unsafe_zero_product, x, point_zero).is_none(),
+            "zero product must not hide an unresolved finite sublimit"
+        );
+    }
+
+    #[test]
+    fn finite_positive_domain_unary_composition_requires_positive_sublimit() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_neg_two = parse_expr(&mut ctx, "-2");
+
+        let ln_sqrt = parse_expr(&mut ctx, "ln(sqrt(x^2 + 1))");
+        let ln_sqrt_out = try_limit_rules_at_finite(&mut ctx, ln_sqrt, x, point_neg_two)
+            .expect("expected ln over proven-positive sqrt sublimit");
+        assert_eq!(display_expr(&ctx, ln_sqrt_out), "ln(sqrt(5))");
+
+        let sqrt_abs_shift = parse_expr(&mut ctx, "sqrt(abs(x) + 1)");
+        let sqrt_abs_shift_out =
+            try_limit_rules_at_finite(&mut ctx, sqrt_abs_shift, x, point_neg_two)
+                .expect("expected sqrt over positive arithmetic sublimit");
+        assert_eq!(display_expr(&ctx, sqrt_abs_shift_out), "sqrt(3)");
+
+        let ln_abs = parse_expr(&mut ctx, "ln(abs(x))");
+        let ln_abs_out = try_limit_rules_at_finite(&mut ctx, ln_abs, x, point_neg_two)
+            .expect("expected ln over positive abs sublimit");
+        assert_eq!(display_expr(&ctx, ln_abs_out), "ln(2)");
+
+        let log2_poly = parse_expr(&mut ctx, "log2(x^2 + 1)");
+        let log2_poly_out = try_limit_rules_at_finite(&mut ctx, log2_poly, x, point_neg_two)
+            .expect("expected log2 over positive polynomial argument");
+        assert_eq!(display_expr(&ctx, log2_poly_out), "log2(5)");
+
+        let log10_sqrt = parse_expr(&mut ctx, "log10(sqrt(x^2 + 1))");
+        let log10_sqrt_out = try_limit_rules_at_finite(&mut ctx, log10_sqrt, x, point_neg_two)
+            .expect("expected log10 over proven-positive sqrt sublimit");
+        assert_eq!(display_expr(&ctx, log10_sqrt_out), "log10(sqrt(5))");
+
+        let log2_abs = parse_expr(&mut ctx, "log2(abs(x))");
+        let log2_abs_out = try_limit_rules_at_finite(&mut ctx, log2_abs, x, point_neg_two)
+            .expect("expected log2 over positive abs sublimit");
+        assert_eq!(display_expr(&ctx, log2_abs_out), "log2(2)");
+
+        let point_zero = parse_expr(&mut ctx, "0");
+        let sqrt_perfect_square_poly = parse_expr(&mut ctx, "sqrt(x^2 + 4*x + 4)");
+        let sqrt_perfect_square_poly_out =
+            try_limit_rules_at_finite(&mut ctx, sqrt_perfect_square_poly, x, point_zero)
+                .expect("expected exact sqrt over positive rational square sublimit");
+        assert_eq!(display_expr(&ctx, sqrt_perfect_square_poly_out), "2");
+
+        let ln_one = parse_expr(&mut ctx, "ln(x^2 + 1)");
+        let ln_one_out = try_limit_rules_at_finite(&mut ctx, ln_one, x, point_zero)
+            .expect("expected exact ln(1) finite limit");
+        assert_eq!(display_expr(&ctx, ln_one_out), "0");
+
+        let log2_one = parse_expr(&mut ctx, "log2(x^2 + 1)");
+        let log2_one_out = try_limit_rules_at_finite(&mut ctx, log2_one, x, point_zero)
+            .expect("expected exact log2(1) finite limit");
+        assert_eq!(display_expr(&ctx, log2_one_out), "0");
+
+        let log10_one = parse_expr(&mut ctx, "log10(x^2 + 1)");
+        let log10_one_out = try_limit_rules_at_finite(&mut ctx, log10_one, x, point_zero)
+            .expect("expected exact log10(1) finite limit");
+        assert_eq!(display_expr(&ctx, log10_one_out), "0");
+
+        let exp_ln_abs = parse_expr(&mut ctx, "exp(ln(abs(x)))");
+        let exp_ln_abs_out = try_limit_rules_at_finite(&mut ctx, exp_ln_abs, x, point_neg_two)
+            .expect("expected exact exp(ln(g)) finite limit when g is positive");
+        assert_eq!(display_expr(&ctx, exp_ln_abs_out), "2");
+
+        let ln_exp_abs = parse_expr(&mut ctx, "ln(exp(abs(x)))");
+        let ln_exp_abs_out = try_limit_rules_at_finite(&mut ctx, ln_exp_abs, x, point_neg_two)
+            .expect("expected exact ln(exp(g)) finite limit");
+        assert_eq!(display_expr(&ctx, ln_exp_abs_out), "2");
+
+        let abs_sqrt = parse_expr(&mut ctx, "abs(sqrt(x^2 + 1))");
+        let abs_sqrt_out = try_limit_rules_at_finite(&mut ctx, abs_sqrt, x, point_neg_two)
+            .expect("expected exact abs over positive sqrt finite limit");
+        assert_eq!(display_expr(&ctx, abs_sqrt_out), "sqrt(5)");
+
+        let abs_neg_sqrt = parse_expr(&mut ctx, "abs(-sqrt(x^2 + 1))");
+        let abs_neg_sqrt_out = try_limit_rules_at_finite(&mut ctx, abs_neg_sqrt, x, point_neg_two)
+            .expect("expected exact abs over negative positive-sqrt finite limit");
+        assert_eq!(display_expr(&ctx, abs_neg_sqrt_out), "sqrt(5)");
+
+        let exp_ln_abs_zero = parse_expr(&mut ctx, "exp(ln(abs(x)))");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, exp_ln_abs_zero, x, point_zero).is_none(),
+            "exp(ln(abs(x))) at zero must remain residual"
+        );
+
+        let sqrt_abs_zero = parse_expr(&mut ctx, "sqrt(abs(x))");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, sqrt_abs_zero, x, point_zero).is_none(),
+            "sqrt over zero sublimit must remain residual"
+        );
+
+        let ln_sin_zero = parse_expr(&mut ctx, "ln(sin(x))");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, ln_sin_zero, x, point_zero).is_none(),
+            "ln over zero sublimit must remain residual"
+        );
+
+        let log10_abs_zero = parse_expr(&mut ctx, "log10(abs(x))");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, log10_abs_zero, x, point_zero).is_none(),
+            "log10 over zero sublimit must remain residual"
+        );
+    }
+
+    #[test]
+    fn finite_binary_log_composition_requires_valid_base_and_positive_sublimits() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_neg_two = parse_expr(&mut ctx, "-2");
+
+        let binary_log_poly = parse_expr(&mut ctx, "log(2, x^2 + 1)");
+        let binary_log_poly_out =
+            try_limit_rules_at_finite(&mut ctx, binary_log_poly, x, point_neg_two)
+                .expect("expected constant-base log over positive polynomial argument");
+        assert_eq!(display_expr(&ctx, binary_log_poly_out), "log(2, 5)");
+
+        let binary_log_sqrt = parse_expr(&mut ctx, "log(1/2, sqrt(x^2 + 1))");
+        let binary_log_sqrt_out =
+            try_limit_rules_at_finite(&mut ctx, binary_log_sqrt, x, point_neg_two)
+                .expect("expected constant-base log over proven-positive sqrt sublimit");
+        assert_eq!(
+            display_expr(&ctx, binary_log_sqrt_out),
+            "log(1 / 2, sqrt(5))"
+        );
+
+        let binary_log_abs = parse_expr(&mut ctx, "log(2, abs(x))");
+        let binary_log_abs_out =
+            try_limit_rules_at_finite(&mut ctx, binary_log_abs, x, point_neg_two)
+                .expect("expected constant-base log over positive abs sublimit");
+        assert_eq!(display_expr(&ctx, binary_log_abs_out), "1");
+
+        let point_zero = parse_expr(&mut ctx, "0");
+        let binary_log_arg_one = parse_expr(&mut ctx, "log(2, x^2 + 1)");
+        let binary_log_arg_one_out =
+            try_limit_rules_at_finite(&mut ctx, binary_log_arg_one, x, point_zero)
+                .expect("expected exact binary log of one finite limit");
+        assert_eq!(display_expr(&ctx, binary_log_arg_one_out), "0");
+
+        let variable_base_log_poly = parse_expr(&mut ctx, "log(x^2 + 3, x^2 + 1)");
+        let variable_base_log_poly_out =
+            try_limit_rules_at_finite(&mut ctx, variable_base_log_poly, x, point_neg_two)
+                .expect("expected log over safe finite base and argument sublimits");
+        assert_eq!(display_expr(&ctx, variable_base_log_poly_out), "log(7, 5)");
+
+        let variable_base_log_sqrt = parse_expr(&mut ctx, "log(x^2 + 3, sqrt(x^2 + 1))");
+        let variable_base_log_sqrt_out =
+            try_limit_rules_at_finite(&mut ctx, variable_base_log_sqrt, x, point_neg_two)
+                .expect("expected log over safe finite base and positive sqrt argument sublimit");
+        assert_eq!(
+            display_expr(&ctx, variable_base_log_sqrt_out),
+            "log(7, sqrt(5))"
+        );
+
+        let point_neg_one = parse_expr(&mut ctx, "-1");
+        let variable_base_log_same = parse_expr(&mut ctx, "log(x^2 + 3, x^2 + 3)");
+        let variable_base_log_same_out =
+            try_limit_rules_at_finite(&mut ctx, variable_base_log_same, x, point_neg_one)
+                .expect("expected exact binary log with equal finite base and argument");
+        assert_eq!(display_expr(&ctx, variable_base_log_same_out), "1");
+
+        let binary_log_abs_zero = parse_expr(&mut ctx, "log(2, abs(x))");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, binary_log_abs_zero, x, point_zero).is_none(),
+            "constant-base log over zero sublimit must remain residual"
+        );
+
+        let log_base_one = parse_expr(&mut ctx, "log(1, x^2 + 1)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, log_base_one, x, point_neg_two).is_none(),
+            "constant-base log with base one must remain residual"
+        );
+
+        let log_negative_base = parse_expr(&mut ctx, "log(-2, x^2 + 1)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, log_negative_base, x, point_neg_two).is_none(),
+            "constant-base log with negative base must remain residual"
+        );
+
+        let log_variable_base_one = parse_expr(&mut ctx, "log(x^2 - 3, x^2 + 1)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, log_variable_base_one, x, point_neg_two).is_none(),
+            "variable-base log with base sublimit one must remain residual"
+        );
+
+        let log_variable_base_zero = parse_expr(&mut ctx, "log(x^2 - 4, x^2 + 1)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, log_variable_base_zero, x, point_neg_two).is_none(),
+            "variable-base log with zero base sublimit must remain residual"
+        );
+    }
+
+    #[test]
+    fn finite_integer_power_composition_requires_safe_sublimit_and_nonzero_base_when_needed() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_neg_two = parse_expr(&mut ctx, "-2");
+
+        let numeric_positive_power = parse_expr(&mut ctx, "(abs(x) + 1)^2");
+        let numeric_positive_power_out =
+            try_limit_rules_at_finite(&mut ctx, numeric_positive_power, x, point_neg_two)
+                .expect("expected integer power over exact numeric sublimit");
+        let Expr::Number(value) = ctx.get(numeric_positive_power_out) else {
+            panic!("expected exact integer power to fold to a number");
+        };
+        assert_eq!(value, &BigRational::from_integer(9.into()));
+
+        let symbolic_positive_power = parse_expr(&mut ctx, "(sqrt(x^2 + 1))^2");
+        let symbolic_positive_power_out =
+            try_limit_rules_at_finite(&mut ctx, symbolic_positive_power, x, point_neg_two)
+                .expect("expected integer power over safe symbolic sublimit");
+        let Expr::Number(value) = ctx.get(symbolic_positive_power_out) else {
+            panic!("expected even power over exact sqrt sublimit to fold to a number");
+        };
+        assert_eq!(value, &BigRational::from_integer(5.into()));
+
+        let symbolic_odd_power = parse_expr(&mut ctx, "(sqrt(x^2 + 1))^3");
+        let symbolic_odd_power_out =
+            try_limit_rules_at_finite(&mut ctx, symbolic_odd_power, x, point_neg_two)
+                .expect("expected odd integer power over safe symbolic sublimit");
+        assert_eq!(display_expr(&ctx, symbolic_odd_power_out), "sqrt(5)^3");
+
+        let numeric_negative_power = parse_expr(&mut ctx, "(abs(x) + 1)^(-2)");
+        let numeric_negative_power_out =
+            try_limit_rules_at_finite(&mut ctx, numeric_negative_power, x, point_neg_two)
+                .expect("expected negative integer power over nonzero numeric sublimit");
+        let Expr::Number(value) = ctx.get(numeric_negative_power_out) else {
+            panic!("expected exact negative integer power to fold to a number");
+        };
+        assert_eq!(value, &BigRational::new(BigInt::from(1), BigInt::from(9)));
+
+        let symbolic_negative_power = parse_expr(&mut ctx, "(sqrt(x^2 + 1))^(-1)");
+        let symbolic_negative_power_out =
+            try_limit_rules_at_finite(&mut ctx, symbolic_negative_power, x, point_neg_two)
+                .expect("expected negative integer power over proven nonzero symbolic sublimit");
+        assert_eq!(
+            display_expr(&ctx, symbolic_negative_power_out),
+            "1 / sqrt(5)"
+        );
+
+        let symbolic_negative_square_power = parse_expr(&mut ctx, "(sqrt(x^2 + 1))^(-2)");
+        let symbolic_negative_square_power_out =
+            try_limit_rules_at_finite(&mut ctx, symbolic_negative_square_power, x, point_neg_two)
+                .expect("expected negative even power over exact sqrt sublimit to fold");
+        let Expr::Number(value) = ctx.get(symbolic_negative_square_power_out) else {
+            panic!("expected negative even power over exact sqrt sublimit to fold to a number");
+        };
+        assert_eq!(value, &BigRational::new(BigInt::from(1), BigInt::from(5)));
+
+        let point_neg_one = parse_expr(&mut ctx, "-1");
+        let cbrt_cube_power = parse_expr(&mut ctx, "(cbrt(x^2 + 1))^3");
+        let cbrt_cube_power_out =
+            try_limit_rules_at_finite(&mut ctx, cbrt_cube_power, x, point_neg_one)
+                .expect("expected cube power over exact cbrt sublimit to fold");
+        let Expr::Number(value) = ctx.get(cbrt_cube_power_out) else {
+            panic!("expected cube power over exact cbrt sublimit to fold to a number");
+        };
+        assert_eq!(value, &BigRational::from_integer(2.into()));
+
+        let cbrt_square_power = parse_expr(&mut ctx, "(cbrt(x^2 + 1))^2");
+        let cbrt_square_power_out =
+            try_limit_rules_at_finite(&mut ctx, cbrt_square_power, x, point_neg_one)
+                .expect("expected non-multiple cbrt power to remain explicit");
+        assert_eq!(display_expr(&ctx, cbrt_square_power_out), "cbrt(2)^2");
+
+        let cbrt_negative_cube_power = parse_expr(&mut ctx, "(cbrt(x^2 + 1))^(-3)");
+        let cbrt_negative_cube_power_out =
+            try_limit_rules_at_finite(&mut ctx, cbrt_negative_cube_power, x, point_neg_one)
+                .expect("expected negative cube power over exact nonzero cbrt sublimit to fold");
+        let Expr::Number(value) = ctx.get(cbrt_negative_cube_power_out) else {
+            panic!("expected negative cube power over exact cbrt sublimit to fold to a number");
+        };
+        assert_eq!(value, &BigRational::new(BigInt::from(1), BigInt::from(2)));
+
+        let cbrt_zero_power = parse_expr(&mut ctx, "(cbrt(x^2 + 1))^0");
+        let cbrt_zero_power_out =
+            try_limit_rules_at_finite(&mut ctx, cbrt_zero_power, x, point_neg_one)
+                .expect("expected zero power over nonzero cbrt sublimit to fold");
+        let Expr::Number(value) = ctx.get(cbrt_zero_power_out) else {
+            panic!("expected zero power over nonzero cbrt sublimit to fold to one");
+        };
+        assert_eq!(value, &BigRational::one());
+
+        let numeric_zero_power = parse_expr(&mut ctx, "(abs(x) + 1)^0");
+        let numeric_zero_power_out =
+            try_limit_rules_at_finite(&mut ctx, numeric_zero_power, x, point_neg_two)
+                .expect("expected zero power over nonzero sublimit");
+        let Expr::Number(value) = ctx.get(numeric_zero_power_out) else {
+            panic!("expected safe zero power to fold to one");
+        };
+        assert_eq!(value, &BigRational::one());
+
+        let point_zero = parse_expr(&mut ctx, "0");
+        let zero_base_negative_power = parse_expr(&mut ctx, "(abs(x) - 2)^(-1)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, zero_base_negative_power, x, point_neg_two)
+                .is_none(),
+            "negative integer power over zero sublimit must remain residual"
+        );
+
+        let zero_base_zero_power = parse_expr(&mut ctx, "abs(x)^0");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, zero_base_zero_power, x, point_zero).is_none(),
+            "zero power over zero sublimit must remain residual"
+        );
+
+        let zero_cbrt_base_negative_power = parse_expr(&mut ctx, "cbrt(x)^(-3)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, zero_cbrt_base_negative_power, x, point_zero)
+                .is_none(),
+            "negative cube power over zero cbrt sublimit must remain residual"
+        );
+
+        let unresolved_base_power = parse_expr(&mut ctx, "sqrt(x)^2");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, unresolved_base_power, x, point_zero).is_none(),
+            "integer power must not hide an unresolved finite base sublimit"
+        );
+    }
+
+    #[test]
+    fn finite_total_real_unary_composition_rejects_unresolved_inner_limit() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point = parse_expr(&mut ctx, "0");
+        let expr = parse_expr(&mut ctx, "sin(sign(x))");
+
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, expr, x, point).is_none(),
+            "outer total-real function must not hide unresolved discontinuous inner limit"
+        );
     }
 
     #[test]

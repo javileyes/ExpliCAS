@@ -28,5 +28,9 @@ mm_modp.txt
 crates/cas_solver/tests/baselines/metatest_baseline.jsonl
 tests/output_*.txt
 tests/benchmarks.log
+docs/generated/engine_improvement_scorecard_profiled.json
+docs/generated/engine_improvement_scorecard_profiled.md
+docs/generated/engine_improvement_scorecard_pressure_profiled.json
+docs/generated/engine_improvement_scorecard_pressure_profiled.md
 create_release.sh
 web/build-config.js

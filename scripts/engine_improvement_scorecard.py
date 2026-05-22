@@ -343,6 +343,32 @@ SUITES: dict[str, SuiteSpec] = {
         parser="cargo_test_basic",
         description="Public differentiation contract lane for calculus visibility.",
     ),
+    "calculus_diff_exhaustive_contract": SuiteSpec(
+        name="calculus_diff_exhaustive_contract",
+        category="calculus",
+        profile_tags=("pressure", "full"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_solver",
+            "--test",
+            "diff_step_contract_tests",
+            "inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions_exhaustive",
+            "--",
+            "--ignored",
+            "--exact",
+            "--nocapture",
+        ],
+        env={},
+        parser="cargo_test_basic",
+        description=(
+            "Pressure-only exhaustive differentiation domain-condition "
+            "contract over inverse reciprocal trig families."
+        ),
+    ),
     "calculus_limit_contract": SuiteSpec(
         name="calculus_limit_contract",
         category="calculus",
@@ -411,6 +437,27 @@ SUITES: dict[str, SuiteSpec] = {
             "visibility."
         ),
     ),
+    "calculus_residual_matrix_smoke": SuiteSpec(
+        name="calculus_residual_matrix_smoke",
+        category="calculus",
+        profile_tags=("fast", "fast_embedded", "guardrail", "full"),
+        command=[
+            sys.executable,
+            str(ROOT / "scripts" / "engine_calculus_residual_probe_smoke.py"),
+            "--default-matrix",
+            "--ensure-release-cas-cli",
+            "--timeout-seconds",
+            "8",
+            "--json",
+            "--summary-json",
+        ],
+        env={},
+        parser="calculus_residual_matrix",
+        description=(
+            "Public calculus residual matrix smoke over promoted residual "
+            "wrappers and families."
+        ),
+    ),
     "calculus_integrate_contract": SuiteSpec(
         name="calculus_integrate_contract",
         category="calculus",
@@ -430,6 +477,32 @@ SUITES: dict[str, SuiteSpec] = {
         env={},
         parser="cargo_test_basic",
         description="Public integration contract lane for calculus visibility.",
+    ),
+    "calculus_integrate_exhaustive_contract": SuiteSpec(
+        name="calculus_integrate_exhaustive_contract",
+        category="calculus",
+        profile_tags=("pressure", "full"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_cli",
+            "--test",
+            "integrate_contract_tests",
+            "integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive",
+            "--",
+            "--ignored",
+            "--exact",
+            "--nocapture",
+        ],
+        env={},
+        parser="cargo_test_basic",
+        description=(
+            "Pressure-only exhaustive integration antiderivative verification "
+            "over supported public families."
+        ),
     ),
 }
 
@@ -475,8 +548,8 @@ def parse_args() -> argparse.Namespace:
         "--orchestrator-profile",
         action="store_true",
         help=(
-            "Enable orchestrator shortcut profiling for the embedded equivalence "
-            "corpus suite."
+            "Enable orchestrator shortcut profiling for supported observability "
+            "slices."
         ),
     )
     parser.add_argument(
@@ -492,8 +565,8 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT,
         help=(
-            "Embedded corpus case limit for the orchestrator profiling slice "
-            "used with --orchestrator-profile."
+            "Embedded corpus case limit for the orchestrator profiling slice. "
+            "Pressure-window suites keep their configured windows."
         ),
     )
     return parser.parse_args()
@@ -528,10 +601,16 @@ def effective_suite_env(spec: SuiteSpec, args: argparse.Namespace) -> dict[str, 
     return dict(spec.env)
 
 
+ORCHESTRATOR_PROFILE_SUITES = {
+    "embedded_equivalence_context",
+    "simplify_zero_mixed",
+}
+
+
 def orchestrator_profile_env(
     spec: SuiteSpec, args: argparse.Namespace
 ) -> dict[str, str] | None:
-    if not args.orchestrator_profile or spec.name != "embedded_equivalence_context":
+    if not args.orchestrator_profile or spec.name not in ORCHESTRATOR_PROFILE_SUITES:
         return None
     return {
         "CAS_PROFILE_ORCHESTRATOR_SHORTCUTS": "1",
@@ -542,9 +621,19 @@ def orchestrator_profile_env(
 def orchestrator_profile_command(
     spec: SuiteSpec, args: argparse.Namespace
 ) -> list[str] | None:
-    if spec.name != "embedded_equivalence_context":
-        return None
-    return [*spec.command, "--limit", str(args.orchestrator_profile_limit)]
+    if spec.name == "embedded_equivalence_context":
+        return [*spec.command, "--limit", str(args.orchestrator_profile_limit)]
+    if spec.name == "simplify_zero_mixed":
+        return list(spec.command)
+    return None
+
+
+def orchestrator_profile_case_limit(
+    spec: SuiteSpec, args: argparse.Namespace
+) -> int | None:
+    if spec.name == "embedded_equivalence_context":
+        return args.orchestrator_profile_limit
+    return None
 
 
 def run_command(
@@ -860,7 +949,7 @@ def generated_discovery_ledger_metrics(
 def parse_generated_discovery_ledger(text: str) -> dict[str, Any]:
     discoveries: list[dict[str, str]] = []
     section_pattern = re.compile(
-        r"^###\s+(?P<title>.+?)\n(?P<body>.*?)(?=^###\s+|\Z)",
+        r"^#{2,3}\s+(?P<title>.+?)\n(?P<body>.*?)(?=^#{2,3}\s+|\Z)",
         re.M | re.S,
     )
     axis_pattern = re.compile(r"`(?P<wrapper>[^`]+)`\s+x\s+`(?P<family>[^`]+)`")
@@ -868,13 +957,16 @@ def parse_generated_discovery_ledger(text: str) -> dict[str, Any]:
     for match in section_pattern.finditer(text):
         title = match.group("title").strip()
         body = match.group("body")
-        if "`observe-only discovery`" not in body:
+        if not is_observe_only_discovery_section(title, body):
+            continue
+        if is_closed_observe_only_discovery_section(body):
             continue
         axis_match = axis_pattern.search(body)
         discoveries.append(
             {
                 "title": title,
                 "status": "observe-only discovery",
+                "area": extract_discovery_area(body),
                 "wrapper": axis_match.group("wrapper") if axis_match else "unknown",
                 "family": axis_match.group("family") if axis_match else "unknown",
             }
@@ -882,18 +974,114 @@ def parse_generated_discovery_ledger(text: str) -> dict[str, Any]:
 
     by_family: dict[str, int] = {}
     by_wrapper: dict[str, int] = {}
+    by_area: dict[str, int] = {}
     for discovery in discoveries:
+        area = discovery["area"]
         family = discovery["family"]
         wrapper = discovery["wrapper"]
-        by_family[family] = by_family.get(family, 0) + 1
-        by_wrapper[wrapper] = by_wrapper.get(wrapper, 0) + 1
+        if area != "unknown":
+            by_area[area] = by_area.get(area, 0) + 1
+        if family != "unknown":
+            by_family[family] = by_family.get(family, 0) + 1
+        if wrapper != "unknown":
+            by_wrapper[wrapper] = by_wrapper.get(wrapper, 0) + 1
 
     return {
         "observe_only_discoveries": len(discoveries),
+        "areas": by_area,
         "families": by_family,
         "wrappers": by_wrapper,
         "recent": discoveries[:5],
     }
+
+
+def is_observe_only_discovery_section(title: str, body: str) -> bool:
+    title_status = normalized_discovery_status(title)
+    title_marks_discovery = (
+        "discovery" in title_status and "observe-only" in title_status
+    )
+    if title_marks_discovery:
+        return True
+
+    for status in re.findall(r"^\s*-\s+`([^`]+)`", body, re.M):
+        normalized = normalized_discovery_status(status)
+        if normalized in {
+            "observe-only-discovery",
+            "discovery-observe-only",
+        }:
+            return True
+        if normalized == "observe-only" and "discovery" in body.lower():
+            return True
+    return False
+
+
+def is_closed_observe_only_discovery_section(body: str) -> bool:
+    if re.search(r"^\s*-\s+(resolved by|superseded by):", body, re.M | re.I):
+        return True
+    for status in re.findall(r"^\s*-\s+`([^`]+)`", body, re.M):
+        if normalized_discovery_status(status) in {"resolved", "superseded"}:
+            return True
+    return False
+
+
+def extract_discovery_area(body: str) -> str:
+    lines = body.splitlines()
+    for idx, line in enumerate(lines):
+        if not re.match(r"^-\s+area:\s*$", line):
+            continue
+
+        items: list[str] = []
+        current: str | None = None
+        for following in lines[idx + 1 :]:
+            if following.startswith("- "):
+                break
+            bullet_match = re.match(r"^\s{2,}-\s+(?P<item>.+)$", following)
+            if bullet_match:
+                if current:
+                    items.append(current)
+                current = bullet_match.group("item").strip()
+                continue
+            continuation_match = re.match(r"^\s{4,}(?P<text>\S.*)$", following)
+            if continuation_match and current:
+                current = f"{current} {continuation_match.group('text').strip()}"
+        if current:
+            items.append(current)
+
+        for item in items:
+            area = discovery_area_bucket(item)
+            if area != "unknown":
+                return area
+        break
+    return "unknown"
+
+
+def discovery_area_bucket(raw_area: str) -> str:
+    cleaned = re.sub(r"`([^`]+)`", r"\1", raw_area)
+    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+    if not cleaned:
+        return "unknown"
+
+    parts = [
+        canonical_discovery_area_part(part.strip())
+        for part in cleaned.split("/")
+        if part.strip()
+    ]
+    if not parts:
+        return "unknown"
+    if len(parts) == 1:
+        return parts[0]
+    return " / ".join(parts[:2])
+
+
+def canonical_discovery_area_part(part: str) -> str:
+    return {
+        "diff": "differentiation",
+        "integrate": "integration",
+    }.get(part.lower(), part)
+
+
+def normalized_discovery_status(text: str) -> str:
+    return re.sub(r"[\s/_-]+", "-", text.strip().lower())
 
 
 def embedded_coverage_saturation_metrics(
@@ -1703,6 +1891,16 @@ def parse_derive(output: str) -> dict[str, Any]:
         r"derive strategy specificity: generic_simplify_expected=(\d+) distinct_expected_strategies=(\d+)",
         output,
     )
+    derived_by_family = parse_debug_count_map(output, "derive derived-by-family")
+    unsupported_by_family = parse_debug_count_map(
+        output, "derive unsupported-equivalent-by-family"
+    )
+    not_equivalent_by_family = parse_debug_count_map(
+        output, "derive not-equivalent-by-family"
+    )
+    expected_strategy_counts = parse_debug_count_map(
+        output, "derive expected-strategy-counts"
+    )
 
     return {
         "derived": int(summary.group(1)),
@@ -1718,6 +1916,10 @@ def parse_derive(output: str) -> dict[str, Any]:
         "distinct_expected_strategies": int(specificity.group(2))
         if specificity
         else None,
+        "expected_strategy_counts": expected_strategy_counts,
+        "derived_by_family": derived_by_family,
+        "unsupported_by_family": unsupported_by_family,
+        "not_equivalent_by_family": not_equivalent_by_family,
     }
 
 
@@ -2057,6 +2259,132 @@ def parse_cargo_test_basic(output: str) -> dict[str, Any]:
     return metrics
 
 
+def cargo_test_source_path(command: list[str]) -> pathlib.Path | None:
+    package = command_arg_value(command, "-p")
+    test_name = command_arg_value(command, "--test")
+    if not package or not test_name:
+        return None
+    path = ROOT / "crates" / package / "tests" / f"{test_name}.rs"
+    return path if path.exists() else None
+
+
+def command_arg_value(command: list[str], flag: str) -> str | None:
+    for idx, token in enumerate(command):
+        if token == flag and idx + 1 < len(command):
+            return command[idx + 1]
+    return None
+
+
+def parse_ignored_rust_tests(source: str) -> list[dict[str, str]]:
+    ignored: list[dict[str, str]] = []
+    pattern = re.compile(
+        r"(?ms)^\s*#\[ignore(?:\s*=\s*\"(?P<reason>[^\"]*)\")?\]\s*"
+        r"(?:#\[[^\n]*\]\s*)*fn\s+(?P<name>[A-Za-z0-9_]+)\s*\("
+    )
+    for match in pattern.finditer(source):
+        reason = match.group("reason") or ""
+        ignored.append({"name": match.group("name"), "reason": reason})
+    return ignored
+
+
+def ignored_cargo_tests_for_suite(spec: SuiteSpec) -> list[dict[str, str]]:
+    source_path = cargo_test_source_path(spec.command)
+    if source_path is None:
+        return []
+    try:
+        source = source_path.read_text()
+    except OSError:
+        return []
+    return parse_ignored_rust_tests(source)
+
+
+def sanitize_residual_problem_cases(raw_cases: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_cases, list):
+        return []
+
+    sanitized: list[dict[str, Any]] = []
+    string_fields = {"name", "status", "error_kind", "error", "result"}
+    numeric_fields = {"wall_elapsed_seconds"}
+    for case in raw_cases:
+        if not isinstance(case, dict):
+            continue
+        row: dict[str, Any] = {}
+        for key in string_fields:
+            value = case.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        for key in numeric_fields:
+            value = case.get(key)
+            if isinstance(value, (int, float)):
+                row[key] = value
+        required_conditions = case.get("required_conditions")
+        if isinstance(required_conditions, list):
+            conditions = [
+                condition
+                for condition in required_conditions
+                if isinstance(condition, str)
+            ]
+            if conditions:
+                row["required_conditions"] = conditions
+        if row:
+            sanitized.append(row)
+    return sanitized
+
+
+def parse_calculus_residual_matrix(output: str) -> dict[str, Any]:
+    try:
+        raw = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid residual matrix json: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("residual matrix json output is not an object")
+
+    total = raw.get("total")
+    status = raw.get("status")
+    status_counts = raw.get("status_counts")
+    issue_kind_counts = raw.get("issue_kind_counts", {})
+    if not isinstance(total, int):
+        raise ValueError("missing residual matrix total")
+    if not isinstance(status, str):
+        raise ValueError("missing residual matrix status")
+    if not isinstance(status_counts, dict):
+        raise ValueError("missing residual matrix status_counts")
+    if not isinstance(issue_kind_counts, dict):
+        issue_kind_counts = {}
+
+    passed = status_counts.get("pass", 0)
+    raw_failed = status_counts.get("fail", 0)
+    slow = status_counts.get("slow", 0)
+    timeouts = status_counts.get("timeout", 0)
+    if not all(
+        isinstance(value, int)
+        for value in (passed, raw_failed, slow, timeouts)
+    ):
+        raise ValueError("invalid residual matrix status_counts")
+
+    problem_cases = sanitize_residual_problem_cases(raw.get("problem_cases"))
+    problem_case_count = raw.get("problem_case_count")
+    if not isinstance(problem_case_count, int):
+        problem_case_count = len(problem_cases)
+
+    return {
+        "matrix_status": status,
+        "total_cases": total,
+        "passed": passed,
+        "failed": raw_failed + slow + timeouts,
+        "raw_failed": raw_failed,
+        "slow": slow,
+        "timeouts": timeouts,
+        "problem_case_count": problem_case_count,
+        "problem_cases": problem_cases,
+        "issue_kind_counts": {
+            key: value
+            for key, value in issue_kind_counts.items()
+            if isinstance(key, str) and isinstance(value, int)
+        },
+    }
+
+
 PARSERS = {
     "corpus": parse_corpus,
     "derive": parse_derive,
@@ -2065,6 +2393,7 @@ PARSERS = {
     "simplify_didactic": parse_simplify_didactic,
     "unified_benchmark": parse_unified_benchmark,
     "cargo_test_basic": parse_cargo_test_basic,
+    "calculus_residual_matrix": parse_calculus_residual_matrix,
 }
 
 
@@ -2097,6 +2426,8 @@ def suite_status(name: str, metrics: dict[str, Any], returncode: int) -> str:
         if metrics.get("timeouts", 0) > 0 or metrics.get("numeric_only", 0) > 0:
             return "warn"
         return "pass"
+    if name == "calculus_residual_matrix_smoke":
+        return "pass" if metrics.get("matrix_status") == "pass" else "fail"
     return "pass"
 
 
@@ -2419,6 +2750,28 @@ def format_blocked_low_family_discoveries(counts: dict[Any, Any]) -> str:
         fragments.append(
             f"{family}:live={live_count},observe_only={discovery_count}"
         )
+    return ", ".join(fragments)
+
+
+def format_ignored_tests(tests: Any, max_items: int = 3) -> str:
+    if not isinstance(tests, list) or not tests:
+        return "none"
+    fragments = []
+    for row in tests[:max_items]:
+        if not isinstance(row, dict):
+            continue
+        name = row.get("name")
+        reason = row.get("reason")
+        if not isinstance(name, str):
+            continue
+        fragment = f"`{name}`"
+        if isinstance(reason, str) and reason:
+            fragment += f" ({reason})"
+        fragments.append(fragment)
+    if not fragments:
+        return "none"
+    if len(tests) > max_items:
+        fragments.append(f"+{len(tests) - max_items} more")
     return ", ".join(fragments)
 
 
@@ -2922,6 +3275,9 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             )
             if observe_only_total == 0:
                 lines.append("- Status: no open observe-only generated discoveries.")
+            areas = discovery_metrics.get("areas")
+            if isinstance(areas, dict) and areas:
+                lines.append(f"- By area: {format_top_counts(areas, max_items=8)}")
             if isinstance(families, dict) and families:
                 lines.append(f"- By family: {format_family_counts(families)}")
             if isinstance(wrappers, dict) and wrappers:
@@ -2945,16 +3301,24 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     if not isinstance(row, dict):
                         continue
                     title = row.get("title")
+                    area = row.get("area", "unknown")
                     family = row.get("family")
                     wrapper = row.get("wrapper")
                     if not all(
                         isinstance(value, str)
-                        for value in (title, family, wrapper)
+                        for value in (title, area, family, wrapper)
                     ):
                         continue
-                    lines.append(
-                        f"- Recent {idx}: `{family}` in `{wrapper}` - {title}"
-                    )
+                    if family != "unknown" and wrapper != "unknown":
+                        lines.append(
+                            f"- Recent {idx}: `{family}` in `{wrapper}` - {title}"
+                        )
+                    elif family != "unknown":
+                        lines.append(f"- Recent {idx}: `{family}` - {title}")
+                    elif area != "unknown":
+                        lines.append(f"- Recent {idx}: `{area}` - {title}")
+                    else:
+                        lines.append(f"- Recent {idx}: {title}")
             lines.append("")
 
     derive_suite = scorecard["suites"].get("derive_contract")
@@ -2979,7 +3343,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             lines.extend(
                 [
                     (
-                        f"- Outcomes: derived={derive_metrics['derived']} "
+                        f"- Expected-status breakdown: derived={derive_metrics['derived']} "
                         f"unsupported={derive_metrics['unsupported']} "
                         f"not_equivalent={derive_metrics['not_equivalent']}"
                     ),
@@ -2992,6 +3356,17 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"{derive_metrics.get('generic_simplify_expected', 0)} "
                         f"distinct_expected_strategies="
                         f"{derive_metrics.get('distinct_expected_strategies', 'n/a')}"
+                    ),
+                    (
+                        "- Expected strategy counts: "
+                        + format_top_counts(
+                            derive_metrics.get("expected_strategy_counts", {})
+                        )
+                    ),
+                    (
+                        "- Non-derived expected families: "
+                        f"unsupported={format_top_counts(derive_metrics.get('unsupported_by_family', {}))} "
+                        f"not_equivalent={format_top_counts(derive_metrics.get('not_equivalent_by_family', {}))}"
                     ),
                     "",
                 ]
@@ -3174,6 +3549,10 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
         (label, suite)
         for label, suite in (
             ("diff", scorecard["suites"].get("calculus_diff_contract")),
+            (
+                "diff_exhaustive",
+                scorecard["suites"].get("calculus_diff_exhaustive_contract"),
+            ),
             ("limit", scorecard["suites"].get("calculus_limit_contract")),
             (
                 "limit_presimplify_safe",
@@ -3183,7 +3562,15 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 "integrate_compact",
                 scorecard["suites"].get("calculus_integrate_compact_contract"),
             ),
+            (
+                "residual_matrix",
+                scorecard["suites"].get("calculus_residual_matrix_smoke"),
+            ),
             ("integrate", scorecard["suites"].get("calculus_integrate_contract")),
+            (
+                "integrate_exhaustive",
+                scorecard["suites"].get("calculus_integrate_exhaustive_contract"),
+            ),
         )
         if suite
     ]
@@ -3202,6 +3589,45 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 lines.append(
                     f"- `{label}`: parse_error={metrics['parse_error']}"
                 )
+            elif "total_cases" in metrics:
+                lines.append(
+                    (
+                        f"- `{label}`: passed={metrics['passed']} "
+                        f"failed={metrics['failed']} total={metrics['total_cases']} "
+                        f"slow={metrics.get('slow', 0)} "
+                        f"timeouts={metrics.get('timeouts', 0)}"
+                    )
+                )
+                problem_case_count = metrics.get("problem_case_count", 0)
+                if isinstance(problem_case_count, int) and problem_case_count > 0:
+                    problem_fragments = []
+                    raw_problem_cases = metrics.get("problem_cases", [])
+                    problem_cases = (
+                        raw_problem_cases
+                        if isinstance(raw_problem_cases, list)
+                        else []
+                    )
+                    for case in problem_cases[:3]:
+                        if not isinstance(case, dict):
+                            continue
+                        name = case.get("name")
+                        status = case.get("status")
+                        if not isinstance(name, str) or not isinstance(status, str):
+                            continue
+                        fragment = f"{name} status={status}"
+                        error_kind = case.get("error_kind")
+                        if isinstance(error_kind, str):
+                            fragment += f" kind={error_kind}"
+                        problem_fragments.append(fragment)
+                    if problem_fragments:
+                        lines.append(
+                            f"- `{label}` problem cases: "
+                            + "; ".join(problem_fragments)
+                        )
+                    else:
+                        lines.append(
+                            f"- `{label}` problem cases: count={problem_case_count}"
+                        )
             else:
                 lines.append(
                     (
@@ -3210,6 +3636,11 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"filtered_out={metrics['filtered_out']}"
                     )
                 )
+                ignored_tests = metrics.get("ignored_tests")
+                if ignored_tests:
+                    lines.append(
+                        f"- `{label}` ignored tests: {format_ignored_tests(ignored_tests)}"
+                    )
         lines.append("")
 
     strict_suite = scorecard["suites"].get("simplify_strict")
@@ -3395,6 +3826,73 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 )
         lines.append("")
 
+        orchestrator_profile = mixed_metrics.get("orchestrator_profile")
+        if isinstance(orchestrator_profile, dict):
+            profile_slice = mixed_metrics.get("orchestrator_profile_slice")
+            totals = orchestrator_profile["totals"]
+            lines.extend(
+                [
+                    "## Mixed Zero Orchestrator Profile",
+                    "",
+                    "- Purpose: identify hot shortcut groups and expensive no-match traffic under mixed zero pressure.",
+                ]
+            )
+            if isinstance(profile_slice, dict):
+                profile_filter = profile_slice.get("filter", "unknown")
+                profile_limit = profile_slice.get("limit")
+                limit_fragment = (
+                    f" (limit {profile_limit})"
+                    if isinstance(profile_limit, int)
+                    else ""
+                )
+                lines.append(
+                    (
+                        "- Profiled slice: "
+                        f"{profile_slice['total_cases']} cases"
+                        f"{limit_fragment}, "
+                        f"{profile_slice['elapsed_seconds']:.2f}s elapsed, "
+                        f"filter `{profile_filter}`."
+                    )
+                )
+            lines.append(
+                (
+                    "- Coverage: "
+                    f"{orchestrator_profile['section_count']} sections, "
+                    f"{totals['attempts']} attempts, "
+                    f"{totals['hits']} hits, "
+                    f"{totals['misses']} misses, "
+                    f"{totals['total_ms']:.3f}ms total profiled time."
+                )
+            )
+            for idx, row in enumerate(
+                orchestrator_profile["top_hot_sections"][:3], start=1
+            ):
+                sample_suffix = orchestrator_profile_sample_suffix(row)
+                lines.append(
+                    (
+                        f"- Hot {idx}: `{row['section']}` "
+                        f"{row['total_ms']:.3f}ms over "
+                        f"{row['attempts']} attempts "
+                        f"(hits {row['hits']}, misses {row['misses']})"
+                        f"{sample_suffix}"
+                    )
+                )
+            no_match_sections = orchestrator_profile["top_no_match_cost_sections"][:3]
+            if no_match_sections:
+                for idx, row in enumerate(no_match_sections, start=1):
+                    sample_suffix = orchestrator_profile_sample_suffix(
+                        row, prefer_miss=True
+                    )
+                    lines.append(
+                        (
+                            f"- No-match hotspot {idx}: `{row['section']}` "
+                            f"{row['total_ms']:.3f}ms "
+                            f"(misses {row['misses']} of {row['attempts']})"
+                            f"{sample_suffix}"
+                        )
+                    )
+            lines.append("")
+
     lines.extend(
         [
             "| Suite | Status | Elapsed | Key metrics |",
@@ -3427,11 +3925,16 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             pieces = []
             if "sampled" in metrics:
                 pieces.append(f"sampled={metrics['sampled']}")
+            not_equivalent_label = (
+                "expected_not_equivalent"
+                if "generic_simplify_expected" in metrics and "sampled" not in metrics
+                else "not_equivalent"
+            )
             pieces.extend(
                 [
                     f"derived={metrics['derived']}",
                     f"unsupported={metrics['unsupported']}",
-                    f"not_equivalent={metrics['not_equivalent']}",
+                    f"{not_equivalent_label}={metrics['not_equivalent']}",
                     f"mean_step_count={metrics['mean_step_count']:.2f}",
                 ]
             )
@@ -3460,6 +3963,8 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 f"passed={metrics['passed']}",
                 f"failed={metrics['failed']}",
             ]
+            if metrics.get("ignored", 0) > 0:
+                pieces.append(f"ignored={metrics['ignored']}")
             if "nf_convergent" in metrics:
                 if "symbolic_closure_rate_percent" in metrics:
                     pieces.extend(
@@ -3602,6 +4107,13 @@ def main() -> int:
                 status = "fail"
                 overall_exit = 1
             else:
+                if (
+                    spec.parser == "cargo_test_basic"
+                    and metrics.get("ignored", 0) > 0
+                ):
+                    ignored_tests = ignored_cargo_tests_for_suite(spec)
+                    if ignored_tests:
+                        metrics["ignored_tests"] = ignored_tests
                 status = suite_status(spec.name, metrics, returncode)
                 if spec.name == "embedded_equivalence_context":
                     metrics["corpus_structure"] = embedded_corpus_structure_metrics()
@@ -3637,11 +4149,17 @@ def main() -> int:
         profile_env = orchestrator_profile_env(spec, args)
         profile_command = orchestrator_profile_command(spec, args)
         if profile_env and profile_command and "parse_error" not in metrics:
+            profile_limit = orchestrator_profile_case_limit(spec, args)
+            profile_scope = (
+                f"limit {profile_limit}"
+                if profile_limit is not None
+                else "configured pressure windows"
+            )
             print()
             print(
                 f"=== {spec.name}.orchestrator_profile ===\n"
                 f"Profiled observability slice "
-                f"(limit {args.orchestrator_profile_limit}, "
+                f"({profile_scope}, "
                 f"filter {args.orchestrator_profile_filter})"
             )
             (
@@ -3670,7 +4188,7 @@ def main() -> int:
                         metrics["orchestrator_profile"] = profile_metrics["orchestrator_profile"]
                         metrics["orchestrator_profile_slice"] = {
                             "filter": args.orchestrator_profile_filter,
-                            "limit": args.orchestrator_profile_limit,
+                            "limit": profile_limit,
                             "total_cases": profile_metrics["total_cases"],
                             "wrapper_count": profile_metrics.get("wrapper_count", 0),
                             "family_count": profile_metrics.get("family_count", 0),

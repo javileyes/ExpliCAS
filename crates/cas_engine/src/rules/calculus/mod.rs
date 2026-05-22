@@ -4047,6 +4047,16 @@ pub(crate) fn sqrt_additive_tan_polynomial_derivative_presentation(
     let two = ctx.num(2);
     let cos_square = ctx.add_raw(Expr::Pow(cos_arg, two));
 
+    if sqrt_variable_derivative.is_none()
+        && reciprocal_sqrt_variable_derivative.is_none()
+        && common_denominator.is_some()
+        && matches!(reciprocal_derivative_scales.as_slice(), [scale] if !scale.is_zero())
+    {
+        let (result, _, required_conditions) =
+            sqrt_additive_tan_polynomial_derivative_inline_presentation(ctx, target, var_name)?;
+        return Some((result, radicand, required_conditions));
+    }
+
     if let Some((sqrt_scale, sqrt_arg)) = sqrt_variable_derivative {
         if common_denominator.is_some() {
             return None;
@@ -4202,6 +4212,8 @@ pub(crate) fn sqrt_additive_tan_polynomial_derivative_inline_presentation(
     let mut sqrt_variable_derivative = None;
     let mut other_derivatives = Vec::new();
     let mut has_variable_dependency = false;
+    let mut has_ln_derivative = false;
+    let mut has_reciprocal_sqrt_derivative = false;
     let mut required_conditions = Vec::new();
 
     for (term, sign) in terms {
@@ -4245,6 +4257,37 @@ pub(crate) fn sqrt_additive_tan_polynomial_derivative_inline_presentation(
             required_conditions.push(crate::ImplicitCondition::Positive(sqrt_arg));
             continue;
         }
+        if let Some((ln_scale, ln_arg)) =
+            scaled_ln_variable_arg_for_calculus_presentation(ctx, signed_term, var_name)
+        {
+            has_ln_derivative |= !ln_scale.is_zero();
+            let numerator = rational_const_for_calculus_presentation(ctx, ln_scale);
+            let reciprocal = ctx.add_raw(Expr::Div(numerator, ln_arg));
+            other_derivatives.push(reciprocal);
+            required_conditions.push(crate::ImplicitCondition::Positive(ln_arg));
+            continue;
+        }
+        if let Some((reciprocal_sqrt_scale, reciprocal_sqrt_arg)) =
+            scaled_reciprocal_sqrt_variable_term_for_calculus_presentation(
+                ctx,
+                signed_term,
+                var_name,
+            )
+        {
+            if has_reciprocal_sqrt_derivative {
+                return None;
+            }
+            has_reciprocal_sqrt_derivative = true;
+            if !reciprocal_sqrt_scale.is_zero() {
+                other_derivatives.push(reciprocal_sqrt_derivative_term_for_calculus_presentation(
+                    ctx,
+                    reciprocal_sqrt_scale,
+                    reciprocal_sqrt_arg,
+                ));
+            }
+            required_conditions.push(crate::ImplicitCondition::Positive(reciprocal_sqrt_arg));
+            continue;
+        }
         if bounded_sin_cos_term_bound_for_calculus_presentation(ctx, signed_term).is_some() {
             let derivative = differentiate(ctx, signed_term, var_name)?;
             if !cas_ast::views::as_rational_const(ctx, derivative, 8)
@@ -4285,8 +4328,16 @@ pub(crate) fn sqrt_additive_tan_polynomial_derivative_inline_presentation(
     if !has_variable_dependency || tan_scale.is_zero() {
         return None;
     }
-    let (sqrt_scale, sqrt_arg) = sqrt_variable_derivative?;
-    if sqrt_scale.is_zero() {
+    if sqrt_variable_derivative.is_none() && !has_ln_derivative {
+        return None;
+    }
+    if sqrt_variable_derivative.is_some() && has_reciprocal_sqrt_derivative {
+        return None;
+    }
+    if sqrt_variable_derivative
+        .as_ref()
+        .is_some_and(|(sqrt_scale, _)| sqrt_scale.is_zero())
+    {
         return None;
     }
     let tan_arg = tan_arg?;
@@ -4307,9 +4358,11 @@ pub(crate) fn sqrt_additive_tan_polynomial_derivative_inline_presentation(
         tan_scale,
         reciprocal_trig_square,
     ));
-    derivative_terms.push(sqrt_variable_derivative_term_for_calculus_presentation(
-        ctx, sqrt_scale, sqrt_arg,
-    )?);
+    if let Some((sqrt_scale, sqrt_arg)) = sqrt_variable_derivative {
+        derivative_terms.push(sqrt_variable_derivative_term_for_calculus_presentation(
+            ctx, sqrt_scale, sqrt_arg,
+        )?);
+    }
     derivative_terms.extend(other_derivatives);
 
     let result = sqrt_additive_generic_derivative_presentation(ctx, radicand, derivative_terms)?;
@@ -9593,6 +9646,17 @@ fn inverse_reciprocal_trig_positive_quadratic_surd_quotient_presentation(
     let compact = ctx.add(Expr::Div(numerator, denominator));
 
     Some(cas_ast::hold::wrap_hold(ctx, compact))
+}
+
+pub(crate) fn inverse_reciprocal_trig_positive_quadratic_surd_quotient_presentation_with_domain(
+    ctx: &mut Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let compact = inverse_reciprocal_trig_positive_quadratic_surd_quotient_presentation(
+        ctx, target, var_name,
+    )?;
+    Some((unwrap_internal_hold_for_calculus(ctx, compact), Vec::new()))
 }
 
 fn inverse_reciprocal_trig_positive_quadratic_square_presentation(
@@ -16910,6 +16974,30 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
         call.target,
         &call.var_name,
     );
+    let preserve_compact_tan_fourth_affine =
+        cas_math::symbolic_integration_support::integrate_symbolic_is_tan_fourth_affine_target(
+            ctx,
+            call.target,
+            &call.var_name,
+        );
+    let preserve_compact_cot_fourth_affine =
+        cas_math::symbolic_integration_support::integrate_symbolic_is_cot_fourth_affine_target(
+            ctx,
+            call.target,
+            &call.var_name,
+        );
+    let preserve_compact_sec_fourth_affine =
+        cas_math::symbolic_integration_support::integrate_symbolic_is_sec_fourth_affine_target(
+            ctx,
+            call.target,
+            &call.var_name,
+        );
+    let preserve_compact_csc_fourth_affine =
+        cas_math::symbolic_integration_support::integrate_symbolic_is_csc_fourth_affine_target(
+            ctx,
+            call.target,
+            &call.var_name,
+        );
     let preserve_compact_sqrt_reciprocal_trig_product =
         sqrt_reciprocal_trig_product_integrand_target(ctx, call.target, &call.var_name);
     let preserve_compact_sqrt_trig_reciprocal = cas_math::symbolic_integration_support::integrate_symbolic_is_sqrt_trig_reciprocal_derivative_target(
@@ -17094,6 +17182,10 @@ define_rule!(IntegrateRule, "Symbolic Integration", |ctx, expr| {
         || preserve_compact_acosh_affine
         || preserve_compact_bounded_inverse_trig
         || preserve_compact_trig_polynomial
+        || preserve_compact_tan_fourth_affine
+        || preserve_compact_cot_fourth_affine
+        || preserve_compact_sec_fourth_affine
+        || preserve_compact_csc_fourth_affine
         || preserve_compact_sqrt_reciprocal_trig_product
         || preserve_compact_sqrt_trig_reciprocal
         || preserve_compact_sqrt_trig_log
@@ -18298,6 +18390,65 @@ mod compact_hold_tests {
         );
         assert_eq!(rendered(&ctx, radicand), "tan(x) + cos(x)^2 + x");
         assert_eq!(required_conditions.len(), 1);
+    }
+
+    #[test]
+    fn sqrt_additive_tan_ln_polynomial_derivative_inline_presentation_accepts_log_term() {
+        for (
+            input,
+            expected_result,
+            expected_radicand,
+            expected_required_conditions_len,
+        ) in [
+            (
+                "sqrt(tan(x)+ln(x)+x)",
+                "(sec(x)^2 + 1 / x + 1) / (2 * sqrt(tan(x) + ln(x) + x))",
+                "tan(x) + ln(x) + x",
+                2,
+            ),
+            (
+                "sqrt(tan(x)+2*ln(x)+x)",
+                "(sec(x)^2 + 2 / x + 1) / (2 * sqrt(tan(x) + 2 * ln(x) + x))",
+                "tan(x) + 2 * ln(x) + x",
+                2,
+            ),
+            (
+                "sqrt(tan(x)-ln(x)+x)",
+                "(sec(x)^2 + 1 - 1 / x) / (2 * sqrt(tan(x) - ln(x) + x))",
+                "tan(x) - ln(x) + x",
+                2,
+            ),
+            (
+                "sqrt(tan(x)+ln(x)+sqrt(x)+x)",
+                "(sec(x)^2 + 1 / x + 1 / (2 * sqrt(x)) + 1) / (2 * sqrt(tan(x) + ln(x) + sqrt(x) + x))",
+                "tan(x) + ln(x) + sqrt(x) + x",
+                3,
+            ),
+            (
+                "sqrt(tan(x)+ln(x)+1/sqrt(x)+x)",
+                "(sec(x)^2 + 1 / x + 1 - 1/2 * x^(-3/2)) / (2 * sqrt(tan(x) + ln(x) + 1 / sqrt(x) + x))",
+                "tan(x) + ln(x) + 1 / sqrt(x) + x",
+                3,
+            ),
+        ] {
+            let mut ctx = Context::new();
+            let target = parse(input, &mut ctx).unwrap();
+            let (result, radicand, required_conditions) =
+                sqrt_additive_tan_polynomial_derivative_inline_presentation(&mut ctx, target, "x")
+                    .unwrap();
+
+            assert_eq!(rendered(&ctx, result), expected_result, "input: {input}");
+            assert_eq!(
+                rendered(&ctx, radicand),
+                expected_radicand,
+                "input: {input}"
+            );
+            assert_eq!(
+                required_conditions.len(),
+                expected_required_conditions_len,
+                "input: {input}"
+            );
+        }
     }
 
     #[test]
