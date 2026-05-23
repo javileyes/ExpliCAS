@@ -176,7 +176,12 @@ fn signed_rational_polynomial_terms_match(
     left_num.mul(&right_den) == right_num.mul(&left_den)
 }
 
-fn antiderivative_term_matches(ctx: &Context, left: ExprId, right: ExprId, var_name: &str) -> bool {
+fn antiderivative_term_matches(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
     if exprs_match(ctx, left, right) {
         return true;
     }
@@ -185,7 +190,7 @@ fn antiderivative_term_matches(ctx: &Context, left: ExprId, right: ExprId, var_n
         return true;
     }
 
-    if multiplicative_factor_multiset_matches(ctx, left, right) {
+    if multiplicative_antiderivative_factor_multiset_matches(ctx, left, right, var_name) {
         return true;
     }
 
@@ -209,6 +214,51 @@ fn antiderivative_term_matches(ctx: &Context, left: ExprId, right: ExprId, var_n
     }
 
     false
+}
+
+fn multiplicative_antiderivative_factor_multiset_matches(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    let left_factors = cas_math::expr_nary::mul_leaves(ctx, left);
+    let right_factors = cas_math::expr_nary::mul_leaves(ctx, right);
+    if left_factors.len() != right_factors.len() || left_factors.len() < 2 {
+        return false;
+    }
+
+    let mut used = vec![false; right_factors.len()];
+    'outer: for left_factor in left_factors {
+        for (index, right_factor) in right_factors.iter().copied().enumerate() {
+            if !used[index]
+                && antiderivative_factor_matches(ctx, left_factor, right_factor, var_name)
+            {
+                used[index] = true;
+                continue 'outer;
+            }
+        }
+        return false;
+    }
+
+    true
+}
+
+fn antiderivative_factor_matches(
+    ctx: &mut Context,
+    left: ExprId,
+    right: ExprId,
+    var_name: &str,
+) -> bool {
+    if exprs_match(ctx, left, right) || quotient_term_matches(ctx, left, right) {
+        return true;
+    }
+
+    let left_terms = cas_math::expr_nary::add_terms_signed(ctx, left);
+    let right_terms = cas_math::expr_nary::add_terms_signed(ctx, right);
+    left_terms.len() > 1
+        && right_terms.len() > 1
+        && additive_term_multiset_matches(ctx, left, right, var_name)
 }
 
 fn quotient_term_matches(ctx: &Context, left: ExprId, right: ExprId) -> bool {
@@ -1980,6 +2030,22 @@ fn sqrt_chain_derivative_scale_matches(
     sqrt_arg: ExprId,
     var_name: &str,
 ) -> Option<bool> {
+    sqrt_chain_derivative_scale_matches_scaled(
+        ctx,
+        actual_scale,
+        sqrt_arg,
+        var_name,
+        &BigRational::one(),
+    )
+}
+
+fn sqrt_chain_derivative_scale_matches_scaled(
+    ctx: &mut Context,
+    actual_scale: ExprId,
+    sqrt_arg: ExprId,
+    var_name: &str,
+    expected_scale: &BigRational,
+) -> Option<bool> {
     let sqrt_arg = cas_ast::hold::strip_all_holds(ctx, sqrt_arg);
     let base = sqrt_like_base(ctx, sqrt_arg)?;
     let base_poly = Polynomial::from_expr(ctx, base, var_name).ok()?;
@@ -1988,7 +2054,8 @@ fn sqrt_chain_derivative_scale_matches(
         return None;
     }
 
-    let expected_coeff = derivative.coeffs[0].clone() / BigRational::from_integer(2.into());
+    let expected_coeff =
+        derivative.coeffs[0].clone() * expected_scale / BigRational::from_integer(2.into());
     let actual_coeff = scaled_reciprocal_sqrt_coeff(ctx, actual_scale, base)?;
     Some(actual_coeff == expected_coeff)
 }
@@ -2249,6 +2316,104 @@ fn reciprocal_trig_target_coefficient(
             }
 
             matched_target.then_some(scale)
+        }
+        _ => None,
+    }
+}
+
+fn reciprocal_trig_log_abs_quotient_scale_expr(
+    ctx: &mut Context,
+    numerator: ExprId,
+    denominator: ExprId,
+    builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    let denominator_builtin = reciprocal_trig_denominator_builtin(builtin)?;
+    let mut matched_target = false;
+    let mut remaining_denominator_factors = Vec::new();
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, denominator) {
+        if unary_builtin_arg(ctx, factor, denominator_builtin)
+            .is_some_and(|factor_arg| exprs_equivalent(ctx, factor_arg, arg))
+        {
+            if matched_target {
+                return None;
+            }
+            matched_target = true;
+            continue;
+        }
+
+        remaining_denominator_factors.push(factor);
+    }
+
+    if !matched_target {
+        return None;
+    }
+
+    if remaining_denominator_factors.is_empty() {
+        return Some(numerator);
+    }
+
+    let remaining_denominator =
+        cas_math::expr_nary::build_balanced_mul(ctx, &remaining_denominator_factors);
+    Some(ctx.add(Expr::Div(numerator, remaining_denominator)))
+}
+
+fn reciprocal_trig_log_abs_target_scale_expr(
+    ctx: &mut Context,
+    expr: ExprId,
+    builtin: BuiltinFn,
+    arg: ExprId,
+) -> Option<ExprId> {
+    if let Some(scale) = scaled_unary_builtin_scale_expr(ctx, expr, builtin, arg) {
+        return Some(scale);
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let scale = reciprocal_trig_log_abs_target_scale_expr(ctx, inner, builtin, arg)?;
+            Some(ctx.add(Expr::Neg(scale)))
+        }
+        Expr::Div(num, den) => {
+            if let Some(scale) =
+                reciprocal_trig_log_abs_quotient_scale_expr(ctx, num, den, builtin, arg)
+            {
+                return Some(scale);
+            }
+
+            let scale = reciprocal_trig_log_abs_target_scale_expr(ctx, num, builtin, arg)?;
+            if expr_is_one(ctx, den) {
+                return Some(scale);
+            }
+            Some(ctx.add(Expr::Div(scale, den)))
+        }
+        Expr::Mul(_, _) => {
+            let mut scale_factors = Vec::new();
+            let mut matched_target_scale = None;
+
+            for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+                if let Some(target_scale) =
+                    reciprocal_trig_log_abs_target_scale_expr(ctx, factor, builtin, arg)
+                {
+                    if matched_target_scale.replace(target_scale).is_some() {
+                        return None;
+                    }
+                    continue;
+                }
+
+                scale_factors.push(factor);
+            }
+
+            let target_scale = matched_target_scale?;
+            if !expr_is_one(ctx, target_scale) {
+                scale_factors.push(target_scale);
+            }
+
+            if scale_factors.is_empty() {
+                Some(ctx.num(1))
+            } else {
+                Some(cas_math::expr_nary::build_balanced_mul(ctx, &scale_factors))
+            }
         }
         _ => None,
     }
@@ -3484,15 +3649,49 @@ fn log_abs_reciprocal_trig_target_diff_matches(
     let arg_derivative = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
         ctx, trig_arg, var_name,
     )?;
-    let arg_scale = cas_math::numeric_eval::as_rational_const(ctx, arg_derivative)?;
     let divisor_scale = cas_math::numeric_eval::as_rational_const(ctx, divisor)?;
     if divisor_scale.is_zero() {
         return None;
     }
 
-    let expected_scale = target_scale * arg_scale / divisor_scale;
-    let actual_scale = reciprocal_trig_target_coefficient(ctx, right, builtin, trig_arg)?;
-    Some(actual_scale == expected_scale)
+    let expected_rational_scale = target_scale / divisor_scale;
+    let arg_derivative_rational = cas_math::numeric_eval::as_rational_const(ctx, arg_derivative);
+    if let Some(arg_scale) = arg_derivative_rational.clone() {
+        let expected_scale = expected_rational_scale.clone() * arg_scale;
+        if let Some(actual_scale) =
+            reciprocal_trig_target_coefficient(ctx, right, builtin, trig_arg)
+        {
+            return Some(actual_scale == expected_scale);
+        }
+    }
+
+    let actual_scale = reciprocal_trig_log_abs_target_scale_expr(ctx, right, builtin, trig_arg)?;
+    if let Some(matched) = sqrt_chain_derivative_scale_matches_scaled(
+        ctx,
+        actual_scale,
+        trig_arg,
+        var_name,
+        &expected_rational_scale,
+    ) {
+        return Some(matched);
+    }
+    if let Some(matched) = polynomial_derivative_scale_matches(
+        ctx,
+        actual_scale,
+        trig_arg,
+        var_name,
+        &expected_rational_scale,
+    ) {
+        if matched || arg_derivative_rational.is_some() {
+            return Some(matched);
+        }
+    }
+
+    let expected_scale = scale_expr_by_rational(ctx, arg_derivative, expected_rational_scale);
+    Some(
+        exprs_equivalent(ctx, actual_scale, expected_scale)
+            || antiderivative_term_matches(ctx, actual_scale, expected_scale, var_name),
+    )
 }
 
 fn integrated_log_abs_reciprocal_trig_diff_matches(
@@ -3924,7 +4123,7 @@ fn explicit_high_log_power_product_antiderivative_diff_matches(
         if !exprs_match(ctx, integrate_call.target, right) {
             return None;
         }
-        if !cas_math::symbolic_integration_support::integrate_symbolic_is_high_log_power_product_substitution_target(
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_verifiable_log_power_product_substitution_target(
             ctx,
             integrate_call.target,
             &integrate_call.var_name,
@@ -3938,7 +4137,7 @@ fn explicit_high_log_power_product_antiderivative_diff_matches(
         ));
     }
 
-    if !cas_math::symbolic_integration_support::integrate_symbolic_is_high_log_power_product_substitution_target(
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_verifiable_log_power_product_substitution_target(
         ctx,
         right,
         &diff_call.var_name,
@@ -10711,6 +10910,23 @@ mod tests {
     }
 
     #[test]
+    fn explicit_log_power_product_antiderivative_residual_cancels_constant_base_square() {
+        let residual = "diff(integrate(2*x*log(2,x^2+1)^2, x), x) - 2*x*log(2,x^2+1)^2";
+        assert_eq!(
+            explicit_high_log_power_product_antiderivative_residual_result(residual),
+            Some(("0".to_string(), vec![]))
+        );
+        assert_eq!(simplify_text(residual), "0");
+
+        let rendered_residual = "diff((x^2+1)*(log(2,x^2+1)^2 + 2/ln(2)^2 - 2*log(2,x^2+1)/ln(2)), x) - 2*x*log(2,x^2+1)^2";
+        assert_eq!(
+            explicit_high_log_power_product_antiderivative_residual_result(rendered_residual),
+            Some(("0".to_string(), vec![]))
+        );
+        assert_eq!(simplify_text(rendered_residual), "0");
+    }
+
+    #[test]
     fn explicit_quadratic_affine_log_antiderivative_residual_cancels_negative_slope() {
         let residual = "diff(integrate(x^2*ln(1-2*x), x), x) - x^2*ln(1-2*x)";
         assert_eq!(
@@ -11775,6 +11991,26 @@ mod tests {
             );
             assert_eq!(simplify_text(&input), "1", "{input}");
         }
+    }
+
+    #[test]
+    fn diff_integral_reciprocal_trig_log_sqrt_chain_passthrough_quotient_preserves_denominator() {
+        let residual = "diff(integrate(3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))), x), x) - 3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1)))";
+        let input = format!("(({residual}) + 1)/(x+2)");
+
+        assert_eq!(
+            integral_reciprocal_trig_passthrough_quotient_result(&input),
+            Some((
+                "1 / (x + 2)".to_string(),
+                vec![
+                    "cos(sqrt(3 * x + 1)) ≠ 0".to_string(),
+                    "x > -1/3".to_string(),
+                    "x ≠ -2".to_string(),
+                ]
+            )),
+            "{input}"
+        );
+        assert_eq!(simplify_text(&input), "1 / (x + 2)", "{input}");
     }
 
     #[test]

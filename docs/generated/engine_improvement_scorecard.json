@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-05-22T18:47:00.516136+00:00",
+  "generated_at": "2026-05-23T05:15:01.478196+00:00",
   "generated_discovery": {
     "areas": {},
     "families": {},
@@ -15,7 +15,7 @@
   },
   "git": {
     "branch": "main",
-    "commit": "59038c2c708626072b5d74864150da7f6fb09283"
+    "commit": "b5c6f3384bd38cf36f3eb211034613c094cdc392"
   },
   "orchestrator_profile_filter": null,
   "orchestrator_profile_limit": null,
@@ -37,7 +37,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 5.586,
+      "elapsed_seconds": 4.95,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -55,7 +55,7 @@
         "passed": 256,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 5.586,
+      "process_elapsed_seconds": 4.95,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -76,7 +76,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 4.288,
+      "elapsed_seconds": 4.13,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -91,10 +91,10 @@
           }
         ],
         "measured": 0,
-        "passed": 321,
+        "passed": 328,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 4.288,
+      "process_elapsed_seconds": 4.13,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -115,7 +115,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.486,
+      "elapsed_seconds": 1.55,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -124,10 +124,10 @@
         "filtered_out": 0,
         "ignored": 0,
         "measured": 0,
-        "passed": 100,
+        "passed": 103,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 0.486,
+      "process_elapsed_seconds": 1.55,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -148,7 +148,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.343,
+      "elapsed_seconds": 0.621,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -160,7 +160,7 @@
         "passed": 8,
         "timeouts": 0
       },
-      "process_elapsed_seconds": 0.343,
+      "process_elapsed_seconds": 0.621,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -179,22 +179,37 @@
         "--summary-json"
       ],
       "delta": {},
-      "elapsed_seconds": 2.182,
+      "elapsed_seconds": 5.806,
       "env": {},
       "guardrail": null,
       "metrics": {
+        "distinct_expected_required_conditions": 11,
+        "expected_required_condition_case_count": 350,
+        "expected_required_condition_counts": {
+          "4 - x^4": 14,
+          "cos(2\u00b7x + 1)": 23,
+          "cos(sqrt(3\u00b7x + 1))": 14,
+          "sin(2\u00b7x + 1)": 27,
+          "sin(sqrt(3\u00b7x + 1))": 14,
+          "sinh(sqrt(3\u00b7x + 1))": 14,
+          "x + 1": 14,
+          "x + 2": 340,
+          "x + 3": 105,
+          "x + 4": 17,
+          "x > -1/3": 51
+        },
         "failed": 0,
         "issue_kind_counts": {},
         "matrix_status": "pass",
-        "passed": 247,
+        "passed": 357,
         "problem_case_count": 0,
         "problem_cases": [],
         "raw_failed": 0,
         "slow": 0,
         "timeouts": 0,
-        "total_cases": 247
+        "total_cases": 357
       },
-      "process_elapsed_seconds": 2.182,
+      "process_elapsed_seconds": 5.806,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -217,7 +232,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 4.557,
+      "elapsed_seconds": 5.728,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -282,17 +297,40 @@
         },
         "generic_simplify_expected": 0,
         "long_path_rate": 0.0,
+        "max_step_count": 3,
         "mean_step_count": 1.05,
+        "multi_step_success_ids": [
+          "nested_radical_denesting:2",
+          "expand_then_cancel_to_square:3",
+          "expand_log_product_with_root_cleanup:2",
+          "expand_log_powered_two_denominator_factors:2",
+          "expand_log_general_base_powered_two_denominator_factors_with_powered_denominator:2",
+          "log_inverse_power_tower:2",
+          "log_inverse_power_unary_natural_alias:2",
+          "log_exp_inverse_ln_exp_power:2",
+          "rationalize_then_cancel_to_zero:2",
+          "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial:2",
+          "expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:2",
+          "expand_trig_product_to_sum_to_cosine_difference_polynomial:2",
+          "expand_trig_product_to_sum_to_cosine_sum_polynomial:2",
+          "expand_trig_product_to_sum_to_sine_difference_mixed_polynomial:2",
+          "expand_trig_product_to_sum_to_cosine_difference_polynomial_with_passthrough:2",
+          "expand_trig_product_to_sum_to_sine_difference_mixed_polynomial_with_passthrough:2",
+          "expand_trig_phase_shift_pair_sum_to_shifted_sine_pair:2",
+          "expand_trig_phase_shift_shifted_sine_pair_to_sum_pair:2"
+        ],
+        "multi_step_successes": 18,
         "not_equivalent": 1,
         "not_equivalent_by_family": {
           "negative": 1
         },
         "reachability_rate": 1.0,
+        "single_step_successes": 372,
         "supported_equiv_rate": 1.0,
         "unsupported": 0,
         "unsupported_by_family": {}
       },
-      "process_elapsed_seconds": 4.557,
+      "process_elapsed_seconds": 5.728,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -316,19 +354,19 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 13.837,
+      "elapsed_seconds": 20.1,
       "env": {},
       "guardrail": null,
       "metrics": {
         "cases": 472,
         "flagged_cases": 0,
         "flagged_rate": 0.0,
-        "mean_step_count": 1.06,
+        "mean_step_count": 1.05,
         "no_web_steps": 0,
         "no_web_substeps": 0,
-        "total_web_substeps": 482
+        "total_web_substeps": 485
       },
-      "process_elapsed_seconds": 13.837,
+      "process_elapsed_seconds": 20.1,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -351,12 +389,12 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.275,
+      "elapsed_seconds": 0.262,
       "env": {},
       "guardrail": null,
       "metrics": {
         "actual_strategy_counts": {
-          "calculus diff": 1,
+          "calculus diff": 2,
           "cancel fraction": 1,
           "collect": 1,
           "combine fraction": 2,
@@ -387,8 +425,8 @@
           "split fraction": 2
         },
         "classification_rate": 1.0,
-        "classified": 66,
-        "derived": 66,
+        "classified": 67,
+        "derived": 67,
         "derived_by_family": {
           "Addition of fractions": 1,
           "Binomial Expansion": 1,
@@ -425,7 +463,7 @@
           "Tangent half-angle substitution": 1,
           "Triple angle": 1,
           "arctan compositions": 1,
-          "calculus_diff": 1,
+          "calculus_diff": 2,
           "collect": 1,
           "conditional_factor": 1,
           "expand": 1,
@@ -458,23 +496,32 @@
         "embedded_family_total_count": 26,
         "generic_simplify_strategy_ids": [],
         "generic_simplify_strategy_successes": 0,
-        "mean_step_count": 1.05,
+        "max_step_count": 4,
+        "mean_step_count": 1.09,
         "multi_step_success_ids": [
           "identity_log_product_root_cleanup:2",
           "identity_nested_radical_denesting:2",
           "identity_log_inverse_power_tower:2",
+          "embedded_calculus_diff_arctan_sqrt_compact:4",
           "embedded_log_inverse_power_unary_natural_alias:2"
         ],
-        "multi_step_successes": 4,
+        "multi_step_success_step_counts": {
+          "embedded_calculus_diff_arctan_sqrt_compact": 4,
+          "embedded_log_inverse_power_unary_natural_alias": 2,
+          "identity_log_inverse_power_tower": 2,
+          "identity_log_product_root_cleanup": 2,
+          "identity_nested_radical_denesting": 2
+        },
+        "multi_step_successes": 5,
         "not_equivalent": 0,
         "not_equivalent_by_family": {},
         "reachability_rate": 1.0,
-        "sampled": 66,
+        "sampled": 67,
         "single_step_successes": 62,
         "unsupported": 0,
         "unsupported_by_family": {}
       },
-      "process_elapsed_seconds": 0.275,
+      "process_elapsed_seconds": 0.262,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -494,7 +541,7 @@
         "--"
       ],
       "delta": {},
-      "elapsed_seconds": 9.8,
+      "elapsed_seconds": 9.1,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -664,9 +711,9 @@
         "max_expression_depth": 18,
         "max_shell_depth": 5,
         "passed": 1488,
-        "reported_elapsed": "9.80s",
-        "reported_elapsed_per_case_ms": 6.586,
-        "reported_elapsed_seconds": 9.8,
+        "reported_elapsed": "9.10s",
+        "reported_elapsed_per_case_ms": 6.1156,
+        "reported_elapsed_seconds": 9.1,
         "shell_depth_count": 6,
         "shell_depth_rows": {
           "0": {
@@ -1787,7 +1834,7 @@
           }
         ]
       },
-      "process_elapsed_seconds": 10.159,
+      "process_elapsed_seconds": 10.305,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1811,7 +1858,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 0.12,
+      "elapsed_seconds": 0.952,
       "env": {},
       "guardrail": null,
       "metrics": {
@@ -1824,7 +1871,7 @@
         "single_step_no_substeps": 0,
         "total_wire_substeps": 24
       },
-      "process_elapsed_seconds": 0.12,
+      "process_elapsed_seconds": 0.952,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,
@@ -1847,7 +1894,7 @@
         "--nocapture"
       ],
       "delta": {},
-      "elapsed_seconds": 20.758,
+      "elapsed_seconds": 21.496,
       "env": {
         "METATEST_MAX_EXAMPLES": "20",
         "METATEST_PROGRESS_EVERY": "1000",
@@ -2106,7 +2153,7 @@
         "timeouts": 0,
         "total_combos": 16519
       },
-      "process_elapsed_seconds": 20.758,
+      "process_elapsed_seconds": 21.496,
       "returncode": 0,
       "status": "pass",
       "timed_out": false,

@@ -1663,6 +1663,131 @@ fn test_eval_json_omits_noop_post_calculus_presentation_step() {
 }
 
 #[test]
+fn test_eval_json_derive_calculus_diff_shadow_omits_noop_wire_steps() {
+    let expr = "derive diff(arctan(sqrt(x)),x), 1/(2*sqrt(x)*(x+1))";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["strategy"], "calculus diff");
+    assert_eq!(json["result"], "1 / (2·sqrt(x)·(x + 1))");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(json["steps_count"], steps.len());
+    assert!(
+        steps.iter().all(|step| {
+            step["before"] != step["after"]
+                || step["substeps"]
+                    .as_array()
+                    .is_some_and(|substeps| !substeps.is_empty())
+        }),
+        "derive calculus shadow should not serialize visible no-op steps: {steps:?}"
+    );
+
+    let required = json["required_conditions"]
+        .as_array()
+        .expect("required_conditions should be an array");
+    assert!(
+        required.iter().any(|condition| {
+            condition["kind"] == "Positive" && condition["expr_canonical"] == "x"
+        }),
+        "derive calculus shadow should preserve the sqrt-domain guard: {required:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_derive_expand_cancel_chain_merges_adjacent_cancel_wire_steps() {
+    let expr = "derive (a+b)^2 - a^2 - 2*a*b, b^2";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["strategy"], "expand");
+    assert_eq!(json["result"], "b^2");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(json["steps_count"], steps.len());
+    assert_eq!(
+        steps.len(),
+        2,
+        "expected expand plus a single merged cancel step: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Expandir binomio");
+    assert_eq!(steps[1]["rule"], "Cancelar términos opuestos");
+    assert_eq!(
+        steps[1]["before"],
+        "a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b"
+    );
+    assert_eq!(steps[1]["after"], "b^2");
+
+    let substeps = steps[1]["substeps"]
+        .as_array()
+        .expect("merged cancel step should preserve local cancellations");
+    assert_eq!(
+        substeps.len(),
+        2,
+        "expected both exact cancellation substeps: {substeps:?}"
+    );
+    assert!(
+        substeps.iter().any(|substep| {
+            substep["before_latex"] == "{a}^{2} - {a}^{2}" && substep["after_latex"] == "0"
+        }),
+        "expected a^2 - a^2 cancellation substep: {substeps:?}"
+    );
+    assert!(
+        substeps.iter().any(|substep| {
+            substep["before_latex"] == "2\\cdot a\\cdot b - 2\\cdot a\\cdot b"
+                && substep["after_latex"] == "0"
+        }),
+        "expected 2ab - 2ab cancellation substep: {substeps:?}"
+    );
+}
+
+#[test]
+fn test_eval_json_derive_signed_binomial_cube_merges_negative_power_cleanup_steps() {
+    let expr = "derive (a-b)^3, a^3 - 3*a^2*b + 3*a*b^2 - b^3";
+    let json = eval_json_with_args(expr, &["--steps", "on"]);
+
+    assert_eq!(json["ok"], true, "expr: {expr}");
+    assert_eq!(json["strategy"], "expand");
+    assert_eq!(json["result"], "a^3 + 3·a·b^2 - 3·b·a^2 - b^3");
+
+    let steps = json["steps"].as_array().expect("steps should be an array");
+    assert_eq!(json["steps_count"], steps.len());
+    assert_eq!(
+        steps.len(),
+        2,
+        "expected expansion plus a single negative-power cleanup step: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Expandir binomio");
+    assert_eq!(steps[1]["rule"], "Simplificar potencia con base negativa");
+    assert_eq!(
+        steps[1]["before"],
+        "(-b)^3 + 3 · a · (-b)^2 + a^3 - 3 · b · a^2"
+    );
+    assert_eq!(steps[1]["after"], "a^3 - 3 · b · a^2 + 3 · a · b^2 - b^3");
+
+    let substeps = steps[1]["substeps"]
+        .as_array()
+        .expect("merged negative-power cleanup should preserve both local rewrites");
+    assert_eq!(
+        substeps.len(),
+        2,
+        "expected odd and even negative-base power substeps: {substeps:?}"
+    );
+    assert!(
+        substeps.iter().any(|substep| {
+            substep["before_latex"] == "{(-b)}^{3}" && substep["after_latex"] == "-{b}^{3}"
+        }),
+        "expected odd negative-base power substep: {substeps:?}"
+    );
+    assert!(
+        substeps.iter().any(|substep| {
+            substep["before_latex"] == "{(-b)}^{2}" && substep["after_latex"] == "{b}^{2}"
+        }),
+        "expected even negative-base power substep: {substeps:?}"
+    );
+}
+
+#[test]
 fn test_eval_json_diff_sqrt_bounded_trig_positive_shift_uses_compact_trig_presentation() {
     let expr = "diff(sqrt(sin(2*x)+cos(x)+4), x)";
     let (json, stderr) = eval_json_with_args_and_stderr(expr, &["--steps", "on"]);

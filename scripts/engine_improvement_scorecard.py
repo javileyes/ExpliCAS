@@ -1887,6 +1887,11 @@ def parse_derive(output: str) -> dict[str, Any]:
     if not summary or not stats:
         raise ValueError("missing derive summary block")
 
+    path_signal = re.search(
+        r"derive path signal: single_step_successes=(\d+) multi_step_successes=(\d+) max_step_count=(\d+)",
+        output,
+    )
+    multi_step_ids = re.search(r"derive multi-step-ids: ([^\n]*)", output)
     specificity = re.search(
         r"derive strategy specificity: generic_simplify_expected=(\d+) distinct_expected_strategies=(\d+)",
         output,
@@ -1901,6 +1906,16 @@ def parse_derive(output: str) -> dict[str, Any]:
     expected_strategy_counts = parse_debug_count_map(
         output, "derive expected-strategy-counts"
     )
+    single_step_successes = int(path_signal.group(1)) if path_signal else None
+    multi_step_successes = int(path_signal.group(2)) if path_signal else None
+    max_step_count = int(path_signal.group(3)) if path_signal else None
+    multi_step_success_ids = []
+    if multi_step_ids:
+        raw_ids = multi_step_ids.group(1).strip()
+        if raw_ids and raw_ids != "none":
+            multi_step_success_ids = [
+                item.strip() for item in raw_ids.split(",") if item.strip()
+            ]
 
     return {
         "derived": int(summary.group(1)),
@@ -1910,6 +1925,10 @@ def parse_derive(output: str) -> dict[str, Any]:
         "supported_equiv_rate": float(stats.group(2)),
         "mean_step_count": float(stats.group(3)),
         "long_path_rate": float(stats.group(4)),
+        "single_step_successes": single_step_successes,
+        "multi_step_successes": multi_step_successes,
+        "multi_step_success_ids": multi_step_success_ids,
+        "max_step_count": max_step_count,
         "generic_simplify_expected": int(specificity.group(1))
         if specificity
         else 0,
@@ -1993,13 +2012,33 @@ def parse_derive_shadow(output: str) -> dict[str, Any]:
             generic_simplify_ids = [
                 item.strip() for item in raw_ids.split(",") if item.strip()
             ]
+    single_step_successes = int(stats.group(3))
+    multi_step_successes = int(stats.group(4))
     multi_step_success_ids = []
+    multi_step_success_step_counts = {}
     if multi_step_ids:
         raw_ids = multi_step_ids.group(1).strip()
         if raw_ids and raw_ids != "none":
             multi_step_success_ids = [
                 item.strip() for item in raw_ids.split(",") if item.strip()
             ]
+            for item in multi_step_success_ids:
+                step_count = re.match(r"(.+):(\d+)$", item)
+                if step_count:
+                    multi_step_success_step_counts[step_count.group(1)] = int(
+                        step_count.group(2)
+                    )
+    parsed_step_counts = list(multi_step_success_step_counts.values())
+    if parsed_step_counts:
+        max_step_count = max(
+            ([1] if single_step_successes else []) + parsed_step_counts
+        )
+    elif single_step_successes and not multi_step_successes:
+        max_step_count = 1
+    elif derived == 0:
+        max_step_count = 0
+    else:
+        max_step_count = None
     embedded_missing_families = []
     if embedded_family_coverage:
         raw_missing = embedded_family_coverage.group(3).strip()
@@ -2017,9 +2056,11 @@ def parse_derive_shadow(output: str) -> dict[str, Any]:
         "classification_rate": classified / sampled if sampled else 0.0,
         "reachability_rate": float(stats.group(1)),
         "mean_step_count": float(stats.group(2)),
-        "single_step_successes": int(stats.group(3)),
-        "multi_step_successes": int(stats.group(4)),
+        "single_step_successes": single_step_successes,
+        "multi_step_successes": multi_step_successes,
         "multi_step_success_ids": multi_step_success_ids,
+        "multi_step_success_step_counts": multi_step_success_step_counts,
+        "max_step_count": max_step_count,
         "generic_simplify_strategy_successes": int(specificity.group(1))
         if specificity
         else 0,
@@ -2366,8 +2407,25 @@ def parse_calculus_residual_matrix(output: str) -> dict[str, Any]:
     problem_case_count = raw.get("problem_case_count")
     if not isinstance(problem_case_count, int):
         problem_case_count = len(problem_cases)
+    expected_required_condition_case_count = raw.get(
+        "expected_required_condition_case_count"
+    )
+    distinct_expected_required_conditions = raw.get(
+        "distinct_expected_required_conditions"
+    )
+    expected_required_condition_counts = raw.get("expected_required_condition_counts")
+    if isinstance(expected_required_condition_counts, dict):
+        sanitized_condition_counts = {
+            key: value
+            for key, value in expected_required_condition_counts.items()
+            if isinstance(key, str) and isinstance(value, int)
+        }
+    else:
+        sanitized_condition_counts = {}
+    if not isinstance(distinct_expected_required_conditions, int):
+        distinct_expected_required_conditions = len(sanitized_condition_counts)
 
-    return {
+    metrics = {
         "matrix_status": status,
         "total_cases": total,
         "passed": passed,
@@ -2383,6 +2441,33 @@ def parse_calculus_residual_matrix(output: str) -> dict[str, Any]:
             if isinstance(key, str) and isinstance(value, int)
         },
     }
+    if isinstance(expected_required_condition_case_count, int):
+        metrics["expected_required_condition_case_count"] = (
+            expected_required_condition_case_count
+        )
+    if sanitized_condition_counts or isinstance(
+        raw.get("distinct_expected_required_conditions"), int
+    ):
+        metrics["distinct_expected_required_conditions"] = (
+            distinct_expected_required_conditions
+        )
+        metrics["expected_required_condition_counts"] = sanitized_condition_counts
+    return metrics
+
+
+def sparse_expected_condition_fragments(
+    metrics: dict[str, Any], limit: int = 5
+) -> list[str]:
+    counts = metrics.get("expected_required_condition_counts")
+    if not isinstance(counts, dict):
+        return []
+    rows = [
+        (condition, count)
+        for condition, count in counts.items()
+        if isinstance(condition, str) and isinstance(count, int)
+    ]
+    rows.sort(key=lambda row: (row[1], row[0]))
+    return [f"{condition}={count}" for condition, count in rows[:limit]]
 
 
 PARSERS = {
@@ -3340,6 +3425,22 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 ]
             )
         else:
+            max_step_count = derive_metrics.get("max_step_count")
+            max_step_count_label = (
+                max_step_count if max_step_count is not None else "n/a"
+            )
+            single_step_successes = derive_metrics.get("single_step_successes")
+            multi_step_successes = derive_metrics.get("multi_step_successes")
+            path_quality = (
+                f"- Path quality: mean_step_count={derive_metrics['mean_step_count']:.2f} "
+                f"long_path_rate={derive_metrics['long_path_rate']:.2f}"
+            )
+            if single_step_successes is not None and multi_step_successes is not None:
+                path_quality += (
+                    f" single_step_successes={single_step_successes} "
+                    f"multi_step_successes={multi_step_successes} "
+                    f"max_step_count={max_step_count_label}"
+                )
             lines.extend(
                 [
                     (
@@ -3347,10 +3448,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"unsupported={derive_metrics['unsupported']} "
                         f"not_equivalent={derive_metrics['not_equivalent']}"
                     ),
-                    (
-                        f"- Path quality: mean_step_count={derive_metrics['mean_step_count']:.2f} "
-                        f"long_path_rate={derive_metrics['long_path_rate']:.2f}"
-                    ),
+                    path_quality,
                     (
                         f"- Strategy specificity: generic_simplify_expected="
                         f"{derive_metrics.get('generic_simplify_expected', 0)} "
@@ -3391,6 +3489,10 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 ]
             )
         else:
+            max_step_count = derive_shadow_metrics.get("max_step_count")
+            max_step_count_label = (
+                max_step_count if max_step_count is not None else "n/a"
+            )
             lines.extend(
                 [
                     (
@@ -3402,7 +3504,8 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     (
                         f"- Path signal: mean_step_count={derive_shadow_metrics['mean_step_count']:.2f} "
                         f"single_step_successes={derive_shadow_metrics['single_step_successes']} "
-                        f"multi_step_successes={derive_shadow_metrics['multi_step_successes']}"
+                        f"multi_step_successes={derive_shadow_metrics['multi_step_successes']} "
+                        f"max_step_count={max_step_count_label}"
                     ),
                     (
                         f"- Strategy specificity: generic_simplify_strategy_successes="
@@ -3590,14 +3693,28 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     f"- `{label}`: parse_error={metrics['parse_error']}"
                 )
             elif "total_cases" in metrics:
-                lines.append(
-                    (
-                        f"- `{label}`: passed={metrics['passed']} "
-                        f"failed={metrics['failed']} total={metrics['total_cases']} "
-                        f"slow={metrics.get('slow', 0)} "
-                        f"timeouts={metrics.get('timeouts', 0)}"
-                    )
+                line = (
+                    f"- `{label}`: passed={metrics['passed']} "
+                    f"failed={metrics['failed']} total={metrics['total_cases']} "
+                    f"slow={metrics.get('slow', 0)} "
+                    f"timeouts={metrics.get('timeouts', 0)}"
                 )
+                conditioned_cases = metrics.get("expected_required_condition_case_count")
+                distinct_conditions = metrics.get("distinct_expected_required_conditions")
+                if isinstance(conditioned_cases, int) and isinstance(
+                    distinct_conditions, int
+                ):
+                    line += (
+                        f" conditioned_cases={conditioned_cases} "
+                        f"distinct_conditions={distinct_conditions}"
+                    )
+                lines.append(line)
+                sparse_conditions = sparse_expected_condition_fragments(metrics)
+                if sparse_conditions:
+                    lines.append(
+                        f"- `{label}` sparse expected conditions: "
+                        + ", ".join(sparse_conditions)
+                    )
                 problem_case_count = metrics.get("problem_case_count", 0)
                 if isinstance(problem_case_count, int) and problem_case_count > 0:
                     problem_fragments = []
@@ -3920,6 +4037,14 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 pieces.append(
                     f"avg_case={metrics['reported_elapsed_per_case_ms']:.3f}ms"
                 )
+            if "expected_required_condition_case_count" in metrics:
+                pieces.append(
+                    f"conditioned={metrics['expected_required_condition_case_count']}"
+                )
+            if "distinct_expected_required_conditions" in metrics:
+                pieces.append(
+                    f"conditions={metrics['distinct_expected_required_conditions']}"
+                )
             summary = " ".join(pieces)
         elif "derived" in metrics:
             pieces = []
@@ -3951,6 +4076,8 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 pieces.append(f"single_step={metrics['single_step_successes']}")
             if "multi_step_success_ids" in metrics:
                 pieces.append(f"multi_step_ids={len(metrics['multi_step_success_ids'])}")
+            if metrics.get("max_step_count") is not None:
+                pieces.append(f"max_step={metrics['max_step_count']}")
             if metrics.get("embedded_family_sampled_count") is not None:
                 pieces.append(
                     "embedded_families="

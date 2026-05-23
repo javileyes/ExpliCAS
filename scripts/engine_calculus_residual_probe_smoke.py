@@ -12,11 +12,13 @@ import argparse
 import json
 import os
 import pathlib
+import re
 import signal
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Any, Literal
 
 
@@ -151,6 +153,15 @@ NESTED_DEN_EXPECTED_RESULTS = {
     "rational_quad": "1 / ((x + 2)·(x + 3))",
     "recip_trig": "1 / ((x + 2)·(x + 3))",
     "fractional_den_power": "1 / ((x + 2)·(x + 3))",
+    "quartic_arcsin_kernel": "1 / ((x + 2)·(x + 3))",
+    "constant_base_log_power": "1 / ((x + 2)·(x + 3))",
+    "log10_power_alias": "1 / ((x + 2)·(x + 3))",
+    "reciprocal_trig_csc": "1 / ((x + 2)·(x + 3))",
+    "reciprocal_trig_sec": "1 / ((x + 2)·(x + 3))",
+    "sqrt_chain_csc_log": "1 / ((x + 2)·(x + 3))",
+    "sqrt_chain_cosh_recip_square": "1 / ((x + 2)·(x + 3))",
+    "sqrt_chain_sec_log": "1 / ((x + 2)·(x + 3))",
+    "sqrt_chain_sinh_recip_square": "1 / ((x + 2)·(x + 3))",
 }
 
 CUSTOM_RESIDUAL_EXPECTED_RESULTS_BY_WRAPPER = {
@@ -261,6 +272,63 @@ DEFAULT_MATRIX_BASES = (
         ),
         (),
     ),
+    (
+        "quartic_arcsin_kernel",
+        "diff(integrate(2*x/sqrt(4-x^4),x),x)-2*x/sqrt(4-x^4)",
+        ("4 - x^4",),
+    ),
+    (
+        "constant_base_log_power",
+        "diff(integrate(2*x*log(2,x^2+1)^2,x),x)-2*x*log(2,x^2+1)^2",
+        (),
+    ),
+    (
+        "log10_power_alias",
+        "diff(integrate(2*x*log10(x^2+1)^2,x),x)-2*x*log10(x^2+1)^2",
+        (),
+    ),
+    (
+        "reciprocal_trig_csc",
+        "diff(integrate(csc(2*x+1),x),x)-csc(2*x+1)",
+        ("sin(2·x + 1)",),
+    ),
+    (
+        "reciprocal_trig_sec",
+        "diff(integrate(sec(2*x+1),x),x)-sec(2*x+1)",
+        ("cos(2·x + 1)",),
+    ),
+    (
+        "sqrt_chain_sec_log",
+        (
+            "diff(integrate(3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))),x),x)"
+            "-3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1)))"
+        ),
+        ("cos(sqrt(3·x + 1))", "x > -1/3"),
+    ),
+    (
+        "sqrt_chain_csc_log",
+        (
+            "diff(integrate(3/(2*sqrt(3*x+1)*sin(sqrt(3*x+1))),x),x)"
+            "-3/(2*sqrt(3*x+1)*sin(sqrt(3*x+1)))"
+        ),
+        ("sin(sqrt(3·x + 1))", "x > -1/3"),
+    ),
+    (
+        "sqrt_chain_cosh_recip_square",
+        (
+            "diff(integrate(3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2),x),x)"
+            "-3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2)"
+        ),
+        ("x > -1/3",),
+    ),
+    (
+        "sqrt_chain_sinh_recip_square",
+        (
+            "diff(integrate(3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2),x),x)"
+            "-3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2)"
+        ),
+        ("sinh(sqrt(3·x + 1))", "x > -1/3"),
+    ),
 )
 
 DEFAULT_DOUBLE_NESTED_DEN_BASES = (
@@ -270,6 +338,10 @@ DEFAULT_DOUBLE_NESTED_DEN_BASES = (
     "fractional_den_power",
     "hyperbolic_sinh",
     "hyperbolic_cosh",
+    "quartic_arcsin_kernel",
+    "sqrt_chain_sec_log",
+    "sqrt_chain_csc_log",
+    "sqrt_chain_sinh_recip_square",
     "integrate_exp_trig_sin",
     "integrate_exp_trig_neg_sin",
     "rational_quad",
@@ -369,6 +441,98 @@ DEFAULT_SHIFTED_QUOTIENT_RESIDUAL_DEN_CASES = (
         ),
         expected_result="1",
         required_conditions=("x + 1",),
+    ),
+    MatrixProbeCase(
+        name="rational_quad_over_negative_recip_trig_shifted_quotient",
+        expr=(
+            "((diff(integrate(1/((x+1)^3*(x^2+2*x+2)),x),x)"
+            "-1/((x+1)^3*(x^2+2*x+2)))+1)"
+            "/((diff(integrate(1/(x^2+1),x),x)-1/(x^2+1))-1)"
+        ),
+        expected_result="-1",
+        required_conditions=("x + 1",),
+    ),
+    MatrixProbeCase(
+        name="quartic_arcsin_over_reciprocal_trig_csc_shifted_quotient",
+        expr=(
+            "((diff(integrate(2*x/sqrt(4-x^4),x),x)-2*x/sqrt(4-x^4))+1)"
+            "/((diff(integrate(csc(2*x+1),x),x)-csc(2*x+1))+1)"
+        ),
+        expected_result="1",
+        required_conditions=(
+            "4 - x^4",
+            "sin(2·x + 1)",
+        ),
+    ),
+    MatrixProbeCase(
+        name="quartic_arcsin_over_negative_reciprocal_trig_csc_shifted_quotient",
+        expr=(
+            "((diff(integrate(2*x/sqrt(4-x^4),x),x)-2*x/sqrt(4-x^4))+1)"
+            "/((diff(integrate(csc(2*x+1),x),x)-csc(2*x+1))-1)"
+        ),
+        expected_result="-1",
+        required_conditions=(
+            "4 - x^4",
+            "sin(2·x + 1)",
+        ),
+    ),
+    MatrixProbeCase(
+        name="sqrt_chain_sec_over_csc_shifted_quotient",
+        expr=(
+            "((diff(integrate(3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))),x),x)"
+            "-3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))))+1)"
+            "/((diff(integrate(3/(2*sqrt(3*x+1)*sin(sqrt(3*x+1))),x),x)"
+            "-3/(2*sqrt(3*x+1)*sin(sqrt(3*x+1))))+1)"
+        ),
+        expected_result="1",
+        required_conditions=(
+            "cos(sqrt(3·x + 1))",
+            "sin(sqrt(3·x + 1))",
+            "x > -1/3",
+        ),
+    ),
+    MatrixProbeCase(
+        name="sqrt_chain_sec_over_negative_csc_shifted_quotient",
+        expr=(
+            "((diff(integrate(3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))),x),x)"
+            "-3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))))+1)"
+            "/((diff(integrate(3/(2*sqrt(3*x+1)*sin(sqrt(3*x+1))),x),x)"
+            "-3/(2*sqrt(3*x+1)*sin(sqrt(3*x+1))))-1)"
+        ),
+        expected_result="-1",
+        required_conditions=(
+            "cos(sqrt(3·x + 1))",
+            "sin(sqrt(3·x + 1))",
+            "x > -1/3",
+        ),
+    ),
+    MatrixProbeCase(
+        name="sqrt_chain_cosh_over_sinh_shifted_quotient",
+        expr=(
+            "((diff(integrate(3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2),x),x)"
+            "-3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2))+1)"
+            "/((diff(integrate(3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2),x),x)"
+            "-3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2))+1)"
+        ),
+        expected_result="1",
+        required_conditions=(
+            "sinh(sqrt(3·x + 1))",
+            "x > -1/3",
+        ),
+    ),
+    MatrixProbeCase(
+        name="sqrt_chain_cosh_over_negative_sinh_shifted_quotient",
+        expr=(
+            "((diff(integrate(3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2),x),x)"
+            "-3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2))+1)"
+            "/((diff(integrate(3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2),x),x)"
+            "-3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2))-1)"
+        ),
+        expected_result="-1",
+        required_conditions=(
+            "sinh(sqrt(3·x + 1))",
+            "x > -1/3",
+        ),
     ),
 )
 
@@ -742,7 +906,11 @@ def run_default_matrix(
             slow_wall_seconds=slow_wall_seconds,
         )
         status_counts[result.status] += 1
-        result_dict = {"name": case.name, **result.as_dict()}
+        result_dict = {
+            "name": case.name,
+            "expected_required_conditions": list(case.required_conditions),
+            **result.as_dict(),
+        }
         increment_issue_kind(issue_kind_counts, result.error_kind)
         results.append(result_dict)
 
@@ -789,7 +957,11 @@ def run_matrix_cases(
             slow_wall_seconds=slow_wall_seconds,
         )
         status_counts[result.status] += 1
-        result_dict = {"name": case.name, **result.as_dict()}
+        result_dict = {
+            "name": case.name,
+            "expected_required_conditions": list(case.required_conditions),
+            **result.as_dict(),
+        }
         increment_issue_kind(issue_kind_counts, result.error_kind)
         results.append(result_dict)
 
@@ -855,6 +1027,9 @@ def extract_required_conditions(parsed: dict[str, Any] | None) -> tuple[str, ...
                 displays.append(display)
         elif isinstance(item, str):
             displays.append(item)
+    public_display = parsed.get("required_display") or []
+    if isinstance(public_display, list):
+        displays.extend(item for item in public_display if isinstance(item, str))
     return tuple(displays)
 
 
@@ -936,10 +1111,23 @@ def summarize_matrix(matrix: dict[str, object]) -> dict[str, object]:
     summary = {key: value for key, value in matrix.items() if key != "cases"}
     cases = matrix.get("cases")
     problem_cases: list[dict[str, object]] = []
+    expected_required_condition_counts: dict[str, int] = {}
+    expected_required_condition_case_count = 0
     if isinstance(cases, list):
         for case in cases:
             if not isinstance(case, dict):
                 continue
+            expected_required = case.get("expected_required_conditions")
+            if isinstance(expected_required, list):
+                expected_conditions = [
+                    condition for condition in expected_required if isinstance(condition, str)
+                ]
+                if expected_conditions:
+                    expected_required_condition_case_count += 1
+                for condition in expected_conditions:
+                    expected_required_condition_counts[condition] = (
+                        expected_required_condition_counts.get(condition, 0) + 1
+                    )
             if case.get("status") == "pass" and case.get("error_kind") is None:
                 continue
             problem_cases.append(
@@ -953,6 +1141,15 @@ def summarize_matrix(matrix: dict[str, object]) -> dict[str, object]:
                     "required_conditions": case.get("required_conditions"),
                 }
             )
+    summary["expected_required_condition_case_count"] = (
+        expected_required_condition_case_count
+    )
+    summary["distinct_expected_required_conditions"] = len(
+        expected_required_condition_counts
+    )
+    summary["expected_required_condition_counts"] = dict(
+        sorted(expected_required_condition_counts.items())
+    )
     summary["problem_case_count"] = len(problem_cases)
     summary["problem_cases"] = problem_cases
     return summary
@@ -975,7 +1172,11 @@ def classify_error(
         return parse_error
     if expected_result is not None and result != expected_result:
         return f"expected result {expected_result!r}, got {result!r}"
-    missing = [condition for condition in expected_required if condition not in actual_required]
+    missing = [
+        condition
+        for condition in expected_required
+        if not required_condition_satisfied(condition, actual_required)
+    ]
     if missing:
         return f"missing required conditions: {', '.join(missing)}"
     if impossible_required:
@@ -983,6 +1184,44 @@ def classify_error(
     if forbid_warnings and warnings:
         return f"unexpected warnings: {', '.join(warnings)}"
     return None
+
+
+def required_condition_satisfied(condition: str, actual_required: tuple[str, ...]) -> bool:
+    if condition in actual_required:
+        return True
+    root = affine_x_nonzero_root(condition)
+    if root is None:
+        return False
+    return any(bound_excludes_root(actual, root) for actual in actual_required)
+
+
+def affine_x_nonzero_root(condition: str) -> Fraction | None:
+    compact = condition.replace(" ", "")
+    if compact == "x":
+        return Fraction(0)
+    match = re.fullmatch(r"x([+-])(\d+)(?:/(\d+))?", compact)
+    if not match:
+        return None
+    sign, numerator, denominator = match.groups()
+    offset = Fraction(int(numerator), int(denominator) if denominator else 1)
+    if sign == "-":
+        offset = -offset
+    return -offset
+
+
+def bound_excludes_root(display: str, root: Fraction) -> bool:
+    compact = display.replace(" ", "")
+    lower = re.fullmatch(r"x[>≥](-?\d+)(?:/(\d+))?", compact)
+    if lower:
+        numerator, denominator = lower.groups()
+        bound = Fraction(int(numerator), int(denominator) if denominator else 1)
+        return root <= bound
+    upper = re.fullmatch(r"x[<≤](-?\d+)(?:/(\d+))?", compact)
+    if upper:
+        numerator, denominator = upper.groups()
+        bound = Fraction(int(numerator), int(denominator) if denominator else 1)
+        return root >= bound
+    return False
 
 
 def expected_status_matches(status: Status, expect: str) -> bool:

@@ -50,6 +50,48 @@ mod tests {
         }
     }
 
+    fn assert_visible_finite_product_rule(lines: &[String]) {
+        let visible_suffixes = [
+            "[Aplicar producto de constante]",
+            "[Aplicar producto factorial]",
+            "[Aplicar producto de potencias]",
+            "[Evaluar producto telescópico finito]",
+            "[Evaluar producto finito]",
+        ];
+        assert!(
+            visible_suffixes
+                .iter()
+                .any(|suffix| lines.iter().any(|line| line.contains(suffix))),
+            "expected visible finite-product rule suffix, got: {lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|line| line.contains("[Finite Product]")),
+            "derive CLI output should not expose the internal finite-product rule name, got: {lines:?}"
+        );
+    }
+
+    fn assert_visible_finite_summation_rule(lines: &[String]) {
+        let visible_suffixes = [
+            "[Aplicar suma de constante]",
+            "[Aplicar fórmula de suma de enteros]",
+            "[Aplicar fórmula de suma de cuadrados]",
+            "[Aplicar fórmula de suma de cubos]",
+            "[Aplicar fórmula de suma geométrica]",
+            "[Evaluar suma telescópica finita]",
+            "[Evaluar suma finita]",
+        ];
+        assert!(
+            visible_suffixes
+                .iter()
+                .any(|suffix| lines.iter().any(|line| line.contains(suffix))),
+            "expected visible finite-summation rule suffix, got: {lines:?}"
+        );
+        assert!(
+            !lines.iter().any(|line| line.contains("[Finite Summation]")),
+            "derive CLI output should not expose the internal finite-summation rule name, got: {lines:?}"
+        );
+    }
+
     #[test]
     fn evaluate_equiv_command_lines_true() {
         let mut simplifier = crate::Simplifier::new();
@@ -155,6 +197,34 @@ mod tests {
     }
 
     #[test]
+    fn evaluate_derive_command_lines_humanizes_factor_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive a^2 - b^2, (a - b)*(a + b)",
+                "[Factorizar]",
+                "[Factorization]",
+            ),
+            (
+                "derive a*x + b*x + c, x*(a + b + c/x)",
+                "[Sacar factor usando división]",
+                "[Factor Out With Division]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible factor rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal factor rule {internal_suffix}, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
     fn evaluate_derive_command_lines_reaches_inverse_trig_complement_sum_target_directly() {
         let lines = derive_lines("derive arcsin(x)+arccos(x), pi/2");
 
@@ -251,6 +321,655 @@ mod tests {
                 .any(|line| line.starts_with("Result:") && line.contains("(a + b)^(2)")),
             "expected symbolic perfect-square factorization in derive output, got: {lines:?}"
         );
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_perfect_square_minus_cancel_rule_suffix() {
+        let lines = derive_lines("derive (a^2-2*a*b+b^2)/(a-b), a-b");
+        let output = lines.join("\n");
+
+        assert!(
+            output.contains("[Cancelar un cuadrado perfecto con el mismo binomio]"),
+            "expected visible perfect-square-minus cancel rule in derive CLI output, got: {lines:?}"
+        );
+        assert!(
+            !output.contains("[Pre-order Perfect Square Minus Cancel]"),
+            "derive CLI output should not expose the internal perfect-square-minus rule name, got: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_change_of_base_rule_suffix() {
+        let lines = derive_lines("derive log(2, x), ln(x)/ln(2)");
+        let output = lines.join("\n");
+
+        assert!(
+            output.contains("[Aplicar cambio de base]"),
+            "expected visible change-of-base rule in derive CLI output, got: {lines:?}"
+        );
+        assert!(
+            !output.contains("[Change of Base]"),
+            "derive CLI output should not expose the internal change-of-base rule name, got: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_inverse_trig_composition_rule_suffix() {
+        let lines = derive_lines("derive cos(arctan(x)), 1/sqrt(1+x^2)");
+        let output = lines.join("\n");
+
+        assert!(
+            output.contains("[Aplicar composición trigonométrica inversa]"),
+            "expected visible inverse-trig composition rule in derive CLI output, got: {lines:?}"
+        );
+        assert!(
+            !output.contains("[Inverse Trig Composition]"),
+            "derive CLI output should not expose the internal inverse-trig composition rule name, got: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_phase_shift_rule_suffixes() {
+        for input in [
+            "derive sin(x)+cos(x), sqrt(2)*sin(x+pi/4)",
+            "derive sqrt(2)*sin(x+pi/4), sin(x)+cos(x)",
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains("[Aplicar identidad de desfase]"),
+                "expected visible phase-shift rule in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains("[Phase Shift Identity]"),
+                "derive CLI output should not expose the internal phase-shift rule name, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_angle_sum_difference_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive cos(x)*cos(y)+sin(x)*sin(y), cos(x-y)",
+                "[Aplicar suma/diferencia de ángulos]",
+                "[Angle Sum/Diff Identity]",
+            ),
+            (
+                "derive sin(x+y), sin(x)*cos(y)+cos(x)*sin(y)",
+                "[Aplicar suma/diferencia de ángulos]",
+                "[Angle Sum/Diff Identity]",
+            ),
+            (
+                "derive (tan(x)+tan(y))/(1-tan(x)*tan(y)), tan(x+y)",
+                "[Aplicar identidad de tangente de suma/diferencia de ángulos]",
+                "[Tangent Angle Sum/Diff Identity]",
+            ),
+            (
+                "derive tan(x-y), (tan(x)-tan(y))/(1+tan(x)*tan(y))",
+                "[Aplicar identidad de tangente de suma/diferencia de ángulos]",
+                "[Tangent Angle Sum/Diff Identity]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible angle sum/difference rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal angle sum/difference rule {internal_suffix}, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_power_reduction_rule_suffix() {
+        let lines = derive_lines("derive sin(x)^4, (3-4*cos(2*x)+cos(4*x))/8");
+        let output = lines.join("\n");
+
+        assert!(
+            output.contains("[Aplicar reducción de potencias]"),
+            "expected visible power-reduction rule in derive CLI output, got: {lines:?}"
+        );
+        assert!(
+            !output.contains("[Power Reduction Identity]"),
+            "derive CLI output should not expose the internal power-reduction rule name, got: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_double_angle_rule_suffixes() {
+        for input in [
+            "derive sin(2*x), 2*sin(x)*cos(x)",
+            "derive cos(2*x), 1 - 2*sin(x)^2",
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains("[Expandir ángulo doble]"),
+                "expected visible double-angle rule in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains("[Double Angle Expansion]"),
+                "derive CLI output should not expose the internal double-angle rule name, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_triple_angle_rule_suffixes() {
+        for input in [
+            "derive 3*sin(x)-4*sin(x)^3, sin(3*x)",
+            "derive cos(3*x), 4*cos(x)^3 - 3*cos(x)",
+            "derive (3*tan(x)-tan(x)^3)/(1-3*tan(x)^2), tan(3*x)",
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains("[Reescribir ángulo triple]"),
+                "expected visible triple-angle rule in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains("[Triple Angle Expansion]"),
+                "derive CLI output should not expose the internal triple-angle rule name, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_higher_angle_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive cos(4*x), 8*cos(x)^4 - 8*cos(x)^2 + 1",
+                "[Reescribir ángulo cuádruple]",
+                "[Quadruple Angle Expansion]",
+            ),
+            (
+                "derive sin(4*x), 4*sin(x)*cos(x)^3 - 4*sin(x)^3*cos(x)",
+                "[Reescribir ángulo cuádruple]",
+                "[Quadruple Angle Expansion]",
+            ),
+            (
+                "derive cos(5*x), 16*cos(x)^5 - 20*cos(x)^3 + 5*cos(x)",
+                "[Reescribir ángulo quíntuple]",
+                "[Quintuple Angle Identity]",
+            ),
+            (
+                "derive sin(5*x), 5*sin(x) - 20*sin(x)^3 + 16*sin(x)^5",
+                "[Reescribir ángulo quíntuple]",
+                "[Quintuple Angle Identity]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible higher-angle rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal higher-angle rule name {internal_suffix}, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_product_sum_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive 2*sin(x)*cos(y), sin(x+y) + sin(x-y)",
+                "[Aplicar producto a suma]",
+                "[Product-to-Sum Identity]",
+            ),
+            (
+                "derive cos(x)-cos(y), -2*sin((x+y)/2)*sin((x-y)/2)",
+                "[Aplicar suma a producto]",
+                "[Sum-to-Product Identity]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible product/sum trig rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal product/sum trig rule name {internal_suffix}, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_half_angle_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive cos(x)^2, (1+cos(2*x))/2",
+                "[Aplicar identidad de ángulo mitad]",
+                "[Half-Angle Square Identity]",
+            ),
+            (
+                "derive tan(x/2), (1-cos(x))/sin(x)",
+                "[Aplicar identidad de tangente de ángulo mitad]",
+                "[Half-Angle Tangent Identity]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible half-angle rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal half-angle rule name {internal_suffix}, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_trig_quotient_and_reciprocal_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive sin(2*x)/cos(x+x), tan(2*x)",
+                "[Convertir un cociente trigonométrico en tangente]",
+                "[Trig Quotient]",
+            ),
+            (
+                "derive (cos(x)-cos(3*x))/(sin(3*x)-sin(x)), tan(2*x)",
+                "[Convertir un cociente trigonométrico en tangente]",
+                "[Trig Quotient]",
+            ),
+            (
+                "derive sec(x), 1/cos(x)",
+                "[Aplicar identidad trigonométrica recíproca]",
+                "[Reciprocal Trig Identity]",
+            ),
+            (
+                "derive 1/cos(x), sec(x)",
+                "[Aplicar identidad trigonométrica recíproca]",
+                "[Reciprocal Trig Identity]",
+            ),
+            (
+                "derive cos(x)/sin(x), cot(x)",
+                "[Aplicar identidad trigonométrica recíproca]",
+                "[Reciprocal Trig Identity]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible trig rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal trig rule {internal_suffix}, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_log_contraction_rule_suffix() {
+        let lines = derive_lines("derive ln(x) + ln(y), ln(x*y)");
+        let output = lines.join("\n");
+
+        assert!(
+            output.contains("[Contraer logaritmos]"),
+            "expected visible log-contraction rule in derive CLI output, got: {lines:?}"
+        );
+        assert!(
+            !output.contains("[Log Contraction]"),
+            "derive CLI output should not expose the internal log-contraction rule name, got: {lines:?}"
+        );
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_exponential_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive exp(x+y), exp(x)*exp(y)",
+                "[Expandir exponencial de suma o diferencia]",
+                "[Exponential Sum/Difference Identity]",
+            ),
+            (
+                "derive exp(x)*exp(y), exp(x+y)",
+                "[Contraer productos exponenciales]",
+                "[Exponential Sum/Difference Identity]",
+            ),
+            (
+                "derive exp(x)^3, exp(3*x)",
+                "[Aplicar potencia de una exponencial]",
+                "[Exponential Power Identity]",
+            ),
+            (
+                "derive exp(3*x), exp(x)^3",
+                "[Expandir potencia exponencial]",
+                "[Exponential Power Identity]",
+            ),
+            (
+                "derive 1/exp(x), exp(-x)",
+                "[Reescribir recíproco exponencial]",
+                "[Exponential Reciprocal Identity]",
+            ),
+            (
+                "derive exp(-x), 1/exp(x)",
+                "[Expandir como recíproco exponencial]",
+                "[Exponential Reciprocal Identity]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible exponential rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal exponential rule {internal_suffix}, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_hyperbolic_exponential_rule_suffixes() {
+        for (input, visible_suffix) in [
+            (
+                "derive sinh(x)+cosh(x), exp(x)",
+                "[Reconocer forma exponencial hiperbólica]",
+            ),
+            (
+                "derive exp(x), sinh(x)+cosh(x)",
+                "[Expandir identidad exponencial hiperbólica]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible hyperbolic-exponential rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains("[Hyperbolic Exponential Identity]"),
+                "derive CLI output should not expose the internal hyperbolic-exponential rule name, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_hyperbolic_angle_sum_rule_suffixes() {
+        for input in [
+            "derive cosh(x)*cosh(y)-sinh(x)*sinh(y), cosh(x-y)",
+            "derive sinh(x)*cosh(y)+cosh(x)*sinh(y), sinh(x+y)",
+            "derive (tanh(x)+tanh(y))/(1+tanh(x)*tanh(y)), tanh(x+y)",
+            "derive sinh(x-y), sinh(x)*cosh(y)-cosh(x)*sinh(y)",
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains("[Aplicar identidad hiperbólica de suma/diferencia de ángulos]"),
+                "expected visible hyperbolic angle rule in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains("[Hyperbolic Angle Sum/Difference Identity]"),
+                "derive CLI output should not expose the internal hyperbolic angle rule name, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_factorial_rule_suffixes() {
+        for input in [
+            "derive (n+1)!/n!, n+1",
+            "derive (n+1)!/(n-1)!, n*(n+1)",
+            "derive (n+1)!/n!+a, n+1+a",
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains("[Cancelar factoriales consecutivos]"),
+                "expected visible factorial rule in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains("[Consecutive Factorial Ratio]"),
+                "derive CLI output should not expose the internal factorial rule name, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_log_exp_inverse_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive ln(exp(x)), x",
+                "[Cancelar logaritmo natural y exponencial inversos]",
+                "[Log-Exp Inverse]",
+            ),
+            (
+                "derive exp(ln(x)), x",
+                "[Cancelar exponencial y logaritmo inversos]",
+                "[Exponential-Log Inverse]",
+            ),
+            (
+                "derive exp(y*log(x)), x^y",
+                "[Cancelar exponencial con logaritmo y conservar exponente]",
+                "[Exponential-Log Power Inverse]",
+            ),
+            (
+                "derive x^(ln(y)/ln(x)), y",
+                "[Convertir potencia logarítmica inversa]",
+                "[Log Inverse Power]",
+            ),
+            (
+                "derive ln(exp(x)^2), 2*x",
+                "[Multiplicar exponentes]",
+                "[Power of a Power]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible log-exp inverse rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal log-exp inverse rule {internal_suffix}, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_number_theory_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive choose(5,2), 10",
+                "[Calcular coeficiente binomial]",
+                "[Number Theory Operations]",
+            ),
+            (
+                "derive choose(4,1) + choose(4,2), choose(5,2)",
+                "[Aplicar identidad de Pascal]",
+                "[Pascal's Identity]",
+            ),
+            (
+                "derive choose(6,1), choose(6,5)",
+                "[Aplicar simetría del coeficiente binomial]",
+                "[Binomial Coefficient Symmetry]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible number-theory rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal number-theory rule {internal_suffix}, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_finite_sum_product_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive product(k, k, 1, n), n!",
+                "[Aplicar producto factorial]",
+                "[Finite Product]",
+            ),
+            (
+                "derive product((k+1)/k, k, 1, n), n+1",
+                "[Evaluar producto telescópico finito]",
+                "[Finite Product]",
+            ),
+            (
+                "derive sum(k^2, k, 1, n), n*(n+1)*(2*n+1)/6",
+                "[Aplicar fórmula de suma de cuadrados]",
+                "[Finite Summation]",
+            ),
+            (
+                "derive sum(1/(k*(k+1)), k, 1, n), 1 - 1/(n+1)",
+                "[Evaluar suma telescópica finita]",
+                "[Finite Summation]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible finite sum/product rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal finite sum/product rule {internal_suffix}, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_collect_rule_suffixes() {
+        for (input, visible_suffix) in [
+            (
+                "derive a*x + b*x + c, (a + b)*x + c",
+                "[Agrupar términos por variable]",
+            ),
+            (
+                "derive a*x*y + b*x*y + c, (a + b)*x*y + c",
+                "[Agrupar términos por factor común]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible collect rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains("[Collect Terms]"),
+                "derive CLI output should not expose the internal collect rule name, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_fraction_combine_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive a/x + b/x, (a+b)/x",
+                "[Combinar fracciones con el mismo denominador]",
+                "[Combine Same Denominator Fractions]",
+            ),
+            (
+                "derive a/x - b/x, (a-b)/x",
+                "[Combinar resta de fracciones con el mismo denominador]",
+                "[Combine Same Denominator Sub]",
+            ),
+            (
+                "derive a/x + b/y, (a*y+b*x)/(x*y)",
+                "[Sumar fracciones en un solo denominador]",
+                "[Add Fractions]",
+            ),
+            (
+                "derive a/x - b/y, (a*y-b*x)/(x*y)",
+                "[Restar fracciones en un solo denominador]",
+                "[Subtract Fractions]",
+            ),
+            (
+                "derive 1 + 2/(x-1), (x+1)/(x-1)",
+                "[Combinar parte entera y fracción]",
+                "[Mixed Fraction Combine]",
+            ),
+            (
+                "derive 1/n - 1/(n+1), 1/(n*(n+1))",
+                "[Recomponer fracciones parciales telescópicas]",
+                "[Telescoping Fraction Combine]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible fraction-combine rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal fraction-combine rule {internal_suffix}, got: {lines:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn evaluate_derive_command_lines_humanizes_fraction_split_rule_suffixes() {
+        for (input, visible_suffix, internal_suffix) in [
+            (
+                "derive 1/(1/a + 1/b), (a*b)/(a+b)",
+                "[Simplificar fracción anidada]",
+                "[Simplify Nested Fraction]",
+            ),
+            (
+                "derive (x+1)/(x-1), 1 + 2/(x-1)",
+                "[Separar fracción en parte entera y resto]",
+                "[Mixed Fraction Split]",
+            ),
+            (
+                "derive 1/(n*(n+1)), 1/n - 1/(n+1)",
+                "[Descomponer en fracciones parciales telescópicas]",
+                "[Telescoping Fraction Split]",
+            ),
+        ] {
+            let lines = derive_lines(input);
+            let output = lines.join("\n");
+
+            assert!(
+                output.contains(visible_suffix),
+                "expected visible fraction-split rule {visible_suffix} in derive CLI output, got: {lines:?}"
+            );
+            assert!(
+                !output.contains(internal_suffix),
+                "derive CLI output should not expose the internal fraction-split rule {internal_suffix}, got: {lines:?}"
+            );
+        }
     }
 
     #[test]
@@ -977,7 +1696,7 @@ mod tests {
 
         assert_derive_strategy(&lines, "expand_log");
         assert!(
-            lines.iter().any(|line| line.contains("Factorization")),
+            lines.iter().any(|line| line.contains("[Factorizar]")),
             "expected factorization step in derive output, got: {lines:?}"
         );
         assert!(
@@ -993,7 +1712,7 @@ mod tests {
 
         assert_derive_strategy(&lines, "expand_log");
         assert!(
-            lines.iter().any(|line| line.contains("Factorization")),
+            lines.iter().any(|line| line.contains("[Factorizar]")),
             "expected factorization step in derive output, got: {lines:?}"
         );
         assert!(
@@ -1268,7 +1987,9 @@ mod tests {
 
         assert_derive_strategy(&lines, "contract trig");
         assert_result_contains_all(&lines, &["tan(2*x)"]);
-        assert!(lines.iter().any(|line| line.contains("Trig Quotient")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Convertir un cociente trigonométrico en tangente")));
     }
 
     #[test]
@@ -1288,7 +2009,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Reciprocal Trig Identity")));
+            .any(|line| line.contains("Aplicar identidad trigonométrica recíproca")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("1 / cos")));
@@ -1311,7 +2032,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Reciprocal Trig Identity")));
+            .any(|line| line.contains("Aplicar identidad trigonométrica recíproca")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("sec(x)")));
@@ -1334,7 +2055,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Reciprocal Trig Identity")));
+            .any(|line| line.contains("Aplicar identidad trigonométrica recíproca")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("cot(x)")));
@@ -1951,7 +2672,13 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("cancel fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Cancel common factor")));
+            .any(|line| line.contains("Cancelar un factor común")));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.contains("Pre-order Common Factor Cancel")),
+            "raw internal rule suffix leaked into CLI: {lines:?}"
+        );
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && (line.contains("1 / 2") || line.contains("1/2"))
         }));
@@ -1974,7 +2701,13 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("cancel fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Cancel common factor")));
+            .any(|line| line.contains("Cancelar un factor común")));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.contains("Pre-order Common Factor Cancel")),
+            "raw internal rule suffix leaked into CLI: {lines:?}"
+        );
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("a")
@@ -2031,9 +2764,9 @@ mod tests {
                 .iter()
                 .any(|line| { line.starts_with("Strategy:") && line.contains("nested fraction") }));
             assert!(lines.iter().any(|line| {
-                line.contains("Add Fractions")
+                line.contains("Sumar fracciones en un solo denominador")
                     || line.contains("Simplify Complex Fraction")
-                    || line.contains("Simplify Nested Fraction")
+                    || line.contains("Simplificar fracción anidada")
             }));
 
             let result_line = lines
@@ -2765,7 +3498,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| line.trim() == "Subpasos:"));
         assert!(lines
             .iter()
@@ -2798,7 +3531,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("1 / 2")
@@ -2824,7 +3557,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("1 / 3")
@@ -2850,7 +3583,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("1 / (n - 1)")
@@ -2876,7 +3609,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("1 / 2")
@@ -2902,7 +3635,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -2929,7 +3662,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -2956,7 +3689,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -2984,7 +3717,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3011,7 +3744,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3039,7 +3772,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3066,7 +3799,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3094,7 +3827,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3121,7 +3854,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| line.trim() == "Subpasos:"));
         assert!(lines
             .iter()
@@ -3154,7 +3887,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("1 /")
@@ -3180,7 +3913,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("1 /")
@@ -3207,7 +3940,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("1 /")
@@ -3234,7 +3967,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("1 /")
@@ -3260,7 +3993,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3286,7 +4019,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3313,7 +4046,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3340,7 +4073,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3367,7 +4100,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3394,7 +4127,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3421,7 +4154,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:") && normalized.contains("a+n") && normalized.contains("b+n")
@@ -3446,7 +4179,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3473,7 +4206,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| {
             let normalized = normalized_inline_math(line);
             line.starts_with("Result:")
@@ -3501,7 +4234,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| line.starts_with("Result:")));
     }
 
@@ -3523,7 +4256,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Split")));
+            .any(|line| line.contains("Descomponer en fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| line.starts_with("Result:")));
     }
 
@@ -3545,7 +4278,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("combine fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Telescoping Fraction Combine")));
+            .any(|line| line.contains("Recomponer fracciones parciales telescópicas")));
         assert!(lines.iter().any(|line| line.starts_with("Result:")));
     }
 
@@ -3716,7 +4449,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("n + 1")));
@@ -3737,7 +4470,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && line.contains("n + 2") && line.contains("/ 2")
         }));
@@ -3758,7 +4491,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("a + n + 1") || line.contains("n + a + 1"))
@@ -3781,7 +4514,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("a + n + 1") || line.contains("n + a + 1"))
@@ -3805,7 +4538,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("a")
@@ -3831,7 +4564,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("a·n + a + b") || line.contains("a * n + a + b"))
@@ -3855,7 +4588,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("a")
@@ -3882,7 +4615,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("a·n + b + 2·a")
@@ -3912,7 +4645,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("a")
@@ -3939,7 +4672,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("a·n + a + b + c") || line.contains("a * n + a + b + c"))
@@ -3962,7 +4695,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("n + 1")
@@ -3987,7 +4720,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("2")
@@ -4013,7 +4746,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("2")
@@ -4039,7 +4772,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("a")
@@ -4065,7 +4798,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("m + 1")
@@ -4091,7 +4824,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Product")));
+        assert_visible_finite_product_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("a + m - 1") || line.contains("m + a - 1"))
@@ -4116,7 +4849,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Summation")));
+        assert_visible_finite_summation_rule(&lines);
         assert!(lines
             .iter()
             .any(|line| { line.starts_with("Result:") && line.contains("1 - 1 / (n + 1)") }));
@@ -4137,7 +4870,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Summation")));
+        assert_visible_finite_summation_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && line.contains("1 / 3") && line.contains("n + 3")
         }));
@@ -4158,7 +4891,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Summation")));
+        assert_visible_finite_summation_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("a + 1")
@@ -4181,7 +4914,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Summation")));
+        assert_visible_finite_summation_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("a + m") || line.contains("m + a"))
@@ -4204,7 +4937,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Summation")));
+        assert_visible_finite_summation_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("1 / a") || line.contains(" / a"))
@@ -4234,7 +4967,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Summation")));
+        assert_visible_finite_summation_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("1 / a") || line.contains(" / a"))
@@ -4262,7 +4995,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Summation")));
+        assert_visible_finite_summation_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("1 / a") || line.contains(" / a"))
@@ -4293,7 +5026,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Summation")));
+        assert_visible_finite_summation_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("1 / a") || line.contains(" / a"))
@@ -4324,7 +5057,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Summation")));
+        assert_visible_finite_summation_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("1 / a") || line.contains(" / a"))
@@ -4355,7 +5088,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("finite sums/products")));
-        assert!(lines.iter().any(|line| line.contains("Finite Summation")));
+        assert_visible_finite_summation_rule(&lines);
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("1 / a") || line.contains(" / a"))
@@ -4969,7 +5702,13 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("cancel fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Cancel Sum/Difference of Cubes Fraction")));
+            .any(|line| line.contains("Factorizar cubos y cancelar")));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.contains("Cancel Sum/Difference of Cubes Fraction")),
+            "derive CLI output should not expose the internal cubes cancel rule name, got: {lines:?}"
+        );
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains('a')
@@ -4986,8 +5725,14 @@ mod tests {
         assert!(
             lines
                 .iter()
+                .any(|line| line.contains("Factorizar una diferencia de cuadrados y cancelar")),
+            "expected visible difference-of-squares fraction-cancel step, got: {lines:?}"
+        );
+        assert!(
+            !lines
+                .iter()
                 .any(|line| line.contains("Pre-order Difference of Squares Cancel")),
-            "expected direct fraction-cancel step, got: {lines:?}"
+            "derive CLI output should not expose the internal difference-of-squares cancel rule name, got: {lines:?}"
         );
         assert_result_contains_all(&lines, &["a + b + c"]);
     }
@@ -5000,8 +5745,14 @@ mod tests {
         assert!(
             lines
                 .iter()
+                .any(|line| line.contains("Factorizar cubos y cancelar")),
+            "expected visible cubes fraction-cancel step, got: {lines:?}"
+        );
+        assert!(
+            !lines
+                .iter()
                 .any(|line| line.contains("Cancel Sum/Difference of Cubes Fraction")),
-            "expected direct fraction-cancel step, got: {lines:?}"
+            "derive CLI output should not expose the internal cubes cancel rule name, got: {lines:?}"
         );
         assert_result_contains_all(&lines, &["a^(2)", "a * b", "b^(2)", "c"]);
     }
@@ -5023,7 +5774,13 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("cancel fraction")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Cancel Sum/Difference of Cubes Fraction")));
+            .any(|line| line.contains("Factorizar cubos y cancelar")));
+        assert!(
+            !lines
+                .iter()
+                .any(|line| line.contains("Cancel Sum/Difference of Cubes Fraction")),
+            "derive CLI output should not expose the internal cubes cancel rule name, got: {lines:?}"
+        );
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains('a')
@@ -5048,7 +5805,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("factor")));
-        assert!(lines.iter().any(|line| line.contains("Factorization")));
+        assert!(lines.iter().any(|line| line.contains("[Factorizar]")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains('a')
@@ -5072,7 +5829,7 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("factor")));
-        assert!(lines.iter().any(|line| line.contains("Factorization")));
+        assert!(lines.iter().any(|line| line.contains("[Factorizar]")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains('a')
@@ -5099,7 +5856,7 @@ mod tests {
             assert!(lines
                 .iter()
                 .any(|line| line.starts_with("Strategy:") && line.contains("factor")));
-            assert!(lines.iter().any(|line| line.contains("Factorization")));
+            assert!(lines.iter().any(|line| line.contains("[Factorizar]")));
             assert!(lines.iter().any(|line| {
                 line.starts_with("Result:")
                     && line.contains(variable)
@@ -5232,7 +5989,9 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
-        assert!(lines.iter().any(|line| line.contains("Trig Quotient")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Convertir un cociente trigonométrico en tangente")));
     }
 
     #[test]
@@ -5317,6 +6076,12 @@ mod tests {
             .any(|line| line.contains("arcsin(sin(arctan(x)))")));
         assert!(lines
             .iter()
+            .any(|line| line.contains("[Aplicar composición trigonométrica inversa]")));
+        assert!(!lines
+            .iter()
+            .any(|line| line.contains("[Inverse Trig Composition]")));
+        assert!(lines
+            .iter()
             .any(|line| line.starts_with("Result:") && line.contains("arctan(x)")));
     }
 
@@ -5387,7 +6152,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite factorials") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Consecutive Factorial Ratio")));
+            .any(|line| line.contains("Cancelar factoriales consecutivos")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("n + 1")));
@@ -5411,7 +6176,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite factorials") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Consecutive Factorial Ratio")));
+            .any(|line| line.contains("Cancelar factoriales consecutivos")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && (line.contains("n + 1 + a") || line.contains("a + n + 1"))
@@ -5435,7 +6200,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite factorials") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Consecutive Factorial Ratio")));
+            .any(|line| line.contains("Cancelar factoriales consecutivos")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("n * (n + 1)")));
@@ -5956,7 +6721,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar producto a suma")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("sin(x + y) + sin(x - y)")));
@@ -5979,7 +6744,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar producto a suma")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("sin(x + y) - sin(x - y)")));
@@ -6002,7 +6767,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Sum-to-Product Identity")));
+            .any(|line| line.contains("Aplicar suma a producto")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sin(3")
@@ -6028,7 +6793,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Sum-to-Product Identity")));
+            .any(|line| line.contains("Aplicar suma a producto")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sin(2")
@@ -6054,7 +6819,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Sum-to-Product Identity")));
+            .any(|line| line.contains("Aplicar suma a producto")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(3")
@@ -6080,7 +6845,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Sum-to-Product Identity")));
+            .any(|line| line.contains("Aplicar suma a producto")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sin((x + y) / 2)")
@@ -6105,7 +6870,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Sum-to-Product Identity")));
+            .any(|line| line.contains("Aplicar suma a producto")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos((x + y) / 2)")
@@ -6130,7 +6895,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Sum-to-Product Identity")));
+            .any(|line| line.contains("Aplicar suma a producto")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sin((x + y) / 2)")
@@ -6156,7 +6921,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Phase Shift Identity")));
+            .any(|line| line.contains("Aplicar identidad de desfase")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sqrt(2)")
@@ -6182,7 +6947,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Phase Shift Identity")));
+            .any(|line| line.contains("Aplicar identidad de desfase")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && line.contains("sin(x)") && line.contains("+ cos(x)")
         }));
@@ -6205,7 +6970,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Phase Shift Identity")));
+            .any(|line| line.contains("Aplicar identidad de desfase")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("5")
@@ -6231,7 +6996,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Phase Shift Identity")));
+            .any(|line| line.contains("Aplicar identidad de desfase")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sqrt(2)")
@@ -6258,7 +7023,7 @@ mod tests {
         assert_eq!(
             lines
                 .iter()
-                .filter(|line| line.contains("Phase Shift Identity"))
+                .filter(|line| line.contains("Aplicar identidad de desfase"))
                 .count(),
             2
         );
@@ -6287,7 +7052,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(4")
@@ -6313,7 +7078,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(4")
@@ -6339,7 +7104,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Quadruple Angle Expansion")));
+            .any(|line| line.contains("Reescribir ángulo cuádruple")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("8 * cos(x)^(4)")
@@ -6364,7 +7129,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Quadruple Angle Expansion")));
+            .any(|line| line.contains("Reescribir ángulo cuádruple")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("4 * sin(x) * cos(x)^(3)")
@@ -6389,7 +7154,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Quadruple Angle Expansion")));
+            .any(|line| line.contains("Reescribir ángulo cuádruple")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("sin(4 * x)")));
@@ -6412,7 +7177,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && line.contains("cos(4") && line.contains("/ 8")
         }));
@@ -6458,7 +7223,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(6")
@@ -6485,7 +7250,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(6")
@@ -6512,7 +7277,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(8")
@@ -6540,7 +7305,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(8")
@@ -6568,7 +7333,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(10")
@@ -6597,7 +7362,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(10")
@@ -6626,7 +7391,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(12")
@@ -6656,7 +7421,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(12")
@@ -6686,7 +7451,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(14")
@@ -6717,7 +7482,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(14")
@@ -6748,7 +7513,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(16")
@@ -6780,7 +7545,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(16")
@@ -6812,7 +7577,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(18")
@@ -6845,7 +7610,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(18")
@@ -6878,7 +7643,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(20")
@@ -6912,7 +7677,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(20")
@@ -6946,7 +7711,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(22")
@@ -6981,7 +7746,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(22")
@@ -7016,7 +7781,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(24")
@@ -7052,7 +7817,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Power Reduction Identity")));
+            .any(|line| line.contains("Aplicar reducción de potencias")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("cos(24")
@@ -7134,7 +7899,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Sum-to-Product Identity")));
+            .any(|line| line.contains("Aplicar suma a producto")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sin(3")
@@ -7198,9 +7963,9 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("expand")));
-        assert!(lines
-            .iter()
-            .any(|line| line.contains("Hyperbolic Angle Sum/Difference Identity")));
+        assert!(lines.iter().any(
+            |line| line.contains("Aplicar identidad hiperbólica de suma/diferencia de ángulos")
+        ));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sinh(x)")
@@ -7224,9 +7989,9 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("expand")));
-        assert!(lines
-            .iter()
-            .any(|line| line.contains("Hyperbolic Angle Sum/Difference Identity")));
+        assert!(lines.iter().any(
+            |line| line.contains("Aplicar identidad hiperbólica de suma/diferencia de ángulos")
+        ));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("sinh(x)")
@@ -7288,7 +8053,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Exponential Identity")));
+            .any(|line| line.contains("Reconocer forma exponencial hiperbólica")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && line.contains("2") && line.contains("cosh(2")
         }));
@@ -7311,7 +8076,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("rewrite hyperbolics")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Exponential Identity")));
+            .any(|line| line.contains("Expandir identidad exponencial hiperbólica")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && line.contains("e^(-2") && line.contains("e^(2")
         }));
@@ -7334,7 +8099,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("rewrite exponentials")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Exponential Sum/Difference Identity")));
+            .any(|line| line.contains("Expandir exponencial de suma o diferencia")));
     }
 
     #[test]
@@ -7354,7 +8119,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("rewrite exponentials")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Exponential Sum/Difference Identity")));
+            .any(|line| line.contains("Contraer productos exponenciales")));
     }
 
     #[test]
@@ -7372,8 +8137,12 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("rewrite exponentials")));
-        assert!(lines.iter().any(|line| line.contains("Power of a Power")));
-        assert!(lines.iter().any(|line| line.contains("Log-Exp Inverse")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Multiplicar exponentes")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Cancelar logaritmo natural y exponencial inversos")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("2 * x")));
@@ -7413,10 +8182,10 @@ mod tests {
         );
         assert!(lines
             .iter()
-            .any(|line| line.contains("Angle Sum/Diff Identity")));
+            .any(|line| line.contains("Aplicar suma/diferencia de ángulos")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Triple Angle Expansion")));
+            .any(|line| line.contains("Reescribir ángulo triple")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:")
                 && line.contains("3")
@@ -7442,7 +8211,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar producto a suma")));
         assert!(!lines
             .iter()
             .any(|line| line.contains("Linear Angle Simplification")));
@@ -7468,7 +8237,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar producto a suma")));
         assert!(!lines
             .iter()
             .any(|line| line.contains("Linear Angle Simplification")));
@@ -7494,7 +8263,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar producto a suma")));
         assert!(!lines
             .iter()
             .any(|line| line.contains("Linear Angle Simplification")));
@@ -7537,10 +8306,10 @@ mod tests {
         );
         assert!(lines
             .iter()
-            .any(|line| line.contains("Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar producto a suma")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Triple Angle Expansion")));
+            .any(|line| line.contains("Reescribir ángulo triple")));
     }
 
     #[test]
@@ -7578,10 +8347,10 @@ mod tests {
         );
         assert!(lines
             .iter()
-            .any(|line| line.contains("Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar producto a suma")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Triple Angle Expansion")));
+            .any(|line| line.contains("Reescribir ángulo triple")));
     }
 
     #[test]
@@ -7619,10 +8388,10 @@ mod tests {
         );
         assert!(lines
             .iter()
-            .any(|line| line.contains("Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar producto a suma")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Triple Angle Expansion")));
+            .any(|line| line.contains("Reescribir ángulo triple")));
     }
 
     #[test]
@@ -7660,10 +8429,10 @@ mod tests {
         );
         assert!(lines
             .iter()
-            .any(|line| line.contains("Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar producto a suma")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Triple Angle Expansion")));
+            .any(|line| line.contains("Reescribir ángulo triple")));
     }
 
     #[test]
@@ -7701,10 +8470,10 @@ mod tests {
         );
         assert!(lines
             .iter()
-            .any(|line| line.contains("Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar producto a suma")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Triple Angle Expansion")));
+            .any(|line| line.contains("Reescribir ángulo triple")));
     }
 
     #[test]
@@ -7742,10 +8511,10 @@ mod tests {
         );
         assert!(lines
             .iter()
-            .any(|line| line.contains("Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar producto a suma")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Triple Angle Expansion")));
+            .any(|line| line.contains("Reescribir ángulo triple")));
     }
 
     #[test]
@@ -7766,7 +8535,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Double Angle Expansion")));
+            .any(|line| line.contains("Expandir ángulo doble")));
     }
 
     #[test]
@@ -8074,7 +8843,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Double Angle Expansion")));
+            .any(|line| line.contains("Expandir ángulo doble")));
     }
 
     #[test]
@@ -8094,7 +8863,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Double Angle Expansion")));
+            .any(|line| line.contains("Expandir ángulo doble")));
     }
 
     #[test]
@@ -8131,7 +8900,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Phase Shift Identity")));
+            .any(|line| line.contains("Aplicar identidad de desfase")));
     }
 
     #[test]

@@ -7,8 +7,8 @@ Command: `cargo test -p cas_didactic --test derive_didactic_audit derive_didacti
 ## Summary
 
 - Derived cases audited: `472`
-- Mean top-level step count: `1.06`
-- Total web substeps: `482`
+- Mean top-level step count: `1.05`
+- Total web substeps: `485`
 
 ## Flag Summary
 
@@ -21,7 +21,7 @@ No audit flags emitted.
 | --- | ---: | ---: | ---: | ---: |
 | `collect` | 6 | 0 | 0 | 0 |
 | `conditional_factor` | 6 | 0 | 0 | 12 |
-| `expand` | 34 | 0 | 0 | 44 |
+| `expand` | 34 | 0 | 0 | 47 |
 | `factor` | 17 | 0 | 0 | 21 |
 | `finite_aggregate` | 17 | 0 | 0 | 34 |
 | `finite_telescoping` | 9 | 0 | 0 | 21 |
@@ -242,8 +242,8 @@ No audit flags emitted.
 | `expand_sum_cubes` | `expand` | 1 | 2 | none |
 | `expand_symbolic_binomial` | `expand` | 1 | 0 | none |
 | `expand_symbolic_binomial_cube` | `expand` | 1 | 0 | none |
-| `expand_symbolic_binomial_cube_minus` | `expand` | 3 | 0 | none |
-| `expand_symbolic_binomial_minus` | `expand` | 2 | 0 | none |
+| `expand_symbolic_binomial_cube_minus` | `expand` | 2 | 2 | none |
+| `expand_symbolic_binomial_minus` | `expand` | 2 | 1 | none |
 | `expand_symbolic_cube_difference_product` | `polynomial_product` | 1 | 2 | none |
 | `expand_symbolic_cube_sum_product` | `polynomial_product` | 1 | 2 | none |
 | `expand_symbolic_signed_trinomial_square` | `expand` | 1 | 0 | none |
@@ -251,7 +251,7 @@ No audit flags emitted.
 | `expand_symbolic_sixth_power_plus_product` | `polynomial_product` | 1 | 2 | none |
 | `expand_symbolic_trinomial_cube` | `expand` | 1 | 0 | none |
 | `expand_symbolic_trinomial_square` | `expand` | 1 | 0 | none |
-| `expand_then_cancel_to_square` | `expand` | 3 | 2 | none |
+| `expand_then_cancel_to_square` | `expand` | 2 | 2 | none |
 | `expand_trig_after_simplify` | `trig_expand` | 1 | 0 | none |
 | `expand_trig_angle_diff_cosine` | `trig_expand` | 1 | 1 | none |
 | `expand_trig_angle_diff_sine` | `trig_expand` | 1 | 1 | none |
@@ -536,7 +536,7 @@ Parsed: asin(x / sqrt(x^2 + 1))
 Target: atan(x)
 Strategy: rewrite inverse trigs
 Steps (Aggressive Mode):
-1. arcsin(x/sqrt(1+x^2)) = arctan(x)  [Inverse Trig Composition]
+1. arcsin(x/sqrt(1+x^2)) = arctan(x)  [Aplicar composición trigonométrica inversa]
    Before: asin(x / sqrt(x^(2) + 1))
    Subpasos:
      1.1 Reconocer el argumento como seno de una arctangente
@@ -576,7 +576,7 @@ Parsed: 2 * x / (4 * x)
 Target: 1 / 2
 Strategy: cancel fraction
 Steps (Aggressive Mode):
-1. Cancel common factor  [Pre-order Common Factor Cancel]
+1. Cancel common factor  [Cancelar un factor común]
    Before: 2 * x / (4 * x)
    Cambio local: 2 * x / (4 * x) -> 1 / 2
    After: 1 / 2
@@ -610,7 +610,7 @@ Parsed: (a^3 - b^3) / (a - b)
 Target: a^2 + b^2 + a * b
 Strategy: cancel fraction
 Steps (Aggressive Mode):
-1. Factor numerator as a sum or difference of cubes and cancel the common factor  [Cancel Sum/Difference of Cubes Fraction]
+1. Factor numerator as a sum or difference of cubes and cancel the common factor  [Factorizar cubos y cancelar]
    Before: (a^(3) - b^(3)) / (a - b)
    Cambio local: (a^(3) - b^(3)) / (a - b) -> a^(2) + b^(2) + a * b
    After: a^2 + b^2 + a * b
@@ -645,7 +645,7 @@ Parsed: (a^3 - b^3) / (a - b) + c
 Target: a^2 + b^2 + a * b + c
 Strategy: cancel fraction
 Steps (Aggressive Mode):
-1. Factor numerator as a sum or difference of cubes and cancel the common factor  [Cancel Sum/Difference of Cubes Fraction]
+1. Factor numerator as a sum or difference of cubes and cancel the common factor  [Factorizar cubos y cancelar]
    Before: (a^(3) - b^(3)) / (a - b) + c
    Cambio local: (a^(3) - b^(3)) / (a - b) -> a^(2) + b^(2) + a * b
    After: a^2 + b^2 + a * b + c
@@ -680,7 +680,7 @@ Parsed: (a^2 - b^2) / (a - b)
 Target: a + b
 Strategy: cancel fraction
 Steps (Aggressive Mode):
-1. Cancel common factor  [Pre-order Difference of Squares Cancel]
+1. Cancel common factor  [Factorizar una diferencia de cuadrados y cancelar]
    Before: (a^(2) - b^(2)) / (a - b)
    Cambio local: (a^(2) - b^(2)) / (a - b) -> a + b
    After: a + b
@@ -714,7 +714,7 @@ Parsed: (a^2 - b^2) / (a - b) + c
 Target: a + b + c
 Strategy: cancel fraction
 Steps (Aggressive Mode):
-1. Cancel common factor  [Pre-order Difference of Squares Cancel]
+1. Cancel common factor  [Factorizar una diferencia de cuadrados y cancelar]
    Before: (a^(2) - b^(2)) / (a - b) + c
    Cambio local: (a^(2) - b^(2)) / (a - b) -> a + b
    After: a + b + c
@@ -748,7 +748,7 @@ Parsed: a * x^2 / (b * x)
 Target: a * x / b
 Strategy: cancel fraction
 Steps (Aggressive Mode):
-1. Cancel common factor  [Pre-order Common Factor Cancel]
+1. Cancel common factor  [Cancelar un factor común]
    Before: a * x^(2) / (b * x)
    Cambio local: a * x^(2) / (b * x) -> a * x / b
    After: a * x / b
@@ -783,7 +783,7 @@ Parsed: (a^2 + b^2 - 2 * a * b) / (a - b)
 Target: a - b
 Strategy: cancel fraction
 Steps (Aggressive Mode):
-1. Cancel common factor  [Pre-order Perfect Square Minus Cancel]
+1. Cancel common factor  [Cancelar un cuadrado perfecto con el mismo binomio]
    Before: (a^(2) + b^(2) - 2 * a * b) / (a - b)
    Cambio local: (a^(2) + b^(2) - 2 * a * b) / (a - b) -> (a - b)^(2) / (a - b)
    After: a - b
@@ -794,7 +794,7 @@ Result: a - b
 
 ### Web / JSON Steps
 
-1. `Pre-order Perfect Square Minus Cancel`
+1. `Cancelar un cuadrado perfecto con el mismo binomio`
    - before: `(a^2 - 2 · a · b + b^2)/(a - b)`
    - after: `a - b`
    - substeps:
@@ -817,7 +817,7 @@ Parsed: (a^3 + b^3) / (a + b)
 Target: a^2 + b^2 - a * b
 Strategy: cancel fraction
 Steps (Aggressive Mode):
-1. Factor numerator as a sum or difference of cubes and cancel the common factor  [Cancel Sum/Difference of Cubes Fraction]
+1. Factor numerator as a sum or difference of cubes and cancel the common factor  [Factorizar cubos y cancelar]
    Before: (a^(3) + b^(3)) / (a + b)
    Cambio local: (a^(3) + b^(3)) / (a + b) -> a^(2) + b^(2) - a * b
    After: a^2 + b^2 - a * b
@@ -852,7 +852,7 @@ Parsed: choose(5, 2)
 Target: 10
 Strategy: number theory
 Steps (Aggressive Mode):
-1. choose(5, 2)  [Number Theory Operations]
+1. choose(5, 2)  [Calcular coeficiente binomial]
    Before: choose(5, 2)
    Cambio local: choose(5, 2) -> 10
    After: 10
@@ -884,7 +884,7 @@ Parsed: choose(4, 1) + choose(4, 2)
 Target: choose(5, 2)
 Strategy: number theory
 Steps (Aggressive Mode):
-1. Apply Pascal's identity for binomial coefficients  [Pascal's Identity]
+1. Apply Pascal's identity for binomial coefficients  [Aplicar identidad de Pascal]
    Before: choose(4, 1) + choose(4, 2)
    Cambio local: choose(4, 1) + choose(4, 2) -> choose(5, 2)
    After: choose(5, 2)
@@ -915,7 +915,7 @@ Parsed: choose(6, 1)
 Target: choose(6, 5)
 Strategy: number theory
 Steps (Aggressive Mode):
-1. Apply binomial coefficient symmetry  [Binomial Coefficient Symmetry]
+1. Apply binomial coefficient symmetry  [Aplicar simetría del coeficiente binomial]
    Before: choose(6, 1)
    Cambio local: choose(6, 1) -> choose(6, 5)
    After: choose(6, 5)
@@ -947,7 +947,7 @@ Parsed: e^(ln(x) + ln(y))
 Target: x * y
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Expand exp(u ± v ± ...) into products/quotients of exponentials  [Exponential Sum/Difference Identity]
+1. Expand exp(u ± v ± ...) into products/quotients of exponentials  [Expandir exponencial de suma o diferencia]
    Before: e^(ln(x) + ln(y))
    Cambio local: e^(ln(x) + ln(y)) -> x * y
    After: x * y
@@ -982,7 +982,7 @@ Parsed: e^(2 * ln(x) + 3 * ln(y))
 Target: x^2 * y^3
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Expand exp(u ± v ± ...) into products/quotients of exponentials  [Exponential Sum/Difference Identity]
+1. Expand exp(u ± v ± ...) into products/quotients of exponentials  [Expandir exponencial de suma o diferencia]
    Before: e^(2 * ln(x) + 3 * ln(y))
    Cambio local: e^(2 * ln(x) + 3 * ln(y)) -> x^(2) * y^(3)
    After: x^2 * y^3
@@ -1017,7 +1017,7 @@ Parsed: x * y + x * z + w
 Target: x * (y + z) + w
 Strategy: collect
 Steps (Aggressive Mode):
-1. Collect terms by x  [Collect Terms]
+1. Collect terms by x  [Agrupar términos por variable]
    Before: x * y + x * z + w
    Cambio local: x * y + x * z + w -> x * (y + z) + w
    After: x * (y + z) + w
@@ -1047,7 +1047,7 @@ Parsed: a * x * y + b * x * y + c
 Target: x * y * (a + b) + c
 Strategy: collect
 Steps (Aggressive Mode):
-1. Collect terms by x * y  [Collect Terms]
+1. Collect terms by x * y  [Agrupar términos por factor común]
    Before: a * x * y + b * x * y + c
    Cambio local: a * x * y + b * x * y + c -> x * y * (a + b) + c
    After: x * y * (a + b) + c
@@ -1077,7 +1077,7 @@ Parsed: a * x + b * x + c
 Target: x * (a + b) + c
 Strategy: collect
 Steps (Aggressive Mode):
-1. Collect terms by x  [Collect Terms]
+1. Collect terms by x  [Agrupar términos por variable]
    Before: a * x + b * x + c
    Cambio local: a * x + b * x + c -> x * (a + b) + c
    After: x * (a + b) + c
@@ -1107,7 +1107,7 @@ Parsed: a * y + b * y + c
 Target: y * (a + b) + c
 Strategy: collect
 Steps (Aggressive Mode):
-1. Collect terms by y  [Collect Terms]
+1. Collect terms by y  [Agrupar términos por variable]
    Before: a * y + b * y + c
    Cambio local: a * y + b * y + c -> y * (a + b) + c
    After: y * (a + b) + c
@@ -1137,7 +1137,7 @@ Parsed: a * x^2 + c * x^2 + e * x^2 + b * x + d * x + f
 Target: x * (b + d) + x^2 * (a + c + e) + f
 Strategy: collect
 Steps (Aggressive Mode):
-1. Collect terms by x  [Collect Terms]
+1. Collect terms by x  [Agrupar términos por variable]
    Before: a * x^(2) + c * x^(2) + e * x^(2) + b * x + d * x + f
    Cambio local: a * x^(2) + c * x^(2) + e * x^(2) + b * x + d * x + f -> x * (b + d) + x^(2) * (a + c + e) + f
    After: x * (b + d) + x^2 * (a + c + e) + f
@@ -1167,7 +1167,7 @@ Parsed: a * x * y + b * x * y + c * x * z + d * x * z + e
 Target: x * y * (a + b) + x * z * (c + d) + e
 Strategy: collect
 Steps (Aggressive Mode):
-1. Collect terms by x * y  [Collect Terms]
+1. Collect terms by x * y  [Agrupar términos por factor común]
    Before: a * x * y + b * x * y + c * x * z + d * x * z + e
    Cambio local: a * x * y + b * x * y + c * x * z + d * x * z + e -> x * y * (a + b) + x * z * (c + d) + e
    After: x * y * (a + b) + x * z * (c + d) + e
@@ -1197,7 +1197,7 @@ Parsed: a / d + b / d + 1
 Target: (a + b) / d + 1
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Combine fractions that already share the same denominator  [Combine Same Denominator Fractions]
+1. Combine fractions that already share the same denominator  [Combinar fracciones con el mismo denominador]
    Before: a / d + b / d + 1
    Cambio local: a / d + b / d -> (a + b) / d
    After: (a + b) / d + 1
@@ -1229,7 +1229,7 @@ Parsed: a / d + b / d + c / d + 1
 Target: (a + b + c) / d + 1
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Combine fractions that already share the same denominator  [Combine Same Denominator Fractions]
+1. Combine fractions that already share the same denominator  [Combinar fracciones con el mismo denominador]
    Before: a / d + b / d + c / d + 1
    Cambio local: a / d + b / d + c / d -> (a + b + c) / d
    After: (a + b + c) / d + 1
@@ -1261,7 +1261,7 @@ Parsed: a / x - b / y
 Target: (a * y - b * x) / (x * y)
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Subtract two fractions into a single denominator  [Subtract Fractions]
+1. Subtract two fractions into a single denominator  [Restar fracciones en un solo denominador]
    Before: a / x - b / y
    Cambio local: a / x - b / y -> (a * y - b * x) / (x * y)
    After: (a * y - b * x) / (x * y)
@@ -1294,7 +1294,7 @@ Parsed: a / x + b / y
 Target: (a * y + b * x) / (x * y)
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Combine two fractions into a single denominator  [Add Fractions]
+1. Combine two fractions into a single denominator  [Sumar fracciones en un solo denominador]
    Before: a / x + b / y
    Cambio local: a / x + b / y -> (a * y + b * x) / (x * y)
    After: (a * y + b * x) / (x * y)
@@ -1358,7 +1358,7 @@ Parsed: (a * d / c + b) / (d - c * x) - a / c
 Target: (a * x + b) / (d - c * x)
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Combine the whole part with the remaining fraction  [Mixed Fraction Combine]
+1. Combine the whole part with the remaining fraction  [Combinar parte entera y fracción]
    Before: (a * d / c + b) / (d - c * x) + a / c
    After: (a * x + b) / (d - c * x)
 Result: (a * x + b) / (d - c * x)
@@ -1390,7 +1390,7 @@ Parsed: a / d - b / d
 Target: (a - b) / d
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Combine fractions with the same denominator into one subtraction  [Combine Same Denominator Sub]
+1. Combine fractions with the same denominator into one subtraction  [Combinar resta de fracciones con el mismo denominador]
    Before: a / d - b / d
    Cambio local: a / d - b / d -> (a - b) / d
    After: (a - b) / d
@@ -1422,7 +1422,7 @@ Parsed: a / d + b / d
 Target: (a + b) / d
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Combine fractions that already share the same denominator  [Combine Same Denominator Fractions]
+1. Combine fractions that already share the same denominator  [Combinar fracciones con el mismo denominador]
    Before: a / d + b / d
    Cambio local: a / d + b / d -> (a + b) / d
    After: (a + b) / d
@@ -1454,7 +1454,7 @@ Parsed: a / c + (b - a * d / c) / (c * x + d)
 Target: (a * x + b) / (c * x + d)
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Combine the whole part with the remaining fraction  [Mixed Fraction Combine]
+1. Combine the whole part with the remaining fraction  [Combinar parte entera y fracción]
    Before: a / c + (b - a * d / c) / (c * x + d)
    After: (a * x + b) / (c * x + d)
 Result: (a * x + b) / (c * x + d)
@@ -1486,7 +1486,7 @@ Parsed: a / (x + y) + b / (x + y) + c
 Target: (a + b) / (x + y) + c
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Combine fractions that already share the same denominator  [Combine Same Denominator Fractions]
+1. Combine fractions that already share the same denominator  [Combinar fracciones con el mismo denominador]
    Before: a / (x + y) + b / (x + y) + c
    Cambio local: a / (x + y) + b / (x + y) -> (a + b) / (x + y)
    After: (a + b) / (x + y) + c
@@ -1518,7 +1518,7 @@ Parsed: (b - a * c) / (c + x) + a
 Target: (a * x + b) / (c + x)
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Combine the whole part with the remaining fraction  [Mixed Fraction Combine]
+1. Combine the whole part with the remaining fraction  [Combinar parte entera y fracción]
    Before: (b - a * c) / (c + x) + a
    After: (a * x + b) / (c + x)
 Result: (a * x + b) / (c + x)
@@ -1549,7 +1549,7 @@ Parsed: ((1 / (2 * n + 1) - 1 / (2 * n + 3)) * 1)/2
 Target: 1 / ((2 * n + 1) * (2 * n + 3))
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
+1. Recompose the telescoping partial fractions into a single fraction  [Recomponer fracciones parciales telescópicas]
    Before: 1 / 2 * (1 / (2 * n + 1) - 1 / (2 * n + 3))
    Cambio local: 1 / 2 * (1 / (2 * n + 1) - 1 / (2 * n + 3)) -> 1 / ((2 * n + 1) * (2 * n + 3))
    After: 1 / ((2 * n + 1) * (2 * n + 3))
@@ -1584,7 +1584,7 @@ Parsed: ((1 / (a * n + b) - 1 / (a * n + c)) * 1)/(c - b)
 Target: 1 / ((a * n + b) * (a * n + c))
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
+1. Recompose the telescoping partial fractions into a single fraction  [Recomponer fracciones parciales telescópicas]
    Before: 1 / (c - b) * (1 / (a * n + b) - 1 / (a * n + c))
    Cambio local: 1 / (c - b) * (1 / (a * n + b) - 1 / (a * n + c)) -> 1 / ((a * n + b) * (a * n + c))
    After: 1 / ((a * n + b) * (a * n + c))
@@ -1620,7 +1620,7 @@ Parsed: 1 / n - 1 / (n + 1)
 Target: 1 / (n * (n + 1))
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
+1. Recompose the telescoping partial fractions into a single fraction  [Recomponer fracciones parciales telescópicas]
    Before: 1 / n - 1 / (n + 1)
    Subpasos:
      1.1 Llevar las fracciones al denominador común
@@ -1660,7 +1660,7 @@ Parsed: ((1 / (x - 1) - 1 / (x + 1)) * 1)/2
 Target: 1 / (x^2 - 1)
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
+1. Recompose the telescoping partial fractions into a single fraction  [Recomponer fracciones parciales telescópicas]
    Before: 1 / 2 * (1 / (x - 1) - 1 / (x + 1))
    Cambio local: 1 / 2 * (1 / (x - 1) - 1 / (x + 1)) -> 1 / (x^(2) - 1)
    After: 1 / (x^2 - 1)
@@ -1695,7 +1695,7 @@ Parsed: ((1 / n - 1 / (n + 2)) * 1)/2
 Target: 1 / (n * (n + 2))
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
+1. Recompose the telescoping partial fractions into a single fraction  [Recomponer fracciones parciales telescópicas]
    Before: 1 / 2 * (1 / n - 1 / (n + 2))
    Cambio local: 1 / 2 * (1 / n - 1 / (n + 2)) -> 1 / (n * (n + 2))
    After: 1 / (n * (n + 2))
@@ -1730,7 +1730,7 @@ Parsed: ((1 / (n - 2) - 1 / n) * 1)/2
 Target: 1 / (n * (n - 2))
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
+1. Recompose the telescoping partial fractions into a single fraction  [Recomponer fracciones parciales telescópicas]
    Before: 1 / 2 * (1 / (n - 2) - 1 / n)
    Cambio local: 1 / 2 * (1 / (n - 2) - 1 / n) -> 1 / (n * (n - 2))
    After: 1 / (n * (n - 2))
@@ -1765,7 +1765,7 @@ Parsed: 1 / (b + x) - 1 / (c + x)
 Target: (c - b) / (x * (b + c) + x^2 + b * c)
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Subtract two fractions into a single denominator  [Subtract Fractions]
+1. Subtract two fractions into a single denominator  [Restar fracciones en un solo denominador]
    Before: 1 / (b + x) - 1 / (c + x)
    Cambio local: 1 / (b + x) - 1 / (c + x) -> (c - b) / (x * (b + c) + x^(2) + b * c)
    After: (c - b) / (x * (b + c) + x^2 + b * c)
@@ -1800,7 +1800,7 @@ Parsed: ((1 / (x - a) - 1 / (a + x)) * 1)/(2 * a)
 Target: 1 / (x^2 - a^2)
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Recompose the telescoping partial fractions into a single fraction  [Telescoping Fraction Combine]
+1. Recompose the telescoping partial fractions into a single fraction  [Recomponer fracciones parciales telescópicas]
    Before: 1 / (2 * a) * (1 / (x - a) - 1 / (a + x))
    Cambio local: 1 / (2 * a) * (1 / (x - a) - 1 / (a + x)) -> 1 / (x^(2) - a^(2))
    After: 1 / (x^2 - a^2)
@@ -1836,7 +1836,7 @@ Parsed: a - b / a
 Target: (a^2 - b) / a
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Put the term and the fraction over the same denominator  [Combine Same Denominator Sub]
+1. Put the term and the fraction over the same denominator  [Combinar resta de fracciones con el mismo denominador]
    Before: a - b / a
    Cambio local: a - b / a -> (a^(2) - b) / a
    After: (a^2 - b) / a
@@ -1868,7 +1868,7 @@ Parsed: a / d + b / d + c / d
 Target: (a + b + c) / d
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Combine fractions that already share the same denominator  [Combine Same Denominator Fractions]
+1. Combine fractions that already share the same denominator  [Combinar fracciones con el mismo denominador]
    Before: a / d + b / d + c / d
    Cambio local: a / d + b / d + c / d -> (a + b + c) / d
    After: (a + b + c) / d
@@ -1900,7 +1900,7 @@ Parsed: 2 / (x - 1) + 1
 Target: (x + 1) / (x - 1)
 Strategy: combine fraction
 Steps (Aggressive Mode):
-1. Combine the whole part with the remaining fraction  [Mixed Fraction Combine]
+1. Combine the whole part with the remaining fraction  [Combinar parte entera y fracción]
    Before: 2 / (x - 1) + 1
    After: (x + 1) / (x - 1)
 Result: (x + 1) / (x - 1)
@@ -1931,7 +1931,7 @@ Parsed: (n + 1)! / n!
 Target: n + 1
 Strategy: rewrite factorials
 Steps (Aggressive Mode):
-1. Cancel consecutive factorials  [Consecutive Factorial Ratio]
+1. Cancel consecutive factorials  [Cancelar factoriales consecutivos]
    Before: (n + 1)! / n!
    Cambio local: (n + 1)! / n! -> n + 1
    After: n + 1
@@ -1965,7 +1965,7 @@ Parsed: (n + 1)! / (n - 1)!
 Target: n * (n + 1)
 Strategy: rewrite factorials
 Steps (Aggressive Mode):
-1. Cancel consecutive factorials  [Consecutive Factorial Ratio]
+1. Cancel consecutive factorials  [Cancelar factoriales consecutivos]
    Before: (n + 1)! / (n - 1)!
    Cambio local: (n + 1)! / (n - 1)! -> n * (n + 1)
    After: n * (n + 1)
@@ -1999,7 +1999,7 @@ Parsed: (n + 1)! / n! + a
 Target: a + n + 1
 Strategy: rewrite factorials
 Steps (Aggressive Mode):
-1. Cancel consecutive factorials  [Consecutive Factorial Ratio]
+1. Cancel consecutive factorials  [Cancelar factoriales consecutivos]
    Before: (n + 1)! / n! + a
    Cambio local: (n + 1)! / n! + a -> a + n + 1
    After: a + n + 1
@@ -2033,7 +2033,7 @@ Parsed: 2 * ln(|x|) + 2 * ln(|y|)
 Target: 2 * ln(|x * y|)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: 2 * ln(|x|) + 2 * ln(|y|)
    Cambio local: 2 * ln(|x|) + 2 * ln(|y|) -> 2 * ln(|x * y|)
    After: 2 * ln(|x * y|)
@@ -2066,7 +2066,7 @@ Parsed: 2 * ln(|x|) + 2 * ln(|y|) + a
 Target: 2 * ln(|x * y|) + a
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: 2 * ln(|x|) + 2 * ln(|y|) + a
    Cambio local: 2 * ln(|x|) + 2 * ln(|y|) + a -> 2 * ln(|x * y|) + a
    After: 2 * ln(|x * y|) + a
@@ -2099,7 +2099,7 @@ Parsed: e^x / e^y
 Target: e^(x - y)
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Contract products/quotients of exponentials into exp(u ± v ± ...)  [Exponential Sum/Difference Identity]
+1. Contract products/quotients of exponentials into exp(u ± v ± ...)  [Contraer productos exponenciales]
    Before: e^(x) / e^(y)
    Cambio local: e^(x) / e^(y) -> e^(x - y)
    After: e^(x - y)
@@ -2130,7 +2130,7 @@ Parsed: e^x^3
 Target: e^(3 * x)
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Recognize exp(u)^n as exp(n·u)  [Exponential Power Identity]
+1. Recognize exp(u)^n as exp(n·u)  [Aplicar potencia de una exponencial]
    Before: e^(x)^(3)
    Cambio local: e^(x)^(3) -> e^(3 * x)
    After: e^(3 * x)
@@ -2161,7 +2161,7 @@ Parsed: 1 / e^x
 Target: e^(-x)
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Recognize 1 / exp(u) as exp(-u)  [Exponential Reciprocal Identity]
+1. Recognize 1 / exp(u) as exp(-u)  [Reescribir recíproco exponencial]
    Before: 1 / e^(x)
    Cambio local: 1 / e^(x) -> e^(-x)
    After: e^(-x)
@@ -2192,7 +2192,7 @@ Parsed: e^x * e^y
 Target: e^(x + y)
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Contract products/quotients of exponentials into exp(u ± v ± ...)  [Exponential Sum/Difference Identity]
+1. Contract products/quotients of exponentials into exp(u ± v ± ...)  [Contraer productos exponenciales]
    Before: e^(x) * e^(y)
    Cambio local: e^(x) * e^(y) -> e^(x + y)
    After: e^(x + y)
@@ -2223,7 +2223,7 @@ Parsed: 2 * log(b, x) + 2 * log(b, y)
 Target: log(b, (x * y)^2)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: 2 * log(b, x) + 2 * log(b, y)
    Cambio local: 2 * log(b, x) + 2 * log(b, y) -> log(b, (x * y)^(2))
    After: log(b, (x * y)^2)
@@ -2257,7 +2257,7 @@ Parsed: 2 * log(b, x) + 2 * log(b, y) + a
 Target: log(b, (x * y)^2) + a
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: 2 * log(b, x) + 2 * log(b, y) + a
    Cambio local: 2 * log(b, x) + 2 * log(b, y) + a -> log(b, (x * y)^(2)) + a
    After: log(b, (x * y)^2) + a
@@ -2291,7 +2291,7 @@ Parsed: cosh(x) * cosh(y) - sinh(x) * sinh(y)
 Target: cosh(x - y)
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: cosh(x) * cosh(y) - sinh(x) * sinh(y)
    Cambio local: cosh(x) * cosh(y) - sinh(x) * sinh(y) -> cosh(x - y)
    After: cosh(x - y)
@@ -2322,7 +2322,7 @@ Parsed: sinh(x) * sinh(y) + cosh(x) * cosh(y)
 Target: cosh(x + y)
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: sinh(x) * sinh(y) + cosh(x) * cosh(y)
    Cambio local: sinh(x) * sinh(y) + cosh(x) * cosh(y) -> cosh(x + y)
    After: cosh(x + y)
@@ -2353,7 +2353,7 @@ Parsed: sinh(x) * cosh(y) - sinh(y) * cosh(x)
 Target: sinh(x - y)
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: sinh(x) * cosh(y) - sinh(y) * cosh(x)
    Cambio local: sinh(x) * cosh(y) - sinh(y) * cosh(x) -> sinh(x - y)
    After: sinh(x - y)
@@ -2384,7 +2384,7 @@ Parsed: sinh(x) * cosh(y) + sinh(y) * cosh(x)
 Target: sinh(x + y)
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: sinh(x) * cosh(y) + sinh(y) * cosh(x)
    Cambio local: sinh(x) * cosh(y) + sinh(y) * cosh(x) -> sinh(x + y)
    After: sinh(x + y)
@@ -2415,7 +2415,7 @@ Parsed: (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
 Target: tanh(x - y)
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Recognize (tanh(u) ± tanh(v)) / (1 ± tanh(u)·tanh(v)) as tanh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize (tanh(u) ± tanh(v)) / (1 ± tanh(u)·tanh(v)) as tanh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
    Cambio local: (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y)) -> tanh(x - y)
    After: tanh(x - y)
@@ -2448,7 +2448,7 @@ Parsed: (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1)
 Target: tanh(x + y)
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Recognize (tanh(u) ± tanh(v)) / (1 ± tanh(u)·tanh(v)) as tanh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize (tanh(u) ± tanh(v)) / (1 ± tanh(u)·tanh(v)) as tanh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1)
    Cambio local: (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1) -> tanh(x + y)
    After: tanh(x + y)
@@ -2481,7 +2481,7 @@ Parsed: log(a, c) * log(b, a)
 Target: log(b, c)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: log(a, c) * log(b, a)
    Cambio local: log(a, c) * log(b, a) -> log(b, c)
    After: log(b, c)
@@ -2515,7 +2515,7 @@ Parsed: ln(x) / ln(2)
 Target: log(2, x)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Recognize a logarithm written by change of base  [Change of Base]
+1. Recognize a logarithm written by change of base  [Aplicar cambio de base]
    Before: ln(x) / ln(2)
    Subpasos:
      1.1 Leer el argumento desde el numerador
@@ -2533,7 +2533,7 @@ Result: log(2, x)
 
 ### Web / JSON Steps
 
-1. `Change of Base`
+1. `Aplicar cambio de base`
    - before: `ln(x)/ln(2)`
    - after: `log_2(x)`
    - substeps:
@@ -2556,7 +2556,7 @@ Parsed: ln(x) - ln(y)
 Target: ln(x / y)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: ln(x) - ln(y)
    Cambio local: ln(x) - ln(y) -> ln(x / y)
    After: ln(x / y)
@@ -2589,7 +2589,7 @@ Parsed: 3 * ln(x) - 2 * ln(y)
 Target: ln(x^3 / y^2)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: 3 * ln(x) - 2 * ln(y)
    Cambio local: 3 * ln(x) - 2 * ln(y) -> ln(x^(3) / y^(2))
    After: ln(x^3 / y^2)
@@ -2622,7 +2622,7 @@ Parsed: 2 * ln(|x|)
 Target: ln(x^2)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: 2 * ln(|x|)
    Cambio local: 2 * ln(|x|) -> ln(x^(2))
    After: ln(x^2)
@@ -2654,7 +2654,7 @@ Parsed: log(2, x) - log(2, y)
 Target: log(2, x / y)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: log(2, x) - log(2, y)
    Cambio local: log(2, x) - log(2, y) -> log(2, x / y)
    After: log(2, x / y)
@@ -2687,7 +2687,7 @@ Parsed: 3 * log(2, x) - 2 * log(2, y)
 Target: log(2, x^3 / y^2)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: 3 * log(2, x) - 2 * log(2, y)
    Cambio local: 3 * log(2, x) - 2 * log(2, y) -> log(2, x^(3) / y^(2))
    After: log(2, x^3 / y^2)
@@ -2720,7 +2720,7 @@ Parsed: 3 * log(2, x)
 Target: log(2, x^3)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: 3 * log(2, x)
    Cambio local: 3 * log(2, x) -> log(2, x^(3))
    After: log(2, x^3)
@@ -2752,7 +2752,7 @@ Parsed: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
 Target: log(b, x^2 * y^3 / (t * z^2))
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t)
    Cambio local: 2 * log(b, x) + 3 * log(b, y) - 2 * log(b, z) - log(b, t) -> log(b, x^(2) * y^(3) / (t * z^(2)))
    After: log(b, x^2 * y^3 / (t * z^2))
@@ -2788,7 +2788,7 @@ Parsed: ln(x^2) + ln(y^2)
 Target: ln((x * y)^2)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: ln(x^(2)) + ln(y^(2))
    Cambio local: ln(x^(2)) + ln(y^(2)) -> ln((x * y)^(2))
    After: ln((x * y)^2)
@@ -2821,7 +2821,7 @@ Parsed: ln(x^2) + ln(y^2) + a
 Target: ln((x * y)^2) + a
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: ln(x^(2)) + ln(y^(2)) + a
    Cambio local: ln(x^(2)) + ln(y^(2)) + a -> ln((x * y)^(2)) + a
    After: ln((x * y)^2) + a
@@ -2854,7 +2854,7 @@ Parsed: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
 Target: ln(y * x^2 / (t * z))
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: ln(y) + 2 * ln(|x|) - ln(z) - ln(t)
    Cambio local: ln(y) + 2 * ln(|x|) - ln(z) - ln(t) -> ln(y * x^(2) / (t * z))
    After: ln(y * x^2 / (t * z))
@@ -2889,7 +2889,7 @@ Parsed: ln(x) + ln(y) - ln(z)
 Target: ln(x * y / z)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: ln(x) + ln(y) - ln(z)
    Cambio local: ln(x) + ln(y) - ln(z) -> ln(x * y / z)
    After: ln(x * y / z)
@@ -2923,7 +2923,7 @@ Parsed: ln(x) + ln(y)
 Target: ln(x * y)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: ln(x) + ln(y)
    Cambio local: ln(x) + ln(y) -> ln(x * y)
    After: ln(x * y)
@@ -2956,7 +2956,7 @@ Parsed: 2 * ln(|y|) + 3 * ln(x)
 Target: ln(x^3 * y^2)
 Strategy: contract logs
 Steps (Aggressive Mode):
-1. Combine logarithms into a single logarithm  [Log Contraction]
+1. Combine logarithms into a single logarithm  [Contraer logaritmos]
    Before: 2 * ln(|y|) + 3 * ln(x)
    Cambio local: 2 * ln(|y|) + 3 * ln(x) -> ln(x^(3) * y^(2))
    After: ln(x^3 * y^2)
@@ -2989,7 +2989,7 @@ Parsed: sin(x) * sin(y) + cos(x) * cos(y)
 Target: cos(x - y)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract an angle sum/difference trig identity  [Angle Sum/Diff Identity]
+1. Expand or contract an angle sum/difference trig identity  [Aplicar suma/diferencia de ángulos]
    Before: sin(x) * sin(y) + cos(x) * cos(y)
    Cambio local: sin(x) * sin(y) + cos(x) * cos(y) -> cos(x - y)
    After: cos(x - y)
@@ -3020,7 +3020,7 @@ Parsed: sin(x) * cos(y) - sin(y) * cos(x)
 Target: sin(x - y)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract an angle sum/difference trig identity  [Angle Sum/Diff Identity]
+1. Expand or contract an angle sum/difference trig identity  [Aplicar suma/diferencia de ángulos]
    Before: sin(x) * cos(y) - sin(y) * cos(x)
    Cambio local: sin(x) * cos(y) - sin(y) * cos(x) -> sin(x - y)
    After: sin(x - y)
@@ -3051,7 +3051,7 @@ Parsed: cos(x) * cos(y) - sin(x) * sin(y)
 Target: cos(x + y)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract an angle sum/difference trig identity  [Angle Sum/Diff Identity]
+1. Expand or contract an angle sum/difference trig identity  [Aplicar suma/diferencia de ángulos]
    Before: cos(x) * cos(y) - sin(x) * sin(y)
    Cambio local: cos(x) * cos(y) - sin(x) * sin(y) -> cos(x + y)
    After: cos(x + y)
@@ -3082,7 +3082,7 @@ Parsed: sin(x) * cos(y) + sin(y) * cos(x)
 Target: sin(x + y)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract an angle sum/difference trig identity  [Angle Sum/Diff Identity]
+1. Expand or contract an angle sum/difference trig identity  [Aplicar suma/diferencia de ángulos]
    Before: sin(x) * cos(y) + sin(y) * cos(x)
    Cambio local: sin(x) * cos(y) + sin(y) * cos(x) -> sin(x + y)
    After: sin(x + y)
@@ -3113,7 +3113,7 @@ Parsed: (cos(x) - cos(3 * x)) / (sin(3 * x) - sin(x))
 Target: tan(2 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize a cosine/sine difference quotient as tan((A+B)/2)  [Trig Quotient]
+1. Recognize a cosine/sine difference quotient as tan((A+B)/2)  [Convertir un cociente trigonométrico en tangente]
    Before: (cos(x) - cos(3 * x)) / (sin(3 * x) - sin(x))
    Cambio local: (cos(x) - cos(3 * x)) / (sin(3 * x) - sin(x)) -> tan(2 * x)
    After: tan(2 * x)
@@ -3145,7 +3145,7 @@ Parsed: cos(x) / sin(x)
 Target: cot(x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize cos(u) / sin(u) as cot(u)  [Reciprocal Trig Identity]
+1. Recognize cos(u) / sin(u) as cot(u)  [Aplicar identidad trigonométrica recíproca]
    Before: cos(x) / sin(x)
    Cambio local: cos(x) / sin(x) -> cot(x)
    After: cot(x)
@@ -3177,7 +3177,7 @@ Parsed: 1 / sin(x)
 Target: csc(x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize 1 / sin(u) as csc(u)  [Reciprocal Trig Identity]
+1. Recognize 1 / sin(u) as csc(u)  [Aplicar identidad trigonométrica recíproca]
    Before: 1 / sin(x)
    Cambio local: 1 / sin(x) -> csc(x)
    After: csc(x)
@@ -3239,7 +3239,7 @@ Parsed: 1 - 2 * sin(x)^2
 Target: cos(2 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand cosine double-angle as 1 - 2·sin(u)^2  [Double Angle Expansion]
+1. Expand cosine double-angle as 1 - 2·sin(u)^2  [Expandir ángulo doble]
    Before: 1 - 2 * sin(x)^(2)
    Cambio local: 1 - 2 * sin(x)^(2) -> cos(2 * x)
    After: cos(2 * x)
@@ -3269,7 +3269,7 @@ Parsed: 2 * cos(x)^2 - 1
 Target: cos(2 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand cosine double-angle as 2·cos(u)^2 - 1  [Double Angle Expansion]
+1. Expand cosine double-angle as 2·cos(u)^2 - 1  [Expandir ángulo doble]
    Before: 2 * cos(x)^(2) - 1
    Cambio local: 2 * cos(x)^(2) - 1 -> cos(2 * x)
    After: cos(2 * x)
@@ -3299,7 +3299,7 @@ Parsed: 2 * sin(x) * cos(x)
 Target: sin(2 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand double-angle sine  [Double Angle Expansion]
+1. Expand double-angle sine  [Expandir ángulo doble]
    Before: 2 * sin(x) * cos(x)
    Cambio local: 2 * sin(x) * cos(x) -> sin(2 * x)
    After: sin(2 * x)
@@ -3362,7 +3362,7 @@ Parsed: (cos(2 * x) + 1) / 2
 Target: cos(x)^2
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize (1 + cos(2u))/2 as cos²(u)  [Half-Angle Square Identity]
+1. Recognize (1 + cos(2u))/2 as cos²(u)  [Aplicar identidad de ángulo mitad]
    Before: (cos(2 * x) + 1) / 2
    Cambio local: (cos(2 * x) + 1) / 2 -> cos(x)^(2)
    After: cos(x)^2
@@ -3392,7 +3392,7 @@ Parsed: (1 - cos(2 * x)) / 2
 Target: sin(x)^2
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize (1 - cos(2u))/2 as sin²(u)  [Half-Angle Square Identity]
+1. Recognize (1 - cos(2u))/2 as sin²(u)  [Aplicar identidad de ángulo mitad]
    Before: (1 - cos(2 * x)) / 2
    Cambio local: (1 - cos(2 * x)) / 2 -> sin(x)^(2)
    After: sin(x)^2
@@ -3422,7 +3422,7 @@ Parsed: (1 - cos(2 * x)) / sin(2 * x)
 Target: tan(x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Contract half-angle tangent quotient  [Half-Angle Tangent Identity]
+1. Contract half-angle tangent quotient  [Aplicar identidad de tangente de ángulo mitad]
    Before: (1 - cos(2 * x)) / sin(2 * x)
    Cambio local: (1 - cos(2 * x)) / sin(2 * x) -> tan(x)
    After: tan(x)
@@ -3454,7 +3454,7 @@ Parsed: sin(2 * x) / (cos(2 * x) + 1)
 Target: tan(x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Contract half-angle tangent quotient  [Half-Angle Tangent Identity]
+1. Contract half-angle tangent quotient  [Aplicar identidad de tangente de ángulo mitad]
    Before: sin(2 * x) / (cos(2 * x) + 1)
    Cambio local: sin(2 * x) / (cos(2 * x) + 1) -> tan(x)
    After: tan(x)
@@ -3486,7 +3486,7 @@ Parsed: sin(x) * cos(x)
 Target: sin(2 * x) / 2
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand double-angle sine  [Double Angle Expansion]
+1. Expand double-angle sine  [Expandir ángulo doble]
    Before: sin(x) * cos(x)
    Cambio local: sin(x) * cos(x) -> sin(2 * x) / 2
    After: sin(2 * x) / 2
@@ -3516,7 +3516,7 @@ Parsed: sin(x)^2 - cos(x)^2
 Target: -cos(2 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize a negated cosine double-angle form  [Double Angle Expansion]
+1. Recognize a negated cosine double-angle form  [Expandir ángulo doble]
    Before: sin(x)^(2) - cos(x)^(2)
    Cambio local: sin(x)^(2) - cos(x)^(2) -> -cos(2 * x)
    After: -cos(2 * x)
@@ -3546,7 +3546,7 @@ Parsed: -2 * sin(x) * cos(x)
 Target: -sin(2 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize a negated sine double-angle form  [Double Angle Expansion]
+1. Recognize a negated sine double-angle form  [Expandir ángulo doble]
    Before: -2 * sin(x) * cos(x)
    Cambio local: -2 * sin(x) * cos(x) -> -sin(2 * x)
    After: -sin(2 * x)
@@ -3576,7 +3576,7 @@ Parsed: sin(x) - cos(x)
 Target: sin(x - pi / 4) * sqrt(2)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: sin(x) - cos(x)
    Cambio local: sin(x) - cos(x) -> sin(x - pi / 4) * sqrt(2)
    After: sin(x - pi / 4) * sqrt(2)
@@ -3607,7 +3607,7 @@ Parsed: cos(x) + sin(x) * sqrt(3)
 Target: 2 * sin(pi / 6 + x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: cos(x) + sin(x) * sqrt(3)
    Cambio local: cos(x) + sin(x) * sqrt(3) -> 2 * sin(pi / 6 + x)
    After: 2 * sin(pi / 6 + x)
@@ -3638,7 +3638,7 @@ Parsed: 2 * sin(x) + 2 * cos(x) * sqrt(3)
 Target: 4 * sin(pi / 3 + x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 2 * sin(x) + 2 * cos(x) * sqrt(3)
    Cambio local: 2 * sin(x) + 2 * cos(x) * sqrt(3) -> 4 * sin(pi / 3 + x)
    After: 4 * sin(pi / 3 + x)
@@ -3669,7 +3669,7 @@ Parsed: 5 * sin(arctan(4 / 3) + x)
 Target: 5 * cos(x - arctan(3 / 4))
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 5 * sin(arctan(4 / 3) + x)
    Cambio local: 5 * sin(arctan(4 / 3) + x) -> 5 * cos(x - arctan(3 / 4))
    After: 5 * cos(x - arctan(3 / 4))
@@ -3700,7 +3700,7 @@ Parsed: 5 * sin(arctan(4 / 3) + x) + a
 Target: 5 * cos(x - arctan(3 / 4)) + a
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 5 * sin(arctan(4 / 3) + x) + a
    Cambio local: 5 * sin(arctan(4 / 3) + x) + a -> 5 * cos(x - arctan(3 / 4)) + a
    After: 5 * cos(x - arctan(3 / 4)) + a
@@ -3731,7 +3731,7 @@ Parsed: 3 * sin(x) + 4 * cos(x)
 Target: 5 * sin(arctan(4 / 3) + x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 3 * sin(x) + 4 * cos(x)
    Cambio local: 3 * sin(x) + 4 * cos(x) -> 5 * sin(arctan(4 / 3) + x)
    After: 5 * sin(arctan(4 / 3) + x)
@@ -3762,7 +3762,7 @@ Parsed: 3 * sin(x) + 4 * cos(x) + a
 Target: 5 * sin(arctan(4 / 3) + x) + a
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 3 * sin(x) + 4 * cos(x) + a
    Cambio local: 3 * sin(x) + 4 * cos(x) + a -> 5 * sin(arctan(4 / 3) + x) + a
    After: 5 * sin(arctan(4 / 3) + x) + a
@@ -3793,7 +3793,7 @@ Parsed: 2 * sin(x) + 2 * cos(x)
 Target: 2 * sin(pi / 4 + x) * sqrt(2)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 2 * sin(x) + 2 * cos(x)
    Cambio local: 2 * sin(x) + 2 * cos(x) -> 2 * sin(pi / 4 + x) * sqrt(2)
    After: 2 * sin(pi / 4 + x) * sqrt(2)
@@ -3824,7 +3824,7 @@ Parsed: sin(pi / 4 + x) * sqrt(2)
 Target: cos(x - pi / 4) * sqrt(2)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: sin(pi / 4 + x) * sqrt(2)
    Cambio local: sin(pi / 4 + x) * sqrt(2) -> cos(x - pi / 4) * sqrt(2)
    After: cos(x - pi / 4) * sqrt(2)
@@ -3855,7 +3855,7 @@ Parsed: sin(pi / 4 + x) * sqrt(2) + a
 Target: cos(x - pi / 4) * sqrt(2) + a
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: sin(pi / 4 + x) * sqrt(2) + a
    Cambio local: sin(pi / 4 + x) * sqrt(2) + a -> cos(x - pi / 4) * sqrt(2) + a
    After: cos(x - pi / 4) * sqrt(2) + a
@@ -3886,7 +3886,7 @@ Parsed: sin(x) + cos(x)
 Target: sin(pi / 4 + x) * sqrt(2)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: sin(x) + cos(x)
    Cambio local: sin(x) + cos(x) -> sin(pi / 4 + x) * sqrt(2)
    After: sin(pi / 4 + x) * sqrt(2)
@@ -3917,7 +3917,7 @@ Parsed: sin(x) + cos(x) + a
 Target: sin(pi / 4 + x) * sqrt(2) + a
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: sin(x) + cos(x) + a
    Cambio local: sin(x) + cos(x) + a -> sin(pi / 4 + x) * sqrt(2) + a
    After: sin(pi / 4 + x) * sqrt(2) + a
@@ -3948,7 +3948,7 @@ Parsed: 4 * sin(x) * cos(x)^3 - 4 * cos(x) * sin(x)^3
 Target: sin(4 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract sine quadruple-angle form  [Quadruple Angle Expansion]
+1. Expand or contract sine quadruple-angle form  [Reescribir ángulo cuádruple]
    Before: 4 * sin(x) * cos(x)^(3) - 4 * cos(x) * sin(x)^(3)
    Cambio local: 4 * sin(x) * cos(x)^(3) - 4 * cos(x) * sin(x)^(3) -> sin(4 * x)
    After: sin(4 * x)
@@ -3979,7 +3979,7 @@ Parsed: 5 * cos(x) + 16 * cos(x)^5 - 20 * cos(x)^3
 Target: cos(5 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract cosine quintuple-angle form  [Quintuple Angle Identity]
+1. Expand or contract cosine quintuple-angle form  [Reescribir ángulo quíntuple]
    Before: 5 * cos(x) + 16 * cos(x)^(5) - 20 * cos(x)^(3)
    Cambio local: 5 * cos(x) + 16 * cos(x)^(5) - 20 * cos(x)^(3) -> cos(5 * x)
    After: cos(5 * x)
@@ -4010,7 +4010,7 @@ Parsed: 5 * sin(x) + 16 * sin(x)^5 - 20 * sin(x)^3
 Target: sin(5 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract sine quintuple-angle form  [Quintuple Angle Identity]
+1. Expand or contract sine quintuple-angle form  [Reescribir ángulo quíntuple]
    Before: 5 * sin(x) + 16 * sin(x)^(5) - 20 * sin(x)^(3)
    Cambio local: 5 * sin(x) + 16 * sin(x)^(5) - 20 * sin(x)^(3) -> sin(5 * x)
    After: sin(5 * x)
@@ -4041,7 +4041,7 @@ Parsed: cos(x) * cos(5 * x) - sin(x) * sin(5 * x)
 Target: cos(6 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract an angle sum/difference trig identity  [Angle Sum/Diff Identity]
+1. Expand or contract an angle sum/difference trig identity  [Aplicar suma/diferencia de ángulos]
    Before: cos(x) * cos(5 * x) - sin(x) * sin(5 * x)
    Cambio local: cos(x) * cos(5 * x) - sin(x) * sin(5 * x) -> cos(6 * x)
    After: cos(6 * x)
@@ -4072,7 +4072,7 @@ Parsed: sin(x) * cos(5 * x) + sin(5 * x) * cos(x)
 Target: sin(6 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract an angle sum/difference trig identity  [Angle Sum/Diff Identity]
+1. Expand or contract an angle sum/difference trig identity  [Aplicar suma/diferencia de ángulos]
    Before: sin(x) * cos(5 * x) + sin(5 * x) * cos(x)
    Cambio local: sin(x) * cos(5 * x) + sin(5 * x) * cos(x) -> sin(6 * x)
    After: sin(6 * x)
@@ -4103,7 +4103,7 @@ Parsed: 1 / cos(x)
 Target: sec(x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize 1 / cos(u) as sec(u)  [Reciprocal Trig Identity]
+1. Recognize 1 / cos(u) as sec(u)  [Aplicar identidad trigonométrica recíproca]
    Before: 1 / cos(x)
    Cambio local: 1 / cos(x) -> sec(x)
    After: sec(x)
@@ -4165,7 +4165,7 @@ Parsed: sin(3 * x) - sin(x)
 Target: 2 * sin(x) * cos(2 * x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand sine difference to product  [Sum-to-Product Identity]
+1. Expand sine difference to product  [Aplicar suma a producto]
    Before: sin(3 * x) - sin(x)
    Cambio local: sin(3 * x) - sin(x) -> 2 * sin(x) * cos(2 * x)
    After: 2 * sin(x) * cos(2 * x)
@@ -4226,7 +4226,7 @@ Parsed: sin(2 * x) / cos(2 * x)
 Target: tan(2 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize sin(u) / cos(u) as tan(u)  [Trig Quotient]
+1. Recognize sin(u) / cos(u) as tan(u)  [Convertir un cociente trigonométrico en tangente]
    Before: sin(2 * x) / cos(2 * x)
    Cambio local: sin(2 * x) / cos(2 * x) -> tan(2 * x)
    After: tan(2 * x)
@@ -4258,7 +4258,7 @@ Parsed: sin(2 * x) / cos(x + x)
 Target: tan(2 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize sin(u) / cos(u) as tan(u)  [Trig Quotient]
+1. Recognize sin(u) / cos(u) as tan(u)  [Convertir un cociente trigonométrico en tangente]
    Before: sin(2 * x) / cos(x + x)
    Cambio local: sin(2 * x) / cos(x + x) -> tan(2 * x)
    After: tan(2 * x)
@@ -4290,7 +4290,7 @@ Parsed: x * sin(x^2) / cos(x^2) + 1
 Target: x * tan(x^2) + 1
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize sin(u) / cos(u) as tan(u)  [Trig Quotient]
+1. Recognize sin(u) / cos(u) as tan(u)  [Convertir un cociente trigonométrico en tangente]
    Before: x * sin(x^(2)) / cos(x^(2)) + 1
    Cambio local: x * sin(x^(2)) / cos(x^(2)) + 1 -> x * tan(x^(2)) + 1
    After: x * tan(x^2) + 1
@@ -4322,7 +4322,7 @@ Parsed: x * sin(x^2) / cos(x^2)
 Target: x * tan(x^2)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize sin(u) / cos(u) as tan(u)  [Trig Quotient]
+1. Recognize sin(u) / cos(u) as tan(u)  [Convertir un cociente trigonométrico en tangente]
    Before: x * sin(x^(2)) / cos(x^(2))
    Cambio local: x * sin(x^(2)) / cos(x^(2)) -> x * tan(x^(2))
    After: x * tan(x^2)
@@ -4354,7 +4354,7 @@ Parsed: (tan(x) - tan(y)) / (tan(x) * tan(y) + 1)
 Target: tan(x - y)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize tangent angle sum/difference form  [Tangent Angle Sum/Diff Identity]
+1. Recognize tangent angle sum/difference form  [Aplicar identidad de tangente de suma/diferencia de ángulos]
    Before: (tan(x) - tan(y)) / (tan(x) * tan(y) + 1)
    Cambio local: (tan(x) - tan(y)) / (tan(x) * tan(y) + 1) -> tan(x - y)
    After: tan(x - y)
@@ -4386,7 +4386,7 @@ Parsed: (tan(x) + tan(y)) / (1 - tan(x) * tan(y))
 Target: tan(x + y)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Recognize tangent angle sum/difference form  [Tangent Angle Sum/Diff Identity]
+1. Recognize tangent angle sum/difference form  [Aplicar identidad de tangente de suma/diferencia de ángulos]
    Before: (tan(x) + tan(y)) / (1 - tan(x) * tan(y))
    Cambio local: (tan(x) + tan(y)) / (1 - tan(x) * tan(y)) -> tan(x + y)
    After: tan(x + y)
@@ -4418,7 +4418,7 @@ Parsed: 4 * cos(x)^3 - 3 * cos(x)
 Target: cos(3 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract cosine triple-angle form  [Triple Angle Expansion]
+1. Expand or contract cosine triple-angle form  [Reescribir ángulo triple]
    Before: 4 * cos(x)^(3) - 3 * cos(x)
    Cambio local: 4 * cos(x)^(3) - 3 * cos(x) -> cos(3 * x)
    After: cos(3 * x)
@@ -4449,7 +4449,7 @@ Parsed: 3 * sin(x) - 4 * sin(x)^3
 Target: sin(3 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract sine triple-angle form  [Triple Angle Expansion]
+1. Expand or contract sine triple-angle form  [Reescribir ángulo triple]
    Before: 3 * sin(x) - 4 * sin(x)^(3)
    Cambio local: 3 * sin(x) - 4 * sin(x)^(3) -> sin(3 * x)
    After: sin(3 * x)
@@ -4480,7 +4480,7 @@ Parsed: (3 * tan(x) - tan(x)^3) / (1 - 3 * tan(x)^2)
 Target: tan(3 * x)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Expand or contract tangent triple-angle form  [Triple Angle Expansion]
+1. Expand or contract tangent triple-angle form  [Reescribir ángulo triple]
    Before: (3 * tan(x) - tan(x)^(3)) / (1 - 3 * tan(x)^(2))
    Cambio local: (3 * tan(x) - tan(x)^(3)) / (1 - 3 * tan(x)^(2)) -> tan(3 * x)
    After: tan(3 * x)
@@ -4513,7 +4513,7 @@ Parsed: cos(arcsin(x))
 Target: sqrt(1 - x^2)
 Strategy: rewrite inverse trigs
 Steps (Aggressive Mode):
-1. cos(arcsin(x)) = sqrt(1-x^2)  [Inverse Trig Composition]
+1. cos(arcsin(x)) = sqrt(1-x^2)  [Aplicar composición trigonométrica inversa]
    Before: cos(arcsin(x))
    Cambio local: cos(arcsin(x)) -> sqrt(1 - x^(2))
    After: sqrt(1 - x^2)
@@ -4547,7 +4547,7 @@ Parsed: cos(arctan(x))
 Target: 1 / sqrt(x^2 + 1)
 Strategy: rewrite inverse trigs
 Steps (Aggressive Mode):
-1. cos(arctan(x)) = 1/sqrt(1+x^2)  [Inverse Trig Composition]
+1. cos(arctan(x)) = 1/sqrt(1+x^2)  [Aplicar composición trigonométrica inversa]
    Before: cos(arctan(x))
    Cambio local: cos(arctan(x)) -> 1 / sqrt(x^(2) + 1)
    After: 1 / sqrt(x^2 + 1)
@@ -4943,7 +4943,7 @@ Parsed: e^(3 * x)
 Target: e^x^3
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Expand exp(n·u) as exp(u)^n  [Exponential Power Identity]
+1. Expand exp(n·u) as exp(u)^n  [Expandir potencia exponencial]
    Before: e^(3 * x)
    Cambio local: e^(3 * x) -> e^(x)^(3)
    After: e^x^3
@@ -4974,7 +4974,7 @@ Parsed: e^(-x)
 Target: 1 / e^x
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Expand exp(-u) as 1 / exp(u)  [Exponential Reciprocal Identity]
+1. Expand exp(-u) as 1 / exp(u)  [Expandir como recíproco exponencial]
    Before: e^(-x)
    Cambio local: e^(-x) -> 1 / e^(x)
    After: 1 / e^x
@@ -5005,7 +5005,7 @@ Parsed: e^(x + y)
 Target: e^x * e^y
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Expand exp(u ± v ± ...) into products/quotients of exponentials  [Exponential Sum/Difference Identity]
+1. Expand exp(u ± v ± ...) into products/quotients of exponentials  [Expandir exponencial de suma o diferencia]
    Before: e^(x + y)
    Cambio local: e^(x + y) -> e^(x) * e^(y)
    After: e^x * e^y
@@ -5493,7 +5493,7 @@ Parsed: cosh(x - y)
 Target: cosh(x) * cosh(y) - sinh(x) * sinh(y)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: cosh(x - y)
    Cambio local: cosh(x - y) -> cosh(x) * cosh(y) - sinh(x) * sinh(y)
    After: cosh(x) * cosh(y) - sinh(x) * sinh(y)
@@ -5555,7 +5555,7 @@ Parsed: cosh(x + y)
 Target: sinh(x) * sinh(y) + cosh(x) * cosh(y)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: cosh(x + y)
    Cambio local: cosh(x + y) -> sinh(x) * sinh(y) + cosh(x) * cosh(y)
    After: sinh(x) * sinh(y) + cosh(x) * cosh(y)
@@ -5728,7 +5728,7 @@ Parsed: sinh(x - y)
 Target: sinh(x) * cosh(y) - sinh(y) * cosh(x)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: sinh(x - y)
    Cambio local: sinh(x - y) -> sinh(x) * cosh(y) - sinh(y) * cosh(x)
    After: sinh(x) * cosh(y) - sinh(y) * cosh(x)
@@ -5759,7 +5759,7 @@ Parsed: sinh(x + y)
 Target: sinh(x) * cosh(y) + sinh(y) * cosh(x)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: sinh(x + y)
    Cambio local: sinh(x + y) -> sinh(x) * cosh(y) + sinh(y) * cosh(x)
    After: sinh(x) * cosh(y) + sinh(y) * cosh(x)
@@ -5821,7 +5821,7 @@ Parsed: tanh(x - y)
 Target: (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Expand tanh(u ± v) as (tanh(u) ± tanh(v)) / (1 ± tanh(u)·tanh(v))  [Hyperbolic Angle Sum/Difference Identity]
+1. Expand tanh(u ± v) as (tanh(u) ± tanh(v)) / (1 ± tanh(u)·tanh(v))  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: tanh(x - y)
    Cambio local: tanh(x - y) -> (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
    After: (tanh(x) - tanh(y)) / (1 - tanh(x) * tanh(y))
@@ -5854,7 +5854,7 @@ Parsed: tanh(x + y)
 Target: (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1)
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Expand tanh(u ± v) as (tanh(u) ± tanh(v)) / (1 ± tanh(u)·tanh(v))  [Hyperbolic Angle Sum/Difference Identity]
+1. Expand tanh(u ± v) as (tanh(u) ± tanh(v)) / (1 ± tanh(u)·tanh(v))  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: tanh(x + y)
    Cambio local: tanh(x + y) -> (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1)
    After: (tanh(x) + tanh(y)) / (tanh(x) * tanh(y) + 1)
@@ -5917,7 +5917,7 @@ Parsed: log(b, c)
 Target: log(a, c) * log(b, a)
 Strategy: expand_log
 Steps (Aggressive Mode):
-1. Expand the logarithm using a change-of-base chain  [Change of Base]
+1. Expand the logarithm using a change-of-base chain  [Aplicar cambio de base]
    Before: log(b, c)
    Cambio local: log(b, c) -> log(a, c) * log(b, a)
    After: log(a, c) * log(b, a)
@@ -5951,7 +5951,7 @@ Parsed: log(2, x)
 Target: ln(x) / ln(2)
 Strategy: expand_log
 Steps (Aggressive Mode):
-1. Rewrite the logarithm using the change-of-base formula  [Change of Base]
+1. Rewrite the logarithm using the change-of-base formula  [Aplicar cambio de base]
    Before: log(2, x)
    Subpasos:
      1.1 Poner el argumento en el numerador
@@ -5969,7 +5969,7 @@ Result: ln(x) / ln(2)
 
 ### Web / JSON Steps
 
-1. `Change of Base`
+1. `Aplicar cambio de base`
    - before: `log_2(x)`
    - after: `ln(x)/ln(2)`
    - substeps:
@@ -6677,7 +6677,7 @@ Parsed: cosh(6 * x)
 Target: sinh(x) * sinh(5 * x) + cosh(x) * cosh(5 * x)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize cosh(u)·cosh(v) ± sinh(u)·sinh(v) as cosh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: cosh(6 * x)
    Cambio local: cosh(6 * x) -> sinh(x) * sinh(5 * x) + cosh(x) * cosh(5 * x)
    After: sinh(x) * sinh(5 * x) + cosh(x) * cosh(5 * x)
@@ -6708,7 +6708,7 @@ Parsed: sinh(6 * x)
 Target: sinh(x) * cosh(5 * x) + sinh(5 * x) * cosh(x)
 Strategy: expand
 Steps (Aggressive Mode):
-1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Hyperbolic Angle Sum/Difference Identity]
+1. Recognize sinh(u)·cosh(v) ± cosh(u)·sinh(v) as sinh(u ± v)  [Aplicar identidad hiperbólica de suma/diferencia de ángulos]
    Before: sinh(6 * x)
    Cambio local: sinh(6 * x) -> sinh(x) * cosh(5 * x) + sinh(5 * x) * cosh(x)
    After: sinh(x) * cosh(5 * x) + sinh(5 * x) * cosh(x)
@@ -6916,8 +6916,8 @@ Result: a^(3) + b^(3) + 3 * a * b^(2) + 3 * b * a^(2)
 - Source: `(a - b)^3`
 - Target: `a^3 - 3*a^2*b + 3*a*b^2 - b^3`
 - Result: `a^3 + 3 * a * b^2 - 3 * b * a^2 - b^3`
-- Web step count: `3`
-- Web substep count: `0`
+- Web step count: `2`
+- Web substep count: `2`
 - Flags: none
 
 ### CLI
@@ -6948,14 +6948,12 @@ Result: a^(3) + 3 * a * b^(2) - 3 * b * a^(2) - b^(3)
    - before: `(a - b)^3`
    - after: `(-b)^3 + 3 · a · (-b)^2 + a^3 - 3 · b · a^2`
    - substeps: none
-2. `Negative Base Power`
+2. `Simplificar potencia con base negativa`
    - before: `(-b)^3 + 3 · a · (-b)^2 + a^3 - 3 · b · a^2`
-   - after: `3 · a · (-b)^2 + a^3 - 3 · b · a^2 - b^3`
-   - substeps: none
-3. `Negative Base Power`
-   - before: `3 · a · (-b)^2 + a^3 - 3 · b · a^2 - b^3`
    - after: `a^3 - 3 · b · a^2 + 3 · a · b^2 - b^3`
-   - substeps: none
+   - substeps:
+     1. `Usar que una potencia impar conserva el signo negativo`
+     2. `Usar que una potencia par elimina el signo`
 
 ## expand_symbolic_binomial_minus (expand)
 
@@ -6963,7 +6961,7 @@ Result: a^(3) + 3 * a * b^(2) - 3 * b * a^(2) - b^(3)
 - Target: `a^2 - 2*a*b + b^2`
 - Result: `a^2 + b^2 - 2 * a * b`
 - Web step count: `2`
-- Web substep count: `0`
+- Web substep count: `1`
 - Flags: none
 
 ### CLI
@@ -6990,10 +6988,11 @@ Result: a^(2) + b^(2) - 2 * a * b
    - before: `(a - b)^2`
    - after: `(-b)^2 + a^2 - 2 · a · b`
    - substeps: none
-2. `Negative Base Power`
+2. `Simplificar potencia con base negativa`
    - before: `(-b)^2 + a^2 - 2 · a · b`
    - after: `a^2 - 2 · a · b + b^2`
-   - substeps: none
+   - substeps:
+     1. `Usar que una potencia par elimina el signo`
 
 ## expand_symbolic_cube_difference_product (polynomial_product)
 
@@ -7218,7 +7217,7 @@ Result: a^(2) + b^(2) + c^(2) + 2 * a * b + 2 * a * c + 2 * b * c
 - Source: `(a+b)^2 - a^2 - 2*a*b`
 - Target: `b^2`
 - Result: `b^2`
-- Web step count: `3`
+- Web step count: `2`
 - Web substep count: `2`
 - Flags: none
 
@@ -7252,14 +7251,10 @@ Result: b^(2)
    - substeps: none
 2. `Cancelar términos opuestos`
    - before: `a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b`
-   - after: `b^2 + 2 · a · b - 2 · a · b`
-   - substeps:
-     1. `Cancelar términos opuestos exactos`
-3. `Cancelar términos opuestos`
-   - before: `b^2 + 2 · a · b - 2 · a · b`
    - after: `b^2`
    - substeps:
      1. `Cancelar términos opuestos exactos`
+     2. `Cancelar términos opuestos exactos`
 
 ## expand_trig_after_simplify (trig_expand)
 
@@ -7277,7 +7272,7 @@ Parsed: sin(x + x)
 Target: 2 * sin(x) * cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand double-angle sine  [Double Angle Expansion]
+1. Expand double-angle sine  [Expandir ángulo doble]
    Before: sin(x + x)
    Cambio local: sin(x + x) -> 2 * sin(x) * cos(x)
    After: 2 * sin(x) * cos(x)
@@ -7307,7 +7302,7 @@ Parsed: cos(x - y)
 Target: sin(x) * sin(y) + cos(x) * cos(y)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand or contract an angle sum/difference trig identity  [Angle Sum/Diff Identity]
+1. Expand or contract an angle sum/difference trig identity  [Aplicar suma/diferencia de ángulos]
    Before: cos(x - y)
    Cambio local: cos(x - y) -> sin(x) * sin(y) + cos(x) * cos(y)
    After: sin(x) * sin(y) + cos(x) * cos(y)
@@ -7338,7 +7333,7 @@ Parsed: sin(x - y)
 Target: sin(x) * cos(y) - sin(y) * cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand or contract an angle sum/difference trig identity  [Angle Sum/Diff Identity]
+1. Expand or contract an angle sum/difference trig identity  [Aplicar suma/diferencia de ángulos]
    Before: sin(x - y)
    Cambio local: sin(x - y) -> sin(x) * cos(y) - sin(y) * cos(x)
    After: sin(x) * cos(y) - sin(y) * cos(x)
@@ -7369,7 +7364,7 @@ Parsed: cos(x + y)
 Target: cos(x) * cos(y) - sin(x) * sin(y)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand or contract an angle sum/difference trig identity  [Angle Sum/Diff Identity]
+1. Expand or contract an angle sum/difference trig identity  [Aplicar suma/diferencia de ángulos]
    Before: cos(x + y)
    Cambio local: cos(x + y) -> cos(x) * cos(y) - sin(x) * sin(y)
    After: cos(x) * cos(y) - sin(x) * sin(y)
@@ -7400,7 +7395,7 @@ Parsed: sin(x + y)
 Target: sin(x) * cos(y) + sin(y) * cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand or contract an angle sum/difference trig identity  [Angle Sum/Diff Identity]
+1. Expand or contract an angle sum/difference trig identity  [Aplicar suma/diferencia de ángulos]
    Before: sin(x + y)
    Cambio local: sin(x + y) -> sin(x) * cos(y) + sin(y) * cos(x)
    After: sin(x) * cos(y) + sin(y) * cos(x)
@@ -7491,7 +7486,7 @@ Parsed: cos(x)^18
 Target: (cos(18 * x) + 18 * cos(16 * x) + 153 * cos(14 * x) + 816 * cos(12 * x) + 3060 * cos(10 * x) + 8568 * cos(8 * x) + 18564 * cos(6 * x) + 31824 * cos(4 * x) + 43758 * cos(2 * x) + 24310) / 131072
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce cos¹⁸(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce cos¹⁸(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: cos(x)^(18)
    Cambio local: cos(x)^(18) -> (cos(18 * x) + 18 * cos(16 * x) + 153 * cos(14 * x) + 816 * cos(12 * x) + 3060 * cos(10 * x) + 8568 * cos(8 * x) + 18564 * cos(6 * x) + 31824 * cos(4 * x) + 43758 * cos(2 * x) + 24310) / 131072
    After: (cos(18 * x) + 18 * cos(16 * x) + 153 * cos(14 * x) + 816 * cos(12 * x) + 3060 * cos(10 * x) + 8568 * cos(8 * x) + 18564 * cos(6 * x) + 31824 * cos(4 * x) + 43758 * cos(2 * x) + 24310) / 131072
@@ -7522,7 +7517,7 @@ Parsed: cos(x)^8
 Target: (cos(8 * x) + 8 * cos(6 * x) + 28 * cos(4 * x) + 56 * cos(2 * x) + 35) / 128
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce cos⁸(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce cos⁸(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: cos(x)^(8)
    Cambio local: cos(x)^(8) -> (cos(8 * x) + 8 * cos(6 * x) + 28 * cos(4 * x) + 56 * cos(2 * x) + 35) / 128
    After: (cos(8 * x) + 8 * cos(6 * x) + 28 * cos(4 * x) + 56 * cos(2 * x) + 35) / 128
@@ -7553,7 +7548,7 @@ Parsed: cos(x)^14
 Target: (cos(14 * x) + 14 * cos(12 * x) + 91 * cos(10 * x) + 364 * cos(8 * x) + 1001 * cos(6 * x) + 2002 * cos(4 * x) + 3003 * cos(2 * x) + 1716) / 8192
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce cos¹⁴(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce cos¹⁴(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: cos(x)^(14)
    Cambio local: cos(x)^(14) -> (cos(14 * x) + 14 * cos(12 * x) + 91 * cos(10 * x) + 364 * cos(8 * x) + 1001 * cos(6 * x) + 2002 * cos(4 * x) + 3003 * cos(2 * x) + 1716) / 8192
    After: (cos(14 * x) + 14 * cos(12 * x) + 91 * cos(10 * x) + 364 * cos(8 * x) + 1001 * cos(6 * x) + 2002 * cos(4 * x) + 3003 * cos(2 * x) + 1716) / 8192
@@ -7584,7 +7579,7 @@ Parsed: cos(x)^4
 Target: (cos(4 * x) + 4 * cos(2 * x) + 3) / 8
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce cos⁴(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce cos⁴(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: cos(x)^(4)
    Cambio local: cos(x)^(4) -> (cos(4 * x) + 4 * cos(2 * x) + 3) / 8
    After: (cos(4 * x) + 4 * cos(2 * x) + 3) / 8
@@ -7615,7 +7610,7 @@ Parsed: cos(x)^16
 Target: (cos(16 * x) + 16 * cos(14 * x) + 120 * cos(12 * x) + 560 * cos(10 * x) + 1820 * cos(8 * x) + 4368 * cos(6 * x) + 8008 * cos(4 * x) + 11440 * cos(2 * x) + 6435) / 32768
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce cos¹⁶(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce cos¹⁶(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: cos(x)^(16)
    Cambio local: cos(x)^(16) -> (cos(16 * x) + 16 * cos(14 * x) + 120 * cos(12 * x) + 560 * cos(10 * x) + 1820 * cos(8 * x) + 4368 * cos(6 * x) + 8008 * cos(4 * x) + 11440 * cos(2 * x) + 6435) / 32768
    After: (cos(16 * x) + 16 * cos(14 * x) + 120 * cos(12 * x) + 560 * cos(10 * x) + 1820 * cos(8 * x) + 4368 * cos(6 * x) + 8008 * cos(4 * x) + 11440 * cos(2 * x) + 6435) / 32768
@@ -7646,7 +7641,7 @@ Parsed: cos(x)^6
 Target: (cos(6 * x) + 6 * cos(4 * x) + 15 * cos(2 * x) + 10) / 32
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce cos⁶(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce cos⁶(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: cos(x)^(6)
    Cambio local: cos(x)^(6) -> (cos(6 * x) + 6 * cos(4 * x) + 15 * cos(2 * x) + 10) / 32
    After: (cos(6 * x) + 6 * cos(4 * x) + 15 * cos(2 * x) + 10) / 32
@@ -7677,7 +7672,7 @@ Parsed: cos(x)^10
 Target: (cos(10 * x) + 10 * cos(8 * x) + 45 * cos(6 * x) + 120 * cos(4 * x) + 210 * cos(2 * x) + 126) / 512
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce cos¹⁰(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce cos¹⁰(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: cos(x)^(10)
    Cambio local: cos(x)^(10) -> (cos(10 * x) + 10 * cos(8 * x) + 45 * cos(6 * x) + 120 * cos(4 * x) + 210 * cos(2 * x) + 126) / 512
    After: (cos(10 * x) + 10 * cos(8 * x) + 45 * cos(6 * x) + 120 * cos(4 * x) + 210 * cos(2 * x) + 126) / 512
@@ -7708,7 +7703,7 @@ Parsed: cos(x)^12
 Target: (cos(12 * x) + 12 * cos(10 * x) + 66 * cos(8 * x) + 220 * cos(6 * x) + 495 * cos(4 * x) + 792 * cos(2 * x) + 462) / 2048
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce cos¹²(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce cos¹²(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: cos(x)^(12)
    Cambio local: cos(x)^(12) -> (cos(12 * x) + 12 * cos(10 * x) + 66 * cos(8 * x) + 220 * cos(6 * x) + 495 * cos(4 * x) + 792 * cos(2 * x) + 462) / 2048
    After: (cos(12 * x) + 12 * cos(10 * x) + 66 * cos(8 * x) + 220 * cos(6 * x) + 495 * cos(4 * x) + 792 * cos(2 * x) + 462) / 2048
@@ -7739,7 +7734,7 @@ Parsed: cos(x)^20
 Target: (cos(20 * x) + 20 * cos(18 * x) + 190 * cos(16 * x) + 1140 * cos(14 * x) + 4845 * cos(12 * x) + 15504 * cos(10 * x) + 38760 * cos(8 * x) + 77520 * cos(6 * x) + 125970 * cos(4 * x) + 167960 * cos(2 * x) + 92378) / 524288
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce cos²⁰(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce cos²⁰(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: cos(x)^(20)
    Cambio local: cos(x)^(20) -> (cos(20 * x) + 20 * cos(18 * x) + 190 * cos(16 * x) + 1140 * cos(14 * x) + 4845 * cos(12 * x) + 15504 * cos(10 * x) + 38760 * cos(8 * x) + 77520 * cos(6 * x) + 125970 * cos(4 * x) + 167960 * cos(2 * x) + 92378) / 524288
    After: (cos(20 * x) + 20 * cos(18 * x) + 190 * cos(16 * x) + 1140 * cos(14 * x) + 4845 * cos(12 * x) + 15504 * cos(10 * x) + 38760 * cos(8 * x) + 77520 * cos(6 * x) + 125970 * cos(4 * x) + 167960 * cos(2 * x) + 92378) / 524288
@@ -7770,7 +7765,7 @@ Parsed: cos(x)^24
 Target: (cos(24 * x) + 24 * cos(22 * x) + 276 * cos(20 * x) + 2024 * cos(18 * x) + 10626 * cos(16 * x) + 42504 * cos(14 * x) + 134596 * cos(12 * x) + 346104 * cos(10 * x) + 735471 * cos(8 * x) + 1307504 * cos(6 * x) + 1961256 * cos(4 * x) + 2496144 * cos(2 * x) + 1352078) / 8388608
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce higher even powers of cos(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce higher even powers of cos(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: cos(x)^(24)
    Cambio local: cos(x)^(24) -> (cos(24 * x) + 24 * cos(22 * x) + 276 * cos(20 * x) + 2024 * cos(18 * x) + 10626 * cos(16 * x) + 42504 * cos(14 * x) + 134596 * cos(12 * x) + 346104 * cos(10 * x) + 735471 * cos(8 * x) + 1307504 * cos(6 * x) + 1961256 * cos(4 * x) + 2496144 * cos(2 * x) + 1352078) / 8388608
    After: (cos(24 * x) + 24 * cos(22 * x) + 276 * cos(20 * x) + 2024 * cos(18 * x) + 10626 * cos(16 * x) + 42504 * cos(14 * x) + 134596 * cos(12 * x) + 346104 * cos(10 * x) + 735471 * cos(8 * x) + 1307504 * cos(6 * x) + 1961256 * cos(4 * x) + 2496144 * cos(2 * x) + 1352078) / 8388608
@@ -7801,7 +7796,7 @@ Parsed: cos(x)^22
 Target: (cos(22 * x) + 22 * cos(20 * x) + 231 * cos(18 * x) + 1540 * cos(16 * x) + 7315 * cos(14 * x) + 26334 * cos(12 * x) + 74613 * cos(10 * x) + 170544 * cos(8 * x) + 319770 * cos(6 * x) + 497420 * cos(4 * x) + 646646 * cos(2 * x) + 352716) / 2097152
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce cos²²(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce cos²²(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: cos(x)^(22)
    Cambio local: cos(x)^(22) -> (cos(22 * x) + 22 * cos(20 * x) + 231 * cos(18 * x) + 1540 * cos(16 * x) + 7315 * cos(14 * x) + 26334 * cos(12 * x) + 74613 * cos(10 * x) + 170544 * cos(8 * x) + 319770 * cos(6 * x) + 497420 * cos(4 * x) + 646646 * cos(2 * x) + 352716) / 2097152
    After: (cos(22 * x) + 22 * cos(20 * x) + 231 * cos(18 * x) + 1540 * cos(16 * x) + 7315 * cos(14 * x) + 26334 * cos(12 * x) + 74613 * cos(10 * x) + 170544 * cos(8 * x) + 319770 * cos(6 * x) + 497420 * cos(4 * x) + 646646 * cos(2 * x) + 352716) / 2097152
@@ -7832,7 +7827,7 @@ Parsed: cot(x)
 Target: cos(x) / sin(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand cot(u) as cos(u) / sin(u)  [Reciprocal Trig Identity]
+1. Expand cot(u) as cos(u) / sin(u)  [Aplicar identidad trigonométrica recíproca]
    Before: cot(x)
    Cambio local: cot(x) -> cos(x) / sin(x)
    After: cos(x) / sin(x)
@@ -7864,7 +7859,7 @@ Parsed: csc(x)
 Target: 1 / sin(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand csc(u) as 1 / sin(u)  [Reciprocal Trig Identity]
+1. Expand csc(u) as 1 / sin(u)  [Aplicar identidad trigonométrica recíproca]
    Before: csc(x)
    Cambio local: csc(x) -> 1 / sin(x)
    After: 1 / sin(x)
@@ -7926,7 +7921,7 @@ Parsed: cos(2 * x)
 Target: 1 - 2 * sin(x)^2
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand cosine double-angle as 1 - 2·sin(u)^2  [Double Angle Expansion]
+1. Expand cosine double-angle as 1 - 2·sin(u)^2  [Expandir ángulo doble]
    Before: cos(2 * x)
    Cambio local: cos(2 * x) -> 1 - 2 * sin(x)^(2)
    After: 1 - 2 * sin(x)^2
@@ -7956,7 +7951,7 @@ Parsed: cos(2 * x)
 Target: 2 * cos(x)^2 - 1
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand cosine double-angle as 2·cos(u)^2 - 1  [Double Angle Expansion]
+1. Expand cosine double-angle as 2·cos(u)^2 - 1  [Expandir ángulo doble]
    Before: cos(2 * x)
    Cambio local: cos(2 * x) -> 2 * cos(x)^(2) - 1
    After: 2 * cos(x)^2 - 1
@@ -7986,7 +7981,7 @@ Parsed: cos(2 * arccos(x))
 Target: 2 * x^2 - 1
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand double-angle cosine  [Double Angle Expansion]
+1. Expand double-angle cosine  [Expandir ángulo doble]
    Before: cos(2 * arccos(x))
    Cambio local: cos(2 * arccos(x)) -> 2 * x^(2) - 1
    After: 2 * x^2 - 1
@@ -8018,7 +8013,7 @@ Parsed: cos(2 * arcsin(x))
 Target: 1 - 2 * x^2
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand double-angle cosine  [Double Angle Expansion]
+1. Expand double-angle cosine  [Expandir ángulo doble]
    Before: cos(2 * arcsin(x))
    Cambio local: cos(2 * arcsin(x)) -> 1 - 2 * x^(2)
    After: 1 - 2 * x^2
@@ -8050,7 +8045,7 @@ Parsed: sin(2 * x)
 Target: 2 * sin(x) * cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand double-angle sine  [Double Angle Expansion]
+1. Expand double-angle sine  [Expandir ángulo doble]
    Before: sin(2 * x)
    Cambio local: sin(2 * x) -> 2 * sin(x) * cos(x)
    After: 2 * sin(x) * cos(x)
@@ -8080,7 +8075,7 @@ Parsed: sin(2 * arctan(x))
 Target: 2 * x / (x^2 + 1)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand double-angle sine  [Double Angle Expansion]
+1. Expand double-angle sine  [Expandir ángulo doble]
    Before: sin(2 * arctan(x))
    Cambio local: sin(2 * arctan(x)) -> 2 * x / (x^(2) + 1)
    After: 2 * x / (x^2 + 1)
@@ -8112,7 +8107,7 @@ Parsed: sin(2 * arccos(x))
 Target: 2 * x * sqrt(1 - x^2)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand double-angle sine  [Double Angle Expansion]
+1. Expand double-angle sine  [Expandir ángulo doble]
    Before: sin(2 * arccos(x))
    Cambio local: sin(2 * arccos(x)) -> 2 * x * sqrt(1 - x^(2))
    After: 2 * x * sqrt(1 - x^2)
@@ -8146,7 +8141,7 @@ Parsed: sin(2 * arcsin(x))
 Target: 2 * x * sqrt(1 - x^2)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand double-angle sine  [Double Angle Expansion]
+1. Expand double-angle sine  [Expandir ángulo doble]
    Before: sin(2 * arcsin(x))
    Cambio local: sin(2 * arcsin(x)) -> 2 * x * sqrt(1 - x^(2))
    After: 2 * x * sqrt(1 - x^2)
@@ -8213,7 +8208,7 @@ Parsed: cos(x)^2
 Target: (cos(2 * x) + 1) / 2
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand cos²(u) as (1 + cos(2u))/2  [Half-Angle Square Identity]
+1. Expand cos²(u) as (1 + cos(2u))/2  [Aplicar identidad de ángulo mitad]
    Before: cos(x)^(2)
    Cambio local: cos(x)^(2) -> (cos(2 * x) + 1) / 2
    After: (cos(2 * x) + 1) / 2
@@ -8243,7 +8238,7 @@ Parsed: sin(x)^2
 Target: (1 - cos(2 * x)) / 2
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand sin²(u) as (1 - cos(2u))/2  [Half-Angle Square Identity]
+1. Expand sin²(u) as (1 - cos(2u))/2  [Aplicar identidad de ángulo mitad]
    Before: sin(x)^(2)
    Cambio local: sin(x)^(2) -> (1 - cos(2 * x)) / 2
    After: (1 - cos(2 * x)) / 2
@@ -8273,7 +8268,7 @@ Parsed: tan(x)
 Target: (1 - cos(2 * x)) / sin(2 * x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand tan(u) as (1 - cos(2u))/sin(2u)  [Half-Angle Tangent Identity]
+1. Expand tan(u) as (1 - cos(2u))/sin(2u)  [Aplicar identidad de tangente de ángulo mitad]
    Before: tan(x)
    Cambio local: tan(x) -> (1 - cos(2 * x)) / sin(2 * x)
    After: (1 - cos(2 * x)) / sin(2 * x)
@@ -8305,7 +8300,7 @@ Parsed: tan(x)
 Target: sin(2 * x) / (cos(2 * x) + 1)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand tan(u) as sin(2u)/(1 + cos(2u))  [Half-Angle Tangent Identity]
+1. Expand tan(u) as sin(2u)/(1 + cos(2u))  [Aplicar identidad de tangente de ángulo mitad]
    Before: tan(x)
    Cambio local: tan(x) -> sin(2 * x) / (cos(2 * x) + 1)
    After: sin(2 * x) / (cos(2 * x) + 1)
@@ -8337,7 +8332,7 @@ Parsed: tan(x / 2)
 Target: (1 - cos(x)) / sin(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand tan(u) as (1 - cos(2u))/sin(2u)  [Half-Angle Tangent Identity]
+1. Expand tan(u) as (1 - cos(2u))/sin(2u)  [Aplicar identidad de tangente de ángulo mitad]
    Before: tan(x / 2)
    Cambio local: tan(x / 2) -> (1 - cos(x)) / sin(x)
    After: (1 - cos(x)) / sin(x)
@@ -8369,7 +8364,7 @@ Parsed: tan(x / 2)
 Target: sin(x) / (cos(x) + 1)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand tan(u) as sin(2u)/(1 + cos(2u))  [Half-Angle Tangent Identity]
+1. Expand tan(u) as sin(2u)/(1 + cos(2u))  [Aplicar identidad de tangente de ángulo mitad]
    Before: tan(x / 2)
    Cambio local: tan(x / 2) -> sin(x) / (cos(x) + 1)
    After: sin(x) / (cos(x) + 1)
@@ -8401,7 +8396,7 @@ Parsed: -cos(2 * x)
 Target: sin(x)^2 - cos(x)^2
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand -cos(2u) using the double-angle identity  [Double Angle Expansion]
+1. Expand -cos(2u) using the double-angle identity  [Expandir ángulo doble]
    Before: -cos(2 * x)
    Cambio local: -cos(2 * x) -> sin(x)^(2) - cos(x)^(2)
    After: sin(x)^2 - cos(x)^2
@@ -8431,7 +8426,7 @@ Parsed: -sin(2 * x)
 Target: -2 * sin(x) * cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand -sin(2u) using the double-angle identity  [Double Angle Expansion]
+1. Expand -sin(2u) using the double-angle identity  [Expandir ángulo doble]
    Before: -sin(2 * x)
    Cambio local: -sin(2 * x) -> -2 * sin(x) * cos(x)
    After: -2 * sin(x) * cos(x)
@@ -8492,7 +8487,7 @@ Parsed: 2 * sin(pi / 6 + x)
 Target: cos(x) + sin(x) * sqrt(3)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 2 * sin(pi / 6 + x)
    Cambio local: 2 * sin(pi / 6 + x) -> cos(x) + sin(x) * sqrt(3)
    After: cos(x) + sin(x) * sqrt(3)
@@ -8523,7 +8518,7 @@ Parsed: 4 * sin(pi / 3 + x)
 Target: 2 * sin(x) + 2 * cos(x) * sqrt(3)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 4 * sin(pi / 3 + x)
    Cambio local: 4 * sin(pi / 3 + x) -> 2 * sin(x) + 2 * cos(x) * sqrt(3)
    After: 2 * sin(x) + 2 * cos(x) * sqrt(3)
@@ -8554,7 +8549,7 @@ Parsed: 5 * sin(arctan(4 / 3) + x)
 Target: 3 * sin(x) + 4 * cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 5 * sin(arctan(4 / 3) + x)
    Cambio local: 5 * sin(arctan(4 / 3) + x) -> 3 * sin(x) + 4 * cos(x)
    After: 3 * sin(x) + 4 * cos(x)
@@ -8585,7 +8580,7 @@ Parsed: 5 * sin(arctan(4 / 3) + x) + a
 Target: 3 * sin(x) + 4 * cos(x) + a
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 5 * sin(arctan(4 / 3) + x) + a
    Cambio local: 5 * sin(arctan(4 / 3) + x) + a -> 3 * sin(x) + 4 * cos(x) + a
    After: 3 * sin(x) + 4 * cos(x) + a
@@ -8616,11 +8611,11 @@ Parsed: sin(x) + sin(y) + cos(x) + cos(y)
 Target: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
 Strategy: contract trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: sin(x) + sin(y) + cos(x) + cos(y)
    Cambio local: sin(x) + sin(y) + cos(x) + cos(y) -> sin(y) + cos(y) + sqrt(2) * sin(pi / 4 + x)
    After: sin(y) + cos(y) + sqrt(2) * sin(pi / 4 + x)
-2. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+2. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: sin(y) + cos(y) + sqrt(2) * sin(pi / 4 + x)
    Cambio local: sin(y) + cos(y) + sqrt(2) * sin(pi / 4 + x) -> sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
    After: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
@@ -8655,7 +8650,7 @@ Parsed: 2 * sin(pi / 4 + x) * sqrt(2)
 Target: 2 * sin(x) + 2 * cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 2 * sin(pi / 4 + x) * sqrt(2)
    Cambio local: 2 * sin(pi / 4 + x) * sqrt(2) -> 2 * sin(x) + 2 * cos(x)
    After: 2 * sin(x) + 2 * cos(x)
@@ -8686,7 +8681,7 @@ Parsed: 2 * sin(pi / 4 + x) * sqrt(2) + a
 Target: 2 * sin(x) + 2 * cos(x) + a
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: 2 * sin(pi / 4 + x) * sqrt(2) + a
    Cambio local: 2 * sin(pi / 4 + x) * sqrt(2) + a -> 2 * sin(x) + 2 * cos(x) + a
    After: 2 * sin(x) + 2 * cos(x) + a
@@ -8717,7 +8712,7 @@ Parsed: cos(x - pi / 4) * sqrt(2)
 Target: sin(x) + cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: cos(x - pi / 4) * sqrt(2)
    Cambio local: cos(x - pi / 4) * sqrt(2) -> sin(x) + cos(x)
    After: sin(x) + cos(x)
@@ -8748,11 +8743,11 @@ Parsed: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
 Target: sin(x) + sin(y) + cos(x) + cos(y)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2)
    Cambio local: sin(pi / 4 + x) * sqrt(2) + sin(pi / 4 + y) * sqrt(2) -> sin(x) + cos(x) + sin(pi / 4 + y) * sqrt(2)
    After: sin(x) + cos(x) + sin(pi / 4 + y) * sqrt(2)
-2. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+2. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: sin(x) + cos(x) + sin(pi / 4 + y) * sqrt(2)
    Cambio local: sin(x) + cos(x) + sin(pi / 4 + y) * sqrt(2) -> sin(x) + sin(y) + cos(x) + cos(y)
    After: sin(x) + sin(y) + cos(x) + cos(y)
@@ -8788,7 +8783,7 @@ Parsed: sin(pi / 4 + x) * sqrt(2)
 Target: sin(x) + cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Rewrite exact sine/cosine linear combinations using a phase shift  [Phase Shift Identity]
+1. Rewrite exact sine/cosine linear combinations using a phase shift  [Aplicar identidad de desfase]
    Before: sin(pi / 4 + x) * sqrt(2)
    Cambio local: sin(pi / 4 + x) * sqrt(2) -> sin(x) + cos(x)
    After: sin(x) + cos(x)
@@ -8819,7 +8814,7 @@ Parsed: 2 * cos(x) * cos(y)
 Target: cos(x + y) + cos(x - y)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand 2·cos(A)·cos(B) into cos(A+B) + cos(A-B)  [Product-to-Sum Identity]
+1. Expand 2·cos(A)·cos(B) into cos(A+B) + cos(A-B)  [Aplicar producto a suma]
    Before: 2 * cos(x) * cos(y)
    Cambio local: 2 * cos(x) * cos(y) -> cos(x + y) + cos(x - y)
    After: cos(x + y) + cos(x - y)
@@ -8850,7 +8845,7 @@ Parsed: 2 * sin(y) * cos(x)
 Target: sin(x + y) - sin(x - y)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand 2·cos(A)·sin(B) into sin(A+B) - sin(A-B)  [Product-to-Sum Identity]
+1. Expand 2·cos(A)·sin(B) into sin(A+B) - sin(A-B)  [Aplicar producto a suma]
    Before: 2 * sin(y) * cos(x)
    Cambio local: 2 * sin(y) * cos(x) -> sin(x + y) - sin(x - y)
    After: sin(x + y) - sin(x - y)
@@ -8881,7 +8876,7 @@ Parsed: 2 * sin(x) * cos(y)
 Target: sin(x + y) + sin(x - y)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand 2·sin(A)·cos(B) into sin(A+B) + sin(A-B)  [Product-to-Sum Identity]
+1. Expand 2·sin(A)·cos(B) into sin(A+B) + sin(A-B)  [Aplicar producto a suma]
    Before: 2 * sin(x) * cos(y)
    Cambio local: 2 * sin(x) * cos(y) -> sin(x + y) + sin(x - y)
    After: sin(x + y) + sin(x - y)
@@ -8912,7 +8907,7 @@ Parsed: 2 * sin(x) * sin(y)
 Target: cos(x - y) - cos(x + y)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand 2·sin(A)·sin(B) into cos(A-B) - cos(A+B)  [Product-to-Sum Identity]
+1. Expand 2·sin(A)·sin(B) into cos(A-B) - cos(A+B)  [Aplicar producto a suma]
    Before: 2 * sin(x) * sin(y)
    Cambio local: 2 * sin(x) * sin(y) -> cos(x - y) - cos(x + y)
    After: cos(x - y) - cos(x + y)
@@ -8943,11 +8938,11 @@ Parsed: 2 * sin(x) * sin(2 * x)
 Target: 4 * cos(x) - 4 * cos(x)^3
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand 2·sin(A)·sin(B) into cos(A-B) - cos(A+B)  [Product-to-Sum Identity]
+1. Expand 2·sin(A)·sin(B) into cos(A-B) - cos(A+B)  [Aplicar producto a suma]
    Before: 2 * sin(x) * sin(2 * x)
    Cambio local: 2 * sin(x) * sin(2 * x) -> cos(x) - cos(3 * x)
    After: cos(x) - cos(3 * x)
-2. Expand or contract cosine triple-angle form  [Triple Angle Expansion]
+2. Expand or contract cosine triple-angle form  [Reescribir ángulo triple]
    Before: cos(x) - cos(3 * x)
    Cambio local: cos(x) - cos(3 * x) -> 4 * cos(x) - 4 * cos(x)^(3)
    After: 4 * cos(x) - 4 * cos(x)^3
@@ -8983,11 +8978,11 @@ Parsed: 2 * sin(x) * sin(2 * x) + a
 Target: 4 * cos(x) - 4 * cos(x)^3 + a
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand 2·sin(A)·sin(B) into cos(A-B) - cos(A+B)  [Product-to-Sum Identity]
+1. Expand 2·sin(A)·sin(B) into cos(A-B) - cos(A+B)  [Aplicar producto a suma]
    Before: 2 * sin(x) * sin(2 * x) + a
    Cambio local: 2 * sin(x) * sin(2 * x) + a -> cos(x) - cos(3 * x) + a
    After: cos(x) - cos(3 * x) + a
-2. Expand or contract cosine triple-angle form  [Triple Angle Expansion]
+2. Expand or contract cosine triple-angle form  [Reescribir ángulo triple]
    Before: cos(x) - cos(3 * x) + a
    Cambio local: cos(x) - cos(3 * x) + a -> 4 * cos(x) - 4 * cos(x)^(3) + a
    After: 4 * cos(x) - 4 * cos(x)^3 + a
@@ -9023,11 +9018,11 @@ Parsed: 2 * cos(x) * cos(2 * x)
 Target: 4 * cos(x)^3 - 2 * cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand 2·cos(A)·cos(B) into cos(A+B) + cos(A-B)  [Product-to-Sum Identity]
+1. Expand 2·cos(A)·cos(B) into cos(A+B) + cos(A-B)  [Aplicar producto a suma]
    Before: 2 * cos(x) * cos(2 * x)
    Cambio local: 2 * cos(x) * cos(2 * x) -> cos(x) + cos(3 * x)
    After: cos(x) + cos(3 * x)
-2. Expand or contract cosine triple-angle form  [Triple Angle Expansion]
+2. Expand or contract cosine triple-angle form  [Reescribir ángulo triple]
    Before: cos(x) + cos(3 * x)
    Cambio local: cos(x) + cos(3 * x) -> 4 * cos(x)^(3) - 2 * cos(x)
    After: 4 * cos(x)^3 - 2 * cos(x)
@@ -9063,11 +9058,11 @@ Parsed: 2 * sin(x) * cos(2 * x)
 Target: 4 * sin(x) * cos(x)^2 - 2 * sin(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand 2·sin(A)·cos(B) into sin(A+B) + sin(A-B)  [Product-to-Sum Identity]
+1. Expand 2·sin(A)·cos(B) into sin(A+B) + sin(A-B)  [Aplicar producto a suma]
    Before: 2 * sin(x) * cos(2 * x)
    Cambio local: 2 * sin(x) * cos(2 * x) -> sin(3 * x) - sin(x)
    After: sin(3 * x) - sin(x)
-2. Expand or contract sine triple-angle form  [Triple Angle Expansion]
+2. Expand or contract sine triple-angle form  [Reescribir ángulo triple]
    Before: sin(3 * x) - sin(x)
    Cambio local: sin(3 * x) - sin(x) -> 4 * sin(x) * cos(x)^(2) - 2 * sin(x)
    After: 4 * sin(x) * cos(x)^2 - 2 * sin(x)
@@ -9103,11 +9098,11 @@ Parsed: 2 * sin(x) * cos(2 * x) + a
 Target: -2 * sin(x) + 4 * sin(x) * cos(x)^2 + a
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand 2·sin(A)·cos(B) into sin(A+B) + sin(A-B)  [Product-to-Sum Identity]
+1. Expand 2·sin(A)·cos(B) into sin(A+B) + sin(A-B)  [Aplicar producto a suma]
    Before: 2 * sin(x) * cos(2 * x) + a
    Cambio local: 2 * sin(x) * cos(2 * x) + a -> sin(3 * x) + a - sin(x)
    After: sin(3 * x) + a - sin(x)
-2. Expand or contract sine triple-angle form  [Triple Angle Expansion]
+2. Expand or contract sine triple-angle form  [Reescribir ángulo triple]
    Before: sin(3 * x) + a - sin(x)
    Cambio local: sin(3 * x) + a - sin(x) -> -2 * sin(x) + 4 * sin(x) * cos(x)^(2) + a
    After: -2 * sin(x) + 4 * sin(x) * cos(x)^2 + a
@@ -9143,7 +9138,7 @@ Parsed: cos(4 * x)
 Target: -8 * cos(x)^2 + 8 * cos(x)^4 + 1
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand or contract cosine quadruple-angle form  [Quadruple Angle Expansion]
+1. Expand or contract cosine quadruple-angle form  [Reescribir ángulo cuádruple]
    Before: cos(4 * x)
    Cambio local: cos(4 * x) -> -8 * cos(x)^(2) + 8 * cos(x)^(4) + 1
    After: -8 * cos(x)^2 + 8 * cos(x)^4 + 1
@@ -9174,7 +9169,7 @@ Parsed: sin(4 * x)
 Target: 4 * sin(x) * cos(x)^3 - 4 * cos(x) * sin(x)^3
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand or contract sine quadruple-angle form  [Quadruple Angle Expansion]
+1. Expand or contract sine quadruple-angle form  [Reescribir ángulo cuádruple]
    Before: sin(4 * x)
    Cambio local: sin(4 * x) -> 4 * sin(x) * cos(x)^(3) - 4 * cos(x) * sin(x)^(3)
    After: 4 * sin(x) * cos(x)^3 - 4 * cos(x) * sin(x)^3
@@ -9205,7 +9200,7 @@ Parsed: cos(5 * x)
 Target: 5 * cos(x) + 16 * cos(x)^5 - 20 * cos(x)^3
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand or contract cosine quintuple-angle form  [Quintuple Angle Identity]
+1. Expand or contract cosine quintuple-angle form  [Reescribir ángulo quíntuple]
    Before: cos(5 * x)
    Cambio local: cos(5 * x) -> 5 * cos(x) + 16 * cos(x)^(5) - 20 * cos(x)^(3)
    After: 5 * cos(x) + 16 * cos(x)^5 - 20 * cos(x)^3
@@ -9236,7 +9231,7 @@ Parsed: sin(5 * x)
 Target: 5 * sin(x) + 16 * sin(x)^5 - 20 * sin(x)^3
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand or contract sine quintuple-angle form  [Quintuple Angle Identity]
+1. Expand or contract sine quintuple-angle form  [Reescribir ángulo quíntuple]
    Before: sin(5 * x)
    Cambio local: sin(5 * x) -> 5 * sin(x) + 16 * sin(x)^(5) - 20 * sin(x)^(3)
    After: 5 * sin(x) + 16 * sin(x)^5 - 20 * sin(x)^3
@@ -9267,7 +9262,7 @@ Parsed: cos(6 * x)
 Target: cos(x) * cos(5 * x) - sin(x) * sin(5 * x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand a trig multiple angle recursively via angle addition  [Angle Sum/Diff Identity]
+1. Expand a trig multiple angle recursively via angle addition  [Aplicar suma/diferencia de ángulos]
    Before: cos(6 * x)
    Cambio local: cos(6 * x) -> cos(x) * cos(5 * x) - sin(x) * sin(5 * x)
    After: cos(x) * cos(5 * x) - sin(x) * sin(5 * x)
@@ -9298,7 +9293,7 @@ Parsed: sin(6 * x)
 Target: sin(x) * cos(5 * x) + sin(5 * x) * cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand a trig multiple angle recursively via angle addition  [Angle Sum/Diff Identity]
+1. Expand a trig multiple angle recursively via angle addition  [Aplicar suma/diferencia de ángulos]
    Before: sin(6 * x)
    Cambio local: sin(6 * x) -> sin(x) * cos(5 * x) + sin(5 * x) * cos(x)
    After: sin(x) * cos(5 * x) + sin(5 * x) * cos(x)
@@ -9329,7 +9324,7 @@ Parsed: 2 * sin(x / 2)^2
 Target: 1 - cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand 2·sin(u)^2 as 1 - cos(2u)  [Double Angle Expansion]
+1. Expand 2·sin(u)^2 as 1 - cos(2u)  [Expandir ángulo doble]
    Before: 2 * sin(x / 2)^(2)
    Cambio local: 2 * sin(x / 2)^(2) -> 1 - cos(x)
    After: 1 - cos(x)
@@ -9359,7 +9354,7 @@ Parsed: sec(x)
 Target: 1 / cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand sec(u) as 1 / cos(u)  [Reciprocal Trig Identity]
+1. Expand sec(u) as 1 / cos(u)  [Aplicar identidad trigonométrica recíproca]
    Before: sec(x)
    Cambio local: sec(x) -> 1 / cos(x)
    After: 1 / cos(x)
@@ -9481,7 +9476,7 @@ Parsed: sin(x)^2 * cos(x)^2
 Target: (1 - cos(4 * x)) / 8
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce sin²(u)·cos²(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce sin²(u)·cos²(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(2) * cos(x)^(2)
    Cambio local: sin(x)^(2) * cos(x)^(2) -> (1 - cos(4 * x)) / 8
    After: (1 - cos(4 * x)) / 8
@@ -9512,7 +9507,7 @@ Parsed: sin(x)^18
 Target: (18 * cos(16 * x) - 153 * cos(14 * x) + 816 * cos(12 * x) - 3060 * cos(10 * x) + 8568 * cos(8 * x) - 18564 * cos(6 * x) + 31824 * cos(4 * x) - 43758 * cos(2 * x) + 24310 - cos(18 * x)) / 131072
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce sin¹⁸(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce sin¹⁸(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(18)
    Cambio local: sin(x)^(18) -> (18 * cos(16 * x) - 153 * cos(14 * x) + 816 * cos(12 * x) - 3060 * cos(10 * x) + 8568 * cos(8 * x) - 18564 * cos(6 * x) + 31824 * cos(4 * x) - 43758 * cos(2 * x) + 24310 - cos(18 * x)) / 131072
    After: (18 * cos(16 * x) - 153 * cos(14 * x) + 816 * cos(12 * x) - 3060 * cos(10 * x) + 8568 * cos(8 * x) - 18564 * cos(6 * x) + 31824 * cos(4 * x) - 43758 * cos(2 * x) + 24310 - cos(18 * x)) / 131072
@@ -9543,7 +9538,7 @@ Parsed: sin(x)^8
 Target: (cos(8 * x) - 8 * cos(6 * x) + 28 * cos(4 * x) - 56 * cos(2 * x) + 35) / 128
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce sin⁸(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce sin⁸(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(8)
    Cambio local: sin(x)^(8) -> (cos(8 * x) - 8 * cos(6 * x) + 28 * cos(4 * x) - 56 * cos(2 * x) + 35) / 128
    After: (cos(8 * x) - 8 * cos(6 * x) + 28 * cos(4 * x) - 56 * cos(2 * x) + 35) / 128
@@ -9574,7 +9569,7 @@ Parsed: sin(x)^14
 Target: (14 * cos(12 * x) - 91 * cos(10 * x) + 364 * cos(8 * x) - 1001 * cos(6 * x) + 2002 * cos(4 * x) - 3003 * cos(2 * x) + 1716 - cos(14 * x)) / 8192
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce sin¹⁴(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce sin¹⁴(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(14)
    Cambio local: sin(x)^(14) -> (14 * cos(12 * x) - 91 * cos(10 * x) + 364 * cos(8 * x) - 1001 * cos(6 * x) + 2002 * cos(4 * x) - 3003 * cos(2 * x) + 1716 - cos(14 * x)) / 8192
    After: (14 * cos(12 * x) - 91 * cos(10 * x) + 364 * cos(8 * x) - 1001 * cos(6 * x) + 2002 * cos(4 * x) - 3003 * cos(2 * x) + 1716 - cos(14 * x)) / 8192
@@ -9605,7 +9600,7 @@ Parsed: sin(x)^4
 Target: (cos(4 * x) - 4 * cos(2 * x) + 3) / 8
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce sin⁴(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce sin⁴(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(4)
    Cambio local: sin(x)^(4) -> (cos(4 * x) - 4 * cos(2 * x) + 3) / 8
    After: (cos(4 * x) - 4 * cos(2 * x) + 3) / 8
@@ -9636,7 +9631,7 @@ Parsed: sin(x)^16
 Target: (cos(16 * x) - 16 * cos(14 * x) + 120 * cos(12 * x) - 560 * cos(10 * x) + 1820 * cos(8 * x) - 4368 * cos(6 * x) + 8008 * cos(4 * x) - 11440 * cos(2 * x) + 6435) / 32768
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce sin¹⁶(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce sin¹⁶(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(16)
    Cambio local: sin(x)^(16) -> (cos(16 * x) - 16 * cos(14 * x) + 120 * cos(12 * x) - 560 * cos(10 * x) + 1820 * cos(8 * x) - 4368 * cos(6 * x) + 8008 * cos(4 * x) - 11440 * cos(2 * x) + 6435) / 32768
    After: (cos(16 * x) - 16 * cos(14 * x) + 120 * cos(12 * x) - 560 * cos(10 * x) + 1820 * cos(8 * x) - 4368 * cos(6 * x) + 8008 * cos(4 * x) - 11440 * cos(2 * x) + 6435) / 32768
@@ -9667,7 +9662,7 @@ Parsed: sin(x)^6
 Target: (6 * cos(4 * x) - 15 * cos(2 * x) + 10 - cos(6 * x)) / 32
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce sin⁶(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce sin⁶(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(6)
    Cambio local: sin(x)^(6) -> (6 * cos(4 * x) - 15 * cos(2 * x) + 10 - cos(6 * x)) / 32
    After: (6 * cos(4 * x) - 15 * cos(2 * x) + 10 - cos(6 * x)) / 32
@@ -9698,7 +9693,7 @@ Parsed: sin(x)^10
 Target: (10 * cos(8 * x) - 45 * cos(6 * x) + 120 * cos(4 * x) - 210 * cos(2 * x) + 126 - cos(10 * x)) / 512
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce sin¹⁰(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce sin¹⁰(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(10)
    Cambio local: sin(x)^(10) -> (10 * cos(8 * x) - 45 * cos(6 * x) + 120 * cos(4 * x) - 210 * cos(2 * x) + 126 - cos(10 * x)) / 512
    After: (10 * cos(8 * x) - 45 * cos(6 * x) + 120 * cos(4 * x) - 210 * cos(2 * x) + 126 - cos(10 * x)) / 512
@@ -9729,7 +9724,7 @@ Parsed: sin(x)^12
 Target: (cos(12 * x) - 12 * cos(10 * x) + 66 * cos(8 * x) - 220 * cos(6 * x) + 495 * cos(4 * x) - 792 * cos(2 * x) + 462) / 2048
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce sin¹²(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce sin¹²(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(12)
    Cambio local: sin(x)^(12) -> (cos(12 * x) - 12 * cos(10 * x) + 66 * cos(8 * x) - 220 * cos(6 * x) + 495 * cos(4 * x) - 792 * cos(2 * x) + 462) / 2048
    After: (cos(12 * x) - 12 * cos(10 * x) + 66 * cos(8 * x) - 220 * cos(6 * x) + 495 * cos(4 * x) - 792 * cos(2 * x) + 462) / 2048
@@ -9760,7 +9755,7 @@ Parsed: sin(x)^20
 Target: (cos(20 * x) - 20 * cos(18 * x) + 190 * cos(16 * x) - 1140 * cos(14 * x) + 4845 * cos(12 * x) - 15504 * cos(10 * x) + 38760 * cos(8 * x) - 77520 * cos(6 * x) + 125970 * cos(4 * x) - 167960 * cos(2 * x) + 92378) / 524288
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce sin²⁰(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce sin²⁰(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(20)
    Cambio local: sin(x)^(20) -> (cos(20 * x) - 20 * cos(18 * x) + 190 * cos(16 * x) - 1140 * cos(14 * x) + 4845 * cos(12 * x) - 15504 * cos(10 * x) + 38760 * cos(8 * x) - 77520 * cos(6 * x) + 125970 * cos(4 * x) - 167960 * cos(2 * x) + 92378) / 524288
    After: (cos(20 * x) - 20 * cos(18 * x) + 190 * cos(16 * x) - 1140 * cos(14 * x) + 4845 * cos(12 * x) - 15504 * cos(10 * x) + 38760 * cos(8 * x) - 77520 * cos(6 * x) + 125970 * cos(4 * x) - 167960 * cos(2 * x) + 92378) / 524288
@@ -9791,7 +9786,7 @@ Parsed: sin(x)^24
 Target: (cos(24 * x) - 24 * cos(22 * x) + 276 * cos(20 * x) - 2024 * cos(18 * x) + 10626 * cos(16 * x) - 42504 * cos(14 * x) + 134596 * cos(12 * x) - 346104 * cos(10 * x) + 735471 * cos(8 * x) - 1307504 * cos(6 * x) + 1961256 * cos(4 * x) - 2496144 * cos(2 * x) + 1352078) / 8388608
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce higher even powers of sin(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce higher even powers of sin(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(24)
    Cambio local: sin(x)^(24) -> (cos(24 * x) - 24 * cos(22 * x) + 276 * cos(20 * x) - 2024 * cos(18 * x) + 10626 * cos(16 * x) - 42504 * cos(14 * x) + 134596 * cos(12 * x) - 346104 * cos(10 * x) + 735471 * cos(8 * x) - 1307504 * cos(6 * x) + 1961256 * cos(4 * x) - 2496144 * cos(2 * x) + 1352078) / 8388608
    After: (cos(24 * x) - 24 * cos(22 * x) + 276 * cos(20 * x) - 2024 * cos(18 * x) + 10626 * cos(16 * x) - 42504 * cos(14 * x) + 134596 * cos(12 * x) - 346104 * cos(10 * x) + 735471 * cos(8 * x) - 1307504 * cos(6 * x) + 1961256 * cos(4 * x) - 2496144 * cos(2 * x) + 1352078) / 8388608
@@ -9822,7 +9817,7 @@ Parsed: sin(x)^22
 Target: (22 * cos(20 * x) - 231 * cos(18 * x) + 1540 * cos(16 * x) - 7315 * cos(14 * x) + 26334 * cos(12 * x) - 74613 * cos(10 * x) + 170544 * cos(8 * x) - 319770 * cos(6 * x) + 497420 * cos(4 * x) - 646646 * cos(2 * x) + 352716 - cos(22 * x)) / 2097152
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Reduce sin²²(u) using power-reduction identities  [Power Reduction Identity]
+1. Reduce sin²²(u) using power-reduction identities  [Aplicar reducción de potencias]
    Before: sin(x)^(22)
    Cambio local: sin(x)^(22) -> (22 * cos(20 * x) - 231 * cos(18 * x) + 1540 * cos(16 * x) - 7315 * cos(14 * x) + 26334 * cos(12 * x) - 74613 * cos(10 * x) + 170544 * cos(8 * x) - 319770 * cos(6 * x) + 497420 * cos(4 * x) - 646646 * cos(2 * x) + 352716 - cos(22 * x)) / 2097152
    After: (22 * cos(20 * x) - 231 * cos(18 * x) + 1540 * cos(16 * x) - 7315 * cos(14 * x) + 26334 * cos(12 * x) - 74613 * cos(10 * x) + 170544 * cos(8 * x) - 319770 * cos(6 * x) + 497420 * cos(4 * x) - 646646 * cos(2 * x) + 352716 - cos(22 * x)) / 2097152
@@ -9853,7 +9848,7 @@ Parsed: cos(5 * x) - cos(x)
 Target: -2 * sin(2 * x) * sin(3 * x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand cosine difference to product  [Sum-to-Product Identity]
+1. Expand cosine difference to product  [Aplicar suma a producto]
    Before: cos(5 * x) - cos(x)
    Cambio local: cos(5 * x) - cos(x) -> -2 * sin(2 * x) * sin(3 * x)
    After: -2 * sin(2 * x) * sin(3 * x)
@@ -9883,7 +9878,7 @@ Parsed: cos(x) - cos(y)
 Target: -2 * sin((x + y) / 2) * sin((x - y) / 2)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand cosine difference to product  [Sum-to-Product Identity]
+1. Expand cosine difference to product  [Aplicar suma a producto]
    Before: cos(x) - cos(y)
    Cambio local: cos(x) - cos(y) -> -2 * sin((x + y) / 2) * sin((x - y) / 2)
    After: -2 * sin((x + y) / 2) * sin((x - y) / 2)
@@ -9913,7 +9908,7 @@ Parsed: cos(x) + cos(5 * x)
 Target: 2 * cos(2 * x) * cos(3 * x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand cosine sum to product  [Sum-to-Product Identity]
+1. Expand cosine sum to product  [Aplicar suma a producto]
    Before: cos(x) + cos(5 * x)
    Cambio local: cos(x) + cos(5 * x) -> 2 * cos(2 * x) * cos(3 * x)
    After: 2 * cos(2 * x) * cos(3 * x)
@@ -9943,7 +9938,7 @@ Parsed: cos(x) + cos(y)
 Target: 2 * cos((x + y) / 2) * cos((x - y) / 2)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand cosine sum to product  [Sum-to-Product Identity]
+1. Expand cosine sum to product  [Aplicar suma a producto]
    Before: cos(x) + cos(y)
    Cambio local: cos(x) + cos(y) -> 2 * cos((x + y) / 2) * cos((x - y) / 2)
    After: 2 * cos((x + y) / 2) * cos((x - y) / 2)
@@ -9973,7 +9968,7 @@ Parsed: sin(5 * x) - sin(x)
 Target: 2 * sin(2 * x) * cos(3 * x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand sine difference to product  [Sum-to-Product Identity]
+1. Expand sine difference to product  [Aplicar suma a producto]
    Before: sin(5 * x) - sin(x)
    Cambio local: sin(5 * x) - sin(x) -> 2 * sin(2 * x) * cos(3 * x)
    After: 2 * sin(2 * x) * cos(3 * x)
@@ -10003,7 +9998,7 @@ Parsed: sin(x) + sin(5 * x)
 Target: 2 * sin(3 * x) * cos(2 * x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand sine sum to product  [Sum-to-Product Identity]
+1. Expand sine sum to product  [Aplicar suma a producto]
    Before: sin(x) + sin(5 * x)
    Cambio local: sin(x) + sin(5 * x) -> 2 * sin(3 * x) * cos(2 * x)
    After: 2 * sin(3 * x) * cos(2 * x)
@@ -10033,7 +10028,7 @@ Parsed: sin(x) + sin(y)
 Target: 2 * sin((x + y) / 2) * cos((x - y) / 2)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand sine sum to product  [Sum-to-Product Identity]
+1. Expand sine sum to product  [Aplicar suma a producto]
    Before: sin(x) + sin(y)
    Cambio local: sin(x) + sin(y) -> 2 * sin((x + y) / 2) * cos((x - y) / 2)
    After: 2 * sin((x + y) / 2) * cos((x - y) / 2)
@@ -10095,7 +10090,7 @@ Parsed: tan(x - y)
 Target: (tan(x) - tan(y)) / (tan(x) * tan(y) + 1)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand tangent angle sum/difference form  [Tangent Angle Sum/Diff Identity]
+1. Expand tangent angle sum/difference form  [Aplicar identidad de tangente de suma/diferencia de ángulos]
    Before: tan(x - y)
    Cambio local: tan(x - y) -> (tan(x) - tan(y)) / (tan(x) * tan(y) + 1)
    After: (tan(x) - tan(y)) / (tan(x) * tan(y) + 1)
@@ -10127,7 +10122,7 @@ Parsed: tan(x + y)
 Target: (tan(x) + tan(y)) / (1 - tan(x) * tan(y))
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand tangent angle sum/difference form  [Tangent Angle Sum/Diff Identity]
+1. Expand tangent angle sum/difference form  [Aplicar identidad de tangente de suma/diferencia de ángulos]
    Before: tan(x + y)
    Cambio local: tan(x + y) -> (tan(x) + tan(y)) / (1 - tan(x) * tan(y))
    After: (tan(x) + tan(y)) / (1 - tan(x) * tan(y))
@@ -10159,7 +10154,7 @@ Parsed: sin(x)
 Target: 2 * tan(x / 2) / (tan(x / 2)^2 + 1)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Rewrite sin(u) using the tangent half-angle substitution  [Half-Angle Tangent Identity]
+1. Rewrite sin(u) using the tangent half-angle substitution  [Aplicar identidad de tangente de ángulo mitad]
    Before: sin(x)
    Cambio local: sin(x) -> 2 * tan(x / 2) / (tan(x / 2)^(2) + 1)
    After: 2 * tan(x / 2) / (tan(x / 2)^2 + 1)
@@ -10189,7 +10184,7 @@ Parsed: cos(3 * x)
 Target: 4 * cos(x)^3 - 3 * cos(x)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand or contract cosine triple-angle form  [Triple Angle Expansion]
+1. Expand or contract cosine triple-angle form  [Reescribir ángulo triple]
    Before: cos(3 * x)
    Cambio local: cos(3 * x) -> 4 * cos(x)^(3) - 3 * cos(x)
    After: 4 * cos(x)^3 - 3 * cos(x)
@@ -10220,7 +10215,7 @@ Parsed: sin(3 * x)
 Target: 3 * sin(x) - 4 * sin(x)^3
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand or contract sine triple-angle form  [Triple Angle Expansion]
+1. Expand or contract sine triple-angle form  [Reescribir ángulo triple]
    Before: sin(3 * x)
    Cambio local: sin(3 * x) -> 3 * sin(x) - 4 * sin(x)^(3)
    After: 3 * sin(x) - 4 * sin(x)^3
@@ -10251,7 +10246,7 @@ Parsed: tan(3 * x)
 Target: (3 * tan(x) - tan(x)^3) / (1 - 3 * tan(x)^2)
 Strategy: expand trig
 Steps (Aggressive Mode):
-1. Expand or contract tangent triple-angle form  [Triple Angle Expansion]
+1. Expand or contract tangent triple-angle form  [Reescribir ángulo triple]
    Before: tan(3 * x)
    Cambio local: tan(3 * x) -> (3 * tan(x) - tan(x)^(3)) / (1 - 3 * tan(x)^(2))
    After: (3 * tan(x) - tan(x)^3) / (1 - 3 * tan(x)^2)
@@ -10284,7 +10279,7 @@ Parsed: a^3 * (b - c) + b^3 * (c - a) + c^3 * (a - b)
 Target: (a + b + c) * (a - b) * (a - c) * (b - c)
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: a^(3) * (b - c) + b^(3) * (c - a) + c^(3) * (a - b)
    Cambio local: a^(3) * (b - c) + b^(3) * (c - a) + c^(3) * (a - b) -> (a + b + c) * (a - b) * (a - c) * (b - c)
    After: (a + b + c) * (a - b) * (a - c) * (b - c)
@@ -10318,7 +10313,7 @@ Parsed: a * b + a * c
 Target: a * (b + c)
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: a * b + a * c
    Cambio local: a * b + a * c -> a * (b + c)
    After: a * (b + c)
@@ -10349,7 +10344,7 @@ Parsed: a * x + b * x + c * x
 Target: x * (a + b + c)
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: a * x + b * x + c * x
    Cambio local: a * x + b * x + c * x -> x * (a + b + c)
    After: x * (a + b + c)
@@ -10380,7 +10375,7 @@ Parsed: a^3 - b^3
 Target: (a^2 + b^2 + a * b) * (a - b)
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: a^(3) - b^(3)
    Cambio local: a^(3) - b^(3) -> (a^(2) + b^(2) + a * b) * (a - b)
    After: (a^2 + b^2 + a * b) * (a - b)
@@ -10411,7 +10406,7 @@ Parsed: a^2 - b^2
 Target: (a + b) * (a - b)
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: a^(2) - b^(2)
    Cambio local: a^(2) - b^(2) -> (a + b) * (a - b)
    After: (a + b) * (a - b)
@@ -10442,7 +10437,7 @@ Parsed: x^2 + a - 1
 Target: (x + 1) * (x - 1) + a
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: x^(2) + a - 1
    Cambio local: x^(2) - 1 -> (x + 1) * (x - 1)
    After: (x + 1) * (x - 1) + a
@@ -10473,7 +10468,7 @@ Parsed: x^6 - 1
 Target: (x + 1) * (x^2 - x + 1) * (x^2 + x + 1) * (x - 1)
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: x^(6) - 1
    Cambio local: x^(6) - 1 -> (x + 1) * (x^(2) - x + 1) * (x^(2) + x + 1) * (x - 1)
    After: (x + 1) * (x^2 - x + 1) * (x^2 + x + 1) * (x - 1)
@@ -10504,7 +10499,7 @@ Parsed: x^6 - 1
 Target: (x^5 + x^4 + x^3 + x^2 + x + 1) * (x - 1)
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: x^(6) - 1
    Cambio local: x^(6) - 1 -> (x^(5) + x^(4) + x^(3) + x^(2) + x + 1) * (x - 1)
    After: (x^5 + x^4 + x^3 + x^2 + x + 1) * (x - 1)
@@ -10535,7 +10530,7 @@ Parsed: a * x^7 + b * x^5 + c * x^3 + d
 Target: x^3 * (d / x^3 + a * x^4 + b * x^2 + c)
 Strategy: factor out with division
 Steps (Aggressive Mode):
-1. Factor out x^3 from the whole expression  [Factor Out With Division]
+1. Factor out x^3 from the whole expression  [Sacar factor usando división]
    Before: a * x^(7) + b * x^(5) + c * x^(3) + d
    Cambio local: a * x^(7) + b * x^(5) + c * x^(3) + d -> x^(3) * (d / x^(3) + a * x^(4) + b * x^(2) + c)
    After: x^3 * (d / x^3 + a * x^4 + b * x^2 + c)
@@ -10569,7 +10564,7 @@ Parsed: a * x^4 + b * x^3 + c * x^2 + d
 Target: x^2 * (d / x^2 + a * x^2 + b * x + c)
 Strategy: factor out with division
 Steps (Aggressive Mode):
-1. Factor out x^2 from the whole expression  [Factor Out With Division]
+1. Factor out x^2 from the whole expression  [Sacar factor usando división]
    Before: a * x^(4) + b * x^(3) + c * x^(2) + d
    Cambio local: a * x^(4) + b * x^(3) + c * x^(2) + d -> x^(2) * (d / x^(2) + a * x^(2) + b * x + c)
    After: x^2 * (d / x^2 + a * x^2 + b * x + c)
@@ -10603,7 +10598,7 @@ Parsed: a * x + b * x + c
 Target: x * (c / x + a + b)
 Strategy: factor out with division
 Steps (Aggressive Mode):
-1. Factor out x from the whole expression  [Factor Out With Division]
+1. Factor out x from the whole expression  [Sacar factor usando división]
    Before: a * x + b * x + c
    Cambio local: a * x + b * x + c -> x * (c / x + a + b)
    After: x * (c / x + a + b)
@@ -10637,7 +10632,7 @@ Parsed: a * x^7 + b * x^5 + c * x^2 + d
 Target: x * (d / x + a * x^6 + b * x^4 + c * x)
 Strategy: factor out with division
 Steps (Aggressive Mode):
-1. Factor out x from the whole expression  [Factor Out With Division]
+1. Factor out x from the whole expression  [Sacar factor usando división]
    Before: a * x^(7) + b * x^(5) + c * x^(2) + d
    Cambio local: a * x^(7) + b * x^(5) + c * x^(2) + d -> x * (d / x + a * x^(6) + b * x^(4) + c * x)
    After: x * (d / x + a * x^6 + b * x^4 + c * x)
@@ -10671,7 +10666,7 @@ Parsed: a * x^2 + b * x + c
 Target: x * (c / x + a * x + b)
 Strategy: factor out with division
 Steps (Aggressive Mode):
-1. Factor out x from the whole expression  [Factor Out With Division]
+1. Factor out x from the whole expression  [Sacar factor usando división]
    Before: a * x^(2) + b * x + c
    Cambio local: a * x^(2) + b * x + c -> x * (c / x + a * x + b)
    After: x * (c / x + a * x + b)
@@ -10705,7 +10700,7 @@ Parsed: a * x^5 + b * x^3 + c * x + d
 Target: x * (d / x + a * x^4 + b * x^2 + c)
 Strategy: factor out with division
 Steps (Aggressive Mode):
-1. Factor out x from the whole expression  [Factor Out With Division]
+1. Factor out x from the whole expression  [Sacar factor usando división]
    Before: a * x^(5) + b * x^(3) + c * x + d
    Cambio local: a * x^(5) + b * x^(3) + c * x + d -> x * (d / x + a * x^(4) + b * x^(2) + c)
    After: x * (d / x + a * x^4 + b * x^2 + c)
@@ -10739,7 +10734,7 @@ Parsed: x^2 + 2 * x + 1
 Target: (x + 1)^2
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: x^(2) + 2 * x + 1
    Cambio local: x^(2) + 2 * x + 1 -> (x + 1)^(2)
    After: (x + 1)^2
@@ -10770,7 +10765,7 @@ Parsed: a^2 + b^2 - 2 * a * b
 Target: (a - b)^2
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: a^(2) + b^(2) - 2 * a * b
    Cambio local: a^(2) + b^(2) - 2 * a * b -> (a - b)^(2)
    After: (a - b)^2
@@ -10801,7 +10796,7 @@ Parsed: a^2 + b^2 + 2 * a * b
 Target: (a + b)^2
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: a^(2) + b^(2) + 2 * a * b
    Cambio local: a^(2) + b^(2) + 2 * a * b -> (a + b)^(2)
    After: (a + b)^2
@@ -10832,7 +10827,7 @@ Parsed: x^4 + 4 * y^4
 Target: (x^2 + 2 * y^2 - 2 * x * y) * (x^2 + 2 * y^2 + 2 * x * y)
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: x^(4) + 4 * y^(4)
    Cambio local: x^(4) + 4 * y^(4) -> (x^(2) + 2 * y^(2) - 2 * x * y) * (x^(2) + 2 * y^(2) + 2 * x * y)
    After: (x^2 + 2 * y^2 - 2 * x * y) * (x^2 + 2 * y^2 + 2 * x * y)
@@ -10864,7 +10859,7 @@ Parsed: a^3 + b^3
 Target: (a + b) * (a^2 + b^2 - a * b)
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: a^(3) + b^(3)
    Cambio local: a^(3) + b^(3) -> (a + b) * (a^(2) + b^(2) - a * b)
    After: (a + b) * (a^2 + b^2 - a * b)
@@ -10895,7 +10890,7 @@ Parsed: a^3 + b^3 + 3 * a * b^2 + 3 * b * a^2
 Target: (a + b)^3
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: a^(3) + b^(3) + 3 * a * b^(2) + 3 * b * a^(2)
    Cambio local: a^(3) + b^(3) + 3 * a * b^(2) + 3 * b * a^(2) -> (a + b)^(3)
    After: (a + b)^3
@@ -10926,7 +10921,7 @@ Parsed: a^3 + 3 * a * b^2 - 3 * b * a^2 - b^3
 Target: (a - b)^3
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: a^(3) + 3 * a * b^(2) - 3 * b * a^(2) - b^(3)
    Cambio local: a^(3) + 3 * a * b^(2) - 3 * b * a^(2) - b^(3) -> (a - b)^(3)
    After: (a - b)^3
@@ -10957,7 +10952,7 @@ Parsed: x^6 - a^6
 Target: (a^4 + x^4 + a^2 * x^2) * (x^2 - a^2)
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: x^(6) - a^(6)
    Cambio local: x^(6) - a^(6) -> (a^(4) + x^(4) + a^(2) * x^(2)) * (x^(2) - a^(2))
    After: (a^4 + x^4 + a^2 * x^2) * (x^2 - a^2)
@@ -10988,7 +10983,7 @@ Parsed: a^6 + x^6
 Target: (a^2 + x^2) * (a^4 + x^4 - a^2 * x^2)
 Strategy: factor
 Steps (Aggressive Mode):
-1. Factorization  [Factorization]
+1. Factorization  [Factorizar]
    Before: a^(6) + x^(6)
    Cambio local: a^(6) + x^(6) -> (a^(2) + x^(2)) * (a^(4) + x^(4) - a^(2) * x^(2))
    After: (a^2 + x^2) * (a^4 + x^4 - a^2 * x^2)
@@ -11019,7 +11014,7 @@ Parsed: product(c, k, 1, n)
 Target: c^n
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Product of constant factor: Π(c, k) from 1 to n  [Finite Product]
+1. Product of constant factor: Π(c, k) from 1 to n  [Aplicar producto de constante]
    Before: product(c, k, 1, n)
    Cambio local: product(c, k, 1, n) -> c^(n)
    After: c^n
@@ -11051,7 +11046,7 @@ Parsed: product(c, k, m, n)
 Target: c^(-m + n + 1)
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Product of constant factor: Π(c, k) from m to n  [Finite Product]
+1. Product of constant factor: Π(c, k) from m to n  [Aplicar producto de constante]
    Before: product(c, k, m, n)
    Cambio local: product(c, k, m, n) -> c^(-m + n + 1)
    After: c^(-m + n + 1)
@@ -11083,7 +11078,7 @@ Parsed: product(k, k, 1, n)
 Target: n!
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Product of first integers: Π(k, k) from 1 to n  [Finite Product]
+1. Product of first integers: Π(k, k) from 1 to n  [Aplicar producto factorial]
    Before: product(k, k, 1, n)
    Cambio local: product(k, k, 1, n) -> n!
    After: n!
@@ -11115,7 +11110,7 @@ Parsed: product(k, k, m, n)
 Target: n! / (m - 1)!
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Product of first integers: Π(k, k) from m to n  [Finite Product]
+1. Product of first integers: Π(k, k) from m to n  [Aplicar producto factorial]
    Before: product(k, k, m, n)
    Cambio local: product(k, k, m, n) -> n! / (m - 1)!
    After: n! / (m - 1)!
@@ -11149,7 +11144,7 @@ Parsed: product(k^3, k, m, n)
 Target: (n! / (m - 1)!)^3
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Product of powers: Π(k^3, k) from m to n  [Finite Product]
+1. Product of powers: Π(k^3, k) from m to n  [Aplicar producto de potencias]
    Before: product(k^(3), k, m, n)
    Cambio local: product(k^(3), k, m, n) -> (n! / (m - 1)!)^(3)
    After: (n! / (m - 1)!)^3
@@ -11183,7 +11178,7 @@ Parsed: product(k^2, k, 1, n)
 Target: n!^2
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Product of powers: Π(k^2, k) from 1 to n  [Finite Product]
+1. Product of powers: Π(k^2, k) from 1 to n  [Aplicar producto de potencias]
    Before: product(k^(2), k, 1, n)
    Cambio local: product(k^(2), k, 1, n) -> n!^(2)
    After: n!^2
@@ -11215,7 +11210,7 @@ Parsed: product(k^2, k, m, n)
 Target: (n! / (m - 1)!)^2
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Product of powers: Π(k^2, k) from m to n  [Finite Product]
+1. Product of powers: Π(k^2, k) from m to n  [Aplicar producto de potencias]
    Before: product(k^(2), k, m, n)
    Cambio local: product(k^(2), k, m, n) -> (n! / (m - 1)!)^(2)
    After: (n! / (m - 1)!)^2
@@ -11249,7 +11244,7 @@ Parsed: sum(c, k, 1, n)
 Target: c * n
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Sum of constant term: Σ(c, k) from 1 to n  [Finite Summation]
+1. Sum of constant term: Σ(c, k) from 1 to n  [Aplicar suma de constante]
    Before: sum(c, k, 1, n)
    Cambio local: sum(c, k, 1, n) -> c * n
    After: c * n
@@ -11281,7 +11276,7 @@ Parsed: sum(c, k, m, n)
 Target: c * (-m + n + 1)
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Sum of constant term: Σ(c, k) from m to n  [Finite Summation]
+1. Sum of constant term: Σ(c, k) from m to n  [Aplicar suma de constante]
    Before: sum(c, k, m, n)
    Cambio local: sum(c, k, m, n) -> c * (-m + n + 1)
    After: c * (-m + n + 1)
@@ -11313,7 +11308,7 @@ Parsed: sum(k, k, 1, n)
 Target: n * (n + 1) / 2
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Sum of first integers: Σ(k, k) from 1 to n  [Finite Summation]
+1. Sum of first integers: Σ(k, k) from 1 to n  [Aplicar fórmula de suma de enteros]
    Before: sum(k, k, 1, n)
    Cambio local: sum(k, k, 1, n) -> n * (n + 1) / 2
    After: n * (n + 1) / 2
@@ -11345,7 +11340,7 @@ Parsed: sum(k, k, m, n)
 Target: (n * (n + 1) - m * (m - 1)) / 2
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Sum of first integers: Σ(k, k) from m to n  [Finite Summation]
+1. Sum of first integers: Σ(k, k) from m to n  [Aplicar fórmula de suma de enteros]
    Before: sum(k, k, m, n)
    Cambio local: sum(k, k, m, n) -> (n * (n + 1) - m * (m - 1)) / 2
    After: (n * (n + 1) - m * (m - 1)) / 2
@@ -11377,7 +11372,7 @@ Parsed: sum(2^k, k, 0, n)
 Target: 2^(n + 1) - 1
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Geometric sum: Σ(2^k, k) from 0 to n  [Finite Summation]
+1. Geometric sum: Σ(2^k, k) from 0 to n  [Aplicar fórmula de suma geométrica]
    Before: sum(2^(k), k, 0, n)
    Cambio local: sum(2^(k), k, 0, n) -> 2^(n + 1) - 1
    After: 2^(n + 1) - 1
@@ -11409,7 +11404,7 @@ Parsed: sum(2^k, k, m, n)
 Target: 2^(n + 1) - 2^m
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Geometric sum: Σ(2^k, k) from m to n  [Finite Summation]
+1. Geometric sum: Σ(2^k, k) from m to n  [Aplicar fórmula de suma geométrica]
    Before: sum(2^(k), k, m, n)
    Cambio local: sum(2^(k), k, m, n) -> 2^(n + 1) - 2^(m)
    After: 2^(n + 1) - 2^m
@@ -11441,7 +11436,7 @@ Parsed: sum(k^3, k, 1, n)
 Target: (n * (n + 1) / 2)^2
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Sum of cubes: Σ(k^3, k) from 1 to n  [Finite Summation]
+1. Sum of cubes: Σ(k^3, k) from 1 to n  [Aplicar fórmula de suma de cubos]
    Before: sum(k^(3), k, 1, n)
    Cambio local: sum(k^(3), k, 1, n) -> (n * (n + 1) / 2)^(2)
    After: (n * (n + 1) / 2)^2
@@ -11473,7 +11468,7 @@ Parsed: sum(k^3, k, m, n)
 Target: (n * (n + 1) / 2)^2 - (m * (m - 1) / 2)^2
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Sum of cubes: Σ(k^3, k) from m to n  [Finite Summation]
+1. Sum of cubes: Σ(k^3, k) from m to n  [Aplicar fórmula de suma de cubos]
    Before: sum(k^(3), k, m, n)
    Cambio local: sum(k^(3), k, m, n) -> (n * (n + 1) / 2)^(2) - (m * (m - 1) / 2)^(2)
    After: (n * (n + 1) / 2)^2 - (m * (m - 1) / 2)^2
@@ -11505,7 +11500,7 @@ Parsed: sum(k^2, k, 1, n)
 Target: n * (n + 1) * (2 * n + 1) / 6
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Sum of squares: Σ(k^2, k) from 1 to n  [Finite Summation]
+1. Sum of squares: Σ(k^2, k) from 1 to n  [Aplicar fórmula de suma de cuadrados]
    Before: sum(k^(2), k, 1, n)
    Cambio local: sum(k^(2), k, 1, n) -> n * (n + 1) * (2 * n + 1) / 6
    After: n * (n + 1) * (2 * n + 1) / 6
@@ -11537,7 +11532,7 @@ Parsed: sum(k^2, k, m, n)
 Target: (n * (n + 1) * (2 * n + 1) - m * (m - 1) * (2 * m - 1)) / 6
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Sum of squares: Σ(k^2, k) from m to n  [Finite Summation]
+1. Sum of squares: Σ(k^2, k) from m to n  [Aplicar fórmula de suma de cuadrados]
    Before: sum(k^(2), k, m, n)
    Cambio local: sum(k^(2), k, m, n) -> (n * (n + 1) * (2 * n + 1) - m * (m - 1) * (2 * m - 1)) / 6
    After: (n * (n + 1) * (2 * n + 1) - m * (m - 1) * (2 * m - 1)) / 6
@@ -11569,7 +11564,7 @@ Parsed: product((a * k + a + b) / (a * k + b), k, m, n)
 Target: (a * n + a + b) / (a * m + b)
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Telescoping product: Π((a * k + a + b) / (a * k + b), k) from m to n  [Finite Product]
+1. Telescoping product: Π((a * k + a + b) / (a * k + b), k) from m to n  [Evaluar producto telescópico finito]
    Before: product((a * k + a + b) / (a * k + b), k, m, n)
    Cambio local: product((a * k + a + b) / (a * k + b), k, m, n) -> (a * n + a + b) / (a * m + b)
    After: (a * n + a + b) / (a * m + b)
@@ -11604,7 +11599,7 @@ Parsed: product((k + 1) / k, k, 1, n)
 Target: n + 1
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Telescoping product: Π((k + 1) / k, k) from 1 to n  [Finite Product]
+1. Telescoping product: Π((k + 1) / k, k) from 1 to n  [Evaluar producto telescópico finito]
    Before: product((k + 1) / k, k, 1, n)
    Cambio local: product((k + 1) / k, k, 1, n) -> n + 1
    After: n + 1
@@ -11639,7 +11634,7 @@ Parsed: product(1 - 1 / (k + 2)^2, k, m, n)
 Target: (m + 1) * (n + 3) / ((m + 2) * (n + 2))
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Factorized telescoping product: Π(1 - 1 / (k + 2)^2, k) from m to n  [Finite Product]
+1. Factorized telescoping product: Π(1 - 1 / (k + 2)^2, k) from m to n  [Evaluar producto telescópico finito]
    Before: product(1 - 1 / (k + 2)^(2), k, m, n)
    Cambio local: product(1 - 1 / (k + 2)^(2), k, m, n) -> (m + 1) * (n + 3) / ((m + 2) * (n + 2))
    After: (m + 1) * (n + 3) / ((m + 2) * (n + 2))
@@ -11675,7 +11670,7 @@ Parsed: product(1 - 1 / (a + k)^2, k, m, n)
 Target: (a + n + 1) * (a + m - 1) / ((a + m) * (a + n))
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Factorized telescoping product: Π(1 - 1 / (a + k)^2, k) from m to n  [Finite Product]
+1. Factorized telescoping product: Π(1 - 1 / (a + k)^2, k) from m to n  [Evaluar producto telescópico finito]
    Before: product(1 - 1 / (a + k)^(2), k, m, n)
    Cambio local: product(1 - 1 / (a + k)^(2), k, m, n) -> (a + n + 1) * (a + m - 1) / ((a + m) * (a + n))
    After: (a + n + 1) * (a + m - 1) / ((a + m) * (a + n))
@@ -11711,7 +11706,7 @@ Parsed: product((a + k + 1) / (a + k), k, m, n)
 Target: (a + n + 1) / (a + m)
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Telescoping product: Π((a + k + 1) / (a + k), k) from m to n  [Finite Product]
+1. Telescoping product: Π((a + k + 1) / (a + k), k) from m to n  [Evaluar producto telescópico finito]
    Before: product((a + k + 1) / (a + k), k, m, n)
    Cambio local: product((a + k + 1) / (a + k), k, m, n) -> (a + n + 1) / (a + m)
    After: (a + n + 1) / (a + m)
@@ -11746,7 +11741,7 @@ Parsed: sum(1 / ((a * k + a + b + c) * (a * k + b + c)), k, m, n)
 Target: ((1 / (a * m + b + c) - 1 / (a * n + a + b + c)))/a
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Telescoping sum: Σ(1 / ((a * k + a + b + c) * (a * k + b + c)), k) from m to n  [Finite Summation]
+1. Telescoping sum: Σ(1 / ((a * k + a + b + c) * (a * k + b + c)), k) from m to n  [Evaluar suma telescópica finita]
    Before: sum(1 / ((a * k + a + b + c) * (a * k + b + c)), k, m, n)
    Cambio local: sum(1 / ((a * k + a + b + c) * (a * k + b + c)), k, m, n) -> 1 / a * (1 / (a * m + b + c) - 1 / (a * n + a + b + c))
    After: ((1 / (a * m + b + c) - 1 / (a * n + a + b + c)))/a
@@ -11783,7 +11778,7 @@ Parsed: sum(1 / ((a * k + b) * (a * k + a + b)), k, m, n)
 Target: ((1 / (a * m + b) - 1 / (a * n + a + b)))/a
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Telescoping sum: Σ(1 / ((a * k + b) * (a * k + a + b)), k) from m to n  [Finite Summation]
+1. Telescoping sum: Σ(1 / ((a * k + b) * (a * k + a + b)), k) from m to n  [Evaluar suma telescópica finita]
    Before: sum(1 / ((a * k + b) * (a * k + a + b)), k, m, n)
    Cambio local: sum(1 / ((a * k + b) * (a * k + a + b)), k, m, n) -> 1 / a * (1 / (a * m + b) - 1 / (a * n + a + b))
    After: ((1 / (a * m + b) - 1 / (a * n + a + b)))/a
@@ -11820,7 +11815,7 @@ Parsed: sum(1 / (k * (k + 1)), k, 1, n)
 Target: 1 - 1 / (n + 1)
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Telescoping sum: Σ(1 / (k * (k + 1)), k) from 1 to n  [Finite Summation]
+1. Telescoping sum: Σ(1 / (k * (k + 1)), k) from 1 to n  [Evaluar suma telescópica finita]
    Before: sum(1 / (k * (k + 1)), k, 1, n)
    Cambio local: sum(1 / (k * (k + 1)), k, 1, n) -> 1 - 1 / (n + 1)
    After: 1 - 1 / (n + 1)
@@ -11856,7 +11851,7 @@ Parsed: sum(1 / ((a + k) * (a + k + 1)), k, m, n)
 Target: 1 / (a + m) - 1 / (a + n + 1)
 Strategy: finite sums/products
 Steps (Aggressive Mode):
-1. Telescoping sum: Σ(1 / ((a + k) * (a + k + 1)), k) from m to n  [Finite Summation]
+1. Telescoping sum: Σ(1 / ((a + k) * (a + k + 1)), k) from m to n  [Evaluar suma telescópica finita]
    Before: sum(1 / ((a + k) * (a + k + 1)), k, m, n)
    Cambio local: sum(1 / ((a + k) * (a + k + 1)), k, m, n) -> 1 / (a + m) - 1 / (a + n + 1)
    After: 1 / (a + m) - 1 / (a + n + 1)
@@ -11954,7 +11949,7 @@ Parsed: sinh(x) + cosh(x)
 Target: e^x
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Recognize sinh(u) + cosh(u) as exp(u)  [Hyperbolic Exponential Identity]
+1. Recognize sinh(u) + cosh(u) as exp(u)  [Reconocer forma exponencial hiperbólica]
    Before: sinh(x) + cosh(x)
    Cambio local: sinh(x) + cosh(x) -> e^(x)
    After: e^x
@@ -11984,7 +11979,7 @@ Parsed: sinh(x) - cosh(x)
 Target: -(e^(-x))
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Recognize sinh(u) - cosh(u) as -exp(-u)  [Hyperbolic Exponential Identity]
+1. Recognize sinh(u) - cosh(u) as -exp(-u)  [Reconocer forma exponencial hiperbólica]
    Before: sinh(x) - cosh(x)
    Cambio local: sinh(x) - cosh(x) -> -e^(-x)
    After: -(e^(-x))
@@ -12014,7 +12009,7 @@ Parsed: cosh(x) - sinh(x)
 Target: e^(-x)
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Recognize cosh(u) - sinh(u) as exp(-u)  [Hyperbolic Exponential Identity]
+1. Recognize cosh(u) - sinh(u) as exp(-u)  [Reconocer forma exponencial hiperbólica]
    Before: cosh(x) - sinh(x)
    Cambio local: cosh(x) - sinh(x) -> e^(-x)
    After: e^(-x)
@@ -12254,7 +12249,7 @@ Parsed: cosh(x)
 Target: (e^x + e^(-x)) / 2
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Expand cosh(u) as (exp(u) + exp(-u)) / 2  [Hyperbolic Exponential Identity]
+1. Expand cosh(u) as (exp(u) + exp(-u)) / 2  [Expandir identidad exponencial hiperbólica]
    Before: cosh(x)
    Cambio local: cosh(x) -> (e^(x) + e^(-x)) / 2
    After: (e^x + e^(-x)) / 2
@@ -12284,7 +12279,7 @@ Parsed: e^x
 Target: sinh(x) + cosh(x)
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Expand exp(u) as sinh(u) + cosh(u)  [Hyperbolic Exponential Identity]
+1. Expand exp(u) as sinh(u) + cosh(u)  [Expandir identidad exponencial hiperbólica]
    Before: e^(x)
    Cambio local: e^(x) -> sinh(x) + cosh(x)
    After: sinh(x) + cosh(x)
@@ -12314,7 +12309,7 @@ Parsed: sinh(x)
 Target: (e^x - e^(-x)) / 2
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Expand sinh(u) as (exp(u) - exp(-u)) / 2  [Hyperbolic Exponential Identity]
+1. Expand sinh(u) as (exp(u) - exp(-u)) / 2  [Expandir identidad exponencial hiperbólica]
    Before: sinh(x)
    Cambio local: sinh(x) -> (e^(x) - e^(-x)) / 2
    After: (e^x - e^(-x)) / 2
@@ -12344,7 +12339,7 @@ Parsed: tanh(x)
 Target: (e^x - e^(-x)) / (e^x + e^(-x))
 Strategy: rewrite hyperbolics
 Steps (Aggressive Mode):
-1. Expand tanh(u) as (exp(u) - exp(-u)) / (exp(u) + exp(-u))  [Hyperbolic Exponential Identity]
+1. Expand tanh(u) as (exp(u) - exp(-u)) / (exp(u) + exp(-u))  [Expandir identidad exponencial hiperbólica]
    Before: tanh(x)
    Cambio local: tanh(x) -> (e^(x) - e^(-x)) / (e^(x) + e^(-x))
    After: (e^x - e^(-x)) / (e^x + e^(-x))
@@ -13139,7 +13134,7 @@ Parsed: sin(arcsin(x))
 Target: x
 Strategy: rewrite inverse trigs
 Steps (Aggressive Mode):
-1. sin(arcsin(x)) = x  [Inverse Trig Composition]
+1. sin(arcsin(x)) = x  [Aplicar composición trigonométrica inversa]
    Before: sin(arcsin(x))
    Cambio local: sin(arcsin(x)) -> x
    After: x
@@ -13201,7 +13196,7 @@ Parsed: ln(e^x)
 Target: x
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Cancel ln(exp(u)) to u  [Log-Exp Inverse]
+1. Cancel ln(exp(u)) to u  [Cancelar logaritmo natural y exponencial inversos]
    Before: ln(e^(x))
    Cambio local: ln(e^(x)) -> x
    After: x
@@ -13231,11 +13226,11 @@ Parsed: ln(e^x^2)
 Target: 2 * x
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Multiply exponents  [Power of a Power]
+1. Multiply exponents  [Multiplicar exponentes]
    Before: ln(e^(x)^(2))
    Cambio local: e^(x)^(2) -> exp(2 * x)
    After: ln(exp(2 * x))
-2. Cancel ln(exp(u)) to u  [Log-Exp Inverse]
+2. Cancel ln(exp(u)) to u  [Cancelar logaritmo natural y exponencial inversos]
    Before: ln(exp(2 * x))
    Cambio local: ln(exp(2 * x)) -> 2 * x
    After: 2 * x
@@ -13303,7 +13298,7 @@ Parsed: 10^(y * log10(x))
 Target: x^y
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Recognize b^(k·log_b(u)) as u^k  [Exponential-Log Power Inverse]
+1. Recognize b^(k·log_b(u)) as u^k  [Cancelar exponencial con logaritmo y conservar exponente]
    Before: 10^(y * log10(x))
    Cambio local: 10^(y * log10(x)) -> x^(y)
    After: x^y
@@ -13315,7 +13310,7 @@ Result: x^(y)
 
 ### Web / JSON Steps
 
-1. `Exponential-Log Power Inverse`
+1. `Cancelar exponencial con logaritmo y conservar exponente`
    - before: `10^(y · log_10(x))`
    - after: `x^y`
    - substeps:
@@ -13338,7 +13333,7 @@ Parsed: e^(y * ln(x))
 Target: x^y
 Strategy: rewrite exponentials
 Steps (Aggressive Mode):
-1. Recognize b^(k·log_b(u)) as u^k  [Exponential-Log Power Inverse]
+1. Recognize b^(k·log_b(u)) as u^k  [Cancelar exponencial con logaritmo y conservar exponente]
    Before: e^(y * ln(x))
    Cambio local: e^(y * ln(x)) -> x^(y)
    After: x^y
@@ -13350,7 +13345,7 @@ Result: x^(y)
 
 ### Web / JSON Steps
 
-1. `Exponential-Log Power Inverse`
+1. `Cancelar exponencial con logaritmo y conservar exponente`
    - before: `e^(y · ln(x))`
    - after: `x^y`
    - substeps:
@@ -13373,11 +13368,11 @@ Parsed: x^(ln(y) / ln(x))
 Target: y
 Strategy: log inverse power
 Steps (Aggressive Mode):
-1. x^(c/log(b, x)) = b^c  [Log Inverse Power]
+1. x^(c/log(b, x)) = b^c  [Convertir potencia logarítmica inversa]
    Before: x^(ln(y) / ln(x))
    Cambio local: x^(ln(y) / ln(x)) -> e^(ln(y))
    After: e^(ln(y))
-2. b^log(b, x) = x  [Exponential-Log Inverse]
+2. b^log(b, x) = x  [Cancelar exponencial y logaritmo inversos]
    Before: e^(ln(y))
    Cambio local: e^(ln(y)) -> y
    After: y
@@ -13390,7 +13385,7 @@ Result: y
 
 ### Web / JSON Steps
 
-1. `Log Inverse Power`
+1. `Convertir potencia logarítmica inversa`
    - before: `x^(ln(y)/ln(x))`
    - after: `e^ln(y)`
    - substeps:
@@ -13417,11 +13412,11 @@ Parsed: x^(ln(ln(x)) / ln(x))
 Target: ln(x)
 Strategy: log inverse power
 Steps (Aggressive Mode):
-1. x^(c/log(b, x)) = b^c  [Log Inverse Power]
+1. x^(c/log(b, x)) = b^c  [Convertir potencia logarítmica inversa]
    Before: x^(ln(ln(x)) / ln(x))
    Cambio local: x^(ln(ln(x)) / ln(x)) -> e^(ln(ln(x)))
    After: e^(ln(ln(x)))
-2. b^log(b, x) = x  [Exponential-Log Inverse]
+2. b^log(b, x) = x  [Cancelar exponencial y logaritmo inversos]
    Before: e^(ln(ln(x)))
    Cambio local: e^(ln(ln(x))) -> ln(x)
    After: ln(x)
@@ -13433,7 +13428,7 @@ Result: ln(x)
 
 ### Web / JSON Steps
 
-1. `Log Inverse Power`
+1. `Convertir potencia logarítmica inversa`
    - before: `x^(ln(ln(x))/ln(x))`
    - after: `e^ln(ln(x))`
    - substeps:
@@ -13842,7 +13837,7 @@ Parsed: a / (c / d + b)
 Target: a * d / (b * d + c)
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: a / (c / d + b)
    Cambio local: a / (c / d + b) -> a * d / (b * d + c)
    After: a * d / (b * d + c)
@@ -13878,7 +13873,7 @@ Parsed: a * d / (b * d + c)
 Target: a / (c / d + b)
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: a * d / (b * d + c)
    Cambio local: a * d / (b * d + c) -> a / (c / d + b)
    After: a / (c / d + b)
@@ -13913,7 +13908,7 @@ Parsed: 1 / (1 / a + 1 / b)
 Target: a * b / (a + b)
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: 1 / (1 / a + 1 / b)
    Cambio local: 1 / (1 / a + 1 / b) -> a * b / (a + b)
    After: a * b / (a + b)
@@ -13949,7 +13944,7 @@ Parsed: 1 / (y / z + x)
 Target: z / (x * z + y)
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: 1 / (y / z + x)
    Cambio local: 1 / (y / z + x) -> z / (x * z + y)
    After: z / (x * z + y)
@@ -13985,7 +13980,7 @@ Parsed: z / (x * z + y)
 Target: 1 / (y / z + x)
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: z / (x * z + y)
    Cambio local: z / (x * z + y) -> 1 / (y / z + x)
    After: 1 / (y / z + x)
@@ -14020,7 +14015,7 @@ Parsed: 1 / (1 / x + 1 / y) + a
 Target: x * y / (x + y) + a
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: 1 / (1 / x + 1 / y) + a
    Cambio local: 1 / (1 / x + 1 / y) + a -> x * y / (x + y) + a
    After: x * y / (x + y) + a
@@ -14056,7 +14051,7 @@ Parsed: a - 1 / (1 / x + 1 / y)
 Target: a - x * y / (x + y)
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: a - 1 / (1 / x + 1 / y)
    Cambio local: a - 1 / (1 / x + 1 / y) -> a - x * y / (x + y)
    After: a - x * y / (x + y)
@@ -14092,7 +14087,7 @@ Parsed: 1 / (1 / a + 1 / b + 1 / c)
 Target: a * b * c / (a * b + a * c + b * c)
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: 1 / (1 / a + 1 / b + 1 / c)
    Cambio local: 1 / (1 / a + 1 / b + 1 / c) -> a * b * c / (a * b + a * c + b * c)
    After: a * b * c / (a * b + a * c + b * c)
@@ -14130,7 +14125,7 @@ Parsed: 1 / (1 / x)
 Target: x
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: 1 / (1 / x)
    Cambio local: 1 / (1 / x) -> x
    After: x
@@ -14164,7 +14159,7 @@ Parsed: (1 / x + 1 / y) / (1 / z)
 Target: z * (x + y) / (x * y)
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: (1 / x + 1 / y) / (1 / z)
    Cambio local: (1 / x + 1 / y) / (1 / z) -> z * (x + y) / (x * y)
    After: z * (x + y) / (x * y)
@@ -14200,7 +14195,7 @@ Parsed: (b / c + a) / d
 Target: (a * c + b) / (c * d)
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: (b / c + a) / d
    Cambio local: (b / c + a) / d -> (a * c + b) / (c * d)
    After: (a * c + b) / (c * d)
@@ -14235,7 +14230,7 @@ Parsed: (a * c + b) / (c * d)
 Target: (b / c + a) / d
 Strategy: nested fraction
 Steps (Aggressive Mode):
-1. Simplify nested fraction  [Simplify Nested Fraction]
+1. Simplify nested fraction  [Simplificar fracción anidada]
    Before: (a * c + b) / (c * d)
    Cambio local: (a * c + b) / (c * d) -> (b / c + a) / d
    After: (b / c + a) / d
@@ -15083,7 +15078,7 @@ Parsed: sin(arccos(x))
 Target: sqrt(1 - x^2)
 Strategy: rewrite inverse trigs
 Steps (Aggressive Mode):
-1. sin(arccos(x)) = sqrt(1-x^2)  [Inverse Trig Composition]
+1. sin(arccos(x)) = sqrt(1-x^2)  [Aplicar composición trigonométrica inversa]
    Before: sin(arccos(x))
    Cambio local: sin(arccos(x)) -> sqrt(1 - x^(2))
    After: sqrt(1 - x^2)
@@ -15117,7 +15112,7 @@ Parsed: sin(arctan(x))
 Target: x / sqrt(x^2 + 1)
 Strategy: rewrite inverse trigs
 Steps (Aggressive Mode):
-1. sin(arctan(x)) = x/sqrt(1+x^2)  [Inverse Trig Composition]
+1. sin(arctan(x)) = x/sqrt(1+x^2)  [Aplicar composición trigonométrica inversa]
    Before: sin(arctan(x))
    Cambio local: sin(arctan(x)) -> x / sqrt(x^(2) + 1)
    After: x / sqrt(x^2 + 1)
@@ -15435,7 +15430,7 @@ Parsed: (x + 1) / (x - 1)
 Target: 2 / (x - 1) + 1
 Strategy: split fraction
 Steps (Aggressive Mode):
-1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
+1. Split a fraction into a whole part plus remainder  [Separar fracción en parte entera y resto]
    Before: (x + 1) / (x - 1)
    After: 2 / (x - 1) + 1
 Result: 2 / (x - 1) + 1
@@ -15468,7 +15463,7 @@ Parsed: (4 * x + 7) / (2 * x + 1)
 Target: 5 / (2 * x + 1) + 2
 Strategy: split fraction
 Steps (Aggressive Mode):
-1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
+1. Split a fraction into a whole part plus remainder  [Separar fracción en parte entera y resto]
    Before: (4 * x + 7) / (2 * x + 1)
    After: 5 / (2 * x + 1) + 2
 Result: 5 / (2 * x + 1) + 2
@@ -15501,7 +15496,7 @@ Parsed: (a * x + b) / (c + x)
 Target: (b - a * c) / (c + x) + a
 Strategy: split fraction
 Steps (Aggressive Mode):
-1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
+1. Split a fraction into a whole part plus remainder  [Separar fracción en parte entera y resto]
    Before: (a * x + b) / (c + x)
    After: (b - a * c) / (c + x) + a
 Result: (b - a * c) / (c + x) + a
@@ -15534,7 +15529,7 @@ Parsed: (a * x + b) / (d - c * x)
 Target: (a * d / c + b) / (d - c * x) - a / c
 Strategy: split fraction
 Steps (Aggressive Mode):
-1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
+1. Split a fraction into a whole part plus remainder  [Separar fracción en parte entera y resto]
    Before: (a * x + b) / (d - c * x)
    After: (a * d / c + b) / (d - c * x) - a / c
 Result: (a * d / c + b) / (d - c * x) - a / c
@@ -15568,7 +15563,7 @@ Parsed: (a * x + b) / (c * x + d)
 Target: a / c + (b - a * d / c) / (c * x + d)
 Strategy: split fraction
 Steps (Aggressive Mode):
-1. Split a fraction into a whole part plus remainder  [Mixed Fraction Split]
+1. Split a fraction into a whole part plus remainder  [Separar fracción en parte entera y resto]
    Before: (a * x + b) / (c * x + d)
    After: a / c + (b - a * d / c) / (c * x + d)
 Result: a / c + (b - a * d / c) / (c * x + d)
@@ -15602,7 +15597,7 @@ Parsed: 1 / ((2 * n + 1) * (2 * n + 3))
 Target: ((1 / (2 * n + 1) - 1 / (2 * n + 3)))/2
 Strategy: expand fraction
 Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
+1. Split into telescoping partial fractions  [Descomponer en fracciones parciales telescópicas]
    Before: 1 / ((2 * n + 1) * (2 * n + 3))
    Cambio local: 1 / ((2 * n + 1) * (2 * n + 3)) -> 1 / 2 * (1 / (2 * n + 1) - 1 / (2 * n + 3))
    After: ((1 / (2 * n + 1) - 1 / (2 * n + 3)))/2
@@ -15637,7 +15632,7 @@ Parsed: 1 / ((a * n + b) * (a * n + c))
 Target: ((1 / (a * n + b) - 1 / (a * n + c)))/(c - b)
 Strategy: expand fraction
 Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
+1. Split into telescoping partial fractions  [Descomponer en fracciones parciales telescópicas]
    Before: 1 / ((a * n + b) * (a * n + c))
    Cambio local: 1 / ((a * n + b) * (a * n + c)) -> 1 / (c - b) * (1 / (a * n + b) - 1 / (a * n + c))
    After: ((1 / (a * n + b) - 1 / (a * n + c)))/(c - b)
@@ -15673,7 +15668,7 @@ Parsed: 1 / (n * (n + 1))
 Target: 1 / n - 1 / (n + 1)
 Strategy: expand fraction
 Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
+1. Split into telescoping partial fractions  [Descomponer en fracciones parciales telescópicas]
    Before: 1 / (n * (n + 1))
    Subpasos:
      1.1 Introducir el numerador telescópico
@@ -15713,7 +15708,7 @@ Parsed: 1 / (x^2 - 1)
 Target: ((1 / (x - 1) - 1 / (x + 1)))/2
 Strategy: expand fraction
 Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
+1. Split into telescoping partial fractions  [Descomponer en fracciones parciales telescópicas]
    Before: 1 / (x^(2) - 1)
    Cambio local: 1 / (x^(2) - 1) -> 1 / 2 * (1 / (x - 1) - 1 / (x + 1))
    After: ((1 / (x - 1) - 1 / (x + 1)))/2
@@ -15748,7 +15743,7 @@ Parsed: 1 / (n * (n + 2))
 Target: ((1 / n - 1 / (n + 2)))/2
 Strategy: expand fraction
 Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
+1. Split into telescoping partial fractions  [Descomponer en fracciones parciales telescópicas]
    Before: 1 / (n * (n + 2))
    Cambio local: 1 / (n * (n + 2)) -> 1 / 2 * (1 / n - 1 / (n + 2))
    After: ((1 / n - 1 / (n + 2)))/2
@@ -15783,7 +15778,7 @@ Parsed: 1 / (n * (n - 2))
 Target: ((1 / (n - 2) - 1 / n))/2
 Strategy: expand fraction
 Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
+1. Split into telescoping partial fractions  [Descomponer en fracciones parciales telescópicas]
    Before: 1 / (n * (n - 2))
    Cambio local: 1 / (n * (n - 2)) -> 1 / 2 * (1 / (n - 2) - 1 / n)
    After: ((1 / (n - 2) - 1 / n))/2
@@ -15818,7 +15813,7 @@ Parsed: 1 / (x^2 - a^2)
 Target: ((1 / (x - a) - 1 / (a + x)))/(2 * a)
 Strategy: expand fraction
 Steps (Aggressive Mode):
-1. Split into telescoping partial fractions  [Telescoping Fraction Split]
+1. Split into telescoping partial fractions  [Descomponer en fracciones parciales telescópicas]
    Before: 1 / (x^(2) - a^(2))
    Cambio local: 1 / (x^(2) - a^(2)) -> 1 / (2 * a) * (1 / (x - a) - 1 / (a + x))
    After: ((1 / (x - a) - 1 / (a + x)))/(2 * a)
@@ -15888,7 +15883,7 @@ Parsed: tan(arcsin(x))
 Target: x / sqrt(1 - x^2)
 Strategy: rewrite inverse trigs
 Steps (Aggressive Mode):
-1. tan(arcsin(x)) = x/sqrt(1-x^2)  [Inverse Trig Composition]
+1. tan(arcsin(x)) = x/sqrt(1-x^2)  [Aplicar composición trigonométrica inversa]
    Before: tan(arcsin(x))
    Cambio local: tan(arcsin(x)) -> x / sqrt(1 - x^(2))
    After: x / sqrt(1 - x^2)

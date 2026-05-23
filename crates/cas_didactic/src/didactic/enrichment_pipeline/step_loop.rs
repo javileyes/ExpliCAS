@@ -184,6 +184,9 @@ fn is_contextual_same_snapshot_substep(step: &Step, normalized_substep: &str) ->
                     | "Pre-order Sum/Difference of Cubes Cancel"
                     | "Subtract Expanded Sum/Difference of Cubes Quotient"
             ))
+        || (step.rule_name == "Negative Base Power"
+            && (normalized_substep.starts_with("usar que una potencia par")
+                || normalized_substep.starts_with("usar que una potencia impar")))
 }
 
 fn is_single_formula_template_rule(rule_name: &str) -> bool {

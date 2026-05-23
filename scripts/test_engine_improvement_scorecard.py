@@ -340,7 +340,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_residual_matrix_extracts_status_counts(self):
         metrics = MODULE.parse_calculus_residual_matrix(
             """
-{"status":"pass","total":247,"status_counts":{"pass":247,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{}}
+{"status":"pass","total":247,"status_counts":{"pass":247,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"expected_required_condition_case_count":42,"distinct_expected_required_conditions":3,"expected_required_condition_counts":{"x + 1":10,"x + 2":20,"sin(x)":12}}
 """
         )
 
@@ -352,6 +352,12 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(metrics["timeouts"], 0)
         self.assertEqual(metrics["problem_case_count"], 0)
         self.assertEqual(metrics["problem_cases"], [])
+        self.assertEqual(metrics["expected_required_condition_case_count"], 42)
+        self.assertEqual(metrics["distinct_expected_required_conditions"], 3)
+        self.assertEqual(
+            metrics["expected_required_condition_counts"],
+            {"x + 1": 10, "x + 2": 20, "sin(x)": 12},
+        )
         self.assertEqual(
             MODULE.suite_status("calculus_residual_matrix_smoke", metrics, 0),
             "pass",
@@ -484,6 +490,8 @@ fn slow_case() {}
             """
 derive corpus summary: derived=291 unsupported=0 not_equivalent=1
 derive stats: reachability_rate=1.000 supported_equiv_rate=1.000 mean_step_count=1.05 long_path_rate=0.000
+derive path signal: single_step_successes=284 multi_step_successes=7 max_step_count=3
+derive multi-step-ids: expand_two_stage:2,contract_log_chain:3
 derive strategy specificity: generic_simplify_expected=0 distinct_expected_strategies=27
 derive expected-strategy-counts: {"expand": 30}
 derive derived-by-family: {"expand": 30}
@@ -495,6 +503,13 @@ derive not-equivalent-by-family: {"negative": 1}
         self.assertEqual(metrics["derived"], 291)
         self.assertEqual(metrics["generic_simplify_expected"], 0)
         self.assertEqual(metrics["distinct_expected_strategies"], 27)
+        self.assertEqual(metrics["single_step_successes"], 284)
+        self.assertEqual(metrics["multi_step_successes"], 7)
+        self.assertEqual(
+            metrics["multi_step_success_ids"],
+            ["expand_two_stage:2", "contract_log_chain:3"],
+        )
+        self.assertEqual(metrics["max_step_count"], 3)
         self.assertEqual(metrics["expected_strategy_counts"], {"expand": 30})
         self.assertEqual(metrics["derived_by_family"]["expand"], 30)
         self.assertEqual(metrics["unsupported_by_family"], {})
@@ -507,6 +522,7 @@ derive shadow pressure summary: sampled=16 derived=16 unsupported=0 not_equivale
 derive shadow pressure stats: reachability_rate=1.000 mean_step_count=1.19 single_step_successes=13 multi_step_successes=3
 derive shadow pressure strategy specificity: generic_simplify_strategy_successes=2 distinct_actual_strategies=9
 derive shadow pressure generic-simplify-ids: identity_a,identity_b
+derive shadow pressure multi-step-ids: identity_a:2,embedded_calculus_diff_arctan_sqrt_compact:4,identity_c:3
 derive shadow pressure actual-strategy-counts: {"simplify": 2, "contract logs": 1}
 derive shadow pressure derived-by-family: {"log_contract": 1, "simplify": 2}
 derive shadow pressure unsupported-equivalent-by-family: {"branch_sensitive": 1}
@@ -519,6 +535,23 @@ derive shadow pressure not-equivalent-by-family: {}
         self.assertEqual(
             metrics["generic_simplify_strategy_ids"], ["identity_a", "identity_b"]
         )
+        self.assertEqual(
+            metrics["multi_step_success_ids"],
+            [
+                "identity_a:2",
+                "embedded_calculus_diff_arctan_sqrt_compact:4",
+                "identity_c:3",
+            ],
+        )
+        self.assertEqual(
+            metrics["multi_step_success_step_counts"],
+            {
+                "identity_a": 2,
+                "embedded_calculus_diff_arctan_sqrt_compact": 4,
+                "identity_c": 3,
+            },
+        )
+        self.assertEqual(metrics["max_step_count"], 4)
         self.assertEqual(metrics["distinct_actual_strategies"], 9)
         self.assertEqual(metrics["actual_strategy_counts"]["contract logs"], 1)
         self.assertEqual(metrics["derived_by_family"]["log_contract"], 1)
@@ -1026,6 +1059,14 @@ root.direct_small_zero_composition.candidate.three_core_groups
 - resolved by:
   - later retained coverage made this candidate obsolete
 
+## 2026-05-18 - Discovery observe-only: superseded generated candidate
+
+- area:
+  - generated discovery
+  - `combined_additive_zero` x `log_contract`
+- status:
+  - `superseded`
+
 ## 2026-04-27: `radical_power` Passthrough Discovery
 
 - area:
@@ -1041,6 +1082,7 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertEqual(metrics["areas"]["generated discovery"], 2)
         self.assertEqual(metrics["families"]["integrate_prep"], 1)
         self.assertEqual(metrics["families"]["radical_power"], 1)
+        self.assertNotIn("log_contract", metrics["families"])
         self.assertEqual(metrics["wrappers"]["combined_additive_zero"], 1)
         self.assertEqual(metrics["wrappers"]["squared_passthrough_zero"], 1)
         self.assertEqual(metrics["recent"][0]["area"], "calculus / differentiation")
@@ -1213,6 +1255,11 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "mean_step_count": 1.5,
                         "single_step_successes": 1,
                         "multi_step_successes": 1,
+                        "multi_step_success_ids": ["nested_fraction_case:4"],
+                        "multi_step_success_step_counts": {
+                            "nested_fraction_case": 4,
+                        },
+                        "max_step_count": 4,
                         "generic_simplify_strategy_successes": 0,
                         "generic_simplify_strategy_ids": [],
                         "distinct_actual_strategies": 2,
@@ -1237,6 +1284,8 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertIn("## Derive Shadow Pressure", markdown)
         self.assertIn("Actual strategy counts", markdown)
         self.assertIn("contract logs:1", markdown)
+        self.assertIn("max_step_count=4", markdown)
+        self.assertIn("multi_step_ids=1 max_step=4", markdown)
         self.assertIn("Derived family counts", markdown)
         self.assertIn("log_contract:1", markdown)
         self.assertIn("unsupported=branch_sensitive:1", markdown)
@@ -1259,6 +1308,10 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "supported_equiv_rate": 1.0,
                         "mean_step_count": 1.2,
                         "long_path_rate": 0.0,
+                        "single_step_successes": 8,
+                        "multi_step_successes": 2,
+                        "multi_step_success_ids": ["case_a:2", "case_b:3"],
+                        "max_step_count": 3,
                         "generic_simplify_expected": 0,
                         "distinct_expected_strategies": 4,
                         "expected_strategy_counts": {"expand trig": 4, "factor": 2},
@@ -1286,8 +1339,14 @@ root.direct_small_zero_composition.candidate.three_core_groups
             markdown,
         )
         self.assertIn(
+            "Path quality: mean_step_count=1.20 long_path_rate=0.00 "
+            "single_step_successes=8 multi_step_successes=2 max_step_count=3",
+            markdown,
+        )
+        self.assertIn(
             "| `derive_contract` | `pass` | 0.20s | derived=10 unsupported=0 "
-            "expected_not_equivalent=1 mean_step_count=1.20",
+            "expected_not_equivalent=1 mean_step_count=1.20 "
+            "generic_simplify_expected=0 single_step=8 multi_step_ids=2 max_step=3",
             markdown,
         )
 
@@ -1464,6 +1523,13 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "problem_case_count": 0,
                         "problem_cases": [],
                         "issue_kind_counts": {},
+                        "expected_required_condition_case_count": 42,
+                        "distinct_expected_required_conditions": 3,
+                        "expected_required_condition_counts": {
+                            "x + 1": 10,
+                            "x + 2": 20,
+                            "sin(x)": 12,
+                        },
                     },
                     "delta": {},
                 },
@@ -1485,7 +1551,15 @@ root.direct_small_zero_composition.candidate.three_core_groups
         )
         self.assertIn("`limit`: passed=6 failed=0", markdown)
         self.assertIn("`limit_presimplify_safe`: passed=8 failed=0", markdown)
-        self.assertIn("`residual_matrix`: passed=247 failed=0 total=247", markdown)
+        self.assertIn(
+            "`residual_matrix`: passed=247 failed=0 total=247 slow=0 timeouts=0 "
+            "conditioned_cases=42 distinct_conditions=3",
+            markdown,
+        )
+        self.assertIn(
+            "`residual_matrix` sparse expected conditions: x + 1=10, sin(x)=12, x + 2=20",
+            markdown,
+        )
         self.assertNotIn("`residual_matrix` problem cases:", markdown)
         self.assertIn("`integrate`: passed=23 failed=0", markdown)
         self.assertIn(
@@ -1494,6 +1568,11 @@ root.direct_small_zero_composition.candidate.three_core_groups
         )
         self.assertIn(
             "| `calculus_diff_contract` | `pass` | 0.10s | passed=30 failed=0 ignored=1 |",
+            markdown,
+        )
+        self.assertIn(
+            "| `calculus_residual_matrix_smoke` | `pass` | 3.20s | "
+            "passed=247 failed=0 total=247 conditioned=42 conditions=3 |",
             markdown,
         )
 

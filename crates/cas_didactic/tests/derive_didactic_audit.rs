@@ -474,6 +474,7 @@ fn is_self_explanatory_identity_rule(rule: &str) -> bool {
             | "Cancelar exponencial y logaritmo inversos"
             | "Expandir binomio"
             | "Negative Base Power"
+            | "Simplificar potencia con base negativa"
             | "Expandir ángulo doble"
             | "Contraer ángulo doble"
             | "Aplicar identidad hiperbólica de ángulo doble"
@@ -2450,7 +2451,8 @@ fn derive_didactic_trig_special_value_is_direct_and_unflagged() {
 
 #[test]
 fn derive_didactic_arcsin_arctan_composition_uses_inverse_trig_language() {
-    let artifact = audit_case(&derive_case_by_id("arcsin_sin_arctan_safe_composition"));
+    let case = derive_case_by_id("arcsin_sin_arctan_safe_composition");
+    let artifact = audit_case(&case);
 
     let step = artifact
         .json_steps
@@ -2470,11 +2472,21 @@ fn derive_didactic_arcsin_arctan_composition_uses_inverse_trig_language() {
             "Usar asin(sin(u)) = u en el rango principal"
         ]
     );
+    let cli_output = run_cli_lines(&case).join("\n");
+    assert!(
+        cli_output.contains("[Aplicar composición trigonométrica inversa]"),
+        "expected visible inverse-trig composition rule suffix in CLI output:\n{cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Inverse Trig Composition]"),
+        "raw internal inverse-trig composition rule suffix leaked into CLI output:\n{cli_output}"
+    );
 }
 
 #[test]
 fn derive_didactic_direct_inverse_trig_composition_uses_inverse_language() {
-    let artifact = audit_case(&derive_case_by_id("inverse_trig_composition_sin_arcsin"));
+    let case = derive_case_by_id("inverse_trig_composition_sin_arcsin");
+    let artifact = audit_case(&case);
 
     let step = artifact
         .json_steps
@@ -2491,6 +2503,15 @@ fn derive_didactic_direct_inverse_trig_composition_uses_inverse_language() {
         ["Usar que sin y arcsin son funciones inversas", "Aquí u = x"]
     );
     assert_case_has_no_no_web_substeps_flag("inverse_trig_composition_sin_arcsin");
+    let cli_output = run_cli_lines(&case).join("\n");
+    assert!(
+        cli_output.contains("[Aplicar composición trigonométrica inversa]"),
+        "expected visible inverse-trig composition rule suffix in CLI output:\n{cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Inverse Trig Composition]"),
+        "raw internal inverse-trig composition rule suffix leaked into CLI output:\n{cli_output}"
+    );
 }
 
 #[test]
@@ -2514,6 +2535,15 @@ fn derive_didactic_arctan_right_triangle_compositions_use_inverse_trig_language(
             ],
         );
         assert_case_has_no_no_web_substeps_flag(case_id);
+        let cli_output = run_cli_lines(&derive_case_by_id(case_id)).join("\n");
+        assert!(
+            cli_output.contains("[Aplicar composición trigonométrica inversa]"),
+            "expected visible inverse-trig composition rule suffix in CLI output for {case_id}:\n{cli_output}"
+        );
+        assert!(
+            !cli_output.contains("[Inverse Trig Composition]"),
+            "raw internal inverse-trig composition rule suffix leaked into CLI output for {case_id}:\n{cli_output}"
+        );
     }
 }
 
@@ -2544,6 +2574,15 @@ fn derive_didactic_arcsin_projection_steps_use_inverse_trig_language() {
             &[first_title.as_str(), projection_title],
         );
         assert_case_has_no_no_web_substeps_flag(case_id);
+        let cli_output = run_cli_lines(&derive_case_by_id(case_id)).join("\n");
+        assert!(
+            cli_output.contains("[Aplicar composición trigonométrica inversa]"),
+            "expected visible inverse-trig composition rule suffix in CLI output for {case_id}:\n{cli_output}"
+        );
+        assert!(
+            !cli_output.contains("[Inverse Trig Composition]"),
+            "raw internal inverse-trig composition rule suffix leaked into CLI output for {case_id}:\n{cli_output}"
+        );
     }
 }
 
@@ -2675,22 +2714,29 @@ fn derive_didactic_square_double_angle_contraction_has_formula_substep() {
 
 #[test]
 fn derive_didactic_difference_of_squares_fraction_cancel_recaps_factor_then_cancel() {
-    assert_case_step_titles(
+    for case_id in [
         "cancel_fraction_difference_squares",
-        "Factorizar una diferencia de cuadrados y cancelar",
-        &[
-            "Factorizar el numerador como diferencia de cuadrados",
-            "Ahora se cancela el factor a - b",
-        ],
-    );
-    assert_case_step_titles(
         "cancel_fraction_difference_squares_with_passthrough",
-        "Factorizar una diferencia de cuadrados y cancelar",
-        &[
-            "Factorizar el numerador como diferencia de cuadrados",
-            "Ahora se cancela el factor a - b",
-        ],
-    );
+    ] {
+        assert_case_step_titles(
+            case_id,
+            "Factorizar una diferencia de cuadrados y cancelar",
+            &[
+                "Factorizar el numerador como diferencia de cuadrados",
+                "Ahora se cancela el factor a - b",
+            ],
+        );
+
+        let cli_output = run_cli_lines(&derive_case_by_id(case_id)).join("\n");
+        assert!(
+            cli_output.contains("[Factorizar una diferencia de cuadrados y cancelar]"),
+            "derive CLI should show the visible difference-of-squares cancel rule name for {case_id}: {cli_output}"
+        );
+        assert!(
+            !cli_output.contains("[Pre-order Difference of Squares Cancel]"),
+            "derive CLI should not expose the internal difference-of-squares cancel rule name for {case_id}: {cli_output}"
+        );
+    }
 
     assert!(
         audit_case(&derive_case_by_id("cancel_fraction_difference_squares"))
@@ -2706,39 +2752,55 @@ fn derive_didactic_difference_of_squares_fraction_cancel_recaps_factor_then_canc
 
 #[test]
 fn derive_didactic_difference_of_cubes_fraction_cancel_recaps_factor_then_cancel() {
-    let artifact = audit_case(&derive_case_by_id("cancel_fraction_difference_cubes"));
+    for case_id in [
+        "cancel_fraction_difference_cubes",
+        "cancel_fraction_difference_cubes_with_passthrough",
+    ] {
+        let case = derive_case_by_id(case_id);
+        let artifact = audit_case(&case);
 
-    let step = artifact
-        .json_steps
-        .iter()
-        .find(|step| {
-            step.get("rule")
-                .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Factorizar cubos y cancelar")
-        })
-        .expect("expected difference-of-cubes fraction cancel step");
+        let step = artifact
+            .json_steps
+            .iter()
+            .find(|step| {
+                step.get("rule")
+                    .and_then(Value::as_str)
+                    .is_some_and(|rule| rule == "Factorizar cubos y cancelar")
+            })
+            .expect("expected difference-of-cubes fraction cancel step");
 
-    let titles: Vec<&str> = step
-        .get("substeps")
-        .and_then(Value::as_array)
-        .expect("expected difference-of-cubes cancellation substeps")
-        .iter()
-        .filter_map(|substep| substep.get("title").and_then(Value::as_str))
-        .collect();
+        let titles: Vec<&str> = step
+            .get("substeps")
+            .and_then(Value::as_array)
+            .expect("expected difference-of-cubes cancellation substeps")
+            .iter()
+            .filter_map(|substep| substep.get("title").and_then(Value::as_str))
+            .collect();
 
-    assert_eq!(
-        titles,
-        vec![
-            "Factorizar el numerador como suma o diferencia de cubos",
-            "Ahora se cancela el factor (a - b)",
-            "Reemplazar ese bloque en la expresión"
-        ]
-    );
+        assert_eq!(
+            titles,
+            vec![
+                "Factorizar el numerador como suma o diferencia de cubos",
+                "Ahora se cancela el factor (a - b)",
+                "Reemplazar ese bloque en la expresión"
+            ]
+        );
+        let cli_output = run_cli_lines(&case).join("\n");
+        assert!(
+            cli_output.contains("[Factorizar cubos y cancelar]"),
+            "expected visible cubes rule suffix in CLI output for {case_id}:\n{cli_output}"
+        );
+        assert!(
+            !cli_output.contains("[Cancel Sum/Difference of Cubes Fraction]"),
+            "raw internal cubes rule suffix leaked into CLI output for {case_id}:\n{cli_output}"
+        );
+    }
 }
 
 #[test]
 fn derive_didactic_sum_of_cubes_fraction_cancel_recaps_factor_then_cancel() {
-    let artifact = audit_case(&derive_case_by_id("cancel_fraction_sum_cubes"));
+    let case = derive_case_by_id("cancel_fraction_sum_cubes");
+    let artifact = audit_case(&case);
 
     let step = artifact
         .json_steps
@@ -2765,6 +2827,15 @@ fn derive_didactic_sum_of_cubes_fraction_cancel_recaps_factor_then_cancel() {
             "Ahora se cancela el factor (a + b)",
             "Reemplazar ese bloque en la expresión"
         ]
+    );
+    let cli_output = run_cli_lines(&case).join("\n");
+    assert!(
+        cli_output.contains("[Factorizar cubos y cancelar]"),
+        "expected visible cubes rule suffix in CLI output:\n{cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Cancel Sum/Difference of Cubes Fraction]"),
+        "raw internal cubes rule suffix leaked into CLI output:\n{cli_output}"
     );
 }
 
@@ -2820,9 +2891,8 @@ fn derive_didactic_perfect_square_fraction_cancel_plus_uses_repeated_factor_rule
 
 #[test]
 fn derive_didactic_perfect_square_fraction_cancel_minus_symbolic_uses_repeated_factor_rule() {
-    let artifact = audit_case(&derive_case_by_id(
-        "cancel_fraction_perfect_square_minus_symbolic",
-    ));
+    let case = derive_case_by_id("cancel_fraction_perfect_square_minus_symbolic");
+    let artifact = audit_case(&case);
 
     let step = artifact
         .json_steps
@@ -2830,9 +2900,27 @@ fn derive_didactic_perfect_square_fraction_cancel_minus_symbolic_uses_repeated_f
         .find(|step| {
             step.get("rule")
                 .and_then(Value::as_str)
-                .is_some_and(|rule| rule == "Pre-order Perfect Square Minus Cancel")
+                .is_some_and(|rule| rule == "Cancelar un cuadrado perfecto con el mismo binomio")
         })
         .expect("expected symbolic negative perfect-square fraction cancel step");
+    assert!(
+        artifact
+            .json_steps
+            .iter()
+            .all(|step| step.get("rule").and_then(Value::as_str)
+                != Some("Pre-order Perfect Square Minus Cancel")),
+        "derive web/json should not expose the internal perfect-square-minus rule name"
+    );
+
+    let cli_output = run_cli_lines(&case).join("\n");
+    assert!(
+        cli_output.contains("[Cancelar un cuadrado perfecto con el mismo binomio]"),
+        "derive CLI should show the visible perfect-square-minus rule name: {cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Pre-order Perfect Square Minus Cancel]"),
+        "derive CLI should not expose the internal perfect-square-minus rule name: {cli_output}"
+    );
 
     let titles: Vec<&str> = step
         .get("substeps")
@@ -2957,7 +3045,7 @@ fn derive_didactic_scaled_exponential_log_product_shows_powers_after_cancellatio
 fn derive_didactic_log_inverse_power_unary_alias_stays_explainable() {
     assert_case_step_titles(
         "log_inverse_power_unary_natural_alias",
-        "Log Inverse Power",
+        "Convertir potencia logarítmica inversa",
         &[
             "Usar que e^(ln(u)) = u",
             "El exponente exterior cancela el ln del exponente interior",
@@ -2970,7 +3058,7 @@ fn derive_didactic_log_inverse_power_unary_alias_stays_explainable() {
 fn derive_didactic_natural_log_power_alias_shows_inverse_then_outer_exponent() {
     assert_case_step_titles(
         "log_exp_inverse_natural_log_power_alias",
-        "Exponential-Log Power Inverse",
+        "Cancelar exponencial con logaritmo y conservar exponente",
         &[
             "Usar que e^(ln(u)) = u",
             "Aplicar el factor exterior como exponente",
@@ -2983,7 +3071,7 @@ fn derive_didactic_natural_log_power_alias_shows_inverse_then_outer_exponent() {
 fn derive_didactic_log10_power_alias_shows_inverse_then_outer_exponent() {
     assert_case_step_titles(
         "log_exp_inverse_log10_power_alias",
-        "Exponential-Log Power Inverse",
+        "Cancelar exponencial con logaritmo y conservar exponente",
         &[
             "Usar que 10^(log10(u)) = u",
             "Aplicar el factor exterior como exponente",
@@ -3169,22 +3257,34 @@ fn derive_didactic_log_change_of_base_cases_stay_direct() {
 
 #[test]
 fn derive_didactic_direct_log_change_of_base_cases_expose_components() {
-    assert_case_step_titles(
-        "expand_log_change_of_base_direct",
-        "Change of Base",
-        &[
-            "Poner el argumento en el numerador",
-            "Poner la base en el denominador",
-        ],
-    );
-    assert_case_step_titles(
-        "contract_log_change_of_base_direct",
-        "Change of Base",
-        &[
-            "Leer el argumento desde el numerador",
-            "Leer la base desde el denominador",
-        ],
-    );
+    for (case_id, expected_titles) in [
+        (
+            "expand_log_change_of_base_direct",
+            &[
+                "Poner el argumento en el numerador",
+                "Poner la base en el denominador",
+            ][..],
+        ),
+        (
+            "contract_log_change_of_base_direct",
+            &[
+                "Leer el argumento desde el numerador",
+                "Leer la base desde el denominador",
+            ][..],
+        ),
+    ] {
+        assert_case_step_titles(case_id, "Aplicar cambio de base", expected_titles);
+
+        let cli_output = run_cli_lines(&derive_case_by_id(case_id)).join("\n");
+        assert!(
+            cli_output.contains("[Aplicar cambio de base]"),
+            "derive CLI should show the visible change-of-base rule name for {case_id}: {cli_output}"
+        );
+        assert!(
+            !cli_output.contains("[Change of Base]"),
+            "derive CLI should not expose the internal change-of-base rule name for {case_id}: {cli_output}"
+        );
+    }
 }
 
 #[test]
@@ -5185,7 +5285,8 @@ fn derive_didactic_common_factor_expansion_variants_are_audit_clean() {
 
 #[test]
 fn derive_didactic_numeric_common_factor_fraction_cancels_then_simplifies_remaining_fraction() {
-    let artifact = audit_case(&derive_case_by_id("cancel_fraction_common_factor_numeric"));
+    let case = derive_case_by_id("cancel_fraction_common_factor_numeric");
+    let artifact = audit_case(&case);
 
     let step = artifact
         .json_steps
@@ -5210,22 +5311,37 @@ fn derive_didactic_numeric_common_factor_fraction_cancels_then_simplifies_remain
             "Reducir la fracción que queda"
         ]
     );
+    let cli_output = run_cli_lines(&case).join("\n");
+    assert!(
+        cli_output.contains("[Cancelar un factor común]"),
+        "expected visible common-factor rule suffix in CLI output:\n{cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Pre-order Common Factor Cancel]"),
+        "raw internal common-factor rule suffix leaked into CLI output:\n{cli_output}"
+    );
 }
 
 #[test]
 fn derive_didactic_monomial_common_factor_fraction_cancels_symbol_then_simplifies_coefficients() {
+    let case = derive_case_by_id("cancel_fraction_monomial_common_factor");
     assert_case_step_titles(
-        "cancel_fraction_monomial_common_factor",
+        &case.id,
         "Cancelar un factor común",
         &[
             "Descomponer x^2 para exponer el factor común x",
             "Cancelar el factor común x",
         ],
     );
+    assert!(audit_case(&case).flags.is_empty());
+    let cli_output = run_cli_lines(&case).join("\n");
     assert!(
-        audit_case(&derive_case_by_id("cancel_fraction_monomial_common_factor"))
-            .flags
-            .is_empty()
+        cli_output.contains("[Cancelar un factor común]"),
+        "expected visible common-factor rule suffix in CLI output:\n{cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Pre-order Common Factor Cancel]"),
+        "raw internal common-factor rule suffix leaked into CLI output:\n{cli_output}"
     );
 }
 

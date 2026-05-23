@@ -55,7 +55,7 @@ Steps:
 2. Calcular potencia numérica
    Before: (sqrt(x) + 1)/(x - 1^2) - (sqrt(x) + 1)/(x - 1)
    After: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)
-3. Cancel equal fractions
+3. Cancelar fracciones iguales
    Before: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)
    Cambio local: (sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1) -> 0
    After: 0
@@ -78,7 +78,7 @@ Steps:
      3. `En el denominador aparece una diferencia de cuadrados`
         - before_latex: `\frac{(\sqrt{x} + 1)}{(\sqrt{x} - 1) \cdot (\sqrt{x} + 1)}`
         - after_latex: `\frac{\sqrt{x} + 1}{x - 1^{2}}`
-2. `Cancel Equal Fractions Difference`
+2. `Cancelar fracciones iguales`
    - before: `(sqrt(x) + 1)/(x - 1) - (sqrt(x) + 1)/(x - 1)`
    - after: `0`
    - before_latex: `{\color{red}{\frac{1 + \sqrt{x}}{x - 1} - \frac{1 + \sqrt{x}}{x - 1}}}`
@@ -356,7 +356,7 @@ Steps:
 
 ### Wire / Web Steps
 
-1. `Pre-order Difference of Squares`
+1. `Factorizar una diferencia de cuadrados`
    - before: `(x^2 - 1)/(x - 1)`
    - after: `((x + 1) · (x - 1))/(x - 1)`
    - before_latex: `\frac{{\color{red}{{x}^{2} - 1}}}{x - 1}`
@@ -495,20 +495,14 @@ Steps:
    - substeps: none
 2. `Cancelar términos opuestos`
    - before: `a^2 + b^2 + 2 · a · b - a^2 - 2 · a · b`
-   - after: `b^2 + 2 · a · b - 2 · a · b`
+   - after: `b^2`
    - before_latex: `{\color{red}{{a}^{2} + {b}^{2} + 2\cdot a\cdot b - {a}^{2}}} - 2\cdot a\cdot b`
-   - after_latex: `{\color{green}{{b}^{2} + 2\cdot a\cdot b}} - 2\cdot a\cdot b`
+   - after_latex: `{\color{green}{{b}^{2}}}`
    - substeps:
      1. `Cancelar términos opuestos exactos`
         - before_latex: `{a}^{2} - {a}^{2}`
         - after_latex: `0`
-3. `Cancelar términos opuestos`
-   - before: `b^2 + 2 · a · b - 2 · a · b`
-   - after: `b^2`
-   - before_latex: `{\color{red}{{b}^{2} + 2\cdot a\cdot b - 2\cdot a\cdot b}}`
-   - after_latex: `{\color{green}{{b}^{2}}}`
-   - substeps:
-     1. `Cancelar términos opuestos exactos`
+     2. `Cancelar términos opuestos exactos`
         - before_latex: `2\cdot a\cdot b - 2\cdot a\cdot b`
         - after_latex: `0`
 

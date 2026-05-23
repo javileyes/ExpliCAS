@@ -7310,6 +7310,7 @@ fn format_derive_eval_lines(
             if matches!(strategy, DeriveStrategy::FractionDecompose) {
                 retarget_result_line(&mut lines, &result_target);
             }
+            humanize_derive_cli_step_rule_suffixes(&mut lines);
             lines.insert(1, format!("Target: {target}"));
             lines.insert(2, format!("Strategy: {}", strategy.label()));
             append_derive_requires_lines(
@@ -7375,6 +7376,161 @@ fn format_derive_eval_lines(
             lines.push(detail.to_string());
             lines
         }
+    }
+}
+
+fn humanize_derive_cli_step_rule_suffixes(lines: &mut [String]) {
+    for line in lines {
+        let Some((prefix, description, raw_rule)) = split_derive_cli_step_rule_suffix(line) else {
+            continue;
+        };
+        let Some(visible_rule) = visible_derive_cli_rule_suffix(raw_rule, description) else {
+            continue;
+        };
+        *line = format!("{prefix}  [{visible_rule}]");
+    }
+}
+
+fn split_derive_cli_step_rule_suffix(line: &str) -> Option<(&str, &str, &str)> {
+    let (prefix, suffix) = line.rsplit_once("  [")?;
+    let raw_rule = suffix.strip_suffix(']')?;
+    let (step_number, description) = prefix.split_once(". ")?;
+    if step_number.is_empty()
+        || description.is_empty()
+        || !step_number.chars().all(|ch| ch.is_ascii_digit())
+    {
+        return None;
+    }
+    Some((prefix, description, raw_rule))
+}
+
+fn visible_derive_cli_rule_suffix(rule_name: &str, description: &str) -> Option<&'static str> {
+    match rule_name {
+        "Angle Sum/Diff Identity" => Some("Aplicar suma/diferencia de ángulos"),
+        "Binomial Coefficient Symmetry" => Some("Aplicar simetría del coeficiente binomial"),
+        "Cancel Sum/Difference of Cubes Fraction" => Some("Factorizar cubos y cancelar"),
+        "Change of Base" => Some("Aplicar cambio de base"),
+        "Add Fractions" => Some("Sumar fracciones en un solo denominador"),
+        "Combine Same Denominator Fractions" => {
+            Some("Combinar fracciones con el mismo denominador")
+        }
+        "Combine Same Denominator Sub" => {
+            Some("Combinar resta de fracciones con el mismo denominador")
+        }
+        "Collect Terms" if description.contains(" * ") => Some("Agrupar términos por factor común"),
+        "Collect Terms" => Some("Agrupar términos por variable"),
+        "Consecutive Factorial Ratio" => Some("Cancelar factoriales consecutivos"),
+        "Double Angle Expansion" => Some("Expandir ángulo doble"),
+        "Exponential Sum/Difference Identity" if description.starts_with("Expand ") => {
+            Some("Expandir exponencial de suma o diferencia")
+        }
+        "Exponential Sum/Difference Identity" if description.starts_with("Contract ") => {
+            Some("Contraer productos exponenciales")
+        }
+        "Exponential Sum/Difference Identity" => {
+            Some("Aplicar identidad exponencial de suma o diferencia")
+        }
+        "Exponential Power Identity" if description.starts_with("Expand ") => {
+            Some("Expandir potencia exponencial")
+        }
+        "Exponential Power Identity" => Some("Aplicar potencia de una exponencial"),
+        "Exponential Reciprocal Identity" if description.starts_with("Expand ") => {
+            Some("Expandir como recíproco exponencial")
+        }
+        "Exponential Reciprocal Identity" => Some("Reescribir recíproco exponencial"),
+        "Hyperbolic Exponential Identity" if description.starts_with("Expand ") => {
+            Some("Expandir identidad exponencial hiperbólica")
+        }
+        "Hyperbolic Exponential Identity" if description.starts_with("Recognize ") => {
+            Some("Reconocer forma exponencial hiperbólica")
+        }
+        "Hyperbolic Exponential Identity" => Some("Aplicar identidad exponencial hiperbólica"),
+        "Hyperbolic Angle Sum/Difference Identity" => {
+            Some("Aplicar identidad hiperbólica de suma/diferencia de ángulos")
+        }
+        "Log-Exp Inverse" => Some("Cancelar logaritmo natural y exponencial inversos"),
+        "Exponential-Log Inverse" => Some("Cancelar exponencial y logaritmo inversos"),
+        "Exponential-Log Power Inverse" => {
+            Some("Cancelar exponencial con logaritmo y conservar exponente")
+        }
+        "Factorization" => Some("Factorizar"),
+        "Factor Out With Division" => Some("Sacar factor usando división"),
+        "Finite Product"
+            if description.starts_with("Telescoping product:")
+                || description.starts_with("Factorized telescoping product:") =>
+        {
+            Some("Evaluar producto telescópico finito")
+        }
+        "Finite Product" if description.starts_with("Product of first integers:") => {
+            Some("Aplicar producto factorial")
+        }
+        "Finite Product" if description.starts_with("Product of powers:") => {
+            Some("Aplicar producto de potencias")
+        }
+        "Finite Product" if description.starts_with("Product of constant factor:") => {
+            Some("Aplicar producto de constante")
+        }
+        "Finite Product" => Some("Evaluar producto finito"),
+        "Finite Summation" if description.starts_with("Telescoping sum:") => {
+            Some("Evaluar suma telescópica finita")
+        }
+        "Finite Summation" if description.starts_with("Sum of first integers:") => {
+            Some("Aplicar fórmula de suma de enteros")
+        }
+        "Finite Summation" if description.starts_with("Sum of squares:") => {
+            Some("Aplicar fórmula de suma de cuadrados")
+        }
+        "Finite Summation" if description.starts_with("Sum of cubes:") => {
+            Some("Aplicar fórmula de suma de cubos")
+        }
+        "Finite Summation" if description.starts_with("Sum of constant term:") => {
+            Some("Aplicar suma de constante")
+        }
+        "Finite Summation" if description.starts_with("Geometric sum:") => {
+            Some("Aplicar fórmula de suma geométrica")
+        }
+        "Finite Summation" => Some("Evaluar suma finita"),
+        "Inverse Trig Composition" => Some("Aplicar composición trigonométrica inversa"),
+        "Log Inverse Power" => Some("Convertir potencia logarítmica inversa"),
+        "Log Contraction" => Some("Contraer logaritmos"),
+        "Mixed Fraction Combine" => Some("Combinar parte entera y fracción"),
+        "Mixed Fraction Split" => Some("Separar fracción en parte entera y resto"),
+        "Reciprocal Trig Identity" => Some("Aplicar identidad trigonométrica recíproca"),
+        "Trig Quotient" | "Cos-Diff / Sin-Diff Quotient" => {
+            Some("Convertir un cociente trigonométrico en tangente")
+        }
+        "Triple Angle Expansion" | "Triple Angle Identity" => Some("Reescribir ángulo triple"),
+        "Quadruple Angle Expansion" => Some("Reescribir ángulo cuádruple"),
+        "Quintuple Angle Identity" => Some("Reescribir ángulo quíntuple"),
+        "Half-Angle Square Identity" => Some("Aplicar identidad de ángulo mitad"),
+        "Half-Angle Tangent Identity" => Some("Aplicar identidad de tangente de ángulo mitad"),
+        "Product-to-Sum Identity" => Some("Aplicar producto a suma"),
+        "Sum-to-Product Identity" | "Sum-to-Product Identity Cancellation Bridge" => {
+            Some("Aplicar suma a producto")
+        }
+        "Number Theory Operations" if description.starts_with("choose(") => {
+            Some("Calcular coeficiente binomial")
+        }
+        "Number Theory Operations" => Some("Evaluar operación de teoría de números"),
+        "Pascal's Identity" => Some("Aplicar identidad de Pascal"),
+        "Phase Shift Identity" => Some("Aplicar identidad de desfase"),
+        "Power Reduction Identity" => Some("Aplicar reducción de potencias"),
+        "Tangent Angle Sum/Diff Identity" => {
+            Some("Aplicar identidad de tangente de suma/diferencia de ángulos")
+        }
+        "Pre-order Common Factor Cancel" => Some("Cancelar un factor común"),
+        "Pre-order Difference of Squares Cancel" => {
+            Some("Factorizar una diferencia de cuadrados y cancelar")
+        }
+        "Pre-order Perfect Square Minus Cancel" => {
+            Some("Cancelar un cuadrado perfecto con el mismo binomio")
+        }
+        "Power of a Power" => Some("Multiplicar exponentes"),
+        "Simplify Nested Fraction" => Some("Simplificar fracción anidada"),
+        "Subtract Fractions" => Some("Restar fracciones en un solo denominador"),
+        "Telescoping Fraction Combine" => Some("Recomponer fracciones parciales telescópicas"),
+        "Telescoping Fraction Split" => Some("Descomponer en fracciones parciales telescópicas"),
+        _ => None,
     }
 }
 

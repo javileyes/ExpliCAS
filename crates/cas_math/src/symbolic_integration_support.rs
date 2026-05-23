@@ -26,6 +26,55 @@ fn ln_abs(ctx: &mut Context, arg: ExprId) -> ExprId {
     ctx.call_builtin(BuiltinFn::Ln, vec![abs_arg])
 }
 
+fn valid_constant_log_base_ln(ctx: &mut Context, base: ExprId) -> Option<Option<ExprId>> {
+    if matches!(ctx.get(base), Expr::Constant(Constant::E)) {
+        return Some(None);
+    }
+
+    let value = rational_constant_value(ctx, base)?;
+    if !value.is_positive() || value.is_one() {
+        return None;
+    }
+
+    Some(Some(ctx.call_builtin(BuiltinFn::Ln, vec![base])))
+}
+
+fn constant_base_log_derivative_correction(ctx: &mut Context, base_ln: Option<ExprId>) -> ExprId {
+    match base_ln {
+        Some(base_ln) => {
+            let one = ctx.num(1);
+            ctx.add(Expr::Div(one, base_ln))
+        }
+        None => ctx.num(1),
+    }
+}
+
+fn affine_constant_base_log_antiderivative(
+    ctx: &mut Context,
+    log_expr: ExprId,
+    arg: ExprId,
+    base_ln: Option<ExprId>,
+    var: &str,
+) -> Option<ExprId> {
+    let (a, _) = get_linear_coeffs(ctx, arg, var)?;
+    if contains_named_var(ctx, a, var) {
+        return None;
+    }
+    if rational_constant_value(ctx, a).is_some_and(|value| value.is_zero()) {
+        return None;
+    }
+
+    let reciprocal_base_ln = constant_base_log_derivative_correction(ctx, base_ln);
+    let log_minus_reciprocal_base_ln = ctx.add(Expr::Sub(log_expr, reciprocal_base_ln));
+    let integral = mul2_raw(ctx, arg, log_minus_reciprocal_base_ln);
+
+    if matches!(ctx.get(a), Expr::Number(n) if n.is_one()) {
+        Some(integral)
+    } else {
+        Some(ctx.add(Expr::Div(integral, a)))
+    }
+}
+
 fn compact_single_power_polynomial_arg(ctx: &mut Context, arg: ExprId) -> ExprId {
     let factored = factor(ctx, arg);
     if factored == arg {
@@ -7257,6 +7306,8 @@ fn polynomial_log_product_substitution_from_base(
     cofactor: ExprId,
     base: ExprId,
     log_factor: ExprId,
+    log_derivative_correction: ExprId,
+    distribute_correction: bool,
     var: &str,
 ) -> Option<ExprId> {
     let cofactor_poly = Polynomial::from_expr(ctx, cofactor, var).ok()?;
@@ -7271,15 +7322,79 @@ fn polynomial_log_product_substitution_from_base(
         return None;
     }
 
-    let one = ctx.num(1);
-    let log_minus_one = ctx.add(Expr::Sub(log_factor, one));
-    let integral = mul2_raw(ctx, base, log_minus_one);
+    let integral = if distribute_correction {
+        let log_term = mul2_raw(ctx, base, log_factor);
+        let correction_term =
+            multiply_log_derivative_correction(ctx, base, log_derivative_correction);
+        ctx.add(Expr::Sub(log_term, correction_term))
+    } else {
+        let log_minus_correction = ctx.add(Expr::Sub(log_factor, log_derivative_correction));
+        mul2_raw(ctx, base, log_minus_correction)
+    };
     if scale.is_one() {
         return Some(integral);
     }
 
     let scale_expr = ctx.add(Expr::Number(scale));
     Some(mul2_raw(ctx, scale_expr, integral))
+}
+
+fn log_product_substitution_factor_parts(
+    ctx: &mut Context,
+    factor: ExprId,
+) -> Option<(ExprId, ExprId, ExprId, bool)> {
+    let Expr::Function(fn_id, args) = ctx.get(factor).clone() else {
+        return None;
+    };
+
+    match ctx.builtin_of(fn_id) {
+        Some(BuiltinFn::Ln) if args.len() == 1 => {
+            let one = ctx.num(1);
+            Some((factor, args[0], one, false))
+        }
+        Some(BuiltinFn::Log) if args.len() == 2 => {
+            let base = args[0];
+            let arg = args[1];
+            let base_ln = valid_constant_log_base_ln(ctx, base)?;
+            let distribute_correction = base_ln.is_some();
+            let log_expr = if base_ln.is_none() {
+                ctx.call_builtin(BuiltinFn::Ln, vec![arg])
+            } else {
+                factor
+            };
+            let correction = constant_base_log_derivative_correction(ctx, base_ln);
+            Some((log_expr, arg, correction, distribute_correction))
+        }
+        Some(BuiltinFn::Log2) if args.len() == 1 => {
+            let two = ctx.num(2);
+            let base_ln = valid_constant_log_base_ln(ctx, two)?
+                .expect("base 2 should have an explicit natural-log denominator");
+            let correction = constant_base_log_derivative_correction(ctx, Some(base_ln));
+            Some((factor, args[0], correction, true))
+        }
+        Some(BuiltinFn::Log10) if args.len() == 1 => {
+            let ten = ctx.num(10);
+            let base_ln = valid_constant_log_base_ln(ctx, ten)?
+                .expect("base 10 should have an explicit natural-log denominator");
+            let correction = constant_base_log_derivative_correction(ctx, Some(base_ln));
+            Some((factor, args[0], correction, true))
+        }
+        _ => None,
+    }
+}
+
+fn multiply_log_derivative_correction(
+    ctx: &mut Context,
+    base: ExprId,
+    correction: ExprId,
+) -> ExprId {
+    if let Expr::Div(num, den) = ctx.get(correction).clone() {
+        if matches!(ctx.get(num), Expr::Number(value) if value.is_one()) {
+            return ctx.add(Expr::Div(base, den));
+        }
+    }
+
+    mul2_raw(ctx, base, correction)
 }
 
 fn polynomial_log_product_substitution_antiderivative(
@@ -7290,13 +7405,11 @@ fn polynomial_log_product_substitution_antiderivative(
     let factors = mul_leaves(ctx, expr);
     if factors.len() >= 2 {
         for (log_index, factor) in factors.iter().enumerate() {
-            let Expr::Function(fn_id, args) = ctx.get(*factor) else {
+            let Some((log_expr, base, log_derivative_correction, distribute_correction)) =
+                log_product_substitution_factor_parts(ctx, *factor)
+            else {
                 continue;
             };
-            if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(BuiltinFn::Ln) {
-                continue;
-            }
-            let base = args[0];
             if !contains_named_var(ctx, base, var) {
                 continue;
             }
@@ -7312,9 +7425,15 @@ fn polynomial_log_product_substitution_antiderivative(
                 build_balanced_mul(ctx, &cofactor_factors)
             };
 
-            if let Some(integral) =
-                polynomial_log_product_substitution_from_base(ctx, cofactor, base, *factor, var)
-            {
+            if let Some(integral) = polynomial_log_product_substitution_from_base(
+                ctx,
+                cofactor,
+                base,
+                log_expr,
+                log_derivative_correction,
+                distribute_correction,
+                var,
+            ) {
                 return Some(integral);
             }
         }
@@ -7331,7 +7450,10 @@ fn polynomial_log_product_substitution_antiderivative(
         return None;
     }
 
-    polynomial_log_product_substitution_from_base(ctx, cofactor, log_base, log_expr, var)
+    let one = ctx.num(1);
+    polynomial_log_product_substitution_from_base(
+        ctx, cofactor, log_base, log_expr, one, false, var,
+    )
 }
 
 pub fn integrate_symbolic_is_log_product_substitution_target(
@@ -8300,6 +8422,79 @@ fn natural_log_power_factor_parts(ctx: &Context, factor: ExprId) -> Option<(Expr
     Some((log_expr, log_base, power))
 }
 
+fn log_power_function_parts(
+    ctx: &mut Context,
+    log_expr: ExprId,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(log_expr).clone() else {
+        return None;
+    };
+
+    match ctx.builtin_of(fn_id) {
+        Some(BuiltinFn::Ln) if args.len() == 1 => {
+            let arg = args[0];
+            let one = ctx.num(1);
+            Some((arg, arg, one))
+        }
+        Some(BuiltinFn::Log) if args.len() == 2 => {
+            let base = args[0];
+            let arg = args[1];
+            let base_ln = valid_constant_log_base_ln(ctx, base)?;
+            let correction = constant_base_log_derivative_correction(ctx, base_ln);
+            Some((
+                arg,
+                extract_abs_argument_view(ctx, arg).unwrap_or(arg),
+                correction,
+            ))
+        }
+        Some(BuiltinFn::Log2) if args.len() == 1 => {
+            let two = ctx.num(2);
+            let base_ln = valid_constant_log_base_ln(ctx, two)?
+                .expect("base 2 should have an explicit natural-log denominator");
+            let correction = constant_base_log_derivative_correction(ctx, Some(base_ln));
+            let arg = args[0];
+            Some((
+                arg,
+                extract_abs_argument_view(ctx, arg).unwrap_or(arg),
+                correction,
+            ))
+        }
+        Some(BuiltinFn::Log10) if args.len() == 1 => {
+            let ten = ctx.num(10);
+            let base_ln = valid_constant_log_base_ln(ctx, ten)?
+                .expect("base 10 should have an explicit natural-log denominator");
+            let correction = constant_base_log_derivative_correction(ctx, Some(base_ln));
+            let arg = args[0];
+            Some((
+                arg,
+                extract_abs_argument_view(ctx, arg).unwrap_or(arg),
+                correction,
+            ))
+        }
+        _ => None,
+    }
+}
+
+fn log_power_substitution_factor_parts(
+    ctx: &mut Context,
+    factor: ExprId,
+) -> Option<(ExprId, ExprId, ExprId, u32)> {
+    let (log_expr, power) = match ctx.get(factor).clone() {
+        Expr::Function(_, _) => (factor, 1),
+        Expr::Pow(base, exp) => {
+            let power = positive_integer_power_value(ctx, exp)?;
+            (base, power)
+        }
+        _ => return None,
+    };
+
+    let (log_arg, log_base, correction) = log_power_function_parts(ctx, log_expr)?;
+    if extract_abs_argument_view(ctx, log_arg).is_some() {
+        return None;
+    }
+    Some((log_expr, log_base, correction, power))
+}
+
 fn natural_log_argument(ctx: &Context, log_expr: ExprId) -> Option<ExprId> {
     let Expr::Function(fn_id, args) = ctx.get(log_expr) else {
         return None;
@@ -8311,44 +8506,16 @@ fn natural_log_argument(ctx: &Context, log_expr: ExprId) -> Option<ExprId> {
     }
 }
 
-fn log_square_by_parts_integral(ctx: &mut Context, base: ExprId, log_expr: ExprId) -> ExprId {
-    let two = ctx.num(2);
-    let log_square = ctx.add(Expr::Pow(log_expr, two));
-    let two_log = mul2_raw(ctx, two, log_expr);
-    let trailing = ctx.add(Expr::Sub(log_square, two_log));
-    let two = ctx.num(2);
-    let by_parts_factor = ctx.add(Expr::Add(trailing, two));
-    mul2_raw(ctx, base, by_parts_factor)
-}
-
-fn log_cube_by_parts_integral(ctx: &mut Context, base: ExprId, log_expr: ExprId) -> ExprId {
-    let two = ctx.num(2);
-    let three = ctx.num(3);
-    let six = ctx.num(6);
-    let log_square = ctx.add(Expr::Pow(log_expr, two));
-    let log_cube = ctx.add(Expr::Pow(log_expr, three));
-
-    let three_log_square = mul2_raw(ctx, three, log_square);
-    let six_log = mul2_raw(ctx, six, log_expr);
-    let head = ctx.add(Expr::Sub(log_cube, three_log_square));
-    let tail = ctx.add(Expr::Sub(six_log, six));
-    let by_parts_factor = ctx.add(Expr::Add(head, tail));
-    mul2_raw(ctx, base, by_parts_factor)
-}
-
 fn build_polynomial_log_power_product_substitution_integral(
     ctx: &mut Context,
     log_expr: ExprId,
     log_base: ExprId,
+    correction: ExprId,
     power: u32,
     cofactor: ExprId,
     var: &str,
 ) -> Option<ExprId> {
     if !matches!(power, 2..=5) {
-        return None;
-    }
-    let log_arg = natural_log_argument(ctx, log_expr)?;
-    if extract_abs_argument_view(ctx, log_arg).is_some() {
         return None;
     }
 
@@ -8368,12 +8535,9 @@ fn build_polynomial_log_power_product_substitution_integral(
     }
 
     let base = base_poly.to_expr(ctx);
-    let integral = match power {
-        2 => log_square_by_parts_integral(ctx, base, log_expr),
-        3 => log_cube_by_parts_integral(ctx, base, log_expr),
-        4 | 5 => polynomial_log_power_by_parts_integral(ctx, base, log_expr, power),
-        _ => return None,
-    };
+    let integral = polynomial_log_power_by_parts_integral_with_correction(
+        ctx, base, log_expr, correction, power,
+    );
     if scale.is_one() {
         return Some(integral);
     }
@@ -8425,12 +8589,12 @@ fn polynomial_log_power_product_required_positive_condition(
 
 fn polynomial_log_power_product_log_base(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
     for factor in mul_leaves(ctx, expr) {
-        if let Some((_, log_base, _)) = natural_log_power_factor_parts(ctx, factor) {
+        if let Some((_, log_base, _, _)) = log_power_substitution_factor_parts(ctx, factor) {
             return Some(log_base);
         }
     }
 
-    let (_, log_base, _, _) = additive_common_log_power_cofactor(ctx, expr)?;
+    let (_, log_base, _, _, _) = additive_common_log_power_cofactor_with_correction(ctx, expr)?;
     Some(log_base)
 }
 
@@ -8459,6 +8623,118 @@ fn polynomial_log_power_by_parts_integral(
     mul2_raw(ctx, base, by_parts_factor)
 }
 
+fn log_derivative_correction_power(ctx: &mut Context, correction: ExprId, power: u32) -> ExprId {
+    match power {
+        0 => ctx.num(1),
+        1 => correction,
+        _ if is_number(ctx, correction, 1) => ctx.num(1),
+        _ => match ctx.get(correction).clone() {
+            Expr::Div(num, den) if is_number(ctx, num, 1) => {
+                let exponent = ctx.num(i64::from(power));
+                let denominator_power = ctx.add(Expr::Pow(den, exponent));
+                let one = ctx.num(1);
+                ctx.add(Expr::Div(one, denominator_power))
+            }
+            _ => {
+                let exponent = ctx.num(i64::from(power));
+                ctx.add(Expr::Pow(correction, exponent))
+            }
+        },
+    }
+}
+
+fn scale_log_power_term(ctx: &mut Context, scale: BigRational, term: ExprId) -> ExprId {
+    if let Expr::Div(num, den) = ctx.get(term).clone() {
+        if is_number(ctx, num, 1) {
+            let scale_expr = ctx.add(Expr::Number(scale));
+            return ctx.add(Expr::Div(scale_expr, den));
+        }
+    }
+
+    if let Some((numerator, denominator)) = split_unit_reciprocal_factor(ctx, term) {
+        let numerator = scale_rational_term(ctx, scale, numerator);
+        return ctx.add(Expr::Div(numerator, denominator));
+    }
+
+    scale_rational_term(ctx, scale, term)
+}
+
+fn split_unit_reciprocal_factor(ctx: &mut Context, term: ExprId) -> Option<(ExprId, ExprId)> {
+    let factors = mul_leaves(ctx, term);
+    if factors.len() < 2 {
+        return None;
+    }
+
+    let mut reciprocal_index = None;
+    let mut denominator = None;
+    for (index, factor) in factors.iter().copied().enumerate() {
+        let Expr::Div(num, den) = ctx.get(factor) else {
+            continue;
+        };
+        if !is_number(ctx, *num, 1) {
+            continue;
+        }
+        if reciprocal_index.is_some() {
+            return None;
+        }
+        reciprocal_index = Some(index);
+        denominator = Some(*den);
+    }
+
+    let reciprocal_index = reciprocal_index?;
+    let numerator_factors: Vec<_> = factors
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, factor)| (index != reciprocal_index).then_some(factor))
+        .collect();
+    let numerator = match numerator_factors.as_slice() {
+        [] => ctx.num(1),
+        [single] => *single,
+        _ => build_balanced_mul(ctx, &numerator_factors),
+    };
+    Some((numerator, denominator?))
+}
+
+fn polynomial_log_power_by_parts_integral_with_correction(
+    ctx: &mut Context,
+    base: ExprId,
+    log_expr: ExprId,
+    correction: ExprId,
+    power: u32,
+) -> ExprId {
+    if is_number(ctx, correction, 1) {
+        return polynomial_log_power_by_parts_integral(ctx, base, log_expr, power);
+    }
+
+    let mut terms = Vec::new();
+    for degree in (0..=power).rev() {
+        let mut coeff = descending_factorial_ratio(power, degree);
+        if (power - degree) % 2 == 1 {
+            coeff = -coeff;
+        }
+
+        let correction_degree = power - degree;
+        let correction_term = log_derivative_correction_power(ctx, correction, correction_degree);
+        let mut factors = Vec::new();
+        if degree != 0 {
+            factors.push(log_power_term(ctx, log_expr, degree));
+        }
+        if !is_number(ctx, correction_term, 1) {
+            factors.push(correction_term);
+        }
+
+        let term = if factors.is_empty() {
+            ctx.num(1)
+        } else {
+            build_balanced_mul(ctx, &factors)
+        };
+        terms.push(scale_log_power_term(ctx, coeff, term));
+    }
+
+    let by_parts_factor = build_balanced_add(ctx, &terms);
+    mul2_raw(ctx, base, by_parts_factor)
+}
+
 fn polynomial_log_power_product_substitution_antiderivative(
     ctx: &mut Context,
     expr: ExprId,
@@ -8470,7 +8746,9 @@ fn polynomial_log_power_product_substitution_antiderivative(
     }
 
     for (log_index, factor) in factors.iter().enumerate() {
-        let Some((log_expr, log_base, power)) = natural_log_power_factor_parts(ctx, *factor) else {
+        let Some((log_expr, log_base, correction, power)) =
+            log_power_substitution_factor_parts(ctx, *factor)
+        else {
             continue;
         };
 
@@ -8486,27 +8764,28 @@ fn polynomial_log_power_product_substitution_antiderivative(
         };
 
         if let Some(integral) = build_polynomial_log_power_product_substitution_integral(
-            ctx, log_expr, log_base, power, cofactor, var,
+            ctx, log_expr, log_base, correction, power, cofactor, var,
         ) {
             return Some(integral);
         }
     }
 
-    let (log_expr, log_base, power, cofactor) = additive_common_log_power_cofactor(ctx, expr)?;
+    let (log_expr, log_base, correction, power, cofactor) =
+        additive_common_log_power_cofactor_with_correction(ctx, expr)?;
     build_polynomial_log_power_product_substitution_integral(
-        ctx, log_expr, log_base, power, cofactor, var,
+        ctx, log_expr, log_base, correction, power, cofactor, var,
     )
 }
 
 fn polynomial_log_product_substitution_power(ctx: &mut Context, expr: ExprId) -> Option<u32> {
     let factors = mul_leaves(ctx, expr);
     for factor in factors {
-        if let Some((_, _, power)) = natural_log_power_factor_parts(ctx, factor) {
+        if let Some((_, _, _, power)) = log_power_substitution_factor_parts(ctx, factor) {
             return Some(power);
         }
     }
 
-    additive_common_log_power_cofactor(ctx, expr).map(|(_, _, power, _)| power)
+    additive_common_log_power_cofactor_with_correction(ctx, expr).map(|(_, _, _, power, _)| power)
 }
 
 pub fn integrate_symbolic_is_log_cube_product_substitution_target(
@@ -8537,6 +8816,17 @@ pub fn integrate_symbolic_is_high_log_power_product_substitution_target(
     matches!(
         polynomial_log_product_substitution_power(ctx, expr),
         Some(4 | 5)
+    ) && polynomial_log_power_product_substitution_antiderivative(ctx, expr, var).is_some()
+}
+
+pub fn integrate_symbolic_is_verifiable_log_power_product_substitution_target(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    matches!(
+        polynomial_log_product_substitution_power(ctx, expr),
+        Some(2..=5)
     ) && polynomial_log_power_product_substitution_antiderivative(ctx, expr, var).is_some()
 }
 
@@ -8599,6 +8889,62 @@ fn additive_common_log_power_cofactor(
     let (log_expr, log_base, power) = common?;
     let cofactor = build_balanced_add(ctx, &cofactor_terms);
     Some((log_expr, log_base, power, cofactor))
+}
+
+fn additive_common_log_power_cofactor_with_correction(
+    ctx: &mut Context,
+    num: ExprId,
+) -> Option<(ExprId, ExprId, ExprId, u32, ExprId)> {
+    let add_view = AddView::from_expr(ctx, num);
+    if add_view.terms.len() < 2 {
+        return None;
+    }
+
+    let mut common: Option<(ExprId, ExprId, ExprId, u32)> = None;
+    let mut cofactor_terms = Vec::with_capacity(add_view.terms.len());
+
+    for (term, sign) in add_view.terms {
+        let factors = mul_leaves(ctx, term);
+        let mut term_cofactor = None;
+
+        for (log_index, factor) in factors.iter().enumerate() {
+            let Some((log_expr, log_base, correction, power)) =
+                log_power_substitution_factor_parts(ctx, *factor)
+            else {
+                continue;
+            };
+
+            if let Some((common_log, _, common_correction, common_power)) = common {
+                if power != common_power
+                    || compare_expr(ctx, log_expr, common_log) != Ordering::Equal
+                    || compare_expr(ctx, correction, common_correction) != Ordering::Equal
+                {
+                    continue;
+                }
+            } else {
+                common = Some((log_expr, log_base, correction, power));
+            }
+
+            let cofactor_factors: Vec<ExprId> = factors
+                .iter()
+                .enumerate()
+                .filter_map(|(idx, factor)| (idx != log_index).then_some(*factor))
+                .collect();
+            let cofactor = if cofactor_factors.is_empty() {
+                ctx.num(1)
+            } else {
+                build_balanced_mul(ctx, &cofactor_factors)
+            };
+            term_cofactor = Some(signed_term(ctx, cofactor, sign));
+            break;
+        }
+
+        cofactor_terms.push(term_cofactor?);
+    }
+
+    let (log_expr, log_base, correction, power) = common?;
+    let cofactor = build_balanced_add(ctx, &cofactor_terms);
+    Some((log_expr, log_base, correction, power, cofactor))
 }
 
 fn build_polynomial_log_derivative_power_integral(
@@ -15686,6 +16032,18 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
     }
 
     if let IntKind::Function(fn_id, args) = kind {
+        if ctx.builtin_of(fn_id) == Some(BuiltinFn::Log) && args.len() == 2 {
+            let base = args[0];
+            let arg = args[1];
+            let base_ln = valid_constant_log_base_ln(ctx, base)?;
+            let log_expr = if base_ln.is_none() {
+                ctx.call_builtin(BuiltinFn::Ln, vec![arg])
+            } else {
+                expr
+            };
+            return affine_constant_base_log_antiderivative(ctx, log_expr, arg, base_ln, var);
+        }
+
         if args.len() == 1 {
             let arg = args[0];
             if let Some(
@@ -15749,6 +16107,30 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
                 };
 
                 match ctx.builtin_of(fn_id) {
+                    Some(BuiltinFn::Log2) => {
+                        let two = ctx.num(2);
+                        let base_ln = valid_constant_log_base_ln(ctx, two)?
+                            .expect("base 2 should have an explicit natural-log denominator");
+                        return affine_constant_base_log_antiderivative(
+                            ctx,
+                            expr,
+                            arg,
+                            Some(base_ln),
+                            var,
+                        );
+                    }
+                    Some(BuiltinFn::Log10) => {
+                        let ten = ctx.num(10);
+                        let base_ln = valid_constant_log_base_ln(ctx, ten)?
+                            .expect("base 10 should have an explicit natural-log denominator");
+                        return affine_constant_base_log_antiderivative(
+                            ctx,
+                            expr,
+                            arg,
+                            Some(base_ln),
+                            var,
+                        );
+                    }
                     Some(BuiltinFn::Sin) => {
                         let cos_arg = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
                         let integral = ctx.add(Expr::Neg(cos_arg));
@@ -15952,6 +16334,36 @@ mod tests {
         let expr = parse("ln(2*x+1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "(2 * x + 1) * (ln(2 * x + 1) - 1) / 2");
+
+        let expr = parse("log(2,x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "x * (log(2, x) - 1 / ln(2))");
+
+        let expr = parse("log(2,3*x+2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(3 * x + 2) * (log(2, 3 * x + 2) - 1 / ln(2)) / 3"
+        );
+
+        let expr = parse("log2(x)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(rendered(&ctx, out), "x * (log2(x) - 1 / ln(2))");
+
+        let expr = parse("log10(3*x+2)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(3 * x + 2) * (log10(3 * x + 2) - 1 / ln(10)) / 3"
+        );
+
+        for unsupported in ["log(1,x)", "log(-2,x)", "log(x,x)", "log(2,x-x+2)"] {
+            let expr = parse(unsupported, &mut ctx).expect("parse unsupported log");
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "unsupported constant-base log integral should remain residual for {unsupported}"
+            );
+        }
     }
 
     #[test]
@@ -15984,6 +16396,35 @@ mod tests {
         let expr = parse("4*x*ln(x^2+1)", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(rendered(&ctx, out), "2 * (x^2 + 1) * (ln(x^2 + 1) - 1)");
+
+        let expr = parse("2*x*log(2,x^2+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^2 + 1) * log(2, x^2 + 1) - (x^2 + 1) / ln(2)"
+        );
+
+        let expr = parse("(2*x+1)*log10(x^2+x+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^2 + x + 1) * log10(x^2 + x + 1) - (x^2 + x + 1) / ln(10)"
+        );
+
+        let expr = parse("4*x*log2(x^2+1)", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "2 * ((x^2 + 1) * log2(x^2 + 1) - (x^2 + 1) / ln(2))"
+        );
+
+        for unsupported in ["2*x*log(1,x^2+1)", "2*x*log(x,x^2+1)"] {
+            let expr = parse(unsupported, &mut ctx).expect("parse unsupported log product");
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "unsupported constant-base log product should remain residual for {unsupported}"
+            );
+        }
     }
 
     #[test]
@@ -16092,6 +16533,20 @@ mod tests {
             "(x^2 + 1) * (ln(x^2 + 1)^2 - 2 * ln(x^2 + 1) + 2)"
         );
 
+        let expr = parse("2*x*log(2,x^2+1)^2", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^2 + 1) * (log(2, x^2 + 1)^2 + 2 / ln(2)^2 + -2 * log(2, x^2 + 1) / ln(2))"
+        );
+
+        let expr = parse("2*x*log2(x^2+1)^2", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^2 + 1) * (log2(x^2 + 1)^2 + 2 / ln(2)^2 + -2 * log2(x^2 + 1) / ln(2))"
+        );
+
         let expr = parse("ln(2*x+1)^2", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
         assert_eq!(
@@ -16112,6 +16567,16 @@ mod tests {
             rendered(&ctx, out),
             "(x^2 - 1) * (ln(x^2 - 1)^2 - 2 * ln(x^2 - 1) + 2)"
         );
+
+        let expr = parse("2*x*log(2,x^2-1)^2", &mut ctx).expect("parse");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
+        assert_eq!(
+            rendered(&ctx, out),
+            "(x^2 - 1) * (log(2, x^2 - 1)^2 + 2 / ln(2)^2 + -2 * log(2, x^2 - 1) / ln(2))"
+        );
+        let conditions = integrate_symbolic_required_positive_conditions(&mut ctx, expr, "x");
+        assert_eq!(conditions.len(), 1);
+        assert_eq!(rendered(&ctx, conditions[0]), "x^2 - 1");
 
         let expr = parse("(2*x+1)*ln(x^2+x-1)^2", &mut ctx).expect("parse");
         let out = integrate_symbolic_expr(&mut ctx, expr, "x").expect("integrate");
@@ -16227,6 +16692,14 @@ mod tests {
             rendered(&ctx, out),
             "(x^2 + x + 1) * (ln(x^2 + x + 1)^3 - 3 * ln(x^2 + x + 1)^2 + 6 * ln(x^2 + x + 1) - 6)"
         );
+
+        for unsupported in ["2*x*log(1,x^2+1)^2", "2*x*log(y,x^2+1)^2"] {
+            let expr = parse(unsupported, &mut ctx).expect("parse unsupported log power");
+            assert!(
+                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+                "unsupported constant-base log power integral should remain residual for {unsupported}"
+            );
+        }
     }
 
     #[test]

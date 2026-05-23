@@ -14,7 +14,7 @@ pub fn collect_step_payloads(steps: &[Step], ctx: &Context, steps_mode: &str) ->
     let mut payloads = Vec::new();
     for enriched in prepare::prepare_step_payloads(steps, ctx, steps_mode) {
         let mut wire = build::build_step_wire(ctx, payloads.len() + 1, &enriched);
-        if is_noop_post_calculus_presentation(&wire) {
+        if is_noop_wire_step(&wire) {
             continue;
         }
         if remove_redundant_post_calculus_presentation_noise(&mut payloads, &mut wire) {
@@ -25,6 +25,9 @@ pub fn collect_step_payloads(steps: &[Step], ctx: &Context, steps_mode: &str) ->
             .is_some_and(|previous| is_adjacent_inverse_step(previous, &wire))
         {
             payloads.pop();
+            continue;
+        }
+        if merge_adjacent_explanatory_chain_steps(&mut payloads, &wire) {
             continue;
         }
         payloads.push(wire);
@@ -47,8 +50,51 @@ pub fn collect_step_payloads_with_events(
     events::collect_event_step_payloads(events, ctx)
 }
 
-fn is_noop_post_calculus_presentation(step: &StepWire) -> bool {
-    step.rule == "Presentar resultado de cálculo en forma compacta" && step.before == step.after
+fn is_noop_wire_step(step: &StepWire) -> bool {
+    if step.before != step.after || !step.substeps.is_empty() {
+        return false;
+    }
+
+    matches!(
+        step.rule.as_str(),
+        "Presentar resultado de cálculo en forma compacta"
+            | "Combinar fracciones en una multiplicación"
+    )
+}
+
+fn merge_adjacent_explanatory_chain_steps(payloads: &mut [StepWire], current: &StepWire) -> bool {
+    let Some(previous) = payloads.last_mut() else {
+        return false;
+    };
+
+    if !is_mergeable_explanatory_chain_rule(&previous.rule)
+        || previous.rule != current.rule
+        || previous.after != current.before
+        || previous.before == previous.after
+        || current.before == current.after
+        || previous.substeps.is_empty()
+        || current.substeps.is_empty()
+    {
+        return false;
+    }
+
+    previous.after = current.after.clone();
+    previous.after_latex = current.after_latex.clone();
+    previous.rule_latex = format!(
+        "{} \\Rightarrow {}",
+        previous.before_latex, previous.after_latex
+    );
+    previous.substeps.extend(current.substeps.iter().cloned());
+    true
+}
+
+fn is_mergeable_explanatory_chain_rule(rule: &str) -> bool {
+    matches!(
+        rule,
+        "Cancelar términos opuestos"
+            | "Negative Base Power"
+            | "Simplificar potencia con base negativa"
+    )
 }
 
 fn remove_redundant_post_calculus_presentation_noise(

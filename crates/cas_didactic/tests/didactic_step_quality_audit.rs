@@ -477,13 +477,39 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         !rationalize_cli.contains("\n2. 1 * x = x")
             && !rationalize_cli.contains("\n2. Evaluate literal power")
             && !rationalize_cli.contains("\n3. a - a = 0")
+            && !rationalize_cli.contains("\n3. Cancel equal fractions")
             && !rationalize_cli.contains("Los dos términos ya son el mismo")
             && !rationalize_cli.contains("Restar algo consigo mismo da 0"),
         "rationalize_linear_root CLI narrative should use human headers instead of formula-like labels when a clearer title exists, got:\n{}",
         rationalize_cli
     );
+    assert!(
+        rationalize_artifact
+            .wire_steps
+            .iter()
+            .any(|step| step.rule == "Cancelar fracciones iguales"),
+        "rationalize_linear_root wire narrative should localize the equal-fraction cancellation step, got {:?}",
+        rationalize_artifact
+            .wire_steps
+            .iter()
+            .map(|step| step.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        rationalize_artifact
+            .wire_steps
+            .iter()
+            .all(|step| step.rule != "Cancel Equal Fractions Difference"),
+        "rationalize_linear_root wire narrative should not expose the internal equal-fraction rule name, got {:?}",
+        rationalize_artifact
+            .wire_steps
+            .iter()
+            .map(|step| step.rule.as_str())
+            .collect::<Vec<_>>()
+    );
     let self_cancel_step = rationalize_artifact.wire_steps.iter().find(|step| {
         step.rule == "Restar dos expresiones iguales"
+            || step.rule == "Cancelar fracciones iguales"
             || step.rule == "Collapse Common-Scale Equivalent Difference"
     });
     if let Some(self_cancel_step) = self_cancel_step {
@@ -677,11 +703,36 @@ fn didactic_step_quality_priority_cases_make_cli_narrative_less_magic() {
         .iter()
         .find(|case| case.id == "difference_of_squares_quotient")
         .expect("missing difference_of_squares_quotient audit case");
-    let difference_quotient_cli = simplify_case(difference_quotient_case).cli_lines.join("\n");
+    let difference_quotient_artifact = simplify_case(difference_quotient_case);
+    let difference_quotient_cli = difference_quotient_artifact.cli_lines.join("\n");
     assert!(
         !difference_quotient_cli.contains("Cambio local: (x + 1) * (x - 1) / (x - 1) ->"),
         "difference_of_squares_quotient should avoid a technical local-change line when the factorization and cancellation substeps already explain the move, got:\n{}",
         difference_quotient_cli
+    );
+    assert!(
+        difference_quotient_artifact
+            .wire_steps
+            .iter()
+            .any(|step| step.rule == "Factorizar una diferencia de cuadrados"),
+        "difference_of_squares_quotient wire narrative should localize the factorization step, got {:?}",
+        difference_quotient_artifact
+            .wire_steps
+            .iter()
+            .map(|step| step.rule.as_str())
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        difference_quotient_artifact
+            .wire_steps
+            .iter()
+            .all(|step| step.rule != "Pre-order Difference of Squares"),
+        "difference_of_squares_quotient wire narrative should not expose the internal pre-order rule name, got {:?}",
+        difference_quotient_artifact
+            .wire_steps
+            .iter()
+            .map(|step| step.rule.as_str())
+            .collect::<Vec<_>>()
     );
 
     let combine_case = cases

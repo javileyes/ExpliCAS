@@ -13,8 +13,13 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Expand Log Abs Mul/Div" => "Expandir logaritmos",
         "Factor Perfect Square in Logarithm" => "Sacar un exponente fuera del logaritmo",
         "Log Contraction" => "Contraer logaritmos",
+        "Change of Base" => "Aplicar cambio de base",
         "Log-Exp Inverse" => "Cancelar logaritmo natural y exponencial inversos",
         "Exponential-Log Inverse" => "Cancelar exponencial y logaritmo inversos",
+        "Exponential-Log Power Inverse" => {
+            "Cancelar exponencial con logaritmo y conservar exponente"
+        }
+        "Log Inverse Power" => "Convertir potencia logarítmica inversa",
         "Exponential Sum/Difference Identity" => "Reescribir exponenciales",
         "Exponential Reciprocal Identity" => "Reescribir recíproco exponencial",
         "Exponential Power Identity" => "Reescribir potencia exponencial",
@@ -104,6 +109,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Subtraction Self-Cancel" => "Restar dos expresiones iguales",
         "Identity Property of Addition" => "Quitar el 0",
         "Identity Property of Multiplication" => "Quitar el factor 1",
+        "Negative Base Power" => "Simplificar potencia con base negativa",
         "Evaluate Numeric Power" => "Calcular potencia numérica",
         "Cancel Reciprocal Exponents" => "Deshacer raíz y potencia",
         "Square of Square Root" => "Deshacer raíz y potencia",
@@ -114,8 +120,12 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Polynomial Identity" => "Cancelar una identidad exacta",
         "Polynomial division with opaque substitution" => "Reconocer un cociente notable",
         "Pre-order Common Factor Cancel" => "Cancelar un factor común",
+        "Pre-order Difference of Squares" => "Factorizar una diferencia de cuadrados",
         "Pre-order Difference of Squares Cancel" => {
             "Factorizar una diferencia de cuadrados y cancelar"
+        }
+        "Pre-order Perfect Square Minus Cancel" => {
+            "Cancelar un cuadrado perfecto con el mismo binomio"
         }
         "Pre-order Sum/Difference of Cubes" => "Factorizar suma o diferencia de cubos",
         "Pre-order Sum/Difference of Cubes Cancel" => "Cancelar factor tras factorizar cubos",
@@ -130,6 +140,7 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Combine Like Terms" => "Agrupar términos semejantes",
         "Combine Same Denominator Fractions" => "Sumar fracciones con mismo denominador",
         "Combine Same Denominator Sub" => "Restar fracciones con mismo denominador",
+        "Cancel Equal Fractions Difference" => "Cancelar fracciones iguales",
         "Cancel Exact Additive Pairs" => "Cancelar términos opuestos",
         "Common Denominator" => "Llevar a denominador común",
         "Add Fractions" => "Sumar fracciones",
@@ -344,6 +355,9 @@ pub(crate) fn visible_step_description<'a>(description: &'a str) -> Cow<'a, str>
     match description {
         "Rationalize: multiply by conjugate" => Cow::Borrowed("Multiplicar por el conjugado"),
         "Factorization" => Cow::Borrowed("Factorizar"),
+        "Pre-order Difference of Squares" => {
+            Cow::Borrowed("Factorizar una diferencia de cuadrados")
+        }
         "Log expansion" => Cow::Borrowed("Expandir logaritmos"),
         "Apply Morrie's law to telescope the cosine product" | "Apply Morrie's law" => {
             Cow::Borrowed("Aplicar la ley de Morrie")
@@ -376,6 +390,7 @@ pub(crate) fn visible_step_description<'a>(description: &'a str) -> Cow<'a, str>
         "Combine powers with same base (n-ary)" => {
             Cow::Borrowed("Sumar exponentes de la misma base")
         }
+        "Cancel equal fractions" => Cow::Borrowed("Cancelar fracciones iguales"),
         "ln(x^(2k)) = 2·ln(|x^k|)" => Cow::Borrowed("Sacar un exponente fuera del logaritmo"),
         "Expand double-angle sine" => Cow::Borrowed("Expandir seno de ángulo doble"),
         "Expand double-angle cosine" => Cow::Borrowed("Expandir coseno de ángulo doble"),

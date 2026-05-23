@@ -282,6 +282,9 @@ struct DeriveOutcomeStats {
     unsupported: usize,
     not_equivalent: usize,
     derived_step_total: usize,
+    single_step_successes: usize,
+    multi_step_success_ids: Vec<String>,
+    max_step_count: usize,
     long_path_count: usize,
     generic_simplify_expected_ids: Vec<String>,
     expected_strategy_counts: BTreeMap<String, usize>,
@@ -621,6 +624,12 @@ const EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
         target: "1/(2*sqrt(x)*sqrt(1-x))",
     },
     IdentityShadowCase {
+        id: "embedded_calculus_diff_arctan_sqrt_compact",
+        family: "calculus_diff",
+        source: "diff(arctan(sqrt(x)),x)",
+        target: "1/(2*sqrt(x)*(x+1))",
+    },
+    IdentityShadowCase {
         id: "embedded_log_contract_grouped_power",
         family: "log_contract",
         source: "ln(x^3)+ln(y^2)",
@@ -748,6 +757,14 @@ fn assert_case_matches_expected_outcome(case: &DeriveCase, stats: &mut DeriveOut
             );
             let step_count = count_top_level_steps(&lines);
             stats.derived_step_total += step_count;
+            stats.max_step_count = stats.max_step_count.max(step_count);
+            if step_count <= 1 {
+                stats.single_step_successes += 1;
+            } else {
+                stats
+                    .multi_step_success_ids
+                    .push(format!("{}:{step_count}", case.id));
+            }
             if step_count > LONG_PATH_THRESHOLD {
                 stats.long_path_count += 1;
             }
@@ -1173,6 +1190,20 @@ fn derive_pairs_follow_expected_outcomes() {
         derive_reachability_rate,
         derive_mean_step_count,
         derive_long_path_rate
+    );
+    eprintln!(
+        "derive path signal: single_step_successes={} multi_step_successes={} max_step_count={}",
+        stats.single_step_successes,
+        stats.multi_step_success_ids.len(),
+        stats.max_step_count
+    );
+    eprintln!(
+        "derive multi-step-ids: {}",
+        if stats.multi_step_success_ids.is_empty() {
+            "none".to_string()
+        } else {
+            stats.multi_step_success_ids.join(",")
+        }
     );
     eprintln!(
         "derive strategy specificity: generic_simplify_expected={} distinct_expected_strategies={}",

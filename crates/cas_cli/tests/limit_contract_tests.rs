@@ -328,6 +328,7 @@ fn test_eval_finite_total_real_elementary_polynomial_limits_json() {
         ("limit(tanh(x^2 + 1), x, -1)", "tanh(2)"),
         ("limit(atan(x), x, 0)", "0"),
         ("limit(arctan(x), x, 0)", "0"),
+        ("limit(arctan(x + 1), x, 0)", "pi / 4"),
         ("limit(atan(x^2 + 1), x, -1)", "atan(2)"),
         ("limit(arctan(x^2 + 1), x, -1)", "arctan(2)"),
         ("limit(asinh(x), x, 0)", "0"),
@@ -337,6 +338,9 @@ fn test_eval_finite_total_real_elementary_polynomial_limits_json() {
         ("limit(cbrt(x^2 + 1), x, -1)", "cbrt(2)"),
         ("limit((x^2 - 9)^(1/3), x, 1)", "-2"),
         ("limit(sin(cbrt(x)), x, 8)", "sin(2)"),
+        ("limit(sin(x + pi/6), x, 0)", "1 / 2"),
+        ("limit(cos(x + pi/3), x, 0)", "1 / 2"),
+        ("limit(arctan(sqrt(x^2 + 3)), x, 0)", "pi / 3"),
         ("limit(abs(x), x, -2)", "2"),
         ("limit(abs(x), x, 0)", "0"),
         ("limit(abs(x^2 - 1), x, 0)", "1"),
@@ -365,25 +369,172 @@ fn test_eval_finite_total_real_elementary_polynomial_limits_json() {
 
 #[test]
 fn test_eval_finite_partial_domain_inverse_elementary_limits_stay_residual_json() {
-    let (success, stdout) = run_eval("limit(arcsin(x), x, 2)", "json");
-    assert!(
-        success,
-        "Command should keep out-of-domain finite arcsin limit residual"
-    );
-    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
-    assert_eq!(wire["ok"], true);
-    assert_eq!(wire["result"], "limit(arcsin(x), x, 2)");
-    assert!(
-        wire["warnings"].as_array().is_some_and(|warnings| {
-            warnings.iter().any(|warning| {
-                warning["rule"] == "Limit Evaluation"
-                    && warning["assumption"].as_str().is_some_and(|message| {
-                        message.contains("Finite point limits are not supported safely yet")
-                    })
-            })
-        }),
-        "Partial-domain inverse limit should remain residual with warning, got: {wire:?}"
-    );
+    for input in [
+        "limit(arcsin(x), x, 2)",
+        "limit(arcsin(x), x, 1)",
+        "limit(atanh(x), x, 1)",
+        "limit(acosh(x), x, 1)",
+    ] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should keep unsafe finite partial-domain inverse limit residual for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert!(
+            wire["result"]
+                .as_str()
+                .is_some_and(|result| result.contains("limit(")),
+            "Partial-domain inverse limit should remain residual for {input}: {wire:?}"
+        );
+        assert!(
+            wire["warnings"].as_array().is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning["rule"] == "Limit Evaluation"
+                        && warning["assumption"].as_str().is_some_and(|message| {
+                            message.contains("Finite point limits are not supported safely yet")
+                        })
+                })
+            }),
+            "Partial-domain inverse limit should remain residual with warning for {input}, got: {wire:?}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_partial_domain_inverse_elementary_limits_inside_domain_json() {
+    let cases = [
+        ("limit(arcsin(x/2), x, 0)", "0", json!(["-2 ≤ x ≤ 2"])),
+        ("limit(atanh(x/2), x, 0)", "0", json!([])),
+        ("limit(acos(x/2), x, 0)", "pi / 2", json!(["-2 ≤ x ≤ 2"])),
+        (
+            "limit(arcsin(x/2 + 1/2), x, 0)",
+            "pi / 6",
+            json!(["-3 ≤ x ≤ 1"]),
+        ),
+        (
+            "limit(arccos(x/2 + 1/2), x, 0)",
+            "pi / 3",
+            json!(["-3 ≤ x ≤ 1"]),
+        ),
+        ("limit(acosh(x+2), x, 0)", "acosh(2)", json!(["x ≥ -1"])),
+    ];
+
+    for (input, expected, expected_required) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should resolve strict-interior finite partial-domain inverse limit for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}, wire: {wire:?}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert!(
+            !wire["result"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("limit("),
+            "strict-interior finite partial-domain inverse limit should not remain residual for {input}: {wire:?}"
+        );
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required,
+            "input: {input}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_domain_checked_trig_limits_json() {
+    let cases = [
+        ("limit(tan(x), x, 0)", "0", json!(["cos(x) ≠ 0"])),
+        ("limit(tan(x/2), x, 0)", "0", json!(["cos(x / 2) ≠ 0"])),
+        (
+            "limit(tan(x + pi/4), x, 0)",
+            "1",
+            json!(["cos(pi / 4 + x) ≠ 0"]),
+        ),
+        ("limit(sec(x), x, 0)", "1", json!(["cos(x) ≠ 0"])),
+        ("limit(sec(x^2), x, 0)", "1", json!(["cos(x^2) ≠ 0"])),
+        (
+            "limit(sec(x + pi/3), x, 0)",
+            "2",
+            json!(["cos(pi / 3 + x) ≠ 0"]),
+        ),
+        (
+            "limit(csc(x + pi/6), x, 0)",
+            "2",
+            json!(["sin(pi / 6 + x) ≠ 0"]),
+        ),
+        (
+            "limit(cot(x + pi/4), x, 0)",
+            "1",
+            json!(["sin(pi / 4 + x) ≠ 0"]),
+        ),
+    ];
+
+    for (input, expected, expected_required) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should resolve domain-checked finite trig limit for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}, wire: {wire:?}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert!(
+            !wire["result"]
+                .as_str()
+                .unwrap_or_default()
+                .contains("limit("),
+            "domain-checked finite trig limit should not remain residual for {input}: {wire:?}"
+        );
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required,
+            "input: {input}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_domain_checked_trig_limits_reject_unsafe_cases_json() {
+    for input in [
+        "limit(tan(x), x, 1)",
+        "limit(tan(x + pi/2), x, 0)",
+        "limit(sec(x), x, 1)",
+        "limit(sec(x + pi/2), x, 0)",
+        "limit(csc(x), x, 0)",
+        "limit(csc(x + pi), x, 0)",
+        "limit(cot(x), x, 0)",
+        "limit(cot(x + pi), x, 0)",
+    ] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should keep unsafe finite trig limit residual for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert!(
+            wire["result"]
+                .as_str()
+                .is_some_and(|result| result.contains("limit(")),
+            "unsafe finite trig limit should remain residual for {input}: {wire:?}"
+        );
+        assert!(
+            wire["warnings"].as_array().is_some_and(|warnings| {
+                warnings.iter().any(|warning| {
+                    warning["rule"] == "Limit Evaluation"
+                        && warning["assumption"].as_str().is_some_and(|message| {
+                            message.contains("Finite point limits are not supported safely yet")
+                        })
+                })
+            }),
+            "unsafe finite trig limit should remain residual with warning for {input}, got: {wire:?}"
+        );
+    }
 }
 
 #[test]
@@ -423,7 +574,7 @@ fn test_eval_finite_positive_domain_unary_composition_limits_json() {
             "log10(sqrt(5))",
             json!([]),
         ),
-        ("limit(log2(abs(x)), x, -2)", "log2(2)", json!(["x ≠ 0"])),
+        ("limit(log2(abs(x)), x, -2)", "1", json!(["x ≠ 0"])),
     ];
 
     for (input, expected, expected_required) in cases {
@@ -457,6 +608,8 @@ fn test_eval_finite_positive_domain_exact_value_limits_fold_locally_json() {
         ("limit(log10(x^2 + 1), x, 0)", "0", json!([])),
         ("limit(log(2, x^2 + 1), x, 0)", "0", json!([])),
         ("limit(log(x^2 + 3, x^2 + 3), x, -1)", "1", json!([])),
+        ("limit(log2(x^2 + 4), x, 2)", "3", json!([])),
+        ("limit(log10(x^2 + 96), x, 2)", "2", json!([])),
     ];
 
     for (input, expected, expected_required) in cases {
@@ -581,6 +734,12 @@ fn test_eval_finite_binary_log_composition_limits_json() {
             "log(7, sqrt(5))",
             json!([]),
         ),
+        ("limit(log(2, x^2 + 4), x, 2)", "3", json!([])),
+        ("limit(log(1/2, x^2 + 4), x, 2)", "-3", json!([])),
+        ("limit(log(4, x^2 + 4), x, 2)", "3/2", json!([])),
+        ("limit(log(1/4, x^2 + 4), x, 2)", "-3/2", json!([])),
+        ("limit(log(27, x^2 + 5), x, 2)", "2/3", json!([])),
+        ("limit(log(2, x^2 + 1), x, 2)", "log(2, 5)", json!([])),
     ];
 
     for (input, expected, expected_required) in cases {

@@ -195,6 +195,7 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
             generate_same_base_power_merge_substeps(ctx, step)
         }
         "Expand Odd Half Power" => generate_odd_half_power_substeps(ctx, step),
+        "Negative Base Power" => generate_negative_base_power_substeps(ctx, step),
         "Difference of Squares" | "Difference of Squares (Product to Difference)" => {
             generate_conjugate_product_rule_substeps(ctx, step)
         }
@@ -8220,6 +8221,26 @@ fn concrete_expr_substep(
     .with_after_latex(latex_expr(ctx, after))
 }
 
+fn generate_negative_base_power_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let is_contextual = step.global_before.is_some_and(|global| global != before)
+        || step.global_after.is_some_and(|global| global != after);
+    if !is_contextual {
+        return Vec::new();
+    }
+
+    let title = if step.description.contains("^even") {
+        "Usar que una potencia par elimina el signo"
+    } else if step.description.contains("^odd") {
+        "Usar que una potencia impar conserva el signo negativo"
+    } else {
+        "Simplificar la potencia con base negativa"
+    };
+
+    vec![concrete_expr_substep(ctx, title, before, after)]
+}
+
 fn difference_of_squares_bases(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
     let Expr::Sub(left, right) = ctx.get(expr) else {
         return None;
@@ -13698,6 +13719,7 @@ fn unary_builtin_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)>
 
 struct LogPowerProductTableMatch {
     power: u32,
+    natural_log: bool,
     base: ExprId,
     cofactor_display: String,
     cofactor_latex: String,
@@ -13748,10 +13770,12 @@ fn generate_log_power_product_table_integration_substeps(
     let Some(table_match) = log_power_product_table_integrand(ctx, args[0], var_name) else {
         return Vec::new();
     };
-    let title = if table_match.power == 1 {
+    let title = if table_match.natural_log && table_match.power == 1 {
         "Usar la regla de u'·ln(u) -> u·(ln(u)-1)"
-    } else {
+    } else if table_match.natural_log {
         "Usar la regla de u'·ln(u)^n por partes"
+    } else {
+        "Usar la regla de u'·log_b(u)^n por partes"
     };
 
     let mut substeps =
@@ -13813,7 +13837,7 @@ fn log_power_product_table_from_factors(
     var_name: &str,
 ) -> Option<LogPowerProductTableMatch> {
     for (log_index, factor) in factors.iter().enumerate() {
-        let Some((_log_expr, base, power)) = natural_log_power_factor_parts(ctx, *factor) else {
+        let Some((base, power, natural_log)) = log_power_product_factor_parts(ctx, *factor) else {
             continue;
         };
         if !contains_named_var(ctx, base, var_name) {
@@ -13836,6 +13860,7 @@ fn log_power_product_table_from_factors(
 
         return Some(LogPowerProductTableMatch {
             power,
+            natural_log,
             base,
             cofactor_display,
             cofactor_latex,
@@ -13848,25 +13873,36 @@ fn log_power_product_table_from_factors(
     None
 }
 
-fn natural_log_power_factor_parts(ctx: &Context, factor: ExprId) -> Option<(ExprId, ExprId, u32)> {
-    match ctx.get(factor) {
-        Expr::Function(fn_id, args)
-            if args.len() == 1 && ctx.builtin_of(*fn_id) == Some(BuiltinFn::Ln) =>
-        {
-            Some((factor, args[0], 1))
-        }
+fn log_power_product_factor_parts(ctx: &Context, factor: ExprId) -> Option<(ExprId, u32, bool)> {
+    let (log_expr, power) = match ctx.get(factor) {
+        Expr::Function(_, _) => (factor, 1),
         Expr::Pow(base, exponent) => {
             let power = as_rational_const(ctx, *exponent, 8)?;
             if !power.denom().is_one() || !power.is_positive() {
                 return None;
             }
-            let Expr::Function(fn_id, args) = ctx.get(*base) else {
-                return None;
-            };
-            if args.len() != 1 || ctx.builtin_of(*fn_id) != Some(BuiltinFn::Ln) {
+            (*base, power.to_integer().to_u32()?)
+        }
+        _ => return None,
+    };
+
+    let Expr::Function(fn_id, args) = ctx.get(log_expr) else {
+        return None;
+    };
+    match ctx.builtin_of(*fn_id) {
+        Some(BuiltinFn::Ln) if args.len() == 1 => Some((args[0], power, true)),
+        Some(BuiltinFn::Log) if args.len() == 2 => {
+            let natural_log = matches!(ctx.get(args[0]), Expr::Constant(Constant::E));
+            if !natural_log && power == 1 {
                 return None;
             }
-            Some((*base, args[0], power.to_integer().to_u32()?))
+            Some((args[1], power, natural_log))
+        }
+        Some(BuiltinFn::Log2 | BuiltinFn::Log10) if args.len() == 1 => {
+            if power == 1 {
+                return None;
+            }
+            Some((args[0], power, false))
         }
         _ => None,
     }

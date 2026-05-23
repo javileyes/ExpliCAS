@@ -95,6 +95,91 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-23 - Rejected broad wire no-op payload filter
+
+- area:
+  - didactic wire payload / calculus presentation
+- status:
+  - `rejected`
+- local lane:
+  - `cargo test --release -q -p cas_cli --test wire_smoke_tests test_eval_json_derive_calculus_diff_shadow_omits_noop_wire_steps -- --exact --nocapture`
+- local win:
+  - a broad `before == after` and no-substep wire-step filter removed the
+    visible no-op from the calculus-diff derive shadow payload for
+    `derive diff(arctan(sqrt(x)),x), 1/(2*sqrt(x)*(x+1))`
+- global result:
+  - `make engine-scorecard` rejected the broad filter in
+    `calculus_integrate_contract`: `integrate_contract_sparse_quartic_exp_by_parts_keeps_direct_trace`
+    expected the retained direct integration trace to contain two steps, but
+    the broad filter collapsed it to one
+- why it regressed globally:
+  - display equality alone is not a safe proxy for didactic redundancy; some
+    calculus traces intentionally retain a rule step even when the rendered
+    `before` and `after` strings match
+- what could make it combinable later:
+  - keep no-op wire filtering rule-scoped, or add explicit trace metadata that
+    marks a step as presentation-only instead of inferring it from rendered
+    equality
+
+## 2026-05-23 - Retained runtime: bounded exact-zero noise stripping for sqrt-chain cosh residual
+
+- area:
+  - calculus / post-calculus residuals / exact additive noise / wrapper
+    runtime
+- status:
+  - `retained`
+- candidate:
+  - promote `sqrt_chain_cosh_recip_square` after fixing its reproducible
+    `plus_double_noise` timeout under the calculus residual wrapper matrix
+- local probe:
+  - before the fix, the custom residual matrix passed 11/12 and timed out only
+    on `sqrt_chain_cosh_recip_square:plus_double_noise` under the 8s smoke
+    budget
+  - bounded exact-zero noise stripping in post-calculus additive contexts
+    reduced the custom probe to 12/12 and allowed the live matrix promotion
+- global learning:
+  - a blind version of the stripping won locally but lost globally by causing
+    `arctan_sqrt_additive_trig` noise wrappers to time out; that family keeps
+    a specialized residual route and must not be pre-stripped by this helper
+- retained constraint:
+  - the helper strips exact zero noise only for bounded post-calculus additive
+    contexts outside `atan`/`arctan`, preserving the established arctan route
+- promotion:
+  - `sqrt_chain_cosh_recip_square` is now a live residual-matrix family with
+    11 default wrappers and `x > -1/3` as the base domain requirement
+
+## 2026-05-23 - Observe-only discovery: sqrt-chain residual wrappers lose wrapper conditions
+
+- area:
+  - calculus / integration residuals / sqrt-chain substitutions / wrapper
+    condition propagation
+- status:
+  - `superseded`
+- candidate:
+  - promote generated sqrt-chain reciprocal trig and hyperbolic residuals into
+    the calculus residual smoke matrix
+- local probe:
+  - `sqrt_chain_sec_log` and `sqrt_chain_csc_log` reduced all 12 wrapper cases
+    to the expected algebraic results, but every case dropped wrapper
+    denominator requirements such as `x + 2` / `x + 3`, retaining only the
+    base `cos(sqrt(3·x + 1))` or `sin(sqrt(3·x + 1))` plus `3·x + 1`
+  - `sqrt_chain_cosh_recip_square` showed the same condition-loss signature and
+    one `plus_double_noise` timeout under the 8s smoke budget
+- why not retained:
+  - the failures are not result mismatches; they point to reusable condition
+    propagation and boundedness gaps that need a focused engine/robustness
+    iteration rather than promotion as coverage
+- next useful probe:
+  - isolate a minimal wrapper where the residual result is `1 / (x + 2)` but
+    only the sqrt-chain base conditions survive, then fix condition merge before
+    adding these families to the live residual matrix
+- superseded by:
+  - current custom residual probes for `sqrt_chain_sec_log`,
+    `sqrt_chain_csc_log`, and `sqrt_chain_cosh_recip_square` now pass 12/12
+    with wrapper denominator conditions preserved and no warnings
+  - the live residual matrix now promotes the stable minimal representatives
+    for these sqrt-chain condition-propagation paths
+
 ## 2026-05-20 - Retained robustness: additive-pair residual closure for sec-log reciprocal-root arctan
 
 - area:

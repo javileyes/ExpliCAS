@@ -48,6 +48,7 @@ fn expected_visible_rule_name(rule_name: &str) -> &str {
         "Hyperbolic Pythagorean Identity" => "Aplicar identidad pitagórica hiperbólica",
         "Hyperbolic Quotient Identity" => "Aplicar identidad hiperbólica de cociente",
         "Hyperbolic Triple-Angle Identity" => "Aplicar identidad hiperbólica de ángulo triple",
+        "Cancel Equal Fractions Difference" => "Cancelar fracciones iguales",
         "Cancel Exact Additive Pairs" => "Cancelar términos opuestos",
         "Quintuple Angle Identity" => "Reescribir ángulo quíntuple",
         "Triple Angle Expansion" | "Triple Angle Identity" => "Reescribir ángulo triple",
@@ -2866,7 +2867,10 @@ fn eval_log_inverse_power_chain_highlights_power_steps_in_mixed_sum() {
     assert_eq!(steps.len(), 9);
 
     let log_inverse_power = &steps[2];
-    assert_eq!(log_inverse_power["rule"], "Log Inverse Power");
+    assert_eq!(
+        log_inverse_power["rule"],
+        "Convertir potencia logarítmica inversa"
+    );
     let step3_before = log_inverse_power["before_latex"]
         .as_str()
         .expect("step3 before_latex");

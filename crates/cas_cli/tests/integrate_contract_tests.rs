@@ -122,6 +122,8 @@ fn should_verify_antiderivative_with_public_integrate_residual(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_high_log_power_product_substitution_target(
         ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_verifiable_log_power_product_substitution_target(
+        ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_log_reciprocal_derivative_target(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_trig_log_substitution_target(
@@ -4315,6 +4317,82 @@ fn integrate_contract_log_power_product_substitution_exposes_didactic_substep() 
 }
 
 #[test]
+fn integrate_contract_constant_base_log_power_product_substitution_exposes_didactic_substep() {
+    for (input, expected_result, expected_required) in [
+        (
+            "integrate(2*x*log(2,x^2+1)^2, x)",
+            "(x^2 + 1)·(log(2, x^2 + 1)^2 + 2 / ln(2)^2 - 2·log(2, x^2 + 1) / ln(2))",
+            vec![],
+        ),
+        (
+            "integrate(2*x*log2(x^2+1)^2, x)",
+            "(x^2 + 1)·(log2(x^2 + 1)^2 + 2 / ln(2)^2 - 2·log2(x^2 + 1) / ln(2))",
+            vec![],
+        ),
+        (
+            "integrate(2*x*log(2,x^2-1)^2, x)",
+            "(x^2 - 1)·(log(2, x^2 - 1)^2 + 2 / ln(2)^2 - 2·log(2, x^2 - 1) / ln(2))",
+            vec!["x < -1 or x > 1"],
+        ),
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(
+            wire["required_display"],
+            serde_json::json!(expected_required),
+            "unexpected required_display for {input}: {:?}",
+            wire["required_display"]
+        );
+        assert!(
+            !stderr.contains("depth_overflow"),
+            "constant-base log-power substitution should not emit depth_overflow for {input}\nstderr:\n{stderr}"
+        );
+
+        let steps = wire["steps"]
+            .as_array()
+            .expect("steps should be present with --steps on");
+        let integration_step = steps
+            .iter()
+            .find(|step| step["rule"] == "Calcular la integral")
+            .expect("expected public symbolic integration step");
+        let substeps = integration_step["substeps"]
+            .as_array()
+            .expect("integration step should expose didactic substeps");
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Usar la regla de u'·log_b(u)^n por partes"),
+            "expected constant-base log-power substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .any(|substep| substep["title"] == "Identificar u y du"),
+            "expected concrete u/du substep for {input}, got {substeps:?}"
+        );
+        assert!(
+            substeps
+                .iter()
+                .all(|substep| substep["title"] != "Usar sustitución"),
+            "constant-base log-power table case should not use generic substitution for {input}: {substeps:?}"
+        );
+        assert_antiderivative_verifies(input);
+    }
+
+    for input in [
+        "integrate(2*x*log(1,x^2+1)^2, x)",
+        "integrate(2*x*log(y,x^2+1)^2, x)",
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            result.starts_with("integrate("),
+            "invalid or symbolic log base should remain residual for {input}, got {result}"
+        );
+    }
+}
+
+#[test]
 fn integrate_contract_polynomial_derivative_cos_substitution() {
     assert_eq!(
         simplified_integral("integrate(2*x*cos(x^2), x)"),
@@ -6630,6 +6708,206 @@ fn integrate_contract_reciprocal_linear_uses_abs_log() {
         "unexpected required_conditions: {required:?}"
     );
     assert_rendered_antiderivative_verifies("integrate(1/(2*x + 1), x)", &result);
+}
+
+#[test]
+fn integrate_contract_constant_base_affine_logs_use_table_and_preserve_domain() {
+    for (input, expected_result, expected_required) in [
+        (
+            "integrate(log(2, x), x)",
+            "x * (log(2, x) - 1 / ln(2))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "integrate(log(2, 3*x+2), x)",
+            "1/3 * (3 * x + 2) * (log(2, 3 * x + 2) - 1 / ln(2))",
+            vec!["x > -2/3".to_string()],
+        ),
+        (
+            "integrate(log(1/2, x), x)",
+            "x * (log(1/2, x) - 1 / ln(1/2))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "integrate(log(e, x), x)",
+            "x * (ln(x) - 1)",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "integrate(log2(x), x)",
+            "x * (log2(x) - 1 / ln(2))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "integrate(log10(3*x+2), x)",
+            "1/3 * (3 * x + 2) * (log10(3 * x + 2) - 1 / ln(10))",
+            vec!["x > -2/3".to_string()],
+        ),
+    ] {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected_result, "input: {input}");
+        assert_eq!(
+            required, expected_required,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+        assert_rendered_antiderivative_verifies(input, &result);
+    }
+}
+
+#[test]
+fn integrate_contract_constant_base_log_rejects_invalid_or_symbolic_bases() {
+    for input in [
+        "integrate(log(1, x), x)",
+        "integrate(log(-2, x), x)",
+        "integrate(log(0, x), x)",
+        "integrate(log(y, x), x)",
+    ] {
+        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            result.starts_with("integrate("),
+            "invalid or symbolic log base should remain residual for {input}, got {result}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_constant_base_affine_log_trace_stays_compact() {
+    let input = "integrate(log(2, 3*x+2), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+    assert!(
+        stderr.is_empty(),
+        "constant-base affine log integration should not emit stderr warnings: {stderr}"
+    );
+    assert_eq!(
+        wire["result"],
+        "1/3·(3·x + 2)·(log(2, 3·x + 2) - 1 / ln(2))"
+    );
+    assert_eq!(wire["required_display"], serde_json::json!(["x > -2/3"]));
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    assert_eq!(steps.len(), 1, "expected one integration step: {steps:?}");
+    assert_eq!(steps[0]["rule"], "Calcular la integral");
+    assert!(
+        steps[0]["substeps"].is_null(),
+        "constant-base affine log table should not invent didactic substeps: {steps:?}"
+    );
+}
+
+#[test]
+fn integrate_contract_constant_base_polynomial_log_substitution_preserves_domain() {
+    for (input, expected_result, expected_required) in [
+        (
+            "integrate(2*x*log(2,x^2+1), x)",
+            "(x^2 + 1) * log(2, x^2 + 1) - (x^2 + 1) / ln(2)",
+            vec![],
+        ),
+        (
+            "integrate(2*x*log(2,x^2-1), x)",
+            "(x^2 - 1) * log(2, x^2 - 1) - (x^2 - 1) / ln(2)",
+            vec!["x < -1 or x > 1".to_string()],
+        ),
+        (
+            "integrate(2*x*log2(x^2+1), x)",
+            "(x^2 + 1) * log2(x^2 + 1) - (x^2 + 1) / ln(2)",
+            vec![],
+        ),
+        (
+            "integrate(2*x*log(2,x^2+x+1)+log(2,x^2+x+1), x)",
+            "(x^2 + x + 1) * log(2, x^2 + x + 1) - (x^2 + x + 1) / ln(2)",
+            vec![],
+        ),
+    ] {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected_result, "input: {input}");
+        assert_eq!(
+            required, expected_required,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert_antiderivative_verifies(input);
+        assert_rendered_antiderivative_verifies(input, &result);
+    }
+
+    let (result, _required) =
+        evaluated_integral_with_required_conditions("integrate(2*x*log(x,x^2+1), x)");
+    assert!(
+        result.starts_with("integrate("),
+        "symbolic log base should remain residual for polynomial substitution, got {result}"
+    );
+}
+
+#[test]
+fn integrate_contract_constant_base_polynomial_log_trace_uses_substitution() {
+    let input = "integrate(2*x*log(2,x^2+1), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+    assert!(
+        stderr.is_empty(),
+        "constant-base polynomial log integration should not emit stderr warnings: {stderr}"
+    );
+    assert_eq!(
+        wire["result"],
+        "(x^2 + 1)·log(2, x^2 + 1) - (x^2 + 1) / ln(2)"
+    );
+    assert!(wire["required_display"]
+        .as_array()
+        .expect("required_display array")
+        .is_empty());
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    assert_eq!(steps.len(), 1, "expected one integration step: {steps:?}");
+    assert_eq!(steps[0]["rule"], "Calcular la integral");
+    let substeps = steps[0]["substeps"]
+        .as_array()
+        .expect("substitution should be visible as a compact substep");
+    assert_eq!(
+        substeps.len(),
+        1,
+        "expected one substitution substep: {steps:?}"
+    );
+    assert_eq!(substeps[0]["title"], "Usar sustitución");
+}
+
+#[test]
+fn integrate_contract_constant_base_additive_polynomial_log_trace_uses_common_factor_then_substitution(
+) {
+    let input = "integrate(2*x*log(2,x^2+x+1)+log(2,x^2+x+1), x)";
+    let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+
+    assert!(
+        stderr.is_empty(),
+        "constant-base additive polynomial log integration should not emit stderr warnings: {stderr}"
+    );
+    assert_eq!(
+        wire["result"],
+        "(x^2 + x + 1)·log(2, x^2 + x + 1) - (x^2 + x + 1) / ln(2)"
+    );
+    assert!(wire["required_display"]
+        .as_array()
+        .expect("required_display array")
+        .is_empty());
+    let steps = wire["steps"]
+        .as_array()
+        .expect("steps should be present with --steps on");
+    assert_eq!(
+        steps.len(),
+        2,
+        "expected factor then integration steps: {steps:?}"
+    );
+    assert_eq!(steps[0]["rule"], "Extract Common Multiplicative Factor");
+    assert_eq!(steps[1]["rule"], "Calcular la integral");
+    let substeps = steps[1]["substeps"]
+        .as_array()
+        .expect("substitution should be visible as a compact substep");
+    assert_eq!(
+        substeps.len(),
+        1,
+        "expected one substitution substep: {steps:?}"
+    );
+    assert_eq!(substeps[0]["title"], "Usar sustitución");
 }
 
 #[test]

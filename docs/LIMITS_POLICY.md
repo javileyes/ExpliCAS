@@ -185,12 +185,25 @@ Current contract:
   and `abs(p(x))` may evaluate at numeric rational finite points when `p(x)`
   is polynomial in the limit variable, because these functions are continuous
   and total on the real line; only exact special values such as a zero
-  argument, exact rational cube roots, or exact rational absolute values may
-  collapse to rational constants in this local rule
+  argument, table-backed `atan(1)`/`arctan(1)` to `pi/4`, exact rational cube
+  roots, or exact rational absolute values may collapse to constants in this
+  local rule
 - `sqrt(p(x))`, `ln(p(x))`, `log2(p(x))`, and `log10(p(x))` may evaluate at
   numeric rational finite points only when `p(x)` is polynomial in the limit
   variable and `p(a)` is strictly positive; zero and negative argument values
   remain residual to avoid endpoint, side, branch, or domain-path assumptions
+- `asin(p(x))`/`arcsin(p(x))`, `acos(p(x))`/`arccos(p(x))`, `atanh(p(x))`,
+  and `acosh(p(x))` may evaluate at numeric rational finite points only when
+  the polynomial argument lands strictly inside the real domain interior:
+  `-1 < p(a) < 1` for inverse trig and `atanh`, and `p(a) > 1` for `acosh`;
+  endpoints, outside-domain values, and unresolved sublimits remain residual to
+  avoid side, branch, or domain-path assumptions
+- `tan(p(x))` and `sec(p(x))` may evaluate at numeric rational finite points
+  when the polynomial argument evaluates exactly to `0`; this gives an explicit
+  safe denominator witness through `cos(0) = 1`; nonzero numeric rational
+  arguments remain residual unless a later composition rule has already
+  produced a recognized special-angle table hit; `csc(p(x))` and `cot(p(x))`
+  have no zero-safe numeric-rational exception
 - arithmetic compositions of already-resolved safe finite sublimits may
   evaluate through `+`, `-`, `*`, unary negation, and division only when the
   computed denominator is either an explicit nonzero numeric value or is proven
@@ -204,13 +217,31 @@ Current contract:
   (`exp`, `sin`, `cos`, `sinh`, `cosh`, `tanh`, `atan`/`arctan`, `asinh`,
   `cbrt`, and `abs`) may evaluate when their argument has already resolved to a
   safe finite sublimit; this does not add support for discontinuous functions
-  (`sign`, `floor`, `ceil`) or domain-partial outer functions (`ln`, `sqrt`,
-  `asin`/`acos`, `atanh`, `acosh`)
+  (`sign`, `floor`, `ceil`) or bypass the dedicated domain-partial checks;
+  table-backed exact folds may reduce special total-real results such as
+  `sin(pi/6)` to `1 / 2`, `cos(pi/3)` to `1 / 2`, `atan(1)`/`arctan(1)` to
+  `pi/4`, and `atan(sqrt(3))`/`arctan(sqrt(3))` to `pi/3`
 - `ln(g(x))`, `log2(g(x))`, `log10(g(x))`, and `sqrt(g(x))` may evaluate when
   `g(x)` has already resolved to a safe finite sublimit that is explicitly
   numeric positive or is proven strictly positive by the existing sign prover;
-  zero, negative, or unproven positive sublimits remain residual, including
-  endpoint-looking cases such as `sqrt(abs(x))` at `x -> 0`
+  exact rational-power folds may reduce values such as `log2(8) -> 3` and
+  `log10(100) -> 2`; zero, negative, or unproven positive sublimits remain
+  residual, including endpoint-looking cases such as `sqrt(abs(x))` at
+  `x -> 0`
+- `asin(g(x))`/`arcsin(g(x))`, `acos(g(x))`/`arccos(g(x))`, `atanh(g(x))`,
+  and `acosh(g(x))` may evaluate only when `g(x)` has already resolved to a
+  numeric rational sublimit strictly inside the real domain interior; exact
+  table-backed folds may reduce values such as `asin(0)`/`arcsin(0)` to `0`,
+  `acos(0)`/`arccos(0)` to `pi/2`, `asin(1/2)`/`arcsin(1/2)` to `pi/6`,
+  `acos(1/2)`/`arccos(1/2)` to `pi/3`, and `atanh(0)` to `0`, while
+  endpoint-looking cases such as `asin(x)` at `x -> 1`, `atanh(x)` at
+  `x -> 1`, and `acosh(x)` at `x -> 1` remain residual
+- `tan(g(x))`, `sec(g(x))`, `csc(g(x))`, and `cot(g(x))` may evaluate when
+  `g(x)` has already resolved to exact numeric zero where defined, or to a
+  recognized special angle whose table value is defined, such as `tan(pi/4) ->
+  1`, `sec(pi/3) -> 2`, `csc(pi/6) -> 2`, or `cot(pi/4) -> 1`;
+  table-undefined pole cases such as `tan(pi/2)`, `sec(pi/2)`, `csc(pi)`, and
+  `cot(pi)` remain residual, as do arbitrary nonzero rational arguments
 - after those finite composition checks succeed, local exact presentation folds
   may reduce `ln(exp(g))` to `g`, `exp(ln(g))` to `g` only when `g` is
   explicitly or structurally proven strictly positive, and `abs(g)`/`abs(-g)`
@@ -220,9 +251,11 @@ Current contract:
 - binary `log(b(x), g(x))` may evaluate only when `b(x)` has already resolved
   to an explicit rational finite sublimit with `b > 0` and `b != 1`, and
   `g(x)` has already resolved to a safe strictly positive finite sublimit;
-  invalid base sublimits, base sublimit `1`, non-rational or unresolved base
-  sublimits, zero arguments, negative arguments, or unproven positive arguments
-  remain residual
+  exact rational-power folds may reduce values such as `log(2, 8) -> 3`,
+  `log(1/2, 8) -> -3`, `log(4, 8) -> 3/2`, and `log(27, 9) -> 2/3`; invalid
+  base sublimits, base sublimit `1`, non-rational or unresolved base sublimits,
+  zero arguments, negative arguments, or unproven positive arguments remain
+  residual
 - integer powers `g(x)^n` may evaluate when `g(x)` has already resolved to a
   safe finite sublimit; positive integer exponents are total over real finite
   base sublimits, while zero and negative integer exponents require the base

@@ -3,6 +3,8 @@ use crate::limit_types::{Approach, LimitEvalOutcome, LimitOptions, PreSimplifyMo
 use crate::perfect_square_support::rational_sqrt;
 use crate::polynomial::Polynomial;
 use crate::root_forms::{extract_square_root_base, rational_cbrt_exact};
+use crate::trig_eval_table_support::lookup_trig_or_inverse;
+use crate::trig_values::TrigValue;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
 use num_bigint::BigInt;
 use num_rational::BigRational;
@@ -188,6 +190,25 @@ fn is_finite_positive_domain_unary_builtin(builtin: BuiltinFn) -> bool {
     )
 }
 
+fn is_finite_partial_domain_unary_builtin(builtin: BuiltinFn) -> bool {
+    matches!(
+        builtin,
+        BuiltinFn::Asin
+            | BuiltinFn::Arcsin
+            | BuiltinFn::Acos
+            | BuiltinFn::Arccos
+            | BuiltinFn::Atanh
+            | BuiltinFn::Acosh
+    )
+}
+
+fn is_finite_domain_checked_trig_unary_builtin(builtin: BuiltinFn) -> bool {
+    matches!(
+        builtin,
+        BuiltinFn::Tan | BuiltinFn::Sec | BuiltinFn::Csc | BuiltinFn::Cot
+    )
+}
+
 fn finite_total_real_unary_result(
     ctx: &mut Context,
     builtin: BuiltinFn,
@@ -223,6 +244,11 @@ fn finite_total_real_unary_result(
         }
 
         let value_expr = ctx.add(Expr::Number(argument_value));
+        if let Some(exact_result) =
+            finite_total_real_unary_trig_table_result(ctx, builtin, value_expr)
+        {
+            return exact_result;
+        }
         return ctx.call_builtin(builtin, vec![value_expr]);
     }
 
@@ -243,7 +269,33 @@ fn finite_total_real_unary_exact_expr_result(
     match builtin {
         BuiltinFn::Abs => finite_abs_exact_expr_result(ctx, argument_limit),
         BuiltinFn::Exp => finite_exp_exact_expr_result(ctx, argument_limit),
+        BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Atan | BuiltinFn::Arctan => {
+            finite_total_real_unary_trig_table_result(ctx, builtin, argument_limit)
+        }
         _ => None,
+    }
+}
+
+fn finite_total_real_unary_trig_table_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument: ExprId,
+) -> Option<ExprId> {
+    if !matches!(
+        builtin,
+        BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Atan | BuiltinFn::Arctan
+    ) {
+        return None;
+    }
+
+    lookup_trig_or_inverse(ctx, builtin.name(), argument)
+        .map(|hit| trig_table_value_to_limit_expr(ctx, hit.value))
+}
+
+fn trig_table_value_to_limit_expr(ctx: &mut Context, value: &TrigValue) -> ExprId {
+    match value {
+        TrigValue::Fraction(numerator, 1) => ctx.num(*numerator),
+        _ => value.to_expr(ctx),
     }
 }
 
@@ -308,6 +360,14 @@ fn finite_positive_domain_unary_exact_numeric_result(
         BuiltinFn::Ln | BuiltinFn::Log2 | BuiltinFn::Log10 if argument_value.is_one() => {
             Some(ctx.num(0))
         }
+        BuiltinFn::Log2 => {
+            let base = BigRational::from_integer(BigInt::from(2));
+            finite_exact_rational_log_result(ctx, &base, argument_value)
+        }
+        BuiltinFn::Log10 => {
+            let base = BigRational::from_integer(BigInt::from(10));
+            finite_exact_rational_log_result(ctx, &base, argument_value)
+        }
         _ => None,
     }
 }
@@ -321,6 +381,100 @@ fn finite_positive_domain_unary_exact_expr_result(
         BuiltinFn::Ln => finite_ln_exact_expr_result(ctx, argument_limit),
         _ => None,
     }
+}
+
+fn finite_partial_domain_unary_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument_limit: ExprId,
+) -> Option<ExprId> {
+    let argument_value = numeric_limit_value(ctx, argument_limit)?;
+    if !finite_partial_domain_argument_is_strictly_interior(builtin, &argument_value) {
+        return None;
+    }
+    if let Some(exact_result) =
+        finite_partial_domain_unary_exact_numeric_result(ctx, builtin, &argument_value)
+    {
+        return Some(exact_result);
+    }
+
+    let value_expr = ctx.add(Expr::Number(argument_value));
+    Some(ctx.call_builtin(builtin, vec![value_expr]))
+}
+
+fn finite_partial_domain_argument_is_strictly_interior(
+    builtin: BuiltinFn,
+    argument_value: &BigRational,
+) -> bool {
+    let one = rational_one();
+    let neg_one = -one.clone();
+    match builtin {
+        BuiltinFn::Asin
+        | BuiltinFn::Arcsin
+        | BuiltinFn::Acos
+        | BuiltinFn::Arccos
+        | BuiltinFn::Atanh => argument_value > &neg_one && argument_value < &one,
+        BuiltinFn::Acosh => argument_value > &one,
+        _ => false,
+    }
+}
+
+fn finite_partial_domain_unary_exact_numeric_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument_value: &BigRational,
+) -> Option<ExprId> {
+    match builtin {
+        BuiltinFn::Asin | BuiltinFn::Arcsin | BuiltinFn::Atanh if argument_value.is_zero() => {
+            Some(ctx.num(0))
+        }
+        BuiltinFn::Asin | BuiltinFn::Arcsin | BuiltinFn::Acos | BuiltinFn::Arccos => {
+            let argument_expr = ctx.add(Expr::Number(argument_value.clone()));
+            lookup_trig_or_inverse(ctx, builtin.name(), argument_expr)
+                .map(|hit| trig_table_value_to_limit_expr(ctx, hit.value))
+        }
+        _ => None,
+    }
+}
+
+fn finite_domain_checked_trig_unary_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument_limit: ExprId,
+) -> Option<ExprId> {
+    if let Some(argument_value) = numeric_limit_value(ctx, argument_limit) {
+        if argument_value.is_zero() {
+            return match builtin {
+                BuiltinFn::Tan => Some(ctx.num(0)),
+                BuiltinFn::Sec => Some(ctx.num(1)),
+                _ => None,
+            };
+        }
+
+        let argument_expr = ctx.add(Expr::Number(argument_value));
+        return finite_domain_checked_trig_unary_table_result(ctx, builtin, argument_expr);
+    }
+
+    finite_domain_checked_trig_unary_table_result(ctx, builtin, argument_limit)
+}
+
+fn finite_domain_checked_trig_unary_table_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument: ExprId,
+) -> Option<ExprId> {
+    if !matches!(
+        builtin,
+        BuiltinFn::Tan | BuiltinFn::Sec | BuiltinFn::Csc | BuiltinFn::Cot
+    ) {
+        return None;
+    }
+
+    let hit = lookup_trig_or_inverse(ctx, builtin.name(), argument)?;
+    if matches!(*hit.value, TrigValue::Undefined) {
+        return None;
+    }
+    Some(trig_table_value_to_limit_expr(ctx, hit.value))
 }
 
 fn finite_ln_exact_expr_result(ctx: &mut Context, argument_limit: ExprId) -> Option<ExprId> {
@@ -380,10 +534,55 @@ fn finite_log_exact_numeric_result(
         return Some(ctx.num(1));
     }
 
-    None
+    finite_exact_rational_log_result(ctx, &base_value, argument_value)
 }
 
 const FINITE_INTEGER_POWER_EXACT_FOLD_LIMIT: u64 = 32;
+const FINITE_LOG_EXACT_RATIONAL_NUMERATOR_LIMIT: i64 = 32;
+const FINITE_LOG_EXACT_RATIONAL_DENOMINATOR_LIMIT: i64 = 8;
+
+fn finite_exact_rational_log_result(
+    ctx: &mut Context,
+    base_value: &BigRational,
+    argument_value: &BigRational,
+) -> Option<ExprId> {
+    let exponent = exact_rational_log_result(base_value, argument_value)?;
+    Some(ctx.add(Expr::Number(exponent)))
+}
+
+fn exact_rational_log_result(
+    base_value: &BigRational,
+    argument_value: &BigRational,
+) -> Option<BigRational> {
+    if !base_value.is_positive()
+        || base_value.is_one()
+        || !argument_value.is_positive()
+        || argument_value.is_one()
+    {
+        return None;
+    }
+
+    for denominator in 1..=FINITE_LOG_EXACT_RATIONAL_DENOMINATOR_LIMIT {
+        let argument_power = rational_pow_nonnegative(argument_value, denominator as u64);
+        for numerator in 1..=FINITE_LOG_EXACT_RATIONAL_NUMERATOR_LIMIT {
+            let base_power = rational_pow_nonnegative(base_value, numerator as u64);
+            if argument_power == base_power {
+                return Some(BigRational::new(
+                    BigInt::from(numerator),
+                    BigInt::from(denominator),
+                ));
+            }
+            if argument_power == BigRational::one() / base_power {
+                return Some(BigRational::new(
+                    BigInt::from(-numerator),
+                    BigInt::from(denominator),
+                ));
+            }
+        }
+    }
+
+    None
+}
 
 fn rational_pow_nonnegative(base: &BigRational, exponent: u64) -> BigRational {
     let mut result = BigRational::one();
@@ -585,6 +784,14 @@ fn apply_finite_elementary_polynomial_rule(
             | BuiltinFn::Log2
             | BuiltinFn::Log10
             | BuiltinFn::Sqrt
+            | BuiltinFn::Asin
+            | BuiltinFn::Arcsin
+            | BuiltinFn::Acos
+            | BuiltinFn::Arccos
+            | BuiltinFn::Atanh
+            | BuiltinFn::Acosh
+            | BuiltinFn::Tan
+            | BuiltinFn::Sec
     ) {
         return None;
     }
@@ -598,6 +805,14 @@ fn apply_finite_elementary_polynomial_rule(
     if is_finite_positive_domain_unary_builtin(builtin) {
         let argument_limit = ctx.add(Expr::Number(argument_value));
         return finite_positive_domain_unary_result(ctx, builtin, argument_limit);
+    }
+    if is_finite_partial_domain_unary_builtin(builtin) {
+        let argument_limit = ctx.add(Expr::Number(argument_value));
+        return finite_partial_domain_unary_result(ctx, builtin, argument_limit);
+    }
+    if is_finite_domain_checked_trig_unary_builtin(builtin) {
+        let argument_limit = ctx.add(Expr::Number(argument_value));
+        return finite_domain_checked_trig_unary_result(ctx, builtin, argument_limit);
     }
 
     None
@@ -687,6 +902,48 @@ fn apply_finite_positive_domain_unary_composition_rule(
     finite_positive_domain_unary_result(ctx, builtin, argument_limit)
 }
 
+fn apply_finite_partial_domain_unary_composition_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !is_finite_partial_domain_unary_builtin(builtin) {
+        return None;
+    }
+
+    let argument_limit = try_limit_rules_at_finite(ctx, args[0], var, point)?;
+    finite_partial_domain_unary_result(ctx, builtin, argument_limit)
+}
+
+fn apply_finite_domain_checked_trig_unary_composition_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+    let builtin = ctx.builtin_of(fn_id)?;
+    if !is_finite_domain_checked_trig_unary_builtin(builtin) {
+        return None;
+    }
+
+    let argument_limit = try_limit_rules_at_finite(ctx, args[0], var, point)?;
+    finite_domain_checked_trig_unary_result(ctx, builtin, argument_limit)
+}
+
 fn apply_finite_binary_log_composition_rule(
     ctx: &mut Context,
     expr: ExprId,
@@ -733,6 +990,15 @@ fn try_limit_rules_at_finite(
         return Some(result);
     }
     if let Some(result) = apply_finite_positive_domain_unary_composition_rule(ctx, expr, var, point)
+    {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_partial_domain_unary_composition_rule(ctx, expr, var, point)
+    {
+        return Some(result);
+    }
+    if let Some(result) =
+        apply_finite_domain_checked_trig_unary_composition_rule(ctx, expr, var, point)
     {
         return Some(result);
     }
@@ -2745,6 +3011,30 @@ mod tests {
             .expect("expected total-real unary composition over safe sqrt sublimit");
         assert_eq!(display_expr(&ctx, sin_sqrt_out), "sin(sqrt(5))");
 
+        let sin_special_angle = parse_expr(&mut ctx, "sin(x + pi/6)");
+        let sin_special_angle_out =
+            try_limit_rules_at_finite(&mut ctx, sin_special_angle, x, point_zero)
+                .expect("expected sin over exact special-angle sublimit");
+        assert_eq!(display_expr(&ctx, sin_special_angle_out), "1 / 2");
+
+        let cos_special_angle = parse_expr(&mut ctx, "cos(x + pi/3)");
+        let cos_special_angle_out =
+            try_limit_rules_at_finite(&mut ctx, cos_special_angle, x, point_zero)
+                .expect("expected cos over exact special-angle sublimit");
+        assert_eq!(display_expr(&ctx, cos_special_angle_out), "1 / 2");
+
+        let arctan_special_input = parse_expr(&mut ctx, "arctan(x + 1)");
+        let arctan_special_input_out =
+            try_limit_rules_at_finite(&mut ctx, arctan_special_input, x, point_zero)
+                .expect("expected arctan over exact table input sublimit");
+        assert_eq!(display_expr(&ctx, arctan_special_input_out), "pi / 4");
+
+        let arctan_sqrt_special_input = parse_expr(&mut ctx, "arctan(sqrt(x + 3))");
+        let arctan_sqrt_special_input_out =
+            try_limit_rules_at_finite(&mut ctx, arctan_sqrt_special_input, x, point_zero)
+                .expect("expected arctan over exact radical table input sublimit");
+        assert_eq!(display_expr(&ctx, arctan_sqrt_special_input_out), "pi / 3");
+
         let exp_abs = parse_expr(&mut ctx, "exp(abs(x))");
         let exp_abs_out = try_limit_rules_at_finite(&mut ctx, exp_abs, x, point_neg_two)
             .expect("expected exp over resolved abs sublimit");
@@ -2845,7 +3135,7 @@ mod tests {
         let log2_abs = parse_expr(&mut ctx, "log2(abs(x))");
         let log2_abs_out = try_limit_rules_at_finite(&mut ctx, log2_abs, x, point_neg_two)
             .expect("expected log2 over positive abs sublimit");
-        assert_eq!(display_expr(&ctx, log2_abs_out), "log2(2)");
+        assert_eq!(display_expr(&ctx, log2_abs_out), "1");
 
         let point_zero = parse_expr(&mut ctx, "0");
         let sqrt_perfect_square_poly = parse_expr(&mut ctx, "sqrt(x^2 + 4*x + 4)");
@@ -2868,6 +3158,19 @@ mod tests {
         let log10_one_out = try_limit_rules_at_finite(&mut ctx, log10_one, x, point_zero)
             .expect("expected exact log10(1) finite limit");
         assert_eq!(display_expr(&ctx, log10_one_out), "0");
+
+        let point_two = parse_expr(&mut ctx, "2");
+        let log2_exact_power = parse_expr(&mut ctx, "log2(x^2 + 4)");
+        let log2_exact_power_out =
+            try_limit_rules_at_finite(&mut ctx, log2_exact_power, x, point_two)
+                .expect("expected exact integer log2 finite limit");
+        assert_eq!(display_expr(&ctx, log2_exact_power_out), "3");
+
+        let log10_exact_power = parse_expr(&mut ctx, "log10(x^2 + 96)");
+        let log10_exact_power_out =
+            try_limit_rules_at_finite(&mut ctx, log10_exact_power, x, point_two)
+                .expect("expected exact integer log10 finite limit");
+        assert_eq!(display_expr(&ctx, log10_exact_power_out), "2");
 
         let exp_ln_abs = parse_expr(&mut ctx, "exp(ln(abs(x)))");
         let exp_ln_abs_out = try_limit_rules_at_finite(&mut ctx, exp_ln_abs, x, point_neg_two)
@@ -2915,6 +3218,166 @@ mod tests {
     }
 
     #[test]
+    fn finite_partial_domain_unary_composition_requires_strict_interior_sublimit() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_zero = parse_expr(&mut ctx, "0");
+
+        let arcsin_half = parse_expr(&mut ctx, "arcsin(x/2)");
+        let arcsin_half_out = try_limit_rules_at_finite(&mut ctx, arcsin_half, x, point_zero)
+            .expect("expected arcsin over strict interior numeric sublimit");
+        assert_eq!(display_expr(&ctx, arcsin_half_out), "0");
+
+        let atanh_half = parse_expr(&mut ctx, "atanh(x/2)");
+        let atanh_half_out = try_limit_rules_at_finite(&mut ctx, atanh_half, x, point_zero)
+            .expect("expected atanh over strict interior numeric sublimit");
+        assert_eq!(display_expr(&ctx, atanh_half_out), "0");
+
+        let acos_half = parse_expr(&mut ctx, "acos(x/2)");
+        let acos_half_out = try_limit_rules_at_finite(&mut ctx, acos_half, x, point_zero)
+            .expect("expected acos over strict interior numeric sublimit");
+        assert_eq!(display_expr(&ctx, acos_half_out), "pi / 2");
+
+        let arcsin_shifted_half = parse_expr(&mut ctx, "arcsin(x/2 + 1/2)");
+        let arcsin_shifted_half_out =
+            try_limit_rules_at_finite(&mut ctx, arcsin_shifted_half, x, point_zero)
+                .expect("expected arcsin exact-table hit over strict interior sublimit");
+        assert_eq!(display_expr(&ctx, arcsin_shifted_half_out), "pi / 6");
+
+        let arccos_shifted_half = parse_expr(&mut ctx, "arccos(x/2 + 1/2)");
+        let arccos_shifted_half_out =
+            try_limit_rules_at_finite(&mut ctx, arccos_shifted_half, x, point_zero)
+                .expect("expected arccos exact-table hit over strict interior sublimit");
+        assert_eq!(display_expr(&ctx, arccos_shifted_half_out), "pi / 3");
+
+        let acosh_abs_shift = parse_expr(&mut ctx, "acosh(abs(x) + 2)");
+        let acosh_abs_shift_out =
+            try_limit_rules_at_finite(&mut ctx, acosh_abs_shift, x, point_zero)
+                .expect("expected acosh over strict interior numeric sublimit");
+        assert_eq!(display_expr(&ctx, acosh_abs_shift_out), "acosh(2)");
+
+        let point_one = parse_expr(&mut ctx, "1");
+        let point_two = parse_expr(&mut ctx, "2");
+        let arcsin_endpoint = parse_expr(&mut ctx, "arcsin(x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, arcsin_endpoint, x, point_one).is_none(),
+            "arcsin endpoint must remain residual"
+        );
+        let arcsin_out_of_domain = parse_expr(&mut ctx, "arcsin(x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, arcsin_out_of_domain, x, point_two).is_none(),
+            "arcsin out-of-domain point must remain residual"
+        );
+        let atanh_endpoint = parse_expr(&mut ctx, "atanh(x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, atanh_endpoint, x, point_one).is_none(),
+            "atanh endpoint must remain residual"
+        );
+        let acosh_endpoint = parse_expr(&mut ctx, "acosh(x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, acosh_endpoint, x, point_one).is_none(),
+            "acosh endpoint must remain residual"
+        );
+    }
+
+    #[test]
+    fn finite_domain_checked_trig_unary_composition_accepts_defined_table_sublimits() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point_zero = parse_expr(&mut ctx, "0");
+
+        let tan_half = parse_expr(&mut ctx, "tan(x/2)");
+        let tan_half_out = try_limit_rules_at_finite(&mut ctx, tan_half, x, point_zero)
+            .expect("expected tan over exact zero sublimit");
+        assert_eq!(display_expr(&ctx, tan_half_out), "0");
+
+        let sec_square = parse_expr(&mut ctx, "sec(x^2)");
+        let sec_square_out = try_limit_rules_at_finite(&mut ctx, sec_square, x, point_zero)
+            .expect("expected sec over exact zero sublimit");
+        assert_eq!(display_expr(&ctx, sec_square_out), "1");
+
+        let tan_sin = parse_expr(&mut ctx, "tan(sin(x))");
+        let tan_sin_out = try_limit_rules_at_finite(&mut ctx, tan_sin, x, point_zero)
+            .expect("expected tan over resolved zero sin sublimit");
+        assert_eq!(display_expr(&ctx, tan_sin_out), "0");
+
+        let sec_abs = parse_expr(&mut ctx, "sec(abs(x))");
+        let sec_abs_out = try_limit_rules_at_finite(&mut ctx, sec_abs, x, point_zero)
+            .expect("expected sec over resolved zero abs sublimit");
+        assert_eq!(display_expr(&ctx, sec_abs_out), "1");
+
+        let tan_special_angle = parse_expr(&mut ctx, "tan(x + pi/4)");
+        let tan_special_angle_out =
+            try_limit_rules_at_finite(&mut ctx, tan_special_angle, x, point_zero)
+                .expect("expected tan over defined special-angle sublimit");
+        assert_eq!(display_expr(&ctx, tan_special_angle_out), "1");
+
+        let sec_special_angle = parse_expr(&mut ctx, "sec(x + pi/3)");
+        let sec_special_angle_out =
+            try_limit_rules_at_finite(&mut ctx, sec_special_angle, x, point_zero)
+                .expect("expected sec over defined special-angle sublimit");
+        assert_eq!(display_expr(&ctx, sec_special_angle_out), "2");
+
+        let csc_special_angle = parse_expr(&mut ctx, "csc(x + pi/6)");
+        let csc_special_angle_out =
+            try_limit_rules_at_finite(&mut ctx, csc_special_angle, x, point_zero)
+                .expect("expected csc over defined special-angle sublimit");
+        assert_eq!(display_expr(&ctx, csc_special_angle_out), "2");
+
+        let cot_special_angle = parse_expr(&mut ctx, "cot(x + pi/4)");
+        let cot_special_angle_out =
+            try_limit_rules_at_finite(&mut ctx, cot_special_angle, x, point_zero)
+                .expect("expected cot over defined special-angle sublimit");
+        assert_eq!(display_expr(&ctx, cot_special_angle_out), "1");
+
+        let tan_pole_angle = parse_expr(&mut ctx, "tan(x + pi/2)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, tan_pole_angle, x, point_zero).is_none(),
+            "tan at a table-undefined pole must remain residual"
+        );
+
+        let sec_pole_angle = parse_expr(&mut ctx, "sec(x + pi/2)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, sec_pole_angle, x, point_zero).is_none(),
+            "sec at a table-undefined pole must remain residual"
+        );
+
+        let csc_pole_angle = parse_expr(&mut ctx, "csc(x + pi)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, csc_pole_angle, x, point_zero).is_none(),
+            "csc at a table-undefined pole must remain residual"
+        );
+
+        let cot_pole_angle = parse_expr(&mut ctx, "cot(x + pi)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, cot_pole_angle, x, point_zero).is_none(),
+            "cot at a table-undefined pole must remain residual"
+        );
+
+        let point_one = parse_expr(&mut ctx, "1");
+        let tan_nonzero = parse_expr(&mut ctx, "tan(x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, tan_nonzero, x, point_one).is_none(),
+            "tan at nonzero rational sublimit must remain residual without pole proof"
+        );
+        let sec_nonzero = parse_expr(&mut ctx, "sec(x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, sec_nonzero, x, point_one).is_none(),
+            "sec at nonzero rational sublimit must remain residual without pole proof"
+        );
+        let csc_zero = parse_expr(&mut ctx, "csc(x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, csc_zero, x, point_zero).is_none(),
+            "csc at zero must remain residual"
+        );
+        let cot_zero = parse_expr(&mut ctx, "cot(x)");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, cot_zero, x, point_zero).is_none(),
+            "cot at zero must remain residual"
+        );
+    }
+
+    #[test]
     fn finite_binary_log_composition_requires_valid_base_and_positive_sublimits() {
         let mut ctx = Context::new();
         let x = parse_expr(&mut ctx, "x");
@@ -2947,6 +3410,49 @@ mod tests {
             try_limit_rules_at_finite(&mut ctx, binary_log_arg_one, x, point_zero)
                 .expect("expected exact binary log of one finite limit");
         assert_eq!(display_expr(&ctx, binary_log_arg_one_out), "0");
+
+        let point_two = parse_expr(&mut ctx, "2");
+        let binary_log_integer_power = parse_expr(&mut ctx, "log(2, x^2 + 4)");
+        let binary_log_integer_power_out =
+            try_limit_rules_at_finite(&mut ctx, binary_log_integer_power, x, point_two)
+                .expect("expected exact integer binary log finite limit");
+        assert_eq!(display_expr(&ctx, binary_log_integer_power_out), "3");
+
+        let binary_log_negative_integer_power = parse_expr(&mut ctx, "log(1/2, x^2 + 4)");
+        let binary_log_negative_integer_power_out =
+            try_limit_rules_at_finite(&mut ctx, binary_log_negative_integer_power, x, point_two)
+                .expect("expected exact negative-integer binary log finite limit");
+        assert_eq!(
+            display_expr(&ctx, binary_log_negative_integer_power_out),
+            "-3"
+        );
+
+        let binary_log_fractional_power = parse_expr(&mut ctx, "log(4, x^2 + 4)");
+        let binary_log_fractional_power_out =
+            try_limit_rules_at_finite(&mut ctx, binary_log_fractional_power, x, point_two)
+                .expect("expected exact rational-exponent binary log finite limit");
+        assert_eq!(display_expr(&ctx, binary_log_fractional_power_out), "3/2");
+
+        let binary_log_negative_fractional_power = parse_expr(&mut ctx, "log(1/4, x^2 + 4)");
+        let binary_log_negative_fractional_power_out =
+            try_limit_rules_at_finite(&mut ctx, binary_log_negative_fractional_power, x, point_two)
+                .expect("expected exact negative rational-exponent binary log finite limit");
+        assert_eq!(
+            display_expr(&ctx, binary_log_negative_fractional_power_out),
+            "-3/2"
+        );
+
+        let binary_log_two_thirds = parse_expr(&mut ctx, "log(27, x^2 + 5)");
+        let binary_log_two_thirds_out =
+            try_limit_rules_at_finite(&mut ctx, binary_log_two_thirds, x, point_two)
+                .expect("expected exact two-thirds binary log finite limit");
+        assert_eq!(display_expr(&ctx, binary_log_two_thirds_out), "2/3");
+
+        let binary_log_not_exact = parse_expr(&mut ctx, "log(2, x^2 + 1)");
+        let binary_log_not_exact_out =
+            try_limit_rules_at_finite(&mut ctx, binary_log_not_exact, x, point_two)
+                .expect("expected safe binary log finite limit without exact rational fold");
+        assert_eq!(display_expr(&ctx, binary_log_not_exact_out), "log(2, 5)");
 
         let variable_base_log_poly = parse_expr(&mut ctx, "log(x^2 + 3, x^2 + 1)");
         let variable_base_log_poly_out =

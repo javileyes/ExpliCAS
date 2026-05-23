@@ -89,6 +89,20 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         )
         self.assertEqual(SMOKE.classify_error_kind("timeout"), "timeout")
 
+        self.assertIsNone(
+            SMOKE.classify_error(
+                returncode=0,
+                parse_error=None,
+                result="1 / (x + 2)",
+                expected_result="1 / (x + 2)",
+                actual_required=("3·x + 1", "x > -1/3"),
+                expected_required=("x + 2",),
+                impossible_required=(),
+                warnings=(),
+                forbid_warnings=False,
+            )
+        )
+
         self.assertIn(
             "missing required conditions",
             SMOKE.classify_error(
@@ -314,6 +328,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     "result": "1",
                     "wall_elapsed_seconds": 0.01,
                     "required_conditions": [],
+                    "expected_required_conditions": [],
                 },
                 {
                     "name": "mismatch",
@@ -323,6 +338,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     "result": "2",
                     "wall_elapsed_seconds": 0.02,
                     "required_conditions": ["x + 2"],
+                    "expected_required_conditions": ["x + 2"],
                 },
             ],
         }
@@ -331,6 +347,9 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
 
         self.assertNotIn("cases", summary)
         self.assertEqual(summary["total"], 2)
+        self.assertEqual(summary["expected_required_condition_case_count"], 1)
+        self.assertEqual(summary["distinct_expected_required_conditions"], 1)
+        self.assertEqual(summary["expected_required_condition_counts"], {"x + 2": 1})
         self.assertEqual(summary["problem_case_count"], 1)
         self.assertEqual(
             summary["problem_cases"],
@@ -370,7 +389,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
     def test_default_matrix_contains_representative_wrapped_residuals(self) -> None:
         cases = SMOKE.build_default_matrix_cases()
 
-        self.assertEqual(len(cases), 247)
+        self.assertEqual(len(cases), 357)
         self.assertIn("arctan_sqrt_additive_trig:plus", {case.name for case in cases})
         self.assertIn("arctan_sqrt_additive_trig:nested_den", {case.name for case in cases})
         self.assertIn("arctan_sqrt_additive_trig:double_nested_den", {case.name for case in cases})
@@ -400,6 +419,52 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertIn("plain_trig_sparse_neg_sin:nested_den", {case.name for case in cases})
         self.assertIn("rational_quad:plus", {case.name for case in cases})
         self.assertIn("rational_quad:double_nested_den", {case.name for case in cases})
+        self.assertIn("quartic_arcsin_kernel:double_nested_den", {case.name for case in cases})
+        self.assertIn("constant_base_log_power:plus", {case.name for case in cases})
+        self.assertIn("constant_base_log_power:nested_den", {case.name for case in cases})
+        self.assertIn(
+            "constant_base_log_power:product_den_triple_noise_times_one",
+            {case.name for case in cases},
+        )
+        self.assertIn("log10_power_alias:plus", {case.name for case in cases})
+        self.assertIn("log10_power_alias:nested_den", {case.name for case in cases})
+        self.assertIn(
+            "log10_power_alias:product_den_triple_noise_times_one",
+            {case.name for case in cases},
+        )
+        self.assertIn("reciprocal_trig_csc:plus", {case.name for case in cases})
+        self.assertIn("reciprocal_trig_csc:nested_den", {case.name for case in cases})
+        self.assertIn(
+            "reciprocal_trig_csc:product_den_triple_noise_times_one",
+            {case.name for case in cases},
+        )
+        self.assertIn("reciprocal_trig_sec:plus", {case.name for case in cases})
+        self.assertIn("reciprocal_trig_sec:nested_den", {case.name for case in cases})
+        self.assertIn(
+            "reciprocal_trig_sec:product_den_triple_noise_times_one",
+            {case.name for case in cases},
+        )
+        self.assertIn("sqrt_chain_sec_log:plus", {case.name for case in cases})
+        self.assertIn("sqrt_chain_sec_log:nested_den", {case.name for case in cases})
+        self.assertIn("sqrt_chain_sec_log:double_nested_den", {case.name for case in cases})
+        self.assertIn(
+            "sqrt_chain_sec_log:product_den_triple_noise_times_one",
+            {case.name for case in cases},
+        )
+        self.assertIn("sqrt_chain_csc_log:plus", {case.name for case in cases})
+        self.assertIn("sqrt_chain_csc_log:nested_den", {case.name for case in cases})
+        self.assertIn("sqrt_chain_csc_log:double_nested_den", {case.name for case in cases})
+        self.assertIn(
+            "sqrt_chain_csc_log:product_den_triple_noise_times_one",
+            {case.name for case in cases},
+        )
+        self.assertIn("sqrt_chain_cosh_recip_square:plus", {case.name for case in cases})
+        self.assertIn("sqrt_chain_cosh_recip_square:plus_double_noise", {case.name for case in cases})
+        self.assertIn("sqrt_chain_cosh_recip_square:nested_den", {case.name for case in cases})
+        self.assertIn("sqrt_chain_sinh_recip_square:plus", {case.name for case in cases})
+        self.assertIn("sqrt_chain_sinh_recip_square:plus_double_noise", {case.name for case in cases})
+        self.assertIn("sqrt_chain_sinh_recip_square:nested_den", {case.name for case in cases})
+        self.assertIn("sqrt_chain_sinh_recip_square:double_nested_den", {case.name for case in cases})
         self.assertIn(
             "rational_quad_positive_quadratic:double_nested_den",
             {case.name for case in cases},
@@ -456,9 +521,33 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertIn(
             "rational_quad_over_recip_trig_shifted_quotient", {case.name for case in cases}
         )
+        self.assertIn(
+            "quartic_arcsin_over_reciprocal_trig_csc_shifted_quotient",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "quartic_arcsin_over_negative_reciprocal_trig_csc_shifted_quotient",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "sqrt_chain_sec_over_csc_shifted_quotient", {case.name for case in cases}
+        )
+        self.assertIn(
+            "sqrt_chain_sec_over_negative_csc_shifted_quotient",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "sqrt_chain_cosh_over_sinh_shifted_quotient", {case.name for case in cases}
+        )
         self.assertIn("fractional_den_power:plus", {case.name for case in cases})
         self.assertIn("fractional_den_power:nested_den", {case.name for case in cases})
         self.assertIn("fractional_den_power:double_nested_den", {case.name for case in cases})
+        self.assertIn("quartic_arcsin_kernel:plus", {case.name for case in cases})
+        self.assertIn("quartic_arcsin_kernel:nested_den", {case.name for case in cases})
+        self.assertIn(
+            "quartic_arcsin_kernel:product_den_triple_noise_times_one",
+            {case.name for case in cases},
+        )
         rational_case = next(case for case in cases if case.name == "rational_quad:plus")
         self.assertEqual(rational_case.expected_result, "1 / (x + 2)")
         self.assertEqual(rational_case.required_conditions, ("x + 1", "x + 2"))
@@ -646,6 +735,96 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             plain_trig_sec_fourth_double_nested_case.required_conditions,
             ("cos(2·x + 1)", "x + 2", "x + 3", "x + 4"),
         )
+        reciprocal_trig_sec_nested_case = next(
+            case for case in cases if case.name == "reciprocal_trig_sec:nested_den"
+        )
+        self.assertEqual(
+            reciprocal_trig_sec_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            reciprocal_trig_sec_nested_case.required_conditions,
+            ("cos(2·x + 1)", "x + 2", "x + 3"),
+        )
+        sqrt_chain_sec_log_nested_case = next(
+            case for case in cases if case.name == "sqrt_chain_sec_log:nested_den"
+        )
+        self.assertEqual(
+            sqrt_chain_sec_log_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            sqrt_chain_sec_log_nested_case.required_conditions,
+            ("cos(sqrt(3·x + 1))", "x > -1/3", "x + 2", "x + 3"),
+        )
+        sqrt_chain_sec_log_double_nested_case = next(
+            case for case in cases if case.name == "sqrt_chain_sec_log:double_nested_den"
+        )
+        self.assertEqual(
+            sqrt_chain_sec_log_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            sqrt_chain_sec_log_double_nested_case.required_conditions,
+            ("cos(sqrt(3·x + 1))", "x > -1/3", "x + 2", "x + 3", "x + 4"),
+        )
+        sqrt_chain_csc_log_nested_case = next(
+            case for case in cases if case.name == "sqrt_chain_csc_log:nested_den"
+        )
+        self.assertEqual(
+            sqrt_chain_csc_log_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            sqrt_chain_csc_log_nested_case.required_conditions,
+            ("sin(sqrt(3·x + 1))", "x > -1/3", "x + 2", "x + 3"),
+        )
+        sqrt_chain_csc_log_double_nested_case = next(
+            case for case in cases if case.name == "sqrt_chain_csc_log:double_nested_den"
+        )
+        self.assertEqual(
+            sqrt_chain_csc_log_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            sqrt_chain_csc_log_double_nested_case.required_conditions,
+            ("sin(sqrt(3·x + 1))", "x > -1/3", "x + 2", "x + 3", "x + 4"),
+        )
+        sqrt_chain_cosh_recip_square_nested_case = next(
+            case for case in cases if case.name == "sqrt_chain_cosh_recip_square:nested_den"
+        )
+        self.assertEqual(
+            sqrt_chain_cosh_recip_square_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            sqrt_chain_cosh_recip_square_nested_case.required_conditions,
+            ("x > -1/3", "x + 2", "x + 3"),
+        )
+        sqrt_chain_sinh_recip_square_nested_case = next(
+            case for case in cases if case.name == "sqrt_chain_sinh_recip_square:nested_den"
+        )
+        self.assertEqual(
+            sqrt_chain_sinh_recip_square_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            sqrt_chain_sinh_recip_square_nested_case.required_conditions,
+            ("sinh(sqrt(3·x + 1))", "x > -1/3", "x + 2", "x + 3"),
+        )
+        sqrt_chain_sinh_recip_square_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "sqrt_chain_sinh_recip_square:double_nested_den"
+        )
+        self.assertEqual(
+            sqrt_chain_sinh_recip_square_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            sqrt_chain_sinh_recip_square_double_nested_case.required_conditions,
+            ("sinh(sqrt(3·x + 1))", "x > -1/3", "x + 2", "x + 3", "x + 4"),
+        )
         plain_trig_neg_nested_case = next(
             case for case in cases if case.name == "plain_trig_neg_sin:nested_den"
         )
@@ -714,11 +893,101 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             fractional_den_power_double_nested_case.required_conditions,
             ("x + 2", "x + 3", "x + 4"),
         )
+        quartic_arcsin_kernel_nested_case = next(
+            case for case in cases if case.name == "quartic_arcsin_kernel:nested_den"
+        )
+        self.assertEqual(
+            quartic_arcsin_kernel_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            quartic_arcsin_kernel_nested_case.required_conditions,
+            ("4 - x^4", "x + 2", "x + 3"),
+        )
+        quartic_arcsin_kernel_double_nested_case = next(
+            case for case in cases if case.name == "quartic_arcsin_kernel:double_nested_den"
+        )
+        self.assertEqual(
+            quartic_arcsin_kernel_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            quartic_arcsin_kernel_double_nested_case.required_conditions,
+            ("4 - x^4", "x + 2", "x + 3", "x + 4"),
+        )
         shifted_quotient_case = next(
             case for case in cases if case.name == "rational_quad_over_recip_trig_shifted_quotient"
         )
         self.assertEqual(shifted_quotient_case.expected_result, "1")
         self.assertEqual(shifted_quotient_case.required_conditions, ("x + 1",))
+        negative_shifted_quotient_case = next(
+            case
+            for case in cases
+            if case.name == "rational_quad_over_negative_recip_trig_shifted_quotient"
+        )
+        self.assertEqual(negative_shifted_quotient_case.expected_result, "-1")
+        self.assertEqual(negative_shifted_quotient_case.required_conditions, ("x + 1",))
+        quartic_over_csc_shifted_quotient_case = next(
+            case
+            for case in cases
+            if case.name == "quartic_arcsin_over_reciprocal_trig_csc_shifted_quotient"
+        )
+        self.assertEqual(quartic_over_csc_shifted_quotient_case.expected_result, "1")
+        self.assertEqual(
+            quartic_over_csc_shifted_quotient_case.required_conditions,
+            ("4 - x^4", "sin(2·x + 1)"),
+        )
+        negative_quartic_over_csc_shifted_quotient_case = next(
+            case
+            for case in cases
+            if case.name == "quartic_arcsin_over_negative_reciprocal_trig_csc_shifted_quotient"
+        )
+        self.assertEqual(negative_quartic_over_csc_shifted_quotient_case.expected_result, "-1")
+        self.assertEqual(
+            negative_quartic_over_csc_shifted_quotient_case.required_conditions,
+            ("4 - x^4", "sin(2·x + 1)"),
+        )
+        sqrt_chain_shifted_quotient_case = next(
+            case for case in cases if case.name == "sqrt_chain_sec_over_csc_shifted_quotient"
+        )
+        self.assertEqual(sqrt_chain_shifted_quotient_case.expected_result, "1")
+        self.assertEqual(
+            sqrt_chain_shifted_quotient_case.required_conditions,
+            ("cos(sqrt(3·x + 1))", "sin(sqrt(3·x + 1))", "x > -1/3"),
+        )
+        negative_sqrt_chain_shifted_quotient_case = next(
+            case
+            for case in cases
+            if case.name == "sqrt_chain_sec_over_negative_csc_shifted_quotient"
+        )
+        self.assertEqual(negative_sqrt_chain_shifted_quotient_case.expected_result, "-1")
+        self.assertEqual(
+            negative_sqrt_chain_shifted_quotient_case.required_conditions,
+            ("cos(sqrt(3·x + 1))", "sin(sqrt(3·x + 1))", "x > -1/3"),
+        )
+        sqrt_chain_hyperbolic_shifted_quotient_case = next(
+            case
+            for case in cases
+            if case.name == "sqrt_chain_cosh_over_sinh_shifted_quotient"
+        )
+        self.assertEqual(sqrt_chain_hyperbolic_shifted_quotient_case.expected_result, "1")
+        self.assertEqual(
+            sqrt_chain_hyperbolic_shifted_quotient_case.required_conditions,
+            ("sinh(sqrt(3·x + 1))", "x > -1/3"),
+        )
+        negative_sqrt_chain_hyperbolic_shifted_quotient_case = next(
+            case
+            for case in cases
+            if case.name == "sqrt_chain_cosh_over_negative_sinh_shifted_quotient"
+        )
+        self.assertEqual(
+            negative_sqrt_chain_hyperbolic_shifted_quotient_case.expected_result,
+            "-1",
+        )
+        self.assertEqual(
+            negative_sqrt_chain_hyperbolic_shifted_quotient_case.required_conditions,
+            ("sinh(sqrt(3·x + 1))", "x > -1/3"),
+        )
         negative_shifted_quotient_case = next(
             case
             for case in cases
@@ -980,6 +1249,8 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertIn('"custom_residual_name": "candidate"', completed.stdout)
         self.assertIn('"problem_case_count": 0', completed.stdout)
         self.assertIn('"problem_cases": []', completed.stdout)
+        self.assertIn('"expected_required_condition_case_count": 1', completed.stdout)
+        self.assertIn('"distinct_expected_required_conditions": 1', completed.stdout)
         self.assertNotIn('"cases"', completed.stdout)
 
     def test_cli_accepts_custom_residual_matrix_double_nested_den(self) -> None:
@@ -1109,6 +1380,186 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     """\
                     #!/bin/sh
                     case "$*" in
+                    *"cos(sqrt(3*x+1))"*"sin(sqrt(3*x+1))"*"-1)"*)
+                    cat <<'OUT'
+                    {"result":"-1","required_conditions":[{"expr_display":"cos(sqrt(3·x + 1))"},{"expr_display":"sin(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cos(sqrt(3*x+1))"*"sin(sqrt(3*x+1))"*)
+                    cat <<'OUT'
+                    {"result":"1","required_conditions":[{"expr_display":"cos(sqrt(3·x + 1))"},{"expr_display":"sin(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cosh(sqrt(3*x+1))^2"*"sinh(sqrt(3*x+1))^2"*"-1)"*)
+                    cat <<'OUT'
+                    {"result":"-1","required_conditions":[{"expr_display":"sinh(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cosh(sqrt(3*x+1))^2"*"sinh(sqrt(3*x+1))^2"*)
+                    cat <<'OUT'
+                    {"result":"1","required_conditions":[{"expr_display":"sinh(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sin(sqrt(3*x+1))"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"sin(sqrt(3·x + 1))"}],"required_display":["x > -1/3","x + 2","x + 3","x + 4"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sin(sqrt(3*x+1))"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sin(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sin(sqrt(3*x+1))"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sin(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sin(sqrt(3*x+1))"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sin(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"sin(sqrt(3*x+1))"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sin(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sin(sqrt(3*x+1))"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"sin(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sinh(sqrt(3*x+1))^2"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"sinh(sqrt(3·x + 1))"},{"expr_display":"x > -1/3"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sinh(sqrt(3*x+1))^2"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sinh(sqrt(3·x + 1))"},{"expr_display":"x > -1/3"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sinh(sqrt(3*x+1))^2"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sinh(sqrt(3·x + 1))"},{"expr_display":"x > -1/3"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sinh(sqrt(3*x+1))^2"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sinh(sqrt(3·x + 1))"},{"expr_display":"x > -1/3"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"sinh(sqrt(3*x+1))^2"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sinh(sqrt(3·x + 1))"},{"expr_display":"x > -1/3"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sinh(sqrt(3*x+1))^2"*"(-1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sinh(sqrt(3·x + 1))"},{"expr_display":"x > -1/3"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sinh(sqrt(3*x+1))^2"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"sinh(sqrt(3·x + 1))"},{"expr_display":"x > -1/3"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(3*x+1)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"cos(sqrt(3·x + 1))"}],"required_display":["x > -1/3","x + 2","x + 3","x + 4"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(3*x+1)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"cos(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(3*x+1)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"cos(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(3*x+1)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"cos(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"sqrt(3*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"cos(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(3*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"cos(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-x^4)"*"csc(2*x+1)"*"-1)"*)
+                    cat <<'OUT'
+                    {"result":"-1","required_conditions":[{"expr_display":"4 - x^4"},{"expr_display":"sin(2·x + 1)"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-x^4)"*"csc(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"1","required_conditions":[{"expr_display":"4 - x^4"},{"expr_display":"sin(2·x + 1)"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-x^4)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"4 - x^4"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-x^4)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"4 - x^4"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-x^4)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"4 - x^4"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-x^4)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"4 - x^4"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"sqrt(4-x^4)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"4 - x^4"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-x^4)"*"/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"4 - x^4"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"csc(2*x+1)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"csc(2*x+1)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"csc(2*x+1)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"csc(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"csc(2*x+1)"*"/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"csc(2*x+1)"*"(y-y)"*)
                     cat <<'OUT'
                     {"result":"0","required_conditions":[{"expr_display":"sin(2·x + 1)"}],"warnings":[]}
@@ -1249,6 +1700,36 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
+                    *"cosh(sqrt(3*x+1))^2"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x > -1/3"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cosh(sqrt(3*x+1))^2"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x > -1/3"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cosh(sqrt(3*x+1))^2"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x > -1/3"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"cosh(sqrt(3*x+1))^2"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x > -1/3"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cosh(sqrt(3*x+1))^2"*"(-1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x > -1/3"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cosh(sqrt(3*x+1))^2"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x > -1/3"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
                     *")-1)/(x+2)"*)
                     cat <<'OUT'
                     {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"}],"warnings":[]}
@@ -1277,6 +1758,11 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     *")/(2*((diff("*)
                     cat <<'OUT'
                     {"result":"1/2","required_conditions":[],"warnings":[]}
+                    OUT
+                    ;;
+                    *"x+1)^3"*"1/(x^2+1))-1)"*)
+                    cat <<'OUT'
+                    {"result":"-1","required_conditions":[{"expr_display":"x + 1"}],"warnings":[]}
                     OUT
                     ;;
                     *")+1)/((diff("*")-1)"*)
@@ -1479,8 +1965,8 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(matrix["status"], "pass", matrix)
-        self.assertEqual(matrix["total"], 247)
-        self.assertEqual(matrix["status_counts"]["pass"], 247)
+        self.assertEqual(matrix["total"], 357)
+        self.assertEqual(matrix["status_counts"]["pass"], 357)
 
     def test_cli_accepts_repeated_require_flags(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

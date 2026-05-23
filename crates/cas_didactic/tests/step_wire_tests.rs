@@ -1127,7 +1127,7 @@ fn step_wire_log_inverse_power_explains_inverse_log_relation_before_collapsing()
 
     let step = steps
         .iter()
-        .find(|step| step.rule == "Log Inverse Power")
+        .find(|step| step.rule == "Convertir potencia logarítmica inversa")
         .expect("expected log inverse power step");
 
     assert_eq!(step.substeps.len(), 2);
