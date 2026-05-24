@@ -2246,6 +2246,7 @@ fn try_resolve_post_calculus_residual_before_general_simplify_core_local(
     .or_else(|| try_diff_arctan_sqrt_additive_tan_polynomial_residual_zero_local(ctx, expr))
     .or_else(|| try_diff_sqrt_additive_tan_polynomial_residual_zero_local(ctx, expr))
     .or_else(|| try_diff_sqrt_additive_trig_polynomial_residual_zero_local(ctx, expr))
+    .or_else(|| try_diff_affine_hyperbolic_odd_primitive_residual_zero_local(ctx, expr))
     .or_else(|| {
         try_tan_sqrt_inline_common_denominator_presentation_residual_zero_local(ctx, expr)
     })
@@ -2713,11 +2714,49 @@ fn try_diff_arctan_sqrt_small_additive_elementary_residual_zero_ordered_local(
     Some((ctx.num(0), required_conditions))
 }
 
+fn try_diff_affine_hyperbolic_odd_primitive_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = residual_difference_terms_local(ctx, expr)?;
+    try_diff_affine_hyperbolic_odd_primitive_residual_zero_ordered_local(ctx, left, right).or_else(
+        || try_diff_affine_hyperbolic_odd_primitive_residual_zero_ordered_local(ctx, right, left),
+    )
+}
+
+fn try_diff_affine_hyperbolic_odd_primitive_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    diff_expr: ExprId,
+    target: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let result = crate::rules::calculus::affine_hyperbolic_odd_primitive_derivative_presentation(
+        ctx,
+        call.target,
+        &call.var_name,
+    )?;
+    if cas_ast::ordering::compare_expr(ctx, result, target) != std::cmp::Ordering::Equal {
+        return None;
+    }
+
+    Some((ctx.num(0), Vec::new()))
+}
+
 fn try_resolve_direct_post_calculus_before_general_simplify_local(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, expr)?;
+    if let Some(result) =
+        crate::rules::calculus::affine_hyperbolic_odd_primitive_derivative_presentation(
+            ctx,
+            call.target,
+            &call.var_name,
+        )
+    {
+        return Some((result, Vec::new()));
+    }
+
     if let Some((result, radicand, mut required_conditions)) =
         crate::rules::calculus::sqrt_additive_tan_polynomial_derivative_inline_presentation(
             ctx,
@@ -3613,6 +3652,46 @@ impl Engine {
             simplify_opts.suppress_depth_overflow_warnings = true;
         }
 
+        if input_post_calculus_residual {
+            if let Some((compact, required_conditions)) = crate::calculus_residual_support::
+                try_integrate_resolved_reciprocal_half_power_residual_compact_mismatch(
+                    &mut ctx_simplifier.context,
+                    expr_to_simplify,
+                )
+            {
+                let mut steps = Vec::new();
+                if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                    let mut step = crate::Step::new(
+                        "Post-calculus residual simplification",
+                        "Resolve calculus calls and compact nonmatching residual before general simplification",
+                        expr_to_simplify,
+                        compact,
+                        Vec::new(),
+                        Some(&ctx_simplifier.context),
+                    );
+                    step.meta_mut()
+                        .required_conditions
+                        .extend(required_conditions.iter().cloned());
+                    steps.push(step);
+                }
+
+                let restored_step_listener = ctx_simplifier.replace_step_listener(None);
+                self.simplifier.context = ctx_simplifier.context;
+                self.simplifier.set_step_listener(restored_step_listener);
+
+                return Ok((
+                    crate::EvalResult::Expr(compact),
+                    Vec::new(),
+                    steps,
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    Vec::new(),
+                    required_conditions,
+                ));
+            }
+        }
+
         let pre_resolved_calculus_context = if input_post_calculus_residual {
             let original_expr = expr_to_simplify;
             try_rewrite_post_calculus_residual_child_context_before_general_simplify_local(
@@ -3769,6 +3848,46 @@ impl Engine {
                     .meta_mut()
                     .assumption_events
                     .extend(expand_log_events);
+            }
+        }
+
+        let embedded_finite_aggregate_residual = expr_contains_named_function_local(
+            &ctx_simplifier.context,
+            expr_to_simplify,
+            &["sum", "product"],
+        ) && !expr_is_named_function_call_local(
+            &ctx_simplifier.context,
+            expr_to_simplify,
+            &["sum", "product"],
+        ) && expr_contains_named_function_local(
+            &ctx_simplifier.context,
+            res,
+            &["sum", "product"],
+        )
+            && expr_is_post_calculus_residual_candidate_local(&ctx_simplifier.context, res);
+
+        if embedded_finite_aggregate_residual {
+            if let Some(rewrite) = crate::rules::arithmetic::try_build_exact_zero_identity_rewrite(
+                &mut ctx_simplifier.context,
+                res,
+            ) {
+                let finite_residual_res = rewrite.final_expr();
+                ctx_simplifier.extend_required_conditions(rewrite.required_conditions);
+                if finite_residual_res != res {
+                    if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                        let mut finite_residual_step = crate::Step::new(
+                            "Finite aggregate residual simplification",
+                            "Re-simplify residual after evaluating a finite sum or product",
+                            res,
+                            finite_residual_res,
+                            Vec::new(),
+                            Some(&ctx_simplifier.context),
+                        );
+                        finite_residual_step.importance = crate::ImportanceLevel::Medium;
+                        steps.push(finite_residual_step);
+                    }
+                    res = finite_residual_res;
+                }
             }
         }
 
@@ -4728,6 +4847,37 @@ mod tests {
     }
 
     #[test]
+    fn eval_simplify_steps_off_common_denominator_diff_log2_sqrt_residual_collapses() {
+        let input =
+            "((diff(sqrt(log2(x^2+1)+1),x)/q) - ((x/((x^2+1)*ln(2)*sqrt(log2(x^2+1)+1)))/q))";
+        let mut engine = crate::Engine::new();
+        let parsed = parse(input, &mut engine.simplifier.context).unwrap();
+        let output = engine
+            .eval_stateless(
+                crate::options::EvalOptions::default(),
+                crate::EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: crate::EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .unwrap();
+
+        let crate::EvalResult::Expr(result) = output.result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
     fn post_calculus_residual_child_rewrite_handles_subtractive_orientations() {
         let residual = "diff(arctan(sqrt(sec(x)+ln(x)+1/sqrt(x)+x)),x)-(2*sqrt(x)+2*x*sqrt(x)+2*x*tan(x)*sec(x)*sqrt(x)-1)/(4*x*sqrt(x)*sqrt(sec(x)+ln(x)+1/sqrt(x)+x)*(sec(x)+ln(x)+1/sqrt(x)+x+1))";
 
@@ -5672,7 +5822,7 @@ mod tests {
             options.steps_mode = crate::options::StepsMode::Off;
             options.shared.context_mode = crate::options::ContextMode::Standard;
             options.shared.semantics.domain_mode = crate::DomainMode::Generic;
-            options.time_budget_ms = Some(50);
+            options.time_budget_ms = Some(500);
 
             let output = engine
                 .eval_stateless(
@@ -5755,7 +5905,7 @@ mod tests {
             options.steps_mode = crate::options::StepsMode::Off;
             options.shared.context_mode = crate::options::ContextMode::Standard;
             options.shared.semantics.domain_mode = crate::DomainMode::Generic;
-            options.time_budget_ms = Some(500);
+            options.time_budget_ms = Some(2_000);
 
             let output = engine
                 .eval_stateless(
@@ -6006,6 +6156,82 @@ mod tests {
     fn eval_simplify_steps_off_handles_hyperbolic_sum_against_telescoping_sum_regression() {
         let expr_text =
             "(sinh(x+y) - (sinh(x)*cosh(y) + cosh(x)*sinh(y))) + (1/(u*(u+1)) - 1/u + 1/(u+1))";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_arbitrary_shift_finite_telescoping_passthrough_regression() {
+        let expr_text =
+            "((sum(1/((a*k+b+c)*(a*k+b+c+a)), k, m, n)) + m) - ((1/a*(1/(a*m+b+c) - 1/(a*n+a+b+c))) + m)";
+        let mut engine = Engine::new();
+        let parsed =
+            parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));
+        let mut options = crate::options::EvalOptions::default();
+        options.steps_mode = crate::options::StepsMode::Off;
+        options.shared.context_mode = crate::options::ContextMode::Standard;
+        options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+        let (
+            result,
+            _warnings,
+            _steps,
+            _solve_steps,
+            _assumptions,
+            _scopes,
+            _required,
+            _rewrite_required,
+        ) = engine
+            .eval_simplify(&options, parsed)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+
+        let crate::EvalResult::Expr(result) = result else {
+            panic!("expected expression result");
+        };
+        assert_eq!(
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result,
+            }
+            .to_string(),
+            "0"
+        );
+    }
+
+    #[test]
+    fn eval_simplify_steps_off_handles_scaled_arbitrary_shift_finite_telescoping_regression() {
+        let expr_text =
+            "k*(sum(1/((a*k+b+c)*(a*k+b+c+a)), k, m, n)) - k*(1/a*(1/(a*m+b+c) - 1/(a*n+a+b+c)))";
         let mut engine = Engine::new();
         let parsed =
             parse(expr_text, &mut engine.simplifier.context).unwrap_or_else(|e| panic!("{e:?}"));

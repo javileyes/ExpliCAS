@@ -1,11 +1,41 @@
 use super::*;
 use crate::parent_context::ParentContext;
 use crate::rule::Rule;
+use cas_ast::target_kind::TargetKind;
 use cas_ast::Context;
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 use num_bigint::BigInt;
 use num_rational::BigRational;
+
+#[test]
+fn cancel_cube_root_difference_rule_targets_div_only() {
+    let target_types = CancelCubeRootDifferenceRule
+        .target_types()
+        .expect("CancelCubeRootDifferenceRule should be structurally targeted");
+
+    assert!(target_types.contains(TargetKind::Div));
+    assert!(!target_types.contains(TargetKind::Add));
+    assert!(!target_types.contains(TargetKind::Sub));
+    assert!(!target_types.contains(TargetKind::Mul));
+    assert!(!target_types.contains(TargetKind::Pow));
+    assert!(!target_types.contains(TargetKind::Function));
+}
+
+#[test]
+fn cancel_sum_diff_cubes_fraction_rule_targets_div_only_and_keeps_priority() {
+    let target_types = CancelSumDiffCubesFractionRule
+        .target_types()
+        .expect("CancelSumDiffCubesFractionRule should be structurally targeted");
+
+    assert!(target_types.contains(TargetKind::Div));
+    assert!(!target_types.contains(TargetKind::Add));
+    assert!(!target_types.contains(TargetKind::Sub));
+    assert!(!target_types.contains(TargetKind::Mul));
+    assert!(!target_types.contains(TargetKind::Pow));
+    assert!(!target_types.contains(TargetKind::Function));
+    assert_eq!(CancelSumDiffCubesFractionRule.priority(), 500);
+}
 
 #[test]
 fn test_cancel_cube_root_difference_basic() {

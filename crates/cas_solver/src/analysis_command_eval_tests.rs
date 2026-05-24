@@ -1228,7 +1228,7 @@ mod tests {
         assert!(
             lines
                 .iter()
-                .any(|line| line.contains("Sophie Germain Identity")),
+                .any(|line| line.contains("Sophie Germain identity")),
             "expected Sophie Germain identity step in derive output, got: {lines:?}"
         );
         assert!(
@@ -2078,7 +2078,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite trigs") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Reciprocal Product Identity")));
+            .any(|line| line.contains("Cancelar funciones trigonométricas recíprocas")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("1")));
@@ -2102,7 +2102,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite trigs") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Reciprocal Product Identity")));
+            .any(|line| line.contains("Cancelar funciones trigonométricas recíprocas")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && (line.contains("1 + a") || line.contains("a + 1"))
         }));
@@ -2128,7 +2128,7 @@ mod tests {
                 .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite trigs") }));
             assert!(lines
                 .iter()
-                .any(|line| line.contains("Reciprocal Pythagorean Identity")));
+                .any(|line| line.contains("Aplicar identidad pitagórica recíproca")));
             assert!(lines
                 .iter()
                 .any(|line| line.starts_with("Result:") && line.contains("1")));
@@ -2412,8 +2412,8 @@ mod tests {
 
         assert_derive_strategy(&lines, "rationalize");
         assert!(lines.iter().any(|line| {
-            line.contains("Rationalize Linear Sqrt Denominator")
-                || line.contains("Subtraction Self-Cancel")
+            line.contains("Racionalizar el denominador")
+                || line.contains("Restar dos expresiones iguales")
         }));
         assert_result_contains_all(&lines, &["0"]);
     }
@@ -2435,7 +2435,7 @@ mod tests {
             "expected one visible rationalize step, got: {lines:?}"
         );
         assert!(lines.iter().any(|line| {
-            line.contains("Rationalize Linear Sqrt Denominator")
+            line.contains("Racionalizar el denominador")
                 || line.contains("Polynomial division with opaque substitution")
                 || line.contains("Reconocer un cociente notable")
         }));
@@ -2459,7 +2459,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite radicals") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Sqrt Perfect Square")));
+            .any(|line| line.contains("Reconocer un cuadrado perfecto bajo la raíz")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("|a + b|")));
@@ -2482,7 +2482,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("rewrite radicals")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Sqrt Perfect Square")));
+            .any(|line| line.contains("Reconocer un cuadrado perfecto bajo la raíz")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("|a + b| + c")));
@@ -2505,10 +2505,10 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("rewrite radicals")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Sqrt Perfect Square")));
+            .any(|line| line.contains("Reconocer un cuadrado perfecto bajo la raíz")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Abs Of Sum Of Squares")));
+            .any(|line| line.contains("Quitar valor absoluto de una expresión no negativa")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("sqrt(5) + 1")));
@@ -2531,7 +2531,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("rewrite hyperbolics")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Double-Angle Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de ángulo doble")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("sinh(2 * x) + a")));
@@ -2554,7 +2554,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("rewrite hyperbolics")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Pythagorean Identity")));
+            .any(|line| line.contains("Aplicar identidad pitagórica hiperbólica")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && (line.contains("1 + a") || line.contains("a + 1"))
         }));
@@ -2649,7 +2649,9 @@ mod tests {
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Strategy:") && line.contains("combine like terms")));
-        assert!(lines.iter().any(|line| line.contains("Combine Like Terms")));
+        assert!(lines
+            .iter()
+            .any(|line| line.contains("Agrupar términos semejantes")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("5")));
@@ -4339,7 +4341,7 @@ mod tests {
                 .any(|line| line.starts_with("Strategy:") && line.contains("integrate prep")));
             assert!(lines
                 .iter()
-                .any(|line| line.contains("Cos Product Telescoping")));
+                .any(|line| line.contains("Aplicar telescopado de cosenos")));
 
             let result_line = lines
                 .iter()
@@ -4419,7 +4421,7 @@ mod tests {
                 .any(|line| line.starts_with("Strategy:") && line.contains("integrate prep")));
             assert!(lines
                 .iter()
-                .any(|line| line.contains("Dirichlet Kernel Identity")));
+                .any(|line| line.contains("Aplicar identidad del núcleo de Dirichlet")));
 
             let result_line = lines
                 .iter()
@@ -5883,7 +5885,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("rewrite trigs")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Pythagorean Chain Identity")));
+            .any(|line| line.contains("Aplicar la identidad pitagórica")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains('1')));
@@ -5904,7 +5906,7 @@ mod tests {
             assert!(
                 lines
                     .iter()
-                    .any(|line| line.contains("Pythagorean Factor Form")),
+                    .any(|line| line.contains("Aplicar identidad pitagórica")),
                 "expected pythagorean factor-form rewrite, got: {lines:?}"
             );
             assert_result_contains_all(&lines, fragments);
@@ -5928,7 +5930,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Recognize Secant Squared")));
+            .any(|line| line.contains("Reconocer secante cuadrada")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("sec")));
@@ -5951,7 +5953,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Recognize Secant Squared")));
+            .any(|line| line.contains("Reconocer secante cuadrada")));
     }
 
     #[test]
@@ -5971,7 +5973,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Recognize Cosecant Squared")));
+            .any(|line| line.contains("Reconocer cosecante cuadrada")));
     }
 
     #[test]
@@ -6011,7 +6013,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Expand Secant Squared")));
+            .any(|line| line.contains("Expandir secante cuadrada")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("tan")));
@@ -7200,7 +7202,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("contract trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Square Double Angle Contraction")));
+            .any(|line| line.contains("Contraer cuadrado de ángulo doble")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && line.contains("sin(2 * x)^(2)") && line.contains("/ 4")
         }));
@@ -7853,7 +7855,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Trig Square Identity")));
+            .any(|line| line.contains("Aplicar identidad del cuadrado trigonométrico")));
         assert!(lines
             .iter()
             .any(|line| line.starts_with("Result:") && line.contains("sin(2")));
@@ -7876,7 +7878,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand trig")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Trig Square Identity")));
+            .any(|line| line.contains("Aplicar identidad del cuadrado trigonométrico")));
         assert!(lines.iter().any(|line| {
             line.starts_with("Result:") && line.contains("1 -") && line.contains("sin(2")
         }));
@@ -8573,7 +8575,7 @@ mod tests {
         );
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de producto a suma")));
     }
 
     #[test]
@@ -8594,7 +8596,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de producto a suma")));
     }
 
     #[test]
@@ -8615,7 +8617,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de producto a suma")));
     }
 
     #[test]
@@ -8636,7 +8638,7 @@ mod tests {
             .any(|line| line.starts_with("Strategy:") && line.contains("expand")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de producto a suma")));
     }
 
     #[test]
@@ -8674,10 +8676,10 @@ mod tests {
         );
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de producto a suma")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Triple-Angle Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de ángulo triple")));
     }
 
     #[test]
@@ -8715,10 +8717,10 @@ mod tests {
         );
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Product-to-Sum Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de producto a suma")));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Triple-Angle Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de ángulo triple")));
     }
 
     #[test]
@@ -8739,7 +8741,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Double-Angle Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de ángulo doble")));
     }
 
     #[test]
@@ -8760,7 +8762,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Double-Angle Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de ángulo doble")));
     }
 
     #[test]
@@ -8781,7 +8783,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Double-Angle Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de ángulo doble")));
     }
 
     #[test]
@@ -8802,7 +8804,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Double-Angle Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de ángulo doble")));
     }
 
     #[test]
@@ -8823,7 +8825,7 @@ mod tests {
             .any(|line| { line.starts_with("Strategy:") && line.contains("rewrite hyperbolics") }));
         assert!(lines
             .iter()
-            .any(|line| line.contains("Hyperbolic Double-Angle Identity")));
+            .any(|line| line.contains("Aplicar identidad hiperbólica de ángulo doble")));
     }
 
     #[test]

@@ -87,6 +87,9 @@ fn remove_redundant_post_calculus_rationalization(
             index += 1;
             continue;
         }
+        if redundant_terminal_cleanup_after_diff(&steps, index) {
+            break;
+        }
         filtered.push(steps[index].clone());
         index += 1;
     }
@@ -135,11 +138,14 @@ fn is_post_calculus_presentation_noise_step(step: &crate::step_model::Step) -> b
             | "Combine Constants"
             | "Combine Like Terms"
             | "Distributive Property"
+            | "Evaluate Numeric Power"
             | "Evaluate Logarithms"
             | "Expand"
+            | "Extract Common Multiplicative Factor"
             | "Identity Property of Multiplication"
             | "N-ary Mul Combine Powers"
             | "Normalize Negation in Product"
+            | "Product of Powers"
             | "Pull Constant From Fraction"
             | "Rationalize Binomial Denominator"
             | "Rationalize Denominator"
@@ -182,6 +188,16 @@ fn has_prior_symbolic_differentiation_anchor(
         .rev()
         .take_while(|step| step.rule_name.as_str() != "Present calculus result in compact form")
         .any(|step| step.rule_name.as_str() == "Symbolic Differentiation")
+}
+
+fn redundant_terminal_cleanup_after_diff(steps: &[crate::step_model::Step], index: usize) -> bool {
+    steps
+        .get(index)
+        .is_some_and(is_post_calculus_presentation_noise_step)
+        && steps[index..]
+            .iter()
+            .all(is_post_calculus_presentation_noise_step)
+        && has_prior_symbolic_differentiation_anchor(steps, index)
 }
 
 fn repair_step_chain(steps: &mut [crate::step_model::Step]) {
@@ -671,7 +687,9 @@ mod tests {
         let negation_normalized = ctx.num(6);
         let constants_combined = ctx.num(7);
         let powers_combined = ctx.num(8);
-        let follow_after = ctx.num(9);
+        let product_powers_combined = ctx.num(9);
+        let numeric_power_evaluated = ctx.num(10);
+        let follow_after = ctx.num(11);
 
         let mut diff = crate::step_model::Step::new_compact(
             "diff",
@@ -722,10 +740,24 @@ mod tests {
             powers_combined,
         );
         combine_powers.global_after = Some(powers_combined);
+        let mut product_powers = crate::step_model::Step::new_compact(
+            "product powers",
+            "Product of Powers",
+            powers_combined,
+            product_powers_combined,
+        );
+        product_powers.global_after = Some(product_powers_combined);
+        let mut evaluate_numeric_power = crate::step_model::Step::new_compact(
+            "evaluate numeric power",
+            "Evaluate Numeric Power",
+            product_powers_combined,
+            numeric_power_evaluated,
+        );
+        evaluate_numeric_power.global_after = Some(numeric_power_evaluated);
         let mut present = crate::step_model::Step::new_compact(
             "present",
             "Present calculus result in compact form",
-            powers_combined,
+            numeric_power_evaluated,
             compact,
         );
         present.global_after = Some(compact);
@@ -740,6 +772,8 @@ mod tests {
             normalize_negation,
             combine_constants,
             combine_powers,
+            product_powers,
+            evaluate_numeric_power,
             present,
             follow,
         ]);
@@ -1054,6 +1088,43 @@ mod tests {
                 "Present calculus result in compact form"
             ]
         );
+    }
+
+    #[test]
+    fn to_display_eval_steps_removes_terminal_post_diff_cleanup_noise() {
+        let mut ctx = Context::new();
+        let source = ctx.num(1);
+        let diffed = ctx.num(2);
+        let expanded = ctx.num(3);
+        let pulled = ctx.num(4);
+        let factored = ctx.num(5);
+
+        let diff = crate::step_model::Step::new_compact(
+            "diff",
+            "Symbolic Differentiation",
+            source,
+            diffed,
+        );
+        let expand = crate::step_model::Step::new_compact("expand", "Expand", diffed, expanded);
+        let pull = crate::step_model::Step::new_compact(
+            "pull constant",
+            "Pull Constant From Fraction",
+            expanded,
+            pulled,
+        );
+        let factor = crate::step_model::Step::new_compact(
+            "factor",
+            "Extract Common Multiplicative Factor",
+            pulled,
+            factored,
+        );
+
+        let out = super::to_display_eval_steps(vec![diff, expand, pull, factor]);
+        let rules = out
+            .iter()
+            .map(|step| step.rule_name.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(rules, vec!["Symbolic Differentiation"]);
     }
 
     #[test]

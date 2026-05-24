@@ -1,8 +1,109 @@
-use super::functions::{AbsDomainAddSubCancellationRule, EvaluateAbsRule};
+use super::functions::{
+    AbsDomainAddSubCancellationRule, AbsExpRule, AbsIdempotentRule, AbsOfEvenPowerRule,
+    AbsSqrtRule, AbsSumOfSquaresRule, EvaluateAbsRule, SimplifySqrtSquareRule,
+};
 use crate::rule::Rule;
-use cas_ast::Context;
+use cas_ast::{target_kind::TargetKind, Context};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+
+#[test]
+fn evaluate_abs_rule_targets_function_only() {
+    let targets = EvaluateAbsRule
+        .target_types()
+        .expect("EvaluateAbsRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Pow));
+}
+
+#[test]
+fn simplify_sqrt_square_rule_targets_function_and_pow_only() {
+    let targets = SimplifySqrtSquareRule
+        .target_types()
+        .expect("SimplifySqrtSquareRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(targets.contains(TargetKind::Pow));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+}
+
+#[test]
+fn abs_idempotent_rule_targets_function_only() {
+    let targets = AbsIdempotentRule
+        .target_types()
+        .expect("AbsIdempotentRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Pow));
+}
+
+#[test]
+fn abs_of_even_power_rule_targets_function_only() {
+    let targets = AbsOfEvenPowerRule
+        .target_types()
+        .expect("AbsOfEvenPowerRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Pow));
+}
+
+#[test]
+fn abs_sqrt_rule_targets_function_only() {
+    let targets = AbsSqrtRule
+        .target_types()
+        .expect("AbsSqrtRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Pow));
+}
+
+#[test]
+fn abs_exp_rule_targets_function_only() {
+    let targets = AbsExpRule
+        .target_types()
+        .expect("AbsExpRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Pow));
+}
+
+#[test]
+fn abs_sum_of_squares_rule_targets_function_only() {
+    let targets = AbsSumOfSquaresRule
+        .target_types()
+        .expect("AbsSumOfSquaresRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Pow));
+}
 
 #[test]
 fn test_evaluate_abs() {

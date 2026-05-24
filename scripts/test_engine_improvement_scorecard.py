@@ -239,16 +239,19 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                 "contextual_strict_fast",
                 "contextual_radical_fast",
                 "calculus_diff_contract",
+                "calculus_limit_compact_contract",
+                "calculus_limit_presimplify_contract",
                 "calculus_integrate_compact_contract",
                 "calculus_residual_matrix_smoke",
             ],
         )
         self.assertIn("contextual_radical_fast", fast_embedded_names)
         self.assertIn("calculus_diff_contract", fast_embedded_names)
+        self.assertIn("calculus_limit_compact_contract", fast_embedded_names)
+        self.assertIn("calculus_limit_presimplify_contract", fast_embedded_names)
         self.assertIn("calculus_integrate_compact_contract", fast_embedded_names)
         self.assertIn("calculus_residual_matrix_smoke", fast_embedded_names)
         self.assertNotIn("calculus_limit_contract", fast_names)
-        self.assertNotIn("calculus_limit_presimplify_contract", fast_names)
         self.assertNotIn("calculus_integrate_contract", fast_names)
         self.assertNotIn("calculus_diff_exhaustive_contract", fast_names)
         self.assertNotIn("calculus_integrate_exhaustive_contract", fast_names)
@@ -282,6 +285,10 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             "calculus",
         )
         self.assertEqual(MODULE.SUITES["calculus_limit_contract"].category, "calculus")
+        self.assertEqual(
+            MODULE.SUITES["calculus_limit_compact_contract"].category,
+            "calculus",
+        )
         self.assertEqual(
             MODULE.SUITES["calculus_limit_presimplify_contract"].category,
             "calculus",
@@ -322,6 +329,14 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             diff_exhaustive_command,
         )
         self.assertIn("--ignored", diff_exhaustive_command)
+        limit_compact_command = MODULE.SUITES[
+            "calculus_limit_compact_contract"
+        ].command
+        self.assertIn("limit_contract_tests", limit_compact_command)
+        self.assertIn(
+            "test_limit_sqrt_quadratic_over_noisy_scaled_linear_denominator",
+            limit_compact_command,
+        )
         integrate_exhaustive_command = MODULE.SUITES[
             "calculus_integrate_exhaustive_contract"
         ].command
@@ -340,7 +355,7 @@ class EngineImprovementScorecardTests(unittest.TestCase):
     def test_parse_calculus_residual_matrix_extracts_status_counts(self):
         metrics = MODULE.parse_calculus_residual_matrix(
             """
-{"status":"pass","total":247,"status_counts":{"pass":247,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"expected_required_condition_case_count":42,"distinct_expected_required_conditions":3,"expected_required_condition_counts":{"x + 1":10,"x + 2":20,"sin(x)":12}}
+{"status":"pass","total":247,"status_counts":{"pass":247,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"matrix_base_count":26,"matrix_wrapped_base_count":21,"matrix_standalone_base_count":5,"matrix_wrapper_count":12,"matrix_wrapped_case_count":242,"matrix_standalone_case_count":5,"matrix_expected_wrapped_case_count":252,"matrix_missing_wrapped_pair_count":10,"matrix_full_wrapper_base_count":20,"matrix_partial_wrapper_base_count":1,"matrix_largest_wrapper_gap_count":10,"matrix_wrapper_gap_examples":[{"base":"wide_gap","missing_count":10,"missing_wrappers":["w1","w2"]}],"expected_required_condition_case_count":42,"distinct_expected_required_conditions":3,"expected_required_condition_counts":{"x + 1":10,"x + 2":20,"sin(x)":12}}
 """
         )
 
@@ -357,6 +372,27 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(
             metrics["expected_required_condition_counts"],
             {"x + 1": 10, "x + 2": 20, "sin(x)": 12},
+        )
+        self.assertEqual(metrics["matrix_base_count"], 26)
+        self.assertEqual(metrics["matrix_wrapped_base_count"], 21)
+        self.assertEqual(metrics["matrix_standalone_base_count"], 5)
+        self.assertEqual(metrics["matrix_wrapper_count"], 12)
+        self.assertEqual(metrics["matrix_wrapped_case_count"], 242)
+        self.assertEqual(metrics["matrix_standalone_case_count"], 5)
+        self.assertEqual(metrics["matrix_expected_wrapped_case_count"], 252)
+        self.assertEqual(metrics["matrix_missing_wrapped_pair_count"], 10)
+        self.assertEqual(metrics["matrix_full_wrapper_base_count"], 20)
+        self.assertEqual(metrics["matrix_partial_wrapper_base_count"], 1)
+        self.assertEqual(metrics["matrix_largest_wrapper_gap_count"], 10)
+        self.assertEqual(
+            metrics["matrix_wrapper_gap_examples"],
+            [
+                {
+                    "base": "wide_gap",
+                    "missing_count": 10,
+                    "missing_wrappers": ["w1", "w2"],
+                }
+            ],
         )
         self.assertEqual(
             MODULE.suite_status("calculus_residual_matrix_smoke", metrics, 0),
@@ -579,6 +615,9 @@ didactic audit report written to docs/generated/DIDACTIC_STEP_QUALITY_AUDIT_REPO
         metrics = MODULE.parse_derive_didactic(
             """
 derive didactic audit summary: cases=403 flagged=82 no_web_substeps=82 no_web_steps=0 total_web_substeps=320 mean_step_count=1.06
+derive didactic audit timings: artifacts_seconds=41.250 cli_seconds=38.500 report_seconds=0.125 total_seconds=79.875 worker_count=4
+derive didactic audit family hotspots: artifacts=trig_expand:12.500,simplify:9.250 cli=trig_expand:11.750,simplify:8.125
+derive didactic audit case hotspots: artifacts=expand_trig_hot:1.500,log_hot:1.125 cli=expand_trig_hot:1.250,log_hot:1.000
 wrote docs/generated/DERIVE_DIDACTIC_AUDIT.md
 """
         )
@@ -590,6 +629,27 @@ wrote docs/generated/DERIVE_DIDACTIC_AUDIT.md
         self.assertEqual(metrics["no_web_steps"], 0)
         self.assertEqual(metrics["total_web_substeps"], 320)
         self.assertEqual(metrics["mean_step_count"], 1.06)
+        self.assertEqual(metrics["artifact_seconds"], 41.25)
+        self.assertEqual(metrics["cli_seconds"], 38.5)
+        self.assertEqual(metrics["report_seconds"], 0.125)
+        self.assertEqual(metrics["reported_total_seconds"], 79.875)
+        self.assertEqual(metrics["worker_count"], 4)
+        self.assertEqual(
+            metrics["artifact_family_hotspots"],
+            "trig_expand:12.500,simplify:9.250",
+        )
+        self.assertEqual(
+            metrics["cli_family_hotspots"],
+            "trig_expand:11.750,simplify:8.125",
+        )
+        self.assertEqual(
+            metrics["artifact_case_hotspots"],
+            "expand_trig_hot:1.500,log_hot:1.125",
+        )
+        self.assertEqual(
+            metrics["cli_case_hotspots"],
+            "expand_trig_hot:1.250,log_hot:1.000",
+        )
 
     def test_parse_corpus_extracts_complexity_and_orchestrator_profile_metrics(self):
         metrics = MODULE.parse_corpus(SAMPLE_CORPUS_OUTPUT)
@@ -1399,6 +1459,15 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "no_web_steps": 0,
                         "total_web_substeps": 320,
                         "mean_step_count": 1.06,
+                        "artifact_seconds": 41.25,
+                        "cli_seconds": 38.5,
+                        "report_seconds": 0.125,
+                        "reported_total_seconds": 79.875,
+                        "worker_count": 4,
+                        "artifact_family_hotspots": "trig_expand:12.500,simplify:9.250",
+                        "cli_family_hotspots": "trig_expand:11.750,simplify:8.125",
+                        "artifact_case_hotspots": "expand_trig_hot:1.500,log_hot:1.125",
+                        "cli_case_hotspots": "expand_trig_hot:1.250,log_hot:1.000",
                     },
                     "delta": {},
                 },
@@ -1412,6 +1481,16 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertIn("flagged_rate=20.3%", markdown)
         self.assertIn("total_web_substeps=320", markdown)
         self.assertIn("no_web_substeps=82", markdown)
+        self.assertIn("artifacts=41.25s cli=38.50s workers=4", markdown)
+        self.assertIn(
+            "Runtime family hotspots: artifacts=trig_expand:12.500,simplify:9.250",
+            markdown,
+        )
+        self.assertIn(
+            "Runtime case hotspots: artifacts=expand_trig_hot:1.500,log_hot:1.125",
+            markdown,
+        )
+        self.assertIn("top_artifact_family=trig_expand:12.500", markdown)
 
     def test_render_markdown_includes_calculus_diff_contract_signal(self):
         scorecard = {
@@ -1495,6 +1574,20 @@ root.direct_small_zero_composition.candidate.three_core_groups
                     },
                     "delta": {},
                 },
+                "calculus_limit_compact_contract": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.05,
+                    "metrics": {
+                        "cargo_status": "ok",
+                        "passed": 1,
+                        "failed": 0,
+                        "ignored": 0,
+                        "measured": 0,
+                        "filtered_out": 105,
+                        "timeouts": 0,
+                    },
+                    "delta": {},
+                },
                 "calculus_limit_presimplify_contract": {
                     "status": "pass",
                     "elapsed_seconds": 0.2,
@@ -1523,12 +1616,31 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "problem_case_count": 0,
                         "problem_cases": [],
                         "issue_kind_counts": {},
+                        "matrix_base_count": 26,
+                        "matrix_wrapped_base_count": 21,
+                        "matrix_standalone_base_count": 5,
+                        "matrix_wrapper_count": 12,
+                        "matrix_wrapped_case_count": 242,
+                        "matrix_standalone_case_count": 5,
+                        "matrix_expected_wrapped_case_count": 252,
+                        "matrix_missing_wrapped_pair_count": 10,
+                        "matrix_full_wrapper_base_count": 20,
+                        "matrix_partial_wrapper_base_count": 1,
+                        "matrix_largest_wrapper_gap_count": 10,
+                        "matrix_wrapper_gap_examples": [
+                            {
+                                "base": "wide_gap",
+                                "missing_count": 10,
+                                "missing_wrappers": ["w1", "w2"],
+                            }
+                        ],
                         "expected_required_condition_case_count": 42,
-                        "distinct_expected_required_conditions": 3,
+                        "distinct_expected_required_conditions": 4,
                         "expected_required_condition_counts": {
                             "x + 1": 10,
                             "x + 2": 20,
                             "sin(x)": 12,
+                            "x > 0": 24,
                         },
                     },
                     "delta": {},
@@ -1550,14 +1662,31 @@ root.direct_small_zero_composition.candidate.three_core_groups
             markdown,
         )
         self.assertIn("`limit`: passed=6 failed=0", markdown)
+        self.assertIn("`limit_compact`: passed=1 failed=0", markdown)
         self.assertIn("`limit_presimplify_safe`: passed=8 failed=0", markdown)
         self.assertIn(
             "`residual_matrix`: passed=247 failed=0 total=247 slow=0 timeouts=0 "
-            "conditioned_cases=42 distinct_conditions=3",
+            "total_bases=26 wrapped_bases=21 standalone_bases=5 wrappers=12 "
+            "wrapped_cases=242 standalone_cases=5 "
+            "conditioned_cases=42 distinct_conditions=4",
             markdown,
         )
         self.assertIn(
-            "`residual_matrix` sparse expected conditions: x + 1=10, sin(x)=12, x + 2=20",
+            "`residual_matrix` sparse expected conditions: x + 1=10, sin(x)=12, x + 2=20, x > 0=24",
+            markdown,
+        )
+        self.assertIn(
+            "`residual_matrix` domain expected conditions: x > 0=24",
+            markdown,
+        )
+        self.assertIn(
+            "`residual_matrix` wrapper coverage: expected_wrapped_cases=252 "
+            "missing_wrapped_pairs=10 full_wrapper_bases=20 "
+            "partial_wrapper_bases=1 largest_gap=10",
+            markdown,
+        )
+        self.assertIn(
+            "`residual_matrix` largest wrapper gaps: wide_gap missing=10",
             markdown,
         )
         self.assertNotIn("`residual_matrix` problem cases:", markdown)
@@ -1572,7 +1701,9 @@ root.direct_small_zero_composition.candidate.three_core_groups
         )
         self.assertIn(
             "| `calculus_residual_matrix_smoke` | `pass` | 3.20s | "
-            "passed=247 failed=0 total=247 conditioned=42 conditions=3 |",
+            "passed=247 failed=0 total=247 conditioned=42 conditions=4 "
+            "total_bases=26 wrapped_bases=21 standalone_bases=5 wrappers=12 "
+            "missing_wrapped_pairs=10 partial_wrapper_bases=1 |",
             markdown,
         )
 

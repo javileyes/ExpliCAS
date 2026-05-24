@@ -39,7 +39,7 @@ use cas_math::poly_compare::poly_eq;
 use cas_math::root_forms::extract_square_root_base;
 use cas_math::summation_support::{
     try_plan_finite_product_evaluation, try_plan_finite_sum_evaluation, ProductEvaluationKind,
-    SumEvaluationKind,
+    SumEvaluationKind, SumEvaluationPlan,
 };
 use cas_math::symbolic_integration_support::get_linear_coeffs;
 use cas_math::telescoping_dirichlet::try_dirichlet_kernel_identity;
@@ -1080,9 +1080,10 @@ fn maybe_hyperbolic_angle_sum_diff_zero_candidate(
     false
 }
 
-fn extract_cosh_power_shape(
+fn extract_hyperbolic_power_shape(
     ctx: &cas_ast::Context,
     expr: cas_ast::ExprId,
+    builtin: BuiltinFn,
 ) -> Option<(cas_ast::ExprId, i64)> {
     let positive_expr = match ctx.get(expr) {
         Expr::Neg(inner) => (-1, *inner),
@@ -1090,43 +1091,56 @@ fn extract_cosh_power_shape(
     }
     .1;
 
-    let mut cosh_arg = None;
-    let mut cosh_power = None;
+    let mut arg = None;
+    let mut power = None;
 
     for factor in cas_math::expr_nary::mul_leaves(ctx, positive_expr) {
         match ctx.get(factor) {
-            Expr::Function(fn_id, args)
-                if ctx.is_builtin(*fn_id, BuiltinFn::Cosh) && args.len() == 1 =>
-            {
-                if cosh_arg.is_some() {
+            Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, builtin) && args.len() == 1 => {
+                if arg.is_some() {
                     return None;
                 }
-                cosh_arg = Some(args[0]);
-                cosh_power = Some(1);
+                arg = Some(args[0]);
+                power = Some(1);
             }
             Expr::Pow(base, exponent) => {
                 let Expr::Function(fn_id, args) = ctx.get(*base) else {
                     continue;
                 };
-                if !ctx.is_builtin(*fn_id, BuiltinFn::Cosh) || args.len() != 1 {
+                if !ctx.is_builtin(*fn_id, builtin) || args.len() != 1 {
                     continue;
                 }
-                if cosh_arg.is_some() {
+                if arg.is_some() {
                     return None;
                 }
-                cosh_arg = Some(args[0]);
-                cosh_power = Some(extract_i64_integer(ctx, *exponent)?);
+                arg = Some(args[0]);
+                power = Some(extract_i64_integer(ctx, *exponent)?);
             }
             _ => {}
         }
     }
 
-    Some((cosh_arg?, cosh_power?))
+    Some((arg?, power?))
 }
 
-fn extract_signed_cosh_power(
+fn extract_cosh_power_shape(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, i64)> {
+    extract_hyperbolic_power_shape(ctx, expr, BuiltinFn::Cosh)
+}
+
+fn extract_sinh_power_shape(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, i64)> {
+    extract_hyperbolic_power_shape(ctx, expr, BuiltinFn::Sinh)
+}
+
+fn extract_signed_hyperbolic_power(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
+    builtin: BuiltinFn,
 ) -> Option<(i64, cas_ast::ExprId, cas_ast::ExprId, i64)> {
     let (sign, positive_expr) = match ctx.get(expr) {
         Expr::Neg(inner) => (-1, *inner),
@@ -1134,34 +1148,32 @@ fn extract_signed_cosh_power(
     };
 
     let mut coefficient_factors = smallvec::SmallVec::<[cas_ast::ExprId; 8]>::new();
-    let mut cosh_arg = None;
-    let mut cosh_power = None;
+    let mut arg = None;
+    let mut power = None;
 
     for factor in cas_math::expr_nary::mul_leaves(ctx, positive_expr) {
         match ctx.get(factor) {
-            Expr::Function(fn_id, args)
-                if ctx.is_builtin(*fn_id, BuiltinFn::Cosh) && args.len() == 1 =>
-            {
-                if cosh_arg.is_some() {
+            Expr::Function(fn_id, args) if ctx.is_builtin(*fn_id, builtin) && args.len() == 1 => {
+                if arg.is_some() {
                     return None;
                 }
-                cosh_arg = Some(args[0]);
-                cosh_power = Some(1);
+                arg = Some(args[0]);
+                power = Some(1);
             }
             Expr::Pow(base, exponent) => {
                 let Expr::Function(fn_id, args) = ctx.get(*base) else {
                     coefficient_factors.push(factor);
                     continue;
                 };
-                if !ctx.is_builtin(*fn_id, BuiltinFn::Cosh) || args.len() != 1 {
+                if !ctx.is_builtin(*fn_id, builtin) || args.len() != 1 {
                     coefficient_factors.push(factor);
                     continue;
                 }
-                if cosh_arg.is_some() {
+                if arg.is_some() {
                     return None;
                 }
-                cosh_arg = Some(args[0]);
-                cosh_power = Some(extract_i64_integer(ctx, *exponent)?);
+                arg = Some(args[0]);
+                power = Some(extract_i64_integer(ctx, *exponent)?);
             }
             _ => coefficient_factors.push(factor),
         }
@@ -1174,7 +1186,14 @@ fn extract_signed_cosh_power(
         build_balanced_mul(ctx, &coefficient_vec)
     };
 
-    Some((sign, coefficient, cosh_arg?, cosh_power?))
+    Some((sign, coefficient, arg?, power?))
+}
+
+fn extract_signed_cosh_power(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(i64, cas_ast::ExprId, cas_ast::ExprId, i64)> {
+    extract_signed_hyperbolic_power(ctx, expr, BuiltinFn::Cosh)
 }
 
 fn apply_sign_to_expr(
@@ -1198,7 +1217,9 @@ fn maybe_hyperbolic_pythagorean_factor_zero_candidate(
     let mut seen_cubic = Vec::new();
 
     for (term_expr, _sign) in view.terms {
-        if let Some((arg, power)) = extract_cosh_power_shape(ctx, term_expr) {
+        if let Some((arg, power)) = extract_cosh_power_shape(ctx, term_expr)
+            .or_else(|| extract_sinh_power_shape(ctx, term_expr))
+        {
             match power {
                 1 => seen_linear.push(arg),
                 3 => seen_cubic.push(arg),
@@ -1849,7 +1870,9 @@ enum HyperbolicPythagoreanFactorCancellationMode {
         factorized: cas_ast::ExprId,
         rewritten: cas_ast::ExprId,
     },
-    AlreadyFactored,
+    AlreadyFactored {
+        identity_desc: &'static str,
+    },
 }
 
 fn try_match_odd_half_power_cancellation_side(
@@ -2504,12 +2527,12 @@ fn log_cancellation_component_matches(
 ) -> bool {
     fast_log_term
         .is_some_and(|fast_term| compare_expr(ctx, fast_term, component_expr) == Ordering::Equal)
-        || exprs_match_after_default_simplify(ctx, normalized_term_expr, component_expr)
         || log_terms_match_up_to_abs_subject_for_cancellation(
             ctx,
             normalized_term_expr,
             component_expr,
         )
+        || exprs_match_after_default_simplify(ctx, normalized_term_expr, component_expr)
 }
 
 fn build_signed_add_expr(
@@ -3889,8 +3912,64 @@ fn try_rewrite_hyperbolic_angle_sum_diff_for_cancellation(
         }
     }
 
+    try_expand_direct_hyperbolic_angle_sum_diff_for_cancellation(ctx, expr)
+}
+
+fn is_direct_hyperbolic_angle_sum_diff_call(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return false;
+    };
+    if args.len() != 1
+        || !(ctx.is_builtin(*fn_id, BuiltinFn::Sinh) || ctx.is_builtin(*fn_id, BuiltinFn::Cosh))
+    {
+        return false;
+    }
+
+    matches!(ctx.get(args[0]), Expr::Add(_, _) | Expr::Sub(_, _))
+}
+
+fn try_expand_direct_hyperbolic_angle_sum_diff_call(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    if !is_direct_hyperbolic_angle_sum_diff_call(ctx, expr) {
+        return None;
+    }
+
     let rewritten = cas_math::expand_ops::expand(ctx, expr);
     (rewritten != expr).then_some(rewritten)
+}
+
+fn try_expand_direct_hyperbolic_angle_sum_diff_for_cancellation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    if let Some(rewritten) = try_expand_direct_hyperbolic_angle_sum_diff_call(ctx, expr) {
+        return Some(rewritten);
+    }
+
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let rewritten = try_expand_direct_hyperbolic_angle_sum_diff_call(ctx, inner)?;
+            Some(ctx.add(Expr::Neg(rewritten)))
+        }
+        Expr::Mul(lhs, rhs) => {
+            if let Some(rewritten_lhs) = try_expand_direct_hyperbolic_angle_sum_diff_call(ctx, lhs)
+            {
+                return Some(smart_mul(ctx, rewritten_lhs, rhs));
+            }
+            if let Some(rewritten_rhs) = try_expand_direct_hyperbolic_angle_sum_diff_call(ctx, rhs)
+            {
+                return Some(smart_mul(ctx, lhs, rewritten_rhs));
+            }
+            None
+        }
+        Expr::Div(num, den) => {
+            let rewritten_num = try_expand_direct_hyperbolic_angle_sum_diff_call(ctx, num)?;
+            Some(ctx.add(Expr::Div(rewritten_num, den)))
+        }
+        _ => None,
+    }
 }
 
 fn extract_hyperbolic_linear_multiple_term_for_fast_recursive_identity(
@@ -11899,6 +11978,10 @@ fn small_zero_additive_combination_supported_partition_core(
         && try_build_small_structural_poly_zero_core_rewrite(ctx, candidate).is_some();
     let has_direct_zero_identity = has_direct_small_zero_identity_candidate(ctx, candidate)
         && try_build_exact_zero_identity_rewrite_direct_impl(ctx, candidate, false).is_some();
+    let has_log_zero_identity = has_log
+        && (maybe_log_product_power_zero_candidate(ctx, candidate)
+            || maybe_log_abs_mul_div_zero_candidate(ctx, candidate))
+        && try_build_exact_zero_identity_rewrite_direct_impl(ctx, candidate, false).is_some();
     let has_top_level_division_with_radical_denominator = terms.iter().any(|(term_expr, _)| {
         let Some((_, denominator)) = as_div(ctx, *term_expr) else {
             return false;
@@ -11942,6 +12025,7 @@ fn small_zero_additive_combination_supported_partition_core(
         || has_solve_prep
         || has_integrate_prep
         || has_structural_poly_zero
+        || has_log_zero_identity
         || has_direct_zero_identity)
         && (!has_trig_or_hyper || !has_division || has_integrate_prep || has_direct_zero_identity)
 }
@@ -12207,10 +12291,6 @@ pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
-    if !maybe_direct_small_zero_additive_combination_candidate(ctx, expr) {
-        return None;
-    }
-
     let build_combined_rewrite = |ctx: &mut cas_ast::Context,
                                   first_expr: cas_ast::ExprId,
                                   second_expr: cas_ast::ExprId| {
@@ -12267,6 +12347,10 @@ pub(crate) fn try_build_direct_small_zero_additive_combination_rewrite(
         if let Some(rewrite) = build_combined_rewrite(ctx, *lhs, *rhs) {
             return Some(rewrite);
         }
+    }
+
+    if !maybe_direct_small_zero_additive_combination_candidate(ctx, expr) {
+        return None;
     }
 
     let terms = direct_small_zero_additive_combination_terms(ctx, expr);
@@ -12484,6 +12568,49 @@ fn extract_sinh_sq_multiplier(
     })
 }
 
+fn extract_cosh_sq_multiplier(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    arg: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let mut coefficient_factors = smallvec::SmallVec::<[cas_ast::ExprId; 8]>::new();
+    let mut seen_cosh_sq = false;
+
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        match ctx.get(factor) {
+            Expr::Pow(base, exponent) => {
+                let Expr::Function(fn_id, args) = ctx.get(*base) else {
+                    coefficient_factors.push(factor);
+                    continue;
+                };
+                if !ctx.is_builtin(*fn_id, BuiltinFn::Cosh)
+                    || args.len() != 1
+                    || compare_expr(ctx, args[0], arg) != Ordering::Equal
+                    || extract_i64_integer(ctx, *exponent)? != 2
+                {
+                    coefficient_factors.push(factor);
+                    continue;
+                }
+                if seen_cosh_sq {
+                    return None;
+                }
+                seen_cosh_sq = true;
+            }
+            _ => coefficient_factors.push(factor),
+        }
+    }
+
+    if !seen_cosh_sq {
+        return None;
+    }
+
+    Some(if coefficient_factors.is_empty() {
+        ctx.num(1)
+    } else {
+        build_balanced_mul(ctx, &coefficient_factors.into_vec())
+    })
+}
+
 fn match_sinh_sq_plus_one_multiple(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -12511,17 +12638,55 @@ fn match_sinh_sq_plus_one_multiple(
     None
 }
 
+fn match_cosh_sq_minus_one_multiple(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    arg: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    for candidate in [expr, cas_math::canonical_forms::normalize_core(ctx, expr)] {
+        let view = AddView::from_expr(ctx, candidate);
+        if view.terms.len() != 2 {
+            continue;
+        }
+
+        for squared_index in 0..2 {
+            let const_index = 1 - squared_index;
+            let squared_term = view.terms[squared_index];
+            let const_term = view.terms[const_index];
+            if squared_term.1 != Sign::Pos || const_term.1 != Sign::Neg {
+                continue;
+            }
+            let Some(coeff) = extract_cosh_sq_multiplier(ctx, squared_term.0, arg) else {
+                continue;
+            };
+            if exprs_match_for_cancellation(ctx, coeff, const_term.0) {
+                return Some(coeff);
+            }
+        }
+    }
+
+    None
+}
+
 fn extract_factored_hyperbolic_linear_term(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
-) -> Option<(i64, cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId)> {
+) -> Option<(
+    i64,
+    cas_ast::ExprId,
+    cas_ast::ExprId,
+    cas_ast::ExprId,
+    BuiltinFn,
+    &'static str,
+)> {
     let (sign, positive_expr) = match ctx.get(expr) {
         Expr::Neg(inner) => (-1, *inner),
         _ => (1, expr),
     };
 
     let mut outer_coeff_factors = smallvec::SmallVec::<[cas_ast::ExprId; 8]>::new();
-    let mut cosh_arg = None;
+    let mut hyperbolic_arg = None;
+    let mut outer_builtin = None;
     let mut additive_factor = None;
 
     for factor in cas_math::expr_nary::mul_leaves(ctx, positive_expr) {
@@ -12529,10 +12694,20 @@ fn extract_factored_hyperbolic_linear_term(
             Expr::Function(fn_id, args)
                 if ctx.is_builtin(*fn_id, BuiltinFn::Cosh) && args.len() == 1 =>
             {
-                if cosh_arg.is_some() {
+                if hyperbolic_arg.is_some() {
                     return None;
                 }
-                cosh_arg = Some(args[0]);
+                hyperbolic_arg = Some(args[0]);
+                outer_builtin = Some(BuiltinFn::Cosh);
+            }
+            Expr::Function(fn_id, args)
+                if ctx.is_builtin(*fn_id, BuiltinFn::Sinh) && args.len() == 1 =>
+            {
+                if hyperbolic_arg.is_some() {
+                    return None;
+                }
+                hyperbolic_arg = Some(args[0]);
+                outer_builtin = Some(BuiltinFn::Sinh);
             }
             Expr::Add(_, _) | Expr::Sub(_, _) => {
                 if additive_factor.is_some() {
@@ -12544,9 +12719,20 @@ fn extract_factored_hyperbolic_linear_term(
         }
     }
 
-    let arg = cosh_arg?;
+    let arg = hyperbolic_arg?;
+    let outer_builtin = outer_builtin?;
     let additive = additive_factor?;
-    let inner_coeff = match_sinh_sq_plus_one_multiple(ctx, additive, arg)?;
+    let (inner_coeff, identity_desc) = match outer_builtin {
+        BuiltinFn::Cosh => (
+            match_sinh_sq_plus_one_multiple(ctx, additive, arg)?,
+            "Usar sinh(u)^2 + 1 = cosh(u)^2",
+        ),
+        BuiltinFn::Sinh => (
+            match_cosh_sq_minus_one_multiple(ctx, additive, arg)?,
+            "Usar cosh(u)^2 - 1 = sinh(u)^2",
+        ),
+        _ => return None,
+    };
     let outer_coeff = if outer_coeff_factors.is_empty() {
         ctx.num(1)
     } else {
@@ -12558,6 +12744,8 @@ fn extract_factored_hyperbolic_linear_term(
         smart_mul(ctx, outer_coeff, inner_coeff),
         arg,
         positive_expr,
+        outer_builtin,
+        identity_desc,
     ))
 }
 
@@ -12566,10 +12754,16 @@ fn try_rewrite_factored_hyperbolic_pythagorean_for_cancellation(
     linear_expr: cas_ast::ExprId,
     cubic_expr: cas_ast::ExprId,
 ) -> Option<HyperbolicPythagoreanFactorCancellationMatch> {
-    let (linear_sign, linear_coeff, linear_arg, linear_before_positive) =
-        extract_factored_hyperbolic_linear_term(ctx, linear_expr)?;
+    let (
+        linear_sign,
+        linear_coeff,
+        linear_arg,
+        linear_before_positive,
+        outer_builtin,
+        identity_desc,
+    ) = extract_factored_hyperbolic_linear_term(ctx, linear_expr)?;
     let (cubic_sign, cubic_coeff, cubic_arg, cubic_power) =
-        extract_signed_cosh_power(ctx, cubic_expr)?;
+        extract_signed_hyperbolic_power(ctx, cubic_expr, outer_builtin)?;
 
     if cubic_power != 3
         || linear_sign != cubic_sign
@@ -12579,15 +12773,15 @@ fn try_rewrite_factored_hyperbolic_pythagorean_for_cancellation(
         return None;
     }
 
-    let cosh_arg = ctx.call_builtin(BuiltinFn::Cosh, vec![linear_arg]);
+    let hyperbolic_arg = ctx.call_builtin(outer_builtin, vec![linear_arg]);
     let three = ctx.num(3);
-    let cosh_cubed = ctx.add(Expr::Pow(cosh_arg, three));
-    let rewritten_positive = smart_mul(ctx, cubic_coeff, cosh_cubed);
+    let hyperbolic_cubed = ctx.add(Expr::Pow(hyperbolic_arg, three));
+    let rewritten_positive = smart_mul(ctx, cubic_coeff, hyperbolic_cubed);
 
     Some(HyperbolicPythagoreanFactorCancellationMatch {
         local_before: apply_sign_to_expr(ctx, linear_sign, linear_before_positive),
         local_after: apply_sign_to_expr(ctx, cubic_sign, rewritten_positive),
-        mode: HyperbolicPythagoreanFactorCancellationMode::AlreadyFactored,
+        mode: HyperbolicPythagoreanFactorCancellationMode::AlreadyFactored { identity_desc },
     })
 }
 
@@ -13640,7 +13834,7 @@ fn build_hyperbolic_pythagorean_factor_zero_rewrite(
 
     let rewrite = Rewrite::with_local(
         ctx.num(0),
-        "Factor out cosh and apply hyperbolic Pythagorean identity",
+        "Apply hyperbolic Pythagorean identity",
         rewrite_match.local_before,
         rewrite_match.local_after,
     );
@@ -13674,9 +13868,9 @@ fn build_hyperbolic_pythagorean_factor_zero_rewrite(
                     ],
                 )
         }
-        HyperbolicPythagoreanFactorCancellationMode::AlreadyFactored => rewrite
+        HyperbolicPythagoreanFactorCancellationMode::AlreadyFactored { identity_desc } => rewrite
             .substep(
-                "Usar sinh(u)^2 + 1 = cosh(u)^2",
+                identity_desc,
                 vec![format!("Así se obtiene {focus_after_display}.")],
             )
             .substep(
@@ -13704,7 +13898,7 @@ fn build_hyperbolic_pythagorean_factor_root_zero_rewrite(
 
     let rewrite = Rewrite::with_local(
         ctx.num(0),
-        "Factor out cosh and apply hyperbolic Pythagorean identity",
+        "Apply hyperbolic Pythagorean identity",
         whole_expr,
         ctx.num(0),
     );
@@ -13738,9 +13932,9 @@ fn build_hyperbolic_pythagorean_factor_root_zero_rewrite(
                     ],
                 )
         }
-        HyperbolicPythagoreanFactorCancellationMode::AlreadyFactored => rewrite
+        HyperbolicPythagoreanFactorCancellationMode::AlreadyFactored { identity_desc } => rewrite
             .substep(
-                "Usar sinh(u)^2 + 1 = cosh(u)^2",
+                identity_desc,
                 vec![format!("Así se obtiene {focus_after_display}.")],
             )
             .substep(
@@ -14106,6 +14300,18 @@ define_rule!(
         None
     }
 );
+
+pub(crate) fn try_build_hyperbolic_pythagorean_factor_root_zero_rewrite(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    if !maybe_hyperbolic_pythagorean_factor_zero_candidate(ctx, expr) {
+        return None;
+    }
+
+    let parent_ctx = ParentContext::root();
+    ExpandHyperbolicPythagoreanFactorToEnableCancellationRule.apply(ctx, expr, &parent_ctx)
+}
 
 define_rule!(
     ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
@@ -14960,6 +15166,21 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
     }
 
     if let Some((lhs_core, rhs_core)) = two_term_cores {
+        if expr_contains_named_function_for_profile(ctx, lhs_core, &["sum"])
+            || expr_contains_named_function_for_profile(ctx, rhs_core, &["sum"])
+        {
+            if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+                profiling,
+                "rule.direct_identity.try.two_term_finite_sum",
+                &expr_sample,
+                || try_build_direct_finite_sum_equivalence_rewrite(ctx, lhs_core, rhs_core),
+            ) {
+                return Some(rewrite);
+            }
+        }
+    }
+
+    if let Some((lhs_core, rhs_core)) = two_term_cores {
         let has_direct_trig_core = has_direct_trig_builtin_on_either_side(ctx, lhs_core, rhs_core);
         let maybe_tanh_exp_pair =
             maybe_two_term_tanh_exp_equivalence_candidate(ctx, lhs_core, rhs_core);
@@ -15368,6 +15589,18 @@ fn try_build_exact_zero_identity_rewrite_direct_impl(
             &expr_sample,
             || {
                 try_build_direct_reciprocal_half_power_shared_denominator_rewrite(
+                    ctx, lhs_core, rhs_core,
+                )
+            },
+        ) {
+            return Some(rewrite);
+        }
+        if let Some(rewrite) = run_profiled_exact_zero_direct_identity_probe(
+            profiling,
+            "rule.direct_identity.try.two_term_scaled_reciprocal_half_power_shared_denominator",
+            &expr_sample,
+            || {
+                try_build_direct_scaled_reciprocal_half_power_shared_denominator_rewrite(
                     ctx, lhs_core, rhs_core,
                 )
             },
@@ -15944,6 +16177,78 @@ fn build_common_scale_exact_zero_rewrite(
     rewrite
 }
 
+fn positive_assumption_subject_for_abs_like_expr(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    if let Some(inner) = abs_argument(ctx, expr) {
+        return Some(inner);
+    }
+
+    let radicand = extract_square_root_base(ctx, expr)?;
+    match ctx.get(radicand).clone() {
+        Expr::Pow(base, exponent) if extract_i64_integer(ctx, exponent) == Some(2) => Some(base),
+        Expr::Mul(lhs, rhs) if exprs_match_for_cancellation(ctx, lhs, rhs) => Some(lhs),
+        _ => None,
+    }
+}
+
+fn positive_assumption_subject_for_abs_like_core_pair(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    if let Some(subject) = positive_assumption_subject_for_abs_like_expr(ctx, lhs_core) {
+        if exprs_match_for_cancellation(ctx, subject, rhs_core) {
+            return Some(subject);
+        }
+    }
+
+    if let Some(subject) = positive_assumption_subject_for_abs_like_expr(ctx, rhs_core) {
+        if exprs_match_for_cancellation(ctx, subject, lhs_core) {
+            return Some(subject);
+        }
+    }
+
+    None
+}
+
+pub(crate) fn common_scale_abs_like_positive_assumption_event(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    parent_ctx: &ParentContext,
+) -> Option<crate::AssumptionEvent> {
+    if !matches!(parent_ctx.domain_mode(), crate::DomainMode::Assume) {
+        return None;
+    }
+
+    let (_common_factor, lhs_core, rhs_core) =
+        extract_two_term_common_scale_difference_cores(ctx, expr)?;
+    let subject = positive_assumption_subject_for_abs_like_core_pair(ctx, lhs_core, rhs_core)?;
+    if crate::helpers::prove_positive(ctx, subject, parent_ctx.value_domain())
+        == crate::Proof::Proven
+    {
+        return None;
+    }
+
+    Some(crate::AssumptionEvent::positive_assumed(ctx, subject))
+}
+
+fn try_build_exact_zero_common_scaled_difference_rewrite_with_context(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+    parent_ctx: &ParentContext,
+) -> Option<Rewrite> {
+    let mut rewrite = try_build_exact_zero_common_scaled_difference_rewrite(ctx, expr)?;
+    if rewrite.assumption_events.is_empty() {
+        if let Some(event) = common_scale_abs_like_positive_assumption_event(ctx, expr, parent_ctx)
+        {
+            rewrite = rewrite.assume(event);
+        }
+    }
+    Some(rewrite)
+}
+
 fn strip_single_additive_zero_term(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
@@ -16178,7 +16483,7 @@ pub(crate) fn classify_exact_zero_common_scale_route_profile_family(
     None
 }
 
-fn try_build_exact_zero_common_scaled_difference_rewrite(
+pub(crate) fn try_build_exact_zero_common_scaled_difference_rewrite(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<Rewrite> {
@@ -16198,6 +16503,16 @@ fn try_build_exact_zero_common_scaled_difference_rewrite(
     }
 
     if let Some((lhs_core, rhs_core)) = extract_two_term_core_difference(ctx, expr) {
+        if let Some(rewrite) =
+            try_build_direct_scaled_reciprocal_half_power_shared_denominator_rewrite(
+                ctx, lhs_core, rhs_core,
+            )
+        {
+            profile_route(
+                "rule.common_scale_zero.route.scaled_reciprocal_half_power_shared_denominator",
+            );
+            return Some(rewrite);
+        }
         if let Some(rewrite) =
             try_build_direct_scaled_reciprocal_half_power_over_base_rewrite(ctx, lhs_core, rhs_core)
         {
@@ -16732,22 +17047,74 @@ fn try_build_two_term_core_equivalence_rewrite(
     try_build_direct_core_equivalence_rewrite(ctx, lhs_core, rhs_core)
 }
 
+fn strip_trivial_one_product_factors_for_core_difference(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() <= 1 {
+        return expr;
+    }
+
+    let retained: Vec<_> = factors
+        .iter()
+        .copied()
+        .filter(|factor| !is_one_expr(ctx, *factor))
+        .collect();
+    if retained.len() == factors.len() {
+        expr
+    } else {
+        build_mul_expr_from_factors(ctx, &retained)
+    }
+}
+
+fn normalize_core_difference_term(
+    ctx: &mut cas_ast::Context,
+    term_expr: cas_ast::ExprId,
+    term_sign: Sign,
+) -> (cas_ast::ExprId, Sign) {
+    let (term_expr, term_sign) =
+        normalize_signed_add_term_for_fast_match(ctx, term_expr, term_sign);
+    (
+        strip_trivial_one_product_factors_for_core_difference(ctx, term_expr),
+        term_sign,
+    )
+}
+
 pub(crate) fn extract_two_term_core_difference(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
     match ctx.get(expr).clone() {
-        Expr::Sub(lhs, rhs) => Some((lhs, rhs)),
+        Expr::Sub(lhs, rhs) => {
+            let (lhs_expr, lhs_sign) = normalize_core_difference_term(ctx, lhs, Sign::Pos);
+            let (rhs_expr, rhs_sign) = normalize_core_difference_term(ctx, rhs, Sign::Pos);
+            Some((
+                apply_sign_to_expr(ctx, sign_to_i64(lhs_sign), lhs_expr),
+                apply_sign_to_expr(ctx, sign_to_i64(rhs_sign), rhs_expr),
+            ))
+        }
         Expr::Add(lhs, rhs) => match ctx.get(rhs).clone() {
-            Expr::Neg(inner) => Some((lhs, inner)),
+            Expr::Neg(inner) => {
+                let (lhs_expr, lhs_sign) = normalize_core_difference_term(ctx, lhs, Sign::Pos);
+                let (rhs_expr, rhs_sign) = normalize_core_difference_term(ctx, inner, Sign::Pos);
+                Some((
+                    apply_sign_to_expr(ctx, sign_to_i64(lhs_sign), lhs_expr),
+                    apply_sign_to_expr(ctx, sign_to_i64(rhs_sign), rhs_expr),
+                ))
+            }
             _ => {
                 let terms = AddView::from_expr(ctx, expr).terms;
                 if terms.len() != 2 {
                     return None;
                 }
+                let (first_expr, first_sign) =
+                    normalize_core_difference_term(ctx, terms[0].0, terms[0].1);
+                let (second_expr, second_sign) =
+                    normalize_core_difference_term(ctx, terms[1].0, terms[1].1);
                 Some((
-                    apply_sign_to_expr(ctx, sign_to_i64(terms[0].1), terms[0].0),
-                    apply_sign_to_expr(ctx, sign_to_i64(terms[1].1).checked_neg()?, terms[1].0),
+                    apply_sign_to_expr(ctx, sign_to_i64(first_sign), first_expr),
+                    apply_sign_to_expr(ctx, sign_to_i64(second_sign).checked_neg()?, second_expr),
                 ))
             }
         },
@@ -16756,9 +17123,13 @@ pub(crate) fn extract_two_term_core_difference(
             if terms.len() != 2 {
                 return None;
             }
+            let (first_expr, first_sign) =
+                normalize_core_difference_term(ctx, terms[0].0, terms[0].1);
+            let (second_expr, second_sign) =
+                normalize_core_difference_term(ctx, terms[1].0, terms[1].1);
             Some((
-                apply_sign_to_expr(ctx, sign_to_i64(terms[0].1), terms[0].0),
-                apply_sign_to_expr(ctx, sign_to_i64(terms[1].1).checked_neg()?, terms[1].0),
+                apply_sign_to_expr(ctx, sign_to_i64(first_sign), first_expr),
+                apply_sign_to_expr(ctx, sign_to_i64(second_sign).checked_neg()?, second_expr),
             ))
         }
     }
@@ -16984,28 +17355,176 @@ fn try_build_direct_finite_product_equivalence_rewrite(
     None
 }
 
+fn finite_sum_evaluation_description(kind: &SumEvaluationKind) -> &'static str {
+    match kind {
+        SumEvaluationKind::Telescoping => "Finite Telescoping Sum",
+        SumEvaluationKind::SumOfFirstIntegers
+        | SumEvaluationKind::SumOfSquares
+        | SumEvaluationKind::SumOfCubes
+        | SumEvaluationKind::SumOfConstant
+        | SumEvaluationKind::GeometricPower => "Finite Sum Closed Form",
+        SumEvaluationKind::FiniteDirect { .. } => "Finite Sum",
+    }
+}
+
+fn try_plan_scaled_finite_sum_evaluation(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, SumEvaluationPlan)> {
+    if let Some(plan) = try_plan_finite_sum_evaluation(ctx, expr, 1000) {
+        let one = ctx.num(1);
+        return Some((one, plan));
+    }
+
+    let view = MulView::from_expr(ctx, expr);
+    if view.factors.len() < 2 {
+        return None;
+    }
+
+    for (index, factor) in view.factors.iter().copied().enumerate() {
+        let Some(plan) = try_plan_finite_sum_evaluation(ctx, factor, 1000) else {
+            continue;
+        };
+
+        let scale_factors: Vec<_> = view
+            .factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(factor_index, factor)| (factor_index != index).then_some(factor))
+            .collect();
+        return Some((build_mul_expr_from_factors(ctx, &scale_factors), plan));
+    }
+
+    None
+}
+
+fn two_term_fraction_sum_parts_for_finite_evaluation_match(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let expr = strip_trivial_one_product_factors_for_core_difference(ctx, expr);
+    let terms = AddView::from_expr(ctx, expr).terms;
+    if terms.len() != 2 {
+        return None;
+    }
+
+    let (first_num, first_den) = as_div(ctx, terms[0].0)?;
+    let (second_num, second_den) = as_div(ctx, terms[1].0)?;
+    let first_cross = smart_mul(ctx, first_num, second_den);
+    let second_cross = smart_mul(ctx, second_num, first_den);
+    let numerator_terms = [(first_cross, terms[0].1), (second_cross, terms[1].1)];
+    let numerator = build_signed_sum_expr(ctx, &numerator_terms);
+    let denominator = smart_mul(ctx, first_den, second_den);
+    Some((numerator, denominator))
+}
+
+fn finite_evaluation_fraction_parts_for_match(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let mut numerator_factors = Vec::new();
+    let mut denominator_factors = Vec::new();
+
+    for factor in flatten_mul_chain(ctx, expr) {
+        if is_one_expr(ctx, factor) {
+            continue;
+        }
+        if let Some((num, den)) = as_div(ctx, factor) {
+            if !is_one_expr(ctx, num) {
+                numerator_factors.push(num);
+            }
+            denominator_factors.push(den);
+        } else {
+            numerator_factors.push(factor);
+        }
+    }
+
+    if denominator_factors.is_empty() {
+        return None;
+    }
+
+    let denominator = build_mul_expr_from_factors(ctx, &denominator_factors);
+    for (index, factor) in numerator_factors.iter().copied().enumerate() {
+        let Some((inner_num, inner_den)) =
+            two_term_fraction_sum_parts_for_finite_evaluation_match(ctx, factor)
+        else {
+            continue;
+        };
+
+        let adjusted_numerator_factors: Vec<_> = numerator_factors
+            .iter()
+            .copied()
+            .enumerate()
+            .filter_map(|(factor_index, factor)| (factor_index != index).then_some(factor))
+            .chain(std::iter::once(inner_num))
+            .collect();
+        let numerator = build_mul_expr_from_factors(ctx, &adjusted_numerator_factors);
+        return Some((numerator, smart_mul(ctx, denominator, inner_den)));
+    }
+
+    let numerator = build_mul_expr_from_factors(ctx, &numerator_factors);
+    if let Some((inner_num, inner_den)) =
+        two_term_fraction_sum_parts_for_finite_evaluation_match(ctx, numerator)
+    {
+        return Some((inner_num, smart_mul(ctx, denominator, inner_den)));
+    }
+
+    Some((numerator, denominator))
+}
+
+fn finite_evaluation_fraction_parts_match(
+    ctx: &mut cas_ast::Context,
+    lhs: cas_ast::ExprId,
+    rhs: cas_ast::ExprId,
+) -> bool {
+    let Some((lhs_num, lhs_den)) = finite_evaluation_fraction_parts_for_match(ctx, lhs) else {
+        return false;
+    };
+    let Some((rhs_num, rhs_den)) = finite_evaluation_fraction_parts_for_match(ctx, rhs) else {
+        return false;
+    };
+
+    let lhs_cross = smart_mul(ctx, lhs_num, rhs_den);
+    let rhs_cross = smart_mul(ctx, rhs_num, lhs_den);
+    exprs_match_for_cancellation(ctx, lhs_cross, rhs_cross)
+        || poly_eq(ctx, lhs_cross, rhs_cross)
+        || exprs_match_after_default_simplify(ctx, lhs_cross, rhs_cross)
+}
+
+fn finite_evaluation_candidate_matches_target(
+    ctx: &mut cas_ast::Context,
+    candidate: cas_ast::ExprId,
+    target: cas_ast::ExprId,
+) -> bool {
+    if exprs_match_for_cancellation(ctx, candidate, target)
+        || exprs_match_after_default_simplify(ctx, candidate, target)
+    {
+        return true;
+    }
+
+    if finite_evaluation_fraction_parts_match(ctx, candidate, target) {
+        return true;
+    }
+
+    let residual = ctx.add(Expr::Sub(candidate, target));
+    try_build_exact_zero_identity_rewrite_direct_impl(ctx, residual, false).is_some()
+        || try_build_exact_zero_common_scaled_difference_rewrite(ctx, residual).is_some()
+}
+
 fn try_build_direct_finite_sum_equivalence_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
     rhs_core: cas_ast::ExprId,
 ) -> Option<Rewrite> {
     for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
-        let Some(plan) = try_plan_finite_sum_evaluation(ctx, source, 1000) else {
+        let Some((scale, plan)) = try_plan_scaled_finite_sum_evaluation(ctx, source) else {
             continue;
         };
+        let candidate = smart_mul(ctx, scale, plan.candidate);
 
-        if exprs_match_for_cancellation(ctx, plan.candidate, target)
-            || exprs_match_after_default_simplify(ctx, plan.candidate, target)
-        {
-            let description = match plan.kind {
-                SumEvaluationKind::Telescoping => "Finite Telescoping Sum",
-                SumEvaluationKind::SumOfFirstIntegers
-                | SumEvaluationKind::SumOfSquares
-                | SumEvaluationKind::SumOfCubes
-                | SumEvaluationKind::SumOfConstant
-                | SumEvaluationKind::GeometricPower => "Finite Sum Closed Form",
-                SumEvaluationKind::FiniteDirect { .. } => "Finite Sum",
-            };
+        if finite_evaluation_candidate_matches_target(ctx, candidate, target) {
+            let description = finite_sum_evaluation_description(&plan.kind);
             return Some(Rewrite::with_local(ctx.num(0), description, source, target));
         }
     }
@@ -20379,6 +20898,15 @@ fn sqrt_like_half_power_base(
     (exponent == BigRational::new(1.into(), 2.into())).then_some(*base)
 }
 
+fn scaled_reciprocal_sqrt_quotient_parts(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    let (numerator, denominator) = as_div(ctx, expr)?;
+    let base = sqrt_like_half_power_base(ctx, denominator)?;
+    Some((base, numerator))
+}
+
 fn split_any_sqrt_factor_from_product(
     ctx: &mut cas_ast::Context,
     product: cas_ast::ExprId,
@@ -20417,21 +20945,84 @@ fn split_matching_factor_from_product(
 
     let view = MulView::from_expr(ctx, product);
     for (index, factor) in view.factors.iter().copied().enumerate() {
-        if !exprs_match_for_cancellation(ctx, factor, expected_factor) {
+        let factor_scale = if exprs_match_for_cancellation(ctx, factor, expected_factor) {
+            Some(ctx.num(1))
+        } else {
+            split_scaled_additive_factor_matching_expected(ctx, factor, expected_factor)
+        };
+        let Some(factor_scale) = factor_scale else {
             continue;
-        }
+        };
 
-        let remaining_factors: Vec<_> = view
+        let mut remaining_factors: Vec<_> = view
             .factors
             .iter()
             .copied()
             .enumerate()
             .filter_map(|(factor_index, factor)| (factor_index != index).then_some(factor))
             .collect();
+        let one = ctx.num(1);
+        if compare_expr(ctx, factor_scale, one) != Ordering::Equal {
+            remaining_factors.push(factor_scale);
+        }
         return Some(build_scale_from_factors(ctx, &remaining_factors));
     }
 
     None
+}
+
+fn split_scaled_additive_factor_matching_expected(
+    ctx: &mut cas_ast::Context,
+    factor: cas_ast::ExprId,
+    expected_factor: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let (common_factor, residual_expr) = extract_common_multiplicative_residual_sum(ctx, factor)?;
+    exprs_match_for_cancellation(ctx, residual_expr, expected_factor).then_some(common_factor)
+}
+
+fn expand_scaled_additive_product_factors_for_half_power_match(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> cas_ast::ExprId {
+    let mut expanded_factors = Vec::new();
+    for factor in flatten_mul_chain(ctx, expr) {
+        if let Some((common_factor, residual_expr)) =
+            extract_common_multiplicative_residual_sum(ctx, factor)
+        {
+            expanded_factors.extend(flatten_mul_chain(ctx, common_factor));
+            expanded_factors.push(residual_expr);
+        } else {
+            expanded_factors.push(factor);
+        }
+    }
+
+    build_mul_expr_from_factors(ctx, &expanded_factors)
+}
+
+fn scaled_denominator_quotients_match_for_half_power_cancellation(
+    ctx: &mut cas_ast::Context,
+    source_scale: cas_ast::ExprId,
+    source_denominator: cas_ast::ExprId,
+    target_scale: cas_ast::ExprId,
+    target_denominator: cas_ast::ExprId,
+) -> bool {
+    if exprs_match_for_cancellation(ctx, source_scale, target_scale)
+        && exprs_match_for_cancellation(ctx, source_denominator, target_denominator)
+    {
+        return true;
+    }
+
+    let source_cross = smart_mul(ctx, source_scale, target_denominator);
+    let target_cross = smart_mul(ctx, target_scale, source_denominator);
+    if exprs_match_for_cancellation(ctx, source_cross, target_cross) {
+        return true;
+    }
+
+    let source_expanded =
+        expand_scaled_additive_product_factors_for_half_power_match(ctx, source_cross);
+    let target_expanded =
+        expand_scaled_additive_product_factors_for_half_power_match(ctx, target_cross);
+    exprs_match_for_cancellation(ctx, source_expanded, target_expanded)
 }
 
 fn try_match_reciprocal_half_power_shared_denominator(
@@ -20482,24 +21073,124 @@ fn try_build_direct_reciprocal_half_power_shared_denominator_rewrite(
     None
 }
 
+fn fraction_like_division_parts_for_half_power_match(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
+    if let Some((numerator, denominator)) = as_div(ctx, expr) {
+        return Some((numerator, denominator));
+    }
+
+    let view = MulView::from_expr(ctx, expr);
+    if view.factors.len() < 2 {
+        return None;
+    }
+
+    let mut division_parts = None;
+    let mut numerator_factors = Vec::new();
+    for factor in view.factors.iter().copied() {
+        if let Some((factor_numerator, factor_denominator)) = as_div(ctx, factor) {
+            if division_parts
+                .replace((factor_numerator, factor_denominator))
+                .is_some()
+            {
+                return None;
+            }
+        } else {
+            numerator_factors.push(factor);
+        }
+    }
+
+    let (factor_numerator, denominator) = division_parts?;
+    numerator_factors.push(factor_numerator);
+    Some((
+        build_mul_expr_from_factors(ctx, &numerator_factors),
+        denominator,
+    ))
+}
+
+fn scaled_sqrt_denominator_division_parts(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId)> {
+    let (numerator, denominator) = fraction_like_division_parts_for_half_power_match(ctx, expr)?;
+    let (base, denominator_without_sqrt) = split_any_sqrt_factor_from_product(ctx, denominator)?;
+    Some((base, numerator, denominator_without_sqrt))
+}
+
 fn scaled_reciprocal_half_power_division_parts(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<(cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId)> {
-    let (numerator, denominator) = as_div(ctx, expr)?;
+    let (numerator, denominator) = fraction_like_division_parts_for_half_power_match(ctx, expr)?;
     if let Some(base) = reciprocal_half_power_base(ctx, numerator) {
         return Some((base, ctx.num(1), denominator));
+    }
+    if let Some((base, scale)) = scaled_reciprocal_sqrt_quotient_parts(ctx, numerator) {
+        return Some((base, scale, denominator));
     }
 
     let (base, scale) = split_reciprocal_half_power_factor_from_product(ctx, numerator)?;
     Some((base, scale, denominator))
 }
 
+fn try_match_scaled_reciprocal_half_power_shared_denominator_equivalence(
+    ctx: &mut cas_ast::Context,
+    source: cas_ast::ExprId,
+    target: cas_ast::ExprId,
+) -> Option<cas_ast::ExprId> {
+    let (source_base, source_scale, source_denominator) =
+        scaled_reciprocal_half_power_division_parts(ctx, source)?;
+    let (target_base, target_scale, target_denominator) =
+        scaled_sqrt_denominator_division_parts(ctx, target)?;
+
+    if !exprs_match_for_cancellation(ctx, source_base, target_base) {
+        return None;
+    }
+    if !scaled_denominator_quotients_match_for_half_power_cancellation(
+        ctx,
+        source_scale,
+        source_denominator,
+        target_scale,
+        target_denominator,
+    ) {
+        return None;
+    }
+
+    Some(source_base)
+}
+
+fn try_build_direct_scaled_reciprocal_half_power_shared_denominator_rewrite(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<Rewrite> {
+    for (source, target) in [(lhs_core, rhs_core), (rhs_core, lhs_core)] {
+        let Some(base) = try_match_scaled_reciprocal_half_power_shared_denominator_equivalence(
+            ctx, source, target,
+        ) else {
+            continue;
+        };
+
+        return Some(
+            Rewrite::with_local(
+                ctx.num(0),
+                "Reciprocal Half-Power Cancellation",
+                lhs_core,
+                rhs_core,
+            )
+            .requires(crate::ImplicitCondition::Positive(base)),
+        );
+    }
+
+    None
+}
+
 fn scaled_sqrt_over_base_division_parts(
     ctx: &mut cas_ast::Context,
     expr: cas_ast::ExprId,
 ) -> Option<(cas_ast::ExprId, cas_ast::ExprId, cas_ast::ExprId)> {
-    let (numerator, denominator) = as_div(ctx, expr)?;
+    let (numerator, denominator) = fraction_like_division_parts_for_half_power_match(ctx, expr)?;
     let (base, scale) = split_any_sqrt_factor_from_product(ctx, numerator)?;
     let denominator_without_base = split_matching_factor_from_product(ctx, denominator, base)?;
     Some((base, scale, denominator_without_base))
@@ -20515,10 +21206,16 @@ fn try_match_scaled_reciprocal_half_power_over_base_equivalence(
     let (target_base, target_scale, target_denominator) =
         scaled_sqrt_over_base_division_parts(ctx, target)?;
 
-    if !exprs_match_for_cancellation(ctx, source_base, target_base)
-        || !exprs_match_for_cancellation(ctx, source_scale, target_scale)
-        || !exprs_match_for_cancellation(ctx, source_denominator, target_denominator)
-    {
+    if !exprs_match_for_cancellation(ctx, source_base, target_base) {
+        return None;
+    }
+    if !scaled_denominator_quotients_match_for_half_power_cancellation(
+        ctx,
+        source_scale,
+        source_denominator,
+        target_scale,
+        target_denominator,
+    ) {
         return None;
     }
 
@@ -21410,17 +22107,26 @@ fn split_reciprocal_half_power_factor_from_product(
 ) -> Option<(cas_ast::ExprId, cas_ast::ExprId)> {
     let view = MulView::from_expr(ctx, product);
     for (index, factor) in view.factors.iter().copied().enumerate() {
-        let Some(base) = reciprocal_half_power_base(ctx, factor) else {
+        let base_and_scale = if let Some(base) = reciprocal_half_power_base(ctx, factor) {
+            Some((base, ctx.num(1)))
+        } else {
+            scaled_reciprocal_sqrt_quotient_parts(ctx, factor)
+        };
+        let Some((base, factor_scale)) = base_and_scale else {
             continue;
         };
 
-        let remaining_factors: Vec<_> = view
+        let mut remaining_factors: Vec<_> = view
             .factors
             .iter()
             .copied()
             .enumerate()
             .filter_map(|(factor_index, factor)| (factor_index != index).then_some(factor))
             .collect();
+        let one = ctx.num(1);
+        if compare_expr(ctx, factor_scale, one) != Ordering::Equal {
+            remaining_factors.push(factor_scale);
+        }
         return Some((
             base,
             cas_math::expr_nary::build_balanced_mul(ctx, &remaining_factors),
@@ -21535,6 +22241,97 @@ fn try_build_same_denominator_tail_trig_ratio_equivalence_rewrite(
     None
 }
 
+fn log_arg_contains_negative_power(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(base, exponent) => {
+            matches!(ctx.get(*exponent), Expr::Number(n) if n < &BigRational::zero())
+                || log_arg_contains_negative_power(ctx, *base)
+                || log_arg_contains_negative_power(ctx, *exponent)
+        }
+        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) | Expr::Mul(lhs, rhs) | Expr::Div(lhs, rhs) => {
+            log_arg_contains_negative_power(ctx, *lhs) || log_arg_contains_negative_power(ctx, *rhs)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => log_arg_contains_negative_power(ctx, *inner),
+        Expr::Function(_, args) => args
+            .iter()
+            .copied()
+            .any(|arg| log_arg_contains_negative_power(ctx, arg)),
+        Expr::Matrix { data, .. } => data
+            .iter()
+            .copied()
+            .any(|entry| log_arg_contains_negative_power(ctx, entry)),
+        Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) | Expr::SessionRef(_) => false,
+    }
+}
+
+fn log_arg_is_constant_one(ctx: &cas_ast::Context, expr: cas_ast::ExprId) -> bool {
+    matches!(ctx.get(expr), Expr::Number(n) if n.is_one())
+}
+
+fn log_arg_has_reciprocal_shape_for_default_simplify_reject(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    contains_division_like_term(ctx, expr) || log_arg_contains_negative_power(ctx, expr)
+}
+
+fn log_arg_is_bounded_nonreciprocal_shape_for_default_simplify_reject(
+    ctx: &cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> bool {
+    if log_arg_is_constant_one(ctx, expr)
+        || log_arg_has_reciprocal_shape_for_default_simplify_reject(ctx, expr)
+    {
+        return false;
+    }
+
+    match ctx.get(expr) {
+        Expr::Variable(_) | Expr::SessionRef(_) | Expr::Number(_) | Expr::Constant(_) => true,
+        Expr::Mul(lhs, rhs) => {
+            log_arg_is_bounded_nonreciprocal_shape_for_default_simplify_reject(ctx, *lhs)
+                && log_arg_is_bounded_nonreciprocal_shape_for_default_simplify_reject(ctx, *rhs)
+        }
+        Expr::Pow(base, exponent) => {
+            log_arg_is_bounded_nonreciprocal_shape_for_default_simplify_reject(ctx, *base)
+                && matches!(ctx.get(*exponent), Expr::Number(n) if n >= &BigRational::zero())
+        }
+        Expr::Function(fn_id, args)
+            if ctx.is_builtin(*fn_id, BuiltinFn::Abs) && args.len() == 1 =>
+        {
+            log_arg_is_bounded_nonreciprocal_shape_for_default_simplify_reject(ctx, args[0])
+        }
+        _ => false,
+    }
+}
+
+fn reject_negated_log_pair_without_reciprocal_shape_before_default_simplify(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<bool> {
+    let (lhs_expr, lhs_sign) = normalize_signed_add_term(ctx, lhs_core, Sign::Pos);
+    let (rhs_expr, rhs_sign) = normalize_signed_add_term(ctx, rhs_core, Sign::Pos);
+    if lhs_sign == rhs_sign {
+        return None;
+    }
+
+    let (lhs_scale, lhs_base, lhs_arg) = try_extract_scaled_log_term_parts(ctx, lhs_expr)?;
+    let (rhs_scale, rhs_base, rhs_arg) = try_extract_scaled_log_term_parts(ctx, rhs_expr)?;
+    if !exprs_match_for_cancellation(ctx, lhs_scale, rhs_scale)
+        || !exprs_match_for_cancellation(ctx, lhs_base, rhs_base)
+    {
+        return None;
+    }
+
+    if log_arg_is_bounded_nonreciprocal_shape_for_default_simplify_reject(ctx, lhs_arg)
+        && log_arg_is_bounded_nonreciprocal_shape_for_default_simplify_reject(ctx, rhs_arg)
+    {
+        Some(false)
+    } else {
+        None
+    }
+}
+
 fn try_build_direct_core_equivalence_rewrite(
     ctx: &mut cas_ast::Context,
     lhs_core: cas_ast::ExprId,
@@ -21571,6 +22368,15 @@ fn try_build_direct_core_equivalence_rewrite(
     {
         profile_route(
             "rule.direct_core_equivalence.route.reciprocal_half_power_shared_denominator",
+        );
+        return Some(rewrite);
+    }
+
+    if let Some(rewrite) = try_build_direct_scaled_reciprocal_half_power_shared_denominator_rewrite(
+        ctx, lhs_core, rhs_core,
+    ) {
+        profile_route(
+            "rule.direct_core_equivalence.route.scaled_reciprocal_half_power_shared_denominator",
         );
         return Some(rewrite);
     }
@@ -21968,6 +22774,15 @@ fn try_build_direct_core_equivalence_rewrite(
     }
 
     if let Some(false) =
+        reject_scaled_symbolic_atom_mismatch_before_default_simplify(ctx, lhs_core, rhs_core)
+    {
+        profile_route(
+            "rule.direct_core_equivalence.route.default_simplify_scaled_symbolic_atom_mismatch_reject",
+        );
+        return None;
+    }
+
+    if let Some(false) =
         reject_noncall_product_vs_division_shared_numerator_scale_before_default_simplify(
             ctx, lhs_core, rhs_core,
         )
@@ -22027,6 +22842,15 @@ fn try_build_direct_core_equivalence_rewrite(
         reject_obvious_hyperbolic_pair_before_default_simplify(ctx, lhs_core, rhs_core)
     {
         profile_route("rule.direct_core_equivalence.route.default_simplify_hyperbolic_pair_reject");
+        return None;
+    }
+
+    if let Some(false) = reject_negated_log_pair_without_reciprocal_shape_before_default_simplify(
+        ctx, lhs_core, rhs_core,
+    ) {
+        profile_route(
+            "rule.direct_core_equivalence.route.default_simplify_negated_log_nonreciprocal_reject",
+        );
         return None;
     }
 
@@ -22147,6 +22971,64 @@ fn reject_atomic_noncall_pair_before_default_simplify(
     }
 
     None
+}
+
+fn extract_scaled_symbolic_atom_for_default_simplify_reject(
+    ctx: &mut cas_ast::Context,
+    expr: cas_ast::ExprId,
+) -> Option<(cas_ast::ExprId, BigRational)> {
+    match ctx.get(expr).clone() {
+        Expr::Variable(_) | Expr::SessionRef(_) | Expr::Constant(_) => {
+            return Some((expr, BigRational::one()));
+        }
+        Expr::Neg(inner) => {
+            let (atom, scale) =
+                extract_scaled_symbolic_atom_for_default_simplify_reject(ctx, inner)?;
+            return Some((atom, -scale));
+        }
+        Expr::Mul(_, _) => {}
+        _ => return None,
+    }
+
+    let factors = flatten_mul_chain(ctx, expr);
+    if factors.len() != 2 {
+        return None;
+    }
+
+    let mut atom = None;
+    let mut scale = BigRational::one();
+    for factor in factors {
+        if let Some(literal_scale) = extract_literal_rational_for_cancellation(ctx, factor) {
+            scale *= literal_scale;
+            continue;
+        }
+
+        let (factor_atom, factor_scale) =
+            extract_scaled_symbolic_atom_for_default_simplify_reject(ctx, factor)?;
+        if atom.replace(factor_atom).is_some() {
+            return None;
+        }
+        scale *= factor_scale;
+    }
+
+    Some((atom?, scale))
+}
+
+fn reject_scaled_symbolic_atom_mismatch_before_default_simplify(
+    ctx: &mut cas_ast::Context,
+    lhs_core: cas_ast::ExprId,
+    rhs_core: cas_ast::ExprId,
+) -> Option<bool> {
+    let (lhs_atom, lhs_scale) =
+        extract_scaled_symbolic_atom_for_default_simplify_reject(ctx, lhs_core)?;
+    let (rhs_atom, rhs_scale) =
+        extract_scaled_symbolic_atom_for_default_simplify_reject(ctx, rhs_core)?;
+
+    if compare_expr(ctx, lhs_atom, rhs_atom) == Ordering::Equal && lhs_scale != rhs_scale {
+        Some(false)
+    } else {
+        None
+    }
 }
 
 fn reject_noncall_product_vs_division_shared_numerator_scale_before_default_simplify(
@@ -29219,7 +30101,7 @@ define_rule!(
             return None;
         }
 
-        try_build_exact_zero_common_scaled_difference_rewrite(ctx, expr)
+        try_build_exact_zero_common_scaled_difference_rewrite_with_context(ctx, expr, parent_ctx)
     }
 );
 
@@ -29353,6 +30235,7 @@ mod tests {
         canonicalize_nested_integer_powers, exprs_equal_up_to_add_term_order,
         extract_scaled_double_sine_product_for_cancellation,
         try_build_direct_sum_diff_cubes_quotient_equivalence_rewrite,
+        try_rewrite_hyperbolic_angle_sum_diff_for_cancellation,
         CollapseExactOneShiftedQuotientRule, CollapseExactZeroCommonScaledDifferenceRule,
         CollapseExactZeroProductFactorRule, CollapseExactZeroThreeTermSubsetRule,
         ExpandHyperbolicAngleSumDiffToEnableCancellationRule,
@@ -30495,6 +31378,20 @@ mod tests {
         );
         assert_empty_or_legacy_description(&rewrite.description, "Phase Shift Identity");
         assert!(!rewrite.substeps.is_empty());
+    }
+
+    #[test]
+    fn collapse_exact_zero_common_scaled_difference_preserves_assumed_abs_event() {
+        let mut ctx = Context::new();
+        let expr = parse("2*a - 2*abs(a)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Assume);
+
+        let event =
+            super::common_scale_abs_like_positive_assumption_event(&mut ctx, expr, &parent_ctx)
+                .unwrap_or_else(|| panic!("expected common-scale abs assumption event"));
+        assert_eq!(event.message, "a > 0");
+
+        assert_eq!(event.expr_display, "a");
     }
 
     #[test]
@@ -32212,6 +33109,45 @@ mod tests {
     }
 
     #[test]
+    fn maybe_direct_small_zero_additive_combination_candidate_accepts_log_square_and_hyperbolic_cubic_sum(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(ln((x*y)^2) - ln(x^2) - ln(y^2)) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x)))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(super::maybe_direct_small_zero_additive_combination_candidate(&mut ctx, expr));
+    }
+
+    #[test]
+    fn direct_small_zero_additive_combination_rewrite_matches_log_square_and_hyperbolic_cubic_sum()
+    {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "(ln((x*y)^2) - ln(x^2) - ln(y^2)) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x)))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let rewrite =
+            super::try_build_direct_small_zero_additive_combination_rewrite(&mut ctx, expr)
+                .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.final_expr()
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
     fn small_direct_zero_core_rewrite_matches_dirichlet_raw_difference() {
         let mut ctx = Context::new();
         let expr = parse(
@@ -32952,6 +33888,54 @@ mod tests {
     }
 
     #[test]
+    fn negated_log_nonreciprocal_reject_matches_power_and_abs_pairs_before_default_simplify() {
+        let mut ctx = Context::new();
+        let lhs = parse("-ln(x^2)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("ln((x*y)^2)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        assert_eq!(
+            super::reject_negated_log_pair_without_reciprocal_shape_before_default_simplify(
+                &mut ctx, lhs, rhs
+            ),
+            Some(false)
+        );
+
+        let lhs = parse("-2*ln(abs(x))", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("2*ln(abs(x*y))", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        assert_eq!(
+            super::reject_negated_log_pair_without_reciprocal_shape_before_default_simplify(
+                &mut ctx, lhs, rhs
+            ),
+            Some(false)
+        );
+    }
+
+    #[test]
+    fn negated_log_nonreciprocal_reject_defers_reciprocal_shapes_before_default_simplify() {
+        let mut ctx = Context::new();
+        let lhs = parse("-ln(x)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("ln(1/x)", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        assert_eq!(
+            super::reject_negated_log_pair_without_reciprocal_shape_before_default_simplify(
+                &mut ctx, lhs, rhs
+            ),
+            None
+        );
+
+        let lhs = parse("-ln(x^2)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("ln(x^(-2))", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        assert_eq!(
+            super::reject_negated_log_pair_without_reciprocal_shape_before_default_simplify(
+                &mut ctx, lhs, rhs
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn direct_core_equivalence_rewrite_rejects_grouped_general_base_log_power_pair() {
         let mut ctx = Context::new();
         let lhs = parse("log(b,(x*y)^2)", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
@@ -33042,6 +34026,33 @@ mod tests {
 
         let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs);
         assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_rejects_scaled_symbolic_atom_mismatch_before_default_simplify(
+    ) {
+        let mut ctx = Context::new();
+        let lhs = parse("x", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("2*x", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs);
+        assert!(rewrite.is_none());
+    }
+
+    #[test]
+    fn direct_core_equivalence_rewrite_keeps_signed_scaled_symbolic_atom_match_before_default_simplify(
+    ) {
+        let mut ctx = Context::new();
+        let lhs = parse("-x", &mut ctx).unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse("-1*x", &mut ctx).unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_core_equivalence_rewrite(&mut ctx, lhs, rhs)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Equivalent Residual Cancellation",
+        );
     }
 
     #[test]
@@ -34019,6 +35030,96 @@ mod tests {
         let expr = parse(
             "(x*(log2(x^2+1)+1)^(-1/2))/(ln(2)*(x^2+1)) - \
              (x*(log2(x^2+1)+1)^(1/2))/(ln(2)*(log2(x^2+1)+1)*(x^2+1))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_common_scaled_difference_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Reciprocal Half-Power Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn common_scaled_difference_rule_matches_scaled_reciprocal_half_power_over_base_residual_with_unfactored_common_denominators(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "((log2(x^2+1)+1)^(-1/2)*x*2)/(ln(2)*(2*q*x^2+2*q)) - \
+             (x*(log2(x^2+1)+1)^(1/2))/(ln(2)*(x^2+1)*(q*log2(x^2+1)+q))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_common_scaled_difference_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Reciprocal Half-Power Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn common_scaled_difference_rule_matches_product_wrapped_scaled_reciprocal_half_power_residual()
+    {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "2*(((log2(x^2+1)+1)^(-1/2)*x)/(ln(2)*(2*q*x^2+2*q))) - \
+             (x*(log2(x^2+1)+1)^(1/2))/(ln(2)*(x^2+1)*(q*log2(x^2+1)+q))",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_common_scaled_difference_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(
+            &rewrite.description,
+            "Reciprocal Half-Power Cancellation",
+        );
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn common_scaled_difference_rule_matches_scaled_reciprocal_half_power_shared_denominator_residual_with_unfactored_common_denominator(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "2*(x/sqrt(log2(x^2+1)+1))/(2*q*ln(2)+2*q*ln(2)*x^2) - \
+             x/(q*ln(2)*sqrt(log2(x^2+1)+1)*(x^2+1))",
             &mut ctx,
         )
         .unwrap_or_else(|err| panic!("expr: {err}"));
@@ -35253,6 +36354,99 @@ mod tests {
         assert_empty_or_legacy_description(&rewrite.description, "Finite Telescoping Sum");
         assert_eq!(rewrite.before_local, Some(lhs));
         assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_finite_sum_equivalence_matches_combined_telescoping_fraction_target() {
+        let mut ctx = Context::new();
+        let lhs = parse("sum(1/((a*k+b+c)*(a*k+b+c+a)), k, m, n)", &mut ctx)
+            .unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse(
+            "(n + 1 - m) / \
+             (m*n*a^2 + a*b*m + a*b*n + a*c*m + a*c*n + m*a^2 + b^2 + c^2 + 2*b*c + a*b + a*c)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_finite_sum_equivalence_rewrite(&mut ctx, lhs, rhs)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(&rewrite.description, "Finite Telescoping Sum");
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn direct_finite_sum_equivalence_matches_scaled_combined_telescoping_fraction_target() {
+        let mut ctx = Context::new();
+        let lhs = parse("k*sum(1/((a*k+b+c)*(a*k+b+c+a)), k, m, n)", &mut ctx)
+            .unwrap_or_else(|err| panic!("lhs: {err}"));
+        let rhs = parse(
+            "(k*n + k - k*m) / \
+             (m*n*a^2 + a*b*m + a*b*n + a*c*m + a*c*n + m*a^2 + b^2 + c^2 + 2*b*c + a*b + a*c)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("rhs: {err}"));
+
+        let rewrite = super::try_build_direct_finite_sum_equivalence_rewrite(&mut ctx, lhs, rhs)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(&rewrite.description, "Finite Telescoping Sum");
+        assert_eq!(rewrite.before_local, Some(lhs));
+        assert_eq!(rewrite.after_local, Some(rhs));
+    }
+
+    #[test]
+    fn exact_zero_identity_rewrite_matches_combined_telescoping_fraction_residual() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "sum(1/((a*k+b+c)*(a*k+b+c+a)), k, m, n) - \
+             ((1/(a*m+b+c) - 1/(a*n+a+b+c))*1)/a",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_identity_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(&rewrite.description, "Finite Telescoping Sum");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+    }
+
+    #[test]
+    fn exact_zero_identity_rewrite_matches_scaled_combined_telescoping_fraction_residual() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "k*sum(1/((a*k+b+c)*(a*k+b+c+a)), k, m, n) - \
+             (k*n + k - k*m) / \
+             (m*n*a^2 + a*b*m + a*b*n + a*c*m + a*c*n + m*a^2 + b^2 + c^2 + 2*b*c + a*b + a*c)",
+            &mut ctx,
+        )
+        .unwrap_or_else(|err| panic!("expr: {err}"));
+
+        let rewrite = super::try_build_exact_zero_identity_rewrite(&mut ctx, expr)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_empty_or_legacy_description(&rewrite.description, "Finite Telescoping Sum");
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
     }
 
     #[test]
@@ -37070,6 +38264,32 @@ mod tests {
     }
 
     #[test]
+    fn hyperbolic_angle_sum_diff_expansion_skips_powered_affine_primitive_terms() {
+        let mut ctx = Context::new();
+        let expr = parse("1/3*cosh(1-2*x)^3 - cosh(1-2*x)", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        assert!(
+            try_rewrite_hyperbolic_angle_sum_diff_for_cancellation(&mut ctx, expr).is_none(),
+            "cubic primitive terms should not trigger broad hyperbolic expansion"
+        );
+
+        let direct = parse("2*sinh(x+y)", &mut ctx).unwrap_or_else(|err| panic!("parse: {err}"));
+        let rewritten = try_rewrite_hyperbolic_angle_sum_diff_for_cancellation(&mut ctx, direct)
+            .unwrap_or_else(|| panic!("direct hyperbolic sum should still expand"));
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewritten
+                }
+            ),
+            "2 * (sinh(x) * cosh(y) + cosh(x) * sinh(y))"
+        );
+    }
+
+    #[test]
     fn collapse_exact_zero_three_term_subset_rule_matches_hyperbolic_sum_with_passthrough_one() {
         let mut ctx = Context::new();
         let expr = parse(
@@ -37153,6 +38373,32 @@ mod tests {
             "0"
         );
         assert_eq!(rewrite.substeps.len(), 3);
+    }
+
+    #[test]
+    fn expand_hyperbolic_pythagorean_factor_to_enable_cancellation_rule_matches_sinh_factored_residual(
+    ) {
+        let mut ctx = Context::new();
+        let expr = parse("sinh(2*x+1)*(cosh(2*x+1)^2 - 1) - sinh(2*x+1)^3", &mut ctx)
+            .unwrap_or_else(|err| panic!("parse: {err}"));
+
+        let parent_ctx = ParentContext::root().with_domain_mode(DomainMode::Generic);
+        let rule = ExpandHyperbolicPythagoreanFactorToEnableCancellationRule;
+        let rewrite = rule
+            .apply(&mut ctx, expr, &parent_ctx)
+            .unwrap_or_else(|| panic!("rewrite"));
+
+        assert_eq!(
+            format!(
+                "{}",
+                DisplayExpr {
+                    context: &ctx,
+                    id: rewrite.new_expr
+                }
+            ),
+            "0"
+        );
+        assert_eq!(rewrite.substeps.len(), 2);
     }
 
     #[test]

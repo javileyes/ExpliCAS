@@ -16,7 +16,9 @@ use std::env;
 use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{LazyLock, Mutex};
+use std::time::Instant;
 
 #[derive(Debug, Clone)]
 struct DeriveCase {
@@ -34,6 +36,16 @@ struct AuditArtifact {
     web_substep_count: usize,
     json_steps: Vec<Value>,
     flags: Vec<String>,
+}
+
+struct TimedAuditArtifact {
+    artifact: AuditArtifact,
+    seconds: f64,
+}
+
+struct TimedCliLines {
+    lines: Vec<String>,
+    seconds: f64,
 }
 
 #[derive(Debug, Default)]
@@ -205,6 +217,78 @@ fn run_cli_lines(case: &DeriveCase) -> Vec<String> {
         |_ctx, expr| Ok(expr),
     )
     .expect("derive should evaluate")
+}
+
+fn timed_audit_case(case: &DeriveCase) -> TimedAuditArtifact {
+    let start = Instant::now();
+    let artifact = audit_case(case);
+    TimedAuditArtifact {
+        artifact,
+        seconds: start.elapsed().as_secs_f64(),
+    }
+}
+
+fn timed_run_cli_lines(case: &DeriveCase) -> TimedCliLines {
+    let start = Instant::now();
+    let lines = run_cli_lines(case);
+    TimedCliLines {
+        lines,
+        seconds: start.elapsed().as_secs_f64(),
+    }
+}
+
+fn derive_audit_worker_count(case_count: usize) -> usize {
+    if case_count <= 1 {
+        return 1;
+    }
+    if let Ok(raw) = env::var("DERIVE_AUDIT_THREADS") {
+        if let Ok(parsed) = raw.parse::<usize>() {
+            return parsed.clamp(1, case_count);
+        }
+    }
+
+    std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1)
+        .min(4)
+        .clamp(1, case_count)
+}
+
+fn map_derive_cases_parallel<T, F>(cases: &[DeriveCase], f: F) -> Vec<T>
+where
+    T: Send,
+    F: Fn(&DeriveCase) -> T + Sync,
+{
+    let worker_count = derive_audit_worker_count(cases.len());
+    if worker_count == 1 {
+        return cases.iter().map(f).collect();
+    }
+
+    let next_index = AtomicUsize::new(0);
+    let mut empty_slots = Vec::with_capacity(cases.len());
+    empty_slots.resize_with(cases.len(), || None);
+    let results = Mutex::new(empty_slots);
+
+    std::thread::scope(|scope| {
+        for _ in 0..worker_count {
+            scope.spawn(|| loop {
+                let index = next_index.fetch_add(1, Ordering::Relaxed);
+                if index >= cases.len() {
+                    break;
+                }
+
+                let item = f(&cases[index]);
+                results.lock().expect("derive audit result mutex poisoned")[index] = Some(item);
+            });
+        }
+    });
+
+    results
+        .into_inner()
+        .expect("derive audit result mutex poisoned")
+        .into_iter()
+        .map(|item| item.expect("derive audit worker should fill every result slot"))
+        .collect()
 }
 
 fn normalize_latex_snapshot(input: &str) -> String {
@@ -475,6 +559,7 @@ fn is_self_explanatory_identity_rule(rule: &str) -> bool {
             | "Expandir binomio"
             | "Negative Base Power"
             | "Simplificar potencia con base negativa"
+            | "Invertir una resta dentro de una potencia par"
             | "Expandir ángulo doble"
             | "Contraer ángulo doble"
             | "Aplicar identidad hiperbólica de ángulo doble"
@@ -486,6 +571,7 @@ fn is_self_explanatory_identity_rule(rule: &str) -> bool {
             | "Evaluar valor trigonométrico especial"
             | "Reescribir la raíz como potencia fraccionaria"
             | "Sumar exponentes de la misma base"
+            | "Combinar raíces en un producto"
             | "Reconocer un cociente notable"
             | "Merge Sqrt Product"
     )
@@ -620,6 +706,58 @@ fn derive_case_by_id(id: &str) -> DeriveCase {
         .get(id)
         .cloned()
         .unwrap_or_else(|| panic!("missing derive audit case {id}"))
+}
+
+fn phase_family_hotspots(cases: &[DeriveCase], seconds_by_case: &[f64]) -> String {
+    assert_eq!(
+        cases.len(),
+        seconds_by_case.len(),
+        "derive audit timing expects one timing per case"
+    );
+
+    let mut by_family = BTreeMap::<String, f64>::new();
+    for (case, seconds) in cases.iter().zip(seconds_by_case.iter()) {
+        *by_family.entry(case.family.clone()).or_default() += *seconds;
+    }
+    let mut rows = by_family.into_iter().collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right
+            .1
+            .partial_cmp(&left.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.0.cmp(&right.0))
+    });
+    rows.into_iter()
+        .take(6)
+        .map(|(family, seconds)| format!("{family}:{seconds:.3}"))
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn phase_case_hotspots(cases: &[DeriveCase], seconds_by_case: &[f64]) -> String {
+    assert_eq!(
+        cases.len(),
+        seconds_by_case.len(),
+        "derive audit timing expects one timing per case"
+    );
+
+    let mut rows = cases
+        .iter()
+        .zip(seconds_by_case.iter())
+        .map(|(case, seconds)| (case.id.clone(), *seconds))
+        .collect::<Vec<_>>();
+    rows.sort_by(|left, right| {
+        right
+            .1
+            .partial_cmp(&left.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| left.0.cmp(&right.0))
+    });
+    rows.into_iter()
+        .take(6)
+        .map(|(id, seconds)| format!("{id}:{seconds:.3}"))
+        .collect::<Vec<_>>()
+        .join(",")
 }
 
 const QUICK_DERIVE_AUDIT_PER_FAMILY: usize = 1;
@@ -900,7 +1038,22 @@ fn report_output_path() -> PathBuf {
         .join("docs/generated/DERIVE_DIDACTIC_AUDIT.md")
 }
 
-fn build_report(cases: &[DeriveCase], artifacts: &[AuditArtifact]) -> String {
+fn build_report(
+    cases: &[DeriveCase],
+    artifacts: &[AuditArtifact],
+    cli_lines_by_case: &[Vec<String>],
+) -> String {
+    assert_eq!(
+        cases.len(),
+        artifacts.len(),
+        "derive audit report expects one artifact per case"
+    );
+    assert_eq!(
+        cases.len(),
+        cli_lines_by_case.len(),
+        "derive audit report expects one CLI transcript per case"
+    );
+
     let mut out = String::new();
     let derived_cases = cases
         .iter()
@@ -1039,7 +1192,11 @@ fn build_report(cases: &[DeriveCase], artifacts: &[AuditArtifact]) -> String {
         .unwrap();
     }
 
-    for (case, artifact) in cases.iter().zip(artifacts.iter()) {
+    for ((case, artifact), cli_lines) in cases
+        .iter()
+        .zip(artifacts.iter())
+        .zip(cli_lines_by_case.iter())
+    {
         writeln!(out).unwrap();
         writeln!(out, "## {} ({})", case.id, case.family).unwrap();
         writeln!(out).unwrap();
@@ -1058,7 +1215,7 @@ fn build_report(cases: &[DeriveCase], artifacts: &[AuditArtifact]) -> String {
         writeln!(out, "### CLI").unwrap();
         writeln!(out).unwrap();
         writeln!(out, "```text").unwrap();
-        for line in run_cli_lines(case) {
+        for line in cli_lines {
             writeln!(out, "{line}").unwrap();
         }
         writeln!(out, "```").unwrap();
@@ -1142,8 +1299,12 @@ fn derive_didactic_report_summarizes_audit_flags_by_family() {
             flags: vec!["weak editorial substep title remains in derive".to_string()],
         },
     ];
+    let cli_lines = cases
+        .iter()
+        .map(|case| vec![format!("derive {}", case.id)])
+        .collect::<Vec<_>>();
 
-    let report = build_report(&cases, &artifacts);
+    let report = build_report(&cases, &artifacts, &cli_lines);
 
     assert!(report.contains("## Flag Summary"));
     assert!(report.contains("- Cases with flags: `2`"));
@@ -2298,6 +2459,19 @@ fn derive_didactic_inverse_trig_sum_uses_complement_language() {
         artifact.flags.is_empty(),
         "inverse trig complement sum should not be flagged: {:?}",
         artifact.flags
+    );
+
+    let cli_output = run_cli_lines(&derive_case_by_id(
+        "inverse_trig_arcsin_arccos_complement_sum",
+    ))
+    .join("\n");
+    assert!(
+        cli_output.contains("[Aplicar identidad complementaria arcsin/arccos]"),
+        "expected visible inverse-trig complement rule suffix in CLI output:\n{cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Inverse Trig Sum Identity]"),
+        "raw internal inverse-trig rule suffix leaked into CLI output:\n{cli_output}"
     );
 }
 
@@ -3960,6 +4134,17 @@ fn derive_didactic_representative_symbolic_power_merge_cases_render_grouped_expo
             "expected no substeps for grouped symbolic merge {case_id}"
         );
     }
+
+    let cli_output =
+        run_cli_lines(&derive_case_by_id("merge_same_base_symbolic_powers")).join("\n");
+    assert!(
+        cli_output.contains("[Sumar exponentes de la misma base]"),
+        "expected visible power-merge rule suffix in CLI output:\n{cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Combine powers with same base (n-ary)]"),
+        "raw internal power-merge rule suffix leaked into CLI output:\n{cli_output}"
+    );
 }
 
 #[test]
@@ -4056,6 +4241,16 @@ fn derive_didactic_nested_radical_denesting_explains_square_then_abs_cleanup() {
         "Quitar valor absoluto de una expresión no negativa",
     );
     assert_case_has_no_no_web_substeps_flag("nested_radical_denesting");
+
+    let cli_output = run_cli_lines(&derive_case_by_id("nested_radical_denesting")).join("\n");
+    assert!(
+        cli_output.contains("[Quitar valor absoluto de una expresión no negativa]"),
+        "expected visible nonnegative-absolute-value rule suffix in CLI output:\n{cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Abs Of Sum Of Squares]"),
+        "raw internal absolute-value rule suffix leaked into CLI output:\n{cli_output}"
+    );
 }
 
 #[test]
@@ -4075,7 +4270,7 @@ fn derive_didactic_sqrt_product_merge_shows_both_source_factors() {
     let artifact = audit_case(&derive_case_by_id(
         "merge_sqrt_product_requires_nonnegative",
     ));
-    let step = step_by_rule(&artifact, "Merge Sqrt Product");
+    let step = step_by_rule(&artifact, "Combinar raíces en un producto");
 
     assert_eq!(
         step.get("before").and_then(Value::as_str),
@@ -4090,6 +4285,15 @@ fn derive_didactic_sqrt_product_merge_shows_both_source_factors() {
     let cli_lines = run_cli_lines(&derive_case_by_id(
         "merge_sqrt_product_requires_nonnegative",
     ));
+    let cli_output = cli_lines.join("\n");
+    assert!(
+        cli_output.contains("[Combinar raíces en un producto]"),
+        "expected visible sqrt-product rule suffix in CLI output:\n{cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Merge Sqrt Product]"),
+        "raw internal sqrt-product rule suffix leaked into CLI output:\n{cli_output}"
+    );
     assert!(
         cli_lines.iter().any(|line| line == "  • x ≥ 0"),
         "CLI derive report should preserve source sqrt domain for x: {cli_lines:?}"
@@ -4128,6 +4332,16 @@ fn derive_didactic_representative_rationalize_cases_keep_conjugate_narrative() {
     ] {
         assert_case_step_titles(case_id, "Racionalizar el denominador", expected);
     }
+
+    let cli_output = run_cli_lines(&derive_case_by_id("rationalize_linear_root")).join("\n");
+    assert!(
+        cli_output.contains("[Racionalizar el denominador]"),
+        "expected visible rationalize rule suffix in CLI output:\n{cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Rationalize Linear Sqrt Denominator]"),
+        "raw internal rationalize rule suffix leaked into CLI output:\n{cli_output}"
+    );
 }
 
 #[test]
@@ -5361,6 +5575,19 @@ fn derive_didactic_complete_square_monic_cases_show_hidden_square_balance() {
             ],
         );
     }
+
+    let cli_output = run_cli_lines(&derive_case_by_id(
+        "solve_prep_complete_square_monic_numeric",
+    ))
+    .join("\n");
+    assert!(
+        cli_output.contains("[Completar el cuadrado]"),
+        "expected visible complete-square rule suffix in CLI output:\n{cli_output}"
+    );
+    assert!(
+        !cli_output.contains("[Complete the Square]"),
+        "raw internal complete-square rule suffix leaked into CLI output:\n{cli_output}"
+    );
 }
 
 #[test]
@@ -5681,7 +5908,19 @@ fn derive_didactic_audit_generates_markdown_report() {
         .filter(|case| case.expected_status == "derived")
         .cloned()
         .collect();
-    let artifacts = cases.iter().map(audit_case).collect::<Vec<_>>();
+    let worker_count = derive_audit_worker_count(cases.len());
+    let total_start = Instant::now();
+    let artifacts_start = Instant::now();
+    let timed_artifacts = map_derive_cases_parallel(&cases, timed_audit_case);
+    let artifacts_elapsed = artifacts_start.elapsed();
+    let artifact_seconds_by_case = timed_artifacts
+        .iter()
+        .map(|timed| timed.seconds)
+        .collect::<Vec<_>>();
+    let artifacts = timed_artifacts
+        .into_iter()
+        .map(|timed| timed.artifact)
+        .collect::<Vec<_>>();
     let flagged_cases = artifacts
         .iter()
         .filter(|artifact| !artifact.flags.is_empty())
@@ -5717,12 +5956,26 @@ fn derive_didactic_audit_generates_markdown_report() {
     } else {
         total_steps as f64 / artifacts.len() as f64
     };
-    let report = build_report(&cases, &artifacts);
+    let cli_start = Instant::now();
+    let timed_cli_lines = map_derive_cases_parallel(&cases, timed_run_cli_lines);
+    let cli_elapsed = cli_start.elapsed();
+    let cli_seconds_by_case = timed_cli_lines
+        .iter()
+        .map(|timed| timed.seconds)
+        .collect::<Vec<_>>();
+    let cli_lines_by_case = timed_cli_lines
+        .into_iter()
+        .map(|timed| timed.lines)
+        .collect::<Vec<_>>();
+    let report_start = Instant::now();
+    let report = build_report(&cases, &artifacts, &cli_lines_by_case);
     let path = report_output_path();
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).expect("create report dir");
     }
     fs::write(&path, report).expect("write derive didactic audit report");
+    let report_elapsed = report_start.elapsed();
+    let total_elapsed = total_start.elapsed();
     eprintln!(
         "derive didactic audit summary: cases={} flagged={} no_web_substeps={} no_web_steps={} total_web_substeps={} mean_step_count={:.2}",
         artifacts.len(),
@@ -5731,6 +5984,24 @@ fn derive_didactic_audit_generates_markdown_report() {
         no_web_steps,
         total_web_substeps,
         mean_step_count
+    );
+    eprintln!(
+        "derive didactic audit timings: artifacts_seconds={:.3} cli_seconds={:.3} report_seconds={:.3} total_seconds={:.3} worker_count={}",
+        artifacts_elapsed.as_secs_f64(),
+        cli_elapsed.as_secs_f64(),
+        report_elapsed.as_secs_f64(),
+        total_elapsed.as_secs_f64(),
+        worker_count
+    );
+    eprintln!(
+        "derive didactic audit family hotspots: artifacts={} cli={}",
+        phase_family_hotspots(&cases, &artifact_seconds_by_case),
+        phase_family_hotspots(&cases, &cli_seconds_by_case)
+    );
+    eprintln!(
+        "derive didactic audit case hotspots: artifacts={} cli={}",
+        phase_case_hotspots(&cases, &artifact_seconds_by_case),
+        phase_case_hotspots(&cases, &cli_seconds_by_case)
     );
     eprintln!("wrote {}", path.display());
 }

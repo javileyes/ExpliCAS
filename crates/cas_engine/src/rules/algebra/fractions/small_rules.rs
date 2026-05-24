@@ -18,7 +18,7 @@ use cas_math::rationalize_single_surd_support::try_rewrite_rationalize_single_su
 define_rule!(
     RationalizeSingleSurdRule,
     "Rationalize Single Surd",
-    None,
+    Some(crate::target_kind::TargetKindSet::DIV),
     PhaseMask::RATIONALIZE,
     |ctx, expr| {
         let rewritten = try_rewrite_rationalize_single_surd_expr(ctx, expr)?;
@@ -47,6 +47,8 @@ define_rule!(
 define_rule!(
     DivScalarIntoAddRule,
     "Distribute Division Into Sum",
+    Some(crate::target_kind::TargetKindSet::MUL),
+    PhaseMask::CORE | PhaseMask::POST,
     importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {
         let rewrite = try_rewrite_div_scalar_into_add_expr(ctx, expr)?;
@@ -74,4 +76,63 @@ fn format_rationalize_single_surd_desc(
         cas_formatter::render_expr(ctx, rewrite.new_num),
         cas_formatter::render_expr(ctx, rewrite.new_den)
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rule::Rule;
+    use crate::Simplifier;
+    use cas_ast::target_kind::TargetKind;
+    use cas_parser::parse;
+
+    #[test]
+    fn rationalize_single_surd_rule_targets_div_only() {
+        let target_types = RationalizeSingleSurdRule
+            .target_types()
+            .expect("RationalizeSingleSurdRule should be structurally targeted");
+        assert!(target_types.contains(TargetKind::Div));
+        assert!(!target_types.contains(TargetKind::Mul));
+    }
+
+    #[test]
+    fn simplifier_applies_rationalize_single_surd_rule() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let expr = parse("x/sqrt(3)", &mut simplifier.context).expect("parse");
+
+        let (_result, steps) = simplifier.simplify(expr);
+
+        let applied = steps
+            .iter()
+            .any(|step| step.rule_name.starts_with("Rationalize Single Surd"));
+        assert!(
+            applied,
+            "RationalizeSingleSurdRule should apply from the default simplifier"
+        );
+    }
+
+    #[test]
+    fn div_scalar_into_add_rule_targets_mul_only() {
+        let target_types = DivScalarIntoAddRule
+            .target_types()
+            .expect("DivScalarIntoAddRule should be structurally targeted");
+        assert!(target_types.contains(TargetKind::Mul));
+        assert!(!target_types.contains(TargetKind::Add));
+    }
+
+    #[test]
+    fn simplifier_applies_div_scalar_into_add_rule() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let expr = parse("1/2*(2*x + 4*y)", &mut simplifier.context).expect("parse");
+
+        let (_result, steps) = simplifier.simplify(expr);
+
+        let applied = steps
+            .iter()
+            .any(|step| step.rule_name.starts_with("Distribute Division Into Sum"));
+        assert!(
+            applied,
+            "DivScalarIntoAddRule should apply from the default simplifier"
+        );
+    }
 }

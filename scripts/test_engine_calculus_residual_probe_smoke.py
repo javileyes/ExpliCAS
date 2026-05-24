@@ -146,6 +146,26 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             ),
         )
 
+    def test_required_condition_satisfied_accepts_safe_equivalence_and_implication(
+        self,
+    ) -> None:
+        self.assertTrue(
+            SMOKE.required_condition_satisfied(
+                "4 - (x + 1)^2",
+                ("3 - x^2 - 2·x",),
+            )
+        )
+        self.assertTrue(
+            SMOKE.required_condition_satisfied("x + 3", ("-3 < x < 1",))
+        )
+        self.assertTrue(
+            SMOKE.required_condition_satisfied("x + 4", ("-3 < x < 1",))
+        )
+        self.assertTrue(SMOKE.required_condition_satisfied("x + 2", ("x ≠ -2",)))
+        self.assertFalse(
+            SMOKE.required_condition_satisfied("x + 2", ("-3 < x < 1",))
+        )
+
     def test_extracts_literal_impossible_nonzero_required_conditions(self) -> None:
         parsed, error = SMOKE.parse_json(
             textwrap.dedent(
@@ -350,6 +370,18 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(summary["expected_required_condition_case_count"], 1)
         self.assertEqual(summary["distinct_expected_required_conditions"], 1)
         self.assertEqual(summary["expected_required_condition_counts"], {"x + 2": 1})
+        self.assertEqual(summary["matrix_base_count"], 2)
+        self.assertEqual(summary["matrix_wrapped_base_count"], 0)
+        self.assertEqual(summary["matrix_standalone_base_count"], 2)
+        self.assertEqual(summary["matrix_wrapper_count"], 0)
+        self.assertEqual(summary["matrix_wrapped_case_count"], 0)
+        self.assertEqual(summary["matrix_standalone_case_count"], 2)
+        self.assertEqual(summary["matrix_expected_wrapped_case_count"], 0)
+        self.assertEqual(summary["matrix_missing_wrapped_pair_count"], 0)
+        self.assertEqual(summary["matrix_full_wrapper_base_count"], 0)
+        self.assertEqual(summary["matrix_partial_wrapper_base_count"], 0)
+        self.assertEqual(summary["matrix_largest_wrapper_gap_count"], 0)
+        self.assertEqual(summary["matrix_wrapper_gap_examples"], [])
         self.assertEqual(summary["problem_case_count"], 1)
         self.assertEqual(
             summary["problem_cases"],
@@ -363,6 +395,40 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     "result": "2",
                     "required_conditions": ["x + 2"],
                 }
+            ],
+        )
+
+    def test_summarize_matrix_reports_wrapper_pair_gaps(self) -> None:
+        matrix = {
+            "status": "pass",
+            "total": 4,
+            "status_counts": {"pass": 4, "slow": 0, "fail": 0, "timeout": 0},
+            "issue_kind_counts": {},
+            "cases": [
+                {"name": "alpha:w1", "status": "pass", "error_kind": None},
+                {"name": "alpha:w2", "status": "pass", "error_kind": None},
+                {"name": "beta:w1", "status": "pass", "error_kind": None},
+                {"name": "gamma:w2", "status": "pass", "error_kind": None},
+            ],
+        }
+
+        summary = SMOKE.summarize_matrix(matrix)
+
+        self.assertEqual(summary["matrix_base_count"], 3)
+        self.assertEqual(summary["matrix_wrapped_base_count"], 3)
+        self.assertEqual(summary["matrix_standalone_base_count"], 0)
+        self.assertEqual(summary["matrix_wrapper_count"], 2)
+        self.assertEqual(summary["matrix_wrapped_case_count"], 4)
+        self.assertEqual(summary["matrix_expected_wrapped_case_count"], 6)
+        self.assertEqual(summary["matrix_missing_wrapped_pair_count"], 2)
+        self.assertEqual(summary["matrix_full_wrapper_base_count"], 1)
+        self.assertEqual(summary["matrix_partial_wrapper_base_count"], 2)
+        self.assertEqual(summary["matrix_largest_wrapper_gap_count"], 1)
+        self.assertEqual(
+            summary["matrix_wrapper_gap_examples"],
+            [
+                {"base": "beta", "missing_count": 1, "missing_wrappers": ["w2"]},
+                {"base": "gamma", "missing_count": 1, "missing_wrappers": ["w1"]},
             ],
         )
 
@@ -389,7 +455,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
     def test_default_matrix_contains_representative_wrapped_residuals(self) -> None:
         cases = SMOKE.build_default_matrix_cases()
 
-        self.assertEqual(len(cases), 357)
+        self.assertEqual(len(cases), 706)
         self.assertIn("arctan_sqrt_additive_trig:plus", {case.name for case in cases})
         self.assertIn("arctan_sqrt_additive_trig:nested_den", {case.name for case in cases})
         self.assertIn("arctan_sqrt_additive_trig:double_nested_den", {case.name for case in cases})
@@ -398,48 +464,146 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertIn("integrate_exp_trig_sin:nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_sin:double_nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_cos:plus", {case.name for case in cases})
+        self.assertIn("affine_tanh_six:plus", {case.name for case in cases})
+        self.assertIn("affine_tanh_six:nested_den", {case.name for case in cases})
+        self.assertIn("affine_tanh_six:double_nested_den", {case.name for case in cases})
+        self.assertIn("affine_tanh_six_neg:plus", {case.name for case in cases})
+        self.assertIn("rational_quad_positive_quadratic:plus", {case.name for case in cases})
+        self.assertIn(
+            "rational_quad_positive_quadratic:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("exp_affine:double_nested_den", {case.name for case in cases})
+        self.assertIn("affine_tanh_six_neg:nested_den", {case.name for case in cases})
+        self.assertIn("affine_tanh_six_neg:double_nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_cos:nested_den", {case.name for case in cases})
+        self.assertIn("integrate_exp_trig_cos:double_nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_neg_sin:plus", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_neg_sin:nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_neg_sin:double_nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_neg_cos:plus", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_neg_cos:nested_den", {case.name for case in cases})
+        self.assertIn("integrate_exp_trig_neg_cos:double_nested_den", {case.name for case in cases})
+        self.assertIn("ln_affine_by_parts:plus", {case.name for case in cases})
+        self.assertIn("ln_affine_by_parts:nested_den", {case.name for case in cases})
+        self.assertIn("ln_affine_by_parts:double_nested_den", {case.name for case in cases})
+        self.assertIn("affine_reciprocal_log:plus", {case.name for case in cases})
+        self.assertIn("affine_reciprocal_log:nested_den", {case.name for case in cases})
+        self.assertIn("affine_reciprocal_log:double_nested_den", {case.name for case in cases})
+        self.assertIn("atanh_kernel:plus", {case.name for case in cases})
+        self.assertIn("atanh_kernel:nested_den", {case.name for case in cases})
+        self.assertIn("atanh_kernel:double_nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_neg_sin:plus", {case.name for case in cases})
         self.assertIn("plain_trig_sin:double_nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_cos:double_nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_cot_fourth:plus", {case.name for case in cases})
         self.assertIn("plain_trig_cot_fourth:nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_cot_fourth:double_nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_sec_fourth:plus", {case.name for case in cases})
         self.assertIn("plain_trig_sec_fourth:nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_sec_fourth:double_nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_neg_cot_fourth:plus", {case.name for case in cases})
+        self.assertIn("plain_trig_neg_cot_fourth:nested_den", {case.name for case in cases})
+        self.assertIn(
+            "plain_trig_neg_cot_fourth:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("plain_trig_neg_sec_fourth:plus", {case.name for case in cases})
+        self.assertIn("plain_trig_neg_sec_fourth:nested_den", {case.name for case in cases})
+        self.assertIn(
+            "plain_trig_neg_sec_fourth:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("plain_trig_tan_eighth:plus", {case.name for case in cases})
+        self.assertIn("plain_trig_tan_eighth:nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_tan_eighth:double_nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_neg_cot_eighth:plus", {case.name for case in cases})
+        self.assertIn("plain_trig_neg_cot_eighth:nested_den", {case.name for case in cases})
+        self.assertIn(
+            "plain_trig_neg_cot_eighth:double_nested_den",
+            {case.name for case in cases},
+        )
         self.assertIn("plain_trig_neg_sin:nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_neg_sin:double_nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_neg_cos:plus", {case.name for case in cases})
         self.assertIn("plain_trig_neg_cos:nested_den", {case.name for case in cases})
+        self.assertIn("plain_trig_neg_cos:double_nested_den", {case.name for case in cases})
         self.assertIn("plain_trig_sparse_neg_sin:plus", {case.name for case in cases})
         self.assertIn("plain_trig_sparse_neg_sin:nested_den", {case.name for case in cases})
+        self.assertIn(
+            "plain_trig_sparse_neg_sin:double_nested_den", {case.name for case in cases}
+        )
+        self.assertIn("affine_trig_fifth_sin:plus", {case.name for case in cases})
+        self.assertIn(
+            "affine_trig_fifth_sin:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("affine_trig_fifth_cos:plus", {case.name for case in cases})
+        self.assertIn(
+            "affine_trig_fifth_cos:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("affine_trig_fifth_neg_sin:plus", {case.name for case in cases})
+        self.assertIn(
+            "affine_trig_fifth_neg_sin:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("affine_trig_fifth_neg_cos:plus", {case.name for case in cases})
+        self.assertIn(
+            "affine_trig_fifth_neg_cos:double_nested_den",
+            {case.name for case in cases},
+        )
         self.assertIn("rational_quad:plus", {case.name for case in cases})
         self.assertIn("rational_quad:double_nested_den", {case.name for case in cases})
+        self.assertIn("recip_trig:double_nested_den", {case.name for case in cases})
         self.assertIn("quartic_arcsin_kernel:double_nested_den", {case.name for case in cases})
+        self.assertIn("shifted_arcsin_kernel:plus", {case.name for case in cases})
+        self.assertIn("shifted_arcsin_kernel:nested_den", {case.name for case in cases})
+        self.assertIn("shifted_arcsin_kernel:double_nested_den", {case.name for case in cases})
+        self.assertIn("sqrt_reciprocal_atan_kernel:plus", {case.name for case in cases})
+        self.assertIn("sqrt_reciprocal_atan_kernel:nested_den", {case.name for case in cases})
+        self.assertIn(
+            "sqrt_reciprocal_atan_kernel:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("arctan_sqrt_unit_shift_square:plus", {case.name for case in cases})
+        self.assertIn(
+            "arctan_sqrt_unit_shift_square:nested_den", {case.name for case in cases}
+        )
+        self.assertIn(
+            "arctan_sqrt_unit_shift_square:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("shifted_asinh_kernel:plus", {case.name for case in cases})
+        self.assertIn("shifted_asinh_kernel:nested_den", {case.name for case in cases})
+        self.assertIn("shifted_asinh_kernel:double_nested_den", {case.name for case in cases})
+        self.assertIn("rational_atan_square:plus", {case.name for case in cases})
+        self.assertIn("rational_atan_square:nested_den", {case.name for case in cases})
+        self.assertIn("rational_atan_square:double_nested_den", {case.name for case in cases})
         self.assertIn("constant_base_log_power:plus", {case.name for case in cases})
         self.assertIn("constant_base_log_power:nested_den", {case.name for case in cases})
+        self.assertIn("constant_base_log_power:double_nested_den", {case.name for case in cases})
         self.assertIn(
             "constant_base_log_power:product_den_triple_noise_times_one",
             {case.name for case in cases},
         )
         self.assertIn("log10_power_alias:plus", {case.name for case in cases})
         self.assertIn("log10_power_alias:nested_den", {case.name for case in cases})
+        self.assertIn("log10_power_alias:double_nested_den", {case.name for case in cases})
         self.assertIn(
             "log10_power_alias:product_den_triple_noise_times_one",
             {case.name for case in cases},
         )
         self.assertIn("reciprocal_trig_csc:plus", {case.name for case in cases})
         self.assertIn("reciprocal_trig_csc:nested_den", {case.name for case in cases})
+        self.assertIn("reciprocal_trig_csc:double_nested_den", {case.name for case in cases})
         self.assertIn(
             "reciprocal_trig_csc:product_den_triple_noise_times_one",
             {case.name for case in cases},
         )
         self.assertIn("reciprocal_trig_sec:plus", {case.name for case in cases})
         self.assertIn("reciprocal_trig_sec:nested_den", {case.name for case in cases})
+        self.assertIn("reciprocal_trig_sec:double_nested_den", {case.name for case in cases})
         self.assertIn(
             "reciprocal_trig_sec:product_den_triple_noise_times_one",
             {case.name for case in cases},
@@ -458,9 +622,24 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             "sqrt_chain_csc_log:product_den_triple_noise_times_one",
             {case.name for case in cases},
         )
+        self.assertIn("sqrt_chain_cot_log_neg_affine:plus", {case.name for case in cases})
+        self.assertIn(
+            "sqrt_chain_cot_log_neg_affine:nested_den", {case.name for case in cases}
+        )
+        self.assertIn(
+            "sqrt_chain_cot_log_neg_affine:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "sqrt_chain_cot_log_neg_affine:product_den_triple_noise_times_one",
+            {case.name for case in cases},
+        )
         self.assertIn("sqrt_chain_cosh_recip_square:plus", {case.name for case in cases})
         self.assertIn("sqrt_chain_cosh_recip_square:plus_double_noise", {case.name for case in cases})
         self.assertIn("sqrt_chain_cosh_recip_square:nested_den", {case.name for case in cases})
+        self.assertIn(
+            "sqrt_chain_cosh_recip_square:double_nested_den", {case.name for case in cases}
+        )
         self.assertIn("sqrt_chain_sinh_recip_square:plus", {case.name for case in cases})
         self.assertIn("sqrt_chain_sinh_recip_square:plus_double_noise", {case.name for case in cases})
         self.assertIn("sqrt_chain_sinh_recip_square:nested_den", {case.name for case in cases})
@@ -476,6 +655,54 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertIn("hyperbolic_sinh:plus_triple_noise", {case.name for case in cases})
         self.assertIn(
             "hyperbolic_sinh:plus_triple_noise_times_one", {case.name for case in cases}
+        )
+        self.assertIn("affine_hyperbolic_fifth_sinh:plus", {case.name for case in cases})
+        self.assertIn(
+            "affine_hyperbolic_fifth_sinh:plus_triple_noise_times_one",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "affine_hyperbolic_fifth_sinh:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("affine_hyperbolic_fifth_cosh:plus", {case.name for case in cases})
+        self.assertIn(
+            "affine_hyperbolic_fifth_cosh:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("affine_hyperbolic_fifth_neg_sinh:plus", {case.name for case in cases})
+        self.assertIn(
+            "affine_hyperbolic_fifth_neg_sinh:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("affine_hyperbolic_fifth_neg_cosh:plus", {case.name for case in cases})
+        self.assertIn(
+            "affine_hyperbolic_fifth_neg_cosh:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("affine_hyperbolic_seventh_sinh:plus", {case.name for case in cases})
+        self.assertIn(
+            "affine_hyperbolic_seventh_sinh:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn("affine_hyperbolic_seventh_cosh:plus", {case.name for case in cases})
+        self.assertIn(
+            "affine_hyperbolic_seventh_cosh:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "affine_hyperbolic_seventh_neg_sinh:plus", {case.name for case in cases}
+        )
+        self.assertIn(
+            "affine_hyperbolic_seventh_neg_sinh:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "affine_hyperbolic_seventh_neg_cosh:plus", {case.name for case in cases}
+        )
+        self.assertIn(
+            "affine_hyperbolic_seventh_neg_cosh:double_nested_den",
+            {case.name for case in cases},
         )
         self.assertIn("rational_quad:product_den", {case.name for case in cases})
         self.assertIn(
@@ -527,6 +754,10 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         )
         self.assertIn(
             "quartic_arcsin_over_negative_reciprocal_trig_csc_shifted_quotient",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "log_power_over_reciprocal_trig_sec_shifted_quotient",
             {case.name for case in cases},
         )
         self.assertIn(
@@ -613,6 +844,41 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             rational_quad_positive_double_nested_case.required_conditions,
             ("x + 2", "x + 3", "x + 4"),
         )
+        recip_trig_double_nested_case = next(
+            case for case in cases if case.name == "recip_trig:double_nested_den"
+        )
+        self.assertEqual(
+            recip_trig_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            recip_trig_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        rational_quad_positive_plus_case = next(
+            case
+            for case in cases
+            if case.name == "rational_quad_positive_quadratic:plus"
+        )
+        self.assertEqual(
+            rational_quad_positive_plus_case.expected_result,
+            "1 / (x + 2)",
+        )
+        self.assertEqual(
+            rational_quad_positive_plus_case.required_conditions,
+            ("x + 2",),
+        )
+        exp_affine_double_nested_case = next(
+            case for case in cases if case.name == "exp_affine:double_nested_den"
+        )
+        self.assertEqual(
+            exp_affine_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            exp_affine_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
         exp_nested_case = next(case for case in cases if case.name == "exp_poly:nested_den")
         self.assertEqual(exp_nested_case.expected_result, "1 / ((x + 2)·(x + 3))")
         self.assertEqual(exp_nested_case.required_conditions, ("x + 2", "x + 3"))
@@ -663,6 +929,17 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(
             exp_trig_double_nested_case.required_conditions, ("x + 2", "x + 3", "x + 4")
         )
+        exp_trig_cos_double_nested_case = next(
+            case for case in cases if case.name == "integrate_exp_trig_cos:double_nested_den"
+        )
+        self.assertEqual(
+            exp_trig_cos_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            exp_trig_cos_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
         exp_trig_neg_nested_case = next(
             case for case in cases if case.name == "integrate_exp_trig_neg_sin:nested_den"
         )
@@ -681,6 +958,17 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(
             exp_trig_neg_double_nested_case.required_conditions, ("x + 2", "x + 3", "x + 4")
         )
+        exp_trig_neg_cos_double_nested_case = next(
+            case for case in cases if case.name == "integrate_exp_trig_neg_cos:double_nested_den"
+        )
+        self.assertEqual(
+            exp_trig_neg_cos_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            exp_trig_neg_cos_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
         plain_trig_double_nested_case = next(
             case for case in cases if case.name == "plain_trig_sin:double_nested_den"
         )
@@ -690,6 +978,28 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         )
         self.assertEqual(
             plain_trig_double_nested_case.required_conditions, ("x + 2", "x + 3", "x + 4")
+        )
+        plain_trig_cos_double_nested_case = next(
+            case for case in cases if case.name == "plain_trig_cos:double_nested_den"
+        )
+        self.assertEqual(
+            plain_trig_cos_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            plain_trig_cos_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        plain_trig_neg_cos_double_nested_case = next(
+            case for case in cases if case.name == "plain_trig_neg_cos:double_nested_den"
+        )
+        self.assertEqual(
+            plain_trig_neg_cos_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            plain_trig_neg_cos_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
         )
         plain_trig_cot_fourth_nested_case = next(
             case for case in cases if case.name == "plain_trig_cot_fourth:nested_den"
@@ -735,6 +1045,111 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             plain_trig_sec_fourth_double_nested_case.required_conditions,
             ("cos(2·x + 1)", "x + 2", "x + 3", "x + 4"),
         )
+        plain_trig_neg_cot_fourth_nested_case = next(
+            case for case in cases if case.name == "plain_trig_neg_cot_fourth:nested_den"
+        )
+        self.assertEqual(
+            plain_trig_neg_cot_fourth_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            plain_trig_neg_cot_fourth_nested_case.required_conditions,
+            ("sin(1 - 2·x)", "x + 2", "x + 3"),
+        )
+        plain_trig_neg_cot_fourth_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "plain_trig_neg_cot_fourth:double_nested_den"
+        )
+        self.assertEqual(
+            plain_trig_neg_cot_fourth_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            plain_trig_neg_cot_fourth_double_nested_case.required_conditions,
+            ("sin(1 - 2·x)", "x + 2", "x + 3", "x + 4"),
+        )
+        plain_trig_neg_sec_fourth_nested_case = next(
+            case for case in cases if case.name == "plain_trig_neg_sec_fourth:nested_den"
+        )
+        self.assertEqual(
+            plain_trig_neg_sec_fourth_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            plain_trig_neg_sec_fourth_nested_case.required_conditions,
+            ("cos(1 - 2·x)", "x + 2", "x + 3"),
+        )
+        plain_trig_neg_sec_fourth_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "plain_trig_neg_sec_fourth:double_nested_den"
+        )
+        self.assertEqual(
+            plain_trig_neg_sec_fourth_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            plain_trig_neg_sec_fourth_double_nested_case.required_conditions,
+            ("cos(1 - 2·x)", "x + 2", "x + 3", "x + 4"),
+        )
+        plain_trig_tan_eighth_nested_case = next(
+            case for case in cases if case.name == "plain_trig_tan_eighth:nested_den"
+        )
+        self.assertEqual(
+            plain_trig_tan_eighth_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            plain_trig_tan_eighth_nested_case.required_conditions,
+            ("cos(2·x + 1)", "x + 2", "x + 3"),
+        )
+        plain_trig_tan_eighth_double_nested_case = next(
+            case for case in cases if case.name == "plain_trig_tan_eighth:double_nested_den"
+        )
+        self.assertEqual(
+            plain_trig_tan_eighth_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            plain_trig_tan_eighth_double_nested_case.required_conditions,
+            ("cos(2·x + 1)", "x + 2", "x + 3", "x + 4"),
+        )
+        plain_trig_neg_cot_eighth_nested_case = next(
+            case for case in cases if case.name == "plain_trig_neg_cot_eighth:nested_den"
+        )
+        self.assertEqual(
+            plain_trig_neg_cot_eighth_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            plain_trig_neg_cot_eighth_nested_case.required_conditions,
+            ("sin(1 - 2·x)", "x + 2", "x + 3"),
+        )
+        plain_trig_neg_cot_eighth_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "plain_trig_neg_cot_eighth:double_nested_den"
+        )
+        self.assertEqual(
+            plain_trig_neg_cot_eighth_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            plain_trig_neg_cot_eighth_double_nested_case.required_conditions,
+            ("sin(1 - 2·x)", "x + 2", "x + 3", "x + 4"),
+        )
+        reciprocal_trig_csc_double_nested_case = next(
+            case for case in cases if case.name == "reciprocal_trig_csc:double_nested_den"
+        )
+        self.assertEqual(
+            reciprocal_trig_csc_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            reciprocal_trig_csc_double_nested_case.required_conditions,
+            ("sin(2·x + 1)", "x + 2", "x + 3", "x + 4"),
+        )
         reciprocal_trig_sec_nested_case = next(
             case for case in cases if case.name == "reciprocal_trig_sec:nested_den"
         )
@@ -745,6 +1160,17 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(
             reciprocal_trig_sec_nested_case.required_conditions,
             ("cos(2·x + 1)", "x + 2", "x + 3"),
+        )
+        reciprocal_trig_sec_double_nested_case = next(
+            case for case in cases if case.name == "reciprocal_trig_sec:double_nested_den"
+        )
+        self.assertEqual(
+            reciprocal_trig_sec_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            reciprocal_trig_sec_double_nested_case.required_conditions,
+            ("cos(2·x + 1)", "x + 2", "x + 3", "x + 4"),
         )
         sqrt_chain_sec_log_nested_case = next(
             case for case in cases if case.name == "sqrt_chain_sec_log:nested_den"
@@ -790,6 +1216,30 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             sqrt_chain_csc_log_double_nested_case.required_conditions,
             ("sin(sqrt(3·x + 1))", "x > -1/3", "x + 2", "x + 3", "x + 4"),
         )
+        sqrt_chain_cot_neg_nested_case = next(
+            case for case in cases if case.name == "sqrt_chain_cot_log_neg_affine:nested_den"
+        )
+        self.assertEqual(
+            sqrt_chain_cot_neg_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            sqrt_chain_cot_neg_nested_case.required_conditions,
+            ("sin(sqrt(3 - 2·x))", "x < 3/2", "x + 2", "x + 3"),
+        )
+        sqrt_chain_cot_neg_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "sqrt_chain_cot_log_neg_affine:double_nested_den"
+        )
+        self.assertEqual(
+            sqrt_chain_cot_neg_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            sqrt_chain_cot_neg_double_nested_case.required_conditions,
+            ("sin(sqrt(3 - 2·x))", "x < 3/2", "x + 2", "x + 3", "x + 4"),
+        )
         sqrt_chain_cosh_recip_square_nested_case = next(
             case for case in cases if case.name == "sqrt_chain_cosh_recip_square:nested_den"
         )
@@ -800,6 +1250,19 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(
             sqrt_chain_cosh_recip_square_nested_case.required_conditions,
             ("x > -1/3", "x + 2", "x + 3"),
+        )
+        sqrt_chain_cosh_recip_square_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "sqrt_chain_cosh_recip_square:double_nested_den"
+        )
+        self.assertEqual(
+            sqrt_chain_cosh_recip_square_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            sqrt_chain_cosh_recip_square_double_nested_case.required_conditions,
+            ("x > -1/3", "x + 2", "x + 3", "x + 4"),
         )
         sqrt_chain_sinh_recip_square_nested_case = next(
             case for case in cases if case.name == "sqrt_chain_sinh_recip_square:nested_den"
@@ -833,6 +1296,17 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             "1 / ((x + 2)·(x + 3))",
         )
         self.assertEqual(plain_trig_neg_nested_case.required_conditions, ("x + 2", "x + 3"))
+        plain_trig_neg_double_nested_case = next(
+            case for case in cases if case.name == "plain_trig_neg_sin:double_nested_den"
+        )
+        self.assertEqual(
+            plain_trig_neg_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            plain_trig_neg_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
         sparse_plain_trig_neg_nested_case = next(
             case for case in cases if case.name == "plain_trig_sparse_neg_sin:nested_den"
         )
@@ -842,6 +1316,187 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         )
         self.assertEqual(
             sparse_plain_trig_neg_nested_case.required_conditions, ("x + 2", "x + 3")
+        )
+        sparse_plain_trig_neg_double_nested_case = next(
+            case for case in cases if case.name == "plain_trig_sparse_neg_sin:double_nested_den"
+        )
+        self.assertEqual(
+            sparse_plain_trig_neg_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            sparse_plain_trig_neg_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        affine_trig_fifth_sin_nested_case = next(
+            case for case in cases if case.name == "affine_trig_fifth_sin:nested_den"
+        )
+        self.assertEqual(
+            affine_trig_fifth_sin_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            affine_trig_fifth_sin_nested_case.required_conditions,
+            ("x + 2", "x + 3"),
+        )
+        affine_trig_fifth_cos_double_nested_case = next(
+            case for case in cases if case.name == "affine_trig_fifth_cos:double_nested_den"
+        )
+        self.assertEqual(
+            affine_trig_fifth_cos_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            affine_trig_fifth_cos_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        affine_trig_fifth_neg_sin_nested_case = next(
+            case for case in cases if case.name == "affine_trig_fifth_neg_sin:nested_den"
+        )
+        self.assertEqual(
+            affine_trig_fifth_neg_sin_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            affine_trig_fifth_neg_sin_nested_case.required_conditions,
+            ("x + 2", "x + 3"),
+        )
+        affine_trig_fifth_neg_cos_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "affine_trig_fifth_neg_cos:double_nested_den"
+        )
+        self.assertEqual(
+            affine_trig_fifth_neg_cos_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            affine_trig_fifth_neg_cos_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        affine_hyperbolic_fifth_sinh_nested_case = next(
+            case for case in cases if case.name == "affine_hyperbolic_fifth_sinh:nested_den"
+        )
+        self.assertEqual(
+            affine_hyperbolic_fifth_sinh_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            affine_hyperbolic_fifth_sinh_nested_case.required_conditions,
+            ("x + 2", "x + 3"),
+        )
+        affine_hyperbolic_fifth_cosh_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "affine_hyperbolic_fifth_cosh:double_nested_den"
+        )
+        self.assertEqual(
+            affine_hyperbolic_fifth_cosh_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            affine_hyperbolic_fifth_cosh_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        affine_hyperbolic_fifth_neg_sinh_nested_case = next(
+            case
+            for case in cases
+            if case.name == "affine_hyperbolic_fifth_neg_sinh:nested_den"
+        )
+        self.assertEqual(
+            affine_hyperbolic_fifth_neg_sinh_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            affine_hyperbolic_fifth_neg_sinh_nested_case.required_conditions,
+            ("x + 2", "x + 3"),
+        )
+        affine_hyperbolic_fifth_neg_cosh_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "affine_hyperbolic_fifth_neg_cosh:double_nested_den"
+        )
+        self.assertEqual(
+            affine_hyperbolic_fifth_neg_cosh_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            affine_hyperbolic_fifth_neg_cosh_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        affine_hyperbolic_seventh_sinh_nested_case = next(
+            case for case in cases if case.name == "affine_hyperbolic_seventh_sinh:nested_den"
+        )
+        self.assertEqual(
+            affine_hyperbolic_seventh_sinh_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            affine_hyperbolic_seventh_sinh_nested_case.required_conditions,
+            ("x + 2", "x + 3"),
+        )
+        affine_hyperbolic_seventh_cosh_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "affine_hyperbolic_seventh_cosh:double_nested_den"
+        )
+        self.assertEqual(
+            affine_hyperbolic_seventh_cosh_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            affine_hyperbolic_seventh_cosh_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        affine_hyperbolic_seventh_neg_sinh_nested_case = next(
+            case
+            for case in cases
+            if case.name == "affine_hyperbolic_seventh_neg_sinh:nested_den"
+        )
+        self.assertEqual(
+            affine_hyperbolic_seventh_neg_sinh_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            affine_hyperbolic_seventh_neg_sinh_nested_case.required_conditions,
+            ("x + 2", "x + 3"),
+        )
+        affine_hyperbolic_seventh_neg_cosh_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "affine_hyperbolic_seventh_neg_cosh:double_nested_den"
+        )
+        self.assertEqual(
+            affine_hyperbolic_seventh_neg_cosh_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            affine_hyperbolic_seventh_neg_cosh_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        affine_tanh_six_neg_nested_case = next(
+            case for case in cases if case.name == "affine_tanh_six_neg:nested_den"
+        )
+        self.assertEqual(
+            affine_tanh_six_neg_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            affine_tanh_six_neg_nested_case.required_conditions,
+            ("x + 2", "x + 3"),
+        )
+        affine_tanh_six_neg_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "affine_tanh_six_neg:double_nested_den"
+        )
+        self.assertEqual(
+            affine_tanh_six_neg_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            affine_tanh_six_neg_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
         )
 
     def test_default_matrix_filters_by_base_and_wrapper(self) -> None:
@@ -915,6 +1570,240 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             quartic_arcsin_kernel_double_nested_case.required_conditions,
             ("4 - x^4", "x + 2", "x + 3", "x + 4"),
         )
+        shifted_arcsin_kernel_plus_case = next(
+            case for case in cases if case.name == "shifted_arcsin_kernel:plus"
+        )
+        self.assertEqual(shifted_arcsin_kernel_plus_case.expected_result, "1 / (x + 2)")
+        self.assertEqual(
+            shifted_arcsin_kernel_plus_case.required_conditions,
+            ("4 - (x + 1)^2", "x + 2"),
+        )
+        shifted_arcsin_kernel_nested_case = next(
+            case for case in cases if case.name == "shifted_arcsin_kernel:nested_den"
+        )
+        self.assertEqual(
+            shifted_arcsin_kernel_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            shifted_arcsin_kernel_nested_case.required_conditions,
+            ("4 - (x + 1)^2", "x + 2", "x + 3"),
+        )
+        shifted_arcsin_kernel_double_nested_case = next(
+            case for case in cases if case.name == "shifted_arcsin_kernel:double_nested_den"
+        )
+        self.assertEqual(
+            shifted_arcsin_kernel_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            shifted_arcsin_kernel_double_nested_case.required_conditions,
+            ("4 - (x + 1)^2", "x + 2", "x + 3", "x + 4"),
+        )
+        sqrt_reciprocal_atan_kernel_plus_case = next(
+            case for case in cases if case.name == "sqrt_reciprocal_atan_kernel:plus"
+        )
+        self.assertEqual(
+            sqrt_reciprocal_atan_kernel_plus_case.expected_result,
+            "1 / (x + 2)",
+        )
+        self.assertEqual(
+            sqrt_reciprocal_atan_kernel_plus_case.required_conditions,
+            ("x > 0", "x + 2"),
+        )
+        sqrt_reciprocal_atan_kernel_nested_case = next(
+            case for case in cases if case.name == "sqrt_reciprocal_atan_kernel:nested_den"
+        )
+        self.assertEqual(
+            sqrt_reciprocal_atan_kernel_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            sqrt_reciprocal_atan_kernel_nested_case.required_conditions,
+            ("x > 0", "x + 2", "x + 3"),
+        )
+        sqrt_reciprocal_atan_kernel_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "sqrt_reciprocal_atan_kernel:double_nested_den"
+        )
+        self.assertEqual(
+            sqrt_reciprocal_atan_kernel_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            sqrt_reciprocal_atan_kernel_double_nested_case.required_conditions,
+            ("x > 0", "x + 2", "x + 3", "x + 4"),
+        )
+        arctan_sqrt_unit_shift_square_plus_case = next(
+            case for case in cases if case.name == "arctan_sqrt_unit_shift_square:plus"
+        )
+        self.assertEqual(
+            arctan_sqrt_unit_shift_square_plus_case.expected_result,
+            "1 / (x + 2)",
+        )
+        self.assertEqual(
+            arctan_sqrt_unit_shift_square_plus_case.required_conditions,
+            ("x > 0", "x + 2"),
+        )
+        arctan_sqrt_unit_shift_square_nested_case = next(
+            case for case in cases if case.name == "arctan_sqrt_unit_shift_square:nested_den"
+        )
+        self.assertEqual(
+            arctan_sqrt_unit_shift_square_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            arctan_sqrt_unit_shift_square_nested_case.required_conditions,
+            ("x > 0", "x + 2", "x + 3"),
+        )
+        arctan_sqrt_unit_shift_square_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "arctan_sqrt_unit_shift_square:double_nested_den"
+        )
+        self.assertEqual(
+            arctan_sqrt_unit_shift_square_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            arctan_sqrt_unit_shift_square_double_nested_case.required_conditions,
+            ("x > 0", "x + 2", "x + 3", "x + 4"),
+        )
+        shifted_asinh_kernel_plus_case = next(
+            case for case in cases if case.name == "shifted_asinh_kernel:plus"
+        )
+        self.assertEqual(shifted_asinh_kernel_plus_case.expected_result, "1 / (x + 2)")
+        self.assertEqual(shifted_asinh_kernel_plus_case.required_conditions, ("x + 2",))
+        shifted_asinh_kernel_nested_case = next(
+            case for case in cases if case.name == "shifted_asinh_kernel:nested_den"
+        )
+        self.assertEqual(
+            shifted_asinh_kernel_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            shifted_asinh_kernel_nested_case.required_conditions, ("x + 2", "x + 3")
+        )
+        shifted_asinh_kernel_double_nested_case = next(
+            case for case in cases if case.name == "shifted_asinh_kernel:double_nested_den"
+        )
+        self.assertEqual(
+            shifted_asinh_kernel_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            shifted_asinh_kernel_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        affine_reciprocal_log_plus_case = next(
+            case for case in cases if case.name == "affine_reciprocal_log:plus"
+        )
+        self.assertEqual(affine_reciprocal_log_plus_case.expected_result, "1 / (x + 2)")
+        self.assertEqual(
+            affine_reciprocal_log_plus_case.required_conditions,
+            ("2·x + 1", "x + 2"),
+        )
+        affine_reciprocal_log_nested_case = next(
+            case for case in cases if case.name == "affine_reciprocal_log:nested_den"
+        )
+        self.assertEqual(
+            affine_reciprocal_log_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            affine_reciprocal_log_nested_case.required_conditions,
+            ("2·x + 1", "x + 2", "x + 3"),
+        )
+        affine_reciprocal_log_double_nested_case = next(
+            case for case in cases if case.name == "affine_reciprocal_log:double_nested_den"
+        )
+        self.assertEqual(
+            affine_reciprocal_log_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            affine_reciprocal_log_double_nested_case.required_conditions,
+            ("2·x + 1", "x + 2", "x + 3", "x + 4"),
+        )
+        atanh_kernel_plus_case = next(
+            case for case in cases if case.name == "atanh_kernel:plus"
+        )
+        self.assertEqual(atanh_kernel_plus_case.expected_result, "1 / (x + 2)")
+        self.assertEqual(
+            atanh_kernel_plus_case.required_conditions,
+            ("1 - x^2", "-1 < x < 1", "x + 2"),
+        )
+        atanh_kernel_nested_case = next(
+            case for case in cases if case.name == "atanh_kernel:nested_den"
+        )
+        self.assertEqual(
+            atanh_kernel_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            atanh_kernel_nested_case.required_conditions,
+            ("1 - x^2", "-1 < x < 1", "x + 2", "x + 3"),
+        )
+        atanh_kernel_double_nested_case = next(
+            case for case in cases if case.name == "atanh_kernel:double_nested_den"
+        )
+        self.assertEqual(
+            atanh_kernel_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            atanh_kernel_double_nested_case.required_conditions,
+            ("1 - x^2", "-1 < x < 1", "x + 2", "x + 3", "x + 4"),
+        )
+        rational_atan_square_plus_case = next(
+            case for case in cases if case.name == "rational_atan_square:plus"
+        )
+        self.assertEqual(rational_atan_square_plus_case.expected_result, "1 / (x + 2)")
+        self.assertEqual(rational_atan_square_plus_case.required_conditions, ("x + 2",))
+        rational_atan_square_nested_case = next(
+            case for case in cases if case.name == "rational_atan_square:nested_den"
+        )
+        self.assertEqual(
+            rational_atan_square_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            rational_atan_square_nested_case.required_conditions, ("x + 2", "x + 3")
+        )
+        rational_atan_square_double_nested_case = next(
+            case for case in cases if case.name == "rational_atan_square:double_nested_den"
+        )
+        self.assertEqual(
+            rational_atan_square_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            rational_atan_square_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        constant_base_log_power_double_nested_case = next(
+            case for case in cases if case.name == "constant_base_log_power:double_nested_den"
+        )
+        self.assertEqual(
+            constant_base_log_power_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            constant_base_log_power_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
+        log10_power_alias_double_nested_case = next(
+            case for case in cases if case.name == "log10_power_alias:double_nested_den"
+        )
+        self.assertEqual(
+            log10_power_alias_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            log10_power_alias_double_nested_case.required_conditions,
+            ("x + 2", "x + 3", "x + 4"),
+        )
         shifted_quotient_case = next(
             case for case in cases if case.name == "rational_quad_over_recip_trig_shifted_quotient"
         )
@@ -946,6 +1835,16 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(
             negative_quartic_over_csc_shifted_quotient_case.required_conditions,
             ("4 - x^4", "sin(2·x + 1)"),
+        )
+        log_power_over_sec_shifted_quotient_case = next(
+            case
+            for case in cases
+            if case.name == "log_power_over_reciprocal_trig_sec_shifted_quotient"
+        )
+        self.assertEqual(log_power_over_sec_shifted_quotient_case.expected_result, "1")
+        self.assertEqual(
+            log_power_over_sec_shifted_quotient_case.required_conditions,
+            ("cos(2·x + 1)",),
         )
         sqrt_chain_shifted_quotient_case = next(
             case for case in cases if case.name == "sqrt_chain_sec_over_csc_shifted_quotient"
@@ -1495,6 +2394,156 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"cos(sqrt(3·x + 1))"}],"required_display":["x > -1/3"],"warnings":[]}
                     OUT
                     ;;
+                    *"cot(sqrt(3-2*x))"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"sin(sqrt(3 - 2·x))"}],"required_display":["x < 3/2","x + 2","x + 3","x + 4"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(sqrt(3-2*x))"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sin(sqrt(3 - 2·x))"}],"required_display":["x < 3/2","x + 2","x + 3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(sqrt(3-2*x))"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sin(sqrt(3 - 2·x))"}],"required_display":["x < 3/2","x + 2","x + 3"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(sqrt(3-2*x))"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sin(sqrt(3 - 2·x))"}],"required_display":["x < 3/2","x + 2"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"cot(sqrt(3-2*x))"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sin(sqrt(3 - 2·x))"}],"required_display":["x < 3/2","x + 2"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(sqrt(3-2*x))"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"sin(sqrt(3 - 2·x))"}],"required_display":["x < 3/2","x + 2"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-(x+1)^2)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"3 - x^2 - 2·x"},{"expr_display":"x + 2"}],"required_display":["-3 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-(x+1)^2)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"3 - x^2 - 2·x"},{"expr_display":"x + 2"}],"required_display":["-3 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-(x+1)^2)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"3 - x^2 - 2·x"},{"expr_display":"x + 2"}],"required_display":["-3 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-(x+1)^2)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"3 - x^2 - 2·x"},{"expr_display":"x + 2"}],"required_display":["-3 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"sqrt(4-(x+1)^2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"3 - x^2 - 2·x"},{"expr_display":"x + 2"}],"required_display":["-3 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(4-(x+1)^2)"*"/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"3 - x^2 - 2·x"},{"expr_display":"x + 2"}],"required_display":["-3 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(2*sqrt(x)*(x+1))"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x > 0"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(2*sqrt(x)*(x+1))"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x > 0"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(2*sqrt(x)*(x+1))"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x > 0"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(2*sqrt(x)*(x+1))"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x > 0"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"1/(2*sqrt(x)*(x+1))"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x > 0"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(2*sqrt(x)*(x+1))"*"/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x > 0"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(4*x^2+1)^2"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(4*x^2+1)^2"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(4*x^2+1)^2"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(4*x^2+1)^2"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"1/(4*x^2+1)^2"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(4*x^2+1)^2"*"/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(1-x^2)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"1 - x^2"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"required_display":["-1 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(1-x^2)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"1 - x^2"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"required_display":["-1 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(1-x^2)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"1 - x^2"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"required_display":["-1 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(1-x^2)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"1 - x^2"},{"expr_display":"x + 2"}],"required_display":["-1 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"1/(1-x^2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"1 - x^2"},{"expr_display":"x + 2"}],"required_display":["-1 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(1-x^2)"*"/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"1 - x^2"},{"expr_display":"x + 2"}],"required_display":["-1 < x < 1"],"warnings":[]}
+                    OUT
+                    ;;
                     *"sqrt(4-x^4)"*"csc(2*x+1)"*"-1)"*)
                     cat <<'OUT'
                     {"result":"-1","required_conditions":[{"expr_display":"4 - x^4"},{"expr_display":"sin(2·x + 1)"}],"warnings":[]}
@@ -1535,6 +2584,11 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"4 - x^4"},{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
+                    *"csc(2*x+1)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"csc(2*x+1)"*"/(x+2))/(x+3)"*)
                     cat <<'OUT'
                     {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sin(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
@@ -1573,6 +2627,101 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     *"*(y-y)"*)
                     cat <<'OUT'
                     {"result":"0","required_conditions":[],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sec(1-2*x)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"cos(1 - 2·x)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sec(1-2*x)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"cos(1 - 2·x)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sec(1-2*x)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"cos(1 - 2·x)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sec(1-2*x)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"cos(1 - 2·x)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"sec(1-2*x)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"cos(1 - 2·x)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sec(1-2*x)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"cos(1 - 2·x)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(1-2*x)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"sin(1 - 2·x)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(1-2*x)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sin(1 - 2·x)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(1-2*x)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"sin(1 - 2·x)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(1-2*x)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sin(1 - 2·x)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"cot(1-2*x)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"sin(1 - 2·x)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"cot(1-2*x)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"sin(1 - 2·x)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"tan(2*x+1)"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"tan(2*x+1)"*"/(x+2))/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"tan(2*x+1)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"tan(2*x+1)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"tan(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"tan(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"cos(2·x + 1)"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"log(2,x^2+1)^2"*"sec(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"1","required_conditions":[{"expr_display":"cos(2·x + 1)"}],"warnings":[]}
                     OUT
                     ;;
                     *"sec(2*x+1)"*"/(x+2))/(x+3))/(x+4)"*)
@@ -1700,6 +2849,11 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
+                    *"cosh(sqrt(3*x+1))^2"*"/(x+2))/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x > -1/3"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"cosh(sqrt(3*x+1))^2"*"/(x+2))/(x+3)"*)
                     cat <<'OUT'
                     {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x > -1/3"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
@@ -1728,6 +2882,36 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     *"cosh(sqrt(3*x+1))^2"*)
                     cat <<'OUT'
                     {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x > -1/3"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"ln("*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"ln("*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(2*x+1)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"1/(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(x)*(x+1)^2"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"sqrt(x)*(x+1)^2"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
                     *")-1)/(x+2)"*)
@@ -1915,6 +3099,66 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
+                    *"ln("*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"ln("*"/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"ln("*"(x+2)*(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"ln("*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(2*x+1)"*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(2*x+1)"*"/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(2*x+1)"*"(x+2)*(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"1/(2*x+1)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"2·x + 1"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(x)*(x+1)^2"*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(x)*(x+1)^2"*"/(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(x)*(x+1)^2"*"(x+2)*(x+3)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"sqrt(x)*(x+1)^2"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"/(x+3))/(x+4)"*)
                     cat <<'OUT'
                     {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
@@ -1965,8 +3209,8 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(matrix["status"], "pass", matrix)
-        self.assertEqual(matrix["total"], 357)
-        self.assertEqual(matrix["status_counts"]["pass"], 357)
+        self.assertEqual(matrix["total"], 706)
+        self.assertEqual(matrix["status_counts"]["pass"], 706)
 
     def test_cli_accepts_repeated_require_flags(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

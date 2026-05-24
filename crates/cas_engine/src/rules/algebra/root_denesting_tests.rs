@@ -1,7 +1,19 @@
 use super::root_denesting::*;
 use crate::rule::Rule;
+use cas_ast::target_kind::TargetKind;
 use cas_ast::Context;
 use cas_parser::parse;
+
+#[test]
+fn cubic_conjugate_trap_rule_targets_add_only() {
+    let target_types = CubicConjugateTrapRule
+        .target_types()
+        .expect("CubicConjugateTrapRule should be structurally targeted");
+    assert!(target_types.contains(TargetKind::Add));
+    assert!(!target_types.contains(TargetKind::Sub));
+    assert!(!target_types.contains(TargetKind::Mul));
+    assert!(!target_types.contains(TargetKind::Pow));
+}
 
 #[test]
 fn test_cubic_conjugate_basic() {

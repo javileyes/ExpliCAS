@@ -44,22 +44,24 @@ pub(crate) fn try_rewrite_solve_prep_target_aware(
     shared_vars: &[String],
 ) -> Option<DeriveSolvePrepRewrite> {
     for var_name in shared_vars {
+        if !source_has_explicit_square_in_var(ctx, expr, var_name) {
+            continue;
+        }
+
         if !target_looks_like_completed_square(ctx, target_expr, var_name) {
             continue;
         }
 
-        let Some((candidate, leading_coeff)) =
+        if let Some((candidate, leading_coeff)) =
             try_build_complete_square_candidate(ctx, expr, var_name)
-        else {
-            continue;
-        };
-
-        if completed_square_matches_target(ctx, candidate, target_expr, var_name) {
-            return Some(DeriveSolvePrepRewrite {
-                rewritten: target_expr,
-                assume_nonzero_expr: leading_coeff,
-                kind: DeriveSolvePrepRewriteKind::CompleteSquare,
-            });
+        {
+            if completed_square_matches_target(ctx, candidate, target_expr, var_name) {
+                return Some(DeriveSolvePrepRewrite {
+                    rewritten: target_expr,
+                    assume_nonzero_expr: leading_coeff,
+                    kind: DeriveSolvePrepRewriteKind::CompleteSquare,
+                });
+            }
         }
 
         let Some((negative_leading_candidate, positive_leading_coeff)) =
@@ -78,6 +80,24 @@ pub(crate) fn try_rewrite_solve_prep_target_aware(
     }
 
     None
+}
+
+fn source_has_explicit_square_in_var(ctx: &mut Context, expr: ExprId, var_name: &str) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            is_square_exponent(ctx, *exp) && contains_named_var(ctx, *base, var_name)
+        }
+        Expr::Add(_, _) | Expr::Sub(_, _) => flatten_add_sub_chain(ctx, expr)
+            .into_iter()
+            .any(|term| source_has_explicit_square_in_var(ctx, term, var_name)),
+        Expr::Mul(_, _) if ctx.is_mul_commutative(expr) => flatten_mul_chain(ctx, expr)
+            .into_iter()
+            .any(|factor| source_has_explicit_square_in_var(ctx, factor, var_name)),
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            source_has_explicit_square_in_var(ctx, *inner, var_name)
+        }
+        _ => false,
+    }
 }
 
 fn completed_square_matches_target(
@@ -183,6 +203,10 @@ fn try_build_complete_square_candidate(
     )?;
 
     if is_zero_expr(ctx, b) {
+        return None;
+    }
+
+    if positive_part_of_negative_expr(ctx, a).is_some() {
         return None;
     }
 
@@ -413,6 +437,36 @@ mod tests {
             simplified_difference_matches_zero(&mut ctx, candidate, target),
             "expected symbolic negative-leading candidate to match target"
         );
+    }
+
+    #[test]
+    fn generic_complete_square_builder_rejects_negative_leading_coefficients() {
+        let mut ctx = Context::new();
+        let source =
+            cas_parser::parse("-a*x^2 + b*x + c", &mut ctx).expect("parse solve-prep source");
+
+        assert!(try_build_complete_square_candidate(&mut ctx, source, "x").is_none());
+    }
+
+    #[test]
+    fn solve_prep_focus_var_gate_rejects_shift_parameters() {
+        let mut ctx = Context::new();
+        let source =
+            cas_parser::parse("-a*x^2 + b*x + c", &mut ctx).expect("parse solve-prep source");
+
+        assert!(!source_has_explicit_square_in_var(&mut ctx, source, "a"));
+        assert!(!source_has_explicit_square_in_var(&mut ctx, source, "b"));
+        assert!(!source_has_explicit_square_in_var(&mut ctx, source, "c"));
+        assert!(source_has_explicit_square_in_var(&mut ctx, source, "x"));
+    }
+
+    #[test]
+    fn rewrites_symbolic_negative_leading_target_aware_with_shared_parameters() {
+        assert_tabulated_solve_prep_rewrites(&[(
+            "-a*x^2 + b*x + c",
+            "-a*(x - b/(2*a))^2 + c + b^2/(4*a)",
+            &["a", "b", "c", "x"][..],
+        )]);
     }
 
     #[test]

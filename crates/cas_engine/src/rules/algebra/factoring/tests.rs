@@ -236,3 +236,21 @@ fn test_simplifier_applies_difference_of_squares() {
         "DifferenceOfSquaresRule should be applied during simplification"
     );
 }
+
+#[test]
+fn test_simplifier_applies_sum_three_cubes_zero_rule() {
+    use crate::Simplifier;
+
+    let mut simplifier = Simplifier::with_default_rules();
+    let expr = parse("(a-b)^3 + (b-c)^3 + (c-a)^3", &mut simplifier.context).expect("parse");
+
+    let (_result, steps) = simplifier.simplify(expr);
+
+    let sum_three_cubes_applied = steps
+        .iter()
+        .any(|s| s.rule_name.starts_with("Sum of Three Cubes"));
+    assert!(
+        sum_three_cubes_applied,
+        "SumThreeCubesZeroRule should be applied during simplification"
+    );
+}

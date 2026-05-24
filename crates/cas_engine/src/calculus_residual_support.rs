@@ -1445,10 +1445,10 @@ fn half_power_polynomial_term(
     }
 }
 
-fn half_power_polynomial_sum_required_conditions(
+fn half_power_polynomial_sum_combined(
     ctx: &mut Context,
     expr: ExprId,
-) -> Option<Vec<crate::ImplicitCondition>> {
+) -> Option<(Polynomial, ExprId)> {
     let terms = cas_math::expr_nary::add_terms_signed(ctx, expr);
     if !(2..=4).contains(&terms.len()) {
         return None;
@@ -1510,16 +1510,38 @@ fn half_power_polynomial_sum_required_conditions(
         combined = combined.add(&scale_polynomial(&lifted, &scale));
     }
 
+    Some((combined, base))
+}
+
+fn half_power_base_required_conditions(
+    ctx: &Context,
+    base: ExprId,
+) -> Vec<crate::ImplicitCondition> {
+    if strictly_positive_quadratic_base(ctx, base) {
+        Vec::new()
+    } else {
+        vec![crate::ImplicitCondition::Positive(base)]
+    }
+}
+
+fn half_power_polynomial_sum_required_conditions(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (combined, base) = half_power_polynomial_sum_combined(ctx, expr)?;
     if !combined.is_zero() {
         return None;
     }
 
-    let required_conditions = if strictly_positive_quadratic_base(ctx, base) {
-        Vec::new()
-    } else {
-        vec![crate::ImplicitCondition::Positive(base)]
-    };
-    Some(required_conditions)
+    Some(half_power_base_required_conditions(ctx, base))
+}
+
+fn half_power_polynomial_sum_nonzero_required_conditions(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let (combined, base) = half_power_polynomial_sum_combined(ctx, expr)?;
+    (!combined.is_zero()).then(|| half_power_base_required_conditions(ctx, base))
 }
 
 fn two_term_residual_difference_terms(ctx: &mut Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
@@ -1654,6 +1676,88 @@ fn try_reciprocal_half_power_residual_reciprocal_shifted_difference_root_zero(
     Some((ctx.num(0), required_conditions))
 }
 
+fn reciprocal_half_power_residual_shifted_reciprocal_mismatch_conditions(
+    ctx: &mut Context,
+    residual_denominator: ExprId,
+    target_denominator: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let denominator = strip_exact_zero_additive_noise_bounded(ctx, residual_denominator, 3);
+    let view = cas_math::expr_nary::AddView::from_expr(ctx, denominator);
+    let terms: Vec<_> = view.terms.into_iter().collect();
+    let term_count = terms.len();
+    if !(3..=6).contains(&term_count) {
+        return None;
+    }
+
+    let full_mask = (1_u32 << term_count) - 1;
+    for mask in 1..full_mask {
+        let passthrough = build_signed_add_subset(ctx, &terms, mask, false);
+        if !exprs_match(ctx, passthrough, target_denominator) {
+            continue;
+        }
+
+        let residual_candidate = build_residual_subset_candidate(ctx, &terms, mask);
+        let Some(required_conditions) =
+            half_power_polynomial_sum_nonzero_required_conditions(ctx, residual_candidate)
+        else {
+            continue;
+        };
+        return Some(required_conditions);
+    }
+
+    None
+}
+
+fn compact_reciprocal_half_power_residual_shifted_reciprocal_mismatch_ordered(
+    ctx: &mut Context,
+    left_denominator: ExprId,
+    right_denominator: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let mut required_conditions =
+        reciprocal_half_power_residual_shifted_reciprocal_mismatch_conditions(
+            ctx,
+            left_denominator,
+            right_denominator,
+        )?;
+    required_conditions.push(crate::ImplicitCondition::NonZero(left_denominator));
+    required_conditions.push(crate::ImplicitCondition::NonZero(right_denominator));
+
+    let numerator = ctx.add(Expr::Sub(right_denominator, left_denominator));
+    let denominator =
+        cas_math::expr_nary::build_balanced_mul(ctx, &[left_denominator, right_denominator]);
+    let compact = ctx.add(Expr::Div(numerator, denominator));
+    Some((compact, required_conditions))
+}
+
+pub(crate) fn try_reciprocal_half_power_residual_reciprocal_shifted_difference_compact_mismatch(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = match ctx.get(expr) {
+        Expr::Sub(left, right) => (*left, *right),
+        Expr::Add(left, right) => match ctx.get(*right) {
+            Expr::Neg(right_inner) => (*left, *right_inner),
+            _ => return None,
+        },
+        _ => return None,
+    };
+
+    let left_denominator = unit_reciprocal_denominator(ctx, left)?;
+    let right_denominator = unit_reciprocal_denominator(ctx, right)?;
+    compact_reciprocal_half_power_residual_shifted_reciprocal_mismatch_ordered(
+        ctx,
+        left_denominator,
+        right_denominator,
+    )
+    .or_else(|| {
+        compact_reciprocal_half_power_residual_shifted_reciprocal_mismatch_ordered(
+            ctx,
+            right_denominator,
+            left_denominator,
+        )
+    })
+}
+
 fn compact_reciprocal_half_power_residual_additive_passthrough_denominator(
     ctx: &mut Context,
     denominator: ExprId,
@@ -1722,6 +1826,7 @@ fn resolve_integrate_calls_for_reciprocal_half_power_residual(
                 &call.var_name,
             )
             .into_iter()
+            .filter(|condition| !strictly_positive_quadratic_base(ctx, *condition))
             .map(crate::ImplicitCondition::Positive),
         );
         let result = cas_math::symbolic_integration_support::integrate_symbolic_expr(
@@ -1815,6 +1920,20 @@ pub(crate) fn try_integrate_resolved_reciprocal_half_power_residual_root_zero(
         resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, expr, 10)?;
     let (result, residual_conditions) =
         try_reciprocal_half_power_shared_denominator_residual_root_zero(ctx, resolved)?;
+    required_conditions.extend(residual_conditions);
+    Some((result, required_conditions))
+}
+
+pub(crate) fn try_integrate_resolved_reciprocal_half_power_residual_compact_mismatch(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (resolved, mut required_conditions) =
+        resolve_integrate_calls_for_reciprocal_half_power_residual(ctx, expr, 10)?;
+    let (result, residual_conditions) =
+        try_reciprocal_half_power_residual_reciprocal_shifted_difference_compact_mismatch(
+            ctx, resolved,
+        )?;
     required_conditions.extend(residual_conditions);
     Some((result, required_conditions))
 }
@@ -4657,6 +4776,8 @@ fn companion_power_factor(
         Some(3)
     } else if *power == BigRational::from_integer(5.into()) {
         Some(5)
+    } else if *power == BigRational::from_integer(7.into()) {
+        Some(7)
     } else {
         None
     }
@@ -4734,13 +4855,14 @@ fn companion_power_coeff(terms: &[(u32, BigRational)], power: u32) -> BigRationa
         .fold(BigRational::zero(), |acc, coeff| acc + coeff)
 }
 
-fn fifth_power_primitive_target_diff_matches(
+fn odd_power_primitive_target_diff_matches(
     ctx: &mut Context,
     target: ExprId,
     var_name: &str,
     right: ExprId,
+    expected_power: i64,
 ) -> Option<bool> {
-    let (builtin, arg, slope) = affine_trig_power_target(ctx, right, var_name, 5)?;
+    let (builtin, arg, slope) = affine_trig_power_target(ctx, right, var_name, expected_power)?;
     let companion_builtin = companion_builtin_for_odd_power_primitive(builtin)?;
     let mut terms = Vec::new();
     collect_companion_power_terms(
@@ -4752,34 +4874,42 @@ fn fifth_power_primitive_target_diff_matches(
         &mut terms,
     )?;
 
-    if terms
-        .iter()
-        .any(|(power, coeff)| !matches!(*power, 1 | 3 | 5) && !coeff.is_zero())
-    {
+    let expected_terms: &[(u32, i64, i64)] = match (builtin, expected_power) {
+        (BuiltinFn::Sin, 5) => &[(1, -1, 1), (3, 2, 3), (5, -1, 5)],
+        (BuiltinFn::Cos, 5) => &[(1, 1, 1), (3, -2, 3), (5, 1, 5)],
+        (BuiltinFn::Sin, 7) => &[(1, -1, 1), (3, 1, 1), (5, -3, 5), (7, 1, 7)],
+        (BuiltinFn::Cos, 7) => &[(1, 1, 1), (3, -1, 1), (5, 3, 5), (7, -1, 7)],
+        _ => return None,
+    };
+
+    if terms.iter().any(|(power, coeff)| {
+        !expected_terms
+            .iter()
+            .any(|(expected, _, _)| *expected == *power)
+            && !coeff.is_zero()
+    }) {
         return None;
     }
 
     let expected = |numerator: i64, denominator: i64| {
         BigRational::new(numerator.into(), denominator.into()) / slope.clone()
     };
-    let (expected_one, expected_three, expected_five) = match builtin {
-        BuiltinFn::Sin => (expected(-1, 1), expected(2, 3), expected(-1, 5)),
-        BuiltinFn::Cos => (expected(1, 1), expected(-2, 3), expected(1, 5)),
-        _ => return None,
-    };
 
     Some(
-        companion_power_coeff(&terms, 1) == expected_one
-            && companion_power_coeff(&terms, 3) == expected_three
-            && companion_power_coeff(&terms, 5) == expected_five,
+        expected_terms
+            .iter()
+            .all(|(power, numerator, denominator)| {
+                companion_power_coeff(&terms, *power) == expected(*numerator, *denominator)
+            }),
     )
 }
 
-fn integrated_affine_trig_fifth_power_diff_matches(
+fn integrated_affine_trig_odd_power_diff_matches(
     ctx: &mut Context,
     diff_expr: ExprId,
     divisor: ExprId,
     right: ExprId,
+    expected_power: i64,
 ) -> Option<Vec<crate::ImplicitCondition>> {
     if !expr_is_one(ctx, divisor) {
         return None;
@@ -4795,7 +4925,12 @@ fn integrated_affine_trig_fifth_power_diff_matches(
         if !exprs_match(ctx, integrate_call.target, right) {
             return None;
         }
-        affine_trig_power_target(ctx, integrate_call.target, &integrate_call.var_name, 5)?;
+        affine_trig_power_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+            expected_power,
+        )?;
         cas_math::symbolic_integration_support::integrate_symbolic_expr(
             ctx,
             integrate_call.target,
@@ -4804,9 +4939,33 @@ fn integrated_affine_trig_fifth_power_diff_matches(
         return Some(Vec::new());
     }
 
-    fifth_power_primitive_target_diff_matches(ctx, diff_call.target, &diff_call.var_name, right)
-        .filter(|matched| *matched)
-        .map(|_| Vec::new())
+    odd_power_primitive_target_diff_matches(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+        right,
+        expected_power,
+    )
+    .filter(|matched| *matched)
+    .map(|_| Vec::new())
+}
+
+fn integrated_affine_trig_fifth_power_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    integrated_affine_trig_odd_power_diff_matches(ctx, diff_expr, divisor, right, 5)
+}
+
+fn integrated_affine_trig_seventh_power_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    integrated_affine_trig_odd_power_diff_matches(ctx, diff_expr, divisor, right, 7)
 }
 
 struct EvenPowerPrimitiveTerms {
@@ -5114,11 +5273,12 @@ fn integrated_affine_trig_eighth_power_diff_matches(
         .map(|_| Vec::new())
 }
 
-fn integrated_or_explicit_tan_fourth_diff_matches(
+fn integrated_or_explicit_trig_ratio_power_diff_matches(
     ctx: &mut Context,
     diff_expr: ExprId,
     divisor: ExprId,
     right: ExprId,
+    is_supported_target: fn(&mut Context, ExprId, &str) -> bool,
 ) -> Option<Vec<crate::ImplicitCondition>> {
     if !expr_is_one(ctx, divisor) {
         return None;
@@ -5134,11 +5294,7 @@ fn integrated_or_explicit_tan_fourth_diff_matches(
         if !exprs_match(ctx, integrate_call.target, right) {
             return None;
         }
-        if !cas_math::symbolic_integration_support::integrate_symbolic_is_tan_fourth_affine_target(
-            ctx,
-            integrate_call.target,
-            &integrate_call.var_name,
-        ) {
+        if !is_supported_target(ctx, integrate_call.target, &integrate_call.var_name) {
             return None;
         }
         cas_math::symbolic_integration_support::integrate_symbolic_expr(
@@ -5153,11 +5309,7 @@ fn integrated_or_explicit_tan_fourth_diff_matches(
         ));
     }
 
-    if !cas_math::symbolic_integration_support::integrate_symbolic_is_tan_fourth_affine_target(
-        ctx,
-        right,
-        &diff_call.var_name,
-    ) {
+    if !is_supported_target(ctx, right, &diff_call.var_name) {
         return None;
     }
     let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
@@ -5183,73 +5335,94 @@ fn integrated_or_explicit_tan_fourth_diff_matches(
     ))
 }
 
+fn integrated_or_explicit_tan_fourth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    integrated_or_explicit_trig_ratio_power_diff_matches(
+        ctx,
+        diff_expr,
+        divisor,
+        right,
+        cas_math::symbolic_integration_support::integrate_symbolic_is_tan_fourth_affine_target,
+    )
+}
+
 fn integrated_or_explicit_cot_fourth_diff_matches(
     ctx: &mut Context,
     diff_expr: ExprId,
     divisor: ExprId,
     right: ExprId,
 ) -> Option<Vec<crate::ImplicitCondition>> {
-    if !expr_is_one(ctx, divisor) {
-        return None;
-    }
-
-    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
-    if let Some(integrate_call) =
-        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
-    {
-        if diff_call.var_name != integrate_call.var_name {
-            return None;
-        }
-        if !exprs_match(ctx, integrate_call.target, right) {
-            return None;
-        }
-        if !cas_math::symbolic_integration_support::integrate_symbolic_is_cot_fourth_affine_target(
-            ctx,
-            integrate_call.target,
-            &integrate_call.var_name,
-        ) {
-            return None;
-        }
-        cas_math::symbolic_integration_support::integrate_symbolic_expr(
-            ctx,
-            integrate_call.target,
-            &integrate_call.var_name,
-        )?;
-        return Some(integral_required_conditions(
-            ctx,
-            integrate_call.target,
-            &integrate_call.var_name,
-        ));
-    }
-
-    if !cas_math::symbolic_integration_support::integrate_symbolic_is_cot_fourth_affine_target(
+    integrated_or_explicit_trig_ratio_power_diff_matches(
         ctx,
+        diff_expr,
+        divisor,
         right,
-        &diff_call.var_name,
-    ) {
-        return None;
-    }
-    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
-        ctx,
-        right,
-        &diff_call.var_name,
-    )?;
-    let target = strip_additive_constants_for_antiderivative_match(
-        ctx,
-        diff_call.target,
-        &diff_call.var_name,
-    );
-    let target = cas_ast::hold::strip_all_holds(ctx, target);
-    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
-    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
-        return None;
-    }
+        cas_math::symbolic_integration_support::integrate_symbolic_is_cot_fourth_affine_target,
+    )
+}
 
-    Some(integral_required_conditions(
+fn integrated_or_explicit_tan_sixth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    integrated_or_explicit_trig_ratio_power_diff_matches(
         ctx,
+        diff_expr,
+        divisor,
         right,
-        &diff_call.var_name,
-    ))
+        cas_math::symbolic_integration_support::integrate_symbolic_is_tan_sixth_affine_target,
+    )
+}
+
+fn integrated_or_explicit_cot_sixth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    integrated_or_explicit_trig_ratio_power_diff_matches(
+        ctx,
+        diff_expr,
+        divisor,
+        right,
+        cas_math::symbolic_integration_support::integrate_symbolic_is_cot_sixth_affine_target,
+    )
+}
+
+fn integrated_or_explicit_tan_eighth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    integrated_or_explicit_trig_ratio_power_diff_matches(
+        ctx,
+        diff_expr,
+        divisor,
+        right,
+        cas_math::symbolic_integration_support::integrate_symbolic_is_tan_eighth_affine_target,
+    )
+}
+
+fn integrated_or_explicit_cot_eighth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    integrated_or_explicit_trig_ratio_power_diff_matches(
+        ctx,
+        diff_expr,
+        divisor,
+        right,
+        cas_math::symbolic_integration_support::integrate_symbolic_is_cot_eighth_affine_target,
+    )
 }
 
 fn integrated_or_explicit_sec_fourth_diff_matches(
@@ -5361,6 +5534,282 @@ fn integrated_or_explicit_csc_fourth_diff_matches(
     }
 
     if !cas_math::symbolic_integration_support::integrate_symbolic_is_csc_fourth_affine_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
+fn integrated_or_explicit_sec_sixth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_sec_sixth_affine_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(integral_required_conditions(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ));
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_sec_sixth_affine_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
+fn integrated_or_explicit_csc_sixth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_csc_sixth_affine_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(integral_required_conditions(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ));
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_csc_sixth_affine_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
+fn integrated_or_explicit_sec_eighth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_sec_eighth_affine_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(integral_required_conditions(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ));
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_sec_eighth_affine_target(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ) {
+        return None;
+    }
+    let expected_antiderivative = cas_math::symbolic_integration_support::integrate_symbolic_expr(
+        ctx,
+        right,
+        &diff_call.var_name,
+    )?;
+    let target = strip_additive_constants_for_antiderivative_match(
+        ctx,
+        diff_call.target,
+        &diff_call.var_name,
+    );
+    let target = cas_ast::hold::strip_all_holds(ctx, target);
+    let expected_antiderivative = cas_ast::hold::strip_all_holds(ctx, expected_antiderivative);
+    if !additive_term_multiset_matches(ctx, target, expected_antiderivative, &diff_call.var_name) {
+        return None;
+    }
+
+    Some(integral_required_conditions(
+        ctx,
+        right,
+        &diff_call.var_name,
+    ))
+}
+
+fn integrated_or_explicit_csc_eighth_diff_matches(
+    ctx: &mut Context,
+    diff_expr: ExprId,
+    divisor: ExprId,
+    right: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    if !expr_is_one(ctx, divisor) {
+        return None;
+    }
+
+    let diff_call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    if let Some(integrate_call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, diff_call.target)
+    {
+        if diff_call.var_name != integrate_call.var_name {
+            return None;
+        }
+        if !exprs_match(ctx, integrate_call.target, right) {
+            return None;
+        }
+        if !cas_math::symbolic_integration_support::integrate_symbolic_is_csc_eighth_affine_target(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ) {
+            return None;
+        }
+        cas_math::symbolic_integration_support::integrate_symbolic_expr(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        )?;
+        return Some(integral_required_conditions(
+            ctx,
+            integrate_call.target,
+            &integrate_call.var_name,
+        ));
+    }
+
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_csc_eighth_affine_target(
         ctx,
         right,
         &diff_call.var_name,
@@ -6580,6 +7029,7 @@ fn compact_inverse_trig_derivative_terms_match(
 ) -> bool {
     if exprs_match(ctx, compact, right)
         || quotient_matches_with_unordered_products(ctx, compact, right)
+        || quotient_matches_with_normalized_signs(ctx, compact, right)
         || quotient_matches_rationalized_sqrt_denominator_variant(ctx, compact, right)
     {
         return true;
@@ -6595,7 +7045,41 @@ fn compact_inverse_trig_derivative_terms_match(
 
     exprs_match(ctx, compact_inner, right_inner)
         || quotient_matches_with_unordered_products(ctx, compact_inner, right_inner)
+        || quotient_matches_with_normalized_signs(ctx, compact_inner, right_inner)
         || quotient_matches_rationalized_sqrt_denominator_variant(ctx, compact_inner, right_inner)
+}
+
+fn signed_quotient_parts(ctx: &mut Context, expr: ExprId) -> Option<(bool, ExprId, ExprId)> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    match ctx.get(expr).clone() {
+        Expr::Neg(inner) => {
+            let (negative, num, den) = signed_quotient_parts(ctx, inner)?;
+            Some((!negative, num, den))
+        }
+        Expr::Div(num, den) => {
+            let num = cas_ast::hold::strip_all_holds(ctx, num);
+            match ctx.get(num).clone() {
+                Expr::Neg(inner_num) => Some((true, inner_num, den)),
+                _ => Some((false, num, den)),
+            }
+        }
+        _ => None,
+    }
+}
+
+fn quotient_matches_with_normalized_signs(ctx: &mut Context, left: ExprId, right: ExprId) -> bool {
+    let Some((left_negative, left_num, left_den)) = signed_quotient_parts(ctx, left) else {
+        return false;
+    };
+    let Some((right_negative, right_num, right_den)) = signed_quotient_parts(ctx, right) else {
+        return false;
+    };
+    left_negative == right_negative
+        && (exprs_match(ctx, left_num, right_num)
+            || unordered_product_factors_match(ctx, left_num, right_num))
+        && (unordered_product_factors_match(ctx, left_den, right_den)
+            || compact_sqrt_one_plus_denominator_matches_expanded_sum(ctx, left_den, right_den)
+            || compact_sqrt_one_plus_denominator_matches_expanded_sum(ctx, right_den, left_den))
 }
 
 fn bounded_inverse_trig_sqrt_affine_quotient_residual_conditions(
@@ -7540,13 +8024,40 @@ pub(crate) fn try_diff_integral_plain_trig_residual_zero_preorder(
                 integrated_or_explicit_cot_fourth_diff_matches(ctx, diff_expr, divisor, right)
             })
             .or_else(|| {
+                integrated_or_explicit_tan_sixth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_or_explicit_cot_sixth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_or_explicit_tan_eighth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_or_explicit_cot_eighth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
                 integrated_or_explicit_sec_fourth_diff_matches(ctx, diff_expr, divisor, right)
             })
             .or_else(|| {
                 integrated_or_explicit_csc_fourth_diff_matches(ctx, diff_expr, divisor, right)
             })
             .or_else(|| {
+                integrated_or_explicit_sec_sixth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_or_explicit_csc_sixth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_or_explicit_sec_eighth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_or_explicit_csc_eighth_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
                 integrated_affine_trig_fifth_power_diff_matches(ctx, diff_expr, divisor, right)
+            })
+            .or_else(|| {
+                integrated_affine_trig_seventh_power_diff_matches(ctx, diff_expr, divisor, right)
             })
             .or_else(|| {
                 integrated_polynomial_trig_linear_diff_matches(ctx, diff_expr, divisor, right)
@@ -10339,6 +10850,61 @@ mod tests {
     }
 
     #[test]
+    fn reciprocal_half_power_integrate_resolved_residual_cancels_shifted_reciprocal_difference() {
+        let mut ctx = Context::new();
+        let input =
+            "1/((integrate((2*x+1)/sqrt(x^2+x+1), x) - 2*(x^2+x+1)/sqrt(x^2+x+1))+x+2)-1/(x+2)";
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        let result = try_integrate_resolved_reciprocal_half_power_residual_root_zero(
+            &mut ctx, expr,
+        )
+        .map(|(result, required_conditions)| {
+            (
+                render(&ctx, result),
+                required_conditions
+                    .into_iter()
+                    .map(|condition| condition.display(&ctx))
+                    .collect::<Vec<_>>(),
+            )
+        });
+
+        assert_eq!(result, Some(("0".to_string(), vec!["x ≠ -2".to_string()])));
+    }
+
+    #[test]
+    fn reciprocal_half_power_integrate_resolved_mismatch_compacts_shifted_reciprocal_difference() {
+        let mut ctx = Context::new();
+        let input =
+            "1/((integrate((2*x+1)/sqrt(x^2+x+1), x) - 3*(x^2+x+1)/sqrt(x^2+x+1))+x+2)-1/(x+2)";
+        let expr = parse(input, &mut ctx)
+            .unwrap_or_else(|err| panic!("parse failed for {input}: {err:?}"));
+        let result =
+            try_integrate_resolved_reciprocal_half_power_residual_compact_mismatch(&mut ctx, expr)
+                .map(|(result, required_conditions)| {
+                    (
+                        render(&ctx, result),
+                        required_conditions
+                            .into_iter()
+                            .map(|condition| condition.display(&ctx))
+                            .collect::<Vec<_>>(),
+                    )
+                });
+
+        let Some((rendered, required_conditions)) = result else {
+            panic!("expected compact mismatch");
+        };
+        assert_ne!(rendered, "0");
+        assert!(!rendered.contains("integrate"));
+        assert!(
+            required_conditions
+                .iter()
+                .any(|condition| condition == "x ≠ -2"),
+            "expected passthrough denominator condition, got {required_conditions:?}"
+        );
+    }
+
+    #[test]
     fn explicit_log_abs_antiderivative_residual_cancels_reordered_partial_fraction() {
         assert_eq!(
             explicit_log_abs_antiderivative_residual_result(
@@ -11182,6 +11748,20 @@ mod tests {
     }
 
     #[test]
+    fn diff_bounded_inverse_trig_sqrt_affine_quotient_residual_root_cancels() {
+        let (result, required_conditions) = require_match(inverse_trig_root_residual_result(
+            "diff(arccos(sqrt((x+1)/(x+3))), x) + sqrt(2)/(2*(x+3)*sqrt(x+1))",
+        ));
+        assert_eq!(result, "0");
+        assert_eq!(required_conditions, vec!["x > -1".to_string()]);
+
+        assert!(inverse_trig_root_residual_result(
+            "diff(arccos(sqrt((x+1)/(x+3))), x) - sqrt(2)/(2*(x+3)*sqrt(x+1))"
+        )
+        .is_none());
+    }
+
+    #[test]
     fn diff_integral_reciprocal_trig_residual_root_verifies_antiderivative_first() {
         let cases = [
             "diff(integrate(sec((3*x+2)/2), x), x) - sec((3*x+2)/2)",
@@ -11323,6 +11903,38 @@ mod tests {
     }
 
     #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_seventh_power_reduction() {
+        let cases = [
+            "diff(integrate(sin(x)^7, x), x) - sin(x)^7",
+            "diff(integrate(cos(x)^7, x), x) - cos(x)^7",
+            "diff(integrate(sin(2*x+1)^7, x), x) - sin(2*x+1)^7",
+            "diff(integrate(cos(2*x+1)^7, x), x) - cos(2*x+1)^7",
+            "diff(integrate(sin(1-2*x)^7, x), x) - sin(1-2*x)^7",
+            "diff(integrate(cos(1-2*x)^7, x), x) - cos(1-2*x)^7",
+            "diff(1/2*(-cos(2*x+1)+cos(2*x+1)^3-3/5*cos(2*x+1)^5+1/7*cos(2*x+1)^7), x) - sin(2*x+1)^7",
+            "diff(1/2*(sin(2*x+1)-sin(2*x+1)^3+3/5*sin(2*x+1)^5-1/7*sin(2*x+1)^7), x) - cos(2*x+1)^7",
+            "diff(-1/2*(-cos(1-2*x)+cos(1-2*x)^3-3/5*cos(1-2*x)^5+1/7*cos(1-2*x)^7), x) - sin(1-2*x)^7",
+            "diff(-1/2*(sin(1-2*x)-sin(1-2*x)^3+3/5*sin(1-2*x)^5-1/7*sin(1-2*x)^7), x) - cos(1-2*x)^7",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+
+        assert_eq!(
+            integral_plain_trig_root_residual_result(
+                "diff(integrate(sin(2*x+1)^7, x), y) - sin(2*x+1)^7"
+            ),
+            None
+        );
+    }
+
+    #[test]
     fn diff_integral_plain_trig_residual_root_verifies_explicit_fourth_power_primitive() {
         let cases = [
             "diff(3*x/8 - sin(2*x)/4 + sin(4*x)/32, x) - sin(x)^4",
@@ -11381,6 +11993,48 @@ mod tests {
     }
 
     #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_tan_sixth_without_global_detour() {
+        let cases = [
+            "diff(integrate(tan(x)^6, x), x) - tan(x)^6",
+            "diff(tan(x)^5/5 - tan(x)^3/3 + tan(x) - x, x) - tan(x)^6",
+            "diff(integrate(tan(2*x+1)^6, x), x) - tan(2*x+1)^6",
+            "diff(tan(2*x+1)^5/10 - tan(2*x+1)^3/6 + tan(2*x+1)/2 - x, x) - tan(2*x+1)^6",
+            "diff(-tan(1-2*x)/2 - tan(1-2*x)^5/10 + tan(1-2*x)^3/6 - x, x) - tan(1-2*x)^6",
+            "diff(tan(2*x+1)^5/10 - tan(2*x+1)^3/6 + tan(2*x+1)/2 - x, x) - sin(2*x+1)^6/cos(2*x+1)^6",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_cot_sixth_without_global_detour() {
+        let cases = [
+            "diff(integrate(cot(x)^6, x), x) - cot(x)^6",
+            "diff(-cot(x)^5/5 + cot(x)^3/3 - cot(x) - x, x) - cot(x)^6",
+            "diff(integrate(cot(2*x+1)^6, x), x) - cot(2*x+1)^6",
+            "diff(-cot(2*x+1)^5/10 + cot(2*x+1)^3/6 - cot(2*x+1)/2 - x, x) - cot(2*x+1)^6",
+            "diff(cot(1-2*x)/2 - cot(1-2*x)^3/6 + cot(1-2*x)^5/10 - x, x) - cot(1-2*x)^6",
+            "diff(-cot(2*x+1)^5/10 + cot(2*x+1)^3/6 - cot(2*x+1)/2 - x, x) - cos(2*x+1)^6/sin(2*x+1)^6",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
     fn diff_integral_plain_trig_residual_root_verifies_sec_fourth_without_global_detour() {
         let cases = [
             "diff(integrate(sec(x)^4, x), x) - sec(x)^4",
@@ -11406,6 +12060,128 @@ mod tests {
             "diff(-cot(x) - cot(x)^3/3, x) - csc(x)^4",
             "diff(integrate(1/sin(2*x+1)^4, x), x) - 1/sin(2*x+1)^4",
             "diff(-cot(2*x+1)/2 - cot(2*x+1)^3/6, x) - 1/sin(2*x+1)^4",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_sec_sixth_without_global_detour() {
+        let cases = [
+            "diff(integrate(sec(x)^6, x), x) - sec(x)^6",
+            "diff(tan(x) + 2*tan(x)^3/3 + tan(x)^5/5, x) - sec(x)^6",
+            "diff(integrate(1/cos(2*x+1)^6, x), x) - 1/cos(2*x+1)^6",
+            "diff(tan(2*x+1)/2 + tan(2*x+1)^3/3 + tan(2*x+1)^5/10, x) - 1/cos(2*x+1)^6",
+            "diff(-tan(1-2*x)/2 - tan(1-2*x)^3/3 - tan(1-2*x)^5/10, x) - sec(1-2*x)^6",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_csc_sixth_without_global_detour() {
+        let cases = [
+            "diff(integrate(csc(x)^6, x), x) - csc(x)^6",
+            "diff(-cot(x) - 2*cot(x)^3/3 - cot(x)^5/5, x) - csc(x)^6",
+            "diff(integrate(1/sin(2*x+1)^6, x), x) - 1/sin(2*x+1)^6",
+            "diff(-cot(2*x+1)/2 - cot(2*x+1)^3/3 - cot(2*x+1)^5/10, x) - 1/sin(2*x+1)^6",
+            "diff(cot(1-2*x)/2 + cot(1-2*x)^3/3 + cot(1-2*x)^5/10, x) - csc(1-2*x)^6",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_tan_eighth_without_global_detour() {
+        let cases = [
+            "diff(integrate(tan(x)^8, x), x) - tan(x)^8",
+            "diff(tan(x)^7/7 - tan(x)^5/5 + tan(x)^3/3 - tan(x) + x, x) - tan(x)^8",
+            "diff(integrate(tan(2*x+1)^8, x), x) - tan(2*x+1)^8",
+            "diff(tan(2*x+1)^7/14 - tan(2*x+1)^5/10 + tan(2*x+1)^3/6 - tan(2*x+1)/2 + x, x) - tan(2*x+1)^8",
+            "diff(-tan(1-2*x)^7/14 + tan(1-2*x)^5/10 - tan(1-2*x)^3/6 + tan(1-2*x)/2 + x, x) - tan(1-2*x)^8",
+            "diff(tan(2*x+1)^7/14 - tan(2*x+1)^5/10 + tan(2*x+1)^3/6 - tan(2*x+1)/2 + x, x) - sin(2*x+1)^8/cos(2*x+1)^8",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_cot_eighth_without_global_detour() {
+        let cases = [
+            "diff(integrate(cot(x)^8, x), x) - cot(x)^8",
+            "diff(-cot(x)^7/7 + cot(x)^5/5 - cot(x)^3/3 + cot(x) + x, x) - cot(x)^8",
+            "diff(integrate(cot(2*x+1)^8, x), x) - cot(2*x+1)^8",
+            "diff(-cot(2*x+1)^7/14 + cot(2*x+1)^5/10 - cot(2*x+1)^3/6 + cot(2*x+1)/2 + x, x) - cot(2*x+1)^8",
+            "diff(cot(1-2*x)^7/14 - cot(1-2*x)^5/10 + cot(1-2*x)^3/6 - cot(1-2*x)/2 + x, x) - cot(1-2*x)^8",
+            "diff(-cot(2*x+1)^7/14 + cot(2*x+1)^5/10 - cot(2*x+1)^3/6 + cot(2*x+1)/2 + x, x) - cos(2*x+1)^8/sin(2*x+1)^8",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_sec_eighth_without_global_detour() {
+        let cases = [
+            "diff(integrate(sec(x)^8, x), x) - sec(x)^8",
+            "diff(tan(x) + tan(x)^3 + 3*tan(x)^5/5 + tan(x)^7/7, x) - sec(x)^8",
+            "diff(integrate(1/cos(2*x+1)^8, x), x) - 1/cos(2*x+1)^8",
+            "diff(tan(2*x+1)/2 + tan(2*x+1)^3/2 + 3*tan(2*x+1)^5/10 + tan(2*x+1)^7/14, x) - 1/cos(2*x+1)^8",
+            "diff(-tan(1-2*x)/2 - tan(1-2*x)^3/2 - 3*tan(1-2*x)^5/10 - tan(1-2*x)^7/14, x) - sec(1-2*x)^8",
+        ];
+
+        for input in cases {
+            assert_eq!(
+                integral_plain_trig_root_residual_result(input),
+                Some("0".to_string()),
+                "{input}"
+            );
+            assert_eq!(simplify_text(input), "0", "{input}");
+        }
+    }
+
+    #[test]
+    fn diff_integral_plain_trig_residual_root_verifies_csc_eighth_without_global_detour() {
+        let cases = [
+            "diff(integrate(csc(x)^8, x), x) - csc(x)^8",
+            "diff(-cot(x) - cot(x)^3 - 3*cot(x)^5/5 - cot(x)^7/7, x) - csc(x)^8",
+            "diff(integrate(1/sin(2*x+1)^8, x), x) - 1/sin(2*x+1)^8",
+            "diff(-cot(2*x+1)/2 - cot(2*x+1)^3/2 - 3*cot(2*x+1)^5/10 - cot(2*x+1)^7/14, x) - 1/sin(2*x+1)^8",
+            "diff(cot(1-2*x)/2 + cot(1-2*x)^3/2 + 3*cot(1-2*x)^5/10 + cot(1-2*x)^7/14, x) - csc(1-2*x)^8",
         ];
 
         for input in cases {

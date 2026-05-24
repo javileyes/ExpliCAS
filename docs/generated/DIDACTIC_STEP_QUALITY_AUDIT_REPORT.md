@@ -200,9 +200,8 @@ Steps:
 
 ```text
 Steps:
-1. Quitar el 0
+1. Cancelar términos opuestos
    Before: 2 · x + 3 · x + 0
-   After: 2 · x + 3 · x
 2. Agrupar términos semejantes
    Before: 2 · x + 3 · x
       [Sumar los coeficientes que acompañan a x]
@@ -215,6 +214,12 @@ Steps:
 ### Wire / Web Steps
 
 1. `Agrupar términos semejantes`
+   - before: `2 · x + 3 · x`
+   - after: `2 · x + 3 · x`
+   - before_latex: `{\color{red}{2\cdot x}} + 3\cdot x`
+   - after_latex: `2\cdot x + 3\cdot x`
+   - substeps: none
+2. `Agrupar términos semejantes`
    - before: `2 · x + 3 · x`
    - after: `5 · x`
    - before_latex: `{\color{red}{2\cdot x + 3\cdot x}}`

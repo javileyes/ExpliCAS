@@ -71,7 +71,7 @@ fn format_sum_three_cubes_zero_desc(kind: SumThreeCubesZeroRewriteKind) -> &'sta
 define_rule!(
     DifferenceOfSquaresRule,
     "Difference of Squares (Product to Difference)",
-    None,
+    Some(crate::target_kind::TargetKindSet::MUL),
     PhaseMask::CORE | PhaseMask::POST,
     |ctx, expr| {
         let rewrite = try_rewrite_difference_of_squares_product_expr(ctx, expr)?;
@@ -120,7 +120,7 @@ define_rule!(
 define_rule!(
     FactorCommonIntegerFromAdd,
     "Factor Common Integer",
-    None,
+    Some(crate::target_kind::TargetKindSet::ADD_SUB),
     PhaseMask::POST,
     |ctx, expr, parent_ctx| {
         if let Some(rewrite) = try_rewrite_factor_common_integer_from_add_expr(ctx, expr) {
@@ -340,6 +340,7 @@ fn is_compact_low_degree_polynomial_power(ctx: &cas_ast::Context, expr: cas_ast:
 define_rule!(
     SumThreeCubesZeroRule,
     "Sum of Three Cubes (Zero Sum Identity)",
+    Some(crate::target_kind::TargetKindSet::ADD),
     |ctx, expr| {
         let rewrite = try_rewrite_sum_three_cubes_zero_expr(ctx, expr)?;
         Some(

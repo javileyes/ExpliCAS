@@ -716,7 +716,7 @@ fn test_eval_json_integral_sqrt_product_keeps_reciprocal_sqrt_before_table_step(
     let steps = json["steps"].as_array().expect("steps should be an array");
     let merge_step = steps
         .iter()
-        .find(|step| step["rule"] == "Merge Sqrt Product")
+        .find(|step| step["rule"] == "Combinar raíces en un producto")
         .expect("expected sqrt product merge step");
     let merge_after = merge_step["after"].as_str().expect("merge after string");
     assert!(
@@ -1136,28 +1136,28 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
             "tan(x)·sqrt(sec(x)) / 2",
             "|cos(x)^(-1/2)|",
             ["tan(x)", "sqrt(sec(x))"],
-            Some("cos(x)"),
+            Some("sec(x)"),
         ),
         (
             "diff(sqrt(csc(x)), x)",
             "-cot(x)·sqrt(csc(x)) / 2",
             "|sin(x)^(-1/2)|",
             ["cot(x)", "sqrt(csc(x))"],
-            Some("sin(x)"),
+            Some("csc(x)"),
         ),
         (
             "diff(sqrt(sec(3-2*x)), x)",
             "-tan(3 - 2·x)·sqrt(sec(3 - 2·x))",
             "|(cos(3 - 2 · x))^(-1/2)|",
             ["tan(3 - 2 · x)", "sqrt(sec(3 - 2 · x))"],
-            Some("cos(3 - 2·x)"),
+            Some("sec(3 - 2·x)"),
         ),
         (
             "diff(sqrt(csc(3-2*x)), x)",
             "cot(3 - 2·x)·sqrt(csc(3 - 2·x))",
             "|(sin(3 - 2 · x))^(-1/2)|",
             ["cot(3 - 2 · x)", "sqrt(csc(3 - 2 · x))"],
-            Some("sin(3 - 2·x)"),
+            Some("csc(3 - 2·x)"),
         ),
         (
             "diff(sqrt(arctan(x)), x)",
@@ -1251,9 +1251,16 @@ fn test_eval_json_steps_preserve_post_calculus_presentation_step() {
             .as_array()
             .expect("required_conditions should be an array");
         if let Some(required_expr) = required_expr {
+            let required_kind =
+                if required_expr.starts_with("sec(") || required_expr.starts_with("csc(") {
+                    "NonNegative"
+                } else {
+                    "Positive"
+                };
             assert!(
                 required.iter().any(|condition| {
-                    condition["kind"] == "Positive" && condition["expr_canonical"] == required_expr
+                    condition["kind"] == required_kind
+                        && condition["expr_canonical"] == required_expr
                 }),
                 "post-calculus presentation should preserve the sqrt-domain guard for {expr}: {required:?}"
             );
@@ -3601,6 +3608,39 @@ fn test_eval_integral_independent_radical_constant_verifies_per_domain_mode() {
         }),
         "assumed displayed residual should surface the positivity assumption: {residual_assumptions:?}"
     );
+}
+
+#[test]
+fn test_eval_common_scale_abs_like_cancellation_surfaces_assumption_in_assume_mode() {
+    for expr in ["2*a - 2*abs(a)", "2*a - 2*sqrt(a^2)"] {
+        let generic = eval_json_with_args(expr, &["--domain", "generic"]);
+        assert_eq!(
+            generic["ok"], true,
+            "generic eval should succeed for {expr}"
+        );
+        assert_ne!(
+            generic["result"], "0",
+            "generic mode must not cancel the domain-sensitive residual for {expr}"
+        );
+        assert!(
+            generic["assumptions_used"].is_null(),
+            "generic mode should not record assumptions for {expr}: {:?}",
+            generic["assumptions_used"]
+        );
+
+        let assume = eval_json_with_args(expr, &["--domain", "assume"]);
+        assert_eq!(assume["ok"], true, "assume eval should succeed for {expr}");
+        assert_eq!(assume["result"], "0");
+        let assumptions = assume["assumptions_used"]
+            .as_array()
+            .expect("assumptions_used should be an array in assume mode");
+        assert!(
+            assumptions.iter().any(|assumption| {
+                assumption["display"] == "a > 0" && assumption["kind"] == "positive"
+            }),
+            "assume mode should surface the positivity assumption for {expr}: {assumptions:?}"
+        );
+    }
 }
 
 #[test]

@@ -116,6 +116,7 @@ define_rule!(
 define_rule!(
     TrigOddEvenParityRule,
     "Trig Parity (Odd/Even)",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_trig_odd_even_parity_expr(ctx, expr)?;
         Some(

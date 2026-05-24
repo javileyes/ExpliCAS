@@ -95,6 +95,440 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-24 - Observe-only discovery: mul-div target narrowing changes post-calculus diff routes
+
+- area:
+  - fractions / target-kind dispatch / post-calculus differentiation presentation
+- status:
+  - `resolved`
+- candidate:
+  - narrow `SimplifyMulDivRule` to `TargetKindSet::MUL`, because
+    `try_rewrite_simplify_mul_div_expr` begins by requiring a multiplication
+    root through `as_mul(ctx, expr)?`
+- local lane:
+  - `cargo test -p cas_engine simplify_mul_div_rule_targets_mul_only -- --nocapture`
+  - `cargo test -p cas_solver --test diff_step_contract_tests
+    arctan_sqrt_diff_uses_post_calculus_reciprocal_root_presentation
+    -- --nocapture`
+  - `cargo test -p cas_cli --test integrate_contract_tests
+    integrate_contract_sqrt_chain_hyperbolic_reciprocal_squares_verify
+    -- --nocapture`
+- local result:
+  - the target-kind unit slice passed while the candidate was present
+  - the focused diff and integrate presentation contracts passed while the
+    candidate was present
+- global result:
+  - `make engine-fast` failed in `calculus_diff_contract`
+  - failing cases:
+    `constant_base_log_abs_diff_uses_direct_domain_safe_log_rule` exposed a
+    noisy 6-step fixed-base log route, and
+    `bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentation`
+    failed derivative-equivalence verification for the compact root
+    presentation
+- why it regressed globally:
+  - even when a fraction cleanup helper is syntactically `Mul`-rooted, moving
+    it into target-indexed dispatch can alter post-calculus simplification
+    ordering and step visibility across diff families that were not covered by
+    the local presentation probes
+- what could make it combinable later:
+  - first harden the post-calculus diff presentation filter/equivalence route
+    for fixed-base log and bounded inverse-trig sqrt outputs, then retry any
+    `SimplifyMulDivRule` dispatch narrowing under full `calculus_diff_contract`
+- retry note:
+  - 2026-05-24 combination retry after later calculus-presentation hardening
+    still reproduced both original blockers before promotion:
+    `constant_base_log_abs_diff_uses_direct_domain_safe_log_rule` emitted a
+    6-step fixed-base log route, and
+    `bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentation`
+    left a nonzero residual for the `(x+1)/(x+3)` arccos case
+  - the narrowing was reverted; keep this entry `observe-only` until those two
+    post-calculus diff routes are hardened directly
+- retained follow-up:
+  - 2026-05-24 calculus cycle hardened the fixed-base `log(base, abs(u))`
+    derivative path by emitting the compact divided-by-`ln(base)` form directly
+    and filtering terminal post-diff cleanup noise; with a local
+    `SimplifyMulDivRule` target probe, the
+    `constant_base_log_abs_diff_uses_direct_domain_safe_log_rule` contract
+    passed
+  - 2026-05-24 calculus cycle hardened bounded inverse-trig sqrt affine-quotient
+    residual matching by normalizing `-(a/b)` versus `(-a)/b` quotient
+    orientation; with a local `SimplifyMulDivRule` target probe,
+    `bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentation`
+    passed for the `(x+1)/(x+3)` arccos residual
+  - known focused blockers for a `SimplifyMulDivRule` target-narrowing retry
+    are now closed; promotion is still deferred until a separate combination
+    cycle reruns the full diff contract plus fast/guardrail/pressure lanes with
+    the candidate patch present
+- rejected retry:
+  - 2026-05-24 combination retry changed only `SimplifyMulDivRule` to
+    `TargetKindSet::MUL`; focused gcd-cancel, historical diff blockers,
+    integration presentation probe, and `make engine-fast` passed
+  - `make engine-scorecard` was terminated after the release
+    `cas_cli --test integrate_contract_tests` lane spent more than 6 minutes in
+    `integrate_contract_positive_sqrt_antiderivative_rationalized_residual_survives_shifted_reciprocal_difference`
+  - a 3s sample showed the hot route under
+    `RationalizeLinearSqrtDenRule` / `GeneralizedRationalizationRule` /
+    `rationalize_diff_squares_support::try_rewrite_generalized_rationalization_expr`,
+    recursively expanding through `expand_ops::distribute_single` and
+    `compare_expr`
+  - the narrowing was reverted; keep this entry `observe-only` until the
+    positive-sqrt rationalized residual integration route is hardened or gated
+    under the narrowed dispatch shape
+- retained follow-up:
+  - 2026-05-24 robustness cycle hardened the positive-sqrt rationalized
+    residual route by resolving embedded half-power `integrate(...)` calls
+    before general simplification, dropping redundant positivity requirements
+    for strictly positive quadratic radicands, and compacting the nonmatching
+    shifted reciprocal residual instead of sending it into rationalization and
+    expansion
+  - with a local `SimplifyMulDivRule` target probe, the focused
+    `integrate_contract_positive_sqrt_antiderivative_rationalized_residual_survives_shifted_reciprocal_difference`
+    contract passed in `0.02s`
+  - this closes the known positive-sqrt focused blocker; keep the
+    `SimplifyMulDivRule` promotion deferred until a separate `combination`
+    cycle reruns full diff, integrate, fast, guardrail, and pressure lanes with
+    the candidate narrowing present
+- rejected retry:
+  - 2026-05-24 combination retry changed only `SimplifyMulDivRule` to
+    `TargetKindSet::MUL`; focused gcd-cancel target, the three historical
+    post-calculus diff blockers, the two integration probes, `cargo fmt
+    --check`, `git diff --check`, and `make engine-fast` all passed
+  - `make engine-scorecard` rejected the candidate in
+    `embedded_equivalence_context`: `1485/1488` passed, `3` failed, elapsed
+    `19.70s`
+  - failing embedded signatures were all l3 wrapper/composition rows:
+    `additive_passthrough_zero x finite_telescoping`,
+    `scaled_difference_zero x finite_telescoping`, and
+    `common_denominator_zero x calculus_diff`
+  - the narrowing was reverted; keep this entry `observe-only` until any next
+    retry first hardens or gates the embedded finite-telescoping wrapper
+    residuals and the common-denominator log2/sqrt calculus-diff residual under
+    the narrowed dispatch shape
+- retained follow-up plus rejected probe:
+  - 2026-05-24 robustness cycle retained a narrower arithmetic hardening for
+    reciprocal half-power residual cancellation: the matcher can now factor
+    additive denominator scales such as `q*log2(x^2+1)+q` and
+    `2*q*ln(2)+2*q*ln(2)*x^2`, and can compare the induced
+    `scale/denominator` quotient by product cross-multiplication
+  - focused units for the unfactored `log2`/`sqrt` residual variants passed,
+    including both the `sqrt(base)/base` presentation and the shared
+    reciprocal-sqrt denominator presentation
+  - a local `SimplifyMulDivRule -> TargetKindSet::MUL` probe still left the
+    embedded `common_denominator_zero x calculus_diff` row nonzero after the
+    full eval pipeline, even though the parsed residual variants now collapse
+    directly
+  - discovery: the remaining blocker is not the direct arithmetic matcher
+    alone; the narrowed dispatch shape leaves a post-calculus residual in an
+    accumulated pipeline form that does not re-enter the exact common-scale
+    route successfully before final presentation
+  - the narrowing was reverted again; keep this entry `observe-only`. A next
+    combination attempt should first harden the post-calculus residual cleanup
+    call-site for this accumulated form and still address the two
+    finite-telescoping embedded blockers before any promotion retry
+- retained finite-telescoping follow-up:
+  - 2026-05-24 combination cycle hardened finite-sum residual matching and the
+    eval post-pass for embedded `sum/product` residuals
+  - under a local `SimplifyMulDivRule -> TargetKindSet::MUL` probe, the
+    documented embedded blockers
+    `additive_passthrough_zero x finite_telescoping` and
+    `scaled_difference_zero x finite_telescoping` both passed `5/5`
+  - the same probe still failed `common_denominator_zero x calculus_diff` on
+    the accumulated `log2`/`sqrt` residual, so the narrowing remains reverted
+    and this ledger item stays `observe-only`
+  - next combination retry should first harden that post-calculus accumulated
+    residual form, then rerun the full embedded, fast, guardrail, and pressure
+    lanes with the narrowing present before promotion
+- rejected probe / discovery:
+  - 2026-05-24 combination retry again applied only the local
+    `SimplifyMulDivRule -> TargetKindSet::MUL` probe and targeted the remaining
+    `common_denominator_zero x calculus_diff` blocker
+  - the focused embedded filter still failed `2/3` with the accumulated
+    `log2`/`sqrt` common-denominator residual, so the narrowing was reverted
+  - minimal probes showed the rendered residual, when reparsed into a clean
+    context, is accepted by the existing common-scaled reciprocal half-power
+    matcher, while the eval-produced graph with the same public rendering is
+    not accepted
+  - discovery: the remaining blocker is not another finite-telescoping-style
+    post-pass; it is a structural mismatch between eval-produced fraction-like
+    calculus residuals and the current half-power/common-scale matcher input
+    shape
+  - no code was retained from this probe. A next attempt should first add a
+    focused structural probe around the eval-produced graph shape, then harden
+    the half-power matcher to consume that shape without render/reparse
+    fallback before retrying the target narrowing
+- retained follow-up:
+  - 2026-05-24 combination cycle added the focused structural probe and
+    hardened the half-power/common-scale matcher with a bounded fraction-like
+    extractor that accepts a product containing exactly one division factor,
+    such as the eval-produced `2 * (num / den)` residual shape
+  - with that hardening, the local `SimplifyMulDivRule -> TargetKindSet::MUL`
+    promotion was retained: the focused embedded
+    `common_denominator_zero x calculus_diff` filter passed `3/3`, and fast,
+    guardrail, and pressure scorecards all passed with `failed=0`
+  - this resolves the documented mul-div target narrowing blocker without a
+    render/reparse fallback, without broad fraction simplification, and without
+    changing calculus domain, branch, or integration-constant policy
+
+## 2026-05-24 - Observe-only discovery: cancel-power-fraction target narrowing changes calculus canonical presentation
+
+- area:
+  - fractions / target-kind dispatch / integration presentation
+- status:
+  - `resolved`
+- candidate:
+  - narrow `CancelPowerFractionRule` to `TargetKindSet::DIV`, because
+    `try_rewrite_cancel_power_fraction_expr` begins by requiring a division
+    root
+- local lane:
+  - `cargo test -p cas_engine gcd_cancel -- --nocapture`
+  - `cargo test -p cas_cli --test integrate_contract_tests
+    integrate_contract_polynomial_derivative_acosh_substitution_preserves_real_domain
+    -- --nocapture`
+- local result:
+  - the `gcd_cancel` target-kind unit slice passed while the candidate was
+    present
+  - the focused integration contract failed with
+    `acosh(5^(-1/2) * (x^2 + x))` instead of
+    `acosh((x^2 + x) / sqrt(5))`
+  - removing only the `CancelPowerFractionRule` narrowing made the focused
+    integration contract pass again
+- global result:
+  - `make engine-scorecard` failed in `calculus_integrate_contract`
+  - embedded, derive, didactic, strict simplify, diff, limit, presimplify, and
+    residual matrix lanes were green before that failure
+- why it regressed globally:
+  - this rule participates in canonical post-integration presentation, not only
+    in local fraction cancellation; moving it into target-indexed dispatch
+    changes a public antiderivative argument from division-by-root form to
+    negative-power multiplication form
+- what could make it combinable later:
+  - split the public calculus presentation dependency from the generic
+    cancellation rule, or add a narrower presentation cleanup that preserves
+    `a / sqrt(k)` before retrying any dispatch narrowing
+- retained follow-up:
+  - a subsequent calculus presentation hardening preserved `a / sqrt(k)` for
+    `k^(-1/2) * a` acosh arguments, then this combination cycle retained
+    `CancelPowerFractionRule` as `TargetKindSet::DIV`
+  - focused acosh integration, fast, guardrail, and pressure lanes passed with
+    failed=0; no domain, branch, or integration-constant policy changed
+
+## 2026-05-24 - Observe-only discovery: product-power target narrowing surfaced calculus presentation noise
+
+- area:
+  - exponents / target-kind dispatch / post-calculus presentation trace
+- status:
+  - `resolved`
+- candidate:
+  - narrow `ProductPowerRule` from untargeted dispatch to `TargetKindSet::MUL`,
+    because `try_rewrite_product_power_expr` immediately requires a `Mul` root
+- local lane:
+  - `cargo test -p cas_engine rules::exponents::tests -- --nocapture`
+  - `cargo test -p cas_solver --test fire_exponents_tests -- --nocapture`
+- local result:
+  - exponents unit tests and fire exponent contracts passed
+- global result:
+  - `make engine-fast` failed in `calculus_diff_contract`
+  - the failing case was
+    `asinh_sqrt_diff_uses_post_calculus_root_denominator_presentation`
+  - the public step trace exposed
+    `Rationalize Product Denominator`, `Product of Powers`, and
+    `Present calculus result in compact form`, violating the compact
+    post-calculus presentation contract
+- why it regressed globally:
+  - moving this broad product-power simplifier into target-indexed dispatch can
+    change which low-level simplification steps are surfaced during
+    post-calculus presentation, even when the final algebraic result remains
+    correct
+- what could make it combinable later:
+  - separate internal presentation cleanup from user-visible step emission, or
+    add a narrower call-site that preserves the compact calculus trace before
+    retrying product-power dispatch narrowing
+- retained follow-up:
+  - 2026-05-24 combination cycle added `Product of Powers` and
+    `Evaluate Numeric Power` to the strict post-calculus presentation noise
+    filter, then retained the `ProductPowerRule` `TargetKindSet::MUL`
+    narrowing
+  - the previously failing
+    `asinh_sqrt_diff_uses_post_calculus_root_denominator_presentation`
+    contract now passes, so the runtime dispatch narrowing no longer leaks a
+    rationalize/product-power/present round trip into public `diff` steps
+  - no calculus domain, branch, or constant policy changed; this resolves the
+    recorded presentation-noise blocker rather than adding a new calculus
+    family
+
+## 2026-05-23 - Observe-only discovery: affine hyperbolic odd-power antiderivative residuals cycle under equivalence
+
+- area:
+  - calculus / integration / hyperbolic odd powers / post-calculus
+    equivalence
+- status:
+  - `resolved`
+- candidate:
+  - extend pure odd-power primitives from `sinh(x)^3`, `cosh(x)^3`,
+    `sinh(x)^5`, and `cosh(x)^5` to shifted or scaled affine arguments such
+    as `sinh(2*x+1)^3`
+- local probe:
+  - direct `integrate(...)` returns a closed-form primitive quickly for affine
+    arguments
+  - strict residual simplification leaves terms such as
+    `sinh(x) * (cosh(x)^2 - 1) - sinh(x)^3`
+  - public `equiv(diff(integrate(sinh(2*x+1)^3,x),x),sinh(2*x+1)^3)`
+    repeatedly reports simplifier cycle warnings and exceeded the 8s probe
+    budget
+- why not retained:
+  - this is not a formula error; it exposes a reusable post-calculus
+    simplification/equivalence gap around hyperbolic Pythagorean products with
+    shifted/scaled arguments
+- next useful probe:
+  - add a bounded normalizer for `f(u) * (cosh(u)^2 - 1)` /
+    `f(u) * (1 + sinh(u)^2)` when it directly reduces a residual, then retry
+    the affine odd-power promotion
+- follow-up probe:
+  - 2026-05-23 robustness cycle retained the direct-argument
+    `sinh(u)*(cosh(u)^2 - 1) - sinh(u)^3 -> 0` bridge in the active
+    arithmetic cancellation route
+  - affine public probes such as
+    `sinh(2*x+1)*(cosh(2*x+1)^2 - 1) - sinh(2*x+1)^3` and the already
+    supported `cosh(2*x+1)*(1+sinh(2*x+1)^2) - cosh(2*x+1)^3` still exceed the
+    8s smoke budget before promotion
+  - do not promote affine odd-power integration until the public simplifier has
+    a root-first or pre-child exact bridge for these affine factored
+    hyperbolic residuals
+- retained follow-up:
+  - 2026-05-23 robustness cycle added that root-first exact bridge by invoking
+    the existing hyperbolic Pythagorean factor cancellation before child
+    simplification
+  - affine residual probes now simplify to `0` without cycle warnings, but
+    `integrate(sinh(2*x+1)^3, x)` still returns unevaluated in the public CLI;
+    the full `equiv(diff(integrate(...),x), ...)` probe still exceeds the 8s
+    budget because the affine primitive is not retained yet
+  - a later calculus cycle can implement/promote affine odd-power integration
+    as a separate candidate using this root bridge as the verification
+    prerequisite
+- observe-only follow-up:
+  - 2026-05-23 calculus candidate extended the existing `sinh/cosh(x)^(3|5)`
+    primitive generator to scaled affine arguments and added a compact-hold
+    presentation guard
+  - internal `cas_math` generation passed, and public `integrate(sinh(2*x+1)^3,
+    x)` / `integrate(cosh(2*x+1)^3, x)` returned closed forms quickly without
+    warnings under the guard
+  - promotion was rejected because the required verification probes
+    `diff(integrate(sinh(2*x+1)^3,x),x)-sinh(2*x+1)^3` and
+    `equiv(diff(integrate(sinh(2*x+1)^3,x),x),sinh(2*x+1)^3)` still exceeded
+    the 15s smoke budget with repeated cycle warnings
+  - explicit equivalent primitive shapes did not solve the verification route;
+    one denominator-style shape also triggered deep expansion of
+    `cosh(2*x+1)` into `sinh(1)`/`cosh(1)` terms
+  - next retained candidate should target the post-diff residual path or prevent
+    affine hyperbolic addition expansion during verification before retrying
+    public affine odd-power integration
+- retained follow-up:
+  - 2026-05-23 robustness cycle added a pre-general-simplification derivative
+    and residual shortcut for affine hyperbolic cubic primitive forms such as
+    `1/2*(1/3*cosh(2*x+1)^3-cosh(2*x+1))`
+  - explicit public residuals now close before the fragile generic derivative
+    expansion route, avoiding the previous cycle warnings and timeouts
+  - this intentionally does not promote affine odd-power `integrate(...)` yet;
+    the next calculus retry should use this derivative verification path as a
+    prerequisite
+- observe-only follow-up:
+  - 2026-05-23 calculus cycle promoted the positive-slope affine cubic subset,
+    for example `integrate(sinh(2*x+1)^3,x)` and
+    `integrate(cosh(2*x+1)^3,x)`, using the retained derivative residual route
+  - the negative-orientation probe `integrate(sinh(1-2*x)^3,x)` still produced
+    repeated simplifier cycle warnings before promotion, even though the
+    explicit primitive residual verifies quickly
+  - the retained scope is therefore limited to positive affine slopes; a future
+    sign/orientation candidate should make the negative affine presentation
+    route preserve the compact primitive before broadening this integration
+    family
+- retained follow-up:
+  - 2026-05-23 robustness cycle bounded the hyperbolic angle sum/difference
+    cancellation fallback so it only expands direct `sinh/cosh(a±b)` calls and
+    simple scalar multiples, not arbitrary powered/product expressions
+  - the explicit negative-orientation affine cubic primitives now simplify
+    without cycle/depth warnings, while public `sinh(x+y)` cancellation still
+    closes through the direct expansion route
+  - integration promotion remains deferred; the next calculus candidate can
+    retry `integrate(sinh(1-2*x)^3,x)` and `integrate(cosh(1-2*x)^3,x)` against
+    this retained robustness prerequisite
+- retained follow-up:
+  - 2026-05-23 calculus cycle promoted the negative-slope affine cubic subset:
+    `integrate(sinh(1-2*x)^3,x)` and `integrate(cosh(1-2*x)^3,x)` now return
+    public primitives and verify through the bounded residual route
+  - the retained code change was the minimal slope gate broadening from
+    positive affine coefficient to nonzero affine coefficient; no new domain,
+    branch, or constant-of-integration condition was introduced
+  - this closes the prior orientation blocker without adding integration search;
+    broader affine odd powers remain deliberately out of scope
+- retained follow-up:
+  - 2026-05-23 robustness cycle extended the explicit affine hyperbolic
+    primitive residual shortcut from cubic to fifth-power primitives
+  - before the fix,
+    `diff(1/2*(1/5*cosh(2*x+1)^5-2/3*cosh(2*x+1)^3+cosh(2*x+1)),x)-sinh(2*x+1)^5`
+    exceeded the 8s smoke budget, while the analogous `cosh` residual returned
+    a nonzero factored hyperbolic expression
+  - positive- and negative-slope explicit `sinh/cosh` fifth primitive residuals
+    now reduce to `0` through the public residual route without warnings
+  - affine fifth `integrate(...)` remains intentionally unpromoted in this
+    cycle; the next calculus candidate can retry that gate against this
+    retained residual prerequisite
+- retained follow-up:
+  - 2026-05-23 calculus cycle promoted the minimal affine fifth subset:
+    `integrate(sinh/cosh(2*x+1)^5,x)` plus the negative-slope
+    `integrate(sinh/cosh(1-2*x)^5,x)` orientations now return public
+    primitives
+  - the retained implementation removed only the temporary non-affine guard
+    for power 5 and kept the public compact-presentation predicate scoped to
+    nontrivial affine arguments, preserving the existing pure `sinh/cosh(x)^5`
+    public form
+  - all promoted fifth cases verify through the bounded public residual route
+    without new domain, branch, warning, or constant-of-integration conditions
+- resolved by:
+  - 2026-05-23 calculus and robustness follow-ups retained the bounded
+    verification path and public affine odd-power integration coverage needed
+    for the original cubic/fifth discovery scope
+  - the public contracts also now cover affine seventh explicit residuals and
+    promoted positive- and negative-slope seventh primitives, so this ledger
+    item should no longer count as open generated-discovery pressure
+
+## 2026-05-23 - Observe-only discovery: shifted arcsin residual condition implication exceeds exact smoke expectations
+
+- area:
+  - calculus / integration residuals / inverse-trig kernels / domain condition
+    representation
+- status:
+  - `superseded`
+- candidate:
+  - promote
+    `diff(integrate(1/sqrt(4-(x+1)^2),x),x)-1/sqrt(4-(x+1)^2)`
+    into the calculus residual smoke matrix
+- local probe:
+  - the custom matrix reduced all 12 wrapper cases to the expected algebraic
+    results, but failed exact required-condition checks when the probe expected
+    `4 - (x + 1)^2`
+  - the public conditions are emitted as the equivalent polynomial
+    `3 - x^2 - 2·x` plus the stronger interval `-3 < x < 1`
+  - some nested denominator cases omit explicit `x + 3` / `x + 4` conditions
+    because the interval already implies those denominators are nonzero
+- why not retained:
+  - this is not an integration-result failure; it exposes that the residual
+    smoke harness currently checks required conditions by exact display string
+    and cannot express equivalent domain predicates or implied denominator
+    guards
+- next useful probe:
+  - isolate `plus` and `nested_den` wrappers with the actual emitted
+    conditions, then decide whether the next retained change should canonicalize
+    radicand-domain displays in the engine or teach the harness a conservative
+    condition implication/equivalence check
+- superseded by:
+  - the residual smoke harness now accepts this conservative condition shape:
+    `4 - (x + 1)^2` can match the equivalent public display
+    `3 - x^2 - 2·x`, and the interval `-3 < x < 1` can satisfy wrapper
+    denominator requirements such as `x + 3` and `x + 4`
+  - `shifted_arcsin_kernel` is now promoted as a live residual-matrix
+    representative with the factored radicand-domain expectation retained
+
 ## 2026-05-23 - Rejected broad wire no-op payload filter
 
 - area:
@@ -15113,3 +15547,104 @@ The burden of proof stays the same:
   - the retained value is the exact tan/exp/sqrt-root presentation-residual
     bridge already covered by the public differentiation contracts, not a
     broader global rule for arbitrary inline radical numerators
+
+## 2026-05-23 - Rejected runtime: broad direct-chunk candidate gate before small-zero partition enumeration
+
+- area:
+  - arithmetic / exact-zero additive composition / mixed log plus hyperbolic
+    pressure
+- status:
+  - `rejected`
+- local lane:
+  - `simplify_zero_mixed` probes for `sum@700+100 #2865` and `#3021`
+- local signal:
+  - accepting top-level direct chunks before subset enumeration looked useful
+    on the log-square / log-abs plus hyperbolic-cubic probes
+  - the same run still left the repeated negated-log `default_simplify` traffic
+    visible, so the local win was not causally clean
+- global result:
+  - pressure profile with the broad gate regressed to `2.19s` for
+    `simplify_zero_mixed` versus the retained baseline around `2.00s`
+  - after removing the gate and keeping only the narrow negated-log reject,
+    pressure returned to `1.99s` with `failed = 0`
+- why it regressed globally:
+  - invoking `try_build_small_direct_zero_core_rewrite` from the generic
+    candidate gate broadens work across unrelated mixed-pressure partitions
+    before a cheap enough syntactic proof exists
+- what could make it combinable later:
+  - move any direct-chunk preacceptance to a narrower orchestrator call-site or
+    add a cheaper structural signature that proves both chunks are known
+    zero-family members without running rewrite builders
+- retained alternative:
+  - a scoped reject for nonreciprocal `-ln(a)` versus `ln(b)` pairs removed the
+    hot `default_simplify` no-match traffic without broadening the candidate
+    gate
+
+## 2026-05-24 - Rejected: pre-core log/trig plus hyperbolic exact-zero shortcut
+
+- area:
+  - orchestrator / exact-zero additive composition / pre-core routing
+- status:
+  - `rejected/local-win-global-loss`
+- hypothesis tested:
+  - detect hot root pairs where one side is a known log or trig zero identity
+    and the other side is a known hyperbolic zero identity, then run the
+    existing direct small-zero additive-combination rewrite before the Core
+    phase
+- local signal:
+  - focused unit probes passed and confirmed the route could skip Core for
+    `ln(x^3) + ln(y^2) - ln(x^3 * y^2)` plus
+    `cosh(x) + sinh(x) - e^x`
+  - the implementation had to explicitly reattach implicit input-domain
+    requirements to preserve the shortcut step metadata
+- global result:
+  - `make engine-scorecard` stayed semantically green, but embedded runtime
+    moved from `12.82s` to `13.38s`
+  - `make engine-scorecard-pressure` regressed `simplify_zero_mixed` from the
+    retained `2.03s` baseline to `2.25s`
+  - the dominant log/hyperbolic pressure expressions did not improve
+    materially; `sum@700+100 #2865` remained around `8.72ms` steady-state
+    median simplify time
+- why it regressed globally:
+  - placing this route before Core adds domain inference and direct-rewrite
+    builder work on a path where Core still performs useful normalization for
+    these shapes
+  - the pressure bottleneck is not just the late compact shortcut; it includes
+    the cost and ordering of log-domain/domain-preservation work around the
+    exact-zero proof
+- what could make it combinable later:
+  - add observability around domain inference and direct rewrite-builder cost
+    for log/hyperbolic roots before trying another pre-core route
+  - prefer a cheaper structural proof for a single concrete family over a
+    pre-Core call into the general additive-combination rewrite builder
+- retained alternative:
+  - reverted the pre-core route and kept the previous post-Core narrow
+    log/nested-fraction plus hyperbolic shortcuts
+
+## 2026-05-24 - Discovery observe-only: hyperbolic angle-sum plus telescoping residual remains slow
+
+- area:
+  - orchestrator / exact-zero additive composition / hyperbolic angle-sum plus
+    telescoping-fraction residuals
+- status:
+  - `discovery/observe-only`
+- observed:
+  - during the nested-fraction plus hyperbolic angle-sum runtime iteration, a
+    temporary promotion attempt for
+    `(sinh(x+y) - (sinh(x)*cosh(y) + cosh(x)*sinh(y))) + (1/(u*(u+1)) - 1/u + 1/(u+1))`
+    stayed correct but remained slow in the direct `simplify_pipeline` debug
+    probe, finishing around `3.6s`
+  - the nested-fraction sibling had a cheap retained syntactic route and is
+    covered by an active unit test; the telescoping sibling did not show the
+    same bounded route
+- decision:
+  - do not broaden the retained shortcut from nested fractions to consecutive
+    telescoping fractions in this iteration
+  - keep the telescoping `simplify_pipeline` regression ignored until a cheap
+    telescoping-side proof or a narrower root route exists
+- retained learning:
+  - the reusable weakness is not the hyperbolic angle-sum side; it is the lack
+    of a cheap, promotion-ready telescoping-fraction zero proof for this
+    cross-family additive composition
+  - a future runtime candidate should isolate the telescoping side first, then
+    re-test this composition before promoting the ignored regression

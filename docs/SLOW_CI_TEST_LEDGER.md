@@ -50,6 +50,32 @@ Do not create entries for:
 
 ## Current Entries
 
+### 2026-05-24: `eval_simplify_steps_off_diff_shifted_linear_times_cot_keeps_product_rule_shape`
+
+- area:
+  - `cas_engine`
+  - debug eval calculus smoke test
+- repro:
+  - `cargo test -p cas_engine --lib eval_simplify_steps_off_diff_shifted_linear_times_cot_keeps_product_rule_shape -- --nocapture`
+- latest measured time:
+  - observed in `make ci`: failed once under the test's internal `50 ms`
+    simplification budget
+  - focused repro: `0.05s` test time (`real 0.22s`)
+- classification:
+  - `test verification pathology`
+- root cause hypothesis:
+  - the public derivative shape and required-domain assertion are correct, but
+    the debug unit smoke used a tight wall-clock-like simplification budget
+    that can become a false timeout under full-suite load
+- retained action:
+  - raised only this cot product-rule smoke test's internal time budget from
+    `50 ms` to `500 ms`
+  - kept exact result and required pole-condition assertions unchanged
+- embedded corpus guardrail:
+  - unchanged engine runtime path
+- status:
+  - `fixed in test`
+
 ### 2026-05-16: `integrate_contract_expanded_polynomial_tangent_cotangent_preserves_domain`
 
 - area:
@@ -175,6 +201,9 @@ Do not create entries for:
   - 2026-05-02 follow-up: focused repro still passed at `0.19s`, but full
     `make ci` failed once under the `200 ms` internal debug budget after prior
     suite load
+  - 2026-05-24 follow-up: full `make ci` failed once under the `500 ms`
+    internal debug budget while the focused repro still passed at `0.42s`
+    test time
 - classification:
   - `test verification pathology`
 - root cause hypothesis:
@@ -185,6 +214,9 @@ Do not create entries for:
   - raised only this sec/csc smoke test's internal time budget from `50 ms` to
     `200 ms`, then to `500 ms` after a full-suite debug CI false timeout; the
     test still asserts the exact result and required pole condition
+  - 2026-05-24: raised the same harness-only budget to `2000 ms` after another
+    full-suite debug false timeout under load; kept exact result and required
+    pole-condition assertions unchanged
 - embedded corpus guardrail:
   - unchanged engine runtime path
 - status:

@@ -13,7 +13,7 @@ use crate::rule::Rewrite;
 define_rule!(
     CubicConjugateTrapRule,
     "Cubic Conjugate Identity",
-    None,
+    Some(crate::target_kind::TargetKindSet::ADD),
     crate::phase::PhaseMask::TRANSFORM,
     |ctx, expr| {
         let rewrite = cas_math::root_forms::try_rewrite_cubic_conjugate_identity_expr(ctx, expr)?;

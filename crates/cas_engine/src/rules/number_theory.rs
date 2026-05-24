@@ -25,39 +25,44 @@ define_rule!(
     }
 );
 
-define_rule!(NumberTheoryRule, "Number Theory Operations", |ctx, expr| {
-    if let Some(rewrite) = try_rewrite_pascal_choose_identity_expr(ctx, expr) {
-        return Some(
-            Rewrite::new(rewrite.rewritten)
-                .desc("Apply Pascal's identity")
-                .local(expr, rewrite.rewritten),
-        );
-    }
-
-    let (result, desc) = match dispatch_number_theory_call(ctx, expr)? {
-        NumberTheoryDispatch::Simple(simple) => {
-            (simple.result(), render_number_theory_desc(ctx, simple))
-        }
-        NumberTheoryDispatch::PolyGcd { lhs, rhs, mode } => {
-            let (result, desc) = compute_poly_gcd_unified_with(
-                ctx,
-                lhs,
-                rhs,
-                GcdGoal::UserPolyGcd,
-                mode,
-                None,
-                None,
-                |core_ctx, id| {
-                    pre_evaluate_for_gcd_with(core_ctx, id, crate::expand::eval_expand_off)
-                },
-                cas_formatter::render_expr,
+define_rule!(
+    NumberTheoryRule,
+    "Number Theory Operations",
+    Some(crate::target_kind::TargetKindSet::ADD | crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        if let Some(rewrite) = try_rewrite_pascal_choose_identity_expr(ctx, expr) {
+            return Some(
+                Rewrite::new(rewrite.rewritten)
+                    .desc("Apply Pascal's identity")
+                    .local(expr, rewrite.rewritten),
             );
-            (cas_ast::hold::wrap_hold(ctx, result), desc)
         }
-    };
 
-    Some(Rewrite::new(result).desc(desc))
-});
+        let (result, desc) = match dispatch_number_theory_call(ctx, expr)? {
+            NumberTheoryDispatch::Simple(simple) => {
+                (simple.result(), render_number_theory_desc(ctx, simple))
+            }
+            NumberTheoryDispatch::PolyGcd { lhs, rhs, mode } => {
+                let (result, desc) = compute_poly_gcd_unified_with(
+                    ctx,
+                    lhs,
+                    rhs,
+                    GcdGoal::UserPolyGcd,
+                    mode,
+                    None,
+                    None,
+                    |core_ctx, id| {
+                        pre_evaluate_for_gcd_with(core_ctx, id, crate::expand::eval_expand_off)
+                    },
+                    cas_formatter::render_expr,
+                );
+                (cas_ast::hold::wrap_hold(ctx, result), desc)
+            }
+        };
+
+        Some(Rewrite::new(result).desc(desc))
+    }
+);
 
 pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(ConsecutiveFactorialRatioRule));
@@ -85,7 +90,7 @@ mod tests {
     use super::*;
     use crate::rule::Rule;
     use cas_ast::ordering::compare_expr;
-    use cas_ast::{Context, ExprId};
+    use cas_ast::{target_kind::TargetKind, Context, ExprId};
     use cas_parser::parse;
 
     fn parse_test_expr(ctx: &mut Context, source: &str) -> ExprId {
@@ -135,6 +140,21 @@ mod tests {
                 &crate::parent_context::ParentContext::root()
             )
             .is_none());
+    }
+
+    #[test]
+    fn number_theory_rule_targets_function_and_pascal_add_only() {
+        let targets = NumberTheoryRule
+            .target_types()
+            .expect("NumberTheoryRule should be structurally targeted");
+
+        assert!(targets.contains(TargetKind::Function));
+        assert!(targets.contains(TargetKind::Add));
+        assert!(!targets.contains(TargetKind::Sub));
+        assert!(!targets.contains(TargetKind::Mul));
+        assert!(!targets.contains(TargetKind::Div));
+        assert!(!targets.contains(TargetKind::Pow));
+        assert!(!targets.contains(TargetKind::Neg));
     }
 
     #[test]

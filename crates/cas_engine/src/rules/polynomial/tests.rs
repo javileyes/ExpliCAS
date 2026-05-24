@@ -1,8 +1,50 @@
 use super::*;
 use crate::rule::Rule;
-use cas_ast::Context;
+use cas_ast::{target_kind::TargetKind, Context};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+
+#[test]
+fn sum_diff_cubes_contraction_rule_targets_mul_only() {
+    let targets = SumDiffCubesContractionRule
+        .target_types()
+        .expect("SumDiffCubesContractionRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Pow));
+    assert!(!targets.contains(TargetKind::Function));
+}
+
+#[test]
+fn combine_like_terms_rule_targets_add_and_mul_only() {
+    let targets = CombineLikeTermsRule
+        .target_types()
+        .expect("CombineLikeTermsRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Add));
+    assert!(targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Pow));
+    assert!(!targets.contains(TargetKind::Function));
+}
+
+#[test]
+fn sqrt_perfect_square_rule_targets_pow_and_function_only() {
+    let targets = SqrtPerfectSquareRule
+        .target_types()
+        .expect("SqrtPerfectSquareRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Pow));
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+}
 
 #[test]
 fn test_distribute() {

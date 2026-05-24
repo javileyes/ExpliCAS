@@ -6,6 +6,9 @@ use cas_solver::session_api::analysis::{
     evaluate_derive_command_lines_with_resolver, FullSimplifyDisplayMode,
 };
 use std::collections::{BTreeMap, BTreeSet};
+use std::env;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct DeriveCase {
@@ -293,6 +296,39 @@ struct DeriveOutcomeStats {
     derived_by_family: BTreeMap<String, usize>,
 }
 
+impl DeriveOutcomeStats {
+    fn merge(&mut self, other: Self) {
+        self.derived += other.derived;
+        self.unsupported += other.unsupported;
+        self.not_equivalent += other.not_equivalent;
+        self.derived_step_total += other.derived_step_total;
+        self.single_step_successes += other.single_step_successes;
+        self.max_step_count = self.max_step_count.max(other.max_step_count);
+        self.long_path_count += other.long_path_count;
+
+        self.multi_step_success_ids
+            .extend(other.multi_step_success_ids);
+        self.generic_simplify_expected_ids
+            .extend(other.generic_simplify_expected_ids);
+        merge_count_map(
+            &mut self.expected_strategy_counts,
+            other.expected_strategy_counts,
+        );
+        merge_count_map(&mut self.unsupported_by_family, other.unsupported_by_family);
+        merge_count_map(
+            &mut self.not_equivalent_by_family,
+            other.not_equivalent_by_family,
+        );
+        merge_count_map(&mut self.derived_by_family, other.derived_by_family);
+    }
+}
+
+fn merge_count_map(target: &mut BTreeMap<String, usize>, source: BTreeMap<String, usize>) {
+    for (key, count) in source {
+        *target.entry(key).or_default() += count;
+    }
+}
+
 #[derive(Debug, Default)]
 struct DeriveShadowPressureStats {
     sampled: usize,
@@ -312,6 +348,69 @@ struct DeriveShadowPressureStats {
 }
 
 const LONG_PATH_THRESHOLD: usize = 4;
+
+fn derive_contract_worker_count(case_count: usize) -> usize {
+    if case_count <= 1 {
+        return 1;
+    }
+
+    if let Ok(raw) = env::var("DERIVE_CONTRACT_THREADS") {
+        if let Ok(parsed) = raw.parse::<usize>() {
+            return parsed.max(1).min(case_count);
+        }
+    }
+
+    if cfg!(debug_assertions) {
+        return 1;
+    }
+
+    std::thread::available_parallelism()
+        .map(usize::from)
+        .unwrap_or(1)
+        .min(4)
+        .min(case_count)
+}
+
+fn map_derive_cases_parallel<T, F>(cases: &[&DeriveCase], f: F) -> Vec<T>
+where
+    T: Send,
+    F: Fn(&DeriveCase) -> T + Sync,
+{
+    let worker_count = derive_contract_worker_count(cases.len());
+    if worker_count <= 1 {
+        return cases.iter().map(|case| f(case)).collect();
+    }
+
+    let next_index = AtomicUsize::new(0);
+    let results = Mutex::new(
+        std::iter::repeat_with(|| None)
+            .take(cases.len())
+            .collect::<Vec<Option<T>>>(),
+    );
+
+    std::thread::scope(|scope| {
+        for _ in 0..worker_count {
+            let next_index = &next_index;
+            let results = &results;
+            let f = &f;
+            scope.spawn(move || loop {
+                let index = next_index.fetch_add(1, Ordering::Relaxed);
+                if index >= cases.len() {
+                    break;
+                }
+                let result = f(cases[index]);
+                results.lock().expect("derive results mutex")[index] = Some(result);
+            });
+        }
+    });
+
+    results
+        .into_inner()
+        .expect("derive results mutex")
+        .into_iter()
+        .map(|slot| slot.expect("derive case should produce a result"))
+        .collect()
+}
 
 const IDENTITY_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
     IdentityShadowCase {
@@ -721,7 +820,8 @@ const EMBEDDED_EQUIVALENCE_SHADOW_PRESSURE_CASES: &[IdentityShadowCase] = &[
     },
 ];
 
-fn assert_case_matches_expected_outcome(case: &DeriveCase, stats: &mut DeriveOutcomeStats) {
+fn evaluate_case_expected_outcome(case: &DeriveCase) -> DeriveOutcomeStats {
+    let mut stats = DeriveOutcomeStats::default();
     let lines = run_case(case);
     match case.expected_status.as_str() {
         "derived" => {
@@ -803,6 +903,7 @@ fn assert_case_matches_expected_outcome(case: &DeriveCase, stats: &mut DeriveOut
         }
         other => panic!("unexpected expected_status {other}"),
     }
+    stats
 }
 
 fn evaluate_identity_shadow_pressure(cases: &[IdentityShadowCase]) -> DeriveShadowPressureStats {
@@ -876,9 +977,11 @@ fn evaluate_identity_shadow_pressure(cases: &[IdentityShadowCase]) -> DeriveShad
 fn evaluate_cases_follow_expected_outcomes<'a>(
     cases: impl IntoIterator<Item = &'a DeriveCase>,
 ) -> DeriveOutcomeStats {
+    let cases = cases.into_iter().collect::<Vec<_>>();
+    let case_stats = map_derive_cases_parallel(&cases, evaluate_case_expected_outcome);
     let mut stats = DeriveOutcomeStats::default();
-    for case in cases {
-        assert_case_matches_expected_outcome(case, &mut stats);
+    for case_stats in case_stats {
+        stats.merge(case_stats);
     }
     stats
 }

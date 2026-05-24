@@ -45,6 +45,7 @@ use cas_math::summation_support::{
 };
 use cas_math::{
     expr_nary::{AddView, Sign},
+    expr_predicates::contains_named_var,
     trig_roots_flatten::flatten_mul_chain,
 };
 use cas_solver_core::engine_event_collector::EngineEventCollector;
@@ -5760,6 +5761,10 @@ fn monic_complete_square_substep_plan(
     vars.sort();
 
     for var_name in vars {
+        if !complete_square_source_has_explicit_square_in_var(ctx, expr, &var_name) {
+            continue;
+        }
+
         let Some((leading_coeff, linear_coeff, constant_term)) =
             extract_simplified_nonzero_quadratic_coefficients_with_state(
                 ctx,
@@ -5787,6 +5792,40 @@ fn monic_complete_square_substep_plan(
     }
 
     None
+}
+
+fn complete_square_source_has_explicit_square_in_var(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            is_two_number(ctx, *exp) && contains_named_var(ctx, *base, var_name)
+        }
+        Expr::Add(_, _) | Expr::Sub(_, _) => {
+            AddView::from_expr(ctx, expr)
+                .terms
+                .into_iter()
+                .any(|(term, _)| {
+                    complete_square_source_has_explicit_square_in_var(ctx, term, var_name)
+                })
+        }
+        Expr::Mul(_, _) if ctx.is_mul_commutative(expr) => flatten_mul_chain(ctx, expr)
+            .into_iter()
+            .any(|factor| complete_square_source_has_explicit_square_in_var(ctx, factor, var_name)),
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            complete_square_source_has_explicit_square_in_var(ctx, *inner, var_name)
+        }
+        _ => false,
+    }
+}
+
+fn is_two_number(ctx: &cas_ast::Context, expr: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Number(value) if value.numer() == &2.into() && value.denom() == &1.into()
+    )
 }
 
 fn build_monic_complete_square_substep_plan(
@@ -7395,10 +7434,7 @@ fn split_derive_cli_step_rule_suffix(line: &str) -> Option<(&str, &str, &str)> {
     let (prefix, suffix) = line.rsplit_once("  [")?;
     let raw_rule = suffix.strip_suffix(']')?;
     let (step_number, description) = prefix.split_once(". ")?;
-    if step_number.is_empty()
-        || description.is_empty()
-        || !step_number.chars().all(|ch| ch.is_ascii_digit())
-    {
+    if step_number.is_empty() || !step_number.chars().all(|ch| ch.is_ascii_digit()) {
         return None;
     }
     Some((prefix, description, raw_rule))
@@ -7408,7 +7444,11 @@ fn visible_derive_cli_rule_suffix(rule_name: &str, description: &str) -> Option<
     match rule_name {
         "Angle Sum/Diff Identity" => Some("Aplicar suma/diferencia de ángulos"),
         "Binomial Coefficient Symmetry" => Some("Aplicar simetría del coeficiente binomial"),
+        "Binomial Expansion" | "Small Multinomial Expansion" => Some("Expandir binomio"),
         "Cancel Sum/Difference of Cubes Fraction" => Some("Factorizar cubos y cancelar"),
+        "Canonicalize Even Power Base" => Some("Invertir una resta dentro de una potencia par"),
+        "Cancel Exact Additive Pairs" => Some("Cancelar términos opuestos"),
+        "Cancel Reciprocal Exponents" | "Square of Square Root" => Some("Deshacer raíz y potencia"),
         "Change of Base" => Some("Aplicar cambio de base"),
         "Add Fractions" => Some("Sumar fracciones en un solo denominador"),
         "Combine Same Denominator Fractions" => {
@@ -7417,10 +7457,24 @@ fn visible_derive_cli_rule_suffix(rule_name: &str, description: &str) -> Option<
         "Combine Same Denominator Sub" => {
             Some("Combinar resta de fracciones con el mismo denominador")
         }
+        "Combine Like Terms" => Some("Agrupar términos semejantes"),
+        "Combine powers with same base (n-ary)" => Some("Sumar exponentes de la misma base"),
         "Collect Terms" if description.contains(" * ") => Some("Agrupar términos por factor común"),
         "Collect Terms" => Some("Agrupar términos por variable"),
+        "Cofunction Identity" => Some("Aplicar identidad de cofunción"),
         "Consecutive Factorial Ratio" => Some("Cancelar factoriales consecutivos"),
+        "Complete the Square" => Some("Completar el cuadrado"),
+        "Cos Product Telescoping" => Some("Aplicar telescopado de cosenos"),
+        "Difference of Squares" | "Difference of Squares (Product to Difference)" => {
+            Some("Expandir la expresión")
+        }
+        "Dirichlet Kernel Identity" => Some("Aplicar identidad del núcleo de Dirichlet"),
+        "Distribute Division" => Some("Repartir el denominador común"),
+        "Distributive Property" | "Expand" => Some("Expandir la expresión"),
         "Double Angle Expansion" => Some("Expandir ángulo doble"),
+        "Evaluate Hyperbolic Functions" => Some("Evaluar valor hiperbólico especial"),
+        "Evaluate Logarithms" => Some("Evaluar logaritmos"),
+        "Evaluate Trigonometric Functions" => Some("Evaluar valor trigonométrico especial"),
         "Exponential Sum/Difference Identity" if description.starts_with("Expand ") => {
             Some("Expandir exponencial de suma o diferencia")
         }
@@ -7438,6 +7492,11 @@ fn visible_derive_cli_rule_suffix(rule_name: &str, description: &str) -> Option<
             Some("Expandir como recíproco exponencial")
         }
         "Exponential Reciprocal Identity" => Some("Reescribir recíproco exponencial"),
+        "Expand Cosecant Squared" => Some("Expandir cosecante cuadrada"),
+        "Expand Odd Half Power" => Some("Reescribir potencia semientera impar"),
+        "Expand Secant Squared" => Some("Expandir secante cuadrada"),
+        "expand_log" => Some("Expandir logaritmos"),
+        "Factor Perfect Square in Logarithm" => Some("Sacar un exponente fuera del logaritmo"),
         "Hyperbolic Exponential Identity" if description.starts_with("Expand ") => {
             Some("Expandir identidad exponencial hiperbólica")
         }
@@ -7448,6 +7507,22 @@ fn visible_derive_cli_rule_suffix(rule_name: &str, description: &str) -> Option<
         "Hyperbolic Angle Sum/Difference Identity" => {
             Some("Aplicar identidad hiperbólica de suma/diferencia de ángulos")
         }
+        "Hyperbolic Composition" => Some("Cancelar funciones hiperbólicas inversas"),
+        "Hyperbolic Double-Angle Identity" => Some("Aplicar identidad hiperbólica de ángulo doble"),
+        "Hyperbolic Half-Angle Squares" => Some("Aplicar identidad hiperbólica de ángulo mitad"),
+        "Hyperbolic Parity (Odd/Even)" => Some("Aplicar paridad hiperbólica"),
+        "Hyperbolic Product-to-Sum Identity" => {
+            Some("Aplicar identidad hiperbólica de producto a suma")
+        }
+        "Hyperbolic Pythagorean Identity" => Some("Aplicar identidad pitagórica hiperbólica"),
+        "Hyperbolic Quotient Identity" => Some("Aplicar identidad hiperbólica de cociente"),
+        "Hyperbolic Triple-Angle Identity" => {
+            Some("Aplicar identidad hiperbólica de ángulo triple")
+        }
+        "Inverse Hyperbolic Log Identity" => {
+            Some("Convertir tangente hiperbólica inversa en logaritmo")
+        }
+        "Inverse Trig Sum Identity" => Some("Aplicar identidad complementaria arcsin/arccos"),
         "Log-Exp Inverse" => Some("Cancelar logaritmo natural y exponencial inversos"),
         "Exponential-Log Inverse" => Some("Cancelar exponencial y logaritmo inversos"),
         "Exponential-Log Power Inverse" => {
@@ -7493,9 +7568,26 @@ fn visible_derive_cli_rule_suffix(rule_name: &str, description: &str) -> Option<
         "Inverse Trig Composition" => Some("Aplicar composición trigonométrica inversa"),
         "Log Inverse Power" => Some("Convertir potencia logarítmica inversa"),
         "Log Contraction" => Some("Contraer logaritmos"),
+        "Merge Sqrt Product" => Some("Combinar raíces en un producto"),
+        "Merge Sqrt Quotient" => Some("Combinar raíces en un cociente"),
         "Mixed Fraction Combine" => Some("Combinar parte entera y fracción"),
         "Mixed Fraction Split" => Some("Separar fracción en parte entera y resto"),
+        "Negative Base Power" => Some("Simplificar potencia con base negativa"),
+        "Polynomial Product Normalize" => Some("Expandir y reagrupar un producto polinómico"),
+        "Polynomial division with opaque substitution" => Some("Reconocer un cociente notable"),
+        "Pythagorean Chain Identity" | "Pythagorean Identity" => {
+            Some("Aplicar la identidad pitagórica")
+        }
+        "Pythagorean Factor Form" => Some("Aplicar identidad pitagórica"),
+        "Rationalize"
+        | "Rationalize Cube Root Denominator"
+        | "Rationalize Denominator"
+        | "Rationalize Linear Sqrt Denominator" => Some("Racionalizar el denominador"),
+        "Recognize Cosecant Squared" => Some("Reconocer cosecante cuadrada"),
+        "Recognize Secant Squared" => Some("Reconocer secante cuadrada"),
+        "Reciprocal Product Identity" => Some("Cancelar funciones trigonométricas recíprocas"),
         "Reciprocal Trig Identity" => Some("Aplicar identidad trigonométrica recíproca"),
+        "Reciprocal Pythagorean Identity" => Some("Aplicar identidad pitagórica recíproca"),
         "Trig Quotient" | "Cos-Diff / Sin-Diff Quotient" => {
             Some("Convertir un cociente trigonométrico en tangente")
         }
@@ -7515,6 +7607,7 @@ fn visible_derive_cli_rule_suffix(rule_name: &str, description: &str) -> Option<
         "Pascal's Identity" => Some("Aplicar identidad de Pascal"),
         "Phase Shift Identity" => Some("Aplicar identidad de desfase"),
         "Power Reduction Identity" => Some("Aplicar reducción de potencias"),
+        "Abs Of Sum Of Squares" => Some("Quitar valor absoluto de una expresión no negativa"),
         "Tangent Angle Sum/Diff Identity" => {
             Some("Aplicar identidad de tangente de suma/diferencia de ángulos")
         }
@@ -7526,10 +7619,19 @@ fn visible_derive_cli_rule_suffix(rule_name: &str, description: &str) -> Option<
             Some("Cancelar un cuadrado perfecto con el mismo binomio")
         }
         "Power of a Power" => Some("Multiplicar exponentes"),
+        "Sophie Germain Identity" => Some("Expandir la expresión"),
+        "Sqrt Perfect Square" => Some("Reconocer un cuadrado perfecto bajo la raíz"),
+        "Square Double Angle Contraction" => Some("Contraer cuadrado de ángulo doble"),
         "Simplify Nested Fraction" => Some("Simplificar fracción anidada"),
         "Subtract Fractions" => Some("Restar fracciones en un solo denominador"),
+        "Subtraction Self-Cancel" => Some("Restar dos expresiones iguales"),
+        "Sum/Difference of Cubes Contraction" => Some("Expandir la expresión"),
         "Telescoping Fraction Combine" => Some("Recomponer fracciones parciales telescópicas"),
         "Telescoping Fraction Split" => Some("Descomponer en fracciones parciales telescópicas"),
+        "Tangent Double-Angle Identity" => Some("Aplicar identidad de tangente de ángulo doble"),
+        "Trig Expansion" => Some("Expandir una identidad trigonométrica"),
+        "Trig Parity (Odd/Even)" => Some("Aplicar paridad trigonométrica"),
+        "Trig Square Identity" => Some("Aplicar identidad del cuadrado trigonométrico"),
         _ => None,
     }
 }
@@ -7846,10 +7948,20 @@ mod tests {
     use super::{
         derive_semantic_match, evaluate_derive_request_with_session,
         evaluate_derive_resolved_input, generate_planner_candidate_stages,
-        try_bounded_multistage_derive, try_fast_direct_hyperbolic_derive,
-        try_supported_derive_strategies_inner, DeriveStatus, DeriveStrategy,
+        humanize_derive_cli_step_rule_suffixes, try_bounded_multistage_derive,
+        try_fast_direct_hyperbolic_derive, try_supported_derive_strategies_inner, DeriveStatus,
+        DeriveStrategy,
     };
     use cas_session_core::eval::StatelessEvalSession;
+
+    #[test]
+    fn derive_cli_rule_suffix_humanizer_keeps_empty_description_step_lines_visible() {
+        let mut lines = vec!["2.   [Cancel Reciprocal Exponents]".to_string()];
+
+        humanize_derive_cli_step_rule_suffixes(&mut lines);
+
+        assert_eq!(lines, vec!["2.   [Deshacer raíz y potencia]"]);
+    }
 
     #[test]
     fn planner_candidate_generation_includes_hyperbolic_bridge_stage() {

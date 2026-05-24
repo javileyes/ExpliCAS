@@ -88,12 +88,17 @@ define_rule!(ProductToSumRule, "Product to Sum", |ctx, expr| {
 //
 // Also handles canonical form: sin((2*x + π)/2) where arg = (2*x + π)/2
 
-define_rule!(TrigPhaseShiftRule, "Trig Phase Shift", |ctx, expr| {
-    let rewrite = try_rewrite_trig_phase_shift_function_expr(ctx, expr)?;
-    Some(
-        Rewrite::new(rewrite.rewritten).desc(format_trig_phase_shift_desc(
-            rewrite.function,
-            rewrite.shift,
-        )),
-    )
-});
+define_rule!(
+    TrigPhaseShiftRule,
+    "Trig Phase Shift",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let rewrite = try_rewrite_trig_phase_shift_function_expr(ctx, expr)?;
+        Some(
+            Rewrite::new(rewrite.rewritten).desc(format_trig_phase_shift_desc(
+                rewrite.function,
+                rewrite.shift,
+            )),
+        )
+    }
+);

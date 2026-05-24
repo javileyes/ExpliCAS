@@ -2383,7 +2383,7 @@ fn eval_fraction_sum_to_sec_squared_keeps_faithful_pythagorean_intermediate() {
     let wire = parse_wire(&output);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 3);
+    assert_eq!(steps.len(), 4);
     let pythagorean_step = steps.last().expect("pythagorean step");
     assert_rule_eq(&pythagorean_step["rule"], "Aplicar identidad pitagórica");
     assert_eq!(pythagorean_step["before"], "2/(1 - sin(x)^2)");
@@ -2410,7 +2410,7 @@ fn derive_fraction_sum_to_sec_squared_keeps_faithful_pythagorean_intermediate() 
     let wire = parse_wire(&output);
 
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 3);
+    assert_eq!(steps.len(), 4);
     let pythagorean_step = steps.last().expect("pythagorean step");
     assert_rule_eq(&pythagorean_step["rule"], "Aplicar identidad pitagórica");
     assert_eq!(pythagorean_step["before"], "2/(1 - sin(x)^2)");
@@ -2864,7 +2864,7 @@ fn eval_log_inverse_power_chain_highlights_power_steps_in_mixed_sum() {
 
     assert_eq!(wire["result"], "0");
     let steps = wire["steps"].as_array().expect("steps array");
-    assert_eq!(steps.len(), 9);
+    assert_eq!(steps.len(), 12);
 
     let log_inverse_power = &steps[2];
     assert_eq!(
@@ -2916,7 +2916,7 @@ fn eval_log_inverse_power_chain_highlights_power_steps_in_mixed_sum() {
         "step 4 should not highlight the factorial chunk: before={step4_before}; after={step4_after}"
     );
 
-    let hidden_fraction_cancellation = &steps[7];
+    let hidden_fraction_cancellation = &steps[8];
     assert_rule_eq(
         &hidden_fraction_cancellation["rule"],
         "Cancel Exact Additive Pairs",
@@ -2927,11 +2927,11 @@ fn eval_log_inverse_power_chain_highlights_power_steps_in_mixed_sum() {
     assert!(
         step8_before.contains("{\\color{red}{\\frac{{x}^{3} + {y}^{3}}")
             && step8_before.contains("- {\\color{red}{x}} - y"),
-        "step 8 should highlight the changed fraction and x term, got: {step8_before}"
+        "step 9 should highlight the changed fraction and x term, got: {step8_before}"
     );
     assert!(
         !step8_before.contains("{{\\color{red}{{y}^{2}"),
-        "step 8 should not highlight only the denominator scope, got: {step8_before}"
+        "step 9 should not highlight only the denominator scope, got: {step8_before}"
     );
 }
 
@@ -6386,10 +6386,7 @@ fn eval_hyperbolic_cubic_residual_difference_to_zero_uses_pythagorean_bridge_aft
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(
-        steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
-    );
+    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Residual");
     assert_eq!(
         steps[0]["before"],
         "2 · sinh(x) · sinh(2 · x) - (4 · cosh(x)^3 - 4 · cosh(x))"
@@ -6414,10 +6411,7 @@ fn eval_hyperbolic_cosh_cubic_passthrough_difference_collapses_in_one_step() {
     assert_eq!(wire["steps_count"], 1);
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(
-        steps[0]["rule"],
-        "Collapse Exact Zero Additive Subexpression"
-    );
+    assert_eq!(steps[0]["rule"], "Hyperbolic Pythagorean Residual");
 }
 
 #[test]
@@ -8545,6 +8539,35 @@ fn eval_even_log_product_difference_to_zero_finishes_with_didactic_log_cancellat
 }
 
 #[test]
+fn eval_log_square_hyperbolic_cubic_mix_uses_single_targeted_zero_step_and_keeps_domain_guards() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "(ln((x*y)^2) - ln(x^2) - ln(y^2)) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x)))",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(
+        code, 0,
+        "expected successful CLI exit, got {code} with output: {output}"
+    );
+
+    let wire = parse_wire(&output);
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["steps_count"], 1);
+    assert_eq!(wire["required_display"], json!(["x ≠ 0", "y ≠ 0"]));
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1);
+    assert_eq!(
+        steps[0]["rule"],
+        "Collapse Exact Zero Additive Subexpression"
+    );
+    assert_eq!(steps[0]["after"], "0");
+}
+
+#[test]
 fn eval_factored_log_difference_to_zero_keeps_global_log_context_through_preorder_cancel() {
     let (output, _code) = run_cli(&[
         "eval",
@@ -9055,7 +9078,7 @@ fn derive_radical_notable_quotient_uses_single_rationalize_step() {
 }
 
 #[test]
-fn eval_acosh_log_chain_notable_quotient_does_not_show_conjugate_substeps() {
+fn eval_acosh_log_chain_cancellation_does_not_show_conjugate_substeps() {
     let (output, _code) = run_cli(&[
         "eval",
         "acosh( (log((sin(y))^2) / log((cos(x))^2)) * (log((cosh(z))^2) / log((sin(y))^2)) * (log((sec(x))^(-2)) / log((cosh(z))^2)) )",
@@ -9069,15 +9092,22 @@ fn eval_acosh_log_chain_notable_quotient_does_not_show_conjugate_substeps() {
     assert_eq!(wire["result"], "0");
 
     let steps = wire["steps"].as_array().expect("steps array");
-    let notable = steps
+    let special_value = steps
         .iter()
-        .find(|step| step["rule"] == "Reconocer un cociente notable")
-        .expect("notable quotient step");
+        .find(|step| step["rule"] == "Evaluar valor hiperbólico especial")
+        .expect("hyperbolic special-value step");
 
-    assert!(
-        notable.get("substeps").is_none(),
-        "opaque notable quotient should not inherit conjugate substeps: {notable:?}"
-    );
+    assert_eq!(special_value["before"], "acosh(1)");
+    for step in steps {
+        let Some(substeps) = step.get("substeps").and_then(|value| value.as_array()) else {
+            continue;
+        };
+        let rendered = format!("{substeps:?}");
+        assert!(
+            !rendered.contains("Conjugate") && !rendered.contains("conjugate"),
+            "acosh log cancellation should not inherit conjugate substeps: {step:?}"
+        );
+    }
 }
 
 #[test]

@@ -47,6 +47,7 @@ fn format_trig_sum_to_product_desc(kind: TrigSumProductRewriteKind) -> &'static 
 define_rule!(
     TrigSumToProductRule,
     "Sum-to-Product Identity",
+    Some(crate::target_kind::TargetKindSet::ADD_SUB),
     |ctx, expr| {
         let rewrite = try_rewrite_trig_sum_to_product_expr(ctx, expr, crate::collect::collect)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_trig_sum_to_product_desc(rewrite.kind)))
@@ -56,6 +57,7 @@ define_rule!(
 define_rule!(
     DoubleAngleRule,
     "Double Angle Identity",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr, parent_ctx| {
         if should_block_double_angle_expr_with_context(
             ctx,

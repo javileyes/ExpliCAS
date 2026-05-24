@@ -31,18 +31,24 @@ fn format_simplify_square_root_desc(kind: SimplifySquareRootRewriteKind) -> &'st
     }
 }
 
-define_rule!(RootDenestingRule, "Root Denesting", |ctx, expr| {
-    let rewrite = cas_math::root_forms::try_rewrite_root_denesting_expr(ctx, expr)?;
-    Some(
-        Rewrite::new(rewrite.rewritten)
-            .desc(format_root_denesting_desc(rewrite.kind))
-            .local(expr, rewrite.rewritten),
-    )
-});
+define_rule!(
+    RootDenestingRule,
+    "Root Denesting",
+    Some(crate::target_kind::TargetKindSet::FUNCTION | crate::target_kind::TargetKindSet::POW),
+    |ctx, expr| {
+        let rewrite = cas_math::root_forms::try_rewrite_root_denesting_expr(ctx, expr)?;
+        Some(
+            Rewrite::new(rewrite.rewritten)
+                .desc(format_root_denesting_desc(rewrite.kind))
+                .local(expr, rewrite.rewritten),
+        )
+    }
+);
 
 define_rule!(
     SimplifySquareRootRule,
     "Simplify Square Root",
+    Some(crate::target_kind::TargetKindSet::FUNCTION | crate::target_kind::TargetKindSet::POW),
     |ctx, expr| {
         let rewrite = cas_math::root_forms::try_rewrite_simplify_square_root_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_simplify_square_root_desc(rewrite.kind)))
@@ -66,3 +72,114 @@ define_rule!(
         Some(Rewrite::new(rewrite.rewritten).desc(format_extract_perfect_power_desc(rewrite.kind)))
     }
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rule::Rule;
+    use crate::Simplifier;
+    use cas_ast::target_kind::TargetKind;
+    use cas_ast::Expr;
+    use cas_parser::parse;
+    use num_rational::BigRational;
+
+    #[test]
+    fn root_denesting_rule_targets_function_and_pow_only() {
+        let target_types = RootDenestingRule
+            .target_types()
+            .expect("RootDenestingRule should be structurally targeted");
+        assert!(target_types.contains(TargetKind::Function));
+        assert!(target_types.contains(TargetKind::Pow));
+        assert!(!target_types.contains(TargetKind::Add));
+        assert!(!target_types.contains(TargetKind::Mul));
+    }
+
+    #[test]
+    fn root_denesting_rule_applies_to_function_form() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let expr = parse("sqrt(3 + 2*sqrt(2))", &mut simplifier.context).expect("parse");
+        let rule = RootDenestingRule;
+
+        let rewrite = rule.apply(
+            &mut simplifier.context,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+
+        assert!(
+            rewrite.is_some(),
+            "RootDenestingRule should still match sqrt(...) function form"
+        );
+    }
+
+    #[test]
+    fn root_denesting_rule_applies_to_pow_half_form() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let base = parse("3 + 2*sqrt(2)", &mut simplifier.context).expect("parse");
+        let half = simplifier
+            .context
+            .add(Expr::Number(BigRational::new(1.into(), 2.into())));
+        let expr = simplifier.context.add(Expr::Pow(base, half));
+        let rule = RootDenestingRule;
+
+        let rewrite = rule.apply(
+            &mut simplifier.context,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+
+        assert!(
+            rewrite.is_some(),
+            "RootDenestingRule should still match Pow(_, 1/2)"
+        );
+    }
+
+    #[test]
+    fn simplify_square_root_rule_targets_function_and_pow_only() {
+        let target_types = SimplifySquareRootRule
+            .target_types()
+            .expect("SimplifySquareRootRule should be structurally targeted");
+        assert!(target_types.contains(TargetKind::Function));
+        assert!(target_types.contains(TargetKind::Pow));
+        assert!(!target_types.contains(TargetKind::Add));
+        assert!(!target_types.contains(TargetKind::Mul));
+    }
+
+    #[test]
+    fn simplifier_applies_simplify_square_root_rule_to_function_form() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let expr = parse("sqrt(x^2 + 2*x + 1)", &mut simplifier.context).expect("parse");
+
+        let (_result, steps) = simplifier.simplify(expr);
+
+        let applied = steps
+            .iter()
+            .any(|step| step.rule_name.starts_with("Simplify Square Root"));
+        assert!(
+            applied,
+            "SimplifySquareRootRule should apply from the default simplifier"
+        );
+    }
+
+    #[test]
+    fn simplify_square_root_rule_applies_to_pow_half_form() {
+        let mut simplifier = Simplifier::with_default_rules();
+        let base = parse("x^2 + 2*x + 1", &mut simplifier.context).expect("parse");
+        let half = simplifier
+            .context
+            .add(Expr::Number(BigRational::new(1.into(), 2.into())));
+        let expr = simplifier.context.add(Expr::Pow(base, half));
+        let rule = SimplifySquareRootRule;
+
+        let rewrite = rule.apply(
+            &mut simplifier.context,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        );
+
+        assert!(
+            rewrite.is_some(),
+            "SimplifySquareRootRule should still match Pow(_, 1/2)"
+        );
+    }
+}

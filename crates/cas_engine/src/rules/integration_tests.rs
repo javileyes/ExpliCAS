@@ -1,8 +1,21 @@
 use super::integration::{CosProductTelescopingRule, ProductToSumRule};
 use crate::parent_context::ParentContext;
 use crate::rule::Rule;
-use cas_ast::Context;
+use cas_ast::{target_kind::TargetKind, Context};
 use cas_parser::parse;
+
+#[test]
+fn product_to_sum_rule_targets_mul_only() {
+    let targets = ProductToSumRule
+        .target_types()
+        .expect("ProductToSumRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Function));
+}
 
 #[test]
 fn test_product_to_sum_sin_cos() {

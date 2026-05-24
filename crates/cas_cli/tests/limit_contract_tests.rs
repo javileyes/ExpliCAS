@@ -414,6 +414,11 @@ fn test_eval_finite_partial_domain_inverse_elementary_limits_inside_domain_json(
             json!(["-3 ≤ x ≤ 1"]),
         ),
         (
+            "limit(arcsin(1/2-x/2), x, 0)",
+            "pi / 6",
+            json!(["-1 ≤ x ≤ 3"]),
+        ),
+        (
             "limit(arccos(x/2 + 1/2), x, 0)",
             "pi / 3",
             json!(["-3 ≤ x ≤ 1"]),
@@ -443,6 +448,48 @@ fn test_eval_finite_partial_domain_inverse_elementary_limits_inside_domain_json(
             "input: {input}"
         );
     }
+}
+
+#[test]
+fn test_eval_finite_shifted_atanh_limit_inside_domain_json() {
+    let (success, stdout) = run_eval("limit(atanh(x/3+1/3), x, 0)", "json");
+    assert!(
+        success,
+        "Command should resolve shifted affine atanh limit inside the real domain"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "atanh(1/3)");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!([]));
+}
+
+#[test]
+fn test_eval_finite_scaled_acosh_limit_preserves_lower_bound_domain_json() {
+    let (success, stdout) = run_eval("limit(acosh(x/2+2), x, 0)", "json");
+    assert!(
+        success,
+        "Command should resolve scaled affine acosh limit inside the real domain"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "acosh(2)");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!(["x ≥ -2"]));
+}
+
+#[test]
+fn test_eval_finite_negatively_scaled_acosh_limit_preserves_oriented_domain_json() {
+    let (success, stdout) = run_eval("limit(acosh(2-x/2), x, 0)", "json");
+    assert!(
+        success,
+        "Command should resolve negatively scaled affine acosh limit inside the real domain"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "acosh(2)");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!(["x ≤ 2"]));
 }
 
 #[test]
@@ -1568,6 +1615,78 @@ fn test_limit_sqrt_quadratic_over_linear_pos_and_neg_infinity() {
 }
 
 #[test]
+fn test_limit_abs_polynomial_ratio_orientation_at_infinity() {
+    for (expr, to, expected) in [
+        ("abs(2*x+1)/(2*x+1)", "infinity", "1"),
+        ("abs(2*x+1)/(2*x+1)", "-infinity", "-1"),
+        ("(2*x+1)/abs(2*x+1)", "infinity", "1"),
+        ("(2*x+1)/abs(2*x+1)", "-infinity", "-1"),
+        ("abs(1-2*x)/(1-2*x)", "infinity", "-1"),
+        ("abs(1-2*x)/(1-2*x)", "-infinity", "1"),
+        ("(1-2*x)/abs(1-2*x)", "infinity", "-1"),
+        ("(1-2*x)/abs(1-2*x)", "-infinity", "1"),
+        ("abs(x^2+1)/x^2", "-infinity", "1"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved abs-polynomial ratio should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_abs_polynomial_ratio_degree_mismatch_at_infinity() {
+    for (expr, to, expected) in [
+        ("abs(1-2*x)/x^2", "infinity", "0"),
+        ("abs(1-2*x)/x^2", "-infinity", "0"),
+        ("x/abs(x^2+1)", "infinity", "0"),
+        ("x/abs(x^2+1)", "-infinity", "0"),
+        ("abs(x^2+1)/x", "infinity", "infinity"),
+        ("abs(x^2+1)/x", "-infinity", "-infinity"),
+        ("x^2/abs(1-2*x)", "infinity", "infinity"),
+        ("(-x^2)/abs(1-2*x)", "infinity", "-infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved abs-polynomial dominance should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_abs_linear_tail_at_infinity() {
+    for (expr, to) in [
+        ("abs(2*x+1)", "infinity"),
+        ("abs(2*x+1)", "-infinity"),
+        ("abs(1-2*x)", "infinity"),
+        ("abs(1-2*x)", "-infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains("\"result\":\"infinity\""),
+            "{expr} at {to} should resolve to infinity, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved abs linear tail should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
 fn test_limit_sqrt_quadratic_with_surd_leading_coeff_over_linear() {
     let (success_pos, stdout_pos) = run_limit("sqrt(2*x^2+1)/x", "x", "infinity", "json");
     assert!(success_pos, "Command should succeed");
@@ -2069,6 +2188,647 @@ fn test_limit_base_log_over_polynomial_pos_infinity() {
         "Resolved general-base log dominance should not warn, got: {}",
         stdout
     );
+}
+
+#[test]
+fn test_limit_direct_log_functions_pos_infinity() {
+    for (expr, expected) in [
+        ("log2(x)", "infinity"),
+        ("log10(x)", "infinity"),
+        ("log(2, x)", "infinity"),
+        ("log(e^2, x)", "infinity"),
+        ("log(1/2, x)", "-infinity"),
+        ("log(e^-2, x)", "-infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for {expr}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved direct log limit should not warn for {expr}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_direct_base_log_domain_and_base_guards_remain_residual() {
+    for expr in ["log(2, x)", "log2(x)", "log10(x)"] {
+        let (success, stdout) = run_limit(expr, "x", "-infinity", "json");
+        assert!(success, "Command should succeed for residual {expr}");
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} at -∞ should remain residual over the real domain, got: {stdout}"
+        );
+    }
+
+    for expr in ["log(1, x)", "log(-2, x)"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for residual {expr}");
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} should keep invalid-base residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_log_of_linear_exp_argument_pos_infinity() {
+    for (expr, expected) in [
+        ("ln(exp(x))", "infinity"),
+        ("ln(exp(-x))", "-infinity"),
+        ("log2(exp(x))", "infinity"),
+        ("log10(exp(-x))", "-infinity"),
+        ("log(2, exp(x))", "infinity"),
+        ("log(2, exp(-x))", "-infinity"),
+        ("log(1/2, exp(x))", "-infinity"),
+        ("log(1/2, exp(-x))", "infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for {expr}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved log(exp(linear)) limit should not warn for {expr}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_log_of_exp_argument_guards_remain_residual() {
+    for expr in ["ln(exp(x^2))", "log(2, exp(x^2))"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for residual {expr}");
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} should keep nonlinear exponent residual, got: {stdout}"
+        );
+    }
+
+    for expr in ["log(1, exp(x))", "log(-2, exp(x))"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for residual {expr}");
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} should keep invalid-base residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_sqrt_of_linear_exp_argument_at_infinity() {
+    for (expr, to, expected) in [
+        ("sqrt(exp(x))", "infinity", "infinity"),
+        ("sqrt(exp(-x))", "infinity", "0"),
+        ("sqrt(exp(x))", "-infinity", "0"),
+        ("sqrt(exp(-x))", "-infinity", "infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved sqrt(exp(linear)) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_sqrt_of_nonlinear_exp_argument_remains_residual() {
+    let (success, stdout) = run_limit("sqrt(exp(x^2))", "x", "infinity", "json");
+    assert!(
+        success,
+        "Command should succeed for nonlinear exponent residual"
+    );
+    assert!(
+        stdout.contains("\"warning\"") && stdout.contains("limit("),
+        "sqrt(exp(x^2)) should keep nonlinear exponent residual, got: {stdout}"
+    );
+}
+
+#[test]
+fn test_limit_cbrt_of_linear_argument_at_infinity() {
+    for (expr, to, expected) in [
+        ("cbrt(x)", "infinity", "infinity"),
+        ("cbrt(x)", "-infinity", "-infinity"),
+        ("cbrt(1 - x)", "infinity", "-infinity"),
+        ("cbrt(1 - x)", "-infinity", "infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved cbrt(linear) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_cbrt_of_linear_exp_argument_at_infinity() {
+    for (expr, to, expected) in [
+        ("cbrt(exp(x))", "infinity", "infinity"),
+        ("cbrt(exp(-x))", "infinity", "0"),
+        ("cbrt(exp(x))", "-infinity", "0"),
+        ("cbrt(exp(-x))", "-infinity", "infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved cbrt(exp(linear)) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_cbrt_of_nonlinear_argument_remains_residual() {
+    for expr in ["cbrt(x^2)", "cbrt(exp(x^2))"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for residual {expr}");
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} should keep nonlinear argument residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_cbrt_polynomial_dominance_at_infinity() {
+    for (expr, to, expected) in [
+        ("cbrt(x)/x", "infinity", "0"),
+        ("x/cbrt(x)", "infinity", "infinity"),
+        ("x/cbrt(x)", "-infinity", "infinity"),
+        ("x/cbrt(1 - x)", "infinity", "-infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved cbrt-polynomial dominance should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_cbrt_exp_dominance_at_infinity() {
+    for (expr, expected) in [
+        ("cbrt(x)*exp(-x)", "0"),
+        ("cbrt(1 - x)/exp(-x)", "-infinity"),
+        ("exp(x)/cbrt(1 - x)", "-infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for {expr}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved cbrt-exp dominance should not warn for {expr}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_cbrt_dominance_nonlinear_argument_remains_residual() {
+    for expr in ["cbrt(x^2)/x", "x/cbrt(x^2)", "exp(x)/cbrt(x^2)"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for residual {expr}");
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} should keep nonlinear cube-root dominance residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_asinh_of_linear_argument_at_infinity() {
+    for (expr, to, expected) in [
+        ("asinh(x)", "infinity", "infinity"),
+        ("asinh(x)", "-infinity", "-infinity"),
+        ("asinh(1 - x)", "infinity", "-infinity"),
+        ("asinh(1 - x)", "-infinity", "infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved asinh(linear) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_asinh_of_linear_exp_argument_at_infinity() {
+    for (expr, to, expected) in [
+        ("asinh(exp(x))", "infinity", "infinity"),
+        ("asinh(exp(-x))", "infinity", "0"),
+        ("asinh(exp(x))", "-infinity", "0"),
+        ("asinh(exp(-x))", "-infinity", "infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved asinh(exp(linear)) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_asinh_of_nonlinear_argument_remains_residual() {
+    for expr in ["asinh(x^2)", "asinh(exp(x^2))"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for residual {expr}");
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} should keep nonlinear argument residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_asinh_polynomial_dominance_at_infinity() {
+    for (expr, to, expected) in [
+        ("asinh(x)/x", "infinity", "0"),
+        ("x/asinh(x)", "infinity", "infinity"),
+        ("x/asinh(x)", "-infinity", "infinity"),
+        ("x/asinh(1 - x)", "infinity", "-infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved asinh-polynomial dominance should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_asinh_exp_dominance_at_infinity() {
+    for (expr, expected) in [
+        ("asinh(x)*exp(-x)", "0"),
+        ("asinh(1 - x)/exp(-x)", "-infinity"),
+        ("exp(x)/asinh(1 - x)", "-infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for {expr}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved asinh-exp dominance should not warn for {expr}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_asinh_dominance_nonlinear_argument_remains_residual() {
+    for expr in ["asinh(x^2)/x", "x/asinh(x^2)", "exp(x)/asinh(x^2)"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for residual {expr}");
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} should keep nonlinear asinh dominance residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_atan_of_linear_argument_at_infinity() {
+    for (expr, to, expected) in [
+        ("atan(x)", "infinity", "pi / 2"),
+        ("atan(x)", "-infinity", "-pi / 2"),
+        ("arctan(1 - x)", "infinity", "-pi / 2"),
+        ("arctan(1 - x)", "-infinity", "pi / 2"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved atan(linear) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_atan_of_linear_exp_argument_at_infinity() {
+    for (expr, to, expected) in [
+        ("atan(exp(x))", "infinity", "pi / 2"),
+        ("atan(exp(-x))", "infinity", "0"),
+        ("arctan(exp(x))", "-infinity", "0"),
+        ("arctan(exp(-x))", "-infinity", "pi / 2"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved atan(exp(linear)) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_atan_of_nonlinear_argument_remains_residual() {
+    for expr in ["atan(x^2)", "arctan(exp(x^2))"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for residual {expr}");
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} should keep nonlinear argument residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_tanh_of_linear_argument_at_infinity() {
+    for (expr, to, expected) in [
+        ("tanh(x)", "infinity", "1"),
+        ("tanh(x)", "-infinity", "-1"),
+        ("tanh(1 - x)", "infinity", "-1"),
+        ("tanh(1 - x)", "-infinity", "1"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved tanh(linear) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_tanh_of_linear_exp_argument_at_infinity() {
+    for (expr, to, expected) in [
+        ("tanh(exp(x))", "infinity", "1"),
+        ("tanh(exp(-x))", "infinity", "0"),
+        ("tanh(exp(x))", "-infinity", "0"),
+        ("tanh(exp(-x))", "-infinity", "1"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved tanh(exp(linear)) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_tanh_of_nonlinear_argument_remains_residual() {
+    for expr in ["tanh(x^2)", "tanh(exp(x^2))"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for residual {expr}");
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} should keep nonlinear argument residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_sinh_cosh_of_linear_argument_at_infinity() {
+    for (expr, to, expected) in [
+        ("sinh(x)", "infinity", "infinity"),
+        ("sinh(x)", "-infinity", "-infinity"),
+        ("sinh(1 - x)", "infinity", "-infinity"),
+        ("sinh(1 - x)", "-infinity", "infinity"),
+        ("cosh(x)", "infinity", "infinity"),
+        ("cosh(x)", "-infinity", "infinity"),
+        ("cosh(1 - x)", "infinity", "infinity"),
+        ("cosh(1 - x)", "-infinity", "infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved sinh/cosh(linear) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_sinh_cosh_of_linear_exp_argument_at_infinity() {
+    for (expr, to, expected) in [
+        ("sinh(exp(x))", "infinity", "infinity"),
+        ("sinh(exp(-x))", "infinity", "0"),
+        ("sinh(exp(x))", "-infinity", "0"),
+        ("sinh(exp(-x))", "-infinity", "infinity"),
+        ("cosh(exp(x))", "infinity", "infinity"),
+        ("cosh(exp(-x))", "infinity", "1"),
+        ("cosh(exp(x))", "-infinity", "1"),
+        ("cosh(exp(-x))", "-infinity", "infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved sinh/cosh(exp(linear)) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_sinh_cosh_of_nonlinear_argument_remains_residual() {
+    for expr in ["sinh(x^2)", "cosh(x^2)", "sinh(exp(x^2))", "cosh(exp(x^2))"] {
+        let (success, stdout) = run_limit(expr, "x", "infinity", "json");
+        assert!(success, "Command should succeed for residual {expr}");
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} should keep nonlinear argument residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_acosh_of_domain_safe_linear_argument_at_infinity() {
+    for (expr, to) in [("acosh(x)", "infinity"), ("acosh(1 - x)", "-infinity")] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains("\"result\":\"infinity\""),
+            "{expr} at {to} should resolve to infinity, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved acosh(linear) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_acosh_of_domain_unsafe_linear_argument_remains_residual() {
+    for (expr, to) in [("acosh(x)", "-infinity"), ("acosh(1 - x)", "infinity")] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(
+            success,
+            "Command should succeed for residual {expr} at {to}"
+        );
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} at {to} should keep domain-unsafe residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_acosh_of_domain_safe_linear_exp_argument_at_infinity() {
+    for (expr, to) in [
+        ("acosh(exp(x))", "infinity"),
+        ("acosh(exp(-x))", "-infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains("\"result\":\"infinity\""),
+            "{expr} at {to} should resolve to infinity, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved acosh(exp(linear)) limit should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_acosh_of_domain_unsafe_or_nonlinear_argument_remains_residual() {
+    for (expr, to) in [
+        ("acosh(exp(x))", "-infinity"),
+        ("acosh(exp(-x))", "infinity"),
+        ("acosh(x^2)", "infinity"),
+        ("acosh(exp(x^2))", "infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(
+            success,
+            "Command should succeed for residual {expr} at {to}"
+        );
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} at {to} should keep unsupported acosh residual, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_acosh_polynomial_dominance_at_infinity() {
+    for (expr, to, expected) in [
+        ("acosh(x)/x", "infinity", "0"),
+        ("x/acosh(x)", "infinity", "infinity"),
+        ("acosh(1 - x)/x^2", "-infinity", "0"),
+        ("x/acosh(1 - x)", "-infinity", "-infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved acosh-polynomial dominance should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_acosh_exp_dominance_at_infinity() {
+    for (expr, to, expected) in [
+        ("acosh(x)*exp(-x)", "infinity", "0"),
+        ("acosh(1 - x)*exp(x)", "-infinity", "0"),
+        ("exp(x)/acosh(x)", "infinity", "infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(success, "Command should succeed for {expr} at {to}");
+        assert!(
+            stdout.contains(&format!("\"result\":\"{expected}\"")),
+            "{expr} at {to} should resolve to {expected}, got: {stdout}"
+        );
+        assert!(
+            !stdout.contains("\"warning\""),
+            "Resolved acosh-exp dominance should not warn for {expr} at {to}, got: {stdout}"
+        );
+    }
+}
+
+#[test]
+fn test_limit_acosh_dominance_bad_domain_or_nonlinear_argument_remains_residual() {
+    for (expr, to) in [
+        ("acosh(x)/x", "-infinity"),
+        ("x/acosh(1 - x)", "infinity"),
+        ("acosh(x^2)/x", "infinity"),
+        ("x/acosh(x^2)", "infinity"),
+        ("exp(x)/acosh(1 - x)", "infinity"),
+        ("exp(x)/acosh(x^2)", "infinity"),
+    ] {
+        let (success, stdout) = run_limit(expr, "x", to, "json");
+        assert!(
+            success,
+            "Command should succeed for residual {expr} at {to}"
+        );
+        assert!(
+            stdout.contains("\"warning\"") && stdout.contains("limit("),
+            "{expr} at {to} should keep acosh dominance residual, got: {stdout}"
+        );
+    }
 }
 
 #[test]

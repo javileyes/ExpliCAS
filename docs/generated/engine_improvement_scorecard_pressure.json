@@ -1,0 +1,322 @@
+{
+  "generated_at": "2026-05-24T16:32:45.187632+00:00",
+  "generated_discovery": {
+    "areas": {
+      "orchestrator / exact-zero additive composition": 1
+    },
+    "families": {},
+    "observe_only_discoveries": 1,
+    "recent": [
+      {
+        "area": "orchestrator / exact-zero additive composition",
+        "family": "unknown",
+        "status": "observe-only discovery",
+        "title": "2026-05-24 - Discovery observe-only: hyperbolic angle-sum plus telescoping residual remains slow",
+        "wrapper": "unknown"
+      }
+    ],
+    "wrappers": {}
+  },
+  "generated_discovery_pressure": {},
+  "git": {
+    "branch": "main",
+    "commit": "58df39ec2e0b26038f155f6d4da6c0fbac215cae"
+  },
+  "orchestrator_profile_filter": null,
+  "orchestrator_profile_limit": null,
+  "orchestrator_profile_requested": false,
+  "profile": "pressure",
+  "suites": {
+    "calculus_diff_exhaustive_contract": {
+      "category": "calculus",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-q",
+        "-p",
+        "cas_solver",
+        "--test",
+        "diff_step_contract_tests",
+        "inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions_exhaustive",
+        "--",
+        "--ignored",
+        "--exact",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 24.876,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "cargo_status": "ok",
+        "failed": 0,
+        "filtered_out": 257,
+        "ignored": 0,
+        "measured": 0,
+        "passed": 1,
+        "timeouts": 0
+      },
+      "process_elapsed_seconds": 24.876,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    },
+    "calculus_integrate_exhaustive_contract": {
+      "category": "calculus",
+      "command": [
+        "cargo",
+        "test",
+        "--release",
+        "-q",
+        "-p",
+        "cas_cli",
+        "--test",
+        "integrate_contract_tests",
+        "integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive",
+        "--",
+        "--ignored",
+        "--exact",
+        "--nocapture"
+      ],
+      "delta": {},
+      "elapsed_seconds": 80.158,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "cargo_status": "ok",
+        "failed": 0,
+        "filtered_out": 337,
+        "ignored": 0,
+        "measured": 0,
+        "passed": 1,
+        "timeouts": 0
+      },
+      "process_elapsed_seconds": 80.158,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    },
+    "simplify_zero_mixed": {
+      "category": "simplify",
+      "command": [
+        "cargo",
+        "run",
+        "--release",
+        "-q",
+        "-p",
+        "cas_solver",
+        "--example",
+        "run_simplify_zero_mixed_corpus",
+        "--",
+        "--window",
+        "sum:0:100",
+        "--window",
+        "sum:700:100",
+        "--window",
+        "difference:0:50",
+        "--window",
+        "product:0:100",
+        "--window",
+        "shifted_quotient:0:100"
+      ],
+      "delta": {},
+      "elapsed_seconds": 2.37,
+      "env": {},
+      "guardrail": null,
+      "metrics": {
+        "composition_rows": {
+          "difference": {
+            "avg_case_ms": 6.63,
+            "avg_parse_ms": 0.06,
+            "avg_simplify_ms": 0.93,
+            "avg_wire_ms": 0.99,
+            "elapsed_seconds": 0.33159,
+            "failed": 0,
+            "parse_elapsed_seconds": 0.0029900000000000005,
+            "passed": 50,
+            "simplify_elapsed_seconds": 0.04628,
+            "total": 50,
+            "wire_elapsed_seconds": 0.04932
+          },
+          "product": {
+            "avg_case_ms": 4.75,
+            "avg_parse_ms": 0.07,
+            "avg_simplify_ms": 0.38,
+            "avg_wire_ms": 0.45,
+            "elapsed_seconds": 0.47501,
+            "failed": 0,
+            "parse_elapsed_seconds": 0.0066500000000000005,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.03778,
+            "total": 100,
+            "wire_elapsed_seconds": 0.044520000000000004
+          },
+          "shifted_quotient": {
+            "avg_case_ms": 8.44,
+            "avg_parse_ms": 0.08,
+            "avg_simplify_ms": 0.59,
+            "avg_wire_ms": 0.68,
+            "elapsed_seconds": 0.84433,
+            "failed": 0,
+            "parse_elapsed_seconds": 0.008369999999999999,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.05949,
+            "total": 100,
+            "wire_elapsed_seconds": 0.06801
+          },
+          "sum": {
+            "avg_case_ms": 3.6,
+            "avg_parse_ms": 0.05,
+            "avg_simplify_ms": 0.65,
+            "avg_wire_ms": 0.71,
+            "elapsed_seconds": 0.71985,
+            "failed": 0,
+            "parse_elapsed_seconds": 0.0107,
+            "passed": 200,
+            "simplify_elapsed_seconds": 0.13091999999999998,
+            "total": 200,
+            "wire_elapsed_seconds": 0.14181
+          }
+        },
+        "failed": 0,
+        "passed": 450,
+        "reported_elapsed": "2.37s",
+        "reported_elapsed_per_case_ms": 5.2667,
+        "reported_elapsed_seconds": 2.37,
+        "steady_engine_heavy_rows": [
+          {
+            "case_number": 2865,
+            "composition": "sum",
+            "expression": "(ln((x*y)^2) - ln(x^2) - ln(y^2)) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x)))",
+            "median_elapsed_seconds": 0.01565,
+            "median_parse_seconds": 0.00011,
+            "median_simplify_seconds": 0.01508,
+            "median_wire_seconds": 0.0152,
+            "runs": 3,
+            "window_label": "sum@700+100"
+          },
+          {
+            "case_number": 25,
+            "composition": "sum",
+            "expression": "(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + (cosh(x) + sinh(x) - e^x)",
+            "median_elapsed_seconds": 0.0051600000000000005,
+            "median_parse_seconds": 4e-05,
+            "median_simplify_seconds": 0.0034700000000000004,
+            "median_wire_seconds": 0.0035099999999999997,
+            "runs": 3,
+            "window_label": "sum@0+100"
+          },
+          {
+            "case_number": 209,
+            "composition": "sum",
+            "expression": "(1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x)))",
+            "median_elapsed_seconds": 0.00851,
+            "median_parse_seconds": 7.000000000000001e-05,
+            "median_simplify_seconds": 0.00455,
+            "median_wire_seconds": 0.00463,
+            "runs": 3,
+            "window_label": "sum@0+100"
+          },
+          {
+            "case_number": 54,
+            "composition": "difference",
+            "expression": "(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) - (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x)))",
+            "median_elapsed_seconds": 0.00774,
+            "median_parse_seconds": 6e-05,
+            "median_simplify_seconds": 0.00472,
+            "median_wire_seconds": 0.00479,
+            "runs": 3,
+            "window_label": "difference@0+50"
+          },
+          {
+            "case_number": 3021,
+            "composition": "sum",
+            "expression": "(2*ln(abs(x*y)) - 2*ln(abs(x)) - 2*ln(abs(y))) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x)))",
+            "median_elapsed_seconds": 0.00656,
+            "median_parse_seconds": 5e-05,
+            "median_simplify_seconds": 0.006110000000000001,
+            "median_wire_seconds": 0.0061600000000000005,
+            "runs": 3,
+            "window_label": "sum@700+100"
+          }
+        ],
+        "total_cases": 450,
+        "window_rows": {
+          "difference@0+50": {
+            "avg_case_ms": 6.63,
+            "avg_parse_ms": 0.06,
+            "avg_simplify_ms": 0.93,
+            "avg_wire_ms": 0.99,
+            "elapsed_seconds": 0.33159,
+            "failed": 0,
+            "parse_elapsed_seconds": 0.0029900000000000005,
+            "passed": 50,
+            "simplify_elapsed_seconds": 0.04628,
+            "total": 50,
+            "wire_elapsed_seconds": 0.04932
+          },
+          "product@0+100": {
+            "avg_case_ms": 4.75,
+            "avg_parse_ms": 0.07,
+            "avg_simplify_ms": 0.38,
+            "avg_wire_ms": 0.45,
+            "elapsed_seconds": 0.47501,
+            "failed": 0,
+            "parse_elapsed_seconds": 0.0066500000000000005,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.03778,
+            "total": 100,
+            "wire_elapsed_seconds": 0.044520000000000004
+          },
+          "shifted_quotient@0+100": {
+            "avg_case_ms": 8.44,
+            "avg_parse_ms": 0.08,
+            "avg_simplify_ms": 0.59,
+            "avg_wire_ms": 0.68,
+            "elapsed_seconds": 0.84433,
+            "failed": 0,
+            "parse_elapsed_seconds": 0.008369999999999999,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.05949,
+            "total": 100,
+            "wire_elapsed_seconds": 0.06801
+          },
+          "sum@0+100": {
+            "avg_case_ms": 5.11,
+            "avg_parse_ms": 0.06,
+            "avg_simplify_ms": 0.79,
+            "avg_wire_ms": 0.85,
+            "elapsed_seconds": 0.51092,
+            "failed": 0,
+            "parse_elapsed_seconds": 0.0057599999999999995,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.07876000000000001,
+            "total": 100,
+            "wire_elapsed_seconds": 0.08464
+          },
+          "sum@700+100": {
+            "avg_case_ms": 2.09,
+            "avg_parse_ms": 0.05,
+            "avg_simplify_ms": 0.52,
+            "avg_wire_ms": 0.57,
+            "elapsed_seconds": 0.20893,
+            "failed": 0,
+            "parse_elapsed_seconds": 0.0049299999999999995,
+            "passed": 100,
+            "simplify_elapsed_seconds": 0.05215,
+            "total": 100,
+            "wire_elapsed_seconds": 0.05718
+          }
+        }
+      },
+      "process_elapsed_seconds": 40.833,
+      "returncode": 0,
+      "status": "pass",
+      "timed_out": false,
+      "timeout_seconds": null
+    }
+  }
+}

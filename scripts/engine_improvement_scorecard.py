@@ -389,10 +389,35 @@ SUITES: dict[str, SuiteSpec] = {
         parser="cargo_test_basic",
         description="Public limit contract lane for calculus visibility.",
     ),
+    "calculus_limit_compact_contract": SuiteSpec(
+        name="calculus_limit_compact_contract",
+        category="calculus",
+        profile_tags=("fast", "fast_embedded"),
+        command=[
+            "cargo",
+            "test",
+            "--release",
+            "-q",
+            "-p",
+            "cas_cli",
+            "--test",
+            "limit_contract_tests",
+            "test_limit_sqrt_quadratic_over_noisy_scaled_linear_denominator",
+            "--",
+            "--exact",
+            "--nocapture",
+        ],
+        env={},
+        parser="cargo_test_basic",
+        description=(
+            "Cheap public limit compactness contract for fast calculus "
+            "visibility."
+        ),
+    ),
     "calculus_limit_presimplify_contract": SuiteSpec(
         name="calculus_limit_presimplify_contract",
         category="calculus",
-        profile_tags=("guardrail", "full"),
+        profile_tags=("fast", "fast_embedded", "guardrail", "full"),
         command=[
             "cargo",
             "test",
@@ -2130,7 +2155,7 @@ def parse_derive_didactic(output: str) -> dict[str, Any]:
     total_web_substeps = int(summary.group(5))
     mean_step_count = float(summary.group(6))
 
-    return {
+    metrics = {
         "cases": cases,
         "flagged_cases": flagged_cases,
         "flagged_rate": flagged_cases / cases if cases else 0.0,
@@ -2139,6 +2164,43 @@ def parse_derive_didactic(output: str) -> dict[str, Any]:
         "total_web_substeps": total_web_substeps,
         "mean_step_count": mean_step_count,
     }
+    timings = re.search(
+        r"derive didactic audit timings: "
+        r"artifacts_seconds=([0-9.]+) "
+        r"cli_seconds=([0-9.]+) "
+        r"report_seconds=([0-9.]+) "
+        r"total_seconds=([0-9.]+) "
+        r"worker_count=(\d+)",
+        output,
+    )
+    if timings:
+        metrics.update(
+            {
+                "artifact_seconds": float(timings.group(1)),
+                "cli_seconds": float(timings.group(2)),
+                "report_seconds": float(timings.group(3)),
+                "reported_total_seconds": float(timings.group(4)),
+                "worker_count": int(timings.group(5)),
+            }
+        )
+    family_hotspots = re.search(
+        r"derive didactic audit family hotspots: "
+        r"artifacts=([^\n]*) cli=([^\n]*)",
+        output,
+    )
+    if family_hotspots:
+        metrics["artifact_family_hotspots"] = family_hotspots.group(1).strip()
+        metrics["cli_family_hotspots"] = family_hotspots.group(2).strip()
+    case_hotspots = re.search(
+        r"derive didactic audit case hotspots: "
+        r"artifacts=([^\n]*) cli=([^\n]*)",
+        output,
+    )
+    if case_hotspots:
+        metrics["artifact_case_hotspots"] = case_hotspots.group(1).strip()
+        metrics["cli_case_hotspots"] = case_hotspots.group(2).strip()
+
+    return metrics
 
 
 def add_unified_benchmark_rate_metrics(metrics: dict[str, Any]) -> None:
@@ -2424,6 +2486,18 @@ def parse_calculus_residual_matrix(output: str) -> dict[str, Any]:
         sanitized_condition_counts = {}
     if not isinstance(distinct_expected_required_conditions, int):
         distinct_expected_required_conditions = len(sanitized_condition_counts)
+    matrix_base_count = raw.get("matrix_base_count")
+    matrix_wrapped_base_count = raw.get("matrix_wrapped_base_count")
+    matrix_standalone_base_count = raw.get("matrix_standalone_base_count")
+    matrix_wrapper_count = raw.get("matrix_wrapper_count")
+    matrix_wrapped_case_count = raw.get("matrix_wrapped_case_count")
+    matrix_standalone_case_count = raw.get("matrix_standalone_case_count")
+    matrix_expected_wrapped_case_count = raw.get("matrix_expected_wrapped_case_count")
+    matrix_missing_wrapped_pair_count = raw.get("matrix_missing_wrapped_pair_count")
+    matrix_full_wrapper_base_count = raw.get("matrix_full_wrapper_base_count")
+    matrix_partial_wrapper_base_count = raw.get("matrix_partial_wrapper_base_count")
+    matrix_largest_wrapper_gap_count = raw.get("matrix_largest_wrapper_gap_count")
+    matrix_wrapper_gap_examples = raw.get("matrix_wrapper_gap_examples")
 
     metrics = {
         "matrix_status": status,
@@ -2452,7 +2526,79 @@ def parse_calculus_residual_matrix(output: str) -> dict[str, Any]:
             distinct_expected_required_conditions
         )
         metrics["expected_required_condition_counts"] = sanitized_condition_counts
+    if isinstance(matrix_base_count, int):
+        metrics["matrix_base_count"] = matrix_base_count
+    if isinstance(matrix_wrapped_base_count, int):
+        metrics["matrix_wrapped_base_count"] = matrix_wrapped_base_count
+    if isinstance(matrix_standalone_base_count, int):
+        metrics["matrix_standalone_base_count"] = matrix_standalone_base_count
+    if isinstance(matrix_wrapper_count, int):
+        metrics["matrix_wrapper_count"] = matrix_wrapper_count
+    if isinstance(matrix_wrapped_case_count, int):
+        metrics["matrix_wrapped_case_count"] = matrix_wrapped_case_count
+    if isinstance(matrix_standalone_case_count, int):
+        metrics["matrix_standalone_case_count"] = matrix_standalone_case_count
+    if isinstance(matrix_expected_wrapped_case_count, int):
+        metrics["matrix_expected_wrapped_case_count"] = (
+            matrix_expected_wrapped_case_count
+        )
+    if isinstance(matrix_missing_wrapped_pair_count, int):
+        metrics["matrix_missing_wrapped_pair_count"] = (
+            matrix_missing_wrapped_pair_count
+        )
+    if isinstance(matrix_full_wrapper_base_count, int):
+        metrics["matrix_full_wrapper_base_count"] = matrix_full_wrapper_base_count
+    if isinstance(matrix_partial_wrapper_base_count, int):
+        metrics["matrix_partial_wrapper_base_count"] = matrix_partial_wrapper_base_count
+    if isinstance(matrix_largest_wrapper_gap_count, int):
+        metrics["matrix_largest_wrapper_gap_count"] = matrix_largest_wrapper_gap_count
+    if isinstance(matrix_wrapper_gap_examples, list):
+        sanitized_gap_examples = []
+        for example in matrix_wrapper_gap_examples:
+            if not isinstance(example, dict):
+                continue
+            base = example.get("base")
+            missing_count = example.get("missing_count")
+            missing_wrappers = example.get("missing_wrappers")
+            if not isinstance(base, str) or not isinstance(missing_count, int):
+                continue
+            sanitized_missing_wrappers = (
+                [
+                    wrapper
+                    for wrapper in missing_wrappers
+                    if isinstance(wrapper, str)
+                ]
+                if isinstance(missing_wrappers, list)
+                else []
+            )
+            sanitized_gap_examples.append(
+                {
+                    "base": base,
+                    "missing_count": missing_count,
+                    "missing_wrappers": sanitized_missing_wrappers,
+                }
+            )
+        if sanitized_gap_examples:
+            metrics["matrix_wrapper_gap_examples"] = sanitized_gap_examples
     return metrics
+
+
+def matrix_wrapper_gap_fragments(
+    metrics: dict[str, Any], limit: int = 5
+) -> list[str]:
+    examples = metrics.get("matrix_wrapper_gap_examples")
+    if not isinstance(examples, list):
+        return []
+    fragments = []
+    for example in examples[:limit]:
+        if not isinstance(example, dict):
+            continue
+        base = example.get("base")
+        missing_count = example.get("missing_count")
+        if not isinstance(base, str) or not isinstance(missing_count, int):
+            continue
+        fragments.append(f"{base} missing={missing_count}")
+    return fragments
 
 
 def sparse_expected_condition_fragments(
@@ -2465,6 +2611,24 @@ def sparse_expected_condition_fragments(
         (condition, count)
         for condition, count in counts.items()
         if isinstance(condition, str) and isinstance(count, int)
+    ]
+    rows.sort(key=lambda row: (row[1], row[0]))
+    return [f"{condition}={count}" for condition, count in rows[:limit]]
+
+
+def domain_expected_condition_fragments(
+    metrics: dict[str, Any], limit: int = 5
+) -> list[str]:
+    counts = metrics.get("expected_required_condition_counts")
+    if not isinstance(counts, dict):
+        return []
+    inequality_symbols = ("<", ">", "\u2264", "\u2265")
+    rows = [
+        (condition, count)
+        for condition, count in counts.items()
+        if isinstance(condition, str)
+        and isinstance(count, int)
+        and any(symbol in condition for symbol in inequality_symbols)
     ]
     rows.sort(key=lambda row: (row[1], row[0]))
     return [f"{condition}={count}" for condition, count in rows[:limit]]
@@ -3605,9 +3769,30 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- Flags: no_web_substeps={derive_didactic_metrics['no_web_substeps']} "
                         f"no_web_steps={derive_didactic_metrics['no_web_steps']}"
                     ),
-                    "",
                 ]
             )
+            if "artifact_seconds" in derive_didactic_metrics:
+                lines.append(
+                    "- Runtime split: "
+                    f"artifacts={derive_didactic_metrics['artifact_seconds']:.2f}s "
+                    f"cli={derive_didactic_metrics['cli_seconds']:.2f}s "
+                    f"report={derive_didactic_metrics['report_seconds']:.2f}s "
+                    f"total={derive_didactic_metrics['reported_total_seconds']:.2f}s "
+                    f"workers={derive_didactic_metrics['worker_count']}"
+                )
+            if "artifact_family_hotspots" in derive_didactic_metrics:
+                lines.append(
+                    "- Runtime family hotspots: "
+                    f"artifacts={derive_didactic_metrics['artifact_family_hotspots']} "
+                    f"cli={derive_didactic_metrics['cli_family_hotspots']}"
+                )
+            if "artifact_case_hotspots" in derive_didactic_metrics:
+                lines.append(
+                    "- Runtime case hotspots: "
+                    f"artifacts={derive_didactic_metrics['artifact_case_hotspots']} "
+                    f"cli={derive_didactic_metrics['cli_case_hotspots']}"
+                )
+            lines.append("")
 
     simplify_didactic_suite = scorecard["suites"].get("simplify_didactic_audit")
     if simplify_didactic_suite:
@@ -3658,6 +3843,10 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
             ),
             ("limit", scorecard["suites"].get("calculus_limit_contract")),
             (
+                "limit_compact",
+                scorecard["suites"].get("calculus_limit_compact_contract"),
+            ),
+            (
                 "limit_presimplify_safe",
                 scorecard["suites"].get("calculus_limit_presimplify_contract"),
             ),
@@ -3699,6 +3888,31 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     f"slow={metrics.get('slow', 0)} "
                     f"timeouts={metrics.get('timeouts', 0)}"
                 )
+                matrix_base_count = metrics.get("matrix_base_count")
+                matrix_wrapped_base_count = metrics.get("matrix_wrapped_base_count")
+                matrix_standalone_base_count = metrics.get(
+                    "matrix_standalone_base_count"
+                )
+                matrix_wrapper_count = metrics.get("matrix_wrapper_count")
+                matrix_wrapped_case_count = metrics.get("matrix_wrapped_case_count")
+                matrix_standalone_case_count = metrics.get(
+                    "matrix_standalone_case_count"
+                )
+                if isinstance(matrix_base_count, int):
+                    line += f" total_bases={matrix_base_count}"
+                if isinstance(matrix_wrapped_base_count, int):
+                    line += f" wrapped_bases={matrix_wrapped_base_count}"
+                if isinstance(matrix_standalone_base_count, int):
+                    line += f" standalone_bases={matrix_standalone_base_count}"
+                if isinstance(matrix_wrapper_count, int):
+                    line += f" wrappers={matrix_wrapper_count}"
+                if isinstance(matrix_wrapped_case_count, int) and isinstance(
+                    matrix_standalone_case_count, int
+                ):
+                    line += (
+                        f" wrapped_cases={matrix_wrapped_case_count} "
+                        f"standalone_cases={matrix_standalone_case_count}"
+                    )
                 conditioned_cases = metrics.get("expected_required_condition_case_count")
                 distinct_conditions = metrics.get("distinct_expected_required_conditions")
                 if isinstance(conditioned_cases, int) and isinstance(
@@ -3714,6 +3928,47 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     lines.append(
                         f"- `{label}` sparse expected conditions: "
                         + ", ".join(sparse_conditions)
+                    )
+                domain_conditions = domain_expected_condition_fragments(metrics)
+                if domain_conditions:
+                    lines.append(
+                        f"- `{label}` domain expected conditions: "
+                        + ", ".join(domain_conditions)
+                    )
+                expected_wrapped_cases = metrics.get(
+                    "matrix_expected_wrapped_case_count"
+                )
+                missing_wrapped_pairs = metrics.get(
+                    "matrix_missing_wrapped_pair_count"
+                )
+                full_wrapper_bases = metrics.get("matrix_full_wrapper_base_count")
+                partial_wrapper_bases = metrics.get(
+                    "matrix_partial_wrapper_base_count"
+                )
+                largest_wrapper_gap = metrics.get("matrix_largest_wrapper_gap_count")
+                if all(
+                    isinstance(value, int)
+                    for value in (
+                        expected_wrapped_cases,
+                        missing_wrapped_pairs,
+                        full_wrapper_bases,
+                        partial_wrapper_bases,
+                        largest_wrapper_gap,
+                    )
+                ):
+                    lines.append(
+                        f"- `{label}` wrapper coverage: "
+                        f"expected_wrapped_cases={expected_wrapped_cases} "
+                        f"missing_wrapped_pairs={missing_wrapped_pairs} "
+                        f"full_wrapper_bases={full_wrapper_bases} "
+                        f"partial_wrapper_bases={partial_wrapper_bases} "
+                        f"largest_gap={largest_wrapper_gap}"
+                    )
+                wrapper_gap_fragments = matrix_wrapper_gap_fragments(metrics)
+                if wrapper_gap_fragments:
+                    lines.append(
+                        f"- `{label}` largest wrapper gaps: "
+                        + ", ".join(wrapper_gap_fragments)
                     )
                 problem_case_count = metrics.get("problem_case_count", 0)
                 if isinstance(problem_case_count, int) and problem_case_count > 0:
@@ -4045,6 +4300,24 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 pieces.append(
                     f"conditions={metrics['distinct_expected_required_conditions']}"
                 )
+            if "matrix_base_count" in metrics:
+                pieces.append(f"total_bases={metrics['matrix_base_count']}")
+            if "matrix_wrapped_base_count" in metrics:
+                pieces.append(f"wrapped_bases={metrics['matrix_wrapped_base_count']}")
+            if "matrix_standalone_base_count" in metrics:
+                pieces.append(
+                    f"standalone_bases={metrics['matrix_standalone_base_count']}"
+                )
+            if "matrix_wrapper_count" in metrics:
+                pieces.append(f"wrappers={metrics['matrix_wrapper_count']}")
+            if "matrix_missing_wrapped_pair_count" in metrics:
+                pieces.append(
+                    f"missing_wrapped_pairs={metrics['matrix_missing_wrapped_pair_count']}"
+                )
+            if "matrix_partial_wrapper_base_count" in metrics:
+                pieces.append(
+                    f"partial_wrapper_bases={metrics['matrix_partial_wrapper_base_count']}"
+                )
             summary = " ".join(pieces)
         elif "derived" in metrics:
             pieces = []
@@ -4120,11 +4393,29 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     f"missing_math_sides={metrics['missing_math_sides']}"
                 )
             else:
-                summary = (
-                    f"cases={metrics['cases']} flagged={metrics['flagged_cases']} "
-                    f"no_web_substeps={metrics['no_web_substeps']} "
-                    f"no_web_steps={metrics['no_web_steps']}"
-                )
+                pieces = [
+                    f"cases={metrics['cases']}",
+                    f"flagged={metrics['flagged_cases']}",
+                    f"no_web_substeps={metrics['no_web_substeps']}",
+                    f"no_web_steps={metrics['no_web_steps']}",
+                ]
+                if "artifact_seconds" in metrics:
+                    pieces.extend(
+                        [
+                            f"artifacts={metrics['artifact_seconds']:.2f}s",
+                            f"cli={metrics['cli_seconds']:.2f}s",
+                            f"workers={metrics['worker_count']}",
+                        ]
+                    )
+                if "artifact_family_hotspots" in metrics:
+                    pieces.append(
+                        f"top_artifact_family={metrics['artifact_family_hotspots'].split(',')[0]}"
+                    )
+                if "cli_family_hotspots" in metrics:
+                    pieces.append(
+                        f"top_cli_family={metrics['cli_family_hotspots'].split(',')[0]}"
+                    )
+                summary = " ".join(pieces)
         else:
             if "symbolic_closure_rate_percent" in metrics:
                 summary = (

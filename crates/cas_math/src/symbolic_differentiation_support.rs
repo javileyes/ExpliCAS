@@ -3939,7 +3939,10 @@ fn log_abs_builtin_derivative(ctx: &mut Context, arg: ExprId, var: &str) -> Opti
         return Some(mul_pruned(ctx, d_hyperbolic_arg, tanh_u));
     }
 
-    let d_inner = differentiate_symbolic_expr(ctx, inner_expr, var)?;
+    let d_inner = Polynomial::from_expr(ctx, inner_expr, var)
+        .ok()
+        .map(|poly| poly.derivative().to_expr(ctx))
+        .or_else(|| differentiate_symbolic_expr(ctx, inner_expr, var))?;
     Some(div_pruned(ctx, d_inner, inner_expr))
 }
 
@@ -3951,6 +3954,10 @@ fn fixed_base_log_abs_derivative(
 ) -> Option<ExprId> {
     let derivative = log_abs_builtin_derivative(ctx, arg, var)?;
     let ln_base = ctx.call_builtin(BuiltinFn::Ln, vec![base]);
+    if let Expr::Div(numerator, denominator) = ctx.get(derivative).clone() {
+        let combined_denominator = build_balanced_mul(ctx, &[ln_base, denominator]);
+        return Some(div_pruned(ctx, numerator, combined_denominator));
+    }
     let one = ctx.num(1);
     let reciprocal_ln_base = ctx.add(Expr::Div(one, ln_base));
     Some(mul_pruned(ctx, reciprocal_ln_base, derivative))
@@ -4938,6 +4945,10 @@ mod tests {
             assert!(
                 text.contains("x^2 - 1"),
                 "fixed-base log(abs(u)) derivative should divide by u directly: {text}"
+            );
+            assert!(
+                !text.contains("1 / ln") && !text.contains("^(2 - 1)"),
+                "fixed-base log(abs(u)) derivative should be compact before engine cleanup: {text}"
             );
             assert!(
                 !text.contains('|'),

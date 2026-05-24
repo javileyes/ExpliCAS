@@ -29,6 +29,10 @@ impl Rule for ProductToSumRule {
         "ProductToSum"
     }
 
+    fn target_types(&self) -> Option<crate::target_kind::TargetKindSet> {
+        Some(crate::target_kind::TargetKindSet::MUL)
+    }
+
     fn priority(&self) -> i32 {
         50 // Medium priority for Werner formulas
     }

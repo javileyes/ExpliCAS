@@ -1,8 +1,22 @@
 use super::grouping::CollectRule;
 use crate::rule::Rule;
-use cas_ast::Context;
+use cas_ast::{target_kind::TargetKind, Context};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
+
+#[test]
+fn collect_rule_targets_function_calls_only() {
+    let targets = CollectRule
+        .target_types()
+        .expect("CollectRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Pow));
+}
 
 #[test]
 fn test_collect_basic() {

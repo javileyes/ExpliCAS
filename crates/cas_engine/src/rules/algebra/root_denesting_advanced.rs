@@ -15,7 +15,7 @@ use crate::rule::Rewrite;
 define_rule!(
     DenestSqrtAddSqrtRule,
     "Denest Nested Square Root",
-    None,
+    Some(crate::target_kind::TargetKindSet::FUNCTION | crate::target_kind::TargetKindSet::POW),
     crate::phase::PhaseMask::TRANSFORM,
     |ctx, expr| {
         let rewrite = cas_math::root_forms::try_rewrite_denest_sqrt_add_sqrt_expr(ctx, expr)?;
@@ -31,7 +31,7 @@ define_rule!(
 define_rule!(
     DenestPerfectCubeInQuadraticFieldRule,
     "Denest Cube Root in Quadratic Field",
-    None,
+    Some(crate::target_kind::TargetKindSet::POW),
     crate::phase::PhaseMask::TRANSFORM,
     |ctx, expr| {
         let rewrite =

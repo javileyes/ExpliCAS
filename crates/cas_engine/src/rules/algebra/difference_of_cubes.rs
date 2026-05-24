@@ -89,7 +89,7 @@ fn canonicalize_nested_integer_powers(
 define_rule!(
     CancelCubeRootDifferenceRule,
     "Cancel Cube Root Difference",
-    None,
+    Some(crate::target_kind::TargetKindSet::DIV),
     PhaseMask::CORE, // Run early in Core phase
     |ctx, expr| {
         if !matches!(ctx.get(expr), Expr::Div(_, _)) {
@@ -122,6 +122,8 @@ define_rule!(
 define_rule!(
     CancelSumDiffCubesFractionRule,
     "Cancel Sum/Difference of Cubes Fraction",
+    Some(crate::target_kind::TargetKindSet::DIV),
+    PhaseMask::CORE | PhaseMask::POST,
     priority: 500,
     |ctx, expr, parent_ctx| {
         use crate::Predicate;

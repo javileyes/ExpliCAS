@@ -3,8 +3,20 @@ use super::*;
 mod denest_sqrt_tests {
     use super::*;
     use crate::rule::Rule;
+    use cas_ast::target_kind::TargetKind;
     use cas_ast::Context;
     use cas_parser::parse;
+
+    #[test]
+    fn denest_sqrt_add_sqrt_rule_targets_function_and_pow_only() {
+        let target_types = DenestSqrtAddSqrtRule
+            .target_types()
+            .expect("DenestSqrtAddSqrtRule should be structurally targeted");
+        assert!(target_types.contains(TargetKind::Function));
+        assert!(target_types.contains(TargetKind::Pow));
+        assert!(!target_types.contains(TargetKind::Add));
+        assert!(!target_types.contains(TargetKind::Mul));
+    }
 
     #[test]
     fn test_denest_sqrt_4_plus_sqrt7() {
@@ -138,8 +150,20 @@ mod denest_sqrt_tests {
 mod denest_cube_quadratic_tests {
     use super::*;
     use crate::rule::Rule;
+    use cas_ast::target_kind::TargetKind;
     use cas_ast::Context;
     use cas_parser::parse;
+
+    #[test]
+    fn denest_cube_quadratic_rule_targets_pow_only() {
+        let target_types = DenestPerfectCubeInQuadraticFieldRule
+            .target_types()
+            .expect("DenestPerfectCubeInQuadraticFieldRule should be structurally targeted");
+        assert!(target_types.contains(TargetKind::Pow));
+        assert!(!target_types.contains(TargetKind::Function));
+        assert!(!target_types.contains(TargetKind::Add));
+        assert!(!target_types.contains(TargetKind::Mul));
+    }
 
     #[test]
     fn test_denest_cube_26_15_sqrt3() {

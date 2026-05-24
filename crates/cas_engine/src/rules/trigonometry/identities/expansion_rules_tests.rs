@@ -1,9 +1,10 @@
 use super::expansion_rules::*;
 use crate::rule::Rule;
 use crate::rules::trigonometry::identities::{
-    AngleIdentityRule, EvaluateTrigRule, TanToSinCosRule,
+    AngleIdentityRule, EvaluateTrigRule, SinSupplementaryAngleRule, TanToSinCosRule,
+    TrigOddEvenParityRule, TrigPhaseShiftRule,
 };
-use cas_ast::Context;
+use cas_ast::{target_kind::TargetKind, Context};
 use cas_formatter::DisplayExpr;
 use cas_parser::parse;
 
@@ -206,6 +207,70 @@ fn test_tan_to_sin_cos() {
         ),
         "sin(x) / cos(x)"
     );
+}
+
+#[test]
+fn trig_odd_even_parity_rule_targets_function_only() {
+    let targets = TrigOddEvenParityRule
+        .target_types()
+        .expect("TrigOddEvenParityRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Pow));
+}
+
+#[test]
+fn trig_phase_shift_rule_targets_function_only() {
+    let targets = TrigPhaseShiftRule
+        .target_types()
+        .expect("TrigPhaseShiftRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Pow));
+}
+
+#[test]
+fn sin_supplementary_angle_rule_targets_function_only() {
+    let targets = SinSupplementaryAngleRule
+        .target_types()
+        .expect("SinSupplementaryAngleRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Pow));
+}
+
+#[test]
+fn trig_sum_to_product_rule_targets_add_sub_only() {
+    let targets = TrigSumToProductRule
+        .target_types()
+        .expect("TrigSumToProductRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Add));
+    assert!(targets.contains(TargetKind::Sub));
+    assert!(!targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Pow));
+}
+
+#[test]
+fn double_angle_rule_targets_function_only() {
+    let targets = DoubleAngleRule
+        .target_types()
+        .expect("DoubleAngleRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Function));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Pow));
 }
 
 #[test]

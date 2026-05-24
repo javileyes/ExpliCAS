@@ -910,6 +910,35 @@ fn exp_trig_by_parts_primitive_diff_residual_collapses() {
 }
 
 #[test]
+fn affine_hyperbolic_cubic_primitive_diff_residual_collapses() {
+    for input in [
+        "diff(1/2*(1/3*cosh(2*x+1)^3-cosh(2*x+1)), x) - sinh(2*x+1)^3",
+        "diff(1/2*(sinh(2*x+1)+1/3*sinh(2*x+1)^3), x) - cosh(2*x+1)^3",
+        "diff(-1/2*(sinh(1-2*x)+1/3*sinh(1-2*x)^3), x) - cosh(1-2*x)^3",
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::Off;
+
+        let output =
+            evaluate_eval_command_output(&mut engine, &mut state, input, false).expect("eval");
+        let result = output
+            .result_line
+            .as_ref()
+            .expect("result line")
+            .line
+            .as_str();
+
+        assert_eq!(result, "Result: 0", "input: {input}");
+        assert!(
+            output.metadata.requires_lines.is_empty(),
+            "input: {input}, unexpected required conditions: {:?}",
+            output.metadata.requires_lines
+        );
+    }
+}
+
+#[test]
 fn reciprocal_trig_affine_diff_omits_non_actionable_cycle_hints() {
     for (input, expected_condition, expected_terms) in [
         (
@@ -14950,14 +14979,17 @@ fn bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentati
             );
         }
 
-        let required: Vec<String> = normalize_and_dedupe_conditions(
+        let mut required: Vec<String> = normalize_and_dedupe_conditions(
             &mut engine.simplifier.context,
             &output.required_conditions,
         )
         .iter()
         .map(|cond| cond.display(&engine.simplifier.context))
         .collect();
+        required.sort();
 
+        let mut expected_required = expected_required;
+        expected_required.sort();
         assert_eq!(
             required, expected_required,
             "unexpected required_conditions for {input}: {required:?}"

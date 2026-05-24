@@ -95,6 +95,7 @@ fn fast_unproven_nonzero_decision(
 define_rule!(
     CancelPowersDivisionRule,
     "Cancel Same-Base Powers",
+    Some(crate::target_kind::TargetKindSet::DIV),
     solve_safety: crate::SolveSafety::NeedsCondition(
         crate::ConditionClass::Definability
     ),
@@ -140,6 +141,7 @@ define_rule!(
 define_rule!(
     CancelIdenticalFractionRule,
     "Cancel Identical Numerator/Denominator",
+    Some(crate::target_kind::TargetKindSet::DIV),
     solve_safety: crate::SolveSafety::NeedsCondition(
         crate::ConditionClass::Definability
     ),
@@ -182,6 +184,7 @@ define_rule!(
 define_rule!(
     CancelPowerFractionRule,
     "Cancel Power Fraction",
+    Some(crate::target_kind::TargetKindSet::DIV),
     solve_safety: crate::SolveSafety::NeedsCondition(
         crate::ConditionClass::Definability
     ),
@@ -221,6 +224,7 @@ define_rule!(
 define_rule!(
     CollapseReciprocalNegativePowerRule,
     "Collapse Reciprocal Negative Power",
+    Some(crate::target_kind::TargetKindSet::DIV),
     solve_safety: crate::SolveSafety::NeedsCondition(
         crate::ConditionClass::Definability
     ),
@@ -407,8 +411,86 @@ define_rule!(
 define_rule!(
     SimplifyMulDivRule,
     "Simplify Multiplication with Division",
+    Some(crate::target_kind::TargetKindSet::MUL),
     |ctx, expr| {
         let rewrite = try_rewrite_simplify_mul_div_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_mul_div_desc(rewrite.kind)))
     }
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::rule::Rule;
+    use cas_ast::target_kind::TargetKind;
+
+    #[test]
+    fn cancel_powers_division_rule_targets_div_only() {
+        let target_types = CancelPowersDivisionRule
+            .target_types()
+            .expect("CancelPowersDivisionRule should be structurally targeted");
+
+        assert!(target_types.contains(TargetKind::Div));
+        assert!(!target_types.contains(TargetKind::Add));
+        assert!(!target_types.contains(TargetKind::Sub));
+        assert!(!target_types.contains(TargetKind::Mul));
+        assert!(!target_types.contains(TargetKind::Pow));
+        assert!(!target_types.contains(TargetKind::Function));
+    }
+
+    #[test]
+    fn cancel_identical_fraction_rule_targets_div_only() {
+        let target_types = CancelIdenticalFractionRule
+            .target_types()
+            .expect("CancelIdenticalFractionRule should be structurally targeted");
+
+        assert!(target_types.contains(TargetKind::Div));
+        assert!(!target_types.contains(TargetKind::Add));
+        assert!(!target_types.contains(TargetKind::Sub));
+        assert!(!target_types.contains(TargetKind::Mul));
+        assert!(!target_types.contains(TargetKind::Pow));
+        assert!(!target_types.contains(TargetKind::Function));
+    }
+
+    #[test]
+    fn cancel_power_fraction_rule_targets_div_only() {
+        let target_types = CancelPowerFractionRule
+            .target_types()
+            .expect("CancelPowerFractionRule should be structurally targeted");
+
+        assert!(target_types.contains(TargetKind::Div));
+        assert!(!target_types.contains(TargetKind::Add));
+        assert!(!target_types.contains(TargetKind::Sub));
+        assert!(!target_types.contains(TargetKind::Mul));
+        assert!(!target_types.contains(TargetKind::Pow));
+        assert!(!target_types.contains(TargetKind::Function));
+    }
+
+    #[test]
+    fn collapse_reciprocal_negative_power_rule_targets_div_only() {
+        let target_types = CollapseReciprocalNegativePowerRule
+            .target_types()
+            .expect("CollapseReciprocalNegativePowerRule should be structurally targeted");
+
+        assert!(target_types.contains(TargetKind::Div));
+        assert!(!target_types.contains(TargetKind::Add));
+        assert!(!target_types.contains(TargetKind::Sub));
+        assert!(!target_types.contains(TargetKind::Mul));
+        assert!(!target_types.contains(TargetKind::Pow));
+        assert!(!target_types.contains(TargetKind::Function));
+    }
+
+    #[test]
+    fn simplify_mul_div_rule_targets_mul_only() {
+        let target_types = SimplifyMulDivRule
+            .target_types()
+            .expect("SimplifyMulDivRule should be structurally targeted once post-calculus routes are hardened");
+
+        assert!(target_types.contains(TargetKind::Mul));
+        assert!(!target_types.contains(TargetKind::Add));
+        assert!(!target_types.contains(TargetKind::Sub));
+        assert!(!target_types.contains(TargetKind::Div));
+        assert!(!target_types.contains(TargetKind::Pow));
+        assert!(!target_types.contains(TargetKind::Function));
+    }
+}

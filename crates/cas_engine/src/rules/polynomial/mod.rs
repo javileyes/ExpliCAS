@@ -42,7 +42,7 @@ use std::cmp::Ordering;
 define_rule!(
     SumDiffCubesContractionRule,
     "Sum/Difference of Cubes Contraction",
-    None,
+    Some(crate::target_kind::TargetKindSet::MUL),
     PhaseMask::CORE,
     |ctx, expr| {
         let rewrite = try_rewrite_sum_diff_cubes_product_expr(ctx, expr)?;
@@ -70,7 +70,7 @@ define_rule!(
 define_rule!(
     SqrtPerfectSquareRule,
     "Sqrt Perfect Square",
-    None,
+    Some(crate::target_kind::TargetKindSet::POW | crate::target_kind::TargetKindSet::FUNCTION),
     PhaseMask::CORE,
     |ctx, expr| {
         let rewrite =
@@ -429,6 +429,7 @@ define_rule!(AnnihilationRule, "Annihilation", |ctx, expr, parent_ctx| {
 define_rule!(
     CombineLikeTermsRule,
     "Combine Like Terms",
+    Some(crate::target_kind::TargetKindSet::ADD | crate::target_kind::TargetKindSet::MUL),
     |ctx, expr, parent_ctx| {
         // Only try to collect if it's an Add or Mul
         if matches!(ctx.get(expr), Expr::Add(_, _) | Expr::Mul(_, _)) {

@@ -190,7 +190,7 @@ define_rule!(
 define_rule!(
     PowerProductRule,
     "Power of a Product",
-    None,
+    Some(crate::target_kind::TargetKindSet::POW),
     PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE,
     |ctx, expr| {
         let rewrite = cas_math::power_product_support::try_rewrite_power_product_distribution_expr(
@@ -200,18 +200,28 @@ define_rule!(
     }
 );
 
-define_rule!(PowerQuotientRule, "Power of a Quotient", |ctx, expr| {
-    let rewrite = cas_math::power_product_support::try_rewrite_power_quotient_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
-});
+define_rule!(
+    PowerQuotientRule,
+    "Power of a Quotient",
+    Some(crate::target_kind::TargetKindSet::POW),
+    |ctx, expr| {
+        let rewrite = cas_math::power_product_support::try_rewrite_power_quotient_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
+    }
+);
 
 // ============================================================================
 // ExpQuotientRule: e^a / e^b → e^(a-b)
 // ============================================================================
-define_rule!(ExpQuotientRule, "Exp Quotient", |ctx, expr| {
-    let rewrite = cas_math::power_product_support::try_rewrite_exp_quotient_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
-});
+define_rule!(
+    ExpQuotientRule,
+    "Exp Quotient",
+    Some(crate::target_kind::TargetKindSet::DIV),
+    |ctx, expr| {
+        let rewrite = cas_math::power_product_support::try_rewrite_exp_quotient_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
+    }
+);
 
 // ============================================================================
 // MulNaryCombinePowersRule
@@ -243,16 +253,22 @@ impl crate::rule::Rule for MulNaryCombinePowersRule {
     }
 }
 
-define_rule!(NegativeBasePowerRule, "Negative Base Power", |ctx, expr| {
-    let rewrite = cas_math::power_eval_support::try_rewrite_negative_base_power_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(format_power_eval_static_desc(rewrite.kind)))
-});
+define_rule!(
+    NegativeBasePowerRule,
+    "Negative Base Power",
+    Some(crate::target_kind::TargetKindSet::POW),
+    |ctx, expr| {
+        let rewrite =
+            cas_math::power_eval_support::try_rewrite_negative_base_power_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_power_eval_static_desc(rewrite.kind)))
+    }
+);
 
 // Canonicalize bases in even powers: (b-a)^even → (a-b)^even when a < b
 define_rule!(
     EvenPowSubSwapRule,
     "Canonicalize Even Power Base",
-    None,
+    Some(crate::target_kind::TargetKindSet::POW),
     PhaseMask::CORE | PhaseMask::TRANSFORM,
     importance: crate::step::ImportanceLevel::Medium,
     |ctx, expr| {

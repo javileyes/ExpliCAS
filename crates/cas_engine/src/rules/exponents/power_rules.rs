@@ -234,17 +234,22 @@ fn apply_power_power_even_root_action(
     }
 }
 
-define_rule!(ProductPowerRule, "Product of Powers", |ctx, expr| {
-    let rewrite = cas_math::power_product_support::try_rewrite_product_power_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
-});
+define_rule!(
+    ProductPowerRule,
+    "Product of Powers",
+    Some(crate::target_kind::TargetKindSet::MUL),
+    |ctx, expr| {
+        let rewrite = cas_math::power_product_support::try_rewrite_product_power_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_power_product_desc(rewrite.kind)))
+    }
+);
 
 // a^n * b^n = (ab)^n - combines products of powers with same exponent
 // Guard: at least one base must contain a numeric factor to avoid infinite loop with PowerProductRule
 define_rule!(
     ProductSameExponentRule,
     "Product Same Exponent",
-    None,
+    Some(crate::target_kind::TargetKindSet::MUL),
     PhaseMask::CORE | PhaseMask::TRANSFORM | PhaseMask::RATIONALIZE,
     |ctx, expr| {
         let rewrite =
@@ -392,20 +397,31 @@ define_rule!(
 define_rule!(
     NegativeExponentNormalizationRule,
     "Normalize Negative Exponent",
+    Some(crate::target_kind::TargetKindSet::POW),
+    PhaseMask::CORE | PhaseMask::POST,
     importance: crate::step::ImportanceLevel::Low,
     |ctx, expr| {
-    let rewrite =
-        cas_math::power_eval_support::try_rewrite_negative_exponent_normalization_expr(
-            ctx, expr,
-        )?;
-    Some(Rewrite::new(rewrite.rewritten).desc(format_power_eval_static_desc(rewrite.kind)))
-}
+        let rewrite =
+            cas_math::power_eval_support::try_rewrite_negative_exponent_normalization_expr(
+                ctx, expr,
+            )?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_power_eval_static_desc(rewrite.kind)))
+    }
 );
 
-define_rule!(EvaluatePowerRule, "Evaluate Numeric Power", importance: crate::step::ImportanceLevel::Low, |ctx, expr| {
-    if let Some(rewrite) = cas_math::power_eval_support::try_rewrite_literal_power_eval_expr(ctx, expr) {
-        return Some(Rewrite::new(rewrite.rewritten).desc("Evaluate literal power"));
+define_rule!(
+    EvaluatePowerRule,
+    "Evaluate Numeric Power",
+    Some(crate::target_kind::TargetKindSet::POW),
+    PhaseMask::CORE | PhaseMask::POST,
+    importance: crate::step::ImportanceLevel::Low,
+    |ctx, expr| {
+        if let Some(rewrite) =
+            cas_math::power_eval_support::try_rewrite_literal_power_eval_expr(ctx, expr)
+        {
+            return Some(Rewrite::new(rewrite.rewritten).desc("Evaluate literal power"));
+        }
+        let rewrite = cas_math::power_eval_support::try_rewrite_evaluate_power_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
     }
-    let rewrite = cas_math::power_eval_support::try_rewrite_evaluate_power_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
-});
+);

@@ -108,13 +108,31 @@ fn should_verify_antiderivative_with_public_integrate_residual(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_hyperbolic_quotient_substitution_target(
         ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_affine_trig_seventh_target(
+        ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_tan_fourth_affine_target(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_cot_fourth_affine_target(
         ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_tan_sixth_affine_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_cot_sixth_affine_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_tan_eighth_affine_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_cot_eighth_affine_target(
+        ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_sec_fourth_affine_target(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_csc_fourth_affine_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_sec_sixth_affine_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_csc_sixth_affine_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_sec_eighth_affine_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_csc_eighth_affine_target(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_polynomial_times_arctan_affine_target(
         ctx, integrand, var_name,
@@ -141,6 +159,12 @@ fn should_verify_antiderivative_with_public_integrate_residual(
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_quadratic_times_positive_quadratic_ln_by_parts_target(
         ctx, integrand, var_name,
     ) || cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_sqrt_var_unit_shift_square_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_affine_hyperbolic_cubic_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_affine_hyperbolic_fifth_target(
+        ctx, integrand, var_name,
+    ) || cas_math::symbolic_integration_support::integrate_symbolic_is_affine_hyperbolic_seventh_target(
         ctx, integrand, var_name,
     )
 }
@@ -326,6 +350,10 @@ const REPRESENTATIVE_ANTIDERIVATIVE_VERIFICATION_CASES: &[&str] = &[
     "integrate(sin(x)^2*cos(x), x)",
     "integrate(sin(2*x + 1)^3, x)",
     "integrate(cos(2*x + 1)^3, x)",
+    "integrate(sinh(2*x + 1)^3, x)",
+    "integrate(cosh(2*x + 1)^3, x)",
+    "integrate(sinh(2*x + 1)^5, x)",
+    "integrate(cosh(2*x + 1)^5, x)",
     "integrate(sec(2*x + 1)^2, x)",
     "integrate(sec(2*x + 1)*tan(2*x + 1), x)",
     "integrate(sec(x)^2*tan(x), x)",
@@ -3202,6 +3230,42 @@ fn integrate_contract_affine_hyperbolic_square_power_reduction() {
         ("integrate(tanh(2*x + 1)^2, x)", "x - 1/2 * tanh(2 * x + 1)"),
         ("integrate(tanh(1-2*x)^2, x)", "1/2 * tanh(1 - 2 * x) + x"),
         (
+            "integrate(tanh(x)^4, x)",
+            "1/3 * (3 * x - tanh(x)^3 - 3 * tanh(x))",
+        ),
+        (
+            "integrate(tanh(2*x + 1)^4, x)",
+            "1/6 * (6 * x - tanh(2 * x + 1)^3 - 3 * tanh(2 * x + 1))",
+        ),
+        (
+            "integrate(tanh(1-2*x)^4, x)",
+            "1/6 * (tanh(1 - 2 * x)^3 + 3 * tanh(1 - 2 * x) + 6 * x)",
+        ),
+        (
+            "integrate(tanh(x)^6, x)",
+            "1/15 * (15 * x - 15 * tanh(x) - 5 * tanh(x)^3 - 3 * tanh(x)^5)",
+        ),
+        (
+            "integrate(tanh(2*x + 1)^6, x)",
+            "1/30 * (30 * x - 15 * tanh(2 * x + 1) - 5 * tanh(2 * x + 1)^3 - 3 * tanh(2 * x + 1)^5)",
+        ),
+        (
+            "integrate(tanh(1-2*x)^6, x)",
+            "1/30 * (3 * tanh(1 - 2 * x)^5 + 5 * tanh(1 - 2 * x)^3 + 15 * tanh(1 - 2 * x) + 30 * x)",
+        ),
+        (
+            "integrate(tanh(x)^8, x)",
+            "x - (tanh(x) + 1/7 * tanh(x)^7 + 1/5 * tanh(x)^5 + 1/3 * tanh(x)^3)",
+        ),
+        (
+            "integrate(tanh(2*x + 1)^8, x)",
+            "x - (tanh(2 * x + 1) + 1/7 * tanh(2 * x + 1)^7 + 1/5 * tanh(2 * x + 1)^5 + 1/3 * tanh(2 * x + 1)^3) / 2",
+        ),
+        (
+            "integrate(tanh(1-2*x)^8, x)",
+            "(tanh(1 - 2 * x) + 1/7 * tanh(1 - 2 * x)^7 + 1/5 * tanh(1 - 2 * x)^5 + 1/3 * tanh(1 - 2 * x)^3) / 2 + x",
+        ),
+        (
             "integrate(4*sinh(x)^2*cosh(x)^2, x)",
             "1/8 * sinh(4 * x) - 1/2 * x",
         ),
@@ -3219,6 +3283,94 @@ fn integrate_contract_affine_hyperbolic_square_power_reduction() {
             "input: {input}, required: {required:?}"
         );
         assert_eq!(integrate_call_antiderivative_residual_result(input), "0");
+    }
+}
+
+#[test]
+fn integrate_contract_affine_tanh_eight_explicit_primitives_verify_publicly() {
+    let residuals = [
+        "diff(integrate(tanh(x)^8, x), x) - tanh(x)^8",
+        "diff(integrate(tanh(2*x+1)^8, x), x) - tanh(2*x+1)^8",
+        "diff(integrate(tanh(1-2*x)^8, x), x) - tanh(1-2*x)^8",
+        "diff(x - 1/2*(tanh(2*x+1) + tanh(2*x+1)^3/3 + tanh(2*x+1)^5/5 + tanh(2*x+1)^7/7), x) - tanh(2*x+1)^8",
+        "diff(x + 1/2*(tanh(1-2*x) + tanh(1-2*x)^3/3 + tanh(1-2*x)^5/5 + tanh(1-2*x)^7/7), x) - tanh(1-2*x)^8",
+    ];
+
+    for input in residuals {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(
+            stderr.is_empty(),
+            "tanh eighth primitive residual should stay quiet for {input}: {stderr}"
+        );
+        assert_eq!(wire["result"], "0", "{input}");
+        assert_eq!(wire["required_display"], serde_json::json!([]), "{input}");
+        assert!(
+            wire["warnings"]
+                .as_array()
+                .is_some_and(|warnings| warnings.is_empty()),
+            "tanh eighth primitive residual should not warn for {input}: {wire:#}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_affine_tanh_six_explicit_primitives_verify_publicly() {
+    let residuals = [
+        "diff(x - tanh(x) - tanh(x)^3/3 - tanh(x)^5/5, x) - tanh(x)^6",
+        "diff(x - 1/2*(tanh(2*x+1) + tanh(2*x+1)^3/3 + tanh(2*x+1)^5/5), x) - tanh(2*x+1)^6",
+        "diff(x + 1/2*(tanh(1-2*x) + tanh(1-2*x)^3/3 + tanh(1-2*x)^5/5), x) - tanh(1-2*x)^6",
+    ];
+
+    for input in residuals {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(
+            stderr.is_empty(),
+            "tanh sixth primitive residual should stay quiet for {input}: {stderr}"
+        );
+        assert_eq!(wire["result"], "0", "{input}");
+        assert_eq!(wire["required_display"], serde_json::json!([]), "{input}");
+        assert!(
+            wire["warnings"]
+                .as_array()
+                .is_some_and(|warnings| warnings.is_empty()),
+            "tanh sixth primitive residual should not warn for {input}: {wire:#}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_affine_hyperbolic_cubic_power_reduction() {
+    let public_cases = [
+        (
+            "integrate(sinh(2*x + 1)^3, x)",
+            "1/2 * (1/3 * cosh(2 * x + 1)^3 - cosh(2 * x + 1))",
+        ),
+        (
+            "integrate(cosh(2*x + 1)^3, x)",
+            "1/2 * (sinh(2 * x + 1) + 1/3 * sinh(2 * x + 1)^3)",
+        ),
+        (
+            "integrate(sinh(1 - 2*x)^3, x)",
+            "1/6 * (3 * cosh(1 - 2 * x) - cosh(1 - 2 * x)^3)",
+        ),
+        (
+            "integrate(cosh(1 - 2*x)^3, x)",
+            "-1/2 * (sinh(1 - 2 * x) + 1/3 * sinh(1 - 2 * x)^3)",
+        ),
+    ];
+
+    for (input, expected) in public_cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            required.is_empty(),
+            "input: {input}, required: {required:?}"
+        );
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
     }
 }
 
@@ -3247,6 +3399,46 @@ fn integrate_contract_affine_trig_ratio_square_power_reduction() {
             vec!["cos(2 * x + 1) ≠ 0"],
         ),
         (
+            "integrate(tan(x)^6, x)",
+            "tan(x) + -tan(x)^3 / 3 + tan(x)^5 / 5 - x",
+            vec!["cos(x) ≠ 0"],
+        ),
+        (
+            "integrate(tan(2*x + 1)^6, x)",
+            "tan(2 * x + 1) / 2 + -tan(2 * x + 1)^3 / 6 + tan(2 * x + 1)^5 / 10 - x",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(tan(1-2*x)^6, x)",
+            "-tan(1 - 2 * x) / 2 + -tan(1 - 2 * x)^5 / 10 + tan(1 - 2 * x)^3 / 6 - x",
+            vec!["cos(1 - 2 * x) ≠ 0"],
+        ),
+        (
+            "integrate(sin(2*x + 1)^6/cos(2*x + 1)^6, x)",
+            "tan(2 * x + 1) / 2 + -tan(2 * x + 1)^3 / 6 + tan(2 * x + 1)^5 / 10 - x",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(tan(x)^8, x)",
+            "-tan(x)^5 / 5 + tan(x)^3 / 3 + tan(x)^7 / 7 + x - tan(x)",
+            vec!["cos(x) ≠ 0"],
+        ),
+        (
+            "integrate(tan(2*x + 1)^8, x)",
+            "-tan(2 * x + 1) / 2 + -tan(2 * x + 1)^5 / 10 + tan(2 * x + 1)^3 / 6 + tan(2 * x + 1)^7 / 14 + x",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(tan(1-2*x)^8, x)",
+            "tan(1 - 2 * x) / 2 + -tan(1 - 2 * x)^3 / 6 + -tan(1 - 2 * x)^7 / 14 + tan(1 - 2 * x)^5 / 10 + x",
+            vec!["cos(1 - 2 * x) ≠ 0"],
+        ),
+        (
+            "integrate(sin(2*x + 1)^8/cos(2*x + 1)^8, x)",
+            "-tan(2 * x + 1) / 2 + -tan(2 * x + 1)^5 / 10 + tan(2 * x + 1)^3 / 6 + tan(2 * x + 1)^7 / 14 + x",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
             "integrate(sec(x)^4, x)",
             "tan(x) + tan(x)^3 / 3",
             vec!["cos(x) ≠ 0"],
@@ -3255,6 +3447,36 @@ fn integrate_contract_affine_trig_ratio_square_power_reduction() {
             "integrate(1/cos(2*x + 1)^4, x)",
             "tan(2 * x + 1) / 2 + tan(2 * x + 1)^3 / 6",
             vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(sec(x)^6, x)",
+            "tan(x) + tan(x)^5 / 5 + 2 * tan(x)^3 / 3",
+            vec!["cos(x) ≠ 0"],
+        ),
+        (
+            "integrate(1/cos(2*x + 1)^6, x)",
+            "tan(2 * x + 1) / 2 + tan(2 * x + 1)^3 / 3 + tan(2 * x + 1)^5 / 10",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(sec(1-2*x)^6, x)",
+            "-tan(1 - 2 * x) / 2 + -tan(1 - 2 * x)^3 / 3 + -tan(1 - 2 * x)^5 / 10",
+            vec!["cos(1 - 2 * x) ≠ 0"],
+        ),
+        (
+            "integrate(sec(x)^8, x)",
+            "tan(x) + tan(x)^7 / 7 + 3 * tan(x)^5 / 5 + tan(x)^3",
+            vec!["cos(x) ≠ 0"],
+        ),
+        (
+            "integrate(1/cos(2*x + 1)^8, x)",
+            "tan(2 * x + 1) / 2 + tan(2 * x + 1)^3 / 2 + tan(2 * x + 1)^7 / 14 + 3 * tan(2 * x + 1)^5 / 10",
+            vec!["cos(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(sec(1-2*x)^8, x)",
+            "-tan(1 - 2 * x) / 2 + -tan(1 - 2 * x)^3 / 2 + -tan(1 - 2 * x)^7 / 14 + -3 * tan(1 - 2 * x)^5 / 10",
+            vec!["cos(1 - 2 * x) ≠ 0"],
         ),
         (
             "integrate(csc(x)^4, x)",
@@ -3267,6 +3489,36 @@ fn integrate_contract_affine_trig_ratio_square_power_reduction() {
             vec!["sin(2 * x + 1) ≠ 0"],
         ),
         (
+            "integrate(csc(x)^6, x)",
+            "-cot(x)^5 / 5 + -2 * cot(x)^3 / 3 - cot(x)",
+            vec!["sin(x) ≠ 0"],
+        ),
+        (
+            "integrate(1/sin(2*x + 1)^6, x)",
+            "-cot(2 * x + 1) / 2 + -cot(2 * x + 1)^3 / 3 + -cot(2 * x + 1)^5 / 10",
+            vec!["sin(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(csc(1-2*x)^6, x)",
+            "cot(1 - 2 * x) / 2 + cot(1 - 2 * x)^3 / 3 + cot(1 - 2 * x)^5 / 10",
+            vec!["sin(1 - 2 * x) ≠ 0"],
+        ),
+        (
+            "integrate(csc(x)^8, x)",
+            "-cot(x)^7 / 7 + -3 * cot(x)^5 / 5 - cot(x) - cot(x)^3",
+            vec!["sin(x) ≠ 0"],
+        ),
+        (
+            "integrate(1/sin(2*x + 1)^8, x)",
+            "-cot(2 * x + 1) / 2 + -cot(2 * x + 1)^3 / 2 + -cot(2 * x + 1)^7 / 14 + -3 * cot(2 * x + 1)^5 / 10",
+            vec!["sin(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(csc(1-2*x)^8, x)",
+            "cot(1 - 2 * x) / 2 + cot(1 - 2 * x)^3 / 2 + cot(1 - 2 * x)^7 / 14 + 3 * cot(1 - 2 * x)^5 / 10",
+            vec!["sin(1 - 2 * x) ≠ 0"],
+        ),
+        (
             "integrate(cot(x)^4, x)",
             "cot(x) + x - cot(x)^3 / 3",
             vec!["sin(x) ≠ 0"],
@@ -3274,6 +3526,46 @@ fn integrate_contract_affine_trig_ratio_square_power_reduction() {
         (
             "integrate(cos(2*x + 1)^4/sin(2*x + 1)^4, x)",
             "cot(2 * x + 1) / 2 + x - cot(2 * x + 1)^3 / 6",
+            vec!["sin(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(cot(x)^6, x)",
+            "-cot(x)^5 / 5 + cot(x)^3 / 3 - cot(x) - x",
+            vec!["sin(x) ≠ 0"],
+        ),
+        (
+            "integrate(cot(2*x + 1)^6, x)",
+            "-cot(2 * x + 1) / 2 + -cot(2 * x + 1)^5 / 10 + cot(2 * x + 1)^3 / 6 - x",
+            vec!["sin(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(cot(1-2*x)^6, x)",
+            "cot(1 - 2 * x) / 2 + -cot(1 - 2 * x)^3 / 6 + cot(1 - 2 * x)^5 / 10 - x",
+            vec!["sin(1 - 2 * x) ≠ 0"],
+        ),
+        (
+            "integrate(cos(2*x + 1)^6/sin(2*x + 1)^6, x)",
+            "-cot(2 * x + 1) / 2 + -cot(2 * x + 1)^5 / 10 + cot(2 * x + 1)^3 / 6 - x",
+            vec!["sin(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(cot(x)^8, x)",
+            "cot(x) + -cot(x)^3 / 3 + -cot(x)^7 / 7 + cot(x)^5 / 5 + x",
+            vec!["sin(x) ≠ 0"],
+        ),
+        (
+            "integrate(cot(2*x + 1)^8, x)",
+            "cot(2 * x + 1) / 2 + -cot(2 * x + 1)^3 / 6 + -cot(2 * x + 1)^7 / 14 + cot(2 * x + 1)^5 / 10 + x",
+            vec!["sin(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(cot(1-2*x)^8, x)",
+            "-cot(1 - 2 * x) / 2 + -cot(1 - 2 * x)^5 / 10 + cot(1 - 2 * x)^3 / 6 + cot(1 - 2 * x)^7 / 14 + x",
+            vec!["sin(1 - 2 * x) ≠ 0"],
+        ),
+        (
+            "integrate(cos(2*x + 1)^8/sin(2*x + 1)^8, x)",
+            "cot(2 * x + 1) / 2 + -cot(2 * x + 1)^3 / 6 + -cot(2 * x + 1)^7 / 14 + cot(2 * x + 1)^5 / 10 + x",
             vec!["sin(2 * x + 1) ≠ 0"],
         ),
         ("integrate(cot(x)^2, x)", "-cot(x) - x", vec!["sin(x) ≠ 0"]),
@@ -3295,12 +3587,40 @@ fn integrate_contract_affine_trig_ratio_square_power_reduction() {
         "integrate(tan(x)^4, x)",
         "integrate(tan(2*x + 1)^4, x)",
         "integrate(sin(2*x + 1)^4/cos(2*x + 1)^4, x)",
+        "integrate(tan(x)^6, x)",
+        "integrate(tan(2*x + 1)^6, x)",
+        "integrate(tan(1-2*x)^6, x)",
+        "integrate(sin(2*x + 1)^6/cos(2*x + 1)^6, x)",
+        "integrate(tan(x)^8, x)",
+        "integrate(tan(2*x + 1)^8, x)",
+        "integrate(tan(1-2*x)^8, x)",
+        "integrate(sin(2*x + 1)^8/cos(2*x + 1)^8, x)",
         "integrate(sec(x)^4, x)",
         "integrate(1/cos(2*x + 1)^4, x)",
+        "integrate(sec(x)^6, x)",
+        "integrate(1/cos(2*x + 1)^6, x)",
+        "integrate(sec(1-2*x)^6, x)",
+        "integrate(sec(x)^8, x)",
+        "integrate(1/cos(2*x + 1)^8, x)",
+        "integrate(sec(1-2*x)^8, x)",
         "integrate(csc(x)^4, x)",
         "integrate(1/sin(2*x + 1)^4, x)",
+        "integrate(csc(x)^6, x)",
+        "integrate(1/sin(2*x + 1)^6, x)",
+        "integrate(csc(1-2*x)^6, x)",
+        "integrate(csc(x)^8, x)",
+        "integrate(1/sin(2*x + 1)^8, x)",
+        "integrate(csc(1-2*x)^8, x)",
         "integrate(cot(x)^4, x)",
         "integrate(cos(2*x + 1)^4/sin(2*x + 1)^4, x)",
+        "integrate(cot(x)^6, x)",
+        "integrate(cot(2*x + 1)^6, x)",
+        "integrate(cot(1-2*x)^6, x)",
+        "integrate(cos(2*x + 1)^6/sin(2*x + 1)^6, x)",
+        "integrate(cot(x)^8, x)",
+        "integrate(cot(2*x + 1)^8, x)",
+        "integrate(cot(1-2*x)^8, x)",
+        "integrate(cos(2*x + 1)^8/sin(2*x + 1)^8, x)",
     ] {
         assert_eq!(
             assert_antiderivative_verifies(input),
@@ -3548,6 +3868,233 @@ fn integrate_contract_affine_trig_fifth_power_reduction() {
         let residual = format!("diff({input}, x) - {integrand}");
         let (wire, _stderr) = cli_eval_json_with_stderr(&residual);
         assert_eq!(wire["result"], "0", "{residual}");
+    }
+}
+
+#[test]
+fn integrate_contract_affine_trig_seventh_power_reduction() {
+    let cases = [
+        (
+            "integrate(sin(x)^7, x)",
+            "sin(x)^7",
+            "1/7 * (cos(x)^7 + 7 * cos(x)^3 - 7 * cos(x) - 21/5 * cos(x)^5)",
+        ),
+        (
+            "integrate(cos(x)^7, x)",
+            "cos(x)^7",
+            "1/7 * (21/5 * sin(x)^5 + 7 * sin(x) - sin(x)^7 - 7 * sin(x)^3)",
+        ),
+        (
+            "integrate(sin(2*x + 1)^7, x)",
+            "sin(2*x + 1)^7",
+            "(cos(2 * x + 1)^3 + 1/7 * cos(2 * x + 1)^7 - cos(2 * x + 1) - 3/5 * cos(2 * x + 1)^5) / 2",
+        ),
+        (
+            "integrate(cos(2*x + 1)^7, x)",
+            "cos(2*x + 1)^7",
+            "(sin(2 * x + 1) + 3/5 * sin(2 * x + 1)^5 - sin(2 * x + 1)^3 - 1/7 * sin(2 * x + 1)^7) / 2",
+        ),
+        (
+            "integrate(sin(1 - 2*x)^7, x)",
+            "sin(1 - 2*x)^7",
+            "-(cos(1 - 2 * x)^3 + 1/7 * cos(1 - 2 * x)^7 - cos(1 - 2 * x) - 3/5 * cos(1 - 2 * x)^5) / 2",
+        ),
+        (
+            "integrate(cos(1 - 2*x)^7, x)",
+            "cos(1 - 2*x)^7",
+            "-(sin(1 - 2 * x) + 3/5 * sin(1 - 2 * x)^5 - sin(1 - 2 * x)^3 - 1/7 * sin(1 - 2 * x)^7) / 2",
+        ),
+    ];
+
+    for (input, integrand, expected) in cases {
+        let (antiderivative, required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            required.is_empty(),
+            "trig seventh primitive should not add domain conditions for {input}: {required:?}"
+        );
+        assert_eq!(antiderivative, expected, "{input}");
+        assert_antiderivative_verifies(input);
+        assert_rendered_antiderivative_verifies(input, &antiderivative);
+
+        let residual = format!("diff({input}, x) - {integrand}");
+        let (wire, stderr) = cli_eval_json_with_stderr(&residual);
+        assert!(
+            stderr.is_empty(),
+            "trig seventh residual should stay quiet for {input}: {stderr}"
+        );
+        assert_eq!(wire["result"], "0", "{residual}");
+        assert_eq!(
+            wire["required_display"],
+            serde_json::json!([]),
+            "{residual}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_hyperbolic_odd_power_reduction() {
+    let cases = [
+        ("integrate(sinh(x)^3, x)", "1/3 * cosh(x)^3 - cosh(x)"),
+        ("integrate(cosh(x)^3, x)", "sinh(x) + 1/3 * sinh(x)^3"),
+        (
+            "integrate(sinh(x)^5, x)",
+            "1/5 * (cosh(x)^5 + 5 * cosh(x) - 10/3 * cosh(x)^3)",
+        ),
+        (
+            "integrate(cosh(x)^5, x)",
+            "1/5 * (sinh(x)^5 + 10/3 * sinh(x)^3 + 5 * sinh(x))",
+        ),
+        (
+            "integrate(sinh(x)^7, x)",
+            "-cosh(x) + cosh(x)^3 + 1/7 * cosh(x)^7 - 3/5 * cosh(x)^5",
+        ),
+        (
+            "integrate(cosh(x)^7, x)",
+            "sinh(x) + sinh(x)^3 + 1/7 * sinh(x)^7 + 3/5 * sinh(x)^5",
+        ),
+    ];
+
+    for (input, expected) in cases {
+        let (antiderivative, required) = evaluated_integral_with_required_conditions(input);
+        assert!(
+            required.is_empty(),
+            "hyperbolic odd-power primitive should not add domain conditions for {input}: {required:?}"
+        );
+        assert_eq!(antiderivative, expected, "{input}");
+        assert!(
+            !antiderivative.contains("integrate("),
+            "expected a closed-form primitive for {input}, got {antiderivative}"
+        );
+    }
+
+    for input in ["integrate(sinh(x)^3, x)", "integrate(cosh(x)^7, x)"] {
+        assert_antiderivative_equiv_verifies(input);
+    }
+
+    for input in ["integrate(sinh(x)^7, x)", "integrate(cosh(x)^7, x)"] {
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_affine_hyperbolic_fifth_explicit_primitives_verify_publicly() {
+    let residuals = [
+        "diff(1/2*(1/5*cosh(2*x+1)^5 - 2/3*cosh(2*x+1)^3 + cosh(2*x+1)), x) - sinh(2*x+1)^5",
+        "diff(1/2*(sinh(2*x+1) + 2/3*sinh(2*x+1)^3 + 1/5*sinh(2*x+1)^5), x) - cosh(2*x+1)^5",
+        "diff(-1/2*(1/5*cosh(1-2*x)^5 - 2/3*cosh(1-2*x)^3 + cosh(1-2*x)), x) - sinh(1-2*x)^5",
+        "diff(-1/2*(sinh(1-2*x) + 2/3*sinh(1-2*x)^3 + 1/5*sinh(1-2*x)^5), x) - cosh(1-2*x)^5",
+    ];
+
+    for input in residuals {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(stderr.is_empty(), "unexpected stderr for {input}: {stderr}");
+        assert_eq!(wire["result"], "0", "{input}");
+        assert_eq!(wire["required_display"], serde_json::json!([]), "{input}");
+        assert!(
+            wire["warnings"]
+                .as_array()
+                .is_some_and(|warnings| warnings.is_empty()),
+            "affine fifth primitive residual should not warn for {input}: {wire:#}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_affine_hyperbolic_fifth_power_reduction() {
+    let public_cases = [
+        (
+            "integrate(sinh(2*x + 1)^5, x)",
+            "1/2 * (cosh(2 * x + 1) + 1/5 * cosh(2 * x + 1)^5 - 2/3 * cosh(2 * x + 1)^3)",
+        ),
+        (
+            "integrate(cosh(2*x + 1)^5, x)",
+            "1/2 * (sinh(2 * x + 1) + 1/5 * sinh(2 * x + 1)^5 + 2/3 * sinh(2 * x + 1)^3)",
+        ),
+        (
+            "integrate(sinh(1 - 2*x)^5, x)",
+            "-1/2 * (cosh(1 - 2 * x) + 1/5 * cosh(1 - 2 * x)^5 - 2/3 * cosh(1 - 2 * x)^3)",
+        ),
+        (
+            "integrate(cosh(1 - 2*x)^5, x)",
+            "-1/2 * (sinh(1 - 2 * x) + 1/5 * sinh(1 - 2 * x)^5 + 2/3 * sinh(1 - 2 * x)^3)",
+        ),
+    ];
+
+    for (input, expected) in public_cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            required.is_empty(),
+            "input: {input}, required: {required:?}"
+        );
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_affine_hyperbolic_seventh_explicit_primitives_verify_publicly() {
+    let residuals = [
+        "diff(1/2*(1/7*cosh(2*x+1)^7 - 3/5*cosh(2*x+1)^5 + cosh(2*x+1)^3 - cosh(2*x+1)), x) - sinh(2*x+1)^7",
+        "diff(1/2*(sinh(2*x+1) + sinh(2*x+1)^3 + 3/5*sinh(2*x+1)^5 + 1/7*sinh(2*x+1)^7), x) - cosh(2*x+1)^7",
+        "diff(-1/2*(1/7*cosh(1-2*x)^7 - 3/5*cosh(1-2*x)^5 + cosh(1-2*x)^3 - cosh(1-2*x)), x) - sinh(1-2*x)^7",
+        "diff(-1/2*(sinh(1-2*x) + sinh(1-2*x)^3 + 3/5*sinh(1-2*x)^5 + 1/7*sinh(1-2*x)^7), x) - cosh(1-2*x)^7",
+    ];
+
+    for input in residuals {
+        let (wire, stderr) = cli_eval_json_with_stderr(input);
+        assert!(stderr.is_empty(), "unexpected stderr for {input}: {stderr}");
+        assert_eq!(wire["result"], "0", "{input}");
+        assert_eq!(wire["required_display"], serde_json::json!([]), "{input}");
+        assert!(
+            wire["warnings"]
+                .as_array()
+                .is_some_and(|warnings| warnings.is_empty()),
+            "affine seventh primitive residual should not warn for {input}: {wire:#}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_affine_hyperbolic_seventh_power_reduction() {
+    let public_cases = [
+        (
+            "integrate(sinh(2*x + 1)^7, x)",
+            "1/2 * (-cosh(2 * x + 1) + cosh(2 * x + 1)^3 + 1/7 * cosh(2 * x + 1)^7 - 3/5 * cosh(2 * x + 1)^5)",
+        ),
+        (
+            "integrate(cosh(2*x + 1)^7, x)",
+            "1/2 * (sinh(2 * x + 1) + sinh(2 * x + 1)^3 + 1/7 * sinh(2 * x + 1)^7 + 3/5 * sinh(2 * x + 1)^5)",
+        ),
+        (
+            "integrate(sinh(1 - 2*x)^7, x)",
+            "-1/2 * (-cosh(1 - 2 * x) + cosh(1 - 2 * x)^3 + 1/7 * cosh(1 - 2 * x)^7 - 3/5 * cosh(1 - 2 * x)^5)",
+        ),
+        (
+            "integrate(cosh(1 - 2*x)^7, x)",
+            "-1/2 * (sinh(1 - 2 * x) + sinh(1 - 2 * x)^3 + 1/7 * sinh(1 - 2 * x)^7 + 3/5 * sinh(1 - 2 * x)^5)",
+        ),
+    ];
+
+    for (input, expected) in public_cases {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            required.is_empty(),
+            "input: {input}, required: {required:?}"
+        );
+        assert_eq!(
+            assert_antiderivative_verifies(input),
+            AntiderivativeVerificationRoute::PublicResidual,
+            "{input} should verify through the bounded public residual route"
+        );
     }
 }
 
@@ -13301,6 +13848,7 @@ fn integrate_contract_sqrt_chain_tangent_cotangent_logs_integrate_directly() {
         "integrate(tan(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
         "integrate(cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",
         "integrate(-tan(sqrt(3-2*x))/sqrt(3-2*x), x)",
+        "integrate(-cot(sqrt(3-2*x))/sqrt(3-2*x), x)",
     ];
 
     for input in cases {
@@ -13356,6 +13904,13 @@ fn integrate_contract_sqrt_chain_tangent_cotangent_logs_explain_u_and_du() {
             "-ln(|cos(sqrt(3·x + 1))|)",
             serde_json::json!(["cos(sqrt(3·x + 1)) ≠ 0", "x > -1/3"]),
             "Usar la regla de tan(u) -> -ln|cos(u)|",
+            false,
+        ),
+        (
+            "integrate(-cot(sqrt(3-2*x))/sqrt(3-2*x), x)",
+            "ln(|sin(sqrt(3 - 2·x))|)",
+            serde_json::json!(["sin(sqrt(3 - 2·x)) ≠ 0", "x < 3/2"]),
+            "Usar la regla de cot(u) -> ln|sin(u)|",
             false,
         ),
     ] {
@@ -13490,6 +14045,13 @@ fn integrate_contract_sqrt_chain_tangent_cotangent_logs_verify() {
             "-tan(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
             vec!["cos(sqrt(3 - 2 * x)) ≠ 0", "x < 3/2"],
             vec!["cos(sqrt(3 - 2 * x)) ≠ 0", "x < 3/2"],
+        ),
+        (
+            "integrate(-cot(sqrt(3-2*x))/sqrt(3-2*x), x)",
+            "ln(|sin(sqrt(3 - 2 * x))|)",
+            "-cot(sqrt(3 - 2 * x)) / sqrt(3 - 2 * x)",
+            vec!["sin(sqrt(3 - 2 * x)) ≠ 0", "x < 3/2"],
+            vec!["sin(sqrt(3 - 2 * x)) ≠ 0", "x < 3/2"],
         ),
         (
             "integrate(-cot(sqrt(3*x+1))*3/(2*sqrt(3*x+1)), x)",

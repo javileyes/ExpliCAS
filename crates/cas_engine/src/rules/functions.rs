@@ -194,10 +194,15 @@ fn try_cancel_abs_add_view_under_domain(
     None
 }
 
-define_rule!(EvaluateAbsRule, "Evaluate Absolute Value", |ctx, expr| {
-    let rewrite = try_rewrite_evaluate_abs_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
-});
+define_rule!(
+    EvaluateAbsRule,
+    "Evaluate Absolute Value",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let rewrite = try_rewrite_evaluate_abs_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    }
+);
 
 /// V2.14.20: Simplify absolute value under positivity
 /// |x| → x when x > 0 is proven or assumed (depending on DomainMode)
@@ -604,6 +609,7 @@ impl crate::rule::Rule for AbsPowerOddMagnitudeRule {
 define_rule!(
     SimplifySqrtSquareRule,
     "Simplify Square Root of Square",
+    Some(crate::target_kind::TargetKindSet::FUNCTION | crate::target_kind::TargetKindSet::POW),
     |ctx, expr| {
         let rewrite = try_rewrite_sqrt_square_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
@@ -712,19 +718,29 @@ define_rule!(
 // Abs Idempotent Rule: ||x|| → |x|
 // Absolute value of absolute value is just absolute value
 // =============================================================================
-define_rule!(AbsIdempotentRule, "Abs Idempotent", |ctx, expr| {
-    let rewrite = try_rewrite_abs_idempotent_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
-});
+define_rule!(
+    AbsIdempotentRule,
+    "Abs Idempotent",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let rewrite = try_rewrite_abs_idempotent_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
+    }
+);
 
 // =============================================================================
 // Abs Of Even Power Rule: |x^(2k)| → x^(2k)
 // Absolute value of even power is just the even power (always non-negative)
 // =============================================================================
-define_rule!(AbsOfEvenPowerRule, "Abs Of Even Power", |ctx, expr| {
-    let rewrite = try_rewrite_abs_even_power_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
-});
+define_rule!(
+    AbsOfEvenPowerRule,
+    "Abs Of Even Power",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let rewrite = try_rewrite_abs_even_power_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))
+    }
+);
 
 // =============================================================================
 // Abs Pow Odd Integer Rule: |x^n| → |x|^n for positive odd integer n
@@ -777,28 +793,43 @@ define_rule!(
 // Abs Sqrt Rule: |sqrt(x)| → sqrt(x)
 // Square root is always non-negative (when it exists in reals)
 // =============================================================================
-define_rule!(AbsSqrtRule, "Abs Of Sqrt", |ctx, expr| {
-    let rewrite = try_rewrite_abs_sqrt_identity_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
-});
+define_rule!(
+    AbsSqrtRule,
+    "Abs Of Sqrt",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let rewrite = try_rewrite_abs_sqrt_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
+    }
+);
 
 // =============================================================================
 // Abs Exp Rule: |e^x| → e^x
 // Exponential is always positive
 // =============================================================================
-define_rule!(AbsExpRule, "Abs Of Exp", |ctx, expr| {
-    let rewrite = try_rewrite_abs_exp_identity_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
-});
+define_rule!(
+    AbsExpRule,
+    "Abs Of Exp",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let rewrite = try_rewrite_abs_exp_identity_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
+    }
+);
 
 // =============================================================================
 // Abs Sum Of Squares Rule: |x² + y²| → x² + y²
 // Sum of squares is always non-negative
 // =============================================================================
-define_rule!(AbsSumOfSquaresRule, "Abs Of Sum Of Squares", |ctx, expr| {
-    let rewrite = try_rewrite_abs_sum_nonnegative_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
-});
+define_rule!(
+    AbsSumOfSquaresRule,
+    "Abs Of Sum Of Squares",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let rewrite = try_rewrite_abs_sum_nonnegative_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_abs_fixed_rewrite_desc(rewrite.kind)))
+    }
+);
 
 // =============================================================================
 // Abs Sub Normalize Rule: |a - b| → |b - a|

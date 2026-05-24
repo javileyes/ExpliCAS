@@ -144,21 +144,49 @@ NESTED_DEN_EXPECTED_RESULTS = {
     "plain_trig_cos": "1 / ((x + 2)·(x + 3))",
     "plain_trig_cot_fourth": "1 / ((x + 2)·(x + 3))",
     "plain_trig_sec_fourth": "1 / ((x + 2)·(x + 3))",
+    "plain_trig_neg_cot_fourth": "1 / ((x + 2)·(x + 3))",
+    "plain_trig_neg_sec_fourth": "1 / ((x + 2)·(x + 3))",
+    "plain_trig_tan_eighth": "1 / ((x + 2)·(x + 3))",
+    "plain_trig_neg_cot_eighth": "1 / ((x + 2)·(x + 3))",
     "plain_trig_neg_sin": "1 / ((x + 2)·(x + 3))",
     "plain_trig_neg_cos": "1 / ((x + 2)·(x + 3))",
     "plain_trig_sparse_neg_sin": "1 / ((x + 2)·(x + 3))",
+    "affine_trig_fifth_sin": "1 / ((x + 2)·(x + 3))",
+    "affine_trig_fifth_cos": "1 / ((x + 2)·(x + 3))",
+    "affine_trig_fifth_neg_sin": "1 / ((x + 2)·(x + 3))",
+    "affine_trig_fifth_neg_cos": "1 / ((x + 2)·(x + 3))",
+    "affine_hyperbolic_fifth_sinh": "1 / ((x + 2)·(x + 3))",
+    "affine_hyperbolic_fifth_cosh": "1 / ((x + 2)·(x + 3))",
+    "affine_hyperbolic_fifth_neg_sinh": "1 / ((x + 2)·(x + 3))",
+    "affine_hyperbolic_fifth_neg_cosh": "1 / ((x + 2)·(x + 3))",
+    "affine_hyperbolic_seventh_sinh": "1 / ((x + 2)·(x + 3))",
+    "affine_hyperbolic_seventh_cosh": "1 / ((x + 2)·(x + 3))",
+    "affine_hyperbolic_seventh_neg_sinh": "1 / ((x + 2)·(x + 3))",
+    "affine_hyperbolic_seventh_neg_cosh": "1 / ((x + 2)·(x + 3))",
+    "affine_tanh_six": "1 / ((x + 2)·(x + 3))",
+    "affine_tanh_six_neg": "1 / ((x + 2)·(x + 3))",
     "hyperbolic_sinh": "1 / ((x + 2)·(x + 3))",
     "hyperbolic_cosh": "1 / ((x + 2)·(x + 3))",
     "inverse_trig_arctan": "1 / ((x + 2)·(x + 3))",
+    "ln_affine_by_parts": "1 / ((x + 2)·(x + 3))",
+    "affine_reciprocal_log": "1 / ((x + 2)·(x + 3))",
+    "rational_quad_positive_quadratic": "1 / ((x + 2)·(x + 3))",
     "rational_quad": "1 / ((x + 2)·(x + 3))",
     "recip_trig": "1 / ((x + 2)·(x + 3))",
+    "atanh_kernel": "1 / ((x + 2)·(x + 3))",
     "fractional_den_power": "1 / ((x + 2)·(x + 3))",
     "quartic_arcsin_kernel": "1 / ((x + 2)·(x + 3))",
+    "shifted_arcsin_kernel": "1 / ((x + 2)·(x + 3))",
+    "sqrt_reciprocal_atan_kernel": "1 / ((x + 2)·(x + 3))",
+    "arctan_sqrt_unit_shift_square": "1 / ((x + 2)·(x + 3))",
+    "shifted_asinh_kernel": "1 / ((x + 2)·(x + 3))",
+    "rational_atan_square": "1 / ((x + 2)·(x + 3))",
     "constant_base_log_power": "1 / ((x + 2)·(x + 3))",
     "log10_power_alias": "1 / ((x + 2)·(x + 3))",
     "reciprocal_trig_csc": "1 / ((x + 2)·(x + 3))",
     "reciprocal_trig_sec": "1 / ((x + 2)·(x + 3))",
     "sqrt_chain_csc_log": "1 / ((x + 2)·(x + 3))",
+    "sqrt_chain_cot_log_neg_affine": "1 / ((x + 2)·(x + 3))",
     "sqrt_chain_cosh_recip_square": "1 / ((x + 2)·(x + 3))",
     "sqrt_chain_sec_log": "1 / ((x + 2)·(x + 3))",
     "sqrt_chain_sinh_recip_square": "1 / ((x + 2)·(x + 3))",
@@ -226,6 +254,26 @@ DEFAULT_MATRIX_BASES = (
         ("cos(2·x + 1)",),
     ),
     (
+        "plain_trig_neg_cot_fourth",
+        "diff(integrate(cot(1-2*x)^4,x),x)-cot(1-2*x)^4",
+        ("sin(1 - 2·x)",),
+    ),
+    (
+        "plain_trig_neg_sec_fourth",
+        "diff(integrate(sec(1-2*x)^4,x),x)-sec(1-2*x)^4",
+        ("cos(1 - 2·x)",),
+    ),
+    (
+        "plain_trig_tan_eighth",
+        "diff(integrate(tan(2*x+1)^8,x),x)-tan(2*x+1)^8",
+        ("cos(2·x + 1)",),
+    ),
+    (
+        "plain_trig_neg_cot_eighth",
+        "diff(integrate(cot(1-2*x)^8,x),x)-cot(1-2*x)^8",
+        ("sin(1 - 2·x)",),
+    ),
+    (
         "plain_trig_neg_sin",
         "diff(integrate(x^4*sin(1-2*x),x),x)-x^4*sin(1-2*x)",
         (),
@@ -238,6 +286,76 @@ DEFAULT_MATRIX_BASES = (
     (
         "plain_trig_sparse_neg_sin",
         "diff(integrate((x^6+1)*sin(1-2*x),x),x)-(x^6+1)*sin(1-2*x)",
+        (),
+    ),
+    (
+        "affine_trig_fifth_sin",
+        "diff(integrate(sin(2*x+1)^5,x),x)-sin(2*x+1)^5",
+        (),
+    ),
+    (
+        "affine_trig_fifth_cos",
+        "diff(integrate(cos(2*x+1)^5,x),x)-cos(2*x+1)^5",
+        (),
+    ),
+    (
+        "affine_trig_fifth_neg_sin",
+        "diff(integrate(sin(1-2*x)^5,x),x)-sin(1-2*x)^5",
+        (),
+    ),
+    (
+        "affine_trig_fifth_neg_cos",
+        "diff(integrate(cos(1-2*x)^5,x),x)-cos(1-2*x)^5",
+        (),
+    ),
+    (
+        "affine_hyperbolic_fifth_sinh",
+        "diff(integrate(sinh(2*x+1)^5,x),x)-sinh(2*x+1)^5",
+        (),
+    ),
+    (
+        "affine_hyperbolic_fifth_cosh",
+        "diff(integrate(cosh(2*x+1)^5,x),x)-cosh(2*x+1)^5",
+        (),
+    ),
+    (
+        "affine_hyperbolic_fifth_neg_sinh",
+        "diff(integrate(sinh(1-2*x)^5,x),x)-sinh(1-2*x)^5",
+        (),
+    ),
+    (
+        "affine_hyperbolic_fifth_neg_cosh",
+        "diff(integrate(cosh(1-2*x)^5,x),x)-cosh(1-2*x)^5",
+        (),
+    ),
+    (
+        "affine_hyperbolic_seventh_sinh",
+        "diff(integrate(sinh(2*x+1)^7,x),x)-sinh(2*x+1)^7",
+        (),
+    ),
+    (
+        "affine_hyperbolic_seventh_cosh",
+        "diff(integrate(cosh(2*x+1)^7,x),x)-cosh(2*x+1)^7",
+        (),
+    ),
+    (
+        "affine_hyperbolic_seventh_neg_sinh",
+        "diff(integrate(sinh(1-2*x)^7,x),x)-sinh(1-2*x)^7",
+        (),
+    ),
+    (
+        "affine_hyperbolic_seventh_neg_cosh",
+        "diff(integrate(cosh(1-2*x)^7,x),x)-cosh(1-2*x)^7",
+        (),
+    ),
+    (
+        "affine_tanh_six",
+        "diff(integrate(tanh(2*x+1)^6,x),x)-tanh(2*x+1)^6",
+        (),
+    ),
+    (
+        "affine_tanh_six_neg",
+        "diff(integrate(tanh(1-2*x)^6,x),x)-tanh(1-2*x)^6",
         (),
     ),
     (
@@ -256,6 +374,16 @@ DEFAULT_MATRIX_BASES = (
         (),
     ),
     (
+        "ln_affine_by_parts",
+        "diff(integrate(ln(2*x+1),x),x)-ln(2*x+1)",
+        ("2·x + 1",),
+    ),
+    (
+        "affine_reciprocal_log",
+        "diff(integrate(1/(2*x+1),x),x)-1/(2*x+1)",
+        ("2·x + 1",),
+    ),
+    (
         "rational_quad",
         (
             "diff(integrate(1/((x+1)^3*(x^2+2*x+2)),x),x)"
@@ -263,7 +391,20 @@ DEFAULT_MATRIX_BASES = (
         ),
         ("x + 1",),
     ),
+    (
+        "rational_quad_positive_quadratic",
+        (
+            "diff(integrate((3*x + 5)/(x^2+x+1),x),x)"
+            "-((3*x + 5)/(x^2+x+1))"
+        ),
+        (),
+    ),
     ("recip_trig", "diff(integrate(1/(x^2+1),x),x)-1/(x^2+1)", ()),
+    (
+        "atanh_kernel",
+        "diff(integrate(1/(1-x^2),x),x)-1/(1-x^2)",
+        ("1 - x^2", "-1 < x < 1"),
+    ),
     (
         "fractional_den_power",
         (
@@ -276,6 +417,37 @@ DEFAULT_MATRIX_BASES = (
         "quartic_arcsin_kernel",
         "diff(integrate(2*x/sqrt(4-x^4),x),x)-2*x/sqrt(4-x^4)",
         ("4 - x^4",),
+    ),
+    (
+        "shifted_arcsin_kernel",
+        "diff(integrate(1/sqrt(4-(x+1)^2),x),x)-1/sqrt(4-(x+1)^2)",
+        ("4 - (x + 1)^2",),
+    ),
+    (
+        "sqrt_reciprocal_atan_kernel",
+        (
+            "diff(integrate(1/(2*sqrt(x)*(x+1)),x),x)"
+            "-1/(2*sqrt(x)*(x+1))"
+        ),
+        ("x > 0",),
+    ),
+    (
+        "arctan_sqrt_unit_shift_square",
+        (
+            "diff(integrate(1/(sqrt(x)*(x+1)^2),x),x)"
+            "-1/(sqrt(x)*(x+1)^2)"
+        ),
+        ("x > 0",),
+    ),
+    (
+        "shifted_asinh_kernel",
+        "diff(integrate(1/sqrt(4+(x+1)^2),x),x)-1/sqrt(4+(x+1)^2)",
+        (),
+    ),
+    (
+        "rational_atan_square",
+        "diff(integrate(1/(4*x^2+1)^2,x),x)-1/(4*x^2+1)^2",
+        (),
     ),
     (
         "constant_base_log_power",
@@ -314,6 +486,14 @@ DEFAULT_MATRIX_BASES = (
         ("sin(sqrt(3·x + 1))", "x > -1/3"),
     ),
     (
+        "sqrt_chain_cot_log_neg_affine",
+        (
+            "diff(integrate(-cot(sqrt(3-2*x))/sqrt(3-2*x),x),x)"
+            "+cot(sqrt(3-2*x))/sqrt(3-2*x)"
+        ),
+        ("sin(sqrt(3 - 2·x))", "x < 3/2"),
+    ),
+    (
         "sqrt_chain_cosh_recip_square",
         (
             "diff(integrate(3/(2*sqrt(3*x+1)*cosh(sqrt(3*x+1))^2),x),x)"
@@ -333,21 +513,62 @@ DEFAULT_MATRIX_BASES = (
 
 DEFAULT_DOUBLE_NESTED_DEN_BASES = (
     "exp_poly",
+    "exp_affine",
     "arctan_sqrt_additive_trig",
     "inverse_trig_arctan",
+    "ln_affine_by_parts",
+    "affine_reciprocal_log",
+    "atanh_kernel",
     "fractional_den_power",
+    "affine_hyperbolic_fifth_sinh",
+    "affine_hyperbolic_fifth_cosh",
+    "affine_hyperbolic_fifth_neg_sinh",
+    "affine_hyperbolic_fifth_neg_cosh",
+    "affine_hyperbolic_seventh_sinh",
+    "affine_hyperbolic_seventh_cosh",
+    "affine_hyperbolic_seventh_neg_sinh",
+    "affine_hyperbolic_seventh_neg_cosh",
+    "affine_tanh_six",
+    "affine_tanh_six_neg",
     "hyperbolic_sinh",
     "hyperbolic_cosh",
     "quartic_arcsin_kernel",
+    "shifted_arcsin_kernel",
+    "sqrt_reciprocal_atan_kernel",
+    "arctan_sqrt_unit_shift_square",
+    "shifted_asinh_kernel",
+    "rational_atan_square",
+    "constant_base_log_power",
+    "log10_power_alias",
     "sqrt_chain_sec_log",
     "sqrt_chain_csc_log",
+    "sqrt_chain_cot_log_neg_affine",
+    "sqrt_chain_cosh_recip_square",
     "sqrt_chain_sinh_recip_square",
     "integrate_exp_trig_sin",
+    "integrate_exp_trig_cos",
     "integrate_exp_trig_neg_sin",
+    "integrate_exp_trig_neg_cos",
     "rational_quad",
+    "recip_trig",
+    "reciprocal_trig_csc",
+    "reciprocal_trig_sec",
     "plain_trig_sin",
+    "plain_trig_cos",
+    "plain_trig_neg_sin",
+    "plain_trig_neg_cos",
+    "plain_trig_sparse_neg_sin",
     "plain_trig_cot_fourth",
     "plain_trig_sec_fourth",
+    "plain_trig_neg_cot_fourth",
+    "plain_trig_neg_sec_fourth",
+    "plain_trig_tan_eighth",
+    "plain_trig_neg_cot_eighth",
+    "affine_trig_fifth_sin",
+    "affine_trig_fifth_cos",
+    "affine_trig_fifth_neg_sin",
+    "affine_trig_fifth_neg_cos",
+    "rational_quad_positive_quadratic",
 )
 
 DEFAULT_SHIFTED_QUOTIENT_RESIDUAL_DEN_CASES = (
@@ -477,6 +698,16 @@ DEFAULT_SHIFTED_QUOTIENT_RESIDUAL_DEN_CASES = (
         ),
     ),
     MatrixProbeCase(
+        name="log_power_over_reciprocal_trig_sec_shifted_quotient",
+        expr=(
+            "((diff(integrate(2*x*log(2,x^2+1)^2,x),x)"
+            "-2*x*log(2,x^2+1)^2)+1)"
+            "/((diff(integrate(sec(2*x+1),x),x)-sec(2*x+1))+1)"
+        ),
+        expected_result="1",
+        required_conditions=("cos(2·x + 1)",),
+    ),
+    MatrixProbeCase(
         name="sqrt_chain_sec_over_csc_shifted_quotient",
         expr=(
             "((diff(integrate(3/(2*sqrt(3*x+1)*cos(sqrt(3*x+1))),x),x)"
@@ -533,18 +764,6 @@ DEFAULT_SHIFTED_QUOTIENT_RESIDUAL_DEN_CASES = (
             "sinh(sqrt(3·x + 1))",
             "x > -1/3",
         ),
-    ),
-)
-
-DEFAULT_RATIONAL_QUADRATIC_NONCANONICAL_CASES = (
-    MatrixProbeCase(
-        name="rational_quad_positive_quadratic:double_nested_den",
-        expr=(
-            "(((((diff(integrate((3*x + 5)/(x^2+x+1),x),x)"
-            "-((3*x + 5)/(x^2+x+1)))+1)/(x+2))/(x+3))/(x+4))"
-        ),
-        expected_result="1 / ((x + 2)·(x + 3)·(x + 4))",
-        required_conditions=("x + 2", "x + 3", "x + 4"),
     ),
 )
 
@@ -630,7 +849,6 @@ def build_default_matrix_cases(
             )
         )
     cases.extend(DEFAULT_SHIFTED_QUOTIENT_RESIDUAL_DEN_CASES)
-    cases.extend(DEFAULT_RATIONAL_QUADRATIC_NONCANONICAL_CASES)
     cases.extend(DEFAULT_PRODUCT_ZERO_FACTOR_CASES)
     if base_filters or wrapper_filters:
         cases = [
@@ -1113,10 +1331,33 @@ def summarize_matrix(matrix: dict[str, object]) -> dict[str, object]:
     problem_cases: list[dict[str, object]] = []
     expected_required_condition_counts: dict[str, int] = {}
     expected_required_condition_case_count = 0
+    matrix_bases: set[str] = set()
+    matrix_wrapped_bases: set[str] = set()
+    matrix_standalone_bases: set[str] = set()
+    matrix_wrappers: set[str] = set()
+    matrix_wrappers_by_base: dict[str, set[str]] = {}
+    matrix_wrapped_case_count = 0
+    matrix_standalone_case_count = 0
     if isinstance(cases, list):
         for case in cases:
             if not isinstance(case, dict):
                 continue
+            name = case.get("name")
+            if isinstance(name, str):
+                if ":" in name:
+                    base, wrapper = name.split(":", 1)
+                    if base:
+                        matrix_bases.add(base)
+                        matrix_wrapped_bases.add(base)
+                        if wrapper:
+                            matrix_wrappers_by_base.setdefault(base, set()).add(wrapper)
+                    if wrapper:
+                        matrix_wrappers.add(wrapper)
+                    matrix_wrapped_case_count += 1
+                else:
+                    matrix_bases.add(name)
+                    matrix_standalone_bases.add(name)
+                    matrix_standalone_case_count += 1
             expected_required = case.get("expected_required_conditions")
             if isinstance(expected_required, list):
                 expected_conditions = [
@@ -1150,6 +1391,41 @@ def summarize_matrix(matrix: dict[str, object]) -> dict[str, object]:
     summary["expected_required_condition_counts"] = dict(
         sorted(expected_required_condition_counts.items())
     )
+    summary["matrix_base_count"] = len(matrix_bases)
+    summary["matrix_wrapped_base_count"] = len(matrix_wrapped_bases)
+    summary["matrix_standalone_base_count"] = len(matrix_standalone_bases)
+    summary["matrix_wrapper_count"] = len(matrix_wrappers)
+    summary["matrix_wrapped_case_count"] = matrix_wrapped_case_count
+    summary["matrix_standalone_case_count"] = matrix_standalone_case_count
+    expected_wrapped_case_count = len(matrix_wrapped_bases) * len(matrix_wrappers)
+    wrapper_gaps = {
+        base: sorted(matrix_wrappers - wrappers)
+        for base, wrappers in matrix_wrappers_by_base.items()
+        if matrix_wrappers - wrappers
+    }
+    wrapper_gap_examples = [
+        {
+            "base": base,
+            "missing_count": len(missing_wrappers),
+            "missing_wrappers": missing_wrappers,
+        }
+        for base, missing_wrappers in sorted(
+            wrapper_gaps.items(), key=lambda item: (-len(item[1]), item[0])
+        )[:5]
+    ]
+    summary["matrix_expected_wrapped_case_count"] = expected_wrapped_case_count
+    summary["matrix_missing_wrapped_pair_count"] = sum(
+        len(missing_wrappers) for missing_wrappers in wrapper_gaps.values()
+    )
+    summary["matrix_full_wrapper_base_count"] = (
+        len(matrix_wrapped_bases) - len(wrapper_gaps)
+    )
+    summary["matrix_partial_wrapper_base_count"] = len(wrapper_gaps)
+    summary["matrix_largest_wrapper_gap_count"] = max(
+        (len(missing_wrappers) for missing_wrappers in wrapper_gaps.values()),
+        default=0,
+    )
+    summary["matrix_wrapper_gap_examples"] = wrapper_gap_examples
     summary["problem_case_count"] = len(problem_cases)
     summary["problem_cases"] = problem_cases
     return summary
@@ -1189,14 +1465,84 @@ def classify_error(
 def required_condition_satisfied(condition: str, actual_required: tuple[str, ...]) -> bool:
     if condition in actual_required:
         return True
+    expected_polynomial = polynomial_condition_terms(condition)
+    if expected_polynomial is not None and any(
+        polynomial_condition_terms(actual) == expected_polynomial
+        for actual in actual_required
+    ):
+        return True
     root = affine_x_nonzero_root(condition)
     if root is None:
         return False
     return any(bound_excludes_root(actual, root) for actual in actual_required)
 
 
+def parse_fraction_token(text: str) -> Fraction:
+    return Fraction(text)
+
+
+def polynomial_condition_terms(display: str) -> tuple[tuple[int, Fraction], ...] | None:
+    compact = display.replace(" ", "").replace("·", "*").replace("−", "-")
+    number = r"-?\d+(?:/\d+)?"
+    shifted_square = re.fullmatch(
+        rf"({number})-\(x([+-])(\d+(?:/\d+)?)\)\^2", compact
+    )
+    if shifted_square:
+        constant, sign, offset_text = shifted_square.groups()
+        offset = parse_fraction_token(offset_text)
+        if sign == "-":
+            offset = -offset
+        terms = {
+            0: parse_fraction_token(constant) - offset * offset,
+            1: -2 * offset,
+            2: Fraction(-1),
+        }
+        return canonical_polynomial_terms(terms)
+
+    if "(" in compact or ")" in compact:
+        return None
+    tokens = re.findall(r"[+-]?[^+-]+", compact)
+    if not tokens or "".join(tokens) != compact:
+        return None
+    terms: dict[int, Fraction] = {}
+    for token in tokens:
+        sign = Fraction(-1) if token.startswith("-") else Fraction(1)
+        body = token[1:] if token[:1] in {"+", "-"} else token
+        parsed = parse_polynomial_term(body)
+        if parsed is None:
+            return None
+        degree, coefficient = parsed
+        terms[degree] = terms.get(degree, Fraction(0)) + sign * coefficient
+    return canonical_polynomial_terms(terms)
+
+
+def parse_polynomial_term(term: str) -> tuple[int, Fraction] | None:
+    number = r"\d+(?:/\d+)?"
+    if re.fullmatch(number, term):
+        return 0, parse_fraction_token(term)
+    if term == "x":
+        return 1, Fraction(1)
+    power = re.fullmatch(r"x\^(\d+)", term)
+    if power:
+        return int(power.group(1)), Fraction(1)
+    scaled = re.fullmatch(rf"({number})\*x(?:\^(\d+))?", term)
+    if scaled:
+        coefficient, degree = scaled.groups()
+        return int(degree) if degree else 1, parse_fraction_token(coefficient)
+    return None
+
+
+def canonical_polynomial_terms(
+    terms: dict[int, Fraction],
+) -> tuple[tuple[int, Fraction], ...] | None:
+    nonzero_terms = tuple(
+        sorted((degree, coefficient) for degree, coefficient in terms.items() if coefficient)
+    )
+    return nonzero_terms or None
+
+
 def affine_x_nonzero_root(condition: str) -> Fraction | None:
-    compact = condition.replace(" ", "")
+    compact = condition.replace(" ", "").replace("−", "-")
     if compact == "x":
         return Fraction(0)
     match = re.fullmatch(r"x([+-])(\d+)(?:/(\d+))?", compact)
@@ -1210,17 +1556,31 @@ def affine_x_nonzero_root(condition: str) -> Fraction | None:
 
 
 def bound_excludes_root(display: str, root: Fraction) -> bool:
-    compact = display.replace(" ", "")
-    lower = re.fullmatch(r"x[>≥](-?\d+)(?:/(\d+))?", compact)
+    compact = display.replace(" ", "").replace("−", "-")
+    number = r"-?\d+(?:/\d+)?"
+    not_equal = re.fullmatch(rf"x(?:≠|!=)({number})", compact)
+    if not_equal:
+        return root == parse_fraction_token(not_equal.group(1))
+
+    interval = re.fullmatch(rf"({number})([<≤])x([<≤])({number})", compact)
+    if interval:
+        lower_text, lower_op, upper_op, upper_text = interval.groups()
+        lower = parse_fraction_token(lower_text)
+        upper = parse_fraction_token(upper_text)
+        lower_excludes = root <= lower if lower_op == "<" else root < lower
+        upper_excludes = root >= upper if upper_op == "<" else root > upper
+        return lower_excludes or upper_excludes
+
+    lower = re.fullmatch(rf"x([>≥])({number})", compact)
     if lower:
-        numerator, denominator = lower.groups()
-        bound = Fraction(int(numerator), int(denominator) if denominator else 1)
-        return root <= bound
-    upper = re.fullmatch(r"x[<≤](-?\d+)(?:/(\d+))?", compact)
+        operator, bound_text = lower.groups()
+        bound = parse_fraction_token(bound_text)
+        return root <= bound if operator == ">" else root < bound
+    upper = re.fullmatch(rf"x([<≤])({number})", compact)
     if upper:
-        numerator, denominator = upper.groups()
-        bound = Fraction(int(numerator), int(denominator) if denominator else 1)
-        return root >= bound
+        operator, bound_text = upper.groups()
+        bound = parse_fraction_token(bound_text)
+        return root >= bound if operator == "<" else root > bound
     return False
 
 

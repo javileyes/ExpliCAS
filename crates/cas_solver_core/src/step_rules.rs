@@ -12,6 +12,8 @@ pub fn is_always_keep_step_rule_name(name: &str) -> bool {
         || name == "Expand to Cancel Fraction"
         || name == "Expand Log Abs Mul/Div"
         || name == "Cancel Exact Additive Pairs"
+        || name == "Abs Under Positivity"
+        || name == "Abs Under Non-Negativity"
 }
 
 /// Returns true when rule name corresponds to canonicalization/reordering.
@@ -79,6 +81,8 @@ mod tests {
         assert!(is_always_keep_step_rule_name("Sum Exponents"));
         assert!(is_always_keep_step_rule_name("Expand to Cancel Fraction"));
         assert!(is_always_keep_step_rule_name("Expand Log Abs Mul/Div"));
+        assert!(is_always_keep_step_rule_name("Abs Under Positivity"));
+        assert!(is_always_keep_step_rule_name("Abs Under Non-Negativity"));
         assert!(is_canonicalization_rule_name("Canonicalize Terms"));
         assert!(is_mechanical_rule_name("Combine Like Terms"));
         assert!(!is_mechanical_rule_name("Quadratic Formula"));

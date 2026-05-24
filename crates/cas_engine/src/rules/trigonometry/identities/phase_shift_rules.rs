@@ -18,6 +18,7 @@ use cas_math::trig_phase_shift_support::try_rewrite_supplementary_angle_expr;
 define_rule!(
     SinSupplementaryAngleRule,
     "Supplementary Angle",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
     |ctx, expr| {
         let rewrite = try_rewrite_supplementary_angle_expr(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc(rewrite.desc))

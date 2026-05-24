@@ -1,7 +1,141 @@
 use super::*;
 use crate::rule::Rule;
-use cas_ast::{Context, Expr};
+use cas_ast::{target_kind::TargetKind, Context, Expr};
 use cas_formatter::DisplayExpr;
+use cas_parser::parse;
+
+#[test]
+fn exp_quotient_rule_targets_div_only() {
+    let targets = ExpQuotientRule
+        .target_types()
+        .expect("ExpQuotientRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Pow));
+    assert!(!targets.contains(TargetKind::Function));
+}
+
+#[test]
+fn test_exp_quotient_direct() {
+    let mut ctx = Context::new();
+    let rule = ExpQuotientRule;
+    let expr = parse("e^a / e^b", &mut ctx).unwrap();
+    let rewrite = rule
+        .apply(
+            &mut ctx,
+            expr,
+            &crate::parent_context::ParentContext::root(),
+        )
+        .unwrap();
+
+    assert_eq!(
+        format!(
+            "{}",
+            DisplayExpr {
+                context: &ctx,
+                id: rewrite.new_expr
+            }
+        ),
+        "e^(a - b)"
+    );
+}
+
+#[test]
+fn product_power_rule_targets_mul_only() {
+    let targets = ProductPowerRule
+        .target_types()
+        .expect("ProductPowerRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Pow));
+    assert!(!targets.contains(TargetKind::Function));
+}
+
+#[test]
+fn product_same_exponent_rule_targets_mul_only() {
+    let targets = ProductSameExponentRule
+        .target_types()
+        .expect("ProductSameExponentRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Div));
+    assert!(!targets.contains(TargetKind::Pow));
+}
+
+#[test]
+fn power_product_rule_targets_pow_only() {
+    let targets = PowerProductRule
+        .target_types()
+        .expect("PowerProductRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Pow));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+}
+
+#[test]
+fn power_quotient_rule_targets_pow_only() {
+    let targets = PowerQuotientRule
+        .target_types()
+        .expect("PowerQuotientRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Pow));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Div));
+}
+
+#[test]
+fn evaluate_power_rule_targets_pow_only() {
+    let targets = EvaluatePowerRule
+        .target_types()
+        .expect("EvaluatePowerRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Pow));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Function));
+}
+
+#[test]
+fn negative_exponent_normalization_rule_targets_pow_only() {
+    let targets = NegativeExponentNormalizationRule
+        .target_types()
+        .expect("NegativeExponentNormalizationRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Pow));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Function));
+}
+
+#[test]
+fn negative_base_power_rule_targets_pow_only() {
+    let targets = NegativeBasePowerRule
+        .target_types()
+        .expect("NegativeBasePowerRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Pow));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Function));
+}
+
+#[test]
+fn even_pow_sub_swap_rule_targets_pow_only() {
+    let targets = EvenPowSubSwapRule
+        .target_types()
+        .expect("EvenPowSubSwapRule should be structurally targeted");
+
+    assert!(targets.contains(TargetKind::Pow));
+    assert!(!targets.contains(TargetKind::Add));
+    assert!(!targets.contains(TargetKind::Mul));
+    assert!(!targets.contains(TargetKind::Function));
+}
 
 #[test]
 fn test_product_power() {

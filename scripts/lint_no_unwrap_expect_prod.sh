@@ -14,10 +14,10 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # ─── Budgets (current ceiling — lower these as you fix unwraps) ───
 # Format: CRATE_DIR MAX_UNWRAP MAX_EXPECT
 BUDGETS=(
-    "crates/cas_engine/src    324  33"
-    "crates/cas_ast/src        15  19"
-    "crates/cas_cli/src        13   4"
-    "crates/cas_android_ffi/src 0   1"
+    "crates/cas_engine/src     17   9"
+    "crates/cas_ast/src         0   0"
+    "crates/cas_cli/src         0   0"
+    "crates/cas_android_ffi/src 0   0"
 )
 
 count_pattern() {
@@ -26,26 +26,83 @@ count_pattern() {
         echo "0"
         return
     fi
-    # Use rg if available, otherwise grep -F (fixed-string)
-    if command -v rg >/dev/null 2>&1; then
-        {
-            rg -c "$rg_pattern" "$ROOT_DIR/$dir" \
-                --glob '*.rs' \
-                --glob '!**/tests/**' \
-                --glob '!**/test/**' \
-                --glob '!**/*test*.rs' \
-                --glob '!**/*tests*.rs' \
-                2>/dev/null || true
-        } | awk -F: '{s+=$2} END {print s+0}'
-    else
-        find "$ROOT_DIR/$dir" -name '*.rs' \
-            ! -path '*/tests/*' \
-            ! -path '*/test/*' \
-            ! -name '*test*.rs' \
-            ! -name '*tests*.rs' \
-            -exec grep -Fc "$grep_pattern" {} \; 2>/dev/null \
-            | awk '{s+=$1} END {print s+0}'
-    fi
+    python3 - "$ROOT_DIR/$dir" "$rg_pattern" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+pattern = re.compile(sys.argv[2])
+cfg_test_attr = re.compile(r"#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]")
+
+
+def is_test_file(path: Path) -> bool:
+    return (
+        "tests" in path.parts
+        or "test" in path.parts
+        or "test" in path.name
+    )
+
+
+def strip_cfg_test_modules(src: str) -> str:
+    chunks = []
+    pos = 0
+    length = len(src)
+
+    while True:
+        match = cfg_test_attr.search(src, pos)
+        if match is None:
+            chunks.append(src[pos:])
+            break
+
+        chunks.append(src[pos : match.start()])
+        cursor = match.end()
+        while cursor < length and src[cursor].isspace():
+            cursor += 1
+
+        if not src.startswith("mod", cursor):
+            chunks.append(src[match.start() : match.end()])
+            pos = match.end()
+            continue
+
+        cursor += len("mod")
+        while cursor < length and src[cursor].isspace():
+            cursor += 1
+        while cursor < length and (src[cursor].isalnum() or src[cursor] == "_"):
+            cursor += 1
+        while cursor < length and src[cursor].isspace():
+            cursor += 1
+
+        if cursor >= length or src[cursor] != "{":
+            chunks.append(src[match.start() : match.end()])
+            pos = match.end()
+            continue
+
+        depth = 0
+        while cursor < length:
+            char = src[cursor]
+            if char == "{":
+                depth += 1
+            elif char == "}":
+                depth -= 1
+                if depth == 0:
+                    cursor += 1
+                    break
+            cursor += 1
+
+        pos = cursor
+
+    return "".join(chunks)
+
+
+total = 0
+for path in root.rglob("*.rs"):
+    if is_test_file(path):
+        continue
+    total += len(pattern.findall(strip_cfg_test_modules(path.read_text())))
+
+print(total)
+PY
 }
 
 echo "══════════════════════════════════════════════════════"

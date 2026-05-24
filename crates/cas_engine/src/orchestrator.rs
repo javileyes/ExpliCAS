@@ -329,6 +329,33 @@ fn pipeline_phase_profile_label(phase: SimplifyPhase) -> &'static str {
     }
 }
 
+fn pipeline_phase_pass_profile_label(phase: SimplifyPhase, changed: bool) -> &'static str {
+    match (phase, changed) {
+        (SimplifyPhase::Core, true) => "pipeline.phase.core.pass.changed",
+        (SimplifyPhase::Core, false) => "pipeline.phase.core.pass.fixed",
+        (SimplifyPhase::Transform, true) => "pipeline.phase.transform.pass.changed",
+        (SimplifyPhase::Transform, false) => "pipeline.phase.transform.pass.fixed",
+        (SimplifyPhase::Rationalize, true) => "pipeline.phase.rationalize.pass.changed",
+        (SimplifyPhase::Rationalize, false) => "pipeline.phase.rationalize.pass.fixed",
+        (SimplifyPhase::PostCleanup, true) => "pipeline.phase.post_cleanup.pass.changed",
+        (SimplifyPhase::PostCleanup, false) => "pipeline.phase.post_cleanup.pass.fixed",
+    }
+}
+
+fn active_pipeline_phase_pass_profile_labels(
+    phase: SimplifyPhase,
+) -> Option<(&'static str, &'static str)> {
+    if !crate::orchestrator_shortcut_profiler::orchestrator_shortcut_profiling_enabled() {
+        return None;
+    }
+
+    let changed_label = pipeline_phase_pass_profile_label(phase, true);
+    let fixed_label = pipeline_phase_pass_profile_label(phase, false);
+    (crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(changed_label)
+        || crate::orchestrator_shortcut_profiler::should_profile_orchestrator_shortcut(fixed_label))
+    .then_some((changed_label, fixed_label))
+}
+
 fn is_terminal_after_core(ctx: &Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Number(_) | Expr::Variable(_) | Expr::Constant(_) => true,
@@ -1631,6 +1658,30 @@ fn finish_root_shortcut_with_rewrite_meta(
         }
     }
     (result, shortcut_steps)
+}
+
+fn finish_common_scale_zero_shortcut_with_domain_meta(
+    ctx: &mut Context,
+    before: ExprId,
+    parent_ctx: &crate::parent_context::ParentContext,
+    collect_steps: bool,
+) -> (ExprId, Vec<Step>) {
+    let zero = ctx.num(0);
+    let mut rewrite =
+        crate::rule::Rewrite::with_local(zero, "Equivalent Residual Cancellation", before, zero);
+    if let Some(event) = crate::rules::arithmetic::common_scale_abs_like_positive_assumption_event(
+        ctx, before, parent_ctx,
+    ) {
+        rewrite = rewrite.assume(event);
+    }
+
+    finish_root_shortcut_with_rewrite_meta(
+        ctx,
+        before,
+        rewrite,
+        "Collapse Common-Scale Equivalent Difference",
+        collect_steps,
+    )
 }
 
 fn build_signed_sum_expr_root(ctx: &mut Context, terms: &[(ExprId, Sign)]) -> ExprId {
@@ -12614,7 +12665,7 @@ fn matches_direct_two_factor_product_pair_zero_difference_root(
 }
 
 fn try_standard_two_factor_product_pair_zero_shortcut(
-    _options: &crate::phase::SimplifyOptions,
+    options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
     collect_steps: bool,
@@ -12635,8 +12686,20 @@ fn try_standard_two_factor_product_pair_zero_shortcut(
     }
 
     let zero = ctx.num(0);
-    let rewrite =
+    let mut rewrite =
         crate::rule::Rewrite::with_local(zero, "Equivalent Product Pair Cancellation", expr, zero);
+    if has_common_scale {
+        let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+        if let Some(event) =
+            crate::rules::arithmetic::common_scale_abs_like_positive_assumption_event(
+                ctx,
+                expr,
+                &parent_ctx,
+            )
+        {
+            rewrite = rewrite.assume(event);
+        }
+    }
     Some(finish_root_shortcut_with_rewrite_meta(
         ctx,
         expr,
@@ -12896,29 +12959,22 @@ fn try_standard_common_scale_exact_zero_shortcut_fallback(
 ) -> Option<(ExprId, Vec<Step>)> {
     let (_common_factor, residual_expr) =
         extract_common_multiplicative_residual_sum_root(ctx, expr)?;
+    let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
 
     if matches_direct_small_zero_or_known_pair_residual_root(ctx, residual_expr) {
-        let zero = ctx.num(0);
-        let rewrite =
-            crate::rule::Rewrite::with_local(zero, "Equivalent Residual Cancellation", expr, zero);
-        return Some(finish_root_shortcut_with_rewrite_meta(
+        return Some(finish_common_scale_zero_shortcut_with_domain_meta(
             ctx,
             expr,
-            rewrite,
-            "Collapse Common-Scale Equivalent Difference",
+            &parent_ctx,
             collect_steps,
         ));
     }
 
     if try_standard_exact_zero_equivalence_shortcut(options, ctx, residual_expr, false).is_some() {
-        let zero = ctx.num(0);
-        let rewrite =
-            crate::rule::Rewrite::with_local(zero, "Equivalent Residual Cancellation", expr, zero);
-        return Some(finish_root_shortcut_with_rewrite_meta(
+        return Some(finish_common_scale_zero_shortcut_with_domain_meta(
             ctx,
             expr,
-            rewrite,
-            "Collapse Common-Scale Equivalent Difference",
+            &parent_ctx,
             collect_steps,
         ));
     }
@@ -12926,14 +12982,10 @@ fn try_standard_common_scale_exact_zero_shortcut_fallback(
     if matches_direct_two_factor_product_pair_zero_difference_root(ctx, expr)
         || matches_direct_quotient_pair_zero_difference_root(ctx, expr)
     {
-        let zero = ctx.num(0);
-        let rewrite =
-            crate::rule::Rewrite::with_local(zero, "Equivalent Residual Cancellation", expr, zero);
-        return Some(finish_root_shortcut_with_rewrite_meta(
+        return Some(finish_common_scale_zero_shortcut_with_domain_meta(
             ctx,
             expr,
-            rewrite,
-            "Collapse Common-Scale Equivalent Difference",
+            &parent_ctx,
             collect_steps,
         ));
     }
@@ -12955,18 +13007,16 @@ fn try_standard_common_scale_exact_zero_shortcut_fallback(
         return None;
     }
 
-    let rewrite =
-        crate::rule::Rewrite::with_local(zero, "Equivalent Residual Cancellation", expr, zero);
-    Some(finish_root_shortcut_with_rewrite_meta(
+    Some(finish_common_scale_zero_shortcut_with_domain_meta(
         ctx,
         expr,
-        rewrite,
-        "Collapse Common-Scale Equivalent Difference",
+        &parent_ctx,
         collect_steps,
     ))
 }
 
 fn try_standard_common_scale_known_pair_shortcut(
+    options: &crate::phase::SimplifyOptions,
     ctx: &mut Context,
     expr: ExprId,
     collect_steps: bool,
@@ -12977,14 +13027,11 @@ fn try_standard_common_scale_known_pair_shortcut(
         return None;
     }
 
-    let zero = ctx.num(0);
-    let rewrite =
-        crate::rule::Rewrite::with_local(zero, "Equivalent Residual Cancellation", expr, zero);
-    Some(finish_root_shortcut_with_rewrite_meta(
+    let parent_ctx = build_root_shortcut_parent_ctx(options, ctx, expr);
+    Some(finish_common_scale_zero_shortcut_with_domain_meta(
         ctx,
         expr,
-        rewrite,
-        "Collapse Common-Scale Equivalent Difference",
+        &parent_ctx,
         collect_steps,
     ))
 }
@@ -13509,17 +13556,15 @@ fn try_standard_exact_zero_equivalence_shortcut(
         extract_common_multiplicative_residual_sum_root(ctx, expr)
     {
         if matches_direct_small_zero_or_known_pair_residual_root(ctx, residual_expr) {
-            let zero = ctx.num(0);
             record_profiled_orchestrator_route_hit(
                 ctx,
                 expr,
                 "root.exact_zero.route.common_scale_known_residual",
             );
-            return Some(run_common_scale_rebuilt_root_shortcut_simplify(
-                options,
+            return Some(finish_common_scale_zero_shortcut_with_domain_meta(
                 ctx,
                 expr,
-                zero,
+                &parent_ctx,
                 collect_steps,
             ));
         }
@@ -22108,6 +22153,112 @@ fn try_standard_same_denominator_distribution_pair_zero_shortcut(
     ))
 }
 
+fn matches_direct_nested_fraction_zero_hyperbolic_identity_pair_root(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> bool {
+    for (fraction_side, hyperbolic_side) in [(lhs, rhs), (rhs, lhs)] {
+        if !expr_contains_division_node_local(ctx, fraction_side)
+            || expr_contains_hyperbolic_builtin_local(ctx, fraction_side)
+            || expr_contains_division_node_local(ctx, hyperbolic_side)
+            || !expr_contains_hyperbolic_builtin_local(ctx, hyperbolic_side)
+        {
+            continue;
+        }
+
+        if !matches_direct_nested_fraction_simplified_zero_identity_root(ctx, fraction_side) {
+            continue;
+        }
+
+        if matches_direct_recursive_hyperbolic_sinh_sum_zero_identity_root(ctx, hyperbolic_side)
+            || matches_direct_recursive_hyperbolic_cosh_sum_zero_identity_root(ctx, hyperbolic_side)
+            || matches_direct_hyperbolic_exp_sum_zero_identity_root(ctx, hyperbolic_side)
+            || matches_direct_exp_hyperbolic_double_identity_root(ctx, hyperbolic_side)
+            || matches_direct_hyperbolic_pythagorean_zero_identity_root(ctx, hyperbolic_side)
+            || matches_direct_hyperbolic_cosh_cubic_zero_identity_root(ctx, hyperbolic_side)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn try_standard_nested_fraction_zero_hyperbolic_identity_pair_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let (lhs, rhs) = match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => (lhs, rhs),
+        _ => return None,
+    };
+
+    if !matches_direct_nested_fraction_zero_hyperbolic_identity_pair_root(ctx, lhs, rhs) {
+        return None;
+    }
+
+    let zero = ctx.num(0);
+    let rewrite = crate::rule::Rewrite::with_local(zero, "Exact Zero Core Composition", expr, zero);
+    Some(finish_root_shortcut_with_rewrite_meta(
+        ctx,
+        expr,
+        rewrite,
+        "Collapse Exact Zero Additive Subexpression",
+        collect_steps,
+    ))
+}
+
+fn matches_direct_log_zero_hyperbolic_cosh_cubic_pair_root(
+    ctx: &mut Context,
+    lhs: ExprId,
+    rhs: ExprId,
+) -> bool {
+    for (log_side, hyperbolic_side) in [(lhs, rhs), (rhs, lhs)] {
+        if !expr_contains_log_builtin_local(ctx, log_side)
+            || expr_contains_hyperbolic_builtin_local(ctx, log_side)
+            || !expr_contains_hyperbolic_builtin_local(ctx, hyperbolic_side)
+            || expr_contains_log_builtin_local(ctx, hyperbolic_side)
+        {
+            continue;
+        }
+
+        if is_hot_log_split_zero_side_root(ctx, log_side)
+            && matches_direct_hyperbolic_cosh_cubic_zero_identity_root(ctx, hyperbolic_side)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn try_standard_log_zero_hyperbolic_cosh_cubic_pair_shortcut(
+    ctx: &mut Context,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let (lhs, rhs) = match ctx.get(expr).clone() {
+        Expr::Add(lhs, rhs) | Expr::Sub(lhs, rhs) => (lhs, rhs),
+        _ => return None,
+    };
+
+    if !matches_direct_log_zero_hyperbolic_cosh_cubic_pair_root(ctx, lhs, rhs) {
+        return None;
+    }
+
+    let zero = ctx.num(0);
+    let rewrite = crate::rule::Rewrite::with_local(zero, "Exact Zero Core Composition", expr, zero);
+    Some(finish_root_shortcut_with_rewrite_meta(
+        ctx,
+        expr,
+        rewrite,
+        "Collapse Exact Zero Additive Subexpression",
+        collect_steps,
+    ))
+}
+
 fn is_targeted_early_small_zero_additive_combination_candidate_root(
     ctx: &mut Context,
     expr: ExprId,
@@ -22145,6 +22296,36 @@ fn is_targeted_early_small_zero_additive_combination_candidate_root(
     };
 
     child_hits_target_family(ctx, lhs) || child_hits_target_family(ctx, rhs)
+}
+
+fn try_standard_targeted_direct_small_zero_additive_combination_shortcut(
+    simplifier: &mut Simplifier,
+    expr: ExprId,
+    collect_steps: bool,
+) -> Option<(ExprId, Vec<Step>)> {
+    let (result, shortcut_steps, required_conditions) = {
+        let ctx = &mut simplifier.context;
+        if !is_targeted_early_small_zero_additive_combination_candidate_root(ctx, expr) {
+            return None;
+        }
+
+        let rewrite =
+            crate::rules::arithmetic::try_build_direct_small_zero_additive_combination_rewrite(
+                ctx, expr,
+            )?;
+        let required_conditions = rewrite.required_conditions.clone();
+        let (result, shortcut_steps) = finish_root_shortcut_with_rewrite_meta(
+            ctx,
+            expr,
+            rewrite,
+            "Collapse Exact Zero Additive Subexpression",
+            collect_steps,
+        );
+        (result, shortcut_steps, required_conditions)
+    };
+
+    simplifier.extend_required_conditions(required_conditions);
+    Some((result, shortcut_steps))
 }
 
 fn direct_small_zero_additive_combination_max_terms_root(ctx: &Context, expr: ExprId) -> usize {
@@ -25845,8 +26026,40 @@ impl Orchestrator {
                     heuristic_poly: self.options.shared.heuristic_poly,
                     suppress_depth_overflow_warnings: self.options.suppress_depth_overflow_warnings,
                 };
+                let pass_profile_labels = active_pipeline_phase_pass_profile_labels(phase);
+                let pass_profile_sample = pass_profile_labels.is_some().then(|| {
+                    format!(
+                        "iter={} {}",
+                        iter,
+                        render_expr_for_orchestrator_profile(&simplifier.context, current)
+                    )
+                });
+                let pass_profile_start =
+                    pass_profile_labels.is_some().then(std::time::Instant::now);
                 let (next, steps, pass_stats) =
                     simplifier.apply_rules_loop_with_config(current, &self.pattern_marks, &config);
+                if let (Some(pass_profile_start), Some((changed_label, fixed_label))) =
+                    (pass_profile_start, pass_profile_labels)
+                {
+                    let pass_changed =
+                        next != current || !steps.is_empty() || pass_stats.rewrite_count > 0;
+                    let pass_profile_label = if pass_changed {
+                        changed_label
+                    } else {
+                        fixed_label
+                    };
+                    if let Some(pass_profile_sample) = pass_profile_sample {
+                        crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_sample(
+                            pass_profile_label,
+                            pass_profile_sample,
+                        );
+                    }
+                    crate::orchestrator_shortcut_profiler::record_orchestrator_shortcut_attempt(
+                        pass_profile_label,
+                        true,
+                        pass_profile_start.elapsed(),
+                    );
+                }
 
                 if phase == SimplifyPhase::Core && next != current {
                     profile_root_exact_zero_multiterm_trig_numeric_subset_status(
@@ -26025,6 +26238,22 @@ impl Orchestrator {
             } else {
                 Vec::new()
             };
+            return (zero, shortcut_steps, crate::phase::PipelineStats::default());
+        }
+
+        if let Some(rewrite) =
+            crate::rules::arithmetic::try_build_hyperbolic_pythagorean_factor_root_zero_rewrite(
+                &mut simplifier.context,
+                expr,
+            )
+        {
+            let (zero, shortcut_steps) = finish_root_shortcut_with_rewrite_meta(
+                &simplifier.context,
+                expr,
+                rewrite,
+                "Hyperbolic Pythagorean Residual",
+                collect_steps,
+            );
             return (zero, shortcut_steps, crate::phase::PipelineStats::default());
         }
 
@@ -27287,19 +27516,27 @@ impl Orchestrator {
                         )
                     );
                 }
-                if is_targeted_early_small_zero_additive_combination_candidate_root(
-                    &mut simplifier.context,
-                    expr,
-                ) {
-                    return_root_shortcut_pair!(
-                        try_standard_direct_small_zero_additive_combination_shortcut(
-                            &self.options,
-                            &mut simplifier.context,
-                            expr,
-                            collect_steps,
-                        )
-                    );
-                }
+                return_root_shortcut_pair!(
+                    try_standard_nested_fraction_zero_hyperbolic_identity_pair_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                );
+                return_root_shortcut_pair!(
+                    try_standard_log_zero_hyperbolic_cosh_cubic_pair_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                );
+                return_root_shortcut_pair!(
+                    try_standard_targeted_direct_small_zero_additive_combination_shortcut(
+                        simplifier,
+                        expr,
+                        collect_steps,
+                    )
+                );
                 record_orchestrator_shortcut_profile_sample(
                     &simplifier.context,
                     expr,
@@ -27613,6 +27850,7 @@ impl Orchestrator {
                     )
                 );
                 return_root_shortcut_pair!(try_standard_common_scale_known_pair_shortcut(
+                    &self.options,
                     &mut simplifier.context,
                     expr,
                     collect_steps,
@@ -27747,6 +27985,7 @@ impl Orchestrator {
                 }
                 if let Some((result, shortcut_steps)) =
                     try_standard_common_scale_known_pair_shortcut(
+                        &self.options,
                         &mut simplifier.context,
                         expr,
                         collect_steps,
@@ -28359,19 +28598,27 @@ impl Orchestrator {
                     collect_steps,
                     sticky_domain,
                 ));
-                if is_targeted_early_small_zero_additive_combination_candidate_root(
-                    &mut simplifier.context,
-                    expr,
-                ) {
-                    return_root_shortcut_pair!(
-                        try_standard_direct_small_zero_additive_combination_shortcut(
-                            &self.options,
-                            &mut simplifier.context,
-                            expr,
-                            collect_steps,
-                        )
-                    );
-                }
+                return_root_shortcut_pair!(
+                    try_standard_nested_fraction_zero_hyperbolic_identity_pair_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                );
+                return_root_shortcut_pair!(
+                    try_standard_log_zero_hyperbolic_cosh_cubic_pair_shortcut(
+                        &mut simplifier.context,
+                        expr,
+                        collect_steps,
+                    )
+                );
+                return_root_shortcut_pair!(
+                    try_standard_targeted_direct_small_zero_additive_combination_shortcut(
+                        simplifier,
+                        expr,
+                        collect_steps,
+                    )
+                );
                 return_root_shortcut_pair!(try_standard_direct_small_zero_identity_shortcut(
                     &self.options,
                     &mut simplifier.context,
@@ -34784,7 +35031,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Direct simplify_pipeline is pathologically slow for this hyperbolic-angle-sum plus telescoping residual; coverage remains in eval_simplify steps-off regressions"]
+    #[ignore = "Direct simplify_pipeline is still slow for this hyperbolic-angle-sum plus telescoping residual; nested-fraction coverage remains active"]
     fn simplify_pipeline_handles_hyperbolic_sum_against_telescoping_sum_regression() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(
@@ -35549,6 +35796,70 @@ mod tests {
     }
 
     #[test]
+    fn nested_fraction_zero_hyperbolic_identity_pair_shortcut_handles_pressure_hotspot_regressions()
+    {
+        for hyperbolic_side in [
+            "sinh(x+y) - (sinh(x)*cosh(y) + cosh(x)*sinh(y))",
+            "cosh(x) + sinh(x) - e^x",
+            "exp(x) - exp(-x) - 2*sinh(x)",
+            "exp(x) + exp(-x) - 2*cosh(x)",
+            "cosh(x)^2 - sinh(x)^2 - 1",
+            "2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))",
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let input =
+                format!("(1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) + ({hyperbolic_side})");
+            let expr = parse(&input, &mut simplifier.context)
+                .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+            let (rewritten, steps) =
+                super::try_standard_nested_fraction_zero_hyperbolic_identity_pair_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    false,
+                )
+                .unwrap_or_else(|| {
+                    panic!("expected nested-fraction hyperbolic identity shortcut for {input}")
+                });
+
+            assert_eq!(
+                render(&simplifier.context, rewritten),
+                "0",
+                "input: {input}"
+            );
+            assert!(steps.is_empty());
+        }
+    }
+
+    #[test]
+    fn log_zero_hyperbolic_cosh_cubic_pair_shortcut_handles_pressure_hotspot_regressions() {
+        for log_side in [
+            "ln((x*y)^2) - ln(x^2) - ln(y^2)",
+            "ln(x^3) + ln(y^2) - ln(x^3 * y^2)",
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let input = format!("({log_side}) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x)))");
+            let expr = parse(&input, &mut simplifier.context)
+                .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+            let (rewritten, steps) =
+                super::try_standard_log_zero_hyperbolic_cosh_cubic_pair_shortcut(
+                    &mut simplifier.context,
+                    expr,
+                    false,
+                )
+                .unwrap_or_else(|| {
+                    panic!("expected log-zero hyperbolic cosh-cubic shortcut for {input}")
+                });
+
+            assert_eq!(
+                render(&simplifier.context, rewritten),
+                "0",
+                "input: {input}"
+            );
+            assert!(steps.is_empty());
+        }
+    }
+
+    #[test]
     fn direct_small_zero_pair_shortcut_handles_integrate_prep_vs_reciprocal_nested_fraction_sum_regression(
     ) {
         let mut simplifier = crate::Simplifier::with_default_rules();
@@ -35603,6 +35914,27 @@ mod tests {
                 expr,
             )
         );
+    }
+
+    #[test]
+    fn targeted_direct_small_zero_additive_combination_collapses_log_square_hyperbolic_cubic_regression(
+    ) {
+        let mut simplifier = crate::Simplifier::with_default_rules();
+        let expr = parse(
+            "(ln((x*y)^2) - ln(x^2) - ln(y^2)) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x)))",
+            &mut simplifier.context,
+        )
+        .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let (rewritten, steps) =
+            super::try_standard_targeted_direct_small_zero_additive_combination_shortcut(
+                &mut simplifier,
+                expr,
+                false,
+            )
+            .unwrap_or_else(|| panic!("expected targeted direct small-zero shortcut"));
+
+        assert_eq!(render(&simplifier.context, rewritten), "0");
+        assert!(steps.is_empty());
     }
 
     #[test]
@@ -36679,10 +37011,31 @@ mod tests {
         let mut ctx = Context::new();
         let expr = parse("k*(2*sin(x)*sin(y)) - k*(cos(x-y) - cos(x+y))", &mut ctx)
             .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
         let (rewritten, _steps) =
-            try_standard_common_scale_known_pair_shortcut(&mut ctx, expr, false)
+            try_standard_common_scale_known_pair_shortcut(&options, &mut ctx, expr, false)
                 .unwrap_or_else(|| panic!("expected common-scale known-pair shortcut to match"));
         assert_eq!(render(&ctx, rewritten), "0");
+    }
+
+    #[test]
+    fn common_scale_fallback_preserves_assumed_abs_metadata() {
+        let mut ctx = Context::new();
+        let expr =
+            parse("2*a - 2*abs(a)", &mut ctx).unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let mut options = SimplifyOptions::default();
+        options.shared.semantics.domain_mode = crate::DomainMode::Assume;
+        let (_rewritten, steps) =
+            try_standard_common_scale_exact_zero_shortcut_fallback(&options, &mut ctx, expr, true)
+                .unwrap_or_else(|| panic!("expected common-scale fallback to match"));
+        assert!(
+            steps.iter().any(|step| {
+                step.assumption_events()
+                    .iter()
+                    .any(|event| event.message == "a > 0")
+            }),
+            "expected retained positivity assumption in steps: {steps:?}"
+        );
     }
 
     #[test]
@@ -36704,8 +37057,9 @@ mod tests {
             &mut ctx,
         )
         .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+        let options = SimplifyOptions::default();
         let (rewritten, _steps) =
-            try_standard_common_scale_known_pair_shortcut(&mut ctx, expr, false)
+            try_standard_common_scale_known_pair_shortcut(&options, &mut ctx, expr, false)
                 .unwrap_or_else(|| panic!("expected common-scale known-pair shortcut to match"));
         assert_eq!(render(&ctx, rewritten), "0");
     }
@@ -40681,6 +41035,26 @@ mod tests {
         orchestrator.options.collect_steps = false;
         let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
         assert_eq!(render(&simplifier.context, rewritten), "0");
+    }
+
+    #[test]
+    fn simplify_pipeline_root_shortcut_collapses_affine_hyperbolic_pythagorean_factor_residuals() {
+        for input in [
+            "sinh(2*x+1)*(cosh(2*x+1)^2 - 1) - sinh(2*x+1)^3",
+            "cosh(2*x+1)*(1 + sinh(2*x+1)^2) - cosh(2*x+1)^3",
+        ] {
+            let mut simplifier = crate::Simplifier::with_default_rules();
+            let expr = parse(input, &mut simplifier.context)
+                .unwrap_or_else(|e| panic!("parse failed: {e:?}"));
+            let mut orchestrator = Orchestrator::new();
+            orchestrator.options.collect_steps = false;
+            let (rewritten, _steps, _stats) = orchestrator.simplify_pipeline(expr, &mut simplifier);
+            assert_eq!(
+                render(&simplifier.context, rewritten),
+                "0",
+                "input: {input}"
+            );
+        }
     }
 
     #[test]

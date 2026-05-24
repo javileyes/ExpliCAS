@@ -38,17 +38,22 @@ fn format_log_contraction_desc(kind: LogContractionRewriteKind) -> &'static str 
     }
 }
 
-define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
-    let planned = try_rewrite_evaluate_log_expr(ctx, expr)?;
-    let mut rewrite = Rewrite::new(planned.rewritten).desc(planned.desc);
-    if let Some(positive_subject) = planned.assume_positive_base {
-        rewrite = rewrite.assume(crate::AssumptionEvent::positive_assumed(
-            ctx,
-            positive_subject,
-        ));
+define_rule!(
+    EvaluateLogRule,
+    "Evaluate Logarithms",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let planned = try_rewrite_evaluate_log_expr(ctx, expr)?;
+        let mut rewrite = Rewrite::new(planned.rewritten).desc(planned.desc);
+        if let Some(positive_subject) = planned.assume_positive_base {
+            rewrite = rewrite.assume(crate::AssumptionEvent::positive_assumed(
+                ctx,
+                positive_subject,
+            ));
+        }
+        Some(rewrite)
     }
-    Some(rewrite)
-});
+);
 
 // =============================================================================
 // LnEProductRule: ln(e*x) → 1 + ln(x)
@@ -60,10 +65,15 @@ define_rule!(EvaluateLogRule, "Evaluate Logarithms", |ctx, expr| {
 // This enables residuals like `2*ln(e*u) - 2 - 2*ln(u)` to simplify:
 // → 2*(1 + ln(u)) - 2 - 2*ln(u) → 2 + 2*ln(u) - 2 - 2*ln(u) → 0
 // =============================================================================
-define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
-    let rewrite = try_rewrite_ln_e_product_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc("ln(e*x) = 1 + ln(x)"))
-});
+define_rule!(
+    LnEProductRule,
+    "Factor e from ln Product",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let rewrite = try_rewrite_ln_e_product_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc("ln(e*x) = 1 + ln(x)"))
+    }
+);
 
 // =============================================================================
 // LnEDivRule: ln(x/e) → ln(x) - 1, ln(e/x) → 1 - ln(x)
@@ -71,10 +81,15 @@ define_rule!(LnEProductRule, "Factor e from ln Product", |ctx, expr| {
 // Companion to LnEProductRule. These are SAFE expansions because ln(e) = 1.
 // This enables residuals like `2*ln(u/e) - 2*(ln(u)-1)` to simplify to 0.
 // =============================================================================
-define_rule!(LnEDivRule, "Factor e from ln Quotient", |ctx, expr| {
-    let rewrite = try_rewrite_ln_e_div_expr(ctx, expr)?;
-    Some(Rewrite::new(rewrite.rewritten).desc(format_ln_e_div_desc(rewrite.kind)))
-});
+define_rule!(
+    LnEDivRule,
+    "Factor e from ln Quotient",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let rewrite = try_rewrite_ln_e_div_expr(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(format_ln_e_div_desc(rewrite.kind)))
+    }
+);
 
 /// LogContractionRule: Contracts sums/differences of logs into single logs.
 /// - ln(a) + ln(b) → ln(a*b)

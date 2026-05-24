@@ -20,14 +20,19 @@ use cas_math::summation_support::{
 // Example: sum(k, k, 1, 10) → 55
 // Example: sum(k^2, k, 1, 5) → 1 + 4 + 9 + 16 + 25 = 55
 
-define_rule!(SumRule, "Finite Summation", |ctx, expr| {
-    let plan = try_plan_finite_sum_evaluation(ctx, expr, 1000)?;
-    let result = simplify_with_engine_rules(ctx, plan.candidate);
-    let desc = render_sum_evaluation_desc(&plan.kind, &plan.call, |id| {
-        format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
-    });
-    Some(Rewrite::new(result).desc(desc))
-});
+define_rule!(
+    SumRule,
+    "Finite Summation",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let plan = try_plan_finite_sum_evaluation(ctx, expr, 1000)?;
+        let result = simplify_with_engine_rules(ctx, plan.candidate);
+        let desc = render_sum_evaluation_desc(&plan.kind, &plan.call, |id| {
+            format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
+        });
+        Some(Rewrite::new(result).desc(desc))
+    }
+);
 
 // =============================================================================
 // PRODUCT RULE: Evaluate finite products (productorio)
@@ -36,14 +41,19 @@ define_rule!(SumRule, "Finite Summation", |ctx, expr| {
 // Example: product(k, k, 1, 5) → 120  (5!)
 // Example: product((k+1)/k, k, 1, n) → n+1  (telescoping)
 
-define_rule!(ProductRule, "Finite Product", |ctx, expr| {
-    let plan = try_plan_finite_product_evaluation(ctx, expr, 1000)?;
-    let result = simplify_with_engine_rules(ctx, plan.candidate);
-    let desc = render_product_evaluation_desc(&plan.kind, &plan.call, |id| {
-        format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
-    });
-    Some(Rewrite::new(result).desc(desc))
-});
+define_rule!(
+    ProductRule,
+    "Finite Product",
+    Some(crate::target_kind::TargetKindSet::FUNCTION),
+    |ctx, expr| {
+        let plan = try_plan_finite_product_evaluation(ctx, expr, 1000)?;
+        let result = simplify_with_engine_rules(ctx, plan.candidate);
+        let desc = render_product_evaluation_desc(&plan.kind, &plan.call, |id| {
+            format!("{}", cas_formatter::DisplayExpr { context: ctx, id })
+        });
+        Some(Rewrite::new(result).desc(desc))
+    }
+);
 
 fn render_sum_evaluation_desc<F>(
     kind: &SumEvaluationKind,
@@ -166,4 +176,54 @@ fn simplify_with_engine_rules(ctx: &mut Context, expr: ExprId) -> ExprId {
     let (simplified, _) = simplifier.simplify(expr);
     *ctx = simplifier.context;
     simplified
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ProductRule, SumRule};
+    use crate::rule::Rule;
+    use cas_ast::target_kind::TargetKind;
+
+    #[test]
+    fn finite_aggregate_rules_target_function_calls_only() {
+        for (name, targets) in [
+            (
+                "SumRule",
+                SumRule
+                    .target_types()
+                    .expect("SumRule should be structurally targeted"),
+            ),
+            (
+                "ProductRule",
+                ProductRule
+                    .target_types()
+                    .expect("ProductRule should be structurally targeted"),
+            ),
+        ] {
+            assert!(
+                targets.contains(TargetKind::Function),
+                "{name} should target function calls"
+            );
+            assert!(
+                !targets.contains(TargetKind::Add),
+                "{name} should not target Add"
+            );
+            assert!(
+                !targets.contains(TargetKind::Sub),
+                "{name} should not target Sub"
+            );
+            assert!(
+                !targets.contains(TargetKind::Mul),
+                "{name} should not target Mul"
+            );
+            assert!(
+                !targets.contains(TargetKind::Div),
+                "{name} should not target Div"
+            );
+            assert!(
+                !targets.contains(TargetKind::Pow),
+                "{name} should not target Pow"
+            );
+        }
+    }
 }

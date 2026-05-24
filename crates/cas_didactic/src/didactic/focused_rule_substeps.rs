@@ -876,6 +876,10 @@ fn complete_square_substep_plan(ctx: &Context, expr: ExprId) -> Option<CompleteS
     vars.sort();
 
     for var_name in vars {
+        if !complete_square_source_has_explicit_square_in_var(&work, expr, &var_name) {
+            continue;
+        }
+
         let Some((leading_coeff, linear_coeff, constant_term)) =
             extract_simplified_nonzero_quadratic_coefficients_with_state(
                 &mut work,
@@ -944,6 +948,35 @@ fn complete_square_substep_plan(ctx: &Context, expr: ExprId) -> Option<CompleteS
     }
 
     None
+}
+
+fn complete_square_source_has_explicit_square_in_var(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> bool {
+    match ctx.get(expr) {
+        Expr::Pow(base, exp) => {
+            is_integer_literal(ctx, *exp, 2)
+                && cas_ast::collect_variables(ctx, *base).contains(var_name)
+        }
+        Expr::Add(_, _) | Expr::Sub(_, _) => {
+            AddView::from_expr(ctx, expr)
+                .terms
+                .into_iter()
+                .any(|(term, _)| {
+                    complete_square_source_has_explicit_square_in_var(ctx, term, var_name)
+                })
+        }
+        Expr::Mul(_, _) if ctx.is_mul_commutative(expr) => MulView::from_expr(ctx, expr)
+            .factors
+            .into_iter()
+            .any(|factor| complete_square_source_has_explicit_square_in_var(ctx, factor, var_name)),
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            complete_square_source_has_explicit_square_in_var(ctx, *inner, var_name)
+        }
+        _ => false,
+    }
 }
 
 fn build_monic_complete_square_substep_exprs(

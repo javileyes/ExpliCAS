@@ -1,16 +1,16 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-05-23T05:15:01.478196+00:00
+- Generated: 2026-05-24T16:27:33.343408+00:00
 - Git branch: main
-- Git commit: `b5c6f3384bd38cf36f3eb211034613c094cdc392`
+- Git commit: `58df39ec2e0b26038f155f6d4da6c0fbac215cae`
 - Profile: `guardrail`
 
 ## Embedded Runtime Guardrail
 
 - Dimension: contextual simplify/equivalence under real wrappers.
 - Interpretation: strong for simplify/orchestration quality; not a derive-path metric.
-- Elapsed: 9.10s
-- Per-case runtime: 6.116ms/case
+- Elapsed: 13.38s
+- Per-case runtime: 8.992ms/case
 - Coverage axes: 7 wrappers across 27 families
 - Context axes: 4 complexity levels across 6 shell depths
 - Largest wrapper share: 19.8%
@@ -36,15 +36,16 @@
 ## Generated Discovery Ledger
 
 - Purpose: keep failed generated candidates visible without promoting them to live corpus.
-- Observe-only discoveries: total=0
-- Status: no open observe-only generated discoveries.
+- Observe-only discoveries: total=1
+- By area: orchestrator / exact-zero additive composition:1
+- Recent 1: `orchestrator / exact-zero additive composition` - 2026-05-24 - Discovery observe-only: hyperbolic angle-sum plus telescoping residual remains slow
 
 ## Derive Reachability Guardrail
 
 - Dimension: source-to-target bridgeability and path quality.
 - Interpretation: measures planner/strategy reachability; not contextual wrapper strength.
 - Expected-status breakdown: derived=390 unsupported=0 not_equivalent=1
-- Path quality: mean_step_count=1.05 long_path_rate=0.00 single_step_successes=372 multi_step_successes=18 max_step_count=3
+- Path quality: mean_step_count=1.05 long_path_rate=0.00 single_step_successes=371 multi_step_successes=19 max_step_count=3
 - Strategy specificity: generic_simplify_expected=0 distinct_expected_strategies=28
 - Expected strategy counts: expand trig:94, contract trig:48, rewrite hyperbolics:35, expand:31, finite sums/products:22, expand_log:17, contract logs:14, factor:13, rewrite exponentials:13, rewrite trigs:13, expand fraction:11, combine fraction:10, +16 more
 - Non-derived expected families: unsupported=none not_equivalent=negative:1
@@ -68,8 +69,11 @@
 - Dimension: educational quality of derive target-driven traces and web substeps.
 - Interpretation: diagnostic trace-quality lane; not a semantic correctness or runtime metric.
 - Outcomes: cases=472 flagged=0 flagged_rate=0.0%
-- Substeps: total_web_substeps=485 mean_step_count=1.05
+- Substeps: total_web_substeps=485 mean_step_count=1.06
 - Flags: no_web_substeps=0 no_web_steps=0
+- Runtime split: artifacts=1.04s cli=0.99s report=0.00s total=2.04s workers=4
+- Runtime family hotspots: artifacts=expand:1.525,rationalize:0.612,solve_prep:0.238,finite_telescoping:0.227,trig_contract:0.209,factor:0.198 cli=expand:1.498,rationalize:0.603,trig_contract:0.220,solve_prep:0.215,finite_telescoping:0.198,factor:0.192
+- Runtime case hotspots: artifacts=expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.677,expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial:0.642,rationalize_symbolic_linear_root_alt_var:0.251,rationalize_symbolic_linear_root:0.251,finite_aggregate_sum_of_cubes_symbolic_lower_bound:0.107,solve_prep_complete_square_negative_symbolic_leading_coeff:0.076 cli=expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial_with_passthrough:0.666,expand_hyperbolic_product_to_sum_to_cosh_cubic_polynomial:0.644,rationalize_symbolic_linear_root_alt_var:0.252,rationalize_symbolic_linear_root:0.247,finite_aggregate_sum_of_cubes_symbolic_lower_bound:0.100,solve_prep_complete_square_negative_symbolic_leading_coeff:0.077
 
 ## Simplify Didactic Trace Audit
 
@@ -83,13 +87,15 @@
 
 - Dimension: public calculus behavior, result simplification, domain conditions, and step noise.
 - Interpretation: small executable calculus vertical slices; failures should be classified before broadening pre-calculus rules.
-- `diff`: passed=256 failed=0 ignored=1 filtered_out=0
+- `diff`: passed=257 failed=0 ignored=1 filtered_out=0
 - `diff` ignored tests: `inverse_reciprocal_trig_diff_evaluates_with_explicit_domain_conditions_exhaustive` (exhaustive inverse reciprocal trig diff contract is debug-slow; CI keeps representative structural smoke)
-- `limit`: passed=103 failed=0 ignored=0 filtered_out=0
+- `limit`: passed=143 failed=0 ignored=0 filtered_out=0
 - `limit_presimplify_safe`: passed=8 failed=0 ignored=0 filtered_out=0
-- `residual_matrix`: passed=357 failed=0 total=357 slow=0 timeouts=0 conditioned_cases=350 distinct_conditions=11
-- `residual_matrix` sparse expected conditions: 4 - x^4=14, cos(sqrt(3·x + 1))=14, sin(sqrt(3·x + 1))=14, sinh(sqrt(3·x + 1))=14, x + 1=14
-- `integrate`: passed=328 failed=0 ignored=1 filtered_out=0
+- `residual_matrix`: passed=706 failed=0 total=706 slow=0 timeouts=0 total_bases=79 wrapped_bases=57 standalone_bases=22 wrappers=12 wrapped_cases=684 standalone_cases=22 conditioned_cases=699 distinct_conditions=20
+- `residual_matrix` sparse expected conditions: -1 < x < 1=12, 1 - x^2=12, 4 - (x + 1)^2=12, cos(1 - 2·x)=12, sin(sqrt(3 - 2·x))=12
+- `residual_matrix` domain expected conditions: -1 < x < 1=12, x < 3/2=12, x > 0=24, x > -1/3=52
+- `residual_matrix` wrapper coverage: expected_wrapped_cases=684 missing_wrapped_pairs=0 full_wrapper_bases=57 partial_wrapper_bases=0 largest_gap=0
+- `integrate`: passed=337 failed=0 ignored=1 filtered_out=0
 - `integrate` ignored tests: `integrate_contract_supported_antiderivatives_verify_by_differentiation_exhaustive` (exhaustive debug verification is intentionally slower; CI runs the representative smoke test)
 
 ## Simplify Closure Signal
@@ -108,14 +114,14 @@
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `embedded_equivalence_context` | `pass` | 9.10s | passed=1488 failed=0 total=1488 wrappers=7 families=27 avg_case=6.116ms |
-| `derive_contract` | `pass` | 5.73s | derived=390 unsupported=0 expected_not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 single_step=372 multi_step_ids=18 max_step=3 |
-| `derive_shadow_pressure` | `pass` | 0.26s | sampled=67 derived=67 unsupported=0 not_equivalent=0 mean_step_count=1.09 generic_simplify_strategy_successes=0 single_step=62 multi_step_ids=5 max_step=4 embedded_families=26/26 |
-| `derive_didactic_audit` | `pass` | 20.10s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 |
-| `simplify_didactic_audit` | `pass` | 0.95s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
-| `simplify_strict` | `pass` | 21.50s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
-| `calculus_diff_contract` | `pass` | 4.95s | passed=256 failed=0 ignored=1 |
-| `calculus_limit_contract` | `pass` | 1.55s | passed=103 failed=0 |
-| `calculus_limit_presimplify_contract` | `pass` | 0.62s | passed=8 failed=0 |
-| `calculus_residual_matrix_smoke` | `pass` | 5.81s | passed=357 failed=0 total=357 conditioned=350 conditions=11 |
-| `calculus_integrate_contract` | `pass` | 4.13s | passed=328 failed=0 ignored=1 |
+| `embedded_equivalence_context` | `pass` | 13.38s | passed=1488 failed=0 total=1488 wrappers=7 families=27 avg_case=8.992ms |
+| `derive_contract` | `pass` | 2.41s | derived=390 unsupported=0 expected_not_equivalent=1 mean_step_count=1.05 generic_simplify_expected=0 single_step=371 multi_step_ids=19 max_step=3 |
+| `derive_shadow_pressure` | `pass` | 0.32s | sampled=67 derived=67 unsupported=0 not_equivalent=0 mean_step_count=1.09 generic_simplify_strategy_successes=0 single_step=62 multi_step_ids=5 max_step=4 embedded_families=26/26 |
+| `derive_didactic_audit` | `pass` | 33.48s | cases=472 flagged=0 no_web_substeps=0 no_web_steps=0 artifacts=1.04s cli=0.99s workers=4 top_artifact_family=expand:1.525 top_cli_family=expand:1.498 |
+| `simplify_didactic_audit` | `pass` | 1.29s | cases=14 flagged=0 no_wire_substeps=0 missing_math_sides=0 |
+| `simplify_strict` | `pass` | 26.45s | closure=100.0% nf=0 (0.0%) proved=16519 (100.0%) numeric=0 inconclusive=0 timeouts=0 |
+| `calculus_diff_contract` | `pass` | 5.95s | passed=257 failed=0 ignored=1 |
+| `calculus_limit_contract` | `pass` | 0.72s | passed=143 failed=0 |
+| `calculus_limit_presimplify_contract` | `pass` | 0.48s | passed=8 failed=0 |
+| `calculus_residual_matrix_smoke` | `pass` | 12.07s | passed=706 failed=0 total=706 conditioned=699 conditions=20 total_bases=79 wrapped_bases=57 standalone_bases=22 wrappers=12 missing_wrapped_pairs=0 partial_wrapper_bases=0 |
+| `calculus_integrate_contract` | `pass` | 8.61s | passed=337 failed=0 ignored=1 |
