@@ -52,6 +52,10 @@ fn expected_visible_rule_name(rule_name: &str) -> &str {
         "Cancel Exact Additive Pairs" => "Cancelar términos opuestos",
         "Quintuple Angle Identity" => "Reescribir ángulo quíntuple",
         "Triple Angle Expansion" | "Triple Angle Identity" => "Reescribir ángulo triple",
+        "Tan to Sin/Cos" => "Expandir tangente como seno entre coseno",
+        "Secant to Reciprocal Cosine" => "Expandir secante como recíproco de coseno",
+        "Cosecant to Reciprocal Sine" => "Expandir cosecante como recíproco de seno",
+        "Cotangent to Cosine over Sine" => "Expandir cotangente como coseno entre seno",
         _ => rule_name,
     }
 }
@@ -2467,6 +2471,46 @@ fn derive_negative_tan_expansion_uses_single_trig_expansion_step() {
 }
 
 #[test]
+fn eval_tangent_expansion_uses_visible_step_name() {
+    let (output, _code) = run_cli(&["eval", "tan(x)", "--format", "json", "--steps", "on"]);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "tan(x)");
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 2);
+    assert_rule_eq(&steps[0]["rule"], "Tan to Sin/Cos");
+    assert!(
+        steps
+            .iter()
+            .all(|step| step["rule"].as_str() != Some("Tan to Sin/Cos")),
+        "public steps should not expose internal Tan to Sin/Cos label: {steps:?}"
+    );
+}
+
+#[test]
+fn eval_reciprocal_trig_expansions_use_visible_step_names() {
+    for (expr, expected_internal_rule) in [
+        ("sec(x)", "Secant to Reciprocal Cosine"),
+        ("csc(x)", "Cosecant to Reciprocal Sine"),
+        ("cot(x)", "Cotangent to Cosine over Sine"),
+    ] {
+        let (output, _code) = run_cli(&["eval", expr, "--format", "json", "--steps", "on"]);
+        let wire = parse_wire(&output);
+
+        assert_eq!(wire["result"], expr);
+        let steps = wire["steps"].as_array().expect("steps array");
+        assert_eq!(steps.len(), 2, "unexpected steps for {expr}: {steps:?}");
+        assert_rule_eq(&steps[0]["rule"], expected_internal_rule);
+        assert!(
+            steps
+                .iter()
+                .all(|step| step["rule"].as_str() != Some(expected_internal_rule)),
+            "public steps should not expose internal {expected_internal_rule} label for {expr}: {steps:?}"
+        );
+    }
+}
+
+#[test]
 fn eval_reciprocal_cosine_avoids_ping_pong_and_keeps_single_step() {
     let (output, _code) = run_cli(&["eval", "1/cos(x)", "--format", "json", "--steps", "on"]);
     let wire = parse_wire(&output);
@@ -2476,10 +2520,7 @@ fn eval_reciprocal_cosine_avoids_ping_pong_and_keeps_single_step() {
 
     let steps = wire["steps"].as_array().expect("steps array");
     assert_eq!(steps.len(), 1);
-    assert_eq!(
-        steps[0]["rule"],
-        "Convertir un cociente trigonométrico en tangente"
-    );
+    assert_eq!(steps[0]["rule"], "Reconocer secante desde un recíproco");
     assert_eq!(steps[0]["before"], "1/cos(x)");
     assert_eq!(steps[0]["after"], "sec(x)");
 }

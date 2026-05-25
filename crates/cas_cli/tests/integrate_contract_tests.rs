@@ -14729,14 +14729,52 @@ fn integrate_contract_secant_tangent_non_linear_argument_remains_residual() {
 }
 
 #[test]
-fn integrate_contract_tangent_non_linear_argument_remains_residual_without_condition() {
+fn integrate_contract_tangent_non_linear_argument_remains_residual_with_pole_condition() {
     let (result, required) = evaluated_integral_with_required_conditions("integrate(tan(x^2), x)");
 
     assert_eq!(result, "integrate(tan(x^2), x)");
-    assert!(
-        required.is_empty(),
-        "unsupported tangent integral should not invent conditions: {required:?}"
+    assert_eq!(
+        required,
+        vec!["cos(x^2) ≠ 0".to_string()],
+        "unsupported tangent residual should preserve pole domain: {required:?}"
     );
+}
+
+#[test]
+fn integrate_contract_presimplified_tangent_residual_preserves_pole_condition() {
+    for (input, expected_result) in [
+        ("integrate(tan(x^2+0), x)", "integrate(tan(x^2), x)"),
+        (
+            "integrate(tan(x^2+0)+sin(x^2), x)",
+            "integrate(sin(x^2) + tan(x^2), x)",
+        ),
+    ] {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected_result, "unexpected result for {input}");
+        assert_eq!(
+            required,
+            vec!["cos(x^2) ≠ 0".to_string()],
+            "pre-simplified tangent residual should preserve pole domain for {input}: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn integrate_contract_presimplified_cosecant_residual_preserves_pole_condition() {
+    for (input, expected_result) in [
+        ("integrate(csc(x^2+0), x)", "integrate(csc(x^2), x)"),
+        ("integrate(cot(x^2+0), x)", "integrate(cot(x^2), x)"),
+    ] {
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+
+        assert_eq!(result, expected_result, "unexpected result for {input}");
+        assert_eq!(
+            required,
+            vec!["sin(x^2) ≠ 0".to_string()],
+            "pre-simplified sine-pole residual should preserve domain for {input}: {required:?}"
+        );
+    }
 }
 
 #[test]

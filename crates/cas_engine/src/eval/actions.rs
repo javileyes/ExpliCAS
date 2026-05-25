@@ -46,6 +46,86 @@ fn is_simple_positive_var_affine_witness(
     }
 }
 
+fn cleanup_residual_limit_output_expr(ctx: &mut cas_ast::Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr).clone() {
+        cas_ast::Expr::Add(lhs, rhs) => {
+            let lhs = cleanup_residual_limit_output_expr(ctx, lhs);
+            let rhs = cleanup_residual_limit_output_expr(ctx, rhs);
+            if cas_math::expr_predicates::is_zero_expr(ctx, lhs) {
+                rhs
+            } else if cas_math::expr_predicates::is_zero_expr(ctx, rhs) {
+                lhs
+            } else {
+                ctx.add(cas_ast::Expr::Add(lhs, rhs))
+            }
+        }
+        cas_ast::Expr::Sub(lhs, rhs) => {
+            let lhs = cleanup_residual_limit_output_expr(ctx, lhs);
+            let rhs = cleanup_residual_limit_output_expr(ctx, rhs);
+            if cas_math::expr_predicates::is_zero_expr(ctx, rhs) {
+                lhs
+            } else {
+                ctx.add(cas_ast::Expr::Sub(lhs, rhs))
+            }
+        }
+        cas_ast::Expr::Mul(lhs, rhs) => {
+            let lhs = cleanup_residual_limit_output_expr(ctx, lhs);
+            let rhs = cleanup_residual_limit_output_expr(ctx, rhs);
+            if cas_math::expr_predicates::is_one_expr(ctx, lhs) {
+                rhs
+            } else if cas_math::expr_predicates::is_one_expr(ctx, rhs) {
+                lhs
+            } else {
+                ctx.add(cas_ast::Expr::Mul(lhs, rhs))
+            }
+        }
+        cas_ast::Expr::Div(lhs, rhs) => {
+            let lhs = cleanup_residual_limit_output_expr(ctx, lhs);
+            let rhs = cleanup_residual_limit_output_expr(ctx, rhs);
+            if cas_math::expr_predicates::is_one_expr(ctx, rhs) {
+                lhs
+            } else {
+                ctx.add(cas_ast::Expr::Div(lhs, rhs))
+            }
+        }
+        cas_ast::Expr::Pow(base, exp) => {
+            let base = cleanup_residual_limit_output_expr(ctx, base);
+            let exp = cleanup_residual_limit_output_expr(ctx, exp);
+            ctx.add(cas_ast::Expr::Pow(base, exp))
+        }
+        cas_ast::Expr::Neg(inner) => {
+            let inner = cleanup_residual_limit_output_expr(ctx, inner);
+            if cas_math::expr_predicates::is_zero_expr(ctx, inner) {
+                inner
+            } else {
+                ctx.add(cas_ast::Expr::Neg(inner))
+            }
+        }
+        cas_ast::Expr::Function(fn_id, args) => {
+            let args = args
+                .into_iter()
+                .map(|arg| cleanup_residual_limit_output_expr(ctx, arg))
+                .collect();
+            ctx.add(cas_ast::Expr::Function(fn_id, args))
+        }
+        cas_ast::Expr::Matrix { rows, cols, data } => {
+            let data = data
+                .into_iter()
+                .map(|item| cleanup_residual_limit_output_expr(ctx, item))
+                .collect();
+            ctx.add(cas_ast::Expr::Matrix { rows, cols, data })
+        }
+        cas_ast::Expr::Hold(inner) => {
+            let inner = cleanup_residual_limit_output_expr(ctx, inner);
+            ctx.add(cas_ast::Expr::Hold(inner))
+        }
+        cas_ast::Expr::Number(_)
+        | cas_ast::Expr::Constant(_)
+        | cas_ast::Expr::Variable(_)
+        | cas_ast::Expr::SessionRef(_) => expr,
+    }
+}
+
 fn limit_domain_path_warning(
     ctx: &cas_ast::Context,
     expr: ExprId,
@@ -223,6 +303,11 @@ impl Engine {
             &mut budget,
         ) {
             Ok(result) => {
+                let output_expr = if result.warning.is_some() {
+                    cleanup_residual_limit_output_expr(&mut self.simplifier.context, result.expr)
+                } else {
+                    result.expr
+                };
                 let mut steps = Vec::new();
                 if !matches!(options.steps_mode, crate::options::StepsMode::Off) {
                     let (rule_name, description) = if result.warning.is_some() {
@@ -247,7 +332,7 @@ impl Engine {
                         description,
                         rule_name,
                         resolved,
-                        result.expr,
+                        output_expr,
                         Vec::new(),
                         Some(&self.simplifier.context),
                     );
@@ -275,7 +360,7 @@ impl Engine {
                     }
                 }
                 Ok((
-                    EvalResult::Expr(result.expr),
+                    EvalResult::Expr(output_expr),
                     warnings,
                     steps,
                     vec![],

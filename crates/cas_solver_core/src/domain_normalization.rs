@@ -1,7 +1,7 @@
 //! Condition normalization, deduplication, and dominance rules.
 
 use crate::domain_condition::ImplicitCondition;
-use cas_ast::{BuiltinFn, Context, Expr, ExprId};
+use cas_ast::{ordering::compare_expr, BuiltinFn, Context, Expr, ExprId};
 use cas_math::expr_domain::{
     exprs_equivalent, exprs_equivalent_up_to_sign, is_abs_of, is_odd_power_of,
     is_positive_multiple_of, is_positive_power_of_base, is_product_dominated_by_positives,
@@ -10,7 +10,9 @@ use cas_math::expr_domain::{
 use cas_math::expr_extract::{
     extract_abs_argument_view, extract_log_base_argument_view, extract_sqrt_argument_view,
 };
-use cas_math::expr_nary::{build_balanced_add, build_balanced_mul, mul_leaves, AddView, Sign};
+use cas_math::expr_nary::{
+    add_terms_signed, build_balanced_add, build_balanced_mul, mul_leaves, AddView, Sign,
+};
 use cas_math::expr_normalization::{
     extract_even_positive_power_base, normalize_condition_expr as normalize_condition_expr_math,
     normalize_condition_expr_preserve_sign,
@@ -23,6 +25,8 @@ use cas_math::polynomial::Polynomial;
 use cas_math::prove_sign::{prove_nonnegative_depth_with, prove_positive_depth_with};
 use cas_math::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind};
 use cas_math::tri_proof::TriProof;
+use cas_math::trig_eval_table_support::lookup_trig_or_inverse;
+use cas_math::trig_values::TrigValue;
 use num_rational::BigRational;
 use num_traits::{One, Signed, ToPrimitive, Zero};
 use std::collections::BTreeMap;
@@ -588,6 +592,10 @@ fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId)
         return normalize_nonzero_condition_expr_for_display(ctx, compact);
     }
 
+    if let Some(sinh_expr) = normalize_sinh_nonzero_expr_for_display(ctx, expr) {
+        return sinh_expr;
+    }
+
     if let Some(base) = nonzero_integer_power_base_for_display(ctx, expr) {
         return normalize_nonzero_condition_expr_for_display(ctx, base);
     }
@@ -599,6 +607,10 @@ fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId)
     let normalized = normalize_condition_expr(ctx, expr);
     let normalized =
         primitive_nonzero_polynomial_for_display(ctx, normalized).unwrap_or(normalized);
+    if let Some(sinh_expr) = normalize_sinh_nonzero_expr_for_display(ctx, normalized) {
+        return sinh_expr;
+    }
+
     if let Some(base) = nonzero_integer_power_base_for_display(ctx, normalized) {
         return normalize_nonzero_condition_expr_for_display(ctx, base);
     }
@@ -610,6 +622,38 @@ fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId)
     compact_nonzero_power_gap_for_display(ctx, expr)
         .or_else(|| compact_nonzero_power_gap_for_display(ctx, normalized))
         .unwrap_or(normalized)
+}
+
+fn normalize_sinh_nonzero_expr_for_display(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let arg = match ctx.get(expr) {
+        Expr::Function(fn_id, args)
+            if ctx.builtin_of(*fn_id) == Some(BuiltinFn::Sinh) && args.len() == 1 =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+
+    let arg = normalize_sinh_nonzero_argument_for_display(ctx, arg);
+    Some(ctx.call_builtin(BuiltinFn::Sinh, vec![arg]))
+}
+
+fn normalize_sinh_nonzero_argument_for_display(ctx: &mut Context, arg: ExprId) -> ExprId {
+    if let Some(sqrt_expr) = normalize_sqrt_argument_preserve_sign_for_display(ctx, arg) {
+        return sqrt_expr;
+    }
+
+    let normalized = normalize_condition_expr(ctx, arg);
+    normalize_sqrt_argument_preserve_sign_for_display(ctx, normalized).unwrap_or(normalized)
+}
+
+fn normalize_sqrt_argument_preserve_sign_for_display(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<ExprId> {
+    let radicand = extract_sqrt_argument_view(ctx, expr)?;
+    let radicand = normalize_condition_expr_preserve_sign(ctx, radicand);
+    Some(ctx.call_builtin(BuiltinFn::Sqrt, vec![radicand]))
 }
 
 fn compact_diff_integral_residual_passthrough_for_condition_display(
@@ -1693,6 +1737,17 @@ fn nonzero_is_dominated_by_positive_condition(
                 normalized_positive,
                 normalized_expr,
             )
+            || positive_condition_plus_nonnegative_square_dominates_nonzero(
+                ctx,
+                normalized_positive,
+                normalized_expr,
+            )
+            || positive_condition_times_nonnegative_square_plus_positive_constant_dominates_nonzero(
+                ctx,
+                normalized_positive,
+                normalized_expr,
+            )
+            || positive_sqrt_square_gap_dominates_nonzero(ctx, normalized_positive, normalized_expr)
             || positive_condition_dominates_affine_nonzero_offset(
                 ctx,
                 normalized_positive,
@@ -1709,6 +1764,285 @@ fn nonzero_is_dominated_by_positive_condition(
                 normalized_expr,
             )
     })
+}
+
+fn positive_condition_plus_nonnegative_square_dominates_nonzero(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    let positive_expr = normalize_condition_expr_preserve_sign(ctx, positive_expr);
+    let stripped_nonzero_expr = strip_nonzero_scalar_factors_for_display(ctx, nonzero_expr);
+    let nonzero_expr = normalize_condition_expr(ctx, stripped_nonzero_expr);
+    let positive_terms = AddView::from_expr(ctx, positive_expr)
+        .terms
+        .into_iter()
+        .collect::<Vec<_>>();
+    let nonzero_terms = AddView::from_expr(ctx, nonzero_expr)
+        .terms
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    let mut remaining_terms = nonzero_terms.clone();
+    if remove_matching_signed_terms(ctx, &mut remaining_terms, &positive_terms)
+        && single_positive_even_square_term_is_nonnegative(ctx, &remaining_terms)
+    {
+        return true;
+    }
+
+    let mut remaining_terms = nonzero_terms;
+    remove_matching_signed_term(ctx, &mut remaining_terms, positive_expr, Sign::Pos)
+        && single_positive_even_square_term_is_nonnegative(ctx, &remaining_terms)
+}
+
+fn positive_condition_times_nonnegative_square_plus_positive_constant_dominates_nonzero(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    let positive_expr = normalize_condition_expr_preserve_sign(ctx, positive_expr);
+    let stripped_nonzero_expr = strip_nonzero_scalar_factors_for_display(ctx, nonzero_expr);
+    let nonzero_expr = normalize_condition_expr(ctx, stripped_nonzero_expr);
+    let mut remaining_terms = AddView::from_expr(ctx, nonzero_expr)
+        .terms
+        .into_iter()
+        .collect::<Vec<_>>();
+
+    if !remove_positive_constant_shift(ctx, &mut remaining_terms) {
+        return false;
+    }
+
+    let positive_terms = AddView::from_expr(ctx, positive_expr)
+        .terms
+        .into_iter()
+        .collect::<Vec<_>>();
+    positive_terms_match_nonnegative_square_product(ctx, &remaining_terms, &positive_terms)
+        || positive_terms_match_nonnegative_square_product(
+            ctx,
+            &remaining_terms,
+            &[(positive_expr, Sign::Pos)],
+        )
+}
+
+fn positive_condition_times_nonnegative_square_plus_positive_constant_dominates_positive(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    derived_positive_expr: ExprId,
+) -> bool {
+    positive_condition_times_nonnegative_square_plus_positive_constant_dominates_nonzero(
+        ctx,
+        positive_expr,
+        derived_positive_expr,
+    )
+}
+
+fn positive_sqrt_square_gap_dominates_nonzero(
+    ctx: &mut Context,
+    positive_expr: ExprId,
+    nonzero_expr: ExprId,
+) -> bool {
+    let Some(gap) = sqrt_square_gap_equivalent_expr(ctx, positive_expr) else {
+        return false;
+    };
+
+    exprs_equivalent_up_to_nonzero_scalar(ctx, gap, nonzero_expr)
+}
+
+fn sqrt_square_gap_equivalent_expr(ctx: &mut Context, positive_expr: ExprId) -> Option<ExprId> {
+    let (constant, square_expr) = positive_constant_minus_square_parts(ctx, positive_expr)?;
+    let payload = sqrt_product_square_payload(ctx, square_expr)?;
+    let gap = ctx.add(Expr::Sub(constant, payload));
+    Some(normalize_condition_expr_preserve_sign(ctx, gap))
+}
+
+fn positive_constant_minus_square_parts(ctx: &Context, expr: ExprId) -> Option<(ExprId, ExprId)> {
+    match ctx.get(expr).clone() {
+        Expr::Sub(left, right) if as_rational_const(ctx, left).is_some_and(|n| n.is_positive()) => {
+            Some((left, right))
+        }
+        Expr::Add(left, right) => {
+            if as_rational_const(ctx, left).is_some_and(|n| n.is_positive()) {
+                let square = negative_inner(ctx, right)?;
+                return Some((left, square));
+            }
+            if as_rational_const(ctx, right).is_some_and(|n| n.is_positive()) {
+                let square = negative_inner(ctx, left)?;
+                return Some((right, square));
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn sqrt_product_square_payload(ctx: &mut Context, square_expr: ExprId) -> Option<ExprId> {
+    let square_base = square_base(ctx, square_expr)?;
+    let mut payload_factors = Vec::new();
+    let mut saw_sqrt = false;
+
+    for factor in mul_leaves(ctx, square_base) {
+        if let Some(radicand) = extract_sqrt_like_base(ctx, factor) {
+            payload_factors.push(radicand);
+            saw_sqrt = true;
+            continue;
+        }
+
+        let exponent = ctx.num(2);
+        payload_factors.push(ctx.add(Expr::Pow(factor, exponent)));
+    }
+
+    if !saw_sqrt {
+        return None;
+    }
+
+    let payload = match payload_factors.as_slice() {
+        [] => return None,
+        [single] => *single,
+        _ => build_balanced_mul(ctx, &payload_factors),
+    };
+    Some(normalize_condition_expr_preserve_sign(ctx, payload))
+}
+
+fn remove_positive_constant_shift(
+    ctx: &Context,
+    remaining_terms: &mut Vec<(ExprId, Sign)>,
+) -> bool {
+    let Some(index) = remaining_terms.iter().position(|(term, sign)| {
+        *sign == Sign::Pos
+            && cas_math::numeric_eval::as_rational_const(ctx, *term)
+                .is_some_and(|value| value.is_positive())
+    }) else {
+        return false;
+    };
+    remaining_terms.remove(index);
+    !remaining_terms
+        .iter()
+        .any(|(term, _)| cas_math::numeric_eval::as_rational_const(ctx, *term).is_some())
+}
+
+#[derive(Clone)]
+struct NonnegativeSquareProductTerm {
+    sign: Sign,
+    scale: BigRational,
+    square_base: ExprId,
+    payload: ExprId,
+}
+
+fn positive_terms_match_nonnegative_square_product(
+    ctx: &mut Context,
+    product_terms: &[(ExprId, Sign)],
+    positive_terms: &[(ExprId, Sign)],
+) -> bool {
+    if product_terms.len() != positive_terms.len() || product_terms.is_empty() {
+        return false;
+    }
+
+    let mut product_terms = product_terms
+        .iter()
+        .copied()
+        .map(|(term, sign)| split_nonnegative_square_product_payload(ctx, term, sign))
+        .collect::<Option<Vec<_>>>();
+    let Some(mut product_terms) = product_terms.take() else {
+        return false;
+    };
+    let Some(anchor) = product_terms.first().cloned() else {
+        return false;
+    };
+
+    for (positive_term, positive_sign) in positive_terms {
+        let Some(index) = product_terms.iter().position(|product_term| {
+            product_term.sign == *positive_sign
+                && product_term.scale == anchor.scale
+                && exprs_equivalent_up_to_sign(ctx, product_term.square_base, anchor.square_base)
+                && exprs_equivalent(ctx, product_term.payload, *positive_term)
+        }) else {
+            return false;
+        };
+        product_terms.remove(index);
+    }
+
+    product_terms.is_empty()
+}
+
+fn split_nonnegative_square_product_payload(
+    ctx: &mut Context,
+    term: ExprId,
+    sign: Sign,
+) -> Option<NonnegativeSquareProductTerm> {
+    let mut scale = BigRational::one();
+    let mut square_base = None;
+    let mut payload_factors = Vec::new();
+
+    for factor in mul_leaves(ctx, term) {
+        if let Some(value) = cas_math::numeric_eval::as_rational_const(ctx, factor) {
+            scale *= value;
+            continue;
+        }
+
+        if let Some(base) = positive_multiple_even_power_base(ctx, factor) {
+            if square_base.replace(base).is_some() {
+                return None;
+            }
+            continue;
+        }
+
+        payload_factors.push(factor);
+    }
+
+    if !scale.is_positive() {
+        return None;
+    }
+
+    let payload = match payload_factors.as_slice() {
+        [] => ctx.add(Expr::Number(BigRational::one())),
+        [single] => *single,
+        _ => build_balanced_mul(ctx, &payload_factors),
+    };
+
+    Some(NonnegativeSquareProductTerm {
+        sign,
+        scale,
+        square_base: square_base?,
+        payload,
+    })
+}
+
+fn remove_matching_signed_terms(
+    ctx: &Context,
+    remaining_terms: &mut Vec<(ExprId, Sign)>,
+    expected_terms: &[(ExprId, Sign)],
+) -> bool {
+    for (expected_expr, expected_sign) in expected_terms {
+        if !remove_matching_signed_term(ctx, remaining_terms, *expected_expr, *expected_sign) {
+            return false;
+        }
+    }
+    true
+}
+
+fn remove_matching_signed_term(
+    ctx: &Context,
+    remaining_terms: &mut Vec<(ExprId, Sign)>,
+    expected_expr: ExprId,
+    expected_sign: Sign,
+) -> bool {
+    let Some(index) = remaining_terms.iter().position(|(term, sign)| {
+        *sign == expected_sign && exprs_equivalent(ctx, *term, expected_expr)
+    }) else {
+        return false;
+    };
+    remaining_terms.remove(index);
+    true
+}
+
+fn single_positive_even_square_term_is_nonnegative(
+    ctx: &mut Context,
+    remaining_terms: &[(ExprId, Sign)],
+) -> bool {
+    let [(term, Sign::Pos)] = remaining_terms else {
+        return false;
+    };
+    positive_multiple_even_power_base(ctx, *term).is_some()
 }
 
 fn positive_condition_dominates_positive_constant_shift_nonzero(
@@ -2854,6 +3188,7 @@ pub fn conditions_equivalent(
 
 fn nonzero_exprs_equivalent_for_display(ctx: &Context, left: ExprId, right: ExprId) -> bool {
     nonzero_exprs_algebraically_equivalent_for_display(ctx, left, right)
+        || same_unary_zero_set_conditions_equivalent_for_display(ctx, left, right)
         || supported_integral_condition_exprs_equivalent_for_display(ctx, left, right)
 }
 
@@ -2864,6 +3199,54 @@ fn nonzero_exprs_algebraically_equivalent_for_display(
 ) -> bool {
     exprs_equivalent_up_to_sign(ctx, left, right)
         || distributive_display_signatures_equivalent(ctx, left, right)
+}
+
+fn same_unary_zero_set_conditions_equivalent_for_display(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let Some((left_builtin, left_arg)) = unary_zero_set_condition_arg(ctx, left) else {
+        return false;
+    };
+    let Some((right_builtin, right_arg)) = unary_zero_set_condition_arg(ctx, right) else {
+        return false;
+    };
+
+    left_builtin == right_builtin
+        && zero_set_condition_args_equivalent_for_display(ctx, left_arg, right_arg)
+}
+
+fn unary_zero_set_condition_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 {
+        return None;
+    }
+
+    let builtin = ctx.builtin_of(*fn_id)?;
+    zero_set_condition_builtin_is_sign_stable(builtin).then_some((builtin, args[0]))
+}
+
+fn zero_set_condition_builtin_is_sign_stable(builtin: BuiltinFn) -> bool {
+    matches!(builtin, BuiltinFn::Sin | BuiltinFn::Cos | BuiltinFn::Sinh)
+}
+
+fn zero_set_condition_args_equivalent_for_display(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    match (
+        extract_sqrt_argument_view(ctx, left),
+        extract_sqrt_argument_view(ctx, right),
+    ) {
+        (Some(left_radicand), Some(right_radicand)) => {
+            exprs_equivalent(ctx, left_radicand, right_radicand)
+        }
+        _ => exprs_equivalent_up_to_sign(ctx, left, right),
+    }
 }
 
 fn supported_integral_condition_exprs_equivalent_for_display(
@@ -3217,8 +3600,31 @@ fn should_prefer_condition_display(
             ImplicitCondition::NonNegative(existing_expr),
             ImplicitCondition::NonNegative(candidate_expr),
         ) => should_prefer_inverse_trig_alias_display(ctx, *existing_expr, *candidate_expr),
+        (ImplicitCondition::NonZero(existing_expr), ImplicitCondition::NonZero(candidate_expr)) => {
+            should_prefer_compact_same_unary_zero_set_display(ctx, *existing_expr, *candidate_expr)
+        }
         _ => false,
     }
+}
+
+fn should_prefer_compact_same_unary_zero_set_display(
+    ctx: &Context,
+    existing: ExprId,
+    candidate: ExprId,
+) -> bool {
+    same_unary_zero_set_conditions_equivalent_for_display(ctx, existing, candidate)
+        && condition_expr_display_len(ctx, candidate) < condition_expr_display_len(ctx, existing)
+}
+
+fn condition_expr_display_len(ctx: &Context, expr: ExprId) -> usize {
+    use cas_formatter::DisplayExpr;
+
+    DisplayExpr {
+        context: ctx,
+        id: expr,
+    }
+    .to_string()
+    .len()
 }
 
 fn should_prefer_inverse_trig_alias_display(
@@ -3361,7 +3767,7 @@ fn restore_nonzero_domain_hole_guards(
     }
 }
 
-fn condition_is_intrinsically_satisfied(ctx: &Context, cond: &ImplicitCondition) -> bool {
+fn condition_is_intrinsically_satisfied(ctx: &mut Context, cond: &ImplicitCondition) -> bool {
     match cond {
         ImplicitCondition::Positive(expr) => {
             positive_sqrt_even_power_base(ctx, *expr).is_none()
@@ -3382,9 +3788,82 @@ fn condition_is_intrinsically_satisfied(ctx: &Context, cond: &ImplicitCondition)
         },
         ImplicitCondition::NonZero(expr) => {
             nonnegative_negative_even_power_base(ctx, *expr).is_none()
-                && is_intrinsically_positive_real(ctx, *expr)
+                && (is_intrinsically_positive_real(ctx, *expr)
+                    || nonzero_trig_table_condition_is_intrinsic(ctx, *expr))
         }
     }
+}
+
+fn nonzero_trig_table_condition_is_intrinsic(ctx: &mut Context, expr: ExprId) -> bool {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return false;
+    };
+    let Some(builtin) = ctx.builtin_of(*fn_id) else {
+        return false;
+    };
+    if args.len() != 1
+        || !matches!(
+            builtin,
+            BuiltinFn::Sin
+                | BuiltinFn::Cos
+                | BuiltinFn::Tan
+                | BuiltinFn::Sec
+                | BuiltinFn::Csc
+                | BuiltinFn::Cot
+        )
+    {
+        return false;
+    }
+
+    let arg = structurally_cancel_additive_inverse_terms(ctx, args[0]);
+    lookup_trig_or_inverse(ctx, builtin.name(), arg)
+        .is_some_and(|hit| !matches!(hit.value, TrigValue::Zero | TrigValue::Undefined))
+}
+
+fn structurally_cancel_additive_inverse_terms(ctx: &mut Context, expr: ExprId) -> ExprId {
+    if !matches!(
+        ctx.get(expr),
+        Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Neg(_)
+    ) {
+        return expr;
+    }
+
+    let terms: Vec<_> = add_terms_signed(ctx, expr).into_iter().collect();
+    if terms.len() < 2 {
+        return expr;
+    }
+
+    let mut cancelled = vec![false; terms.len()];
+    for i in 0..terms.len() {
+        if cancelled[i] {
+            continue;
+        }
+        let (term, sign) = terms[i];
+        for j in (i + 1)..terms.len() {
+            if cancelled[j] {
+                continue;
+            }
+            let (other_term, other_sign) = terms[j];
+            if other_sign == sign.negate() && compare_expr(ctx, term, other_term).is_eq() {
+                cancelled[i] = true;
+                cancelled[j] = true;
+                break;
+            }
+        }
+    }
+
+    let mut rebuilt_terms = Vec::new();
+    for (idx, (term, sign)) in terms.into_iter().enumerate() {
+        if cancelled[idx] {
+            continue;
+        }
+        match sign {
+            Sign::Pos => rebuilt_terms.push(term),
+            Sign::Neg => rebuilt_terms.push(ctx.add(Expr::Neg(term))),
+        }
+    }
+
+    build_balanced_add(ctx, &rebuilt_terms)
 }
 
 fn unit_nonnegative_ratio_gap_is_intrinsic(ctx: &Context, expr: ExprId) -> bool {
@@ -3979,7 +4458,8 @@ fn tanh_nonzero_equivalent_sinh(ctx: &mut Context, expr: ExprId) -> Option<ExprI
         _ => return None,
     };
 
-    Some(ctx.call_builtin(BuiltinFn::Sinh, vec![arg]))
+    let normalized_arg = normalize_sinh_nonzero_argument_for_display(ctx, arg);
+    Some(ctx.call_builtin(BuiltinFn::Sinh, vec![normalized_arg]))
 }
 
 fn expand_common_factor_sum_nonzero_for_display(
@@ -5054,6 +5534,13 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                         || positive_condition_dominates_positive_constant_shift_nonzero(
                             ctx, *pos_expr, *nz_expr,
                         )
+                        || positive_condition_plus_nonnegative_square_dominates_nonzero(
+                            ctx, *pos_expr, *nz_expr,
+                        )
+                        || positive_condition_times_nonnegative_square_plus_positive_constant_dominates_nonzero(
+                            ctx, *pos_expr, *nz_expr,
+                        )
+                        || positive_sqrt_square_gap_dominates_nonzero(ctx, *pos_expr, *nz_expr)
                         || positive_log_condition_dominates_argument_minus_one_nonzero(
                             ctx, *pos_expr, *nz_expr,
                         )
@@ -5112,6 +5599,11 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                             *derived_expr,
                         )
                         || positive_condition_dominates_acosh_radicand_nonnegative(
+                            ctx,
+                            *pos_expr,
+                            *derived_expr,
+                        )
+                        || positive_condition_times_nonnegative_square_plus_positive_constant_dominates_positive(
                             ctx,
                             *pos_expr,
                             *derived_expr,
@@ -6761,6 +7253,128 @@ mod tests {
             &normalized[0],
             &ImplicitCondition::NonZero(sinh_expr)
         ));
+    }
+
+    #[test]
+    fn nonzero_tanh_display_condition_normalizes_argument_before_sinh_dedupe() {
+        let mut ctx = Context::new();
+        let tanh_expr = parse("tanh(x^2 + 0)", &mut ctx).expect("parse tanh");
+        let sinh_expr = parse("sinh(x^2)", &mut ctx).expect("parse sinh");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(sinh_expr),
+                ImplicitCondition::NonZero(tanh_expr),
+            ],
+        );
+        let rendered: Vec<_> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["sinh(x^2) ≠ 0"]);
+    }
+
+    #[test]
+    fn nonzero_sinh_display_condition_normalizes_sqrt_argument_before_dedupe() {
+        let mut ctx = Context::new();
+        let source = parse("sinh(sqrt(x + 0))", &mut ctx).expect("parse source sinh");
+        let target = parse("sinh(sqrt(x))", &mut ctx).expect("parse target sinh");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(source),
+                ImplicitCondition::NonZero(target),
+            ],
+        );
+        let rendered: Vec<_> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["sinh(sqrt(x)) ≠ 0"]);
+    }
+
+    #[test]
+    fn nonzero_sinh_display_condition_preserves_sqrt_radicand_orientation() {
+        let mut ctx = Context::new();
+        let source = parse("sinh(sqrt(1 - x + 0))", &mut ctx).expect("parse source sinh");
+
+        let normalized =
+            normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonZero(source)]);
+        let rendered: Vec<_> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["sinh(sqrt(1 - x)) ≠ 0"]);
+    }
+
+    #[test]
+    fn nonzero_same_trig_display_conditions_dedupe_equivalent_sqrt_argument() {
+        let mut ctx = Context::new();
+        let source = parse("cos(sqrt(x + 0))", &mut ctx).expect("parse source cos");
+        let target = parse("cos(sqrt(x))", &mut ctx).expect("parse target cos");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(source),
+                ImplicitCondition::NonZero(target),
+            ],
+        );
+        let rendered: Vec<_> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["cos(sqrt(x)) ≠ 0"]);
+    }
+
+    #[test]
+    fn nonzero_same_trig_display_condition_preserves_standalone_source_argument() {
+        let mut ctx = Context::new();
+        let source = parse("cos(sqrt(x + 0))", &mut ctx).expect("parse source cos");
+
+        let normalized =
+            normalize_and_dedupe_conditions(&mut ctx, &[ImplicitCondition::NonZero(source)]);
+        let rendered: Vec<_> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["cos(sqrt(x + 0)) ≠ 0"]);
+    }
+
+    #[test]
+    fn nonzero_same_trig_display_equivalence_preserves_sqrt_radicand_orientation() {
+        let mut ctx = Context::new();
+        let source = parse("cos(sqrt(1 - x + 0))", &mut ctx).expect("parse source cos");
+        let opposite = parse("cos(sqrt(x - 1))", &mut ctx).expect("parse opposite cos");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(source),
+                ImplicitCondition::NonZero(opposite),
+            ],
+        );
+        let rendered: Vec<_> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert!(
+            !conditions_equivalent(
+                &ctx,
+                &ImplicitCondition::NonZero(source),
+                &ImplicitCondition::NonZero(opposite)
+            ),
+            "opposite sqrt radicands must not be deduped: {rendered:?}"
+        );
+        assert_eq!(normalized.len(), 2, "got: {rendered:?}");
     }
 
     #[test]

@@ -42,6 +42,32 @@ Objetivo:
   prioriza consolidación compartida antes de seguir añadiendo variantes
   locales.
 
+Plan operativo de madurez de cálculo:
+- Usa la sección "Block-Based Calculus Maturity Plan" de
+  docs/CALCULUS_ENGINE_STRATEGY.md como mapa activo.
+- Si eliges `calculus`, o si una mejora de engine/cobertura nace de un fallo de
+  cálculo, identifica un bloque concreto de madurez y un gate concreto que el
+  ciclo avanza.
+- Los bloques activos son:
+  1. contratos públicos y matrices de `diff`/`limit`/`integrate`
+  2. diferenciación real-domain madura
+  3. límites real-domain maduros
+  4. integración base verificable
+  5. sustitución generalizada
+  6. integración racional
+  7. integración trig/hyperbolic
+  8. radicales e inversas
+  9. residuals y política de no-goals
+  10. didáctica de cálculo
+  11. arquitectura/observabilidad/runtime para generalizar sin fragilidad
+- Un bloque no cuenta como maduro porque existan varios casos verdes. Cuenta
+  sólo cuando su capacidad representativa tiene resultado correcto o residual
+  seguro, condiciones de dominio real explícitas, steps explicables, celda de
+  matriz mínima, verificación cuando aplique, y guardrails verdes.
+- Cada ciclo debe elegir un checkbox pequeño dentro de un bloque. Si el
+  candidato no avanza un gate de bloque, trátalo como discovery pressure o
+  recházalo como near-duplicate.
+
 Optimiza en este orden:
 1. mantener failed = 0
 2. reducir timeouts, stack overflows, no terminación o rutas claramente frágiles
@@ -111,7 +137,9 @@ Proceso obligatorio:
    - behavior_change_expected:
 8. Si eliges calculus, añade:
    - calculus_scope:
+   - calculus_maturity_block:
    - calculus_matrix_cell:
+   - block_gate_check:
    - generalization_axis:
    - precalculus_dependency:
    - domain_safety_check:
@@ -131,6 +159,8 @@ Proceso obligatorio:
    - pressure: make engine-scorecard-pressure si tocas normalización, orquestación, arithmetic, tráfico profundo, refactor estructural o casos muy compuestos
    - make ci sólo como cierre si realmente corresponde
 11. Para cualquier mejora de cálculo:
+   - identifica el bloque de madurez que avanza y el gate concreto que queda
+     más maduro
    - decide qué capacidad pre-cálculo reutiliza o fuerza
    - identifica la celda de matriz que cubre:
      comando/familia/régimen de argumento/régimen de dominio/traza/presentación
@@ -231,6 +261,10 @@ Criterio de decisión:
   capacidades pre-cálculo ya maduras y verticales verdes existentes en
   comportamiento público verificable, didáctico y domain-safe sin abrir
   búsqueda amplia ni suposiciones implícitas.
+- También en empates entre candidatos de cálculo, prioriza el que avance un
+  gate de bloque de madurez incompleto antes que otro caso local dentro de una
+  familia ya representada, salvo que el caso local cierre failed=0 o revele un
+  riesgo de dominio/runtime más urgente.
 
 Entregable:
 - Resume primero el candidato elegido y por qué fue el mayor ROI retenible.
@@ -243,6 +277,7 @@ Entregable:
   - qué aprendizaje quedó documentado si hubo rechazo parcial
   - qué decisión tomaste sobre el puente engine↔derive
   - qué decisión tomaste sobre cálculo↔pre-cálculo si aplicaba, incluyendo la
-    celda de matriz o el motivo para rechazarla/diferirla
+    celda de matriz, el bloque de madurez y el gate avanzado, o el motivo para
+    rechazarlo/diferirlo
   - qué sibling sweep ejecutaste y si decidiste local-fix o consolidación
   - cuál sería la siguiente iteración recomendada

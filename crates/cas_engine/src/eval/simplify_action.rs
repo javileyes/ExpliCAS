@@ -2201,10 +2201,10 @@ fn direct_calculus_residual_step_local(
         crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, source)
     {
         (
-                call.target,
-                "Conservar integral residual",
-                "Conservar la integral sin resolver porque no hay una regla segura y verificable para esta familia",
-            )
+            call.target,
+            "Conservar integral residual",
+            "Conservar la integral sin resolver porque no hay una regla segura y verificable para esta familia",
+        )
     } else {
         return None;
     };
@@ -2219,6 +2219,123 @@ fn direct_calculus_residual_step_local(
     );
     step.importance = crate::ImportanceLevel::Medium;
     Some(step)
+}
+
+fn presimplified_calculus_residual_step_local(
+    ctx: &mut cas_ast::Context,
+    source: ExprId,
+    residual: ExprId,
+    importance: crate::ImportanceLevel,
+) -> Option<crate::Step> {
+    let (residual_target, rule_name, description) = if let (
+        Some(source_call),
+        Some(residual_call),
+    ) = (
+        crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, source),
+        crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, residual),
+    ) {
+        if source_call.var_name != residual_call.var_name {
+            return None;
+        }
+        (
+            residual_call.target,
+            "Conservar derivada residual",
+            "Conservar la derivada sin resolver tras simplificar el argumento porque no hay una regla segura para esta familia",
+        )
+    } else if let (Some(source_call), Some(residual_call)) = (
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, source),
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, residual),
+    ) {
+        if source_call.var_name != residual_call.var_name {
+            return None;
+        }
+        (
+            residual_call.target,
+            "Conservar integral residual",
+            "Conservar la integral sin resolver tras simplificar el integrando porque no hay una regla segura y verificable para esta familia",
+        )
+    } else {
+        return None;
+    };
+
+    let mut step = crate::Step::new(
+        description,
+        rule_name,
+        residual_target,
+        residual,
+        Vec::new(),
+        Some(ctx),
+    );
+    // Match the preceding visible calculus cleanup level so the visibility gate
+    // keeps both the presimplification and the terminal residual policy.
+    step.importance = importance;
+    Some(step)
+}
+
+fn direct_integrate_residual_required_conditions_local(
+    ctx: &mut cas_ast::Context,
+    source: ExprId,
+    residual: ExprId,
+) -> Vec<crate::ImplicitCondition> {
+    if !exprs_exact_ignoring_internal_holds_local(ctx, source, residual) {
+        return Vec::new();
+    }
+
+    let Some(call) = crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, source)
+    else {
+        return Vec::new();
+    };
+
+    cas_math::symbolic_integration_support::integrate_symbolic_required_nonzero_conditions(
+        ctx,
+        call.target,
+        &call.var_name,
+    )
+    .into_iter()
+    .map(crate::ImplicitCondition::NonZero)
+    .collect()
+}
+
+fn integrate_residual_required_conditions_local(
+    ctx: &mut cas_ast::Context,
+    source: ExprId,
+    residual: ExprId,
+) -> Vec<crate::ImplicitCondition> {
+    let direct_conditions =
+        direct_integrate_residual_required_conditions_local(ctx, source, residual);
+    if !direct_conditions.is_empty() {
+        return direct_conditions;
+    }
+
+    let (Some(source_call), Some(residual_call)) = (
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, source),
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, residual),
+    ) else {
+        return Vec::new();
+    };
+    if source_call.var_name != residual_call.var_name
+        || !expr_contains_any_builtin_local(
+            ctx,
+            source_call.target,
+            &[
+                BuiltinFn::Tan,
+                BuiltinFn::Sec,
+                BuiltinFn::Cot,
+                BuiltinFn::Csc,
+            ],
+        )
+    {
+        return Vec::new();
+    }
+
+    cas_math::symbolic_integration_support::integrate_symbolic_required_nonzero_conditions(
+        ctx,
+        residual_call.target,
+        &residual_call.var_name,
+    )
+    .into_iter()
+    .map(crate::ImplicitCondition::NonZero)
+    .collect()
 }
 
 fn expr_is_post_calculus_residual_candidate_local(ctx: &cas_ast::Context, expr: ExprId) -> bool {
@@ -4108,11 +4225,44 @@ impl Engine {
             }
             res = presented;
         }
-        if steps.is_empty() && effective_opts.steps_mode != crate::options::StepsMode::Off {
-            if let Some(step) =
-                direct_calculus_residual_step_local(&mut ctx_simplifier.context, resolved, res)
-            {
-                steps.push(step);
+        let residual_required = integrate_residual_required_conditions_local(
+            &mut ctx_simplifier.context,
+            resolved,
+            res,
+        );
+        if !residual_required.is_empty() {
+            ctx_simplifier.extend_required_conditions(residual_required.iter().cloned());
+        }
+        if effective_opts.steps_mode != crate::options::StepsMode::Off {
+            if steps.is_empty() {
+                if let Some(mut step) =
+                    direct_calculus_residual_step_local(&mut ctx_simplifier.context, resolved, res)
+                {
+                    if !residual_required.is_empty() {
+                        step.meta_mut().required_conditions = residual_required;
+                    }
+                    steps.push(step);
+                }
+            } else if !steps.iter().any(|step| {
+                matches!(
+                    step.rule_name.as_str(),
+                    "Conservar derivada residual" | "Conservar integral residual"
+                )
+            }) {
+                if let Some(mut step) = presimplified_calculus_residual_step_local(
+                    &mut ctx_simplifier.context,
+                    resolved,
+                    res,
+                    steps
+                        .last()
+                        .map(|step| step.importance)
+                        .unwrap_or(crate::ImportanceLevel::Low),
+                ) {
+                    if !residual_required.is_empty() {
+                        step.meta_mut().required_conditions = residual_required;
+                    }
+                    steps.push(step);
+                }
             }
         }
         self.simplifier
@@ -5062,6 +5212,61 @@ mod tests {
                     "{expr_text}: expected {expected}, got {required_display:?}"
                 );
             }
+        }
+    }
+
+    #[test]
+    fn eval_stateless_preserves_integrate_residual_trig_pole_domain_requires() {
+        for (expr_text, expected_requires) in [
+            ("integrate(tan(x^2), x)", "cos(x^2) ≠ 0"),
+            ("integrate(cot(x^2), x)", "sin(x^2) ≠ 0"),
+            ("integrate(sec(x^2), x)", "cos(x^2) ≠ 0"),
+            ("integrate(csc(x^2), x)", "sin(x^2) ≠ 0"),
+        ] {
+            let mut engine = Engine::new();
+            let parsed = parse(expr_text, &mut engine.simplifier.context)
+                .unwrap_or_else(|e| panic!("{expr_text}: {e:?}"));
+            let mut options = crate::options::EvalOptions::default();
+            options.steps_mode = crate::options::StepsMode::Off;
+            options.shared.context_mode = crate::options::ContextMode::Standard;
+            options.shared.semantics.domain_mode = crate::DomainMode::Generic;
+
+            let output = engine
+                .eval_stateless(
+                    options,
+                    crate::EvalRequest {
+                        raw_input: expr_text.to_string(),
+                        parsed,
+                        action: crate::EvalAction::Simplify,
+                        auto_store: false,
+                    },
+                )
+                .unwrap_or_else(|e| panic!("{expr_text}: {e:?}"));
+
+            let crate::EvalResult::Expr(result) = output.result else {
+                panic!("{expr_text}: expected expression result");
+            };
+            assert_eq!(
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: result,
+                }
+                .to_string(),
+                expr_text,
+                "{expr_text}"
+            );
+
+            let required_display: Vec<_> = output
+                .required_conditions
+                .iter()
+                .map(|condition| condition.display(&engine.simplifier.context))
+                .collect();
+            assert!(
+                required_display
+                    .iter()
+                    .any(|actual| actual == expected_requires),
+                "{expr_text}: expected {expected_requires}, got {required_display:?}"
+            );
         }
     }
 

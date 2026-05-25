@@ -5,7 +5,7 @@ use crate::calculus_domain_support::real_domain_is_empty_or_nonfinite_over_reals
 use crate::cancel_support::collect_additive_terms_signed;
 use crate::expr_extract::extract_abs_argument_view;
 use crate::expr_nary::{build_balanced_add, build_balanced_mul, mul_leaves, AddView, Sign};
-use crate::expr_predicates::contains_named_var;
+use crate::expr_predicates::{contains_named_var, contains_variable};
 use crate::factor::factor;
 use crate::polynomial::Polynomial;
 use crate::root_forms::{try_rewrite_simplify_square_root_expr, SimplifySquareRootRewriteKind};
@@ -6454,15 +6454,61 @@ fn trig_log_required_nonzero(ctx: &mut Context, expr: ExprId, var: &str) -> Opti
         Expr::Function(fn_id, args) if args.len() == 1 => (ctx.builtin_of(fn_id)?, args[0]),
         _ => return None,
     };
-    let nonzero_builtin = match builtin {
-        BuiltinFn::Tan => BuiltinFn::Cos,
-        BuiltinFn::Cot => BuiltinFn::Sin,
-        BuiltinFn::Sec => BuiltinFn::Cos,
-        BuiltinFn::Csc => BuiltinFn::Sin,
-        _ => return None,
-    };
-    get_linear_coeffs(ctx, arg, var)?;
+    let nonzero_builtin = trig_pole_nonzero_builtin(builtin)?;
+    if !contains_named_var(ctx, arg, var) {
+        return None;
+    }
     Some(ctx.call_builtin(nonzero_builtin, vec![arg]))
+}
+
+fn trig_pole_nonzero_builtin(builtin: BuiltinFn) -> Option<BuiltinFn> {
+    match builtin {
+        BuiltinFn::Tan | BuiltinFn::Sec => Some(BuiltinFn::Cos),
+        BuiltinFn::Cot | BuiltinFn::Csc => Some(BuiltinFn::Sin),
+        _ => None,
+    }
+}
+
+fn residual_trig_pole_required_nonzero_conditions(ctx: &mut Context, expr: ExprId) -> Vec<ExprId> {
+    let mut conditions = Vec::new();
+    let mut stack = vec![(expr, 0usize)];
+
+    while let Some((current, depth)) = stack.pop() {
+        if depth > SYMBOLIC_INTEGRATION_DOMAIN_SCAN_DEPTH {
+            continue;
+        }
+
+        match ctx.get(current).clone() {
+            Expr::Add(left, right)
+            | Expr::Sub(left, right)
+            | Expr::Mul(left, right)
+            | Expr::Div(left, right)
+            | Expr::Pow(left, right) => {
+                stack.push((left, depth + 1));
+                stack.push((right, depth + 1));
+            }
+            Expr::Neg(inner) | Expr::Hold(inner) => stack.push((inner, depth + 1)),
+            Expr::Function(fn_id, args) => {
+                if args.len() == 1 {
+                    if let Some(nonzero_builtin) =
+                        ctx.builtin_of(fn_id).and_then(trig_pole_nonzero_builtin)
+                    {
+                        let arg = args[0];
+                        if contains_variable(ctx, arg) {
+                            conditions.push(ctx.call_builtin(nonzero_builtin, vec![arg]));
+                        }
+                    }
+                }
+                stack.extend(args.into_iter().map(|arg| (arg, depth + 1)));
+            }
+            Expr::Matrix { data, .. } => {
+                stack.extend(data.into_iter().map(|entry| (entry, depth + 1)));
+            }
+            Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+        }
+    }
+
+    conditions
 }
 
 fn polynomial_trig_log_required_nonzero(
@@ -16300,6 +16346,7 @@ pub fn integrate_symbolic_required_nonzero_conditions(
 
     let conditions: Vec<_> = trig_log_required_nonzero(ctx, expr, var)
         .into_iter()
+        .chain(residual_trig_pole_required_nonzero_conditions(ctx, expr))
         .chain(polynomial_trig_log_required_nonzero(ctx, expr, var))
         .chain(reciprocal_trig_log_required_nonzero(ctx, expr, var))
         .chain(trig_log_derivative_ratio_required_nonzero(ctx, expr, var))
@@ -21256,13 +21303,41 @@ mod tests {
     }
 
     #[test]
-    fn trig_log_integration_rejects_non_linear_argument_without_condition() {
-        let mut ctx = Context::new();
-        let expr = parse("tan(x^2)", &mut ctx).expect("parse");
-        assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
-        assert!(
-            super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x").is_empty()
-        );
+    fn trig_log_integration_rejects_non_linear_argument_but_preserves_domain_condition() {
+        for (input, expected_condition) in [
+            ("tan(x^2)", "cos(x^2)"),
+            ("cot(x^2)", "sin(x^2)"),
+            ("sec(x^2)", "cos(x^2)"),
+            ("csc(x^2)", "sin(x^2)"),
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            assert!(integrate_symbolic_expr(&mut ctx, expr, "x").is_none());
+            let conditions =
+                super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x");
+            assert_eq!(conditions.len(), 1, "input: {input}");
+            assert_eq!(rendered(&ctx, conditions[0]), expected_condition);
+        }
+    }
+
+    #[test]
+    fn trig_pole_residual_compositions_preserve_domain_conditions() {
+        for (input, expected_conditions) in [
+            ("tan(x^2)+sin(x^2)", vec!["cos(x^2)"]),
+            ("sec(x^2)*sin(x^2)", vec!["cos(x^2)"]),
+            ("cot(x^2)+csc(y)", vec!["sin(x^2)", "sin(y)"]),
+            ("tan(1)+sin(x^2)", vec![]),
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let mut conditions: Vec<_> =
+                super::integrate_symbolic_required_nonzero_conditions(&mut ctx, expr, "x")
+                    .iter()
+                    .map(|condition| rendered(&ctx, *condition))
+                    .collect();
+            conditions.sort();
+            assert_eq!(conditions, expected_conditions, "input: {input}");
+        }
     }
 
     #[test]

@@ -14,7 +14,8 @@ pub(super) fn render_step_wire_latex(context: &Context, step: &Step) -> Rendered
     let (mut before_latex, mut after_latex) = if matches!(
         step.rule_name.as_str(),
         "Product-to-Sum Identity" | "Hyperbolic Product-to-Sum Identity"
-    ) {
+    ) || step.rule_name == "Conservar límite residual"
+    {
         let before_expr = step.global_before.unwrap_or(step.before);
         let after_expr = step.global_after.unwrap_or(step.after);
         (

@@ -20,19 +20,27 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_limit_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 12)
+        self.assertEqual(len(cases), 20)
         names = {case.name for case in cases}
         self.assertIn("finite_removable_rational_cancellation", names)
+        self.assertIn("finite_log_root_structurally_positive_composition", names)
+        self.assertIn("finite_sqrt_structurally_positive_radical_presentation", names)
+        self.assertIn("finite_inverse_trig_root_interior_special_angle", names)
+        self.assertIn("finite_binary_log_variable_base_domain", names)
+        self.assertIn("finite_binary_log_unit_base_boundary_residual", names)
+        self.assertIn("finite_binary_log_argument_zero_boundary_residual", names)
         self.assertIn("finite_static_invalid_log_undefined", names)
+        self.assertIn("finite_sqrt_endpoint_residual_presentation_cleanup", names)
+        self.assertIn("finite_trig_special_angle_structural_domain", names)
         self.assertIn("negative_infinity_log_domain_conflict_residual", names)
-        self.assertEqual(SMOKE.count_by(cases, "point_regime"), {"finite": 7, "infinity": 5})
+        self.assertEqual(SMOKE.count_by(cases, "point_regime"), {"finite": 15, "infinity": 5})
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 3, "supported": 8, "undefined": 1},
+            {"residual": 6, "supported": 13, "undefined": 1},
         )
         self.assertEqual(
             sum(1 for case in cases if case.expected_step_substrings),
-            12,
+            20,
         )
         self.assertEqual(
             [

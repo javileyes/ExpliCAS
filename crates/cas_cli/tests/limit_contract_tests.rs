@@ -267,6 +267,49 @@ fn test_eval_limit_steps_on_emits_limit_trace_json() {
 }
 
 #[test]
+fn test_eval_residual_limit_result_matches_display_cleanup_trace_json() {
+    let (success, stdout) = run_eval_with_steps("limit(sqrt(x + 0), x, 0)");
+    assert!(
+        success,
+        "Command should keep residual finite sqrt endpoint limit"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "limit(sqrt(x), x, 0)");
+    assert_eq!(wire["required_display"], json!(["x ≥ 0"]));
+    assert!(
+        wire["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("Finite point limits are not supported safely yet")
+                    })
+            })
+        }),
+        "Residual finite limit should keep the safety warning, got: {wire:?}"
+    );
+
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps[0]["rule"], "Conservar límite residual");
+    assert_eq!(steps[0]["after"], "limit(sqrt(x), x, 0)");
+
+    let (success, stdout) = run_eval_with_steps("limit(0*sqrt(x), x, 0)");
+    assert!(
+        success,
+        "Command should keep domain-sensitive residual products visible"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "limit(0·sqrt(x), x, 0)");
+    assert_eq!(wire["required_display"], json!(["x ≥ 0"]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps[0]["rule"], "Conservar límite residual");
+    assert_eq!(steps[0]["before"], "0·sqrt(x)");
+    assert_eq!(steps[0]["after"], "limit(0·sqrt(x), x, 0)");
+}
+
+#[test]
 fn test_eval_finite_rational_polynomial_limit_handles_removable_holes_json() {
     let (success, stdout) = run_eval("limit((x^2+3*x+2)/(x+2), x, 0)", "json");
     assert!(

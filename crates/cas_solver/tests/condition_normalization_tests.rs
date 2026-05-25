@@ -121,6 +121,30 @@ fn test_affine_domain_conditions_display_solved_bounds() {
 }
 
 #[test]
+fn test_structurally_satisfied_trig_nonzero_condition_is_removed() {
+    let mut ctx = Context::new();
+    let condition = cas_parser::parse("cos(pi/4 + x - x)", &mut ctx).expect("parse trig condition");
+
+    let rendered = render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(condition)]);
+
+    assert_eq!(rendered, Vec::<String>::new());
+}
+
+#[test]
+fn test_zero_trig_table_nonzero_condition_is_not_removed() {
+    let mut ctx = Context::new();
+    let condition = cas_parser::parse("cos(pi/2 + x - x)", &mut ctx).expect("parse trig condition");
+
+    let rendered = render_conditions_normalized(&mut ctx, &[ImplicitCondition::NonZero(condition)]);
+
+    assert_eq!(rendered.len(), 1, "unexpected conditions: {rendered:?}");
+    assert!(
+        rendered[0].contains("cos") && rendered[0].ends_with("≠ 0"),
+        "zero trig table guard must remain visible: {rendered:?}"
+    );
+}
+
+#[test]
 fn test_quadratic_unit_interval_condition_displays_solved_closed_interval() {
     for (expr, expected) in [
         ("x - x^2", "0 ≤ x ≤ 1"),
@@ -903,6 +927,192 @@ fn test_intrinsically_positive_even_power_sum_does_not_dominate_base_nonzero_con
     );
 
     assert_eq!(rendered, vec!["x ≠ 0"]);
+}
+
+#[test]
+fn test_positive_gap_plus_nonnegative_square_dominates_sum_nonzero_condition() {
+    let mut ctx = Context::new();
+    let positive_gap = cas_parser::parse("x + 1", &mut ctx).expect("parse positive gap");
+    let denominator = cas_parser::parse("2*a^2 + x + 1", &mut ctx).expect("parse denominator");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::Positive(positive_gap),
+            ImplicitCondition::NonZero(denominator),
+        ],
+    );
+
+    assert_eq!(rendered, vec!["x > -1"]);
+}
+
+#[test]
+fn test_positive_gap_square_product_shift_dominates_nonzero_condition() {
+    let mut ctx = Context::new();
+    let positive_gap = cas_parser::parse("x + 1", &mut ctx).expect("parse positive gap");
+    let denominator =
+        cas_parser::parse("4*a^2*x + 4*a^2 + 1", &mut ctx).expect("parse denominator");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::Positive(positive_gap),
+            ImplicitCondition::NonZero(denominator),
+        ],
+    );
+
+    assert_eq!(rendered, vec!["x > -1"]);
+}
+
+#[test]
+fn test_positive_gap_square_product_shift_dominates_positive_condition() {
+    let mut ctx = Context::new();
+    let positive_gap = cas_parser::parse("x + 1", &mut ctx).expect("parse positive gap");
+    let denominator = cas_parser::parse("a^2*x + a^2 + 1", &mut ctx).expect("parse denominator");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::Positive(positive_gap),
+            ImplicitCondition::Positive(denominator),
+        ],
+    );
+
+    assert_eq!(rendered, vec!["x > -1"]);
+}
+
+#[test]
+fn test_positive_sqrt_square_gap_dominates_expanded_boundary_nonzero_condition() {
+    let mut ctx = Context::new();
+    let positive_gap = cas_parser::parse("x + 1", &mut ctx).expect("parse positive gap");
+    let open_interval_gap =
+        cas_parser::parse("1 - (a*sqrt(x+1))^2", &mut ctx).expect("parse open interval gap");
+    let boundary = cas_parser::parse("a^2*x + a^2 - 1", &mut ctx).expect("parse expanded boundary");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::NonZero(boundary),
+            ImplicitCondition::Positive(positive_gap),
+            ImplicitCondition::Positive(open_interval_gap),
+        ],
+    );
+
+    assert_eq!(rendered.len(), 2, "unexpected conditions: {rendered:?}");
+    assert!(rendered.contains(&"x > -1".to_string()));
+    assert!(
+        rendered
+            .iter()
+            .any(|condition| condition.contains("sqrt(x + 1)") && condition.ends_with("> 0")),
+        "missing open interval condition: {rendered:?}"
+    );
+    assert!(
+        !rendered.iter().any(|condition| condition.ends_with("≠ 0")),
+        "boundary nonzero should be dominated: {rendered:?}"
+    );
+}
+
+#[test]
+fn test_positive_sqrt_square_gap_keeps_unrelated_nonzero_condition() {
+    let mut ctx = Context::new();
+    let open_interval_gap =
+        cas_parser::parse("1 - (a*sqrt(x+1))^2", &mut ctx).expect("parse open interval gap");
+    let unrelated_boundary =
+        cas_parser::parse("1 + a^2*x - a^2", &mut ctx).expect("parse unrelated boundary");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::Positive(open_interval_gap),
+            ImplicitCondition::NonZero(unrelated_boundary),
+        ],
+    );
+
+    assert_eq!(rendered.len(), 2, "unexpected conditions: {rendered:?}");
+    assert!(
+        rendered.iter().any(|condition| condition.ends_with("≠ 0")),
+        "unrelated nonzero boundary should remain: {rendered:?}"
+    );
+    assert!(
+        rendered.iter().any(|condition| condition.ends_with("> 0")),
+        "open interval condition should remain: {rendered:?}"
+    );
+}
+
+#[test]
+fn test_negative_square_product_shift_keeps_nonzero_condition() {
+    let mut ctx = Context::new();
+    let positive_gap = cas_parser::parse("x + 1", &mut ctx).expect("parse positive gap");
+    let denominator =
+        cas_parser::parse("1 - 4*a^2*x - 4*a^2", &mut ctx).expect("parse denominator");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::Positive(positive_gap),
+            ImplicitCondition::NonZero(denominator),
+        ],
+    );
+
+    assert_eq!(rendered.len(), 2, "unexpected conditions: {rendered:?}");
+    assert!(rendered.contains(&"x > -1".to_string()));
+    assert!(
+        rendered
+            .iter()
+            .any(|condition| condition.contains("a^2") && condition.ends_with("≠ 0")),
+        "missing nonzero denominator condition: {rendered:?}"
+    );
+}
+
+#[test]
+fn test_negative_square_product_shift_keeps_positive_condition() {
+    let mut ctx = Context::new();
+    let positive_gap = cas_parser::parse("x + 1", &mut ctx).expect("parse positive gap");
+    let denominator = cas_parser::parse("1 - a^2*x - a^2", &mut ctx).expect("parse denominator");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::Positive(positive_gap),
+            ImplicitCondition::Positive(denominator),
+        ],
+    );
+
+    assert_eq!(rendered.len(), 2, "unexpected conditions: {rendered:?}");
+    assert!(rendered.contains(&"x > -1".to_string()));
+    assert!(
+        rendered
+            .iter()
+            .any(|condition| condition.contains("a^2") && condition.ends_with("> 0")),
+        "missing positive denominator condition: {rendered:?}"
+    );
+}
+
+#[test]
+fn test_positive_gap_plus_negative_square_does_not_dominate_sum_nonzero_condition() {
+    let mut ctx = Context::new();
+    let base = cas_parser::parse("a", &mut ctx).expect("parse base");
+    let positive_gap = cas_parser::parse("x + 1", &mut ctx).expect("parse positive gap");
+    let denominator = cas_parser::parse("x + 1 - 2*a^2", &mut ctx).expect("parse denominator");
+
+    let rendered = render_conditions_normalized(
+        &mut ctx,
+        &[
+            ImplicitCondition::NonZero(base),
+            ImplicitCondition::Positive(positive_gap),
+            ImplicitCondition::NonZero(denominator),
+        ],
+    );
+
+    assert_eq!(rendered.len(), 3, "unexpected conditions: {rendered:?}");
+    assert!(rendered.contains(&"a ≠ 0".to_string()));
+    assert!(rendered.contains(&"x > -1".to_string()));
+    assert!(
+        rendered
+            .iter()
+            .any(|condition| condition.contains("a^2") && condition.ends_with("≠ 0")),
+        "missing nonzero denominator condition: {rendered:?}"
+    );
 }
 
 #[test]

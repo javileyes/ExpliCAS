@@ -82,6 +82,10 @@ pub(crate) fn visible_rule_name(rule_name: &str) -> &str {
         "Half-Angle Tangent Identity" => "Aplicar identidad de tangente de ángulo mitad",
         "Trig Parity (Odd/Even)" => "Aplicar paridad trigonométrica",
         "Trig Expansion" => "Expandir una identidad trigonométrica",
+        "Tan to Sin/Cos" => "Expandir tangente como seno entre coseno",
+        "Secant to Reciprocal Cosine" => "Expandir secante como recíproco de coseno",
+        "Cosecant to Reciprocal Sine" => "Expandir cosecante como recíproco de seno",
+        "Cotangent to Cosine over Sine" => "Expandir cotangente como coseno entre seno",
         "Trig Quotient" => "Convertir un cociente trigonométrico en tangente",
         "Cos-Diff / Sin-Diff Quotient" => "Convertir un cociente trigonométrico en tangente",
         "Pythagorean Identity" => "Aplicar la identidad pitagórica",
@@ -302,6 +306,26 @@ pub(crate) fn visible_rule_name_for_step<'a>(
         }
         "Trig Expansion" if description == "Expand tangent to sine over cosine" => {
             Cow::Borrowed("Expandir tangente como seno entre coseno")
+        }
+        "Trig Quotient" | "Trig Quotient to Named Function"
+            if description == "cos(x)/sin(x) → cot(x)" =>
+        {
+            Cow::Borrowed("Reconocer cotangente desde un cociente")
+        }
+        "Trig Quotient" | "Trig Quotient to Named Function"
+            if description == "1/sin(x) → csc(x)" =>
+        {
+            Cow::Borrowed("Reconocer cosecante desde un recíproco")
+        }
+        "Trig Quotient" | "Trig Quotient to Named Function"
+            if description == "1/cos(x) → sec(x)" =>
+        {
+            Cow::Borrowed("Reconocer secante desde un recíproco")
+        }
+        "Trig Quotient" | "Trig Quotient to Named Function"
+            if description == "1/tan(x) → cot(x)" =>
+        {
+            Cow::Borrowed("Reconocer cotangente desde un recíproco")
         }
         "Reciprocal Trig Identity" if description == "Expand sec(u) as 1 / cos(u)" => {
             Cow::Borrowed("Reescribir secante como recíproco del coseno")

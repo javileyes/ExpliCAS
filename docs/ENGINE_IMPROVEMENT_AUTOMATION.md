@@ -247,6 +247,12 @@ normalization, or domain gap, the next retained work should usually be
 classified as `coverage`, `robustness`, or `observability`, not as a calculus
 workaround.
 
+For calculus work, the selector should also use the block-based maturity plan in
+[CALCULUS_ENGINE_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/CALCULUS_ENGINE_STRATEGY.md).
+Each calculus iteration should name the active maturity block and the block gate
+it advances. This keeps the loop from treating a long sequence of green
+near-duplicates as real generalization.
+
 ### Engine/Derive Cross-Pollination
 
 Every mathematical improvement should be read in both directions:
@@ -400,7 +406,9 @@ promotion_target:
 derive_bridge_check:
 engine_feedback_check:
 calculus_scope:
+calculus_maturity_block:
 calculus_matrix_cell:
+block_gate_check:
 generalization_axis:
 precalculus_dependency:
 domain_safety_check:
@@ -432,9 +440,19 @@ Minimum expectations:
 - `calculus_scope`
   - for calculus work: `diff`, `limit`, `integrate`, or the shared calculus
     command/surface, matrix row, or policy regime being changed
+- `calculus_maturity_block`
+  - for calculus work: the active block from the block-based maturity plan,
+    such as differentiation, limits, base integration, generalized
+    substitution, rational integration, trig/hyperbolic integration,
+    radical/inverse families, residual policy, didactic trace maturity, or
+    calculus architecture/observability
 - `calculus_matrix_cell`
   - for calculus work: the command/family/argument/domain/trace/presentation
     cell being filled, generalized, or deliberately deferred
+- `block_gate_check`
+  - for calculus work: the concrete maturity gate improved by this iteration:
+    correct public behavior, explicit real-domain conditions, residual safety,
+    didactic trace, matrix representative, verification, or guardrail retention
 - `generalization_axis`
   - for calculus work: the reusable axis being expanded, such as orientation,
     sign, argument shape, domain regime, verification policy, or presentation

@@ -19,7 +19,12 @@ pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> Rendered
     );
 
     RenderedStepWireExprs {
-        before: if symbolic_integration_step_prefers_reciprocal_sqrt_before_display(
+        before: if residual_limit_step_prefers_direct_display(step) {
+            render_human_expr_without_display_normalization(
+                context,
+                step.global_before.unwrap_or(step.before),
+            )
+        } else if symbolic_integration_step_prefers_reciprocal_sqrt_before_display(
             &temp_ctx,
             step,
             snapshots.global_before_expr,
@@ -36,7 +41,12 @@ pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> Rendered
         } else {
             render_human_expr(&temp_ctx, snapshots.global_before_expr)
         },
-        after: if symbolic_differentiation_step_prefers_compact_after_display(
+        after: if residual_limit_step_prefers_direct_display(step) {
+            render_human_expr_without_display_normalization(
+                context,
+                step.global_after.unwrap_or(step.after),
+            )
+        } else if symbolic_differentiation_step_prefers_compact_after_display(
             &temp_ctx,
             step,
             snapshots.global_after_expr,
@@ -60,6 +70,10 @@ pub(super) fn render_step_wire_exprs(context: &Context, step: &Step) -> Rendered
             render_human_expr(&temp_ctx, snapshots.global_after_expr)
         },
     }
+}
+
+fn residual_limit_step_prefers_direct_display(step: &Step) -> bool {
+    step.rule_name == "Conservar límite residual"
 }
 
 fn symbolic_integration_step_prefers_reciprocal_sqrt_before_display(

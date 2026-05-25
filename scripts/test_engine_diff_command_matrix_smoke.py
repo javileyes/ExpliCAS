@@ -20,7 +20,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_diff_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 30)
+        self.assertEqual(len(cases), 40)
         names = {case.name for case in cases}
         self.assertIn(
             "log_quadratic_empty_positive_argument_domain_undefined",
@@ -53,6 +53,25 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertIn("inverse_trig_root_compact_presentation", names)
         self.assertIn("inverse_trig_root_constant_multiple_trace", names)
+        self.assertIn("inverse_trig_root_symbolic_denominator_scale", names)
+        self.assertIn("inverse_trig_root_symbolic_rational_denominator_scale", names)
+        self.assertIn(
+            "inverse_trig_root_symbolic_rational_denominator_affine_radicand_shortcut",
+            names,
+        )
+        self.assertIn(
+            "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
+            names,
+        )
+        self.assertIn(
+            "inverse_trig_root_symbolic_numerator_scale_positive_gap",
+            names,
+        )
+        self.assertIn("inverse_trig_root_symbolic_denominator_internal_scale", names)
+        self.assertIn(
+            "inverse_trig_root_symbolic_denominator_scale_dual_orientation",
+            names,
+        )
         self.assertIn("inverse_trig_root_interval_orientation", names)
         self.assertIn("inverse_trig_root_empty_open_interval_residual", names)
         self.assertIn(
@@ -64,11 +83,23 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             names,
         )
         self.assertIn("inverse_hyperbolic_atanh_empty_open_interval_residual", names)
+        self.assertIn(
+            "inverse_hyperbolic_root_atanh_symbolic_numerator_scale_open_interval",
+            names,
+        )
+        self.assertIn(
+            "inverse_hyperbolic_root_symbolic_numerator_scale_positive_gap",
+            names,
+        )
         self.assertIn("inverse_trig_root_negative_argument", names)
+        self.assertIn(
+            "sqrt_chain_trig_log_presimplified_condition_dedupe",
+            names,
+        )
         self.assertIn("discontinuous_sign_residual_boundary", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 5, "supported": 19, "undefined": 6},
+            {"residual": 5, "supported": 29, "undefined": 6},
         )
         step_checked = {
             case.name
@@ -103,9 +134,20 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "sqrt_quadratic_empty_positive_argument_domain_undefined",
                 "inverse_trig_root_compact_presentation",
                 "inverse_trig_root_constant_multiple_trace",
+                "inverse_trig_root_symbolic_denominator_scale",
+                "inverse_trig_root_symbolic_rational_denominator_scale",
+                "inverse_trig_root_symbolic_rational_denominator_affine_radicand_shortcut",
+                "inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
+                "inverse_trig_root_symbolic_numerator_scale_positive_gap",
+                "inverse_trig_root_symbolic_denominator_internal_scale",
+                "inverse_trig_root_symbolic_denominator_scale_dual_orientation",
                 "inverse_trig_root_interval_orientation",
+                "inverse_trig_shifted_quadratic_empty_open_interval_residual",
+                "inverse_hyperbolic_root_atanh_symbolic_numerator_scale_open_interval",
+                "inverse_hyperbolic_root_symbolic_numerator_scale_positive_gap",
                 "inverse_trig_root_negative_argument",
                 "trig_product_rule",
+                "sqrt_chain_trig_log_presimplified_condition_dedupe",
                 "variable_power_log_domain",
                 "abs_piecewise_required_condition",
                 "discontinuous_sign_residual_boundary",
@@ -123,8 +165,9 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "interval_required": 1,
                 "negative_base_undefined": 1,
                 "nonfinite_undefined": 1,
+                "open_interval_required": 1,
                 "positive_exponent_required": 1,
-                "required_condition": 12,
+                "required_condition": 21,
                 "unconditional": 5,
             },
         )

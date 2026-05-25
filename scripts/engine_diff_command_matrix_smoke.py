@@ -42,6 +42,7 @@ class DiffCommandMatrixCase:
     expected_warning_substrings: tuple[str, ...] = ()
     expected_blocked_hint_substrings: tuple[str, ...] = ()
     expected_step_substrings: tuple[str, ...] = ()
+    forbidden_stderr_substrings: tuple[str, ...] = ()
     family: str = "unknown"
     argument_regime: str = "variable"
     domain_regime: str = "unconditional"
@@ -350,6 +351,129 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         presentation_regime="scaled_post_calculus_compact",
     ),
     DiffCommandMatrixCase(
+        name="inverse_trig_root_symbolic_denominator_scale",
+        expr="diff(arctan(sqrt(x)/a), x)",
+        expected_result="a / (2·sqrt(x)·(a^2 + x))",
+        expected_required_display=("x > 0", "a ≠ 0"),
+        expected_step_substrings=(
+            "Usar regla de arctan(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        family="inverse_trig_root",
+        argument_regime="symbolic_denominator_scaled_nested_root",
+        domain_regime="required_condition",
+        trace_regime="parameter_scaled_chain_rule",
+        presentation_regime="symbolic_denominator_post_calculus_compact",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_trig_root_symbolic_rational_denominator_scale",
+        expr="diff(arctan(sqrt(x)/(2*a)), x)",
+        expected_result="a / (sqrt(x)·(4·a^2 + x))",
+        expected_required_display=("a ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar regla de arctan(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        family="inverse_trig_root",
+        argument_regime="symbolic_rational_denominator_scaled_nested_root",
+        domain_regime="required_condition",
+        trace_regime="parameter_denominator_scaled_chain_rule",
+        presentation_regime="symbolic_rational_denominator_post_calculus_compact",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_trig_root_symbolic_rational_denominator_affine_radicand_shortcut",
+        expr="diff(arctan(sqrt(2*x+2)/(2*a)), x)",
+        expected_result="a / (sqrt(2·x + 2)·(2·a^2 + x + 1))",
+        expected_required_display=("a ≠ 0", "x > -1"),
+        expected_step_substrings=(
+            "Usar regla de arctan(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        forbidden_stderr_substrings=("depth_overflow",),
+        family="inverse_trig_root",
+        argument_regime="symbolic_rational_denominator_affine_radicand",
+        domain_regime="required_condition",
+        trace_regime="parameter_denominator_scaled_affine_radicand_chain_rule",
+        presentation_regime="symbolic_rational_denominator_affine_radicand_compact",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_trig_root_symbolic_rational_denominator_affine_radicand_external_scale_shortcut",
+        expr="diff(3*arctan(sqrt(2*x+2)/(2*a)), x)",
+        expected_result="3·a / (sqrt(2·x + 2)·(2·a^2 + x + 1))",
+        expected_required_display=("a ≠ 0", "x > -1"),
+        expected_step_substrings=(
+            "Usar factor constante de la derivada",
+            "Usar regla de arctan(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        forbidden_stderr_substrings=("depth_overflow",),
+        family="inverse_trig_root",
+        argument_regime="external_scale_symbolic_rational_denominator_affine_radicand",
+        domain_regime="required_condition",
+        trace_regime="constant_multiple_parameter_denominator_scaled_affine_radicand_chain_rule",
+        presentation_regime="external_scale_symbolic_rational_denominator_affine_radicand_compact",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_trig_root_symbolic_numerator_scale_positive_gap",
+        expr="diff(arctan(a*sqrt(x+1)), x)",
+        expected_result="a / ((2·x·a^2 + 2·a^2 + 2)·sqrt(x + 1))",
+        expected_required_display=("x > -1",),
+        expected_step_substrings=(
+            "Usar regla de arctan(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        family="inverse_trig_root",
+        argument_regime="symbolic_numerator_scaled_shifted_root",
+        domain_regime="required_condition",
+        trace_regime="parameter_numerator_scaled_chain_rule",
+        presentation_regime="symbolic_numerator_positive_gap_post_calculus_compact",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_trig_root_symbolic_denominator_internal_scale",
+        expr="diff(arctan(2*sqrt(x)/a), x)",
+        expected_result="a / (sqrt(x)·(a^2 + 4·x))",
+        expected_required_display=("a ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar regla de arctan(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        family="inverse_trig_root",
+        argument_regime="symbolic_denominator_internal_scaled_nested_root",
+        domain_regime="required_condition",
+        trace_regime="parameter_internal_scaled_chain_rule",
+        presentation_regime="symbolic_denominator_internal_scale_post_calculus_compact",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_trig_root_symbolic_denominator_scale_dual_orientation",
+        expr="diff(arccot(sqrt(x)/a), x)",
+        expected_result="-a / (2·sqrt(x)·(a^2 + x))",
+        expected_required_display=("x > 0", "a ≠ 0"),
+        expected_step_substrings=(
+            "arccot(x) → arctan(1/x)",
+            "Usar regla de arctan(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        family="inverse_trig_root",
+        argument_regime="dual_symbolic_denominator_scaled_nested_root",
+        domain_regime="required_condition",
+        trace_regime="dual_parameter_scaled_chain_rule",
+        presentation_regime="symbolic_denominator_dual_post_calculus_compact",
+    ),
+    DiffCommandMatrixCase(
         name="inverse_trig_root_interval_orientation",
         expr="diff(arccos(sqrt(x)), x)",
         expected_result="-1 / (2·sqrt(x)·sqrt(1 - x))",
@@ -389,6 +513,7 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
             "real domain is empty",
             "> 0",
         ),
+        expected_step_substrings=("Conservar derivada residual",),
         family="inverse_trig_root",
         argument_regime="shifted_quadratic_argument",
         domain_regime="empty_open_interval_domain",
@@ -428,6 +553,41 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         presentation_regime="residual",
     ),
     DiffCommandMatrixCase(
+        name="inverse_hyperbolic_root_atanh_symbolic_numerator_scale_open_interval",
+        expr="diff(atanh(a*sqrt(x+1)), x)",
+        expected_result="a / ((2 - 2·x·a^2 - 2·a^2)·sqrt(x + 1))",
+        expected_required_display=(
+            "x > -1",
+            "1 - (a·(x + 1)^(1/2))^2 > 0",
+        ),
+        expected_step_substrings=(
+            "Usar regla de la cadena",
+            "Identificar u y du",
+            "Presentar resultado de cálculo en forma compacta",
+        ),
+        family="inverse_hyperbolic_root",
+        argument_regime="symbolic_numerator_scaled_shifted_root",
+        domain_regime="open_interval_required",
+        trace_regime="chain_rule",
+        presentation_regime="open_interval_boundary_deduped_compact",
+    ),
+    DiffCommandMatrixCase(
+        name="inverse_hyperbolic_root_symbolic_numerator_scale_positive_gap",
+        expr="diff(asinh(a*sqrt(x+1)), x)",
+        expected_result="a·(x·a^2 + a^2 + 1)^(-1/2) / (2·sqrt(x + 1))",
+        expected_required_display=("x > -1",),
+        expected_step_substrings=(
+            "Usar regla de la cadena",
+            "Identificar u y du",
+            "Presentar resultado de cálculo en forma compacta",
+        ),
+        family="inverse_hyperbolic_root",
+        argument_regime="symbolic_numerator_scaled_shifted_root",
+        domain_regime="required_condition",
+        trace_regime="chain_rule",
+        presentation_regime="positive_gap_domain_condition_compact",
+    ),
+    DiffCommandMatrixCase(
         name="inverse_trig_root_negative_argument",
         expr="diff(arctan(-sqrt(x)), x)",
         expected_result="-1 / (2·sqrt(x)·(x + 1))",
@@ -458,6 +618,21 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         argument_regime="product",
         trace_regime="product_rule",
         presentation_regime="trig_power_difference",
+    ),
+    DiffCommandMatrixCase(
+        name="sqrt_chain_trig_log_presimplified_condition_dedupe",
+        expr="diff(-ln(|cos(sqrt(x+0))|), x)",
+        expected_result="tan(sqrt(x + 0)) / (2·sqrt(x + 0))",
+        expected_required_display=("cos(sqrt(x)) ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Calcular la derivada",
+            "Presentar resultado de cálculo en forma compacta",
+        ),
+        family="trig_log_sqrt_chain",
+        argument_regime="presimplified_nested_root",
+        domain_regime="required_condition",
+        trace_regime="log_abs_trig_chain_rule",
+        presentation_regime="same_function_zero_set_condition_dedupe",
     ),
     DiffCommandMatrixCase(
         name="variable_power_log_domain",
@@ -733,6 +908,11 @@ def run_case(
             "expected required_display "
             f"{case.expected_required_display!r}, got {required_display!r}"
         )
+    elif any(fragment in stderr for fragment in case.forbidden_stderr_substrings):
+        error = (
+            "forbidden stderr substring found: "
+            f"{case.forbidden_stderr_substrings!r}"
+        )
     else:
         warnings_ok, warning_error = warning_expectations_met(
             case.expected_warning_substrings,
@@ -776,6 +956,7 @@ def run_case(
         "blocked_hints": list(blocked_hints),
         "expected_blocked_hint_substrings": list(case.expected_blocked_hint_substrings),
         "expected_step_substrings": list(case.expected_step_substrings),
+        "forbidden_stderr_substrings": list(case.forbidden_stderr_substrings),
         "family": case.family,
         "argument_regime": case.argument_regime,
         "domain_regime": case.domain_regime,

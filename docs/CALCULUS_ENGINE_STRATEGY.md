@@ -89,6 +89,117 @@ Reject or defer candidates that only add one more syntactic variant unless the
 variant reveals a new domain regime, rule interaction, didactic gap, runtime
 cliff, or public behavior class.
 
+## Block-Based Calculus Maturity Plan
+
+The calculus campaign should now be planned by maturity blocks, not by an
+unbounded list of examples. Each auto-improvement cycle should select one small
+checkbox inside one block, then validate it with the normal ROI and guardrail
+process.
+
+A calculus block is not mature just because several cases pass. Treat a block as
+retained only when its representative capability has:
+
+- correct public behavior or a safe residual/undefined outcome
+- explicit real-domain requirements, including poles, positive arguments,
+  branch-sensitive intervals, infinity assumptions, or integration constants
+  when applicable
+- explainable steps or a documented reason why the command remains residual
+- at least one minimal support-matrix representative for the new public regime
+- verification by equivalence, limit policy, or differentiation of the
+  antiderivative when applicable
+- green `fast`, `guardrail`, and, for broad core changes, `pressure`
+
+Use these blocks as the active checklist:
+
+1. **Public calculus contracts and matrices**
+   - keep `diff`, `limit`, and `integrate` matrices organized by command,
+     family, argument regime, domain regime, trace regime, presentation regime,
+     and verification/residual policy
+   - make support, residual, undefined, and deliberately rejected regimes
+     visible
+   - avoid promoting rows that only differ syntactically from an existing cell
+
+2. **Real-domain differentiation maturity**
+   - complete reusable handling for elementary functions, products, quotients,
+     chains, general powers, roots, absolute values, logs, trig, hyperbolic, and
+     inverse families
+   - preserve required conditions for log arguments, denominator poles, root
+     domains, reciprocal trig poles, and branch-sensitive inverse functions
+   - keep rule traces explicit enough to show `u`, `du`, product/quotient
+     factors, and final post-calculus presentation when nontrivial
+
+3. **Real-domain limits maturity**
+   - generalize safe direct substitution, removable rational cancellation,
+     finite point policies, infinity policies, and structural positivity
+   - represent endpoint, one-sided, discontinuity, and empty-domain boundaries
+     conservatively before returning a value
+   - prefer a clear residual with domain hints over speculative continuity or
+     side-limit behavior
+
+4. **Base integration maturity**
+   - keep linears, constants, powers, exponentials, direct trig/hyperbolic
+     tables, `1/x`, and log-derivative forms verified and explainable
+   - preserve `ln(|f|)` versus positive-log choices through explicit real-domain
+     evidence
+   - verify promoted antiderivatives by differentiating back to the integrand
+
+5. **Generalized substitution**
+   - detect `u` and `du` across affine, polynomial, scaled, root, and bounded
+     rational inner forms only when the evidence is explicit
+   - show the substitution evidence in steps instead of silently table-matching
+   - keep unsupported substitutions residual rather than opening broad search
+
+6. **Rational integration**
+   - add polynomial division, proper rational forms, partial fractions over real
+     linear factors, and irreducible quadratic regimes only when the domain and
+     verification story is clear
+   - distinguish logarithmic and arctangent primitives with explicit denominator
+     and positivity evidence
+
+7. **Trig and hyperbolic integration**
+   - consolidate `tan/sec`, `cot/csc`, `sinh/cosh/tanh`, and reciprocal-square
+     families through shared pole, sign, and presentation policies
+   - use identities only under bounded route order and guardrail-visible
+     runtime checks
+
+8. **Radical and inverse-family calculus**
+   - generalize root/inverse-trig/inverse-hyperbolic forms with interval
+     orientation, symbolic parameter conditions, denominator scale, and external
+     scale handled explicitly
+   - preserve the selected primitive family when several antiderivatives are
+     derivative-equivalent but domain evidence points to one form
+
+9. **Residuals and non-goal policy**
+   - make unsupported calculus behavior stable, educational, and domain-aware
+   - classify residuals by missing method, empty real domain, unsafe branch,
+     unverified antiderivative, or intentionally unsupported search
+   - never return an unverified antiderivative or a limit value that depends on
+     unrepresented assumptions
+
+10. **Didactic trace maturity**
+    - ensure promoted public calculus behavior has visible rule names, useful
+      highlights, and no magical source-to-target jump
+    - add derive shadow cases only when calculus exposes a reusable algebraic
+      transition a user might ask to explain
+
+11. **Architecture, observability, and runtime**
+    - separate detection, domain reasoning, transformation, verification, and
+      rendering when a file or route family becomes too opaque to generalize
+    - improve observability before broadening matchers if the next calculus move
+      cannot be localized safely
+    - keep embedded and pressure lanes green; calculus maturity does not justify
+      broad hot-path regressions
+
+Selection rule:
+
+- every calculus cycle should name its `calculus_maturity_block`
+- every promoted calculus row should state which block gate it advances
+- if a candidate does not advance a block gate, treat it as discovery pressure
+  or reject it as a near-duplicate
+- in ties, choose the candidate that moves an earlier incomplete block only
+  when it also has high retention probability and does not hide a reusable
+  pre-calculus blocker
+
 ### Family Sweep And Consolidation Policy
 
 Recent cycles showed that calculus presentation work can accidentally repeat the

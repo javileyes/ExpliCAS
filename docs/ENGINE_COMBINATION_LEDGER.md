@@ -95,6 +95,60 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-25 - Observe-only discovery: inverse-tangent symbolic denominator shortcut leaves condition and external-scale gaps
+
+- area:
+  - calculus / differentiation / inverse-trig root presentation
+- status:
+  - `observe-only`
+- generated candidate:
+  - generalize the retained `arctan(sqrt(r)/(2*a))` shortcut across affine
+    radicands, fractional denominator scales, dual orientation, negative
+    orientation, and external constant scale
+- local lane:
+  - `target/release/cas_cli eval 'diff(arctan(sqrt(2*x+2)/(2*a)), x)' --format json`
+  - `target/release/cas_cli eval 'diff(3*arctan(sqrt(2*x+2)/(2*a)), x)' --format json`
+- retained result:
+  - the direct affine-radicand shortcut avoids the previous
+    `depth_overflow` warning and returns the compact derivative
+    `a / (sqrt(2*x + 2)*(2*a^2 + x + 1))`
+  - the promoted diff matrix row now forbids `depth_overflow` for that direct
+    case
+  - a follow-up retained the external-scale sibling
+    `3*arctan(sqrt(2*x+2)/(2*a))` with compact public output
+    `3*a / (sqrt(2*x + 2)*(2*a^2 + x + 1))`; the promoted matrix row now
+    forbids `depth_overflow` for that route as well
+  - a later follow-up retained a core condition-normalization implication for
+    `positive_gap + c*base^2 != 0` under `positive_gap > 0`, `c > 0`, and a
+    visible `base != 0`, so the direct and external-scale rows no longer
+    publish the redundant `2*a^2 + x + 1 != 0` condition
+  - a later follow-up generalized the implication to nonnegative square terms
+    without requiring a `base != 0` guard, and to
+    `positive_constant + c*base^2*positive_gap != 0`; this removed the
+    redundant guard from the retained numerator-scale row
+    `diff(arctan(a*sqrt(x+1)), x)`
+  - a later follow-up reused the same narrow implication for positive
+    conditions, so `diff(asinh(a*sqrt(x+1)), x)` no longer publishes the
+    redundant `a^2*x + a^2 + 1 > 0` condition while preserving `x > -1`
+  - a later follow-up retained a separate open-interval implication for
+    `Positive(1 - (base*sqrt(gap))^2)` dominating the equivalent expanded
+    boundary `NonZero`; this removed the redundant
+    `a^2*x + a^2 - 1 != 0` condition from
+    `diff(atanh(a*sqrt(x+1)), x)` while preserving both real-domain guards
+- observed gaps:
+  - none remaining for the promoted affine-radicand denominator condition or
+    numerator-scale positive-gap/open-interval condition family
+- reusable weakness:
+  - calculus shortcuts can avoid fragile derivative construction, but the
+    condition layer needs explicit, narrow implication checks when a compact
+    denominator mixes a positive calculus gap with parameter squares
+  - a naive external-scale route can still degrade public output unless the
+    compact result is retained behind the transformer's internal `Hold` barrier
+- next candidate:
+  - move to another calculus matrix cell unless a sibling exposes a distinct
+    domain, trace, or presentation regime beyond the retained numerator-scale
+    positive-gap and open-interval representatives
+
 ## 2026-05-24 - Observe-only discovery: limit command residuals cannot enter algebraic wrapper matrix
 
 - area:
@@ -15678,3 +15732,32 @@ The burden of proof stays the same:
     cross-family additive composition
   - a future runtime candidate should isolate the telescoping side first, then
     re-test this composition before promoting the ignored regression
+
+## 2026-05-25 - Discovery observe-only: limit residual result/step presentation can diverge after structural cleanup
+
+- area:
+  - calculus / limit / residual presentation after safe structural cleanup
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while auditing whether `limit` needed the same presimplified-residual trace
+    policy recently retained for `diff`/`integrate`, cheap CLI probes showed
+    that residual limit steps can display the cleaned expression while the
+    public result still displays the noisier original residual
+  - examples:
+    - `limit(sqrt(x + 0), x, 0)` renders result
+      `limit(sqrt(x + 0), x, 0)` but the residual step goes
+      `sqrt(x) -> limit(sqrt(x), x, 0)`
+    - `limit(sign(x + 0), x, 0)` similarly keeps `x + 0` in the result while
+      the step shows `sign(x)`
+- decision:
+  - do not fix this in the current cycle because the retained ROI is better as
+    a support-matrix promotion for an already generalized finite-limit family
+  - treat this as a future presentation/observability candidate, not as a
+    reason to broaden limit simplification policy
+- retained learning:
+  - the reusable weakness is result/step presentation consistency for residual
+    `limit(...)` after structural cleanup, not mathematical limit evaluation
+  - a future candidate should localize whether the mismatch comes from residual
+    result construction, display rendering, or step rendering before changing
+    public limit policy
