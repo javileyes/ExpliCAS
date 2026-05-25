@@ -37,6 +37,23 @@ fn cli_eval_json_with_stderr_args(input: &str, extra_args: &[&str]) -> (Value, S
     (wire, stderr)
 }
 
+fn assert_u_du_substep_labels(substeps: &[Value], input: &str) {
+    let u_du_substep = substeps
+        .iter()
+        .find(|substep| substep["title"] == "Identificar u y du")
+        .expect("expected concrete u/du substep");
+    let before_latex = u_du_substep["before_latex"]
+        .as_str()
+        .expect("u/du substep should expose before_latex");
+    let after_latex = u_du_substep["after_latex"]
+        .as_str()
+        .expect("u/du substep should expose after_latex");
+    assert!(
+        before_latex.contains("u =") && after_latex.contains("du ="),
+        "u/du substep should label substitution evidence for {input}, got {u_du_substep:?}"
+    );
+}
+
 fn simplified_integral(input: &str) -> String {
     let mut simplifier = Simplifier::with_default_rules();
     simplifier.disable_rule("Double Angle Identity");
@@ -552,6 +569,54 @@ fn evaluated_expr_step_summaries(input: &str) -> Vec<(String, String, Importance
             )
         })
         .collect()
+}
+
+#[test]
+fn integrate_contract_invalid_real_domain_integrands_return_undefined() {
+    for input in [
+        "integrate(log(1,2), x)",
+        "integrate(log(1,x), x)",
+        "integrate(log(-2,x), x)",
+        "integrate(ln(0), x)",
+        "integrate(sqrt(-1), x)",
+        "integrate(infinity, x)",
+    ] {
+        let (wire, stderr) = cli_eval_json_with_stderr_args(input, &["--steps", "on"]);
+        assert!(
+            stderr.is_empty(),
+            "invalid real-domain integrand should not emit stderr for {input}: {stderr}"
+        );
+        assert_eq!(
+            wire["result"].as_str(),
+            Some("undefined"),
+            "invalid real-domain integrand should not produce a formal primitive for {input}: {wire:?}"
+        );
+        assert_eq!(
+            wire["required_display"]
+                .as_array()
+                .expect("required_display should be an array")
+                .len(),
+            0,
+            "undefined integrands should not introduce conditional assumptions for {input}"
+        );
+
+        let step_text = wire["steps"].to_string();
+        assert!(
+            step_text.contains("undefined"),
+            "integration trace should expose the undefined result for {input}: {step_text}"
+        );
+        assert!(
+            !step_text.contains("x·log") && !step_text.contains("infinity·x"),
+            "integration trace should not present a false formal primitive for {input}: {step_text}"
+        );
+    }
+
+    let (result, required) = evaluated_integral_with_required_conditions("integrate(2, x)");
+    assert_eq!(result, "2 * x");
+    assert!(
+        required.is_empty(),
+        "finite constants should still integrate without domain assumptions: {required:?}"
+    );
 }
 
 #[test]
@@ -4781,6 +4846,20 @@ fn integrate_contract_polynomial_derivative_substitution_exposes_didactic_subste
                 .any(|substep| substep["title"] == "Identificar u y du"),
             "expected concrete u/du substep for {input}, got {substeps:?}"
         );
+        let u_du_substep = substeps
+            .iter()
+            .find(|substep| substep["title"] == "Identificar u y du")
+            .expect("expected concrete u/du substep");
+        let before_latex = u_du_substep["before_latex"]
+            .as_str()
+            .expect("u/du substep should expose before_latex");
+        let after_latex = u_du_substep["after_latex"]
+            .as_str()
+            .expect("u/du substep should expose after_latex");
+        assert!(
+            before_latex.contains("u =") && after_latex.contains("du ="),
+            "u/du substep should label substitution evidence for {input}, got {u_du_substep:?}"
+        );
         assert!(
             substeps
                 .iter()
@@ -4927,16 +5006,23 @@ fn integrate_contract_constant_base_log_power_product_substitution_exposes_didac
         assert_antiderivative_verifies(input);
     }
 
-    for input in [
-        "integrate(2*x*log(1,x^2+1)^2, x)",
-        "integrate(2*x*log(y,x^2+1)^2, x)",
-    ] {
-        let (result, _required) = evaluated_integral_with_required_conditions(input);
-        assert!(
-            result.starts_with("integrate("),
-            "invalid or symbolic log base should remain residual for {input}, got {result}"
-        );
-    }
+    let (invalid_base_result, invalid_base_required) =
+        evaluated_integral_with_required_conditions("integrate(2*x*log(1,x^2+1)^2, x)");
+    assert_eq!(
+        invalid_base_result, "undefined",
+        "invalid log base should produce an undefined integrand, not a residual"
+    );
+    assert!(
+        invalid_base_required.is_empty(),
+        "undefined invalid-base log integrand should not add assumptions: {invalid_base_required:?}"
+    );
+
+    let (symbolic_base_result, _required) =
+        evaluated_integral_with_required_conditions("integrate(2*x*log(y,x^2+1)^2, x)");
+    assert!(
+        symbolic_base_result.starts_with("integrate("),
+        "symbolic log base should remain residual, got {symbolic_base_result}"
+    );
 }
 
 #[test]
@@ -5653,6 +5739,7 @@ fn integrate_contract_polynomial_base_substitution_exposes_didactic_substep() {
                 .any(|substep| substep["title"] == "Identificar u y du"),
             "expected concrete u/du substep for {input}, got {substeps:?}"
         );
+        assert_u_du_substep_labels(substeps, input);
         assert!(
             substeps
                 .iter()
@@ -6607,6 +6694,51 @@ fn integrate_contract_log_by_parts_exposes_didactic_substep_and_keeps_compact_tr
                 .any(|substep| substep["title"] == "Usar integración por partes"),
             "expected integration-by-parts substep for {input}, got {substeps:?}"
         );
+        for title in [
+            "Elegir u y dv",
+            "Calcular du y v",
+            "Aplicar la fórmula de integración por partes",
+        ] {
+            assert!(
+                substeps.iter().any(|substep| substep["title"] == title),
+                "expected concrete by-parts substep {title:?} for {input}, got {substeps:?}"
+            );
+        }
+
+        let choice_substep = substeps
+            .iter()
+            .find(|substep| substep["title"] == "Elegir u y dv")
+            .expect("expected u/dv choice substep");
+        let choice_latex = choice_substep["after_latex"]
+            .as_str()
+            .expect("choice substep should expose after_latex");
+        assert!(
+            choice_latex.contains("\\ln") && choice_latex.contains("dv"),
+            "choice substep should show concrete u and dv, got {choice_latex:?}"
+        );
+
+        let derivative_substep = substeps
+            .iter()
+            .find(|substep| substep["title"] == "Calcular du y v")
+            .expect("expected du/v calculation substep");
+        let derivative_latex = derivative_substep["after_latex"]
+            .as_str()
+            .expect("du/v substep should expose after_latex");
+        assert!(
+            derivative_latex.contains("du =") && derivative_latex.contains("v ="),
+            "du/v substep should show concrete du and v, got {derivative_latex:?}"
+        );
+        if input == "integrate(x*ln(x), x)" {
+            assert!(
+                derivative_latex.contains("\\frac{1}{x}") && derivative_latex.contains("{x}^{2}"),
+                "du/v substep should show concrete du and v, got {derivative_latex:?}"
+            );
+        } else {
+            assert!(
+                derivative_latex.contains("\\frac{2}{2\\cdot x + 1}"),
+                "affine log by-parts substep should show concrete du, got {derivative_latex:?}"
+            );
+        }
     }
 }
 
@@ -7303,19 +7435,29 @@ fn integrate_contract_constant_base_affine_logs_use_table_and_preserve_domain() 
 }
 
 #[test]
-fn integrate_contract_constant_base_log_rejects_invalid_or_symbolic_bases() {
+fn integrate_contract_constant_base_log_handles_invalid_and_symbolic_bases() {
     for input in [
         "integrate(log(1, x), x)",
         "integrate(log(-2, x), x)",
         "integrate(log(0, x), x)",
-        "integrate(log(y, x), x)",
     ] {
-        let (result, _required) = evaluated_integral_with_required_conditions(input);
+        let (result, required) = evaluated_integral_with_required_conditions(input);
+        assert_eq!(
+            result, "undefined",
+            "invalid log base should make the real-domain integrand undefined for {input}"
+        );
         assert!(
-            result.starts_with("integrate("),
-            "invalid or symbolic log base should remain residual for {input}, got {result}"
+            required.is_empty(),
+            "invalid log base should not add conditional assumptions for {input}: {required:?}"
         );
     }
+
+    let input = "integrate(log(y, x), x)";
+    let (result, _required) = evaluated_integral_with_required_conditions(input);
+    assert!(
+        result.starts_with("integrate("),
+        "symbolic log base should remain residual for {input}, got {result}"
+    );
 }
 
 #[test]
@@ -13163,6 +13305,7 @@ fn integrate_contract_polynomial_trig_log_substitution_explains_u_and_du() {
                 .any(|substep| substep["title"] == "Identificar u y du"),
             "expected concrete u/du substep for {input}, got {substeps:?}"
         );
+        assert_u_du_substep_labels(substeps, input);
         assert_eq!(
             substeps
                 .iter()
@@ -13252,6 +13395,7 @@ fn integrate_contract_reciprocal_trig_derivative_product_explains_u_and_du() {
                 .any(|substep| substep["title"] == "Identificar u y du"),
             "expected concrete u/du substep for {input}, got {substeps:?}"
         );
+        assert_u_du_substep_labels(substeps, input);
         assert_eq!(
             substeps
                 .iter()
@@ -13669,6 +13813,7 @@ fn integrate_contract_sqrt_chain_reciprocal_trig_products_explain_u_and_du() {
                 .any(|substep| substep["title"] == "Identificar u y du"),
             "expected concrete u/du substep for {input}, got {substeps:?}"
         );
+        assert_u_du_substep_labels(substeps, input);
         assert_eq!(
             substeps
                 .iter()
@@ -13949,6 +14094,7 @@ fn integrate_contract_sqrt_chain_tangent_cotangent_logs_explain_u_and_du() {
                 .any(|substep| substep["title"] == "Identificar u y du"),
             "expected concrete u/du substep for {input}, got {substeps:?}"
         );
+        assert_u_du_substep_labels(substeps, input);
         assert_eq!(
             substeps
                 .iter()

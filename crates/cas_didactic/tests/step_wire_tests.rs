@@ -478,6 +478,41 @@ fn step_wire_integration_uses_human_visible_rule_title() {
 }
 
 #[test]
+fn step_wire_nonfinite_calculus_undefined_explains_domain_policy() {
+    let diff_steps = step_payloads_on_for("diff(infinity, x)");
+    let diff_step = diff_steps
+        .iter()
+        .find(|step| step.rule == "Calcular la derivada")
+        .expect("expected visible diff step");
+    assert!(
+        diff_step.substeps.iter().any(|substep| {
+            substep.title == "Detectar constante no finita en la derivada"
+                && substep
+                    .after_latex
+                    .as_deref()
+                    .is_some_and(|latex| latex.contains("\\text{undefined}"))
+        }),
+        "nonfinite derivative should expose a specific undefined-policy substep: {diff_step:?}"
+    );
+
+    let integrate_steps = step_payloads_on_for("integrate(infinity, x)");
+    let integrate_step = integrate_steps
+        .iter()
+        .find(|step| step.rule == "Calcular la integral")
+        .expect("expected visible integration step");
+    assert!(
+        integrate_step.substeps.iter().any(|substep| {
+            substep.title == "Detectar integrando no finito"
+                && substep
+                    .after_latex
+                    .as_deref()
+                    .is_some_and(|latex| latex.contains("\\text{undefined}"))
+        }),
+        "nonfinite integration should expose a specific undefined-policy substep: {integrate_step:?}"
+    );
+}
+
+#[test]
 fn step_wire_substeps_preserve_math_latex_for_rationalization_example() {
     let steps = step_payloads_on_for(RATIONALIZE_LINEAR_ROOT_EXPR);
 

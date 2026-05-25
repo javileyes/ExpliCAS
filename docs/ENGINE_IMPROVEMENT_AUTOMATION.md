@@ -6,7 +6,8 @@ Build one repeatable loop that improves four things together without guessing:
 - simplification coverage
 - equivalence proving power
 - `derive` reachability and didactic quality
-- bounded calculus capability that reuses and hardens the pre-calculus core
+- serious real-domain calculus capability that reuses and hardens the
+  pre-calculus core
 
 The core idea is simple: every engine improvement campaign should be driven by an
 explicit scorecard, not by isolated anecdotes.
@@ -18,7 +19,7 @@ A real engine improvement may come from:
 - a new simplification rule
 - a better root/orchestrator shortcut
 - a better derive target classifier or planner route
-- a bounded calculus vertical slice in differentiation, limits, or integration
+- a generalized calculus capability in differentiation, limits, or integration
 - a robustness fix that prevents stack overflow / timeout on expressions the
   engine already handled semantically
 
@@ -52,8 +53,9 @@ Each iteration should choose one primary investment class before touching code:
 - `observability`
   - improve signal when the next profitable move is still ambiguous
 - `calculus`
-  - add or harden a bounded public calculus vertical slice while reusing the
-    pre-calculus core
+  - generalize public `diff`, `limit`, or `integrate` behavior while reusing
+    the pre-calculus core, preserving real-domain safety, and keeping didactic
+    traces explainable
 - `combination`
   - revisit a documented `local win / global fail` only when a complementary
     hypothesis is now available
@@ -103,7 +105,7 @@ Interpretation:
   - whether the change exposes a reusable target-form transition for `derive`
 - `calculus_value`
   - whether the change improves public `diff`, `limit`, or `integrate`
-    behavior in a bounded, testable way
+    behavior in a generalized, policy-backed, testable way
 - `precalculus_reuse_value`
   - whether the calculus work reuses or hardens simplification, equivalence,
     domain, or didactic infrastructure instead of bypassing it
@@ -146,9 +148,10 @@ At minimum, each candidate should be evaluated across these lenses:
   - whether a `derive` miss reveals a missing reusable engine transition rather
     than only a planner or wording issue
 - `calculus ROI`
-  - whether a calculus slice turns existing pre-calculus strength into public
-    capability and exposes reusable pressure back onto simplification,
-    equivalence, domains, didactic traces, or final result presentation
+  - whether calculus work turns existing pre-calculus strength and already
+    retained calculus slices into a coherent public capability, and exposes
+    reusable pressure back onto simplification, equivalence, domains, didactic
+    traces, or final result presentation
 - `promotion ROI`
   - whether the result is stable enough to become a lasting guardrail or corpus
     promotion
@@ -163,12 +166,19 @@ The pre-calculus engine is now strong enough to serve as the foundation for
 calculus work. It is not complete in a universal-CAS sense, and the loop should
 not pretend otherwise.
 
-The strategy is to start calculus now, but only as disciplined vertical slices:
+The strategy is no longer merely to start calculus through disciplined vertical
+slices. The existing scorecard already carries substantial green coverage for
+`diff`, `limit`, and `integrate`. The next default should be to generalize those
+verticals into a serious real-domain calculus surface:
 
-- differentiation first, because it is high-value and stresses simplification in
-  controlled ways
-- limits second, under the existing conservative policy
-- integration third, starting with table-driven and easily verified families
+- differentiation first, because it is high-value, broad, and stresses
+  simplification in controlled ways
+- limits under explicit policy matrices for finite points, infinity,
+  one-sided behavior, continuity, and residual boundaries
+- integration through table, substitution, by-parts, and verification families,
+  not through broad search
+- shared calculus support matrices that make supported, residual, and rejected
+  regimes visible
 - series/asymptotics later, after limits and differentiation have stronger
   domain and trace support
 
@@ -192,7 +202,9 @@ new source of useful pressure:
 
 The selector should prefer calculus candidates when all of these are true:
 
-- the user-visible calculus improvement is concrete and bounded
+- the user-visible calculus improvement generalizes an existing supported
+  family, closes a matrix gap, or replaces repeated narrow cases with shared
+  capability
 - the implementation reuses the existing symbolic engine rather than bypassing
   it with an isolated shortcut
 - the domain/branch/constant assumptions are explicit
@@ -200,6 +212,22 @@ The selector should prefer calculus candidates when all of these are true:
   conditions, and does not alter the internal canonical route
 - the case can be validated with a narrow unit or contract test plus the needed
   pre-calculus guardrails
+- the outcome improves a whole rule family, policy regime, presentation regime,
+  or didactic trace class rather than only one string-shaped example
+
+For calculus presentation and derivative-family work, the selector should also
+run a bounded sibling sweep before editing. This is a cheap probe pass, not
+unbounded search. It asks whether the same rule shape appears in sibling
+families, orientations, and scale regimes. For example, a root-presentation
+candidate should probe at least the direct/dual inverse pair, sign and external
+scale variants, exact-square root content, and unit or negative-unit scales.
+
+If retained cycles expose the same pattern in sibling families, the next
+candidate should default to consolidation: extract or reuse a shared helper,
+write the shared policy into the calculus matrix, or promote one minimal
+representative row. Continue with another local variant only when consolidation
+would broaden route matching unsafely, alter domain/branch behavior, or
+materially risk runtime/guardrail regression.
 
 The selector should defer calculus candidates when they require:
 
@@ -210,6 +238,9 @@ The selector should defer calculus candidates when they require:
 - pretty-printing that changes semantics, hides conditions, or turns into a
   global simplification preference without a calculus contract
 - speculative branch behavior not covered by policy
+- adding another isolated calculus example inside a family that already has
+  enough representatives, unless it exposes a new domain, trace, presentation,
+  runtime, or verification axis
 
 If a calculus probe reveals that the real blocker is a reusable algebraic,
 normalization, or domain gap, the next retained work should usually be
@@ -284,8 +315,10 @@ Prefer:
   - when recent iterations produce `local win / global fail` or the hotspot is
     still ambiguous
 - `calculus`
-  - when a bounded `diff`, `limit`, or `integrate` vertical slice has clear
-    public value, explicit domain policy, and a reusable pre-calculus dependency
+  - when a `diff`, `limit`, or `integrate` change generalizes an existing
+    family, fills a documented calculus support-matrix gap, improves a shared
+    domain/presentation/didactic policy, or replaces repeated narrow cases with
+    reusable capability
 - `combination`
   - only when the ledger already contains a compatible pair:
     - expensive win + cheap gate
@@ -301,8 +334,9 @@ Also allow dimensional coverage to steer the class choice:
   composition axis can be promoted cheaply
 - prefer `coverage` or `derive`-oriented work when a stable engine family lacks
   any representative derive bridge and the case is not branch/domain-hard
-- prefer `calculus` when existing simplification/equivalence strength can be
-  converted into a small public calculus capability without broad search
+- prefer `calculus` when existing simplification/equivalence strength and
+  already-green calculus slices can be generalized into policy-backed public
+  capability without broad search
 - prefer `observability` when the current scorecard shows an under-covered
   dimension but the profitable next promotion is still unclear
 - prefer `runtime` only if the hotspot is not merely the byproduct of severe
@@ -335,7 +369,8 @@ Each automatic iteration should do this in order:
    - whether it is a hotspot move, a dimensional coverage move, or both
    - whether it has a realistic promotion path into corpus or guardrail
    - whether it creates or consumes a derive bridge
-   - whether it creates a calculus capability or exposes a pre-calculus blocker
+   - whether it generalizes a calculus capability, fills a calculus support
+     matrix gap, or exposes a pre-calculus blocker
 5. choose one primary class for the iteration
 6. write down the success condition before editing code
 7. validate against the relevant benchmark roles
@@ -365,9 +400,13 @@ promotion_target:
 derive_bridge_check:
 engine_feedback_check:
 calculus_scope:
+calculus_matrix_cell:
+generalization_axis:
 precalculus_dependency:
 domain_safety_check:
 presentation_check:
+sibling_sweep_check:
+consolidation_check:
 retain_if:
 reject_if:
 retain_or_reject_reason:
@@ -391,8 +430,14 @@ Minimum expectations:
   - for derive work: whether the miss is planner-only, didactic-only, or points
     to a reusable engine capability gap
 - `calculus_scope`
-  - for calculus work: `diff`, `limit`, `integrate`, or the specific calculus
-    command/surface being changed
+  - for calculus work: `diff`, `limit`, `integrate`, or the shared calculus
+    command/surface, matrix row, or policy regime being changed
+- `calculus_matrix_cell`
+  - for calculus work: the command/family/argument/domain/trace/presentation
+    cell being filled, generalized, or deliberately deferred
+- `generalization_axis`
+  - for calculus work: the reusable axis being expanded, such as orientation,
+    sign, argument shape, domain regime, verification policy, or presentation
 - `precalculus_dependency`
   - for calculus work: which simplification, equivalence, domain, or didactic
     capability the change reuses or hardens
@@ -403,6 +448,13 @@ Minimum expectations:
   - for calculus work: whether the final public form is unchanged, improved by
     a local post-calculus presentation pass, or deliberately deferred because
     the internal canonical form is preferable for now
+- `sibling_sweep_check`
+  - for calculus work: the bounded sibling probes used to detect repeated
+    family, orientation, sign, scale, or presentation gaps
+- `consolidation_check`
+  - for calculus work: whether this should remain local or become a shared
+    helper, policy, or support-matrix representative before more variants are
+    added
 - `retain_or_reject_reason`
   - the shortest defensible explanation after validation
 
@@ -600,6 +652,8 @@ be diagnostic rather than gating:
 
 - representative `diff`, `limit`, safe limit pre-simplification, and
   `integrate` contract counts
+- calculus support matrices by family, argument regime, domain regime, trace
+  regime, and presentation regime
 - unsupported/residual counts by calculus family
 - calculus cases whose final result is correct but depends on a weak
   pre-calculus simplification route
@@ -608,6 +662,8 @@ be diagnostic rather than gating:
 - didactic or highlight defects in calculus traces
 - which calculus probes were reclassified as pre-calculus coverage,
   robustness, or observability work
+- whether a cycle added reusable calculus capability or only another isolated
+  example; isolated examples should need an explicit new-axis justification
 
 ## Target Benchmark Role Model
 

@@ -18,7 +18,7 @@ use cas_math::expr_predicates::{
 };
 use cas_math::numeric_eval::as_rational_const;
 use num_rational::BigRational;
-use num_traits::{Signed, Zero};
+use num_traits::{One, Signed, Zero};
 
 /// Result of domain delta check between input and output.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -360,6 +360,26 @@ fn add_positive_and_propagate<F>(
     }
 }
 
+fn real_log_base_constant_is_invalid(ctx: &Context, base: ExprId) -> bool {
+    if base == log10_base_sentinel() {
+        return false;
+    }
+
+    as_rational_const(ctx, base).is_some_and(|value| !value.is_positive() || value.is_one())
+}
+
+fn sqrt_like_radicand_for_domain(ctx: &Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(radicand) = extract_sqrt_argument_view(ctx, expr) {
+        return Some(radicand);
+    }
+
+    let Expr::Pow(base, exponent) = ctx.get(expr) else {
+        return None;
+    };
+    let exponent = as_rational_const(ctx, *exponent)?;
+    (exponent == BigRational::new(1.into(), 2.into())).then_some(*base)
+}
+
 fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
     let mut stack = vec![(root, false)];
 
@@ -371,7 +391,8 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
                     && args.len() == 1 =>
             {
                 if !matches!(ctx.get(args[0]), Expr::Number(_)) {
-                    domain.add_lower_bound(args[0], BigRational::from_integer(1.into()));
+                    let bounded = sqrt_like_radicand_for_domain(ctx, args[0]).unwrap_or(args[0]);
+                    domain.add_lower_bound(bounded, BigRational::from_integer(1.into()));
                 }
                 stack.push((args[0], inside_calculus_call));
             }
@@ -395,6 +416,10 @@ fn infer_recursive(ctx: &Context, root: ExprId, domain: &mut ImplicitDomain) {
                 let Some((base_opt, arg)) = extract_log_base_argument_view(ctx, expr) else {
                     continue;
                 };
+                if base_opt.is_some_and(|base| real_log_base_constant_is_invalid(ctx, base)) {
+                    continue;
+                }
+
                 domain.add_positive(arg);
                 stack.push((arg, inside_calculus_call));
 
@@ -601,5 +626,22 @@ mod tests {
 
         assert!(domain.contains_positive(b));
         assert!(domain.contains_positive(x));
+    }
+
+    #[test]
+    fn infer_general_log_invalid_constant_base_skips_argument_condition() {
+        for base_value in [-2, 0, 1] {
+            let mut ctx = Context::new();
+            let base = ctx.num(base_value);
+            let x = ctx.var("x");
+            let expr = ctx.call_builtin(cas_ast::BuiltinFn::Log, vec![base, x]);
+
+            let domain = infer_implicit_domain(&ctx, expr, true);
+
+            assert!(
+                !domain.contains_positive(x),
+                "base {base_value} should make the log invalid before argument conditions"
+            );
+        }
     }
 }

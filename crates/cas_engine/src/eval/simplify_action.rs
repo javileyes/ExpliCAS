@@ -2180,6 +2180,47 @@ fn expr_contains_symbolic_calculus_call_local(ctx: &cas_ast::Context, root: Expr
     false
 }
 
+fn direct_calculus_residual_step_local(
+    ctx: &mut cas_ast::Context,
+    source: ExprId,
+    residual: ExprId,
+) -> Option<crate::Step> {
+    if !exprs_exact_ignoring_internal_holds_local(ctx, source, residual) {
+        return None;
+    }
+
+    let (before, rule_name, description) = if let Some(call) =
+        crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, source)
+    {
+        (
+            call.target,
+            "Conservar derivada residual",
+            "Conservar la derivada sin resolver porque no hay una regla segura para esta familia",
+        )
+    } else if let Some(call) =
+        crate::symbolic_calculus_call_support::try_extract_integrate_call(ctx, source)
+    {
+        (
+                call.target,
+                "Conservar integral residual",
+                "Conservar la integral sin resolver porque no hay una regla segura y verificable para esta familia",
+            )
+    } else {
+        return None;
+    };
+
+    let mut step = crate::Step::new(
+        description,
+        rule_name,
+        before,
+        residual,
+        Vec::new(),
+        Some(ctx),
+    );
+    step.importance = crate::ImportanceLevel::Medium;
+    Some(step)
+}
+
 fn expr_is_post_calculus_residual_candidate_local(ctx: &cas_ast::Context, expr: ExprId) -> bool {
     match ctx.get(expr) {
         Expr::Add(_, _) | Expr::Sub(_, _) | Expr::Neg(_) => true,
@@ -2747,6 +2788,15 @@ fn try_resolve_direct_post_calculus_before_general_simplify_local(
     expr: ExprId,
 ) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
     let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, expr)?;
+    if crate::rules::calculus::diff_target_known_undefined_over_reals(
+        ctx,
+        call.target,
+        &call.var_name,
+    ) {
+        let undefined = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
+        return Some((undefined, Vec::new()));
+    }
+
     if let Some(result) =
         crate::rules::calculus::affine_hyperbolic_odd_primitive_derivative_presentation(
             ctx,
@@ -4057,6 +4107,13 @@ impl Engine {
                 steps.push(presentation_step);
             }
             res = presented;
+        }
+        if steps.is_empty() && effective_opts.steps_mode != crate::options::StepsMode::Off {
+            if let Some(step) =
+                direct_calculus_residual_step_local(&mut ctx_simplifier.context, resolved, res)
+            {
+                steps.push(step);
+            }
         }
         self.simplifier
             .extend_blocked_hints(ctx_simplifier.take_blocked_hints());

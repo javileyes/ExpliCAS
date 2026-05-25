@@ -233,7 +233,7 @@ fmt:
 	cargo fmt --all -- --check
 
 engine-harness-tests:
-	python3 -m unittest scripts/test_engine_improvement_scorecard.py scripts/test_engine_embedded_candidate_smoke.py scripts/test_engine_calculus_residual_probe_smoke.py scripts/test_engine_makefile_targets.py scripts/test_web_examples_smoke.py
+	python3 -m unittest scripts/test_engine_improvement_scorecard.py scripts/test_engine_embedded_candidate_smoke.py scripts/test_engine_calculus_residual_probe_smoke.py scripts/test_cas_cli_release.py scripts/test_engine_limit_command_matrix_smoke.py scripts/test_engine_diff_command_matrix_smoke.py scripts/test_engine_integrate_command_matrix_smoke.py scripts/test_engine_makefile_targets.py scripts/test_web_examples_smoke.py
 
 engine-fast: engine-harness-tests
 	python3 ./scripts/engine_improvement_scorecard.py --profile fast --output "$(ENGINE_FAST_OUTPUT)" --markdown-output "$(ENGINE_FAST_MARKDOWN)"

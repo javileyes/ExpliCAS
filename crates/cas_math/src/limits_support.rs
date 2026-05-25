@@ -1,3 +1,4 @@
+use crate::calculus_domain_support::real_domain_is_empty_for_static_expr;
 use crate::infinity_support::{mk_infinity, InfSign};
 use crate::limit_types::{Approach, LimitEvalOutcome, LimitOptions, PreSimplifyMode};
 use crate::perfect_square_support::rational_sqrt;
@@ -112,6 +113,29 @@ pub fn apply_constant_rule(ctx: &Context, expr: ExprId, var: ExprId) -> Option<E
     }
 }
 
+const LIMIT_STATIC_DOMAIN_PROOF_DEPTH: usize = 8;
+const LIMIT_STATIC_DOMAIN_SCAN_DEPTH: usize = 24;
+
+fn apply_static_empty_real_domain_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+) -> Option<ExprId> {
+    if depends_on(ctx, expr, var) {
+        return None;
+    }
+    if !real_domain_is_empty_for_static_expr(
+        ctx,
+        expr,
+        LIMIT_STATIC_DOMAIN_PROOF_DEPTH,
+        LIMIT_STATIC_DOMAIN_SCAN_DEPTH,
+    ) {
+        return None;
+    }
+
+    Some(ctx.add(Expr::Constant(Constant::Undefined)))
+}
+
 fn apply_finite_polynomial_rule(
     ctx: &mut Context,
     expr: ExprId,
@@ -158,12 +182,34 @@ fn apply_finite_rational_polynomial_rule(
 
     let numerator = Polynomial::from_expr(ctx, num, var_name).ok()?;
     let denominator = Polynomial::from_expr(ctx, den, var_name).ok()?;
-    let denominator_value = denominator.eval(&point_value);
-    if denominator_value.is_zero() {
-        return None;
-    }
-    let value = numerator.eval(&point_value) / denominator_value;
+    let value = finite_rational_polynomial_value(&numerator, &denominator, &point_value)?;
     Some(ctx.add(Expr::Number(value)))
+}
+
+fn finite_rational_polynomial_value(
+    numerator: &Polynomial,
+    denominator: &Polynomial,
+    point: &BigRational,
+) -> Option<BigRational> {
+    let mut numerator = numerator.clone();
+    let mut denominator = denominator.clone();
+    let max_derivative_steps = numerator.degree().max(denominator.degree()) + 1;
+
+    for _ in 0..=max_derivative_steps {
+        let numerator_value = numerator.eval(point);
+        let denominator_value = denominator.eval(point);
+        if !denominator_value.is_zero() {
+            return Some(numerator_value / denominator_value);
+        }
+        if !numerator_value.is_zero() || (numerator.is_zero() && denominator.is_zero()) {
+            return None;
+        }
+
+        numerator = numerator.derivative();
+        denominator = denominator.derivative();
+    }
+
+    None
 }
 
 fn is_finite_total_real_unary_builtin(builtin: BuiltinFn) -> bool {
@@ -388,18 +434,29 @@ fn finite_partial_domain_unary_result(
     builtin: BuiltinFn,
     argument_limit: ExprId,
 ) -> Option<ExprId> {
-    let argument_value = numeric_limit_value(ctx, argument_limit)?;
-    if !finite_partial_domain_argument_is_strictly_interior(builtin, &argument_value) {
+    if let Some(argument_value) = numeric_limit_value(ctx, argument_limit) {
+        if !finite_partial_domain_argument_is_strictly_interior(builtin, &argument_value) {
+            return None;
+        }
+        if let Some(exact_result) =
+            finite_partial_domain_unary_exact_numeric_result(ctx, builtin, &argument_value)
+        {
+            return Some(exact_result);
+        }
+
+        let value_expr = ctx.add(Expr::Number(argument_value));
+        return Some(ctx.call_builtin(builtin, vec![value_expr]));
+    }
+
+    if !finite_partial_domain_expr_is_strictly_interior(ctx, builtin, argument_limit) {
         return None;
     }
     if let Some(exact_result) =
-        finite_partial_domain_unary_exact_numeric_result(ctx, builtin, &argument_value)
+        finite_partial_domain_unary_exact_expr_result(ctx, builtin, argument_limit)
     {
         return Some(exact_result);
     }
-
-    let value_expr = ctx.add(Expr::Number(argument_value));
-    Some(ctx.call_builtin(builtin, vec![value_expr]))
+    Some(ctx.call_builtin(builtin, vec![argument_limit]))
 }
 
 fn finite_partial_domain_argument_is_strictly_interior(
@@ -419,6 +476,50 @@ fn finite_partial_domain_argument_is_strictly_interior(
     }
 }
 
+fn finite_partial_domain_expr_is_strictly_interior(
+    ctx: &Context,
+    builtin: BuiltinFn,
+    argument_limit: ExprId,
+) -> bool {
+    match builtin {
+        BuiltinFn::Asin
+        | BuiltinFn::Arcsin
+        | BuiltinFn::Acos
+        | BuiltinFn::Arccos
+        | BuiltinFn::Atanh => finite_expr_proven_abs_less_than_one(ctx, argument_limit),
+        BuiltinFn::Acosh => finite_expr_proven_greater_than_one(ctx, argument_limit),
+        _ => false,
+    }
+}
+
+fn finite_expr_proven_abs_less_than_one(ctx: &Context, expr: ExprId) -> bool {
+    if let Some(value) = numeric_limit_value(ctx, expr) {
+        return finite_partial_domain_argument_is_strictly_interior(BuiltinFn::Atanh, &value);
+    }
+
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        return finite_expr_proven_abs_less_than_one(ctx, *inner);
+    }
+
+    let Some(radicand) = extract_square_root_base(ctx, expr) else {
+        return false;
+    };
+    numeric_limit_value(ctx, radicand).is_some_and(|radicand_value| {
+        !radicand_value.is_negative() && radicand_value < rational_one()
+    })
+}
+
+fn finite_expr_proven_greater_than_one(ctx: &Context, expr: ExprId) -> bool {
+    if numeric_limit_value(ctx, expr).is_some_and(|value| value > rational_one()) {
+        return true;
+    }
+
+    let Some(radicand) = extract_square_root_base(ctx, expr) else {
+        return false;
+    };
+    numeric_limit_value(ctx, radicand).is_some_and(|radicand_value| radicand_value > rational_one())
+}
+
 fn finite_partial_domain_unary_exact_numeric_result(
     ctx: &mut Context,
     builtin: BuiltinFn,
@@ -435,6 +536,22 @@ fn finite_partial_domain_unary_exact_numeric_result(
         }
         _ => None,
     }
+}
+
+fn finite_partial_domain_unary_exact_expr_result(
+    ctx: &mut Context,
+    builtin: BuiltinFn,
+    argument: ExprId,
+) -> Option<ExprId> {
+    if !matches!(
+        builtin,
+        BuiltinFn::Asin | BuiltinFn::Arcsin | BuiltinFn::Acos | BuiltinFn::Arccos
+    ) {
+        return None;
+    }
+
+    lookup_trig_or_inverse(ctx, builtin.name(), argument)
+        .map(|hit| trig_table_value_to_limit_expr(ctx, hit.value))
 }
 
 fn finite_domain_checked_trig_unary_result(
@@ -855,6 +972,21 @@ fn apply_finite_cube_root_power_rule(
     ))
 }
 
+fn apply_finite_square_root_power_rule(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: ExprId,
+    point: ExprId,
+) -> Option<ExprId> {
+    if !matches!(ctx.get(expr), Expr::Pow(_, _)) {
+        return None;
+    }
+
+    let argument_expr = extract_square_root_base(ctx, expr)?;
+    let argument_limit = try_limit_rules_at_finite(ctx, argument_expr, var, point)?;
+    finite_positive_domain_unary_result(ctx, BuiltinFn::Sqrt, argument_limit)
+}
+
 fn apply_finite_total_real_unary_composition_rule(
     ctx: &mut Context,
     expr: ExprId,
@@ -968,6 +1100,9 @@ fn try_limit_rules_at_finite(
     var: ExprId,
     point: ExprId,
 ) -> Option<ExprId> {
+    if let Some(result) = apply_static_empty_real_domain_rule(ctx, expr, var) {
+        return Some(result);
+    }
     if let Some(result) = apply_constant_rule(ctx, expr, var) {
         return Some(result);
     }
@@ -981,6 +1116,9 @@ fn try_limit_rules_at_finite(
         return Some(result);
     }
     if let Some(result) = apply_finite_elementary_polynomial_rule(ctx, expr, var, point) {
+        return Some(result);
+    }
+    if let Some(result) = apply_finite_square_root_power_rule(ctx, expr, var, point) {
         return Some(result);
     }
     if let Some(result) = apply_finite_cube_root_power_rule(ctx, expr, var, point) {
@@ -2864,6 +3002,9 @@ pub fn try_limit_rules_at_infinity(
     var: ExprId,
     approach: InfSign,
 ) -> Option<ExprId> {
+    if let Some(r) = apply_static_empty_real_domain_rule(ctx, expr, var) {
+        return Some(r);
+    }
     if let Some(r) = apply_constant_rule(ctx, expr, var) {
         return Some(r);
     }
@@ -3164,6 +3305,36 @@ mod tests {
     }
 
     #[test]
+    fn finite_rational_polynomial_limit_resolves_exact_removable_holes_only() {
+        let mut ctx = Context::new();
+        let x = parse_expr(&mut ctx, "x");
+        let point = parse_expr(&mut ctx, "1");
+
+        let simple_hole = parse_expr(&mut ctx, "(x^2 - 1)/(x - 1)");
+        let simple_hole_out = try_limit_rules_at_finite(&mut ctx, simple_hole, x, point)
+            .expect("expected exact removable rational-polynomial limit");
+        let Expr::Number(value) = ctx.get(simple_hole_out) else {
+            panic!("expected exact numeric removable rational-polynomial limit");
+        };
+        assert_eq!(value, &BigRational::from_integer(2.into()));
+
+        let higher_numerator_multiplicity = parse_expr(&mut ctx, "(x - 1)^2/(x - 1)");
+        let higher_numerator_out =
+            try_limit_rules_at_finite(&mut ctx, higher_numerator_multiplicity, x, point)
+                .expect("expected removable zero limit");
+        let Expr::Number(value) = ctx.get(higher_numerator_out) else {
+            panic!("expected exact zero removable rational-polynomial limit");
+        };
+        assert_eq!(value, &BigRational::zero());
+
+        let finite_pole = parse_expr(&mut ctx, "(x - 1)/(x - 1)^2");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, finite_pole, x, point).is_none(),
+            "finite poles must remain residual until one-sided/infinite-point policy exists"
+        );
+    }
+
+    #[test]
     fn finite_elementary_polynomial_limit_handles_total_real_functions() {
         let mut ctx = Context::new();
         let x = parse_expr(&mut ctx, "x");
@@ -3275,6 +3446,18 @@ mod tests {
             panic!("expected exact one-third power limit to collapse to a number");
         };
         assert_eq!(value, &BigRational::from_integer((-2).into()));
+
+        let sqrt_power = parse_expr(&mut ctx, "(2*x + 3)^(1/2)");
+        let sqrt_power_out = try_limit_rules_at_finite(&mut ctx, sqrt_power, x, point_one)
+            .expect("expected finite square-root power limit");
+        assert_eq!(display_expr(&ctx, sqrt_power_out), "sqrt(5)");
+
+        let sqrt_power_endpoint = parse_expr(&mut ctx, "x^(1/2)");
+        let point_zero = parse_expr(&mut ctx, "0");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, sqrt_power_endpoint, x, point_zero).is_none(),
+            "finite square-root power endpoint must remain residual"
+        );
 
         let point_neg_one = parse_expr(&mut ctx, "-1");
         let symbolic_builtin = parse_expr(&mut ctx, "cbrt(x^2 + 1)");
@@ -3550,6 +3733,55 @@ mod tests {
         assert_eq!(display_expr(&ctx, acosh_abs_shift_out), "acosh(2)");
 
         let point_one = parse_expr(&mut ctx, "1");
+        let acosh_sqrt_affine = parse_expr(&mut ctx, "acosh(sqrt(2*x + 3))");
+        let acosh_sqrt_affine_out =
+            try_limit_rules_at_finite(&mut ctx, acosh_sqrt_affine, x, point_one)
+                .expect("expected acosh over strict interior square-root sublimit");
+        assert_eq!(display_expr(&ctx, acosh_sqrt_affine_out), "acosh(sqrt(5))");
+
+        let acosh_sqrt_endpoint = parse_expr(&mut ctx, "acosh(sqrt(x))");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, acosh_sqrt_endpoint, x, point_one).is_none(),
+            "acosh sqrt endpoint must remain residual"
+        );
+
+        let point_neg_five_four = parse_expr(&mut ctx, "-5/4");
+        let atanh_sqrt_non_square = parse_expr(&mut ctx, "atanh(sqrt(2*x + 3))");
+        let atanh_sqrt_non_square_out =
+            try_limit_rules_at_finite(&mut ctx, atanh_sqrt_non_square, x, point_neg_five_four)
+                .expect("expected atanh over strict interior square-root sublimit");
+        assert_eq!(
+            display_expr(&ctx, atanh_sqrt_non_square_out),
+            "atanh(sqrt(1/2))"
+        );
+
+        let atanh_neg_sqrt_non_square = parse_expr(&mut ctx, "atanh(-sqrt(2*x + 3))");
+        let atanh_neg_sqrt_non_square_out =
+            try_limit_rules_at_finite(&mut ctx, atanh_neg_sqrt_non_square, x, point_neg_five_four)
+                .expect("expected atanh over negated strict interior square-root sublimit");
+        assert_eq!(
+            display_expr(&ctx, atanh_neg_sqrt_non_square_out),
+            "atanh(-sqrt(1/2))"
+        );
+
+        let arcsin_sqrt_non_square = parse_expr(&mut ctx, "arcsin(sqrt(2*x + 3))");
+        let arcsin_sqrt_non_square_out =
+            try_limit_rules_at_finite(&mut ctx, arcsin_sqrt_non_square, x, point_neg_five_four)
+                .expect("expected arcsin over strict interior square-root sublimit");
+        assert_eq!(display_expr(&ctx, arcsin_sqrt_non_square_out), "pi / 4");
+
+        let acos_sqrt_non_square = parse_expr(&mut ctx, "acos(sqrt(2*x + 3))");
+        let acos_sqrt_non_square_out =
+            try_limit_rules_at_finite(&mut ctx, acos_sqrt_non_square, x, point_neg_five_four)
+                .expect("expected acos over strict interior square-root sublimit");
+        assert_eq!(display_expr(&ctx, acos_sqrt_non_square_out), "pi / 4");
+
+        let atanh_sqrt_endpoint = parse_expr(&mut ctx, "atanh(sqrt(x))");
+        assert!(
+            try_limit_rules_at_finite(&mut ctx, atanh_sqrt_endpoint, x, point_one).is_none(),
+            "atanh sqrt endpoint must remain residual"
+        );
+
         let point_two = parse_expr(&mut ctx, "2");
         let arcsin_endpoint = parse_expr(&mut ctx, "arcsin(x)");
         assert!(

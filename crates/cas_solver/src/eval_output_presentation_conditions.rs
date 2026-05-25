@@ -121,11 +121,41 @@ fn visible_required_conditions_after_public_suppression<'a>(
     assumed_filter: &AssumedConditionFilter,
     result_display: Option<&str>,
 ) -> Vec<&'a crate::ImplicitCondition> {
+    if result_display.map(str::trim_start) == Some("undefined")
+        && normalized
+            .iter()
+            .any(|cond| required_condition_is_impossible(ctx, cond))
+    {
+        return Vec::new();
+    }
+
     normalized
         .iter()
         .filter(|cond| !assumed_filter.covers_required_condition(ctx, cond))
         .filter(|cond| !should_suppress_public_required_condition(ctx, cond, result_display))
         .collect()
+}
+
+fn required_condition_is_impossible(ctx: &Context, cond: &crate::ImplicitCondition) -> bool {
+    match cond {
+        crate::ImplicitCondition::Positive(expr) => {
+            let mut scratch = ctx.clone();
+            cas_math::calculus_domain_support::positive_condition_is_impossible_over_reals(
+                &mut scratch,
+                *expr,
+                12,
+            )
+        }
+        crate::ImplicitCondition::NonNegative(expr) => {
+            let mut scratch = ctx.clone();
+            cas_math::calculus_domain_support::nonnegative_condition_is_impossible_over_reals(
+                &mut scratch,
+                *expr,
+                12,
+            )
+        }
+        _ => false,
+    }
 }
 
 fn should_suppress_public_required_condition(
@@ -138,6 +168,10 @@ fn should_suppress_public_required_condition(
     };
     if !(display.starts_with("limit(") || display == "undefined") {
         return false;
+    }
+
+    if display == "undefined" && required_condition_is_impossible(ctx, cond) {
+        return true;
     }
 
     matches!(

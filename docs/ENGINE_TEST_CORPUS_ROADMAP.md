@@ -8,8 +8,8 @@ corpus work is the right vehicle for a `robustness` iteration.
 
 For calculus-specific coverage, read this together with
 [CALCULUS_ENGINE_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/CALCULUS_ENGINE_STRATEGY.md).
-Calculus corpora should grow as bounded vertical slices that also pressure the
-pre-calculus core.
+Calculus corpora should now grow from existing bounded vertical slices into
+explicit support matrices that also pressure the pre-calculus core.
 
 This document proposes the next high-ROI test corpora to improve the
 simplification engine itself, not only the didactic layer.
@@ -707,30 +707,50 @@ normalization across family boundaries.
 The mixed `0/1` corpus repeatedly exposes exactly this kind of problem whenever
 residual failures remain after a broader cleanup pass.
 
-## Corpus 8: Calculus Vertical Slices As Pre-Calculus Pressure
+## Corpus 8: Calculus Generalization Matrices As Pre-Calculus Pressure
 
 ### Purpose
 
 Build calculus capability without separating it from the simplification,
 equivalence, domain, and didactic machinery that makes the engine reliable.
 
-Calculus corpus work should test two things at once:
+Calculus corpus work should test several things at once:
 
 - the calculus command returns the right result or residual
 - the pre-calculus core can simplify, explain, and validate the intermediate
   and final expressions
 - the final public calculus form is readable when the mathematical capability
   already exists, without forcing a global canonical simplification preference
+- the case fills a documented support-matrix gap instead of merely adding
+  another near-duplicate example
 
 ### Generation Pattern
 
-Start with small vertical slices, not broad random calculus syntax.
+Start from the green vertical slices already present and expand them into small
+matrices. The useful axes are:
+
+- command: `diff`, `limit`, `integrate`
+- family: polynomial, rational, elementary, inverse, trig, hyperbolic, root,
+  log, substitution, by-parts, or residual
+- argument regime: direct variable, affine argument, polynomial argument,
+  nested elementary argument, or explicitly unsupported general argument
+- domain regime: unconditional, required condition, branch-sensitive,
+  infinity-sensitive, one-sided, integration-constant-sensitive, or residual
+- trace regime: direct rule, product rule, quotient rule, chain rule,
+  substitution, verification by differentiation, safe pre-simplification, or
+  residual explanation
+- presentation regime: canonical internal form, post-calculus public form, or
+  deliberately deferred cleanup
+
+Do not generate broad random calculus syntax. Generate a minimal row that
+clarifies one matrix axis.
 
 Differentiation examples:
 
 - polynomial and rational derivatives
 - product, quotient, and chain rule cases
 - `exp`, `ln`, trig, and inverse-trig derivatives where policy is clear
+- affine and polynomial inner arguments with explicit chain-factor behavior
 - derivative results that require simplification but should not become magical
 - post-diff presentation rows where the internal result is correct but awkward,
   such as `diff(arctan(sqrt(x)), x)` preferring a final reciprocal-root form
@@ -739,7 +759,10 @@ Differentiation examples:
 Limit examples:
 
 - polynomial and rational limits at infinity
-- simple finite point limits only under explicit policy
+- finite point limits only under explicit policy
+- one-sided limits only after side/domain behavior is represented
+- removable discontinuities only after the cancellation and continuity policy
+  exists
 - safe pre-simplification noise such as `+0`, `*1`, and structural zero terms
 - residual cases where unsupported behavior must stay explicit
 
@@ -748,6 +771,8 @@ Integration examples:
 - powers, sums, and constant multiples
 - table-supported `exp`, `sin`, `cos`, and `1/x` cases
 - simple linear substitution only when the substitution trace is explicit
+- polynomial-derivative substitution only when `u` and `du` evidence is visible
+- integration-by-parts families only when the residual path is bounded
 - antiderivatives that can be checked by differentiating within supported
   families
 - post-integral presentation rows where a verified antiderivative should keep a
@@ -766,19 +791,20 @@ It also exposes gaps that ordinary simplification corpora can miss:
 - presentation-only defects where the result is correct but less product-ready
   than a domain-equivalent compact form
 - step traces that are correct but too magical for educational use
+- repeated narrow successes that should become one reusable calculus family
 
 ### Promotion Policy
 
 Promote calculus cases conservatively:
 
-- use unit tests for a narrow calculus rule or family
+- use unit tests for a shared calculus rule, recognizer, verifier, or family
 - use CLI/API contract tests when public command behavior changes
 - use presentation contract tests when the retained value is only the final
   calculus display form
 - use didactic/highlight tests when the visible trace is the retained value
 - use pressure or generated discovery for large composed calculus expressions
-- promote to live guardrails only when the family is stable, representative,
-  and cheap enough to keep
+- promote to live guardrails only when the row represents a stable matrix cell,
+  not a syntactic anecdote, and is cheap enough to keep
 
 Do not promote a large calculus expression just because it found a bug.
 Promote the smallest representative that preserves the lesson.
@@ -791,7 +817,9 @@ are not valuable when they only encode one string-shaped anecdote.
 ### Why This Has High ROI
 
 This track lets the project start building calculus now while continuing to
-strengthen the pre-calculus heart of the engine.
+strengthen the pre-calculus heart of the engine. The current scorecard already
+has enough calculus slices to justify a stronger target: matrix-driven
+generalization.
 
 The best retained cases improve both:
 
@@ -802,19 +830,39 @@ The best retained cases improve both:
 
 Recommended order for maximum engine ROI:
 
-1. Embedded equivalence in context
-2. Orientation, sign, and canonicalization robustness
-3. Mixed-family interaction
-4. Calculus vertical slices when they reuse and harden pre-calculus
-5. Domain frontier and semantic safety
+1. Calculus generalization matrices for `diff`, `limit`, and `integrate`
+2. Domain frontier and semantic safety, especially when it blocks calculus
+3. Post-calculus presentation and didactic trace quality
+4. Embedded equivalence in context when calculus exposes a reusable
+   pre-calculus gap
+5. Orientation, sign, and canonicalization robustness
 6. Loop and oscillation detection
 7. Budget and performance stability
-8. Didactic fidelity review
+8. Mixed-family interaction outside calculus
 
 ## Current Promotion Priority
 
-The highest-ROI current move is to keep growing and rebalancing the existing
-embedded contextual guardrail:
+The highest-ROI current move is to stop padding already-green narrow calculus
+verticals and start promoting calculus support matrices:
+
+### Calculus Support Matrices
+
+Use existing green calculus contracts as seeds and organize the next promotions
+around:
+
+- `diff`: product, quotient, chain, inverse, log/root/trig/hyperbolic,
+  domain-retaining presentation
+- `limit`: finite, infinity, safe pre-simplification, domain-sensitive residual,
+  and later one-sided policy
+- `integrate`: table, substitution, by-parts, antiderivative verification,
+  constant policy, and residual explanations
+
+Each promoted row should say what new matrix cell it covers. If it cannot name
+the new family, argument regime, domain regime, trace regime, or presentation
+regime, it is probably not worth promoting.
+
+The existing embedded contextual guardrail remains important, but it should no
+longer be the default place to spend cycles when it is balanced and green:
 
 ### Embedded Equivalence In Context
 
@@ -829,9 +877,9 @@ Use already validated equivalence pairs and generate:
 Treat this as growth of an existing live guardrail, not as a proposal to create
 that corpus from scratch.
 
-It is still the most likely place to produce another real leap in engine
-quality, because it directly tests whether equivalence is usable locally, not
-only in a top-level naked identity.
+It should regain top priority only when a calculus generalization exposes a
+reusable pre-calculus equivalence gap, a wrapper/domain weakness, or a runtime
+regression that the embedded corpus is best suited to preserve.
 
 ## How To Grow `embedded_equivalence_context_corpus.csv`
 
@@ -909,7 +957,7 @@ A corpus is worth keeping only if it improves at least one of:
   `integrate` results
 - performance predictability
 - derive bridgeability when the same identity has a meaningful target form
-- calculus bridgeability when a pre-calculus family can become a bounded
+- calculus bridgeability when a pre-calculus family can become a generalized
   `diff`, `limit`, or `integrate` capability without unsafe assumptions
 
 For `embedded_equivalence_context_corpus.csv`, add one more filter:

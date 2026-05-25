@@ -6,6 +6,7 @@ pub mod arithmetic_zero_support;
 pub mod auto_expand_budget_support;
 pub mod auto_expand_scan;
 pub mod build;
+pub mod calculus_domain_support;
 pub mod cancel_expand_support;
 pub mod cancel_normalization_support;
 pub mod cancel_semantic_support;

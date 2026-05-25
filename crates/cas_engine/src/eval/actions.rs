@@ -114,7 +114,9 @@ impl Engine {
                     .ok_or_else(|| anyhow::anyhow!("Missing resolved equivalence operand"))?;
                 self.eval_equiv(resolved, resolved_other)
             }
-            EvalAction::Limit { var, approach } => self.eval_limit(resolved, &var, approach),
+            EvalAction::Limit { var, approach } => {
+                self.eval_limit(options, resolved, &var, approach)
+            }
         }
     }
 
@@ -201,6 +203,7 @@ impl Engine {
     /// Handle `EvalAction::Limit`: compute limit using the limits engine.
     pub(super) fn eval_limit(
         &mut self,
+        options: &crate::options::EvalOptions,
         resolved: ExprId,
         var: &str,
         approach: crate::limits::Approach,
@@ -220,6 +223,38 @@ impl Engine {
             &mut budget,
         ) {
             Ok(result) => {
+                let mut steps = Vec::new();
+                if !matches!(options.steps_mode, crate::options::StepsMode::Off) {
+                    let (rule_name, description) = if result.warning.is_some() {
+                        (
+                            "Conservar límite residual",
+                            "Conservar el límite sin resolver porque la política segura no lo decide",
+                        )
+                    } else {
+                        match approach {
+                            crate::limits::Approach::Finite(_) => (
+                                "Evaluar límite finito",
+                                "Evaluar el límite finito con política conservadora",
+                            ),
+                            crate::limits::Approach::PosInfinity
+                            | crate::limits::Approach::NegInfinity => (
+                                "Evaluar límite en infinito",
+                                "Evaluar el límite en infinito con política conservadora",
+                            ),
+                        }
+                    };
+                    let mut step = crate::Step::new(
+                        description,
+                        rule_name,
+                        resolved,
+                        result.expr,
+                        Vec::new(),
+                        Some(&self.simplifier.context),
+                    );
+                    step.importance = crate::ImportanceLevel::Medium;
+                    step.category = crate::StepCategory::Limits;
+                    steps.push(step);
+                }
                 let mut warnings: Vec<DomainWarning> = result
                     .warning
                     .into_iter()
@@ -242,7 +277,7 @@ impl Engine {
                 Ok((
                     EvalResult::Expr(result.expr),
                     warnings,
-                    vec![],
+                    steps,
                     vec![],
                     vec![],
                     vec![],

@@ -31,24 +31,37 @@ Objetivo:
 - Evalúa el ROI cruzado engine↔derive: una mejora de engine/cobertura puede
   ser mejor si deja una transición didáctica reutilizable, y una mejora de
   derive puede ser mejor si revela una capacidad reusable del engine.
-- Evalúa también si el mejor ROI retenible está en una vertical acotada de
-  cálculo (`diff`, `limit`, `integrate`) que reutilice o endurezca el corazón
-  pre-cálculo en vez de saltárselo.
+- Evalúa también si el mejor ROI retenible está en generalizar una capacidad de
+  cálculo ya existente (`diff`, `limit`, `integrate`) hacia una matriz seria de
+  soporte: familia, régimen de argumento, régimen de dominio, traza didáctica,
+  presentación pública y verificación.
+- No gastes ciclos rutinarios en “otro ejemplo de cálculo” si no añade una
+  celda nueva de matriz, una política compartida, una capacidad reusable, una
+  mejora didáctica generalizable o un guardrail de dominio/runtime.
+- Si una familia vecina muestra el mismo patrón que el ciclo anterior,
+  prioriza consolidación compartida antes de seguir añadiendo variantes
+  locales.
 
 Optimiza en este orden:
 1. mantener failed = 0
 2. reducir timeouts, stack overflows, no terminación o rutas claramente frágiles
 3. preservar o mejorar runtime en lanes promovidos, especialmente embedded
-4. expandir completitud matemática útil en dimensiones infracubiertas:
+4. generalizar cálculo real serio desde verticales ya verdes hacia matrices de
+   soporte reutilizables:
+   - `diff`: producto, cociente, cadena, inversas, log/root/trig/hyperbolic,
+     presentación con dominio retenido
+   - `limit`: finitos, infinito, pre-simplificación segura, residuales
+     sensibles a dominio, y política lateral cuando exista
+   - `integrate`: tabla, sustitución, partes acotadas, verificación por
+     diferenciación, política de constante y residuales explicables
+5. expandir completitud matemática útil en dimensiones infracubiertas cuando
+   alimente cálculo, derive o guardrails reales:
    - wrapper spread
    - shell_depth
    - noise_budget
    - cross-family composition
    - sign/orientation robustness
    - semantic/domain regime cuando aplique
-5. avanzar verticales acotadas de cálculo sólo si dejan capacidad pública real,
-   reutilizan o endurecen simplificación/equivalencia/dominios, y no degradan
-   1-4
 6. aumentar cobertura útil, NF-convergent o bridgeability de derive sólo si es
    reutilizable y no degrada 1-4
 7. mejorar reachability y calidad didáctica de derive sin abrir búsqueda ciega,
@@ -98,20 +111,42 @@ Proceso obligatorio:
    - behavior_change_expected:
 8. Si eliges calculus, añade:
    - calculus_scope:
+   - calculus_matrix_cell:
+   - generalization_axis:
    - precalculus_dependency:
    - domain_safety_check:
+   - presentation_check:
+   - sibling_sweep_check:
+   - consolidation_check:
    - didactic_trace_check:
+   - verification_check:
+   - residual_policy_check:
 9. Elige una única hipótesis y aplica el cambio mínimo retenible.
 10. Valida con la cadencia adecuada:
    - inner loop: tests tocados + make engine-fast
    - calculus: tests unitarios/contract de `diff`, `limit` o `integrate` según
-     corresponda, más auditoría didáctica si cambian steps/highlights
+     corresponda; si generalizas una familia, añade o actualiza la celda mínima
+     de matriz; más auditoría didáctica si cambian steps/highlights
    - guardrail: make engine-scorecard
    - pressure: make engine-scorecard-pressure si tocas normalización, orquestación, arithmetic, tráfico profundo, refactor estructural o casos muy compuestos
    - make ci sólo como cierre si realmente corresponde
 11. Para cualquier mejora de cálculo:
    - decide qué capacidad pre-cálculo reutiliza o fuerza
+   - identifica la celda de matriz que cubre:
+     comando/familia/régimen de argumento/régimen de dominio/traza/presentación
+   - ejecuta un sibling sweep acotado sobre familias, orientaciones, signo,
+     escala y presentación cercanas; esto es un probe barato, no búsqueda
+     amplia
+   - si dos ciclos retenidos revelan el mismo patrón en familias vecinas,
+     decide si el siguiente ROI debe ser consolidar helper, política o fila de
+     matriz en vez de añadir otra variante local
+   - justifica por qué no es sólo otro caso sintáctico dentro de una familia ya
+     suficientemente representada
    - no introduzcas suposiciones implícitas de dominio/rama/constante
+   - para `integrate`, decide cómo se representa la constante y si el
+     antiderivado se verifica por diferenciación
+   - para `limit`, respeta la política vigente antes de ampliar continuidad,
+     cancelación, infinito o límites laterales
    - si el fallo real está en simplificación/equivalencia, registra o ejecuta
      el siguiente candidato como engine/cobertura, no como workaround aislado
      de cálculo
@@ -136,7 +171,8 @@ Proceso obligatorio:
    - si sólo es un caso mal formado, duplicado o ruido, descártalo sin ledger
 16. Si generas casos nuevos, promuévelos de forma conservadora:
    - primero presión/descubrimiento
-   - luego unit o live si el caso ya es estable y representativo
+   - luego unit o live si el caso ya es estable y representa una celda nueva de
+     matriz, una familia reusable o un guardrail durable
    - frozen sólo para mínimos estables y duraderos
    - variantes grandes o calientes van a stress, no a live
 17. Si tocas derive, prioriza:
@@ -159,10 +195,19 @@ Guardrails:
   mejora engine/cobertura revela familias sin bridge o transformaciones
   equivalentes que se explican mágicamente.
 - No dejes que el nivel profesional del pre-cálculo bloquee toda inversión en
-  cálculo: empieza por verticales acotadas, pero rechaza shortcuts de cálculo
-  que oculten una debilidad reusable del core.
+  cálculo: el proyecto ya tiene verticales verdes suficientes para priorizar
+  generalización por matrices, pero rechaza shortcuts de cálculo que oculten
+  una debilidad reusable del core.
 - No aceptes resultados de cálculo que dependan de condiciones de dominio,
   rama o constante de integración no representadas.
+- No promociones un caso de cálculo sólo porque sea más grande, más anidado o
+  una variante cercana de un caso verde; debe cubrir una celda nueva o una
+  política reusable.
+- No repitas mejoras por familia cuando el patrón ya apareció en familias
+  vecinas; consolida salvo que haya un riesgo medible de dominio, rama,
+  runtime, orden de rutas o guardrail.
+- No conviertas `integrate` en búsqueda general ni `limit` en heurísticas
+  especulativas: generalizar no significa abrir búsqueda no acotada.
 - Para refactors estructurales: extrae antes de abstraer, conserva orden de rutas y valida como trabajo de engine.
 
 Criterio de decisión:
@@ -176,13 +221,15 @@ Criterio de decisión:
   - calculus_value
   - precalculus_reuse_value
   - domain_safety_value
+  - consolidation_value
   - bajo coste de implementación
 - En empates, prioriza el candidato que expanda una dimensión débil, cierre una ruta frágil o deje el guardrail/corpus más mantenible.
 - También en empates, prioriza el candidato que conecte una capacidad del engine
   con una ruta derive explicable o que use un fallo de derive para identificar
   una capacidad reusable del engine.
-- También en empates, prioriza una vertical de cálculo si convierte capacidades
-  pre-cálculo ya maduras en comportamiento público verificable sin abrir
+- También en empates, prioriza generalización de cálculo si convierte
+  capacidades pre-cálculo ya maduras y verticales verdes existentes en
+  comportamiento público verificable, didáctico y domain-safe sin abrir
   búsqueda amplia ni suposiciones implícitas.
 
 Entregable:
@@ -195,5 +242,7 @@ Entregable:
   - si la iteración fue retenida o rechazada
   - qué aprendizaje quedó documentado si hubo rechazo parcial
   - qué decisión tomaste sobre el puente engine↔derive
-  - qué decisión tomaste sobre cálculo↔pre-cálculo si aplicaba
+  - qué decisión tomaste sobre cálculo↔pre-cálculo si aplicaba, incluyendo la
+    celda de matriz o el motivo para rechazarla/diferirla
+  - qué sibling sweep ejecutaste y si decidiste local-fix o consolidación
   - cuál sería la siguiente iteración recomendada

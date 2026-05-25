@@ -170,6 +170,11 @@ Even so, calculus work should inherit the same didactic standards:
 - broken highlights or magical substeps in calculus output should be treated as
   real didactic defects, not cosmetic noise
 
+The calculus campaign has moved from isolated vertical slices toward
+matrix-driven generalization. That changes the derive bridge criterion:
+derive shadow cases should be selected from reusable calculus matrix cells, not
+from every successful derivative, limit, or integral example.
+
 The bridge also works the other way:
 
 - calculus output often exposes algebraic target forms that `derive` should

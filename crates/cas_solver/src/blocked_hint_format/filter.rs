@@ -134,6 +134,19 @@ fn cycle_defined_hint_is_covered_by_result_domain(
     })
 }
 
+fn positive_hint_is_proven_impossible(ctx: &Context, hint: &crate::BlockedHint) -> bool {
+    if hint.key.kind() != "positive" {
+        return false;
+    }
+
+    let mut scratch = ctx.clone();
+    cas_math::calculus_domain_support::positive_condition_is_impossible_over_reals(
+        &mut scratch,
+        hint.expr_id,
+        12,
+    )
+}
+
 /// Filter blocked hints for eval display.
 ///
 /// When the resolved result is `Undefined`, drops `defined` hints because
@@ -169,6 +182,7 @@ pub fn filter_blocked_hints_for_eval(
                         hint,
                     )
                     || reciprocal_defined_hint_is_covered_by_result_domain(ctx, resolved, hint)))
+                && !(result_is_undefined && positive_hint_is_proven_impossible(ctx, hint))
         })
         .cloned()
         .collect()

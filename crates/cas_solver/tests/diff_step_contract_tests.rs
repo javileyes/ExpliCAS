@@ -5373,6 +5373,209 @@ fn atanh_sqrt_constant_over_polynomial_diff_combines_sqrt_scale_presentation() {
 }
 
 #[test]
+fn inverse_hyperbolic_sqrt_polynomial_constant_divisor_diff_uses_shared_compact_root_presentation()
+{
+    let cases = [
+        (
+            "diff(acosh(sqrt(x+1))/2, x)",
+            "1 / (4 * sqrt(x) * sqrt(x + 1))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(-acosh(sqrt(x+1))/2, x)",
+            "-1 / (4 * sqrt(x) * sqrt(x + 1))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(acosh(sqrt(x+1))/sqrt(5), x)",
+            "1 / (2 * sqrt(5) * sqrt(x + 1) * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(asinh(sqrt(x+1))/sqrt(5), x)",
+            "1 / (2 * sqrt(5) * sqrt(x + 1) * sqrt(x + 2))",
+            vec!["x > -1".to_string()],
+        ),
+        (
+            "diff(atanh(sqrt(x+1)/3)/sqrt(5), x)",
+            "3 / (2 * sqrt(5) * sqrt(x + 1) * (8 - x))",
+            vec!["x < 8".to_string(), "x > -1".to_string()],
+        ),
+    ];
+
+    for (input, expected_result, expected_required) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::Off;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_result, "input: {input}");
+        assert!(
+            !result.contains("^(-1/2)") && !result.contains("^(1/2)"),
+            "constant-scaled inverse hyperbolic sqrt-polynomial derivative should keep compact root notation: {result}"
+        );
+        assert!(
+            output.domain_warnings.is_empty(),
+            "input: {input}, unexpected domain warnings: {:?}",
+            output.domain_warnings
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+        assert_eq!(
+            required, expected_required,
+            "input: {input}, unexpected required conditions: {required:?}"
+        );
+    }
+}
+
+#[test]
+fn atanh_scaled_sqrt_diff_compacts_open_interval_domain_conditions() {
+    for (input, expected_render, expected_required, expected_residual) in [
+        (
+            "diff(atanh(sqrt(x)/2), x)",
+            "1 / (sqrt(x) * (4 - x))",
+            vec!["x > 0".to_string(), "x < 4".to_string()],
+            "diff(atanh(sqrt(x)/2), x) - 1/((4-x)*sqrt(x))",
+        ),
+        (
+            "diff(atanh(-sqrt(x)/2), x)",
+            "-1 / (sqrt(x) * (4 - x))",
+            vec!["x > 0".to_string(), "x < 4".to_string()],
+            "diff(atanh(-sqrt(x)/2), x) + 1/((4-x)*sqrt(x))",
+        ),
+        (
+            "diff(atanh(sqrt(x)/3), x)",
+            "3 / (2 * sqrt(x) * (9 - x))",
+            vec!["x > 0".to_string(), "x < 9".to_string()],
+            "diff(atanh(sqrt(x)/3), x) - 3/(2*(9-x)*sqrt(x))",
+        ),
+        (
+            "diff(2*atanh(sqrt(x)/3), x)",
+            "3 / ((9 - x) * sqrt(x))",
+            vec!["x > 0".to_string(), "x < 9".to_string()],
+            "diff(2*atanh(sqrt(x)/3), x) - 3/((9-x)*sqrt(x))",
+        ),
+        (
+            "diff(2*atanh(sqrt(4*x)/3), x)",
+            "6 / ((9 - 4 * x) * sqrt(x))",
+            vec!["x > 0".to_string(), "x < 9/4".to_string()],
+            "diff(2*atanh(sqrt(4*x)/3), x) - 6/((9-4*x)*sqrt(x))",
+        ),
+        (
+            "diff(-2*atanh(-sqrt(x)/2), x)",
+            "2 / ((4 - x) * sqrt(x))",
+            vec!["x > 0".to_string(), "x < 4".to_string()],
+            "diff(-2*atanh(-sqrt(x)/2), x) - 2/((4-x)*sqrt(x))",
+        ),
+        (
+            "diff(atanh(sqrt(2*x+3)/3), x)",
+            "3 / (2 * sqrt(2 * x + 3) * (3 - x))",
+            vec!["x < 3".to_string(), "x > -3/2".to_string()],
+            "diff(atanh(sqrt(2*x+3)/3), x) - 3/(2*(3-x)*sqrt(2*x+3))",
+        ),
+    ] {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::Off;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected_render, "input: {input}");
+
+        let mut required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+        required.sort();
+        let mut expected_required = expected_required;
+        expected_required.sort();
+        assert_eq!(
+            required, expected_required,
+            "scaled atanh sqrt derivative should render the real open interval compactly"
+        );
+
+        let parsed_residual =
+            parse(expected_residual, &mut engine.simplifier.context).expect("parse residual");
+        let residual_output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: expected_residual.to_string(),
+                    parsed: parsed_residual,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval residual");
+        let residual = match residual_output.result {
+            EvalResult::Expr(expr) => format!(
+                "{}",
+                DisplayExpr {
+                    context: &engine.simplifier.context,
+                    id: expr,
+                }
+            ),
+            other => panic!("expected residual expression result, got {other:?}"),
+        };
+        assert_eq!(residual, "0", "residual did not collapse for {input}");
+    }
+}
+
+#[test]
 fn atanh_surd_quotient_diff_uses_compact_sqrt_scale_presentation() {
     let cases = [
         (
@@ -6112,9 +6315,19 @@ fn inverse_tangent_externally_scaled_sqrt_diff_uses_post_calculus_reciprocal_roo
             "x^(-1/2)/(x+4)",
         ),
         (
+            "diff(arctan(sqrt(4*x)/3), x)",
+            "3 / (sqrt(x) * (4 * x + 9))",
+            "6/(sqrt(4*x)*(4*x+9))",
+        ),
+        (
             "diff(arctan(-2*sqrt(x)), x)",
             "-1 / (sqrt(x) * (4 * x + 1))",
             "-x^(-1/2)/(4*x+1)",
+        ),
+        (
+            "diff(arctan(-sqrt(4*x)/3), x)",
+            "-3 / (sqrt(x) * (4 * x + 9))",
+            "-6/(sqrt(4*x)*(4*x+9))",
         ),
         (
             "diff(arccot(2*sqrt(x)), x)",
@@ -6130,6 +6343,11 @@ fn inverse_tangent_externally_scaled_sqrt_diff_uses_post_calculus_reciprocal_roo
             "diff(arccot(sqrt(x)/2), x)",
             "-1 / (sqrt(x) * (x + 4))",
             "-x^(-1/2)/(x+4)",
+        ),
+        (
+            "diff(arccot(sqrt(4*x)/3), x)",
+            "-3 / (sqrt(x) * (4 * x + 9))",
+            "-6/(sqrt(4*x)*(4*x+9))",
         ),
     ] {
         let mut engine = Engine::new();
@@ -6335,6 +6553,11 @@ fn constant_scaled_inverse_tangent_externally_scaled_sqrt_diff_uses_post_calculu
             "diff(2*arctan(sqrt(x)/2), x)",
             "2 / ((x + 4) * sqrt(x))",
             "(x^(-1/2)*2)/(x+4)",
+        ),
+        (
+            "diff(2*arctan(sqrt(4*x)/3), x)",
+            "6 / ((4 * x + 9) * sqrt(x))",
+            "12/(sqrt(4*x)*(4*x+9))",
         ),
         (
             "diff(-2*arccot(2*sqrt(x)), x)",
@@ -13020,6 +13243,16 @@ fn asinh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
             vec!["x > 0".to_string()],
         ),
         (
+            "diff(asinh(sqrt(4*x)/3), x)",
+            "1 / (2 * sqrt(x) * sqrt(x + 9/4))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(2*asinh(sqrt(4*x)/3), x)",
+            "1 / (sqrt(x + 9/4) * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
             "diff(asinh(sqrt(x+1)), x)",
             "1 / (2 * sqrt(x + 1) * sqrt(x + 2))",
             vec!["x > -1".to_string()],
@@ -13482,6 +13715,21 @@ fn acosh_sqrt_diff_uses_post_calculus_root_denominator_presentation() {
             "diff(acosh(sqrt(x/2)), x)",
             "1 / (2 * sqrt(x) * sqrt(x - 2))",
             vec!["x > 2".to_string()],
+        ),
+        (
+            "diff(acosh(sqrt(x)/3), x)",
+            "1 / (2 * sqrt(x) * sqrt(x - 9))",
+            vec!["x > 9".to_string()],
+        ),
+        (
+            "diff(2*acosh(sqrt(x)/3), x)",
+            "1 / (sqrt(x - 9) * sqrt(x))",
+            vec!["x > 9".to_string()],
+        ),
+        (
+            "diff(acosh(sqrt(2*x+3)/3), x)",
+            "1 / (sqrt(2 * x + 3) * sqrt(2 * x - 6))",
+            vec!["x > 3".to_string()],
         ),
         (
             "diff(-acosh(sqrt(x+1)), x)",
@@ -14781,6 +15029,48 @@ fn bounded_inverse_trig_sqrt_diff_uses_post_calculus_root_denominator_presentati
             "diff(arccos(sqrt(x)), x)",
             "-1 / (2 * sqrt(x) * sqrt(1 - x))",
             vec!["x > 0".to_string(), "x < 1".to_string()],
+            None,
+        ),
+        (
+            "diff(arcsin(sqrt(x)/2), x)",
+            "1 / (2 * sqrt(x) * sqrt(4 - x))",
+            vec!["x > 0".to_string(), "x < 4".to_string()],
+            None,
+        ),
+        (
+            "diff(arccos(sqrt(x)/2), x)",
+            "-1 / (2 * sqrt(x) * sqrt(4 - x))",
+            vec!["x > 0".to_string(), "x < 4".to_string()],
+            None,
+        ),
+        (
+            "diff(arccos(-sqrt(x)/2), x)",
+            "1 / (2 * sqrt(x) * sqrt(4 - x))",
+            vec!["x > 0".to_string(), "x < 4".to_string()],
+            None,
+        ),
+        (
+            "diff(arccos(sqrt(x)/3), x)",
+            "-1 / (2 * sqrt(x) * sqrt(9 - x))",
+            vec!["x > 0".to_string(), "x < 9".to_string()],
+            None,
+        ),
+        (
+            "diff(arcsin(sqrt(4*x)/3), x)",
+            "1 / (2 * sqrt(x) * sqrt(9/4 - x))",
+            vec!["x > 0".to_string(), "x < 9/4".to_string()],
+            None,
+        ),
+        (
+            "diff(arccos(sqrt(4*x)/3), x)",
+            "-1 / (2 * sqrt(x) * sqrt(9/4 - x))",
+            vec!["x > 0".to_string(), "x < 9/4".to_string()],
+            None,
+        ),
+        (
+            "diff(arccos(-sqrt(4*x)/3), x)",
+            "1 / (2 * sqrt(x) * sqrt(9/4 - x))",
+            vec!["x > 0".to_string(), "x < 9/4".to_string()],
             None,
         ),
         (

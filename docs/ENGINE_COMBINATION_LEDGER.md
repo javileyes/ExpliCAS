@@ -95,6 +95,36 @@ The burden of proof stays the same:
 
 ## Current Entries
 
+## 2026-05-24 - Observe-only discovery: limit command residuals cannot enter algebraic wrapper matrix
+
+- area:
+  - calculus / limit / residual matrix harness boundary
+- status:
+  - `observe-only`
+- generated candidate:
+  - promote a calculus residual matrix row for
+    `limit((x^2-1)/(x-1),x,1)-2` under the standard algebraic wrappers
+- local lane:
+  - `python3 scripts/engine_calculus_residual_probe_smoke.py --matrix-residual 'limit((x^2-1)/(x-1),x,1)-2' --matrix-residual-name limit_removable_quadratic_factor --matrix-wrapper plus --matrix-wrapper nested_den --matrix-wrapper double_nested_den --expect pass --forbid-warnings --json --summary-json --ensure-release-cas-cli`
+  - `target/release/cas_cli eval 'limit((x^2-1)/(x-1),x,1)' --format json`
+  - `target/release/cas_cli eval '((limit((x^2-1)/(x-1),x,1)-2)+1)/(x+2)' --format json`
+- observed result:
+  - top-level `limit(...)` routes through the limit command and returns a safe
+    finite-point residual with a warning and `x != 1` requirement
+  - the same `limit(...)` nested inside an algebraic wrapper is treated as an
+    undefined ordinary function: `función [limit] no definida`
+  - the default residual wrapper matrix therefore cannot directly promote
+    `limit` command behavior today
+- reusable weakness:
+  - calculus command coverage is asymmetric: `diff` and `integrate` can be
+    composed inside the expression-level residual matrix, while `limit` still
+    needs either a command-aware matrix harness or a safe expression-level
+    residual function route
+- next candidate:
+  - add a dedicated command-level `limit` matrix for finite/residual/infinity
+    policies, or define a narrow expression-level `limit` residual route before
+    trying algebraic wrapper-spread promotion
+
 ## 2026-05-24 - Observe-only discovery: mul-div target narrowing changes post-calculus diff routes
 
 - area:

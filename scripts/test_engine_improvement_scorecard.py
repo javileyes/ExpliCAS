@@ -239,17 +239,23 @@ class EngineImprovementScorecardTests(unittest.TestCase):
                 "contextual_strict_fast",
                 "contextual_radical_fast",
                 "calculus_diff_contract",
+                "calculus_diff_command_matrix_smoke",
                 "calculus_limit_compact_contract",
                 "calculus_limit_presimplify_contract",
+                "calculus_limit_command_matrix_smoke",
                 "calculus_integrate_compact_contract",
+                "calculus_integrate_command_matrix_smoke",
                 "calculus_residual_matrix_smoke",
             ],
         )
         self.assertIn("contextual_radical_fast", fast_embedded_names)
         self.assertIn("calculus_diff_contract", fast_embedded_names)
+        self.assertIn("calculus_diff_command_matrix_smoke", fast_embedded_names)
         self.assertIn("calculus_limit_compact_contract", fast_embedded_names)
         self.assertIn("calculus_limit_presimplify_contract", fast_embedded_names)
+        self.assertIn("calculus_limit_command_matrix_smoke", fast_embedded_names)
         self.assertIn("calculus_integrate_compact_contract", fast_embedded_names)
+        self.assertIn("calculus_integrate_command_matrix_smoke", fast_embedded_names)
         self.assertIn("calculus_residual_matrix_smoke", fast_embedded_names)
         self.assertNotIn("calculus_limit_contract", fast_names)
         self.assertNotIn("calculus_integrate_contract", fast_names)
@@ -267,12 +273,18 @@ class EngineImprovementScorecardTests(unittest.TestCase):
 
         self.assertIn("calculus_diff_contract", guardrail_names)
         self.assertIn("calculus_diff_contract", full_names)
+        self.assertIn("calculus_diff_command_matrix_smoke", guardrail_names)
+        self.assertIn("calculus_diff_command_matrix_smoke", full_names)
         self.assertNotIn("calculus_diff_exhaustive_contract", guardrail_names)
         self.assertIn("calculus_diff_exhaustive_contract", full_names)
         self.assertIn("calculus_limit_contract", guardrail_names)
         self.assertIn("calculus_limit_contract", full_names)
         self.assertIn("calculus_limit_presimplify_contract", guardrail_names)
         self.assertIn("calculus_limit_presimplify_contract", full_names)
+        self.assertIn("calculus_limit_command_matrix_smoke", guardrail_names)
+        self.assertIn("calculus_limit_command_matrix_smoke", full_names)
+        self.assertIn("calculus_integrate_command_matrix_smoke", guardrail_names)
+        self.assertIn("calculus_integrate_command_matrix_smoke", full_names)
         self.assertIn("calculus_residual_matrix_smoke", guardrail_names)
         self.assertIn("calculus_residual_matrix_smoke", full_names)
         self.assertIn("calculus_integrate_contract", guardrail_names)
@@ -282,6 +294,10 @@ class EngineImprovementScorecardTests(unittest.TestCase):
         self.assertEqual(MODULE.SUITES["calculus_diff_contract"].category, "calculus")
         self.assertEqual(
             MODULE.SUITES["calculus_diff_exhaustive_contract"].category,
+            "calculus",
+        )
+        self.assertEqual(
+            MODULE.SUITES["calculus_diff_command_matrix_smoke"].category,
             "calculus",
         )
         self.assertEqual(MODULE.SUITES["calculus_limit_contract"].category, "calculus")
@@ -294,11 +310,19 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             "calculus",
         )
         self.assertEqual(
+            MODULE.SUITES["calculus_limit_command_matrix_smoke"].category,
+            "calculus",
+        )
+        self.assertEqual(
             MODULE.SUITES["calculus_integrate_compact_contract"].category,
             "calculus",
         )
         self.assertEqual(
             MODULE.SUITES["calculus_integrate_contract"].category,
+            "calculus",
+        )
+        self.assertEqual(
+            MODULE.SUITES["calculus_integrate_command_matrix_smoke"].category,
             "calculus",
         )
         self.assertEqual(
@@ -329,6 +353,12 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             diff_exhaustive_command,
         )
         self.assertIn("--ignored", diff_exhaustive_command)
+        diff_matrix_command = MODULE.SUITES[
+            "calculus_diff_command_matrix_smoke"
+        ].command
+        self.assertIn("engine_diff_command_matrix_smoke.py", diff_matrix_command[1])
+        self.assertIn("--ensure-release-cas-cli", diff_matrix_command)
+        self.assertIn("--summary-json", diff_matrix_command)
         limit_compact_command = MODULE.SUITES[
             "calculus_limit_compact_contract"
         ].command
@@ -337,6 +367,21 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             "test_limit_sqrt_quadratic_over_noisy_scaled_linear_denominator",
             limit_compact_command,
         )
+        limit_matrix_command = MODULE.SUITES[
+            "calculus_limit_command_matrix_smoke"
+        ].command
+        self.assertIn("engine_limit_command_matrix_smoke.py", limit_matrix_command[1])
+        self.assertIn("--ensure-release-cas-cli", limit_matrix_command)
+        self.assertIn("--summary-json", limit_matrix_command)
+        integrate_matrix_command = MODULE.SUITES[
+            "calculus_integrate_command_matrix_smoke"
+        ].command
+        self.assertIn(
+            "engine_integrate_command_matrix_smoke.py",
+            integrate_matrix_command[1],
+        )
+        self.assertIn("--ensure-release-cas-cli", integrate_matrix_command)
+        self.assertIn("--summary-json", integrate_matrix_command)
         integrate_exhaustive_command = MODULE.SUITES[
             "calculus_integrate_exhaustive_contract"
         ].command
@@ -435,6 +480,189 @@ class EngineImprovementScorecardTests(unittest.TestCase):
             MODULE.suite_status("calculus_residual_matrix_smoke", metrics, 0),
             "fail",
         )
+
+    def test_parse_calculus_limit_command_matrix_extracts_policy_axes(self):
+        metrics = MODULE.parse_calculus_limit_command_matrix(
+            """
+{"status":"pass","total":11,"status_counts":{"pass":11,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":8,"residual_case_count":3,"warning_expected_case_count":3,"required_display_case_count":6,"step_checked_case_count":11,"supported_step_unchecked_case_count":0,"expected_step_substring_count":11,"distinct_required_display_count":6,"required_display_counts":{"x > -3":1,"x ≠ -2":1,"x ≠ 1":1},"family_count":7,"point_regime_counts":{"finite":6,"infinity":5},"domain_regime_counts":{"unconditional":4,"required_condition":3,"removable_hole":1,"endpoint_residual":1,"discontinuous_residual":1,"domain_path_conflict":1},"outcome_counts":{"supported":8,"residual":3},"trace_regime_counts":{"substitution":1},"presentation_regime_counts":{"canonical":7,"infinity":1,"residual":3}}
+"""
+        )
+
+        self.assertEqual(metrics["matrix_status"], "pass")
+        self.assertEqual(metrics["total_cases"], 11)
+        self.assertEqual(metrics["passed"], 11)
+        self.assertEqual(metrics["failed"], 0)
+        self.assertEqual(metrics["limit_supported_case_count"], 8)
+        self.assertEqual(metrics["limit_residual_case_count"], 3)
+        self.assertEqual(metrics["limit_warning_expected_case_count"], 3)
+        self.assertEqual(metrics["limit_required_display_case_count"], 6)
+        self.assertEqual(metrics["limit_step_checked_case_count"], 11)
+        self.assertEqual(metrics["limit_supported_step_unchecked_case_count"], 0)
+        self.assertEqual(metrics["limit_expected_step_substring_count"], 11)
+        self.assertEqual(metrics["limit_distinct_required_display_count"], 6)
+        self.assertEqual(metrics["limit_family_count"], 7)
+        self.assertEqual(
+            metrics["limit_required_display_counts"],
+            {"x > -3": 1, "x ≠ -2": 1, "x ≠ 1": 1},
+        )
+        self.assertEqual(metrics["limit_point_regime_counts"], {"finite": 6, "infinity": 5})
+        self.assertEqual(metrics["limit_outcome_counts"], {"supported": 8, "residual": 3})
+        self.assertEqual(
+            MODULE.suite_status("calculus_limit_command_matrix_smoke", metrics, 0),
+            "pass",
+        )
+
+    def test_parse_calculus_diff_command_matrix_extracts_policy_axes(self):
+        metrics = MODULE.parse_calculus_diff_command_matrix(
+            """
+{"status":"pass","total":13,"status_counts":{"pass":13,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":12,"residual_case_count":1,"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":13,"supported_step_unchecked_case_count":0,"expected_step_substring_count":32,"distinct_required_display_count":4,"required_display_counts":{"x > 0":4,"cos(2·x + 1) ≠ 0":1},"family_count":10,"argument_regime_counts":{"variable":4,"product":2,"polynomial_inner":1,"rational_expression":1,"nested_root":1,"scaled_nested_root":1,"nested_bounded_root":1,"negated_nested_root":1,"variable_power":1},"domain_regime_counts":{"unconditional":3,"required_condition":8,"interval_required":1,"discontinuous_residual":1},"outcome_counts":{"supported":12,"residual":1},"trace_regime_counts":{"chain_rule":4,"constant_multiple_chain_rule":1,"logarithmic_derivative":1,"negative_argument_chain_rule":1,"piecewise_abs":1,"power_rule":1,"product_rule":1,"product_rule_log":1,"quotient_rule":1,"residual_policy":1},"presentation_regime_counts":{"canonical":2,"compact_quotient":1,"factored":2,"post_calculus_compact":1,"quotient_abs":1,"reciprocal_root":1,"residual":1,"scaled_post_calculus_compact":1,"signed_post_calculus_compact":1,"signed_reciprocal_root_interval":1,"trig_power_difference":1}}
+"""
+        )
+
+        self.assertEqual(metrics["matrix_status"], "pass")
+        self.assertEqual(metrics["total_cases"], 13)
+        self.assertEqual(metrics["passed"], 13)
+        self.assertEqual(metrics["failed"], 0)
+        self.assertEqual(metrics["diff_supported_case_count"], 12)
+        self.assertEqual(metrics["diff_residual_case_count"], 1)
+        self.assertEqual(metrics["diff_warning_expected_case_count"], 0)
+        self.assertEqual(metrics["diff_required_display_case_count"], 9)
+        self.assertEqual(metrics["diff_step_checked_case_count"], 13)
+        self.assertEqual(metrics["diff_supported_step_unchecked_case_count"], 0)
+        self.assertEqual(metrics["diff_expected_step_substring_count"], 32)
+        self.assertEqual(metrics["diff_distinct_required_display_count"], 4)
+        self.assertEqual(metrics["diff_family_count"], 10)
+        self.assertEqual(
+            metrics["diff_required_display_counts"],
+            {"cos(2·x + 1) ≠ 0": 1, "x > 0": 4},
+        )
+        self.assertEqual(
+            metrics["diff_argument_regime_counts"],
+            {
+                "variable": 4,
+                "product": 2,
+                "polynomial_inner": 1,
+                "rational_expression": 1,
+                "nested_root": 1,
+                "scaled_nested_root": 1,
+                "nested_bounded_root": 1,
+                "negated_nested_root": 1,
+                "variable_power": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["diff_outcome_counts"], {"supported": 12, "residual": 1}
+        )
+        self.assertEqual(
+            MODULE.suite_status("calculus_diff_command_matrix_smoke", metrics, 0),
+            "pass",
+        )
+
+    def test_parse_calculus_integrate_command_matrix_extracts_policy_axes(self):
+        metrics = MODULE.parse_calculus_integrate_command_matrix(
+            """
+{"status":"pass","total":18,"status_counts":{"pass":18,"slow":0,"fail":0,"timeout":0},"issue_kind_counts":{},"problem_case_count":0,"problem_cases":[],"supported_case_count":17,"residual_case_count":1,"warning_expected_case_count":0,"required_display_case_count":9,"step_checked_case_count":18,"supported_step_unchecked_case_count":0,"antiderivative_verification_case_count":17,"expected_step_substring_count":46,"distinct_required_display_count":7,"required_display_counts":{"-1 < x < 1":2,"x > 0":2,"x ≠ -1/2":1},"family_count":18,"argument_regime_counts":{"variable_power":1,"sum":1,"affine_argument":1,"affine_bounded_rational":1,"bounded_rational_expression":1,"bounded_variable_radical":1,"unbounded_variable_radical":1,"nonlinear_polynomial_derivative":1,"nonlinear_polynomial_base":1,"rational_expression":2,"affine_radical":1,"affine_hyperbolic":1,"product":1,"affine_product":1,"sqrt_chain":2,"unsupported_core":1},"domain_regime_counts":{"unconditional":9,"nonzero_required":1,"radical_interval":2,"rational_interval":2,"positive_required":2,"sqrt_chain_nonzero_positive":2},"outcome_counts":{"supported":17,"residual":1},"verification_regime_counts":{"residual_not_verified":1,"verified_by_diff":17},"trace_regime_counts":{"inverse_hyperbolic_rational_affine_table":1,"inverse_hyperbolic_rational_direct_table":1,"inverse_sqrt_direct_table":1,"inverse_sqrt_hyperbolic_direct_table":1,"linearity":1,"power_rule":1},"presentation_regime_counts":{"affine_atanh":1,"compact_power":1,"inverse_hyperbolic":2,"inverse_trig":2,"residual":1}}
+"""
+        )
+
+        self.assertEqual(metrics["matrix_status"], "pass")
+        self.assertEqual(metrics["total_cases"], 18)
+        self.assertEqual(metrics["passed"], 18)
+        self.assertEqual(metrics["failed"], 0)
+        self.assertEqual(metrics["integrate_supported_case_count"], 17)
+        self.assertEqual(metrics["integrate_residual_case_count"], 1)
+        self.assertEqual(metrics["integrate_warning_expected_case_count"], 0)
+        self.assertEqual(metrics["integrate_required_display_case_count"], 9)
+        self.assertEqual(metrics["integrate_step_checked_case_count"], 18)
+        self.assertEqual(metrics["integrate_supported_step_unchecked_case_count"], 0)
+        self.assertEqual(
+            metrics["integrate_antiderivative_verification_case_count"], 17
+        )
+        self.assertEqual(metrics["integrate_expected_step_substring_count"], 46)
+        self.assertEqual(metrics["integrate_distinct_required_display_count"], 7)
+        self.assertEqual(metrics["integrate_family_count"], 18)
+        self.assertEqual(
+            metrics["integrate_required_display_counts"],
+            {"-1 < x < 1": 2, "x > 0": 2, "x ≠ -1/2": 1},
+        )
+        self.assertEqual(
+            metrics["integrate_argument_regime_counts"],
+            {
+                "variable_power": 1,
+                "sum": 1,
+                "affine_argument": 1,
+                "affine_bounded_rational": 1,
+                "bounded_rational_expression": 1,
+                "bounded_variable_radical": 1,
+                "unbounded_variable_radical": 1,
+                "nonlinear_polynomial_derivative": 1,
+                "nonlinear_polynomial_base": 1,
+                "rational_expression": 2,
+                "affine_radical": 1,
+                "affine_hyperbolic": 1,
+                "product": 1,
+                "affine_product": 1,
+                "sqrt_chain": 2,
+                "unsupported_core": 1,
+            },
+        )
+        self.assertEqual(
+            metrics["integrate_outcome_counts"], {"supported": 17, "residual": 1}
+        )
+        self.assertEqual(
+            metrics["integrate_verification_regime_counts"],
+            {"residual_not_verified": 1, "verified_by_diff": 17},
+        )
+        self.assertEqual(
+            MODULE.suite_status("calculus_integrate_command_matrix_smoke", metrics, 0),
+            "pass",
+        )
+
+    def test_calculus_command_matrix_status_fails_on_unchecked_supported_steps(self):
+        cases = (
+            (
+                "calculus_diff_command_matrix_smoke",
+                "diff_supported_step_unchecked_case_count",
+            ),
+            (
+                "calculus_limit_command_matrix_smoke",
+                "limit_supported_step_unchecked_case_count",
+            ),
+            (
+                "calculus_integrate_command_matrix_smoke",
+                "integrate_supported_step_unchecked_case_count",
+            ),
+        )
+        for suite_name, metric_key in cases:
+            with self.subTest(suite_name=suite_name):
+                metrics = {"matrix_status": "pass", metric_key: 1}
+                self.assertEqual(
+                    MODULE.suite_status(suite_name, metrics, 0),
+                    "fail",
+                )
+
+    def test_calculus_command_matrix_status_allows_checked_supported_steps(self):
+        cases = (
+            (
+                "calculus_diff_command_matrix_smoke",
+                "diff_supported_step_unchecked_case_count",
+            ),
+            (
+                "calculus_limit_command_matrix_smoke",
+                "limit_supported_step_unchecked_case_count",
+            ),
+            (
+                "calculus_integrate_command_matrix_smoke",
+                "integrate_supported_step_unchecked_case_count",
+            ),
+        )
+        for suite_name, metric_key in cases:
+            with self.subTest(suite_name=suite_name):
+                metrics = {"matrix_status": "pass", metric_key: 0}
+                self.assertEqual(
+                    MODULE.suite_status(suite_name, metrics, 0),
+                    "pass",
+                )
 
     def test_format_runtime_duration_preserves_subsecond_signal(self):
         self.assertEqual(MODULE.format_runtime_duration(0.00025), "0.25ms")
@@ -1518,6 +1746,70 @@ root.direct_small_zero_composition.candidate.three_core_groups
                     },
                     "delta": {},
                 },
+                "calculus_diff_command_matrix_smoke": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.3,
+                    "metrics": {
+                        "matrix_status": "pass",
+                        "total_cases": 13,
+                        "passed": 13,
+                        "failed": 0,
+                        "raw_failed": 0,
+                        "slow": 0,
+                        "timeouts": 0,
+                        "problem_case_count": 0,
+                        "problem_cases": [],
+                        "issue_kind_counts": {},
+                        "diff_supported_case_count": 12,
+                        "diff_residual_case_count": 1,
+                        "diff_warning_expected_case_count": 0,
+                        "diff_required_display_case_count": 9,
+                        "diff_step_checked_case_count": 13,
+                        "diff_supported_step_unchecked_case_count": 0,
+                        "diff_expected_step_substring_count": 32,
+                        "diff_distinct_required_display_count": 4,
+                        "diff_required_display_counts": {
+                            "x > 0": 4,
+                            "cos(2·x + 1) ≠ 0": 1,
+                        },
+                        "diff_family_count": 10,
+                        "diff_argument_regime_counts": {
+                            "variable": 4,
+                            "product": 2,
+                            "polynomial_inner": 1,
+                            "rational_expression": 1,
+                            "nested_root": 1,
+                            "scaled_nested_root": 1,
+                            "nested_bounded_root": 1,
+                            "negated_nested_root": 1,
+                            "variable_power": 1,
+                        },
+                        "diff_domain_regime_counts": {
+                            "unconditional": 3,
+                            "required_condition": 8,
+                            "interval_required": 1,
+                            "discontinuous_residual": 1,
+                        },
+                        "diff_outcome_counts": {"supported": 12, "residual": 1},
+                        "diff_trace_regime_counts": {
+                            "chain_rule": 4,
+                            "constant_multiple_chain_rule": 1,
+                            "negative_argument_chain_rule": 1,
+                            "power_rule": 1,
+                            "product_rule": 1,
+                            "residual_policy": 1,
+                        },
+                        "diff_presentation_regime_counts": {
+                            "canonical": 2,
+                            "factored": 2,
+                            "residual": 1,
+                            "scaled_post_calculus_compact": 1,
+                            "signed_post_calculus_compact": 1,
+                            "signed_reciprocal_root_interval": 1,
+                        },
+                    },
+                    "delta": {},
+                },
                 "calculus_diff_exhaustive_contract": {
                     "status": "pass",
                     "elapsed_seconds": 0.7,
@@ -1543,6 +1835,102 @@ root.direct_small_zero_composition.candidate.three_core_groups
                         "measured": 0,
                         "filtered_out": 0,
                         "timeouts": 0,
+                    },
+                    "delta": {},
+                },
+                "calculus_integrate_command_matrix_smoke": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.35,
+                    "metrics": {
+                        "matrix_status": "pass",
+                        "total_cases": 18,
+                        "passed": 18,
+                        "failed": 0,
+                        "raw_failed": 0,
+                        "slow": 0,
+                        "timeouts": 0,
+                        "problem_case_count": 0,
+                        "problem_cases": [],
+                        "issue_kind_counts": {},
+                        "integrate_supported_case_count": 17,
+                        "integrate_residual_case_count": 1,
+                        "integrate_warning_expected_case_count": 0,
+                        "integrate_required_display_case_count": 9,
+                        "integrate_step_checked_case_count": 18,
+                        "integrate_supported_step_unchecked_case_count": 0,
+                        "integrate_antiderivative_verification_case_count": 17,
+                        "integrate_expected_step_substring_count": 46,
+                        "integrate_distinct_required_display_count": 7,
+                        "integrate_required_display_counts": {
+                            "-1 < x < 1": 2,
+                            "x > 0": 2,
+                            "x ≠ -1/2": 1,
+                        },
+                        "integrate_family_count": 18,
+                        "integrate_argument_regime_counts": {
+                            "variable_power": 1,
+                            "sum": 1,
+                            "affine_argument": 1,
+                            "affine_bounded_rational": 1,
+                            "bounded_rational_expression": 1,
+                            "bounded_variable_radical": 1,
+                            "unbounded_variable_radical": 1,
+                            "nonlinear_polynomial_derivative": 1,
+                            "nonlinear_polynomial_base": 1,
+                            "rational_expression": 2,
+                            "affine_radical": 1,
+                            "affine_hyperbolic": 1,
+                            "product": 1,
+                            "affine_product": 1,
+                            "sqrt_chain": 2,
+                            "unsupported_core": 1,
+                        },
+                        "integrate_domain_regime_counts": {
+                            "unconditional": 9,
+                            "nonzero_required": 1,
+                            "radical_interval": 2,
+                            "rational_interval": 2,
+                            "positive_required": 2,
+                            "sqrt_chain_nonzero_positive": 2,
+                        },
+                        "integrate_outcome_counts": {
+                            "supported": 17,
+                            "residual": 1,
+                        },
+                        "integrate_verification_regime_counts": {
+                            "verified_by_diff": 17,
+                            "residual_not_verified": 1,
+                        },
+                        "integrate_trace_regime_counts": {
+                            "by_parts_affine_log": 1,
+                            "by_parts_log": 1,
+                            "hyperbolic_substitution": 1,
+                            "inverse_hyperbolic_rational_affine_table": 1,
+                            "inverse_hyperbolic_rational_direct_table": 1,
+                            "inverse_sqrt_affine_table": 1,
+                            "inverse_sqrt_direct_table": 1,
+                            "inverse_sqrt_hyperbolic_direct_table": 1,
+                            "inverse_trig_table": 1,
+                            "linear_substitution": 1,
+                            "linearity": 1,
+                            "log_reciprocal_derivative": 1,
+                            "polynomial_base_substitution": 1,
+                            "polynomial_derivative_substitution": 1,
+                            "power_rule": 1,
+                        },
+                        "integrate_presentation_regime_counts": {
+                            "abs_log": 1,
+                            "abs_log_sqrt_chain": 1,
+                            "affine_arcsin": 1,
+                            "affine_atanh": 1,
+                            "compact_power": 1,
+                            "factored_by_parts": 2,
+                            "exponential": 1,
+                            "inverse_hyperbolic": 2,
+                            "inverse_trig": 2,
+                            "radical_power": 1,
+                            "residual": 1,
+                        },
                     },
                     "delta": {},
                 },
@@ -1602,6 +1990,57 @@ root.direct_small_zero_composition.candidate.three_core_groups
                     },
                     "delta": {},
                 },
+                "calculus_limit_command_matrix_smoke": {
+                    "status": "pass",
+                    "elapsed_seconds": 0.4,
+                    "metrics": {
+                        "matrix_status": "pass",
+                        "total_cases": 11,
+                        "passed": 11,
+                        "failed": 0,
+                        "raw_failed": 0,
+                        "slow": 0,
+                        "timeouts": 0,
+                        "problem_case_count": 0,
+                        "problem_cases": [],
+                        "issue_kind_counts": {},
+                        "limit_supported_case_count": 8,
+                        "limit_residual_case_count": 3,
+                        "limit_warning_expected_case_count": 3,
+                        "limit_required_display_case_count": 6,
+                        "limit_step_checked_case_count": 11,
+                        "limit_supported_step_unchecked_case_count": 0,
+                        "limit_expected_step_substring_count": 11,
+                        "limit_distinct_required_display_count": 6,
+                        "limit_required_display_counts": {
+                            "x > -3": 1,
+                            "x ≠ -2": 1,
+                            "x ≠ 1": 1,
+                        },
+                        "limit_family_count": 7,
+                        "limit_point_regime_counts": {"finite": 6, "infinity": 5},
+                        "limit_domain_regime_counts": {
+                            "unconditional": 4,
+                            "required_condition": 3,
+                            "removable_hole": 1,
+                            "endpoint_residual": 1,
+                            "discontinuous_residual": 1,
+                            "domain_path_conflict": 1,
+                        },
+                        "limit_outcome_counts": {"supported": 8, "residual": 3},
+                        "limit_trace_regime_counts": {
+                            "finite_residual_policy": 2,
+                            "substitution": 1,
+                            "rational_degree_policy": 1,
+                        },
+                        "limit_presentation_regime_counts": {
+                            "canonical": 7,
+                            "infinity": 1,
+                            "residual": 3,
+                        },
+                    },
+                    "delta": {},
+                },
                 "calculus_residual_matrix_smoke": {
                     "status": "pass",
                     "elapsed_seconds": 3.2,
@@ -1650,9 +2089,41 @@ root.direct_small_zero_composition.candidate.three_core_groups
 
         markdown = MODULE.render_markdown(scorecard)
 
-        self.assertIn("## Calculus Contract Signal", markdown)
+        self.assertIn("## Calculus Support Matrix Signal", markdown)
         self.assertIn("public calculus behavior", markdown)
+        self.assertIn("support-matrix coverage", markdown)
+        self.assertIn("Matrix axes: command, family, argument regime", markdown)
+        self.assertNotIn("vertical slices", markdown)
         self.assertIn("`diff`: passed=30 failed=0", markdown)
+        self.assertIn(
+            "`diff_command_matrix`: passed=13 failed=0 total=13 slow=0 "
+            "timeouts=0 supported_cases=12 residual_cases=1 warning_expected=0 "
+            "required_display=9 step_checked=13 unchecked_supported_steps=0 "
+            "families=10",
+            markdown,
+        )
+        self.assertIn(
+            "`diff_command_matrix` argument regimes: negated_nested_root=1, "
+            "nested_bounded_root=1, nested_root=1, polynomial_inner=1, product=2, "
+            "rational_expression=1, scaled_nested_root=1, variable=4",
+            markdown,
+        )
+        self.assertIn(
+            "`diff_command_matrix` outcomes: residual=1, supported=12",
+            markdown,
+        )
+        self.assertIn(
+            "`diff_command_matrix` trace regimes: chain_rule=4, "
+            "constant_multiple_chain_rule=1, negative_argument_chain_rule=1, "
+            "power_rule=1, product_rule=1, residual_policy=1",
+            markdown,
+        )
+        self.assertIn(
+            "`diff_command_matrix` presentation regimes: canonical=2, "
+            "factored=2, residual=1, scaled_post_calculus_compact=1, "
+            "signed_post_calculus_compact=1, signed_reciprocal_root_interval=1",
+            markdown,
+        )
         self.assertIn(
             "`diff` ignored tests: `inverse_reciprocal_trig_diff_exhaustive` (debug-slow)",
             markdown,
@@ -1664,6 +2135,33 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertIn("`limit`: passed=6 failed=0", markdown)
         self.assertIn("`limit_compact`: passed=1 failed=0", markdown)
         self.assertIn("`limit_presimplify_safe`: passed=8 failed=0", markdown)
+        self.assertIn(
+            "`limit_command_matrix`: passed=11 failed=0 total=11 slow=0 "
+            "timeouts=0 supported_cases=8 residual_cases=3 warning_expected=3 "
+            "required_display=6 step_checked=11 unchecked_supported_steps=0 "
+            "families=7",
+            markdown,
+        )
+        self.assertIn("`limit_command_matrix` point regimes: finite=6, infinity=5", markdown)
+        self.assertIn(
+            "`limit_command_matrix` required displays: "
+            "x > -3=1, x ≠ -2=1, x ≠ 1=1",
+            markdown,
+        )
+        self.assertIn(
+            "`limit_command_matrix` outcomes: residual=3, supported=8",
+            markdown,
+        )
+        self.assertIn(
+            "`limit_command_matrix` trace regimes: finite_residual_policy=2, "
+            "rational_degree_policy=1, substitution=1",
+            markdown,
+        )
+        self.assertIn(
+            "`limit_command_matrix` presentation regimes: canonical=7, "
+            "infinity=1, residual=3",
+            markdown,
+        )
         self.assertIn(
             "`residual_matrix`: passed=247 failed=0 total=247 slow=0 timeouts=0 "
             "total_bases=26 wrapped_bases=21 standalone_bases=5 wrappers=12 "
@@ -1692,6 +2190,59 @@ root.direct_small_zero_composition.candidate.three_core_groups
         self.assertNotIn("`residual_matrix` problem cases:", markdown)
         self.assertIn("`integrate`: passed=23 failed=0", markdown)
         self.assertIn(
+            "`integrate_command_matrix`: passed=18 failed=0 total=18 slow=0 "
+            "timeouts=0 supported_cases=17 residual_cases=1 warning_expected=0 "
+            "required_display=9 step_checked=18 unchecked_supported_steps=0 "
+            "antiderivative_verified=17 "
+            "families=18",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` argument regimes: affine_argument=1, "
+            "affine_bounded_rational=1, affine_hyperbolic=1, "
+            "affine_product=1, affine_radical=1, bounded_rational_expression=1, "
+            "bounded_variable_radical=1, nonlinear_polynomial_base=1",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` domain regimes: nonzero_required=1, "
+            "positive_required=2, radical_interval=2, rational_interval=2, "
+            "sqrt_chain_nonzero_positive=2, unconditional=9",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` required displays: "
+            "-1 < x < 1=2, x > 0=2, x ≠ -1/2=1",
+            markdown,
+        )
+        self.assertIn(
+            "`diff_command_matrix` required displays: "
+            "cos(2·x + 1) ≠ 0=1, x > 0=4",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` outcomes: residual=1, supported=17",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` verification regimes: "
+            "residual_not_verified=1, verified_by_diff=17",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` trace regimes: by_parts_affine_log=1, "
+            "by_parts_log=1, hyperbolic_substitution=1, "
+            "inverse_hyperbolic_rational_affine_table=1, "
+            "inverse_hyperbolic_rational_direct_table=1, "
+            "inverse_sqrt_affine_table=1, inverse_sqrt_direct_table=1",
+            markdown,
+        )
+        self.assertIn(
+            "`integrate_command_matrix` presentation regimes: abs_log=1, "
+            "abs_log_sqrt_chain=1, affine_arcsin=1, affine_atanh=1",
+            markdown,
+        )
+        self.assertIn(
             "`integrate_exhaustive`: passed=1 failed=0 ignored=0 filtered_out=321",
             markdown,
         )
@@ -1700,10 +2251,31 @@ root.direct_small_zero_composition.candidate.three_core_groups
             markdown,
         )
         self.assertIn(
+            "| `calculus_diff_command_matrix_smoke` | `pass` | 0.30s | "
+            "passed=13 failed=0 total=13 supported=12 residual=1 "
+            "warning_expected=0 required_display=9 step_checked=13 "
+            "unchecked_supported_steps=0 families=10 |",
+            markdown,
+        )
+        self.assertIn(
             "| `calculus_residual_matrix_smoke` | `pass` | 3.20s | "
             "passed=247 failed=0 total=247 conditioned=42 conditions=4 "
             "total_bases=26 wrapped_bases=21 standalone_bases=5 wrappers=12 "
             "missing_wrapped_pairs=10 partial_wrapper_bases=1 |",
+            markdown,
+        )
+        self.assertIn(
+            "| `calculus_limit_command_matrix_smoke` | `pass` | 0.40s | "
+            "passed=11 failed=0 total=11 supported=8 residual=3 "
+            "warning_expected=3 required_display=6 step_checked=11 "
+            "unchecked_supported_steps=0 families=7 |",
+            markdown,
+        )
+        self.assertIn(
+            "| `calculus_integrate_command_matrix_smoke` | `pass` | 0.35s | "
+            "passed=18 failed=0 total=18 supported=17 residual=1 "
+            "warning_expected=0 required_display=9 step_checked=18 "
+            "unchecked_supported_steps=0 antiderivative_verified=17 families=18 |",
             markdown,
         )
 

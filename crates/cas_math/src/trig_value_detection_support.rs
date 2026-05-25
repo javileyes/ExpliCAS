@@ -1,7 +1,7 @@
 use crate::expr_destructure::as_fn1;
 use crate::pattern_marks::PatternMarks;
 use crate::pi_helpers::{extract_rational_pi_multiple, is_pi, is_pi_over_n};
-use crate::root_forms::extract_numeric_sqrt_radicand;
+use crate::root_forms::{extract_numeric_sqrt_radicand, extract_square_root_base};
 use crate::trig_canonicalization_support::{
     is_inverse_trig_function_call, try_rewrite_tan_to_sin_cos_function_expr,
     TrigCanonicalRewritePlan,
@@ -130,6 +130,67 @@ impl InverseTrigInput {
     }
 }
 
+fn detect_inverse_trig_sqrt_rational_input(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<InverseTrigInput> {
+    let radicand = extract_square_root_base(ctx, expr)?;
+    let value = exact_rational_expr_value(ctx, radicand)?;
+
+    if value == BigRational::new(1.into(), 2.into()) {
+        return Some(InverseTrigInput::Sqrt2Over2);
+    }
+    if value == BigRational::new(3.into(), 4.into()) {
+        return Some(InverseTrigInput::Sqrt3Over2);
+    }
+    if value == BigRational::new(1.into(), 3.into()) {
+        return Some(InverseTrigInput::OneOverSqrt3);
+    }
+
+    None
+}
+
+fn detect_inverse_trig_reciprocal_sqrt_input(
+    ctx: &Context,
+    expr: ExprId,
+) -> Option<InverseTrigInput> {
+    match extract_numeric_reciprocal_sqrt_radicand(ctx, expr)? {
+        2 => Some(InverseTrigInput::Sqrt2Over2),
+        3 => Some(InverseTrigInput::OneOverSqrt3),
+        _ => None,
+    }
+}
+
+fn extract_numeric_reciprocal_sqrt_radicand(ctx: &Context, expr: ExprId) -> Option<i64> {
+    let Expr::Pow(base, exp) = ctx.get(expr) else {
+        return None;
+    };
+    if exact_rational_expr_value(ctx, *exp)? != BigRational::new((-1).into(), 2.into()) {
+        return None;
+    }
+    let Expr::Number(value) = ctx.get(*base) else {
+        return None;
+    };
+    if !value.is_integer() {
+        return None;
+    }
+    let radicand: i64 = value.to_integer().try_into().ok()?;
+    (radicand > 0).then_some(radicand)
+}
+
+fn exact_rational_expr_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
+    match ctx.get(expr) {
+        Expr::Number(value) => Some(value.clone()),
+        Expr::Neg(inner) => exact_rational_expr_value(ctx, *inner).map(|value| -value),
+        Expr::Div(num, den) => {
+            let numerator = exact_rational_expr_value(ctx, *num)?;
+            let denominator = exact_rational_expr_value(ctx, *den)?;
+            (!denominator.is_zero()).then(|| numerator / denominator)
+        }
+        _ => None,
+    }
+}
+
 /// Detect if an expression is a special input for inverse trig.
 pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseTrigInput> {
     match ctx.get(expr) {
@@ -181,21 +242,37 @@ pub fn detect_inverse_trig_input(ctx: &Context, expr: ExprId) -> Option<InverseT
             };
 
             if let Some(sqrt_base) = extract_numeric_sqrt_radicand(ctx, sqrt_id) {
-                if let Expr::Number(n) = ctx.get(num_id) {
-                    if sqrt_base == 3 && *n == BigRational::new(1.into(), 3.into()) {
+                if let Some(n) = exact_rational_expr_value(ctx, num_id) {
+                    if sqrt_base == 3 && n == BigRational::new(1.into(), 3.into()) {
                         return Some(InverseTrigInput::OneOverSqrt3);
                     }
-                    if sqrt_base == 2 && *n == BigRational::new(1.into(), 2.into()) {
+                    if sqrt_base == 2 && n == BigRational::new(1.into(), 2.into()) {
                         return Some(InverseTrigInput::Sqrt2Over2);
                     }
-                    if sqrt_base == 3 && *n == BigRational::new(1.into(), 2.into()) {
+                    if sqrt_base == 3 && n == BigRational::new(1.into(), 2.into()) {
                         return Some(InverseTrigInput::Sqrt3Over2);
                     }
+                }
+            }
+            if let Some(reciprocal_sqrt_base) =
+                extract_numeric_reciprocal_sqrt_radicand(ctx, sqrt_id)
+            {
+                if reciprocal_sqrt_base == 3
+                    && exact_rational_expr_value(ctx, num_id)
+                        .is_some_and(|n| n == BigRational::new(3.into(), 2.into()))
+                {
+                    return Some(InverseTrigInput::Sqrt3Over2);
                 }
             }
             None
         }
         _ => {
+            if let Some(input) = detect_inverse_trig_sqrt_rational_input(ctx, expr) {
+                return Some(input);
+            }
+            if let Some(input) = detect_inverse_trig_reciprocal_sqrt_input(ctx, expr) {
+                return Some(input);
+            }
             if let Some(3) = extract_numeric_sqrt_radicand(ctx, expr) {
                 return Some(InverseTrigInput::Sqrt3);
             }
@@ -331,6 +408,22 @@ mod tests {
             detect_inverse_trig_input(&ctx, parsed_sqrt3),
             Some(InverseTrigInput::Sqrt3)
         );
+
+        for (input, expected) in [
+            ("sqrt(1/2)", InverseTrigInput::Sqrt2Over2),
+            ("sqrt(3/4)", InverseTrigInput::Sqrt3Over2),
+            ("sqrt(1/3)", InverseTrigInput::OneOverSqrt3),
+            ("2^(-1/2)", InverseTrigInput::Sqrt2Over2),
+            ("3^(-1/2)", InverseTrigInput::OneOverSqrt3),
+            ("3/2 * 3^(-1/2)", InverseTrigInput::Sqrt3Over2),
+        ] {
+            let expr = cas_parser::parse(input, &mut ctx).expect("parse inverse trig sqrt input");
+            assert_eq!(
+                detect_inverse_trig_input(&ctx, expr),
+                Some(expected),
+                "input: {input}"
+            );
+        }
     }
 
     #[test]

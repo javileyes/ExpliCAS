@@ -229,12 +229,17 @@ fn push_intrinsic_function_requires(
                             | cas_ast::BuiltinFn::Asin
                             | cas_ast::BuiltinFn::Arccos
                             | cas_ast::BuiltinFn::Acos,
-                        ) => {
-                            let one = ctx.num(1);
-                            let two = ctx.num(2);
-                            let square = ctx.add(cas_ast::Expr::Pow(args[0], two));
-                            let bounded = ctx.add(cas_ast::Expr::Sub(one, square));
-                            Some(crate::ImplicitCondition::NonNegative(bounded))
+                        ) => Some(inverse_unit_interval_intrinsic_requirement(
+                            ctx,
+                            args[0],
+                            UnitIntervalBoundary::Closed,
+                        )),
+                        Some(cas_ast::BuiltinFn::Atanh) => {
+                            Some(inverse_unit_interval_intrinsic_requirement(
+                                ctx,
+                                args[0],
+                                UnitIntervalBoundary::Open,
+                            ))
                         }
                         _ => None,
                     };
@@ -270,6 +275,48 @@ fn push_intrinsic_function_requires(
             | cas_ast::Expr::Constant(_)
             | cas_ast::Expr::SessionRef(_) => {}
         }
+    }
+}
+
+enum UnitIntervalBoundary {
+    Closed,
+    Open,
+}
+
+fn sqrt_like_radicand_for_intrinsic_domain(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(radicand) = cas_math::expr_extract::extract_sqrt_argument_view(ctx, expr) {
+        return Some(radicand);
+    }
+
+    let cas_ast::Expr::Pow(base, exponent) = ctx.get(expr) else {
+        return None;
+    };
+    match ctx.get(*exponent) {
+        cas_ast::Expr::Number(value)
+            if value == &num_rational::BigRational::new(1.into(), 2.into()) =>
+        {
+            Some(*base)
+        }
+        _ => None,
+    }
+}
+
+fn inverse_unit_interval_intrinsic_requirement(
+    ctx: &mut cas_ast::Context,
+    arg: ExprId,
+    boundary: UnitIntervalBoundary,
+) -> crate::ImplicitCondition {
+    let one = ctx.num(1);
+    let bounded = if let Some(radicand) = sqrt_like_radicand_for_intrinsic_domain(ctx, arg) {
+        ctx.add(cas_ast::Expr::Sub(one, radicand))
+    } else {
+        let two = ctx.num(2);
+        let square = ctx.add(cas_ast::Expr::Pow(arg, two));
+        ctx.add(cas_ast::Expr::Sub(one, square))
+    };
+    match boundary {
+        UnitIntervalBoundary::Closed => crate::ImplicitCondition::NonNegative(bounded),
+        UnitIntervalBoundary::Open => crate::ImplicitCondition::Positive(bounded),
     }
 }
 

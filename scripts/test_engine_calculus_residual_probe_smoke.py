@@ -455,11 +455,20 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
     def test_default_matrix_contains_representative_wrapped_residuals(self) -> None:
         cases = SMOKE.build_default_matrix_cases()
 
-        self.assertEqual(len(cases), 706)
+        self.assertEqual(len(cases), 730)
         self.assertIn("arctan_sqrt_additive_trig:plus", {case.name for case in cases})
         self.assertIn("arctan_sqrt_additive_trig:nested_den", {case.name for case in cases})
         self.assertIn("arctan_sqrt_additive_trig:double_nested_den", {case.name for case in cases})
         self.assertIn("inverse_trig_arctan:double_nested_den", {case.name for case in cases})
+        self.assertIn("integrate_exp_quadratic_substitution:plus", {case.name for case in cases})
+        self.assertIn(
+            "integrate_exp_quadratic_substitution:nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "integrate_exp_quadratic_substitution:double_nested_den",
+            {case.name for case in cases},
+        )
         self.assertIn("integrate_exp_trig_sin:plus", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_sin:nested_den", {case.name for case in cases})
         self.assertIn("integrate_exp_trig_sin:double_nested_den", {case.name for case in cases})
@@ -572,6 +581,18 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         )
         self.assertIn(
             "arctan_sqrt_unit_shift_square:double_nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "inverse_hyperbolic_acosh_sqrt_constant_scale:plus",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "inverse_hyperbolic_acosh_sqrt_constant_scale:nested_den",
+            {case.name for case in cases},
+        )
+        self.assertIn(
+            "inverse_hyperbolic_acosh_sqrt_constant_scale:double_nested_den",
             {case.name for case in cases},
         )
         self.assertIn("shifted_asinh_kernel:plus", {case.name for case in cases})
@@ -1668,6 +1689,42 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         )
         self.assertEqual(
             arctan_sqrt_unit_shift_square_double_nested_case.required_conditions,
+            ("x > 0", "x + 2", "x + 3", "x + 4"),
+        )
+        acosh_sqrt_constant_scale_plus_case = next(
+            case
+            for case in cases
+            if case.name == "inverse_hyperbolic_acosh_sqrt_constant_scale:plus"
+        )
+        self.assertEqual(acosh_sqrt_constant_scale_plus_case.expected_result, "1 / (x + 2)")
+        self.assertEqual(
+            acosh_sqrt_constant_scale_plus_case.required_conditions,
+            ("x > 0", "x + 2"),
+        )
+        acosh_sqrt_constant_scale_nested_case = next(
+            case
+            for case in cases
+            if case.name == "inverse_hyperbolic_acosh_sqrt_constant_scale:nested_den"
+        )
+        self.assertEqual(
+            acosh_sqrt_constant_scale_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3))",
+        )
+        self.assertEqual(
+            acosh_sqrt_constant_scale_nested_case.required_conditions,
+            ("x > 0", "x + 2", "x + 3"),
+        )
+        acosh_sqrt_constant_scale_double_nested_case = next(
+            case
+            for case in cases
+            if case.name == "inverse_hyperbolic_acosh_sqrt_constant_scale:double_nested_den"
+        )
+        self.assertEqual(
+            acosh_sqrt_constant_scale_double_nested_case.expected_result,
+            "1 / ((x + 2)·(x + 3)·(x + 4))",
+        )
+        self.assertEqual(
+            acosh_sqrt_constant_scale_double_nested_case.required_conditions,
             ("x > 0", "x + 2", "x + 3", "x + 4"),
         )
         shifted_asinh_kernel_plus_case = next(
@@ -2914,6 +2971,16 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
+                    *"acosh(sqrt(x+1))/sqrt(5)"*")-1)/(x+2)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"(-1)"*"acosh(sqrt(x+1))/sqrt(5)"*)
+                    cat <<'OUT'
+                    {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
                     *")-1)/(x+2)"*)
                     cat <<'OUT'
                     {"result":"-1 / (x + 2)","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"}],"warnings":[]}
@@ -3022,6 +3089,16 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     *arctan*sqrt*"/(x+3)"*)
                     cat <<'OUT'
                     {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"acosh(sqrt(x+1))/sqrt(5)"*"/(x+3))/(x+4)"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
+                    OUT
+                    ;;
+                    *"acosh(sqrt(x+1))/sqrt(5)"*"x+3"*)
+                    cat <<'OUT'
+                    {"result":"1 / ((x + 2)·(x + 3))","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"},{"expr_display":"x + 3"}],"warnings":[]}
                     OUT
                     ;;
                     *sin*"/(x+3))/(x+4)"*)
@@ -3159,6 +3236,11 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
                     {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"}],"warnings":[]}
                     OUT
                     ;;
+                    *"acosh(sqrt(x+1))/sqrt(5)"*)
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x > 0"},{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    ;;
                     *"/(x+3))/(x+4)"*)
                     cat <<'OUT'
                     {"result":"1 / ((x + 2)·(x + 3)·(x + 4))","required_conditions":[{"expr_display":"x + 1"},{"expr_display":"x + 2"},{"expr_display":"x + 3"},{"expr_display":"x + 4"}],"warnings":[]}
@@ -3209,8 +3291,8 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(matrix["status"], "pass", matrix)
-        self.assertEqual(matrix["total"], 706)
-        self.assertEqual(matrix["status_counts"]["pass"], 706)
+        self.assertEqual(matrix["total"], 730)
+        self.assertEqual(matrix["status_counts"]["pass"], 730)
 
     def test_cli_accepts_repeated_require_flags(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

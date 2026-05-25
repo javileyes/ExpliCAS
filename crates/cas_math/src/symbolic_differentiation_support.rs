@@ -1,6 +1,10 @@
 //! Symbolic differentiation helpers shared by differentiation-facing rule layers.
 
 use crate::build::mul2_raw;
+use crate::calculus_domain_support::{
+    logarithm_real_domain_is_empty_over_reals, nonfinite_or_undefined_constant,
+    positive_condition_is_impossible_over_reals,
+};
 use crate::expr_nary::{
     add_leaves, build_balanced_add, build_balanced_mul, mul_leaves, AddView, Sign,
 };
@@ -115,6 +119,14 @@ fn rational_constant_value(ctx: &Context, expr: ExprId) -> Option<BigRational> {
     }
 }
 
+fn is_negative_rational_constant(ctx: &Context, expr: ExprId) -> bool {
+    rational_constant_value(ctx, expr).is_some_and(|value| value.is_negative())
+}
+
+fn is_zero_rational_constant(ctx: &Context, expr: ExprId) -> bool {
+    rational_constant_value(ctx, expr).is_some_and(|value| value.is_zero())
+}
+
 fn exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
     match ctx.get(expr) {
         Expr::Function(fn_id, args)
@@ -125,6 +137,38 @@ fn exp_like_arg(ctx: &Context, expr: ExprId) -> Option<ExprId> {
         Expr::Pow(base, exp) if matches!(ctx.get(*base), Expr::Constant(Constant::E)) => Some(*exp),
         _ => None,
     }
+}
+
+fn sqrt_positive_domain_is_empty_for_diff(ctx: &mut Context, arg: ExprId, var: &str) -> bool {
+    if !contains_named_var(ctx, arg, var) {
+        return rational_constant_value(ctx, arg).is_some_and(|value| value.is_negative());
+    }
+
+    positive_condition_is_impossible_over_reals(ctx, arg, SYMBOLIC_DIFF_SIGN_PROOF_DEPTH)
+}
+
+fn real_domain_is_empty_or_nonfinite_for_diff(ctx: &mut Context, expr: ExprId, var: &str) -> bool {
+    if nonfinite_or_undefined_constant(ctx, expr) {
+        return true;
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(expr).clone() else {
+        return false;
+    };
+    let builtin = ctx.builtin_of(fn_id);
+    if logarithm_real_domain_is_empty_over_reals(
+        ctx,
+        builtin,
+        &args,
+        SYMBOLIC_DIFF_SIGN_PROOF_DEPTH,
+    ) {
+        return true;
+    }
+    if matches!(builtin, Some(BuiltinFn::Sqrt)) && args.len() == 1 {
+        return sqrt_positive_domain_is_empty_for_diff(ctx, args[0], var);
+    }
+
+    false
 }
 
 fn expr_is_additive(ctx: &Context, expr: ExprId) -> bool {
@@ -4017,6 +4061,10 @@ fn abs_quotient_derivative(
 
 /// Differentiate `expr` with respect to variable `var`.
 pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Option<ExprId> {
+    if real_domain_is_empty_or_nonfinite_for_diff(ctx, expr, var) {
+        return Some(ctx.add(Expr::Constant(Constant::Undefined)));
+    }
+
     if !contains_named_var(ctx, expr, var) {
         return Some(ctx.num(0));
     }
@@ -4165,6 +4213,25 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         }
         Expr::Pow(base, exp) => {
             let (base, exp) = (*base, *exp);
+            if contains_named_var(ctx, exp, var)
+                && !contains_named_var(ctx, base, var)
+                && is_zero_rational_constant(ctx, base)
+            {
+                if positive_condition_is_impossible_over_reals(
+                    ctx,
+                    exp,
+                    SYMBOLIC_DIFF_SIGN_PROOF_DEPTH,
+                ) {
+                    return Some(ctx.add(Expr::Constant(Constant::Undefined)));
+                }
+                return Some(ctx.num(0));
+            }
+            if contains_named_var(ctx, exp, var)
+                && !contains_named_var(ctx, base, var)
+                && is_negative_rational_constant(ctx, base)
+            {
+                return Some(ctx.add(Expr::Constant(Constant::Undefined)));
+            }
             let db = differentiate_symbolic_expr(ctx, base, var)?;
             let de = differentiate_symbolic_expr(ctx, exp, var)?;
 
@@ -4189,7 +4256,16 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         }
         Expr::Function(fn_id, args) => {
             let (fn_id, args) = (*fn_id, args.clone());
-            if matches!(ctx.builtin_of(fn_id), Some(BuiltinFn::Log)) && args.len() == 2 {
+            let builtin = ctx.builtin_of(fn_id);
+            if logarithm_real_domain_is_empty_over_reals(
+                ctx,
+                builtin,
+                &args,
+                SYMBOLIC_DIFF_SIGN_PROOF_DEPTH,
+            ) {
+                return Some(ctx.add(Expr::Constant(Constant::Undefined)));
+            }
+            if matches!(builtin, Some(BuiltinFn::Log)) && args.len() == 2 {
                 let base = args[0];
                 let arg = args[1];
                 if contains_named_var(ctx, base, var) {
@@ -4236,7 +4312,7 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
             }
             let arg = args[0];
 
-            if ctx.builtin_of(fn_id) == Some(BuiltinFn::Ln) {
+            if builtin == Some(BuiltinFn::Ln) {
                 if let Some(derivative) =
                     log_abs_reciprocal_trig_primitive_derivative(ctx, arg, var)
                 {
@@ -4249,18 +4325,18 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
                     return Some(derivative);
                 }
             }
-            if ctx.builtin_of(fn_id) == Some(BuiltinFn::Log2) {
+            if builtin == Some(BuiltinFn::Log2) {
                 if let Some(derivative) = numeric_fixed_base_log_abs_derivative(ctx, arg, var, 2) {
                     return Some(derivative);
                 }
             }
-            if ctx.builtin_of(fn_id) == Some(BuiltinFn::Log10) {
+            if builtin == Some(BuiltinFn::Log10) {
                 if let Some(derivative) = numeric_fixed_base_log_abs_derivative(ctx, arg, var, 10) {
                     return Some(derivative);
                 }
             }
 
-            match ctx.builtin_of(fn_id) {
+            match builtin {
                 Some(BuiltinFn::Arccos | BuiltinFn::Acos) => {
                     if let Some(recip_base) = unit_reciprocal_base(ctx, arg)
                         .or_else(|| surd_numerator_reciprocal_base(ctx, arg))
@@ -4295,7 +4371,7 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
 
             let da = differentiate_symbolic_expr(ctx, arg, var)?;
 
-            match ctx.builtin_of(fn_id) {
+            match builtin {
                 Some(BuiltinFn::Sin) => {
                     let cos_u = ctx.call_builtin(BuiltinFn::Cos, vec![arg]);
                     Some(mul_pruned(ctx, cos_u, da))
@@ -4440,6 +4516,96 @@ mod tests {
         let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
         let text = rendered(&ctx, out);
         assert!(text.contains("exp(x^2)") || text.contains("e^(x^2)"));
+    }
+
+    #[test]
+    fn negative_constant_base_variable_exponent_derivative_is_undefined_over_reals() {
+        let mut ctx = Context::new();
+        let expr = parse("(-2)^(2*x+1)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "undefined");
+    }
+
+    #[test]
+    fn zero_constant_base_variable_exponent_derivative_is_zero_on_positive_exponent_domain() {
+        let mut ctx = Context::new();
+        let expr = parse("0^(2*x+1)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "0");
+    }
+
+    #[test]
+    fn zero_constant_base_variable_exponent_derivative_is_undefined_on_empty_domain() {
+        let mut ctx = Context::new();
+        let expr = parse("0^(-x^2-1)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "undefined");
+
+        let expr = parse("0^(-x^2)", &mut ctx).expect("parse");
+        let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+        assert_eq!(rendered(&ctx, out), "undefined");
+    }
+
+    #[test]
+    fn logarithm_derivative_is_undefined_on_empty_positive_domain() {
+        for source in [
+            "ln(0)",
+            "ln(-x^2-1)",
+            "log2(0)",
+            "log2(-x^2-1)",
+            "log10(-x^2-1)",
+            "log(2, 0)",
+            "log(2, -x^2-1)",
+            "log(1, 2)",
+            "log(1, x)",
+            "log(-2, x)",
+            "log(-x^2-1, x)",
+        ] {
+            let mut ctx = Context::new();
+            let expr = parse(source, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+            assert_eq!(rendered(&ctx, out), "undefined", "source: {source}");
+        }
+    }
+
+    #[test]
+    fn sqrt_derivative_is_undefined_on_empty_positive_domain() {
+        for source in ["sqrt(-1)", "sqrt(-x^2-1)", "sqrt(-x^2)"] {
+            let mut ctx = Context::new();
+            let expr = parse(source, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+            assert_eq!(rendered(&ctx, out), "undefined", "source: {source}");
+        }
+    }
+
+    #[test]
+    fn static_defined_root_and_log_constants_still_differentiate_to_zero() {
+        for source in ["sqrt(0)", "sqrt(4)", "ln(1)", "log2(1)", "log(2, 1)"] {
+            let mut ctx = Context::new();
+            let expr = parse(source, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+            assert_eq!(rendered(&ctx, out), "0", "source: {source}");
+        }
+    }
+
+    #[test]
+    fn nonfinite_constant_derivative_is_undefined_over_reals() {
+        for source in ["infinity", "-infinity", "undefined"] {
+            let mut ctx = Context::new();
+            let expr = parse(source, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+            assert_eq!(rendered(&ctx, out), "undefined", "source: {source}");
+        }
+    }
+
+    #[test]
+    fn logarithm_derivative_preserves_nonempty_positive_domains() {
+        for source in ["ln(x^2+1)", "log2(x^2+1)", "log10(x^2+1)"] {
+            let mut ctx = Context::new();
+            let expr = parse(source, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+            assert_ne!(rendered(&ctx, out), "undefined", "source: {source}");
+        }
     }
 
     #[test]

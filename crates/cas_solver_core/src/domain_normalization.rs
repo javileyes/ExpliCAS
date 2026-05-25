@@ -422,6 +422,10 @@ fn compact_positive_power_gap_for_display(ctx: &mut Context, expr: ExprId) -> Op
         return Some(compact);
     }
 
+    if let Some(compact) = compact_scaled_sqrt_square_gap_for_display(ctx, expr) {
+        return Some(compact);
+    }
+
     if let Some(compact) = compact_expanded_monic_low_degree_power_gap_for_display(ctx, expr) {
         return Some(compact);
     }
@@ -738,6 +742,33 @@ fn compact_high_additive_power_for_display(ctx: &mut Context, expr: ExprId) -> O
 
     let exp = ctx.num(combined_exp);
     Some(ctx.add(Expr::Pow(compact_base, exp)))
+}
+
+fn compact_scaled_sqrt_square_gap_for_display(ctx: &mut Context, expr: ExprId) -> Option<ExprId> {
+    let square_expr = match ctx.get(expr).clone() {
+        Expr::Sub(left, right) if as_rational_const(ctx, left).is_some_and(|n| n.is_one()) => right,
+        Expr::Add(left, right) => {
+            if as_rational_const(ctx, left).is_some_and(|n| n.is_one()) {
+                negative_inner(ctx, right)?
+            } else if as_rational_const(ctx, right).is_some_and(|n| n.is_one()) {
+                negative_inner(ctx, left)?
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+
+    let square_base = square_base(ctx, square_expr)?;
+    let (scale, radicand) = scaled_sqrt_radicand_for_display(ctx, square_base)?;
+    if scale.is_zero() {
+        return None;
+    }
+
+    let scale_squared = scale.clone() * scale;
+    let boundary = ctx.add(Expr::Number(BigRational::one() / scale_squared));
+    let gap = ctx.add(Expr::Sub(boundary, radicand));
+    Some(normalize_condition_expr_preserve_sign(ctx, gap))
 }
 
 fn compact_expanded_shifted_fourth_gap_for_display(
@@ -5122,6 +5153,16 @@ fn apply_dominance_rules(ctx: &mut Context, conditions: &mut Vec<ImplicitConditi
                         break;
                     }
                 }
+                (
+                    ImplicitCondition::NonNegative(nonnegative_expr),
+                    ImplicitCondition::LowerBound(lower_expr, lower),
+                ) => {
+                    if !lower.is_negative() && exprs_equivalent(ctx, *nonnegative_expr, *lower_expr)
+                    {
+                        to_remove.push(i);
+                        break;
+                    }
+                }
                 (ImplicitCondition::NonZero(nz_expr), ImplicitCondition::NonNegative(nn_expr)) => {
                     if is_factorial_of_arg(ctx, *nz_expr, *nn_expr) {
                         to_remove.push(i);
@@ -5941,6 +5982,36 @@ mod tests {
     }
 
     #[test]
+    fn scaled_sqrt_square_gap_renders_as_open_interval_condition() {
+        let mut ctx = Context::new();
+        let positive_x = parse("x", &mut ctx).expect("parse x");
+        let nonzero_boundary = parse("x - 4", &mut ctx).expect("parse boundary");
+        let branch_gap = parse("1 - (1/2*x^(1/2))^2", &mut ctx).expect("parse scaled sqrt gap");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::Positive(positive_x),
+                ImplicitCondition::NonZero(nonzero_boundary),
+                ImplicitCondition::Positive(branch_gap),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x > 0", "x < 4"]);
+
+        let mut ctx = Context::new();
+        let scaled_branch_gap =
+            parse("1 - (2*sqrt(x))^2", &mut ctx).expect("parse expanded scaled sqrt gap");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[ImplicitCondition::Positive(scaled_branch_gap)],
+        );
+
+        assert_eq!(rendered, vec!["x < 1/4"]);
+    }
+
+    #[test]
     fn reciprocal_surd_lower_bound_is_dominated_by_matching_positive_gap() {
         let mut ctx = Context::new();
         let bounded = parse("sqrt(5)*(x^2+x)/5", &mut ctx).expect("parse bounded expression");
@@ -5968,6 +6039,22 @@ mod tests {
         );
 
         assert_eq!(rendered, vec!["x^2 + x - sqrt(5) > 0"]);
+    }
+
+    #[test]
+    fn lower_bound_dominates_matching_nonnegative_condition() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).expect("parse x");
+
+        let rendered = render_conditions_normalized(
+            &mut ctx,
+            &[
+                ImplicitCondition::LowerBound(x, BigRational::one()),
+                ImplicitCondition::NonNegative(x),
+            ],
+        );
+
+        assert_eq!(rendered, vec!["x ≥ 1"]);
     }
 
     #[test]

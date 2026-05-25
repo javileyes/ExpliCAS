@@ -2557,6 +2557,541 @@ fn derive_nested_fraction_one_over_sum_uses_common_denominator_substep() {
 }
 
 #[test]
+fn eval_diff_chain_rule_exposes_public_didactic_substeps() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "diff((x^2+1)^3, x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "6·x·(x^2 + 1)^2");
+    let steps = wire["steps"].as_array().expect("steps array");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps[0]["title"], "Usar regla de la potencia con cadena");
+    assert_eq!(substeps[1]["title"], "Identificar u y du");
+    let u_latex = substeps[1]["before_latex"].as_str().expect("before_latex");
+    assert!(
+        u_latex.contains("{x}^{2}") && u_latex.contains("1"),
+        "expected u = x^2 + 1, got {:?}",
+        substeps[1]
+    );
+    assert!(
+        substeps[1]["after_latex"]
+            .as_str()
+            .expect("after_latex")
+            .contains("2\\cdot x"),
+        "expected du = 2*x, got {:?}",
+        substeps[1]
+    );
+}
+
+#[test]
+fn eval_diff_exponential_affine_chain_exposes_public_u_du_substep() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "diff(exp(2*x+1), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "2·e^(2·x + 1)");
+    let steps = wire["steps"].as_array().expect("steps array");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(substeps[0]["title"], "Usar regla exponencial");
+    assert_eq!(substeps[1]["title"], "Identificar u y du");
+    assert!(
+        substeps[1]["before_latex"]
+            .as_str()
+            .expect("before_latex")
+            .contains("2\\cdot x + 1"),
+        "expected u = 2*x + 1, got {:?}",
+        substeps[1]
+    );
+    assert!(
+        substeps[1]["after_latex"]
+            .as_str()
+            .expect("after_latex")
+            .contains("2\\,dx"),
+        "expected du = 2 dx, got {:?}",
+        substeps[1]
+    );
+}
+
+#[test]
+fn eval_diff_negative_constant_base_variable_exponent_explains_real_domain_boundary() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "diff((-2)^(2*x+1), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "undefined");
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1, "unexpected steps: {steps:?}");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(
+        substeps[0]["title"],
+        "Detectar base negativa con exponente variable"
+    );
+    assert!(
+        !output.contains("Evaluate Logarithms")
+            && !output.contains("Undefined Times Anything")
+            && !output.contains("Usar regla exponencial"),
+        "negative-base boundary should not first apply the exponential rule: {output}"
+    );
+}
+
+#[test]
+fn eval_diff_zero_base_variable_exponent_exposes_positive_exponent_domain() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "diff(0^(2*x+1), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "0");
+    assert_eq!(wire["required_display"], json!(["x > -1/2"]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1, "unexpected steps: {steps:?}");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(
+        substeps[0]["title"],
+        "Detectar base cero con exponente variable"
+    );
+    assert!(
+        !output.contains("Evaluate Logarithms")
+            && !output.contains("infinity")
+            && !output.contains("ln(0)")
+            && !output.contains("Usar regla exponencial"),
+        "zero-base boundary should not first apply the exponential rule: {output}"
+    );
+}
+
+#[test]
+fn eval_diff_zero_base_variable_exponent_rejects_empty_positive_exponent_domain() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "diff(0^(-x^2-1), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "undefined");
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1, "unexpected steps: {steps:?}");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(
+        substeps[0]["title"],
+        "Detectar dominio real vacío de base cero"
+    );
+    assert!(
+        !output.contains("Evaluate Logarithms")
+            && !output.contains("infinity")
+            && !output.contains("ln(0)")
+            && !output.contains("-x^2 - 1 > 0")
+            && !output.contains("Usar regla exponencial"),
+        "empty zero-base domain should not expose an impossible condition or exponential rule: {output}"
+    );
+}
+
+#[test]
+fn eval_diff_logarithm_rejects_empty_positive_argument_domain() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "diff(ln(-x^2-1), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "undefined");
+    assert_eq!(wire["required_display"], json!([]));
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps.len(), 1, "unexpected steps: {steps:?}");
+    let substeps = steps[0]["substeps"].as_array().expect("substeps array");
+    assert_eq!(
+        substeps[0]["title"],
+        "Detectar dominio real vacío del logaritmo"
+    );
+    assert!(
+        !output.contains("Usar regla de ln(u)")
+            && !output.contains("Identificar u y du")
+            && !output.contains("-x^2 - 1 > 0"),
+        "empty logarithm domain should not expose a chain rule or impossible condition: {output}"
+    );
+}
+
+#[test]
+fn eval_diff_rejects_static_and_empty_real_log_root_domains() {
+    for expr in [
+        "diff(ln(0), x)",
+        "diff(log2(0), x)",
+        "diff(log(2, 0), x)",
+        "diff(log(1, 2), x)",
+        "diff(log(1, x), x)",
+        "diff(log(-2, x), x)",
+        "diff(sqrt(-1), x)",
+        "diff(sqrt(-x^2-1), x)",
+    ] {
+        let (output, code) = run_cli(&["eval", expr, "--format", "json", "--steps", "on"]);
+        assert_eq!(code, 0, "unexpected command failure for {expr}: {output}");
+        let wire = parse_wire(&output);
+
+        assert_eq!(wire["result"], "undefined", "unexpected result for {expr}");
+        assert_eq!(wire["required_display"], json!([]));
+        assert!(
+            !output.contains("Usar regla de sqrt(u)")
+                && !output.contains("Usar regla de ln(u)")
+                && !output.contains("1/(x · ln(1))")
+                && !output.contains("Identificar u y du"),
+            "empty real domain should not expose a calculus chain rule for {expr}: {output}"
+        );
+    }
+
+    for expr in [
+        "diff(sqrt(0), x)",
+        "diff(sqrt(4), x)",
+        "diff(ln(1), x)",
+        "diff(log2(1), x)",
+        "diff(log(2, 1), x)",
+        "diff(log(2, x), x)",
+    ] {
+        let (output, code) = run_cli(&["eval", expr, "--format", "json", "--steps", "on"]);
+        assert_eq!(code, 0, "unexpected command failure for {expr}: {output}");
+        let wire = parse_wire(&output);
+
+        if expr == "diff(log(2, x), x)" {
+            assert_eq!(
+                wire["result"], "1 / (x·ln(2))",
+                "unexpected result for {expr}"
+            );
+            assert_eq!(wire["required_display"], json!(["x > 0"]));
+        } else {
+            assert_eq!(wire["result"], "0", "unexpected result for {expr}");
+            assert_eq!(wire["required_display"], json!([]));
+        }
+    }
+}
+
+#[test]
+fn eval_diff_bounded_inverse_trig_rejects_empty_open_interval_domain() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "diff(arcsin(sqrt(x^2+1)), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "diff(arcsin(sqrt(x^2 + 1)), x)");
+    assert_eq!(wire["required_display"], json!([]));
+    let blocked = wire["blocked_hints"]
+        .as_array()
+        .expect("blocked_hints array");
+    assert_eq!(blocked.len(), 1, "unexpected blocked hints: {blocked:?}");
+    assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
+    assert_eq!(
+        blocked[0]["tip"],
+        "real domain is empty; no real derivative is exposed"
+    );
+    let requires = blocked[0]["requires"]
+        .as_array()
+        .expect("blocked hint requires array");
+    let condition = requires[0].as_str().expect("blocked hint condition");
+    assert!(
+        condition.contains("> 0") && condition.contains('-') && condition.contains('x'),
+        "expected the concrete impossible open-interval gap, got: {condition}"
+    );
+    assert!(
+        !output.contains("Usar regla de arcsin(u)")
+            && !output.contains("Identificar u y du")
+            && !output.contains("sqrt(-(x^2))"),
+        "empty inverse-trig domain should not expose a chain rule or impossible derivative: {output}"
+    );
+}
+
+#[test]
+fn eval_diff_bounded_inverse_trig_rejects_shifted_empty_open_interval_domain() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "diff(arcsin((x+1)^2+1), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "diff(arcsin(x^2 + 2·x + 2), x)");
+    assert_eq!(wire["required_display"], json!([]));
+    let blocked = wire["blocked_hints"]
+        .as_array()
+        .expect("blocked_hints array");
+    assert_eq!(blocked.len(), 1, "unexpected blocked hints: {blocked:?}");
+    assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
+    assert_eq!(
+        blocked[0]["tip"],
+        "real domain is empty; no real derivative is exposed"
+    );
+    let requires = blocked[0]["requires"]
+        .as_array()
+        .expect("blocked hint requires array");
+    let condition = requires[0].as_str().expect("blocked hint condition");
+    assert!(
+        condition.contains("> 0") && condition.contains("x^4"),
+        "expected the concrete impossible open-interval gap, got: {condition}"
+    );
+    assert!(
+        !output.contains("Usar regla de arcsin(u)")
+            && !output.contains("Identificar u y du")
+            && !output.contains("1 - (x^2 + 2·x + 2)^2 > 0"),
+        "shifted empty inverse-trig domain should not expose a chain rule or impossible condition: {output}"
+    );
+}
+
+#[test]
+fn eval_diff_bounded_inverse_trig_keeps_finite_boundary_constants() {
+    for expr in ["diff(arcsin(-1), x)", "diff(arccos(-1), x)"] {
+        let (output, code) = run_cli(&["eval", expr, "--format", "json", "--steps", "on"]);
+        assert_eq!(code, 0, "unexpected command failure for {expr}: {output}");
+        let wire = parse_wire(&output);
+
+        assert_eq!(wire["result"], "0", "unexpected result for {expr}");
+        assert_eq!(wire["required_display"], json!([]));
+        assert!(
+            wire["blocked_hints"].is_null(),
+            "finite inverse-trig boundary should not be reported as an empty domain: {output}"
+        );
+    }
+}
+
+#[test]
+fn eval_diff_inverse_functions_reject_symbolic_constants_outside_real_domain() {
+    for expr in [
+        "diff(arcsin(pi), x)",
+        "diff(arccos(e), x)",
+        "diff(arccos(-e), x)",
+        "diff(atanh(pi), x)",
+    ] {
+        let (output, code) = run_cli(&["eval", expr, "--format", "json", "--steps", "on"]);
+        assert_eq!(code, 0, "unexpected command failure for {expr}: {output}");
+        let wire = parse_wire(&output);
+
+        assert!(
+            wire["result"]
+                .as_str()
+                .is_some_and(|result| result.starts_with("diff(")),
+            "symbolic constant outside real domain should remain residual for {expr}: {output}"
+        );
+        assert_eq!(wire["required_display"], json!([]));
+        let blocked = wire["blocked_hints"]
+            .as_array()
+            .expect("blocked_hints array");
+        assert_eq!(
+            blocked.len(),
+            1,
+            "unexpected blocked hints for {expr}: {blocked:?}"
+        );
+        assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
+        assert_eq!(
+            blocked[0]["tip"],
+            "real domain is empty; no real derivative is exposed"
+        );
+        let requires = blocked[0]["requires"]
+            .as_array()
+            .expect("blocked hint requires array");
+        let condition = requires[0].as_str().expect("blocked hint condition");
+        assert!(
+            condition.contains("> 0") && (condition.contains("pi") || condition.contains('e')),
+            "expected symbolic constant open-interval gap for {expr}, got: {condition}"
+        );
+        assert!(
+            !output.contains("Usar regla de arcsin(u)")
+                && !output.contains("Usar regla de arccos(u)")
+                && !output.contains("Usar regla de atanh(u)")
+                && !output.contains("Identificar u y du"),
+            "symbolic constant outside domain should not expose a chain rule: {output}"
+        );
+    }
+
+    for expr in [
+        "diff(arcsin(1/2), x)",
+        "diff(arccos(0), x)",
+        "diff(atanh(0), x)",
+    ] {
+        let (output, code) = run_cli(&["eval", expr, "--format", "json", "--steps", "on"]);
+        assert_eq!(code, 0, "unexpected command failure for {expr}: {output}");
+        let wire = parse_wire(&output);
+
+        assert_eq!(wire["result"], "0", "unexpected result for {expr}");
+        assert_eq!(wire["required_display"], json!([]));
+        assert!(
+            wire["blocked_hints"].is_null(),
+            "valid finite constant should not be blocked for {expr}: {output}"
+        );
+    }
+}
+
+#[test]
+fn eval_diff_atanh_rejects_empty_open_interval_domain() {
+    let (output, code) = run_cli(&[
+        "eval",
+        "diff(atanh(x^2+1), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(code, 0);
+    let wire = parse_wire(&output);
+
+    assert_eq!(wire["result"], "diff(atanh(x^2 + 1), x)");
+    assert_eq!(wire["required_display"], json!([]));
+    let blocked = wire["blocked_hints"]
+        .as_array()
+        .expect("blocked_hints array");
+    assert_eq!(blocked.len(), 1, "unexpected blocked hints: {blocked:?}");
+    assert_eq!(blocked[0]["rule"], "Symbolic Differentiation");
+    assert_eq!(
+        blocked[0]["tip"],
+        "real domain is empty; no real derivative is exposed"
+    );
+    let requires = blocked[0]["requires"]
+        .as_array()
+        .expect("blocked hint requires array");
+    let condition = requires[0].as_str().expect("blocked hint condition");
+    assert!(
+        condition.contains("> 0") && condition.contains("-x"),
+        "expected the concrete impossible open-interval gap, got: {condition}"
+    );
+    assert!(
+        !output.contains("Usar regla de atanh(u)")
+            && !output.contains("Identificar u y du")
+            && !output.contains("sqrt(1 - (x^2 + 1)^2)"),
+        "empty atanh domain should not expose a chain rule or impossible derivative: {output}"
+    );
+}
+
+#[test]
+fn eval_diff_product_and_quotient_expose_public_component_substeps() {
+    let (product_output, product_code) = run_cli(&[
+        "eval",
+        "diff(x*ln(x), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(product_code, 0);
+    let product_wire = parse_wire(&product_output);
+
+    assert_eq!(product_wire["result"], "ln(x) + 1");
+    let product_steps = product_wire["steps"].as_array().expect("steps array");
+    let product_substeps = product_steps[0]["substeps"]
+        .as_array()
+        .expect("substeps array");
+    for title in [
+        "Usar regla del producto",
+        "Derivar el primer factor",
+        "Derivar el segundo factor",
+    ] {
+        let substep = product_substeps
+            .iter()
+            .find(|substep| substep["title"] == title)
+            .unwrap_or_else(|| panic!("missing product substep title: {title}"));
+        assert!(
+            substep["before_latex"]
+                .as_str()
+                .is_some_and(|latex| !latex.is_empty()),
+            "expected concrete before_latex for {title}: {substep:?}"
+        );
+        assert!(
+            substep["after_latex"]
+                .as_str()
+                .is_some_and(|latex| !latex.is_empty()),
+            "expected concrete after_latex for {title}: {substep:?}"
+        );
+    }
+
+    let (quotient_output, quotient_code) = run_cli(&[
+        "eval",
+        "diff(x/(x+1), x)",
+        "--format",
+        "json",
+        "--steps",
+        "on",
+    ]);
+    assert_eq!(quotient_code, 0);
+    let quotient_wire = parse_wire(&quotient_output);
+
+    assert_eq!(quotient_wire["result"], "1 / (x + 1)^2");
+    assert_eq!(
+        quotient_wire["required_display"]
+            .as_array()
+            .expect("required display")[0],
+        "x ≠ -1"
+    );
+    let quotient_steps = quotient_wire["steps"].as_array().expect("steps array");
+    let quotient_substeps = quotient_steps[0]["substeps"]
+        .as_array()
+        .expect("substeps array");
+    for title in [
+        "Usar regla del cociente",
+        "Derivar el numerador",
+        "Derivar el denominador",
+    ] {
+        let substep = quotient_substeps
+            .iter()
+            .find(|substep| substep["title"] == title)
+            .unwrap_or_else(|| panic!("missing quotient substep title: {title}"));
+        assert!(
+            substep["before_latex"]
+                .as_str()
+                .is_some_and(|latex| !latex.is_empty()),
+            "expected concrete before_latex for {title}: {substep:?}"
+        );
+        assert!(
+            substep["after_latex"]
+                .as_str()
+                .is_some_and(|latex| !latex.is_empty()),
+            "expected concrete after_latex for {title}: {substep:?}"
+        );
+    }
+}
+
+#[test]
 fn eval_complex_nested_fraction_pipeline_keeps_before_after_highlights_in_wire_latex() {
     let (output, _code) = run_cli(&[
         "eval",

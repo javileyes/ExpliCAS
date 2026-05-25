@@ -5,7 +5,7 @@ This script centralizes the core regression and pressure suites we use to grow:
 - simplification
 - equivalence
 - derive reachability
-- bounded calculus visibility
+- calculus support-matrix visibility
 
 It is intentionally profile-based:
 - fast: iteration loop, cheap enough to run often
@@ -341,7 +341,30 @@ SUITES: dict[str, SuiteSpec] = {
         ],
         env={},
         parser="cargo_test_basic",
-        description="Public differentiation contract lane for calculus visibility.",
+        description=(
+            "Public differentiation contract lane for calculus support-matrix "
+            "visibility."
+        ),
+    ),
+    "calculus_diff_command_matrix_smoke": SuiteSpec(
+        name="calculus_diff_command_matrix_smoke",
+        category="calculus",
+        profile_tags=("fast", "fast_embedded", "guardrail", "full"),
+        command=[
+            sys.executable,
+            str(ROOT / "scripts" / "engine_diff_command_matrix_smoke.py"),
+            "--ensure-release-cas-cli",
+            "--timeout-seconds",
+            "4",
+            "--json",
+            "--summary-json",
+        ],
+        env={},
+        parser="calculus_diff_command_matrix",
+        description=(
+            "Command-level differentiation matrix over family, argument, "
+            "domain, residual, trace, and presentation regimes."
+        ),
     ),
     "calculus_diff_exhaustive_contract": SuiteSpec(
         name="calculus_diff_exhaustive_contract",
@@ -387,7 +410,9 @@ SUITES: dict[str, SuiteSpec] = {
         ],
         env={},
         parser="cargo_test_basic",
-        description="Public limit contract lane for calculus visibility.",
+        description=(
+            "Public limit contract lane for calculus support-matrix visibility."
+        ),
     ),
     "calculus_limit_compact_contract": SuiteSpec(
         name="calculus_limit_compact_contract",
@@ -411,7 +436,7 @@ SUITES: dict[str, SuiteSpec] = {
         parser="cargo_test_basic",
         description=(
             "Cheap public limit compactness contract for fast calculus "
-            "visibility."
+            "support-matrix visibility."
         ),
     ),
     "calculus_limit_presimplify_contract": SuiteSpec(
@@ -434,7 +459,27 @@ SUITES: dict[str, SuiteSpec] = {
         parser="cargo_test_basic",
         description=(
             "Public limit safe pre-simplification contract lane for "
-            "calculus/pre-calculus visibility."
+            "calculus/pre-calculus support-matrix visibility."
+        ),
+    ),
+    "calculus_limit_command_matrix_smoke": SuiteSpec(
+        name="calculus_limit_command_matrix_smoke",
+        category="calculus",
+        profile_tags=("fast", "fast_embedded", "guardrail", "full"),
+        command=[
+            sys.executable,
+            str(ROOT / "scripts" / "engine_limit_command_matrix_smoke.py"),
+            "--ensure-release-cas-cli",
+            "--timeout-seconds",
+            "4",
+            "--json",
+            "--summary-json",
+        ],
+        env={},
+        parser="calculus_limit_command_matrix",
+        description=(
+            "Command-level limit policy matrix over finite, infinity, domain, "
+            "and residual regimes."
         ),
     ),
     "calculus_integrate_compact_contract": SuiteSpec(
@@ -459,7 +504,27 @@ SUITES: dict[str, SuiteSpec] = {
         parser="cargo_test_basic",
         description=(
             "Cheap public integration compactness contract for fast calculus "
-            "visibility."
+            "support-matrix visibility."
+        ),
+    ),
+    "calculus_integrate_command_matrix_smoke": SuiteSpec(
+        name="calculus_integrate_command_matrix_smoke",
+        category="calculus",
+        profile_tags=("fast", "fast_embedded", "guardrail", "full"),
+        command=[
+            sys.executable,
+            str(ROOT / "scripts" / "engine_integrate_command_matrix_smoke.py"),
+            "--ensure-release-cas-cli",
+            "--timeout-seconds",
+            "4",
+            "--json",
+            "--summary-json",
+        ],
+        env={},
+        parser="calculus_integrate_command_matrix",
+        description=(
+            "Command-level integration matrix over family, argument, domain, "
+            "residual, trace, and presentation regimes."
         ),
     ),
     "calculus_residual_matrix_smoke": SuiteSpec(
@@ -501,7 +566,10 @@ SUITES: dict[str, SuiteSpec] = {
         ],
         env={},
         parser="cargo_test_basic",
-        description="Public integration contract lane for calculus visibility.",
+        description=(
+            "Public integration contract lane for calculus support-matrix "
+            "visibility."
+        ),
     ),
     "calculus_integrate_exhaustive_contract": SuiteSpec(
         name="calculus_integrate_exhaustive_contract",
@@ -2583,6 +2651,341 @@ def parse_calculus_residual_matrix(output: str) -> dict[str, Any]:
     return metrics
 
 
+def sanitize_limit_command_problem_cases(raw_cases: Any) -> list[dict[str, Any]]:
+    if not isinstance(raw_cases, list):
+        return []
+    sanitized: list[dict[str, Any]] = []
+    for case in raw_cases:
+        if not isinstance(case, dict):
+            continue
+        row: dict[str, Any] = {}
+        for key in (
+            "name",
+            "status",
+            "error_kind",
+            "error",
+            "result",
+            "expected_result",
+            "family",
+            "argument_regime",
+            "point_regime",
+            "domain_regime",
+            "outcome",
+        ):
+            value = case.get(key)
+            if isinstance(value, str):
+                row[key] = value
+        for key in ("required_display", "expected_required_display", "warnings"):
+            value = case.get(key)
+            if isinstance(value, list):
+                row[key] = [item for item in value if isinstance(item, str)]
+        wall_elapsed = case.get("wall_elapsed_seconds")
+        if isinstance(wall_elapsed, (int, float)):
+            row["wall_elapsed_seconds"] = wall_elapsed
+        if row:
+            sanitized.append(row)
+    return sanitized
+
+
+def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
+    try:
+        raw = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid limit command matrix json: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("limit command matrix json output is not an object")
+
+    total = raw.get("total")
+    status = raw.get("status")
+    status_counts = raw.get("status_counts")
+    issue_kind_counts = raw.get("issue_kind_counts", {})
+    if not isinstance(total, int):
+        raise ValueError("missing limit command matrix total")
+    if not isinstance(status, str):
+        raise ValueError("missing limit command matrix status")
+    if not isinstance(status_counts, dict):
+        raise ValueError("missing limit command matrix status_counts")
+    if not isinstance(issue_kind_counts, dict):
+        issue_kind_counts = {}
+
+    passed = status_counts.get("pass", 0)
+    raw_failed = status_counts.get("fail", 0)
+    slow = status_counts.get("slow", 0)
+    timeouts = status_counts.get("timeout", 0)
+    if not all(
+        isinstance(value, int)
+        for value in (passed, raw_failed, slow, timeouts)
+    ):
+        raise ValueError("invalid limit command matrix status_counts")
+
+    def int_metric(key: str) -> int | None:
+        value = raw.get(key)
+        return value if isinstance(value, int) else None
+
+    def count_map(key: str) -> dict[str, int]:
+        value = raw.get(key)
+        if not isinstance(value, dict):
+            return {}
+        return {
+            name: count
+            for name, count in value.items()
+            if isinstance(name, str) and isinstance(count, int)
+        }
+
+    problem_cases = sanitize_limit_command_problem_cases(raw.get("problem_cases"))
+    problem_case_count = raw.get("problem_case_count")
+    if not isinstance(problem_case_count, int):
+        problem_case_count = len(problem_cases)
+
+    metrics = {
+        "matrix_status": status,
+        "total_cases": total,
+        "passed": passed,
+        "failed": raw_failed + slow + timeouts,
+        "raw_failed": raw_failed,
+        "slow": slow,
+        "timeouts": timeouts,
+        "problem_case_count": problem_case_count,
+        "problem_cases": problem_cases,
+        "issue_kind_counts": {
+            key: value
+            for key, value in issue_kind_counts.items()
+            if isinstance(key, str) and isinstance(value, int)
+        },
+    }
+    for raw_key, metric_key in (
+        ("supported_case_count", "limit_supported_case_count"),
+        ("residual_case_count", "limit_residual_case_count"),
+        ("warning_expected_case_count", "limit_warning_expected_case_count"),
+        ("required_display_case_count", "limit_required_display_case_count"),
+        ("step_checked_case_count", "limit_step_checked_case_count"),
+        (
+            "supported_step_unchecked_case_count",
+            "limit_supported_step_unchecked_case_count",
+        ),
+        ("expected_step_substring_count", "limit_expected_step_substring_count"),
+        ("distinct_required_display_count", "limit_distinct_required_display_count"),
+        ("family_count", "limit_family_count"),
+    ):
+        value = int_metric(raw_key)
+        if value is not None:
+            metrics[metric_key] = value
+    for raw_key, metric_key in (
+        ("point_regime_counts", "limit_point_regime_counts"),
+        ("domain_regime_counts", "limit_domain_regime_counts"),
+        ("outcome_counts", "limit_outcome_counts"),
+        ("required_display_counts", "limit_required_display_counts"),
+        ("trace_regime_counts", "limit_trace_regime_counts"),
+        ("presentation_regime_counts", "limit_presentation_regime_counts"),
+    ):
+        counts = count_map(raw_key)
+        if counts:
+            metrics[metric_key] = counts
+    return metrics
+
+
+def parse_calculus_diff_command_matrix(output: str) -> dict[str, Any]:
+    try:
+        raw = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid diff command matrix json: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("diff command matrix json output is not an object")
+
+    total = raw.get("total")
+    status = raw.get("status")
+    status_counts = raw.get("status_counts")
+    issue_kind_counts = raw.get("issue_kind_counts", {})
+    if not isinstance(total, int):
+        raise ValueError("missing diff command matrix total")
+    if not isinstance(status, str):
+        raise ValueError("missing diff command matrix status")
+    if not isinstance(status_counts, dict):
+        raise ValueError("missing diff command matrix status_counts")
+    if not isinstance(issue_kind_counts, dict):
+        issue_kind_counts = {}
+
+    passed = status_counts.get("pass", 0)
+    raw_failed = status_counts.get("fail", 0)
+    slow = status_counts.get("slow", 0)
+    timeouts = status_counts.get("timeout", 0)
+    if not all(
+        isinstance(value, int)
+        for value in (passed, raw_failed, slow, timeouts)
+    ):
+        raise ValueError("invalid diff command matrix status_counts")
+
+    def int_metric(key: str) -> int | None:
+        value = raw.get(key)
+        return value if isinstance(value, int) else None
+
+    def count_map(key: str) -> dict[str, int]:
+        value = raw.get(key)
+        if not isinstance(value, dict):
+            return {}
+        return {
+            name: count
+            for name, count in value.items()
+            if isinstance(name, str) and isinstance(count, int)
+        }
+
+    problem_cases = sanitize_limit_command_problem_cases(raw.get("problem_cases"))
+    problem_case_count = raw.get("problem_case_count")
+    if not isinstance(problem_case_count, int):
+        problem_case_count = len(problem_cases)
+
+    metrics = {
+        "matrix_status": status,
+        "total_cases": total,
+        "passed": passed,
+        "failed": raw_failed + slow + timeouts,
+        "raw_failed": raw_failed,
+        "slow": slow,
+        "timeouts": timeouts,
+        "problem_case_count": problem_case_count,
+        "problem_cases": problem_cases,
+        "issue_kind_counts": {
+            key: value
+            for key, value in issue_kind_counts.items()
+            if isinstance(key, str) and isinstance(value, int)
+        },
+    }
+    for raw_key, metric_key in (
+        ("supported_case_count", "diff_supported_case_count"),
+        ("residual_case_count", "diff_residual_case_count"),
+        ("warning_expected_case_count", "diff_warning_expected_case_count"),
+        ("required_display_case_count", "diff_required_display_case_count"),
+        ("step_checked_case_count", "diff_step_checked_case_count"),
+        (
+            "supported_step_unchecked_case_count",
+            "diff_supported_step_unchecked_case_count",
+        ),
+        ("expected_step_substring_count", "diff_expected_step_substring_count"),
+        ("distinct_required_display_count", "diff_distinct_required_display_count"),
+        ("family_count", "diff_family_count"),
+    ):
+        value = int_metric(raw_key)
+        if value is not None:
+            metrics[metric_key] = value
+    for raw_key, metric_key in (
+        ("argument_regime_counts", "diff_argument_regime_counts"),
+        ("domain_regime_counts", "diff_domain_regime_counts"),
+        ("outcome_counts", "diff_outcome_counts"),
+        ("required_display_counts", "diff_required_display_counts"),
+        ("trace_regime_counts", "diff_trace_regime_counts"),
+        ("presentation_regime_counts", "diff_presentation_regime_counts"),
+    ):
+        counts = count_map(raw_key)
+        if counts:
+            metrics[metric_key] = counts
+    return metrics
+
+
+def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
+    try:
+        raw = json.loads(output)
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"invalid integrate command matrix json: {exc}") from exc
+    if not isinstance(raw, dict):
+        raise ValueError("integrate command matrix json output is not an object")
+
+    total = raw.get("total")
+    status = raw.get("status")
+    status_counts = raw.get("status_counts")
+    issue_kind_counts = raw.get("issue_kind_counts", {})
+    if not isinstance(total, int):
+        raise ValueError("missing integrate command matrix total")
+    if not isinstance(status, str):
+        raise ValueError("missing integrate command matrix status")
+    if not isinstance(status_counts, dict):
+        raise ValueError("missing integrate command matrix status_counts")
+    if not isinstance(issue_kind_counts, dict):
+        issue_kind_counts = {}
+
+    passed = status_counts.get("pass", 0)
+    raw_failed = status_counts.get("fail", 0)
+    slow = status_counts.get("slow", 0)
+    timeouts = status_counts.get("timeout", 0)
+    if not all(
+        isinstance(value, int)
+        for value in (passed, raw_failed, slow, timeouts)
+    ):
+        raise ValueError("invalid integrate command matrix status_counts")
+
+    def int_metric(key: str) -> int | None:
+        value = raw.get(key)
+        return value if isinstance(value, int) else None
+
+    def count_map(key: str) -> dict[str, int]:
+        value = raw.get(key)
+        if not isinstance(value, dict):
+            return {}
+        return {
+            name: count
+            for name, count in value.items()
+            if isinstance(name, str) and isinstance(count, int)
+        }
+
+    problem_cases = sanitize_limit_command_problem_cases(raw.get("problem_cases"))
+    problem_case_count = raw.get("problem_case_count")
+    if not isinstance(problem_case_count, int):
+        problem_case_count = len(problem_cases)
+
+    metrics = {
+        "matrix_status": status,
+        "total_cases": total,
+        "passed": passed,
+        "failed": raw_failed + slow + timeouts,
+        "raw_failed": raw_failed,
+        "slow": slow,
+        "timeouts": timeouts,
+        "problem_case_count": problem_case_count,
+        "problem_cases": problem_cases,
+        "issue_kind_counts": {
+            key: value
+            for key, value in issue_kind_counts.items()
+            if isinstance(key, str) and isinstance(value, int)
+        },
+    }
+    for raw_key, metric_key in (
+        ("supported_case_count", "integrate_supported_case_count"),
+        ("residual_case_count", "integrate_residual_case_count"),
+        ("warning_expected_case_count", "integrate_warning_expected_case_count"),
+        ("required_display_case_count", "integrate_required_display_case_count"),
+        ("step_checked_case_count", "integrate_step_checked_case_count"),
+        (
+            "supported_step_unchecked_case_count",
+            "integrate_supported_step_unchecked_case_count",
+        ),
+        (
+            "antiderivative_verification_case_count",
+            "integrate_antiderivative_verification_case_count",
+        ),
+        ("expected_step_substring_count", "integrate_expected_step_substring_count"),
+        (
+            "distinct_required_display_count",
+            "integrate_distinct_required_display_count",
+        ),
+        ("family_count", "integrate_family_count"),
+    ):
+        value = int_metric(raw_key)
+        if value is not None:
+            metrics[metric_key] = value
+    for raw_key, metric_key in (
+        ("argument_regime_counts", "integrate_argument_regime_counts"),
+        ("domain_regime_counts", "integrate_domain_regime_counts"),
+        ("outcome_counts", "integrate_outcome_counts"),
+        ("required_display_counts", "integrate_required_display_counts"),
+        ("verification_regime_counts", "integrate_verification_regime_counts"),
+        ("trace_regime_counts", "integrate_trace_regime_counts"),
+        ("presentation_regime_counts", "integrate_presentation_regime_counts"),
+    ):
+        counts = count_map(raw_key)
+        if counts:
+            metrics[metric_key] = counts
+    return metrics
+
+
 def matrix_wrapper_gap_fragments(
     metrics: dict[str, Any], limit: int = 5
 ) -> list[str]:
@@ -2634,6 +3037,18 @@ def domain_expected_condition_fragments(
     return [f"{condition}={count}" for condition, count in rows[:limit]]
 
 
+def count_map_fragments(value: Any, limit: int = 8) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+    rows = [
+        (name, count)
+        for name, count in value.items()
+        if isinstance(name, str) and isinstance(count, int)
+    ]
+    rows.sort(key=lambda row: (row[0], row[1]))
+    return [f"{name}={count}" for name, count in rows[:limit]]
+
+
 PARSERS = {
     "corpus": parse_corpus,
     "derive": parse_derive,
@@ -2643,6 +3058,9 @@ PARSERS = {
     "unified_benchmark": parse_unified_benchmark,
     "cargo_test_basic": parse_cargo_test_basic,
     "calculus_residual_matrix": parse_calculus_residual_matrix,
+    "calculus_diff_command_matrix": parse_calculus_diff_command_matrix,
+    "calculus_limit_command_matrix": parse_calculus_limit_command_matrix,
+    "calculus_integrate_command_matrix": parse_calculus_integrate_command_matrix,
 }
 
 
@@ -2675,8 +3093,26 @@ def suite_status(name: str, metrics: dict[str, Any], returncode: int) -> str:
         if metrics.get("timeouts", 0) > 0 or metrics.get("numeric_only", 0) > 0:
             return "warn"
         return "pass"
-    if name == "calculus_residual_matrix_smoke":
-        return "pass" if metrics.get("matrix_status") == "pass" else "fail"
+    if name in {
+        "calculus_residual_matrix_smoke",
+        "calculus_diff_command_matrix_smoke",
+        "calculus_limit_command_matrix_smoke",
+        "calculus_integrate_command_matrix_smoke",
+    }:
+        if metrics.get("matrix_status") != "pass":
+            return "fail"
+        unchecked_supported_step_keys = (
+            "diff_supported_step_unchecked_case_count",
+            "limit_supported_step_unchecked_case_count",
+            "integrate_supported_step_unchecked_case_count",
+        )
+        if any(
+            metrics.get(key, 0) > 0
+            for key in unchecked_supported_step_keys
+            if isinstance(metrics.get(key, 0), int)
+        ):
+            return "fail"
+        return "pass"
     return "pass"
 
 
@@ -3838,6 +4274,10 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
         for label, suite in (
             ("diff", scorecard["suites"].get("calculus_diff_contract")),
             (
+                "diff_command_matrix",
+                scorecard["suites"].get("calculus_diff_command_matrix_smoke"),
+            ),
+            (
                 "diff_exhaustive",
                 scorecard["suites"].get("calculus_diff_exhaustive_contract"),
             ),
@@ -3851,8 +4291,16 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 scorecard["suites"].get("calculus_limit_presimplify_contract"),
             ),
             (
+                "limit_command_matrix",
+                scorecard["suites"].get("calculus_limit_command_matrix_smoke"),
+            ),
+            (
                 "integrate_compact",
                 scorecard["suites"].get("calculus_integrate_compact_contract"),
+            ),
+            (
+                "integrate_command_matrix",
+                scorecard["suites"].get("calculus_integrate_command_matrix_smoke"),
             ),
             (
                 "residual_matrix",
@@ -3869,10 +4317,11 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
     if calculus_contract_rows:
         lines.extend(
             [
-                "## Calculus Contract Signal",
+                "## Calculus Support Matrix Signal",
                 "",
-                "- Dimension: public calculus behavior, result simplification, domain conditions, and step noise.",
-                "- Interpretation: small executable calculus vertical slices; failures should be classified before broadening pre-calculus rules.",
+                "- Dimension: public calculus behavior, support-matrix coverage, result simplification, domain conditions, trace quality, presentation, and verification residuals.",
+                "- Interpretation: matrix-oriented calculus lanes; classify failures by command, family, argument regime, domain regime, trace regime, presentation regime, or reusable pre-calculus dependency before adding isolated cases.",
+                "- Matrix axes: command, family, argument regime, domain regime, trace regime, presentation regime, and residual verification.",
             ]
         )
         for label, suite in calculus_contract_rows:
@@ -3922,7 +4371,247 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f" conditioned_cases={conditioned_cases} "
                         f"distinct_conditions={distinct_conditions}"
                     )
+                limit_supported_cases = metrics.get("limit_supported_case_count")
+                limit_residual_cases = metrics.get("limit_residual_case_count")
+                limit_warning_expected_cases = metrics.get(
+                    "limit_warning_expected_case_count"
+                )
+                limit_required_display_cases = metrics.get(
+                    "limit_required_display_case_count"
+                )
+                limit_step_checked_cases = metrics.get("limit_step_checked_case_count")
+                limit_supported_step_unchecked_cases = metrics.get(
+                    "limit_supported_step_unchecked_case_count"
+                )
+                limit_family_count = metrics.get("limit_family_count")
+                diff_supported_cases = metrics.get("diff_supported_case_count")
+                diff_residual_cases = metrics.get("diff_residual_case_count")
+                diff_warning_expected_cases = metrics.get(
+                    "diff_warning_expected_case_count"
+                )
+                diff_required_display_cases = metrics.get(
+                    "diff_required_display_case_count"
+                )
+                diff_step_checked_cases = metrics.get(
+                    "diff_step_checked_case_count"
+                )
+                diff_supported_step_unchecked_cases = metrics.get(
+                    "diff_supported_step_unchecked_case_count"
+                )
+                diff_family_count = metrics.get("diff_family_count")
+                integrate_supported_cases = metrics.get(
+                    "integrate_supported_case_count"
+                )
+                integrate_residual_cases = metrics.get(
+                    "integrate_residual_case_count"
+                )
+                integrate_warning_expected_cases = metrics.get(
+                    "integrate_warning_expected_case_count"
+                )
+                integrate_required_display_cases = metrics.get(
+                    "integrate_required_display_case_count"
+                )
+                integrate_step_checked_cases = metrics.get(
+                    "integrate_step_checked_case_count"
+                )
+                integrate_supported_step_unchecked_cases = metrics.get(
+                    "integrate_supported_step_unchecked_case_count"
+                )
+                integrate_antiderivative_verification_cases = metrics.get(
+                    "integrate_antiderivative_verification_case_count"
+                )
+                integrate_family_count = metrics.get("integrate_family_count")
+                if isinstance(diff_supported_cases, int):
+                    line += f" supported_cases={diff_supported_cases}"
+                if isinstance(diff_residual_cases, int):
+                    line += f" residual_cases={diff_residual_cases}"
+                if isinstance(diff_warning_expected_cases, int):
+                    line += f" warning_expected={diff_warning_expected_cases}"
+                if isinstance(diff_required_display_cases, int):
+                    line += f" required_display={diff_required_display_cases}"
+                if isinstance(diff_step_checked_cases, int):
+                    line += f" step_checked={diff_step_checked_cases}"
+                if isinstance(diff_supported_step_unchecked_cases, int):
+                    line += (
+                        " unchecked_supported_steps="
+                        f"{diff_supported_step_unchecked_cases}"
+                    )
+                if isinstance(diff_family_count, int):
+                    line += f" families={diff_family_count}"
+                if isinstance(limit_supported_cases, int):
+                    line += f" supported_cases={limit_supported_cases}"
+                if isinstance(limit_residual_cases, int):
+                    line += f" residual_cases={limit_residual_cases}"
+                if isinstance(limit_warning_expected_cases, int):
+                    line += f" warning_expected={limit_warning_expected_cases}"
+                if isinstance(limit_required_display_cases, int):
+                    line += f" required_display={limit_required_display_cases}"
+                if isinstance(limit_step_checked_cases, int):
+                    line += f" step_checked={limit_step_checked_cases}"
+                if isinstance(limit_supported_step_unchecked_cases, int):
+                    line += (
+                        " unchecked_supported_steps="
+                        f"{limit_supported_step_unchecked_cases}"
+                    )
+                if isinstance(limit_family_count, int):
+                    line += f" families={limit_family_count}"
+                if isinstance(integrate_supported_cases, int):
+                    line += f" supported_cases={integrate_supported_cases}"
+                if isinstance(integrate_residual_cases, int):
+                    line += f" residual_cases={integrate_residual_cases}"
+                if isinstance(integrate_warning_expected_cases, int):
+                    line += (
+                        f" warning_expected={integrate_warning_expected_cases}"
+                    )
+                if isinstance(integrate_required_display_cases, int):
+                    line += (
+                        f" required_display={integrate_required_display_cases}"
+                    )
+                if isinstance(integrate_step_checked_cases, int):
+                    line += f" step_checked={integrate_step_checked_cases}"
+                if isinstance(integrate_supported_step_unchecked_cases, int):
+                    line += (
+                        " unchecked_supported_steps="
+                        f"{integrate_supported_step_unchecked_cases}"
+                    )
+                if isinstance(integrate_antiderivative_verification_cases, int):
+                    line += (
+                        " antiderivative_verified="
+                        f"{integrate_antiderivative_verification_cases}"
+                    )
+                if isinstance(integrate_family_count, int):
+                    line += f" families={integrate_family_count}"
                 lines.append(line)
+                argument_regimes = count_map_fragments(
+                    metrics.get("diff_argument_regime_counts")
+                )
+                if argument_regimes:
+                    lines.append(
+                        f"- `{label}` argument regimes: " + ", ".join(argument_regimes)
+                    )
+                diff_domain_regimes = count_map_fragments(
+                    metrics.get("diff_domain_regime_counts")
+                )
+                if diff_domain_regimes:
+                    lines.append(
+                        f"- `{label}` domain regimes: "
+                        + ", ".join(diff_domain_regimes)
+                    )
+                diff_required_displays = count_map_fragments(
+                    metrics.get("diff_required_display_counts")
+                )
+                if diff_required_displays:
+                    lines.append(
+                        f"- `{label}` required displays: "
+                        + ", ".join(diff_required_displays)
+                    )
+                diff_outcome_counts = count_map_fragments(
+                    metrics.get("diff_outcome_counts")
+                )
+                if diff_outcome_counts:
+                    lines.append(
+                        f"- `{label}` outcomes: " + ", ".join(diff_outcome_counts)
+                    )
+                for metric_key, regime_label in (
+                    ("diff_trace_regime_counts", "trace regimes"),
+                    ("diff_presentation_regime_counts", "presentation regimes"),
+                ):
+                    fragments = count_map_fragments(metrics.get(metric_key))
+                    if fragments:
+                        lines.append(
+                            f"- `{label}` {regime_label}: "
+                            + ", ".join(fragments)
+                        )
+                integrate_argument_regimes = count_map_fragments(
+                    metrics.get("integrate_argument_regime_counts")
+                )
+                if integrate_argument_regimes:
+                    lines.append(
+                        f"- `{label}` argument regimes: "
+                        + ", ".join(integrate_argument_regimes)
+                    )
+                integrate_domain_regimes = count_map_fragments(
+                    metrics.get("integrate_domain_regime_counts")
+                )
+                if integrate_domain_regimes:
+                    lines.append(
+                        f"- `{label}` domain regimes: "
+                        + ", ".join(integrate_domain_regimes)
+                    )
+                integrate_required_displays = count_map_fragments(
+                    metrics.get("integrate_required_display_counts")
+                )
+                if integrate_required_displays:
+                    lines.append(
+                        f"- `{label}` required displays: "
+                        + ", ".join(integrate_required_displays)
+                    )
+                integrate_outcome_counts = count_map_fragments(
+                    metrics.get("integrate_outcome_counts")
+                )
+                if integrate_outcome_counts:
+                    lines.append(
+                        f"- `{label}` outcomes: "
+                        + ", ".join(integrate_outcome_counts)
+                    )
+                integrate_verification_regimes = count_map_fragments(
+                    metrics.get("integrate_verification_regime_counts")
+                )
+                if integrate_verification_regimes:
+                    lines.append(
+                        f"- `{label}` verification regimes: "
+                        + ", ".join(integrate_verification_regimes)
+                    )
+                for metric_key, regime_label in (
+                    ("integrate_trace_regime_counts", "trace regimes"),
+                    (
+                        "integrate_presentation_regime_counts",
+                        "presentation regimes",
+                    ),
+                ):
+                    fragments = count_map_fragments(metrics.get(metric_key))
+                    if fragments:
+                        lines.append(
+                            f"- `{label}` {regime_label}: "
+                            + ", ".join(fragments)
+                        )
+                point_regimes = count_map_fragments(
+                    metrics.get("limit_point_regime_counts")
+                )
+                if point_regimes:
+                    lines.append(
+                        f"- `{label}` point regimes: " + ", ".join(point_regimes)
+                    )
+                domain_regimes = count_map_fragments(
+                    metrics.get("limit_domain_regime_counts")
+                )
+                if domain_regimes:
+                    lines.append(
+                        f"- `{label}` domain regimes: " + ", ".join(domain_regimes)
+                    )
+                required_displays = count_map_fragments(
+                    metrics.get("limit_required_display_counts")
+                )
+                if required_displays:
+                    lines.append(
+                        f"- `{label}` required displays: "
+                        + ", ".join(required_displays)
+                    )
+                outcome_counts = count_map_fragments(metrics.get("limit_outcome_counts"))
+                if outcome_counts:
+                    lines.append(
+                        f"- `{label}` outcomes: " + ", ".join(outcome_counts)
+                    )
+                for metric_key, regime_label in (
+                    ("limit_trace_regime_counts", "trace regimes"),
+                    ("limit_presentation_regime_counts", "presentation regimes"),
+                ):
+                    fragments = count_map_fragments(metrics.get(metric_key))
+                    if fragments:
+                        lines.append(
+                            f"- `{label}` {regime_label}: "
+                            + ", ".join(fragments)
+                        )
                 sparse_conditions = sparse_expected_condition_fragments(metrics)
                 if sparse_conditions:
                     lines.append(
@@ -4318,6 +5007,76 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 pieces.append(
                     f"partial_wrapper_bases={metrics['matrix_partial_wrapper_base_count']}"
                 )
+            if "diff_supported_case_count" in metrics:
+                pieces.append(f"supported={metrics['diff_supported_case_count']}")
+            if "diff_residual_case_count" in metrics:
+                pieces.append(f"residual={metrics['diff_residual_case_count']}")
+            if "diff_warning_expected_case_count" in metrics:
+                pieces.append(
+                    f"warning_expected={metrics['diff_warning_expected_case_count']}"
+                )
+            if "diff_required_display_case_count" in metrics:
+                pieces.append(
+                    f"required_display={metrics['diff_required_display_case_count']}"
+                )
+            if "diff_step_checked_case_count" in metrics:
+                pieces.append(f"step_checked={metrics['diff_step_checked_case_count']}")
+            if "diff_supported_step_unchecked_case_count" in metrics:
+                pieces.append(
+                    "unchecked_supported_steps="
+                    f"{metrics['diff_supported_step_unchecked_case_count']}"
+                )
+            if "diff_family_count" in metrics:
+                pieces.append(f"families={metrics['diff_family_count']}")
+            if "limit_supported_case_count" in metrics:
+                pieces.append(f"supported={metrics['limit_supported_case_count']}")
+            if "limit_residual_case_count" in metrics:
+                pieces.append(f"residual={metrics['limit_residual_case_count']}")
+            if "limit_warning_expected_case_count" in metrics:
+                pieces.append(
+                    f"warning_expected={metrics['limit_warning_expected_case_count']}"
+                )
+            if "limit_required_display_case_count" in metrics:
+                pieces.append(
+                    f"required_display={metrics['limit_required_display_case_count']}"
+                )
+            if "limit_step_checked_case_count" in metrics:
+                pieces.append(f"step_checked={metrics['limit_step_checked_case_count']}")
+            if "limit_supported_step_unchecked_case_count" in metrics:
+                pieces.append(
+                    "unchecked_supported_steps="
+                    f"{metrics['limit_supported_step_unchecked_case_count']}"
+                )
+            if "limit_family_count" in metrics:
+                pieces.append(f"families={metrics['limit_family_count']}")
+            if "integrate_supported_case_count" in metrics:
+                pieces.append(f"supported={metrics['integrate_supported_case_count']}")
+            if "integrate_residual_case_count" in metrics:
+                pieces.append(f"residual={metrics['integrate_residual_case_count']}")
+            if "integrate_warning_expected_case_count" in metrics:
+                pieces.append(
+                    f"warning_expected={metrics['integrate_warning_expected_case_count']}"
+                )
+            if "integrate_required_display_case_count" in metrics:
+                pieces.append(
+                    f"required_display={metrics['integrate_required_display_case_count']}"
+                )
+            if "integrate_step_checked_case_count" in metrics:
+                pieces.append(
+                    f"step_checked={metrics['integrate_step_checked_case_count']}"
+                )
+            if "integrate_supported_step_unchecked_case_count" in metrics:
+                pieces.append(
+                    "unchecked_supported_steps="
+                    f"{metrics['integrate_supported_step_unchecked_case_count']}"
+                )
+            if "integrate_antiderivative_verification_case_count" in metrics:
+                pieces.append(
+                    "antiderivative_verified="
+                    f"{metrics['integrate_antiderivative_verification_case_count']}"
+                )
+            if "integrate_family_count" in metrics:
+                pieces.append(f"families={metrics['integrate_family_count']}")
             summary = " ".join(pieces)
         elif "derived" in metrics:
             pieces = []

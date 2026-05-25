@@ -1,6 +1,7 @@
 //! Symbolic integration helpers shared by integration-facing rule layers.
 
 use crate::build::mul2_raw;
+use crate::calculus_domain_support::real_domain_is_empty_or_nonfinite_over_reals;
 use crate::cancel_support::collect_additive_terms_signed;
 use crate::expr_extract::extract_abs_argument_view;
 use crate::expr_nary::{build_balanced_add, build_balanced_mul, mul_leaves, AddView, Sign};
@@ -20,6 +21,8 @@ type LinearPartialFractionTerms = Vec<(BigRational, Polynomial, usize)>;
 const MAX_EXP_POLYNOMIAL_BY_PARTS_DEGREE: usize = 8;
 const MAX_TRIG_POLYNOMIAL_BY_PARTS_DEGREE: usize = 8;
 const MAX_HYPERBOLIC_POLYNOMIAL_BY_PARTS_DEGREE: usize = 8;
+const SYMBOLIC_INTEGRATION_DOMAIN_PROOF_DEPTH: usize = 8;
+const SYMBOLIC_INTEGRATION_DOMAIN_SCAN_DEPTH: usize = 24;
 
 fn ln_abs(ctx: &mut Context, arg: ExprId) -> ExprId {
     let abs_arg = ctx.call_builtin(BuiltinFn::Abs, vec![arg]);
@@ -37,6 +40,15 @@ fn valid_constant_log_base_ln(ctx: &mut Context, base: ExprId) -> Option<Option<
     }
 
     Some(Some(ctx.call_builtin(BuiltinFn::Ln, vec![base])))
+}
+
+fn real_domain_is_empty_or_nonfinite_for_integration(ctx: &mut Context, expr: ExprId) -> bool {
+    real_domain_is_empty_or_nonfinite_over_reals(
+        ctx,
+        expr,
+        SYMBOLIC_INTEGRATION_DOMAIN_PROOF_DEPTH,
+        SYMBOLIC_INTEGRATION_DOMAIN_SCAN_DEPTH,
+    )
 }
 
 fn constant_base_log_derivative_correction(ctx: &mut Context, base_ln: Option<ExprId>) -> ExprId {
@@ -16635,6 +16647,10 @@ pub fn integrate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -> Op
         _ => IntKind::Other,
     };
 
+    if real_domain_is_empty_or_nonfinite_for_integration(ctx, expr) {
+        return Some(ctx.add(Expr::Constant(Constant::Undefined)));
+    }
+
     if matches!(kind, IntKind::Add(_, _) | IntKind::Sub(_, _)) {
         if let Some(integral) =
             additive_common_trig_polynomial_substitution_antiderivative(ctx, expr, var)
@@ -17642,7 +17658,18 @@ mod tests {
             "(3 * x + 2) * (log10(3 * x + 2) - 1 / ln(10)) / 3"
         );
 
-        for unsupported in ["log(1,x)", "log(-2,x)", "log(x,x)", "log(2,x-x+2)"] {
+        for invalid in ["log(1,x)", "log(-2,x)", "log(1,2)", "ln(0)", "sqrt(-1)"] {
+            let expr = parse(invalid, &mut ctx).expect("parse invalid integrand");
+            let out = integrate_symbolic_expr(&mut ctx, expr, "x")
+                .expect("invalid real-domain integrand should produce undefined");
+            assert_eq!(
+                rendered(&ctx, out),
+                "undefined",
+                "invalid real-domain integral should be undefined for {invalid}"
+            );
+        }
+
+        for unsupported in ["log(x,x)", "log(2,x-x+2)"] {
             let expr = parse(unsupported, &mut ctx).expect("parse unsupported log");
             assert!(
                 integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
@@ -17703,13 +17730,22 @@ mod tests {
             "2 * ((x^2 + 1) * log2(x^2 + 1) - (x^2 + 1) / ln(2))"
         );
 
-        for unsupported in ["2*x*log(1,x^2+1)", "2*x*log(x,x^2+1)"] {
-            let expr = parse(unsupported, &mut ctx).expect("parse unsupported log product");
-            assert!(
-                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
-                "unsupported constant-base log product should remain residual for {unsupported}"
-            );
-        }
+        let invalid_base = "2*x*log(1,x^2+1)";
+        let expr = parse(invalid_base, &mut ctx).expect("parse invalid-base log product");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x")
+            .expect("invalid-base log product should produce undefined");
+        assert_eq!(
+            rendered(&ctx, out),
+            "undefined",
+            "invalid-base log product should be undefined for {invalid_base}"
+        );
+
+        let unsupported = "2*x*log(x,x^2+1)";
+        let expr = parse(unsupported, &mut ctx).expect("parse unsupported log product");
+        assert!(
+            integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+            "unsupported symbolic-base log product should remain residual for {unsupported}"
+        );
     }
 
     #[test]
@@ -17978,13 +18014,22 @@ mod tests {
             "(x^2 + x + 1) * (ln(x^2 + x + 1)^3 - 3 * ln(x^2 + x + 1)^2 + 6 * ln(x^2 + x + 1) - 6)"
         );
 
-        for unsupported in ["2*x*log(1,x^2+1)^2", "2*x*log(y,x^2+1)^2"] {
-            let expr = parse(unsupported, &mut ctx).expect("parse unsupported log power");
-            assert!(
-                integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
-                "unsupported constant-base log power integral should remain residual for {unsupported}"
-            );
-        }
+        let invalid_base = "2*x*log(1,x^2+1)^2";
+        let expr = parse(invalid_base, &mut ctx).expect("parse invalid-base log power");
+        let out = integrate_symbolic_expr(&mut ctx, expr, "x")
+            .expect("invalid-base log power integral should produce undefined");
+        assert_eq!(
+            rendered(&ctx, out),
+            "undefined",
+            "invalid-base log power integral should be undefined for {invalid_base}"
+        );
+
+        let unsupported = "2*x*log(y,x^2+1)^2";
+        let expr = parse(unsupported, &mut ctx).expect("parse unsupported log power");
+        assert!(
+            integrate_symbolic_expr(&mut ctx, expr, "x").is_none(),
+            "unsupported symbolic-base log power integral should remain residual for {unsupported}"
+        );
     }
 
     #[test]

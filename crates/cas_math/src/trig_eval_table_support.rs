@@ -168,6 +168,31 @@ mod tests {
     }
 
     #[test]
+    fn lookup_inverse_trig_sqrt_rational_forms() {
+        let cases = [
+            ("arcsin", "sqrt(1/2)", "√2/2", TrigValue::PiDiv(4)),
+            ("arccos", "sqrt(1/2)", "√2/2", TrigValue::PiDiv(4)),
+            ("arcsin", "sqrt(3/4)", "√3/2", TrigValue::PiDiv(3)),
+            ("arccos", "sqrt(3/4)", "√3/2", TrigValue::PiDiv(6)),
+            ("arctan", "sqrt(1/3)", "√3/3", TrigValue::PiDiv(6)),
+            ("arcsin", "2^(-1/2)", "√2/2", TrigValue::PiDiv(4)),
+            ("arccos", "2^(-1/2)", "√2/2", TrigValue::PiDiv(4)),
+            ("arcsin", "3/2 * 3^(-1/2)", "√3/2", TrigValue::PiDiv(3)),
+            ("arccos", "3/2 * 3^(-1/2)", "√3/2", TrigValue::PiDiv(6)),
+            ("arctan", "3^(-1/2)", "√3/3", TrigValue::PiDiv(6)),
+        ];
+
+        for (function, input, key_display, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = cas_parser::parse(input, &mut ctx).expect("parse inverse trig input");
+            let out =
+                lookup_trig_or_inverse(&ctx, function, expr).expect("expected inverse table hit");
+            assert_eq!(out.key_display, key_display, "input: {input}");
+            assert_eq!(out.value, &expected, "input: {input}");
+        }
+    }
+
+    #[test]
     fn lookup_inverse_trig_aliases() {
         let mut ctx = Context::new();
         let zero = ctx.num(0);

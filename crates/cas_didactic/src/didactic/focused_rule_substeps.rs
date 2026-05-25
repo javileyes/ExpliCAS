@@ -37,6 +37,17 @@ type SignedTerms = Vec<(ExprId, Sign)>;
 type ConcreteLogExpansion = (ExprId, ExprId, SignedTerms);
 
 pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    let differentiation_substeps = generate_symbolic_differentiation_substeps(ctx, step);
+    if !differentiation_substeps.is_empty() {
+        return differentiation_substeps;
+    }
+
+    let basic_polynomial_integration_substeps =
+        generate_basic_polynomial_integration_substeps(ctx, step);
+    if !basic_polynomial_integration_substeps.is_empty() {
+        return basic_polynomial_integration_substeps;
+    }
+
     let integration_by_parts_substeps = generate_integration_by_parts_substeps(ctx, step);
     if !integration_by_parts_substeps.is_empty() {
         return integration_by_parts_substeps;
@@ -118,6 +129,12 @@ pub(crate) fn generate_focused_rule_substeps(ctx: &Context, step: &Step) -> Vec<
         generate_nested_inverse_polynomial_table_integration_substeps(ctx, step);
     if !integration_nested_inverse_polynomial_table_substeps.is_empty() {
         return integration_nested_inverse_polynomial_table_substeps;
+    }
+
+    let integration_arctan_sqrt_reciprocal_table_substeps =
+        generate_arctan_sqrt_reciprocal_table_integration_substeps(ctx, step);
+    if !integration_arctan_sqrt_reciprocal_table_substeps.is_empty() {
+        return integration_arctan_sqrt_reciprocal_table_substeps;
     }
 
     let integration_trig_quotient_table_substeps =
@@ -1048,8 +1065,9 @@ fn build_non_monic_complete_square_substep_exprs(
 fn simplify_expr_in_context(ctx: &mut Context, expr: ExprId) -> ExprId {
     let mut simplifier = cas_solver::runtime::Simplifier::with_default_rules();
     std::mem::swap(&mut simplifier.context, ctx);
-    let (rewritten, _steps, _stats) =
-        simplifier.simplify_with_stats(expr, cas_solver::runtime::SimplifyOptions::default());
+    let (rewritten, _steps, _stats) = cas_engine::with_suppressed_depth_overflow_warnings(|| {
+        simplifier.simplify_with_stats(expr, cas_solver::runtime::SimplifyOptions::default())
+    });
     std::mem::swap(&mut simplifier.context, ctx);
     rewritten
 }
@@ -11542,6 +11560,680 @@ fn generate_sum_difference_cubes_cancel_substeps(ctx: &Context, step: &Step) -> 
     ]
 }
 
+fn generate_symbolic_differentiation_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if !matches!(
+        step.rule_name.as_str(),
+        "Symbolic Differentiation" | "Calcular la derivada"
+    ) {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Some((target, var_name)) = differentiation_call_target(ctx, before) else {
+        return Vec::new();
+    };
+    if is_unresolved_differentiation_call(ctx, after) {
+        return Vec::new();
+    }
+
+    if let Some(substep) =
+        negative_constant_base_variable_exponent_diff_substep(ctx, target, after, var_name)
+    {
+        return vec![substep];
+    }
+    if let Some(substep) =
+        zero_constant_base_variable_exponent_diff_substep(ctx, target, after, var_name)
+    {
+        return vec![substep];
+    }
+    if let Some(substep) = nonfinite_or_undefined_diff_substep(ctx, target, after) {
+        return vec![substep];
+    }
+    if let Some(substep) = logarithm_empty_positive_domain_diff_substep(ctx, target, after) {
+        return vec![substep];
+    }
+    if let Some(substep) = sqrt_empty_positive_domain_diff_substep(ctx, target, after, var_name) {
+        return vec![substep];
+    }
+
+    let Some(rule_title) = differentiation_rule_title(ctx, target, var_name) else {
+        return Vec::new();
+    };
+
+    let mut substeps = vec![SubStep::new(
+        rule_title,
+        display_expr(ctx, target),
+        display_expr(ctx, after),
+    )
+    .with_before_latex(latex_expr(ctx, target))
+    .with_after_latex(latex_expr(ctx, after))];
+
+    if let Some(inner_target) = differentiation_constant_multiple_inner(ctx, target, var_name) {
+        if let Some(inner_rule_title) = differentiation_rule_title(ctx, inner_target, var_name) {
+            let mut scratch = ctx.clone();
+            if let Some(inner_derivative) =
+                cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+                    &mut scratch,
+                    inner_target,
+                    var_name,
+                )
+            {
+                let inner_derivative = simplify_expr_in_context(&mut scratch, inner_derivative);
+                substeps.push(
+                    SubStep::new(
+                        inner_rule_title,
+                        display_expr(ctx, inner_target),
+                        display_expr(&scratch, inner_derivative),
+                    )
+                    .with_before_latex(latex_expr(ctx, inner_target))
+                    .with_after_latex(latex_expr(&scratch, inner_derivative)),
+                );
+            }
+        }
+    }
+
+    if let Some((inner, derivative_display, derivative_latex)) =
+        differentiation_chain_inner_derivative(ctx, target, var_name)
+    {
+        substeps.push(
+            SubStep::new(
+                "Identificar u y du",
+                format!("u = {}", display_expr(ctx, inner)),
+                format!("du = {} dx", derivative_display),
+            )
+            .with_before_latex(format!("u = {}", latex_expr(ctx, inner)))
+            .with_after_latex(format!("du = {}\\,dx", derivative_latex)),
+        );
+    }
+
+    substeps.extend(differentiation_component_derivative_substeps(
+        ctx, target, var_name,
+    ));
+
+    substeps
+}
+
+fn nonfinite_or_undefined_diff_substep(
+    ctx: &Context,
+    target: ExprId,
+    after: ExprId,
+) -> Option<SubStep> {
+    let Expr::Constant(Constant::Undefined) = ctx.get(after) else {
+        return None;
+    };
+    if !cas_math::calculus_domain_support::nonfinite_or_undefined_constant(ctx, target) {
+        return None;
+    }
+
+    Some(
+        SubStep::new(
+            "Detectar constante no finita en la derivada",
+            display_expr(ctx, target),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, target))
+        .with_after_latex(latex_expr(ctx, after)),
+    )
+}
+
+fn negative_constant_base_variable_exponent_diff_substep(
+    ctx: &Context,
+    target: ExprId,
+    after: ExprId,
+    var_name: &str,
+) -> Option<SubStep> {
+    let Expr::Constant(Constant::Undefined) = ctx.get(after) else {
+        return None;
+    };
+    let Expr::Pow(base, exponent) = ctx.get(target) else {
+        return None;
+    };
+    if contains_named_var(ctx, *base, var_name)
+        || !contains_named_var(ctx, *exponent, var_name)
+        || !as_rational_const(ctx, *base, 8).is_some_and(|value| value.is_negative())
+    {
+        return None;
+    }
+
+    Some(
+        SubStep::new(
+            "Detectar base negativa con exponente variable",
+            display_expr(ctx, target),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, target))
+        .with_after_latex(latex_expr(ctx, after)),
+    )
+}
+
+fn zero_constant_base_variable_exponent_diff_substep(
+    ctx: &Context,
+    target: ExprId,
+    after: ExprId,
+    var_name: &str,
+) -> Option<SubStep> {
+    let title = match ctx.get(after) {
+        Expr::Constant(Constant::Undefined) => "Detectar dominio real vacío de base cero",
+        _ if as_rational_const(ctx, after, 8).is_some_and(|value| value.is_zero()) => {
+            "Detectar base cero con exponente variable"
+        }
+        _ => return None,
+    };
+    let Expr::Pow(base, exponent) = ctx.get(target) else {
+        return None;
+    };
+    if contains_named_var(ctx, *base, var_name)
+        || !contains_named_var(ctx, *exponent, var_name)
+        || !as_rational_const(ctx, *base, 8).is_some_and(|value| value.is_zero())
+    {
+        return None;
+    }
+
+    Some(
+        SubStep::new(title, display_expr(ctx, target), display_expr(ctx, after))
+            .with_before_latex(latex_expr(ctx, target))
+            .with_after_latex(latex_expr(ctx, after)),
+    )
+}
+
+fn logarithm_empty_positive_domain_diff_substep(
+    ctx: &Context,
+    target: ExprId,
+    after: ExprId,
+) -> Option<SubStep> {
+    let Expr::Constant(Constant::Undefined) = ctx.get(after) else {
+        return None;
+    };
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return None;
+    };
+    let mut scratch = ctx.clone();
+    let title = match ctx.builtin_of(*fn_id) {
+        Some(BuiltinFn::Ln | BuiltinFn::Log2 | BuiltinFn::Log10) if args.len() == 1 => {
+            if cas_math::calculus_domain_support::positive_condition_is_impossible_over_reals(
+                &mut scratch,
+                args[0],
+                8,
+            ) {
+                "Detectar dominio real vacío del logaritmo"
+            } else {
+                return None;
+            }
+        }
+        Some(BuiltinFn::Log) if args.len() == 2 => {
+            if cas_math::calculus_domain_support::log_base_is_invalid_over_reals(
+                &mut scratch,
+                args[0],
+                8,
+            ) {
+                "Detectar base inválida del logaritmo"
+            } else if cas_math::calculus_domain_support::positive_condition_is_impossible_over_reals(
+                &mut scratch,
+                args[1],
+                8,
+            ) {
+                "Detectar dominio real vacío del logaritmo"
+            } else {
+                return None;
+            }
+        }
+        _ => return None,
+    };
+
+    Some(
+        SubStep::new(title, display_expr(ctx, target), display_expr(ctx, after))
+            .with_before_latex(latex_expr(ctx, target))
+            .with_after_latex(latex_expr(ctx, after)),
+    )
+}
+
+fn sqrt_empty_positive_domain_diff_substep(
+    ctx: &Context,
+    target: ExprId,
+    after: ExprId,
+    var_name: &str,
+) -> Option<SubStep> {
+    let Expr::Constant(Constant::Undefined) = ctx.get(after) else {
+        return None;
+    };
+    let Expr::Function(fn_id, args) = ctx.get(target) else {
+        return None;
+    };
+    if ctx.builtin_of(*fn_id) != Some(BuiltinFn::Sqrt) || args.len() != 1 {
+        return None;
+    }
+
+    let radicand = args[0];
+    let empty_positive_domain = if contains_named_var(ctx, radicand, var_name) {
+        let mut scratch = ctx.clone();
+        cas_math::calculus_domain_support::positive_condition_is_impossible_over_reals(
+            &mut scratch,
+            radicand,
+            8,
+        )
+    } else {
+        as_rational_const(ctx, radicand, 8).is_some_and(|value| value.is_negative())
+    };
+    if !empty_positive_domain {
+        return None;
+    }
+
+    Some(
+        SubStep::new(
+            "Detectar dominio real vacío de la raíz",
+            display_expr(ctx, target),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, target))
+        .with_after_latex(latex_expr(ctx, after)),
+    )
+}
+
+fn differentiation_call_target(ctx: &Context, expr: ExprId) -> Option<(ExprId, &str)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.sym_name(*fn_id) != "diff" || args.len() != 2 {
+        return None;
+    }
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return None;
+    };
+    Some((args[0], ctx.sym_name(*var_sym)))
+}
+
+fn integration_call_target(ctx: &Context, expr: ExprId) -> Option<(ExprId, &str)> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return None;
+    }
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return None;
+    };
+    Some((args[0], ctx.sym_name(*var_sym)))
+}
+
+fn is_unresolved_differentiation_call(ctx: &Context, expr: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Function(fn_id, args) if ctx.sym_name(*fn_id) == "diff" && args.len() == 2
+    )
+}
+
+fn differentiation_rule_title(
+    ctx: &Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<&'static str> {
+    match ctx.get(target) {
+        Expr::Add(_, _) | Expr::Sub(_, _) => Some("Usar linealidad de la derivada"),
+        Expr::Neg(inner) if contains_named_var(ctx, *inner, var_name) => {
+            Some("Usar linealidad de la derivada")
+        }
+        Expr::Mul(_, _)
+            if differentiation_constant_multiple_inner(ctx, target, var_name).is_some() =>
+        {
+            Some("Usar factor constante de la derivada")
+        }
+        Expr::Mul(_, _) => Some("Usar regla del producto"),
+        Expr::Div(_, _) => Some("Usar regla del cociente"),
+        Expr::Pow(base, exponent) => {
+            let base_depends = contains_named_var(ctx, *base, var_name);
+            let exponent_depends = contains_named_var(ctx, *exponent, var_name);
+            match (base_depends, exponent_depends) {
+                (true, true) => Some("Usar derivación logarítmica"),
+                (true, false) if !is_named_var(ctx, *base, var_name) => {
+                    Some("Usar regla de la potencia con cadena")
+                }
+                (true, false) => Some("Usar regla de la potencia"),
+                (false, true) => Some("Usar regla exponencial"),
+                _ => None,
+            }
+        }
+        Expr::Function(fn_id, args)
+            if args.len() == 1 && contains_named_var(ctx, args[0], var_name) =>
+        {
+            match ctx.builtin_of(*fn_id)? {
+                BuiltinFn::Sin => Some("Usar regla de sin(u)"),
+                BuiltinFn::Cos => Some("Usar regla de cos(u)"),
+                BuiltinFn::Tan => Some("Usar regla de tan(u)"),
+                BuiltinFn::Ln => Some("Usar regla de ln(u)"),
+                BuiltinFn::Exp => Some("Usar regla de exp(u)"),
+                BuiltinFn::Sqrt => Some("Usar regla de sqrt(u)"),
+                BuiltinFn::Arctan | BuiltinFn::Atan => Some("Usar regla de arctan(u)"),
+                BuiltinFn::Arcsin | BuiltinFn::Asin => Some("Usar regla de arcsin(u)"),
+                BuiltinFn::Arccos | BuiltinFn::Acos => Some("Usar regla de arccos(u)"),
+                BuiltinFn::Sec => Some("Usar regla de sec(u)"),
+                BuiltinFn::Csc => Some("Usar regla de csc(u)"),
+                BuiltinFn::Cot => Some("Usar regla de cot(u)"),
+                BuiltinFn::Sinh => Some("Usar regla de sinh(u)"),
+                BuiltinFn::Cosh => Some("Usar regla de cosh(u)"),
+                BuiltinFn::Tanh => Some("Usar regla de tanh(u)"),
+                _ => Some("Usar regla de la cadena"),
+            }
+        }
+        _ => None,
+    }
+}
+
+fn differentiation_constant_multiple_inner(
+    ctx: &Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let Expr::Mul(left, right) = ctx.get(target) else {
+        return None;
+    };
+
+    let left_depends = contains_named_var(ctx, *left, var_name);
+    let right_depends = contains_named_var(ctx, *right, var_name);
+    match (left_depends, right_depends) {
+        (false, true) => Some(*right),
+        (true, false) => Some(*left),
+        _ => None,
+    }
+}
+
+fn differentiation_chain_inner_derivative(
+    ctx: &Context,
+    target: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, String, String)> {
+    let chain_target = match ctx.get(target) {
+        Expr::Neg(inner) => *inner,
+        _ => target,
+    };
+    let chain_target = differentiation_constant_multiple_inner(ctx, chain_target, var_name)
+        .unwrap_or(chain_target);
+    let inner = match ctx.get(chain_target) {
+        Expr::Pow(base, exponent)
+            if contains_named_var(ctx, *base, var_name)
+                && !contains_named_var(ctx, *exponent, var_name)
+                && !is_named_var(ctx, *base, var_name) =>
+        {
+            *base
+        }
+        Expr::Pow(base, exponent)
+            if !contains_named_var(ctx, *base, var_name)
+                && contains_named_var(ctx, *exponent, var_name)
+                && !is_named_var(ctx, *exponent, var_name) =>
+        {
+            *exponent
+        }
+        Expr::Function(_, args)
+            if args.len() == 1
+                && contains_named_var(ctx, args[0], var_name)
+                && !is_named_var(ctx, args[0], var_name) =>
+        {
+            args[0]
+        }
+        _ => return None,
+    };
+
+    let mut scratch = ctx.clone();
+    let derivative = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        &mut scratch,
+        inner,
+        var_name,
+    )?;
+    let derivative = if contains_trig_function_for_didactic_derivative(ctx, inner) {
+        derivative
+    } else {
+        simplify_expr_in_context(&mut scratch, derivative)
+    };
+    Some((
+        inner,
+        display_expr(&scratch, derivative),
+        latex_expr(&scratch, derivative),
+    ))
+}
+
+fn contains_trig_function_for_didactic_derivative(ctx: &Context, expr: ExprId) -> bool {
+    match ctx.get(expr) {
+        Expr::Function(fn_id, args) => {
+            matches!(
+                ctx.builtin_of(*fn_id),
+                Some(
+                    BuiltinFn::Sin
+                        | BuiltinFn::Cos
+                        | BuiltinFn::Tan
+                        | BuiltinFn::Cot
+                        | BuiltinFn::Sec
+                        | BuiltinFn::Csc
+                        | BuiltinFn::Sinh
+                        | BuiltinFn::Cosh
+                        | BuiltinFn::Tanh
+                )
+            ) || args
+                .iter()
+                .copied()
+                .any(|arg| contains_trig_function_for_didactic_derivative(ctx, arg))
+        }
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            contains_trig_function_for_didactic_derivative(ctx, *left)
+                || contains_trig_function_for_didactic_derivative(ctx, *right)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            contains_trig_function_for_didactic_derivative(ctx, *inner)
+        }
+        _ => false,
+    }
+}
+
+fn differentiation_component_derivative_substeps(
+    ctx: &Context,
+    target: ExprId,
+    var_name: &str,
+) -> Vec<SubStep> {
+    if differentiation_constant_multiple_inner(ctx, target, var_name).is_some() {
+        return Vec::new();
+    }
+
+    let components: Vec<(&'static str, ExprId)> = match ctx.get(target) {
+        Expr::Mul(left, right) => vec![
+            ("Derivar el primer factor", *left),
+            ("Derivar el segundo factor", *right),
+        ],
+        Expr::Div(numerator, denominator) => vec![
+            ("Derivar el numerador", *numerator),
+            ("Derivar el denominador", *denominator),
+        ],
+        _ => return Vec::new(),
+    };
+
+    components
+        .into_iter()
+        .filter_map(|(title, component)| {
+            differentiation_component_derivative_substep(ctx, component, var_name, title)
+        })
+        .collect()
+}
+
+fn differentiation_component_derivative_substep(
+    ctx: &Context,
+    component: ExprId,
+    var_name: &str,
+    title: &'static str,
+) -> Option<SubStep> {
+    if !contains_named_var(ctx, component, var_name) {
+        return None;
+    }
+
+    let mut scratch = ctx.clone();
+    let derivative = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        &mut scratch,
+        component,
+        var_name,
+    )?;
+    let derivative = simplify_expr_in_context(&mut scratch, derivative);
+    Some(
+        SubStep::new(
+            title,
+            display_expr(ctx, component),
+            display_expr(&scratch, derivative),
+        )
+        .with_before_latex(latex_expr(ctx, component))
+        .with_after_latex(latex_expr(&scratch, derivative)),
+    )
+}
+
+fn generate_basic_polynomial_integration_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    if let Some(substep) = nonfinite_or_undefined_integration_substep(ctx, before, after) {
+        return vec![substep];
+    }
+
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if matches!(
+        ctx.get(after),
+        Expr::Function(after_fn_id, after_args)
+            if ctx.sym_name(*after_fn_id) == "integrate" && after_args.len() == 2
+    ) {
+        return Vec::new();
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    if Polynomial::from_expr(ctx, args[0], var_name).is_err() {
+        return Vec::new();
+    }
+
+    let terms = AddView::from_expr(ctx, args[0]).terms;
+    let mut substeps = Vec::new();
+    if terms.len() > 1 {
+        let linearity_display = integral_sum_display(ctx, terms.as_slice(), var_name);
+        let linearity_latex = integral_sum_latex(ctx, terms.as_slice(), var_name);
+        substeps.push(
+            SubStep::new(
+                "Usar linealidad de la integral",
+                display_expr(ctx, args[0]),
+                linearity_display.clone(),
+            )
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(linearity_latex.clone()),
+        );
+        substeps.push(
+            SubStep::new(
+                "Integrar cada término",
+                linearity_display,
+                display_expr(ctx, after),
+            )
+            .with_before_latex(linearity_latex)
+            .with_after_latex(latex_expr(ctx, after)),
+        );
+    } else {
+        substeps.push(
+            SubStep::new(
+                polynomial_integration_rule_title(ctx, args[0], var_name),
+                display_expr(ctx, args[0]),
+                display_expr(ctx, after),
+            )
+            .with_before_latex(latex_expr(ctx, args[0]))
+            .with_after_latex(latex_expr(ctx, after)),
+        );
+    }
+
+    substeps
+}
+
+fn nonfinite_or_undefined_integration_substep(
+    ctx: &Context,
+    before: ExprId,
+    after: ExprId,
+) -> Option<SubStep> {
+    let Expr::Constant(Constant::Undefined) = ctx.get(after) else {
+        return None;
+    };
+    let (target, _) = integration_call_target(ctx, before)?;
+    if !cas_math::calculus_domain_support::nonfinite_or_undefined_constant(ctx, target) {
+        return None;
+    }
+
+    Some(
+        SubStep::new(
+            "Detectar integrando no finito",
+            display_expr(ctx, target),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, target))
+        .with_after_latex(latex_expr(ctx, after)),
+    )
+}
+
+fn polynomial_integration_rule_title(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> &'static str {
+    if !contains_named_var(ctx, integrand, var_name) {
+        "Integrar una constante"
+    } else {
+        "Usar regla de potencia para integrales"
+    }
+}
+
+fn integral_sum_display(ctx: &Context, terms: &[(ExprId, Sign)], var_name: &str) -> String {
+    join_signed_terms(terms.iter().map(|(term, sign)| {
+        (
+            format!("integrate({}, {})", display_expr(ctx, *term), var_name),
+            *sign,
+        )
+    }))
+}
+
+fn integral_sum_latex(ctx: &Context, terms: &[(ExprId, Sign)], var_name: &str) -> String {
+    join_signed_terms(terms.iter().map(|(term, sign)| {
+        (
+            format!("\\int {}\\,d{}", latex_expr(ctx, *term), var_name),
+            *sign,
+        )
+    }))
+}
+
+fn join_signed_terms<I>(terms: I) -> String
+where
+    I: IntoIterator<Item = (String, Sign)>,
+{
+    let mut rendered = String::new();
+    for (idx, (term, sign)) in terms.into_iter().enumerate() {
+        match (idx, sign) {
+            (0, Sign::Pos) => rendered.push_str(&term),
+            (0, Sign::Neg) => {
+                rendered.push('-');
+                rendered.push_str(&term);
+            }
+            (_, Sign::Pos) => {
+                rendered.push_str(" + ");
+                rendered.push_str(&term);
+            }
+            (_, Sign::Neg) => {
+                rendered.push_str(" - ");
+                rendered.push_str(&term);
+            }
+        }
+    }
+    rendered
+}
+
 fn generate_integration_by_parts_substeps(ctx: &Context, step: &Step) -> Vec<SubStep> {
     if step.rule_name != "Symbolic Integration" {
         return Vec::new();
@@ -11590,11 +12282,215 @@ fn generate_integration_by_parts_substeps(ctx: &Context, step: &Step) -> Vec<Sub
         "Usar integración por partes"
     };
 
+    let mut substeps =
+        vec![
+            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
+                .with_before_latex(latex_expr(ctx, args[0]))
+                .with_after_latex(latex_expr(ctx, after)),
+        ];
+    substeps.extend(generate_polynomial_affine_log_by_parts_substeps(
+        ctx, args[0], after, var_name,
+    ));
+    substeps
+}
+
+fn generate_polynomial_affine_log_by_parts_substeps(
+    ctx: &Context,
+    integrand: ExprId,
+    after: ExprId,
+    var_name: &str,
+) -> Vec<SubStep> {
+    let Some((log_factor, log_arg, polynomial_factor)) =
+        polynomial_affine_log_by_parts_factors(ctx, integrand, var_name)
+    else {
+        return Vec::new();
+    };
+    let Some((v_display, v_latex)) =
+        polynomial_antiderivative_display(ctx, polynomial_factor, var_name)
+    else {
+        return Vec::new();
+    };
+    let Some((du_display, du_factor_display, du_latex, du_factor_latex)) =
+        log_argument_derivative_fraction_display(ctx, log_arg, var_name)
+    else {
+        return Vec::new();
+    };
+
+    let u_display = display_expr(ctx, log_factor);
+    let u_latex = latex_expr(ctx, log_factor);
+    let v_display_factor = group_display_for_product(&v_display);
+    let v_latex_factor = group_latex_for_product(&v_latex);
+    let dv_display = format!("{} dx", display_expr(ctx, polynomial_factor));
+    let dv_latex = format!("{}\\,dx", latex_expr(ctx, polynomial_factor));
+    let choice_display = format!("u = {}, dv = {}", u_display, dv_display);
+    let choice_latex = format!("u = {},\\; dv = {}", u_latex, dv_latex);
+
     vec![
-        SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-            .with_before_latex(latex_expr(ctx, args[0]))
-            .with_after_latex(latex_expr(ctx, after)),
+        SubStep::new(
+            "Elegir u y dv",
+            display_expr(ctx, integrand),
+            choice_display.clone(),
+        )
+        .with_before_latex(latex_expr(ctx, integrand))
+        .with_after_latex(choice_latex.clone()),
+        SubStep::new(
+            "Calcular du y v",
+            choice_display,
+            format!("du = {}, v = {}", du_display, v_display),
+        )
+        .with_before_latex(choice_latex)
+        .with_after_latex(format!("du = {},\\; v = {}", du_latex, v_latex)),
+        SubStep::new(
+            "Aplicar la fórmula de integración por partes",
+            format!(
+                "{}·{} - integrate({}·{}, {})",
+                u_display, v_display_factor, v_display_factor, du_factor_display, var_name
+            ),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(format!(
+            "{}\\cdot {} - \\int {}\\cdot {}\\,d{}",
+            u_latex, v_latex_factor, v_latex_factor, du_factor_latex, var_name
+        ))
+        .with_after_latex(latex_expr(ctx, after)),
     ]
+}
+
+fn polynomial_affine_log_by_parts_factors(
+    ctx: &Context,
+    integrand: ExprId,
+    var_name: &str,
+) -> Option<(ExprId, ExprId, ExprId)> {
+    let (left, right) = as_mul(ctx, integrand)?;
+    if let Some(log_arg) = ln_affine_arg(ctx, left, var_name) {
+        return polynomial_antiderivative_display(ctx, right, var_name)
+            .map(|_| (left, log_arg, right));
+    }
+    if let Some(log_arg) = ln_affine_arg(ctx, right, var_name) {
+        return polynomial_antiderivative_display(ctx, left, var_name)
+            .map(|_| (right, log_arg, left));
+    }
+    None
+}
+
+fn ln_affine_arg(ctx: &Context, expr: ExprId, var_name: &str) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1 || !ctx.is_builtin(*fn_id, BuiltinFn::Ln) {
+        return None;
+    }
+    is_affine_in_var(ctx, args[0], var_name).then_some(args[0])
+}
+
+fn is_affine_in_var(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
+    let Ok(poly) = Polynomial::from_expr(ctx, expr, var_name) else {
+        return false;
+    };
+    let mut has_linear_term = false;
+    for (degree, coefficient) in poly.coeffs.iter().enumerate() {
+        if coefficient.is_zero() {
+            continue;
+        }
+        if degree > 1 {
+            return false;
+        }
+        if degree == 1 {
+            has_linear_term = true;
+        }
+    }
+    has_linear_term
+}
+
+fn polynomial_antiderivative_display(
+    ctx: &Context,
+    polynomial: ExprId,
+    var_name: &str,
+) -> Option<(String, String)> {
+    let poly = Polynomial::from_expr(ctx, polynomial, var_name).ok()?;
+    let mut v_coeffs = vec![BigRational::zero(); poly.coeffs.len() + 1];
+    let mut has_nonzero_term = false;
+    for (degree, coefficient) in poly.coeffs.iter().enumerate() {
+        if coefficient.is_zero() {
+            continue;
+        }
+        has_nonzero_term = true;
+        let denominator = BigRational::from_integer(((degree + 1) as i64).into());
+        v_coeffs[degree + 1] = coefficient.clone() / denominator;
+    }
+    if !has_nonzero_term {
+        return None;
+    }
+    let v_poly = Polynomial::new(v_coeffs, var_name.to_string());
+    let mut scratch = ctx.clone();
+    let v_expr = v_poly.to_expr(&mut scratch);
+    Some((display_expr(&scratch, v_expr), latex_expr(&scratch, v_expr)))
+}
+
+fn log_argument_derivative_fraction_display(
+    ctx: &Context,
+    log_arg: ExprId,
+    var_name: &str,
+) -> Option<(String, String, String, String)> {
+    let mut scratch = ctx.clone();
+    let derivative = cas_math::symbolic_differentiation_support::differentiate_symbolic_expr(
+        &mut scratch,
+        log_arg,
+        var_name,
+    )?;
+    let derivative = simplify_expr_in_context(&mut scratch, derivative);
+    let derivative_display = display_expr(&scratch, derivative);
+    let derivative_latex = latex_expr(&scratch, derivative);
+    let arg_display = display_expr(ctx, log_arg);
+    let arg_latex = latex_expr(ctx, log_arg);
+    let factor_display = if derivative_display == "1" {
+        format!("1/{}", group_display_for_quotient_denominator(&arg_display))
+    } else {
+        format!(
+            "{}/{}",
+            group_display_for_quotient_numerator(&derivative_display),
+            group_display_for_quotient_denominator(&arg_display)
+        )
+    };
+    let factor_latex = format!("\\frac{{{}}}{{{}}}", derivative_latex, arg_latex);
+    Some((
+        format!("{} dx", factor_display),
+        factor_display,
+        format!("{}\\,dx", factor_latex),
+        factor_latex,
+    ))
+}
+
+fn group_display_for_product(value: &str) -> String {
+    if value.contains(" + ") || value.contains(" - ") {
+        format!("({value})")
+    } else {
+        value.to_string()
+    }
+}
+
+fn group_display_for_quotient_numerator(value: &str) -> String {
+    if value.contains(" + ") || value.contains(" - ") {
+        format!("({value})")
+    } else {
+        value.to_string()
+    }
+}
+
+fn group_display_for_quotient_denominator(value: &str) -> String {
+    if value.contains(" + ") || value.contains(" - ") {
+        format!("({value})")
+    } else {
+        value.to_string()
+    }
+}
+
+fn group_latex_for_product(value: &str) -> String {
+    if value.contains(" + ") || value.contains(" - ") {
+        format!("\\left({value}\\right)")
+    } else {
+        value.to_string()
+    }
 }
 
 fn contains_linear_integration_by_parts_target(
@@ -11717,18 +12613,24 @@ fn generate_linear_inverse_table_integration_substeps(ctx: &Context, step: &Step
         _ => return Vec::new(),
     };
 
-    let mut substeps = vec![
-        SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
-            .with_before_latex(latex_expr(ctx, args[0]))
+    let mut substeps =
+        vec![
+            SubStep::new(title, display_expr(ctx, args[0]), display_expr(ctx, after))
+                .with_before_latex(latex_expr(ctx, args[0]))
+                .with_after_latex(latex_expr(ctx, after)),
+        ];
+
+    if nontrivial_affine_argument(ctx, arg, var_name) {
+        substeps.push(
+            SubStep::new(
+                "Identificar el argumento afín",
+                display_expr(ctx, arg),
+                display_expr(ctx, after),
+            )
+            .with_before_latex(latex_expr(ctx, arg))
             .with_after_latex(latex_expr(ctx, after)),
-        SubStep::new(
-            "Identificar el argumento afín",
-            display_expr(ctx, arg),
-            display_expr(ctx, after),
-        )
-        .with_before_latex(latex_expr(ctx, arg))
-        .with_after_latex(latex_expr(ctx, after)),
-    ];
+        );
+    }
 
     if scale != BigRational::one() {
         substeps.push(
@@ -11766,7 +12668,7 @@ fn linear_inverse_table_result_arg(
             ) {
                 return None;
             }
-            nontrivial_affine_argument(ctx, args[0], var_name).then_some((
+            is_affine_in_var(ctx, args[0], var_name).then_some((
                 builtin,
                 args[0],
                 BigRational::one(),
@@ -12374,11 +13276,11 @@ fn generate_trig_log_table_integration_substeps(ctx: &Context, step: &Step) -> V
             substeps.push(
                 SubStep::new(
                     "Identificar u y du",
-                    display_expr(ctx, table_match.arg),
-                    derivative_display.clone(),
+                    format!("u = {}", display_expr(ctx, table_match.arg)),
+                    format!("du = {} dx", derivative_display),
                 )
-                .with_before_latex(latex_expr(ctx, table_match.arg))
-                .with_after_latex(derivative_latex.clone()),
+                .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
+                .with_after_latex(format!("du = {}\\,dx", derivative_latex)),
             );
             if !scale.is_one() {
                 substeps.push(
@@ -12892,11 +13794,11 @@ fn generate_hyperbolic_log_table_integration_substeps(ctx: &Context, step: &Step
     substeps.push(
         SubStep::new(
             "Identificar u y du",
-            display_expr(ctx, table_match.arg),
-            table_match.derivative_display.clone(),
+            format!("u = {}", display_expr(ctx, table_match.arg)),
+            format!("du = {} dx", table_match.derivative_display),
         )
-        .with_before_latex(latex_expr(ctx, table_match.arg))
-        .with_after_latex(table_match.derivative_latex.clone()),
+        .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
+        .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
     );
     if !table_match.scale.is_one() {
         substeps.push(
@@ -13221,11 +14123,11 @@ fn generate_hyperbolic_reciprocal_table_integration_substeps(
     substeps.push(
         SubStep::new(
             "Identificar u y du",
-            display_expr(ctx, table_match.arg),
-            table_match.derivative_display.clone(),
+            format!("u = {}", display_expr(ctx, table_match.arg)),
+            format!("du = {} dx", table_match.derivative_display),
         )
-        .with_before_latex(latex_expr(ctx, table_match.arg))
-        .with_after_latex(table_match.derivative_latex.clone()),
+        .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
+        .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
     );
     if !table_match.scale.is_one() {
         substeps.push(
@@ -13576,11 +14478,11 @@ fn generate_polynomial_derivative_table_integration_substeps(
     substeps.push(
         SubStep::new(
             "Identificar u y du",
-            display_expr(ctx, table_match.arg),
-            table_match.derivative_display.clone(),
+            format!("u = {}", display_expr(ctx, table_match.arg)),
+            format!("du = {} dx", table_match.derivative_display),
         )
-        .with_before_latex(latex_expr(ctx, table_match.arg))
-        .with_after_latex(table_match.derivative_latex.clone()),
+        .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
+        .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
     );
     if !table_match.scale.is_one() {
         substeps.push(
@@ -13997,11 +14899,11 @@ fn generate_polynomial_base_table_integration_substeps(ctx: &Context, step: &Ste
     substeps.push(
         SubStep::new(
             "Identificar u y du",
-            display_expr(ctx, table_match.base),
-            table_match.derivative_display.clone(),
+            format!("u = {}", display_expr(ctx, table_match.base)),
+            format!("du = {} dx", table_match.derivative_display),
         )
-        .with_before_latex(latex_expr(ctx, table_match.base))
-        .with_after_latex(table_match.derivative_latex.clone()),
+        .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.base)))
+        .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
     );
     if !table_match.scale.is_one() {
         substeps.push(
@@ -14324,6 +15226,182 @@ fn nested_inverse_polynomial_arg(
     })
 }
 
+fn generate_arctan_sqrt_reciprocal_table_integration_substeps(
+    ctx: &Context,
+    step: &Step,
+) -> Vec<SubStep> {
+    if step.rule_name != "Symbolic Integration" {
+        return Vec::new();
+    }
+
+    let before = step.before_local().unwrap_or(step.before);
+    let after = step.after_local().unwrap_or(step.after);
+    let Expr::Function(fn_id, args) = ctx.get(before) else {
+        return Vec::new();
+    };
+    if ctx.sym_name(*fn_id) != "integrate" || args.len() != 2 {
+        return Vec::new();
+    }
+    if let Expr::Function(after_fn_id, _) = ctx.get(after) {
+        if ctx.sym_name(*after_fn_id) == "integrate" {
+            return Vec::new();
+        }
+    }
+
+    let Expr::Variable(var_sym) = ctx.get(args[1]) else {
+        return Vec::new();
+    };
+    let var_name = ctx.sym_name(*var_sym);
+    if !cas_math::symbolic_integration_support::integrate_symbolic_is_arctan_sqrt_var_reciprocal_target(
+        ctx,
+        args[0],
+        var_name,
+    ) {
+        return Vec::new();
+    }
+    let Some(table_match) = arctan_sqrt_var_result_match(ctx, after, var_name) else {
+        return Vec::new();
+    };
+
+    vec![
+        SubStep::new(
+            "Usar la regla de u'/(1+u^2) -> arctan(u)",
+            display_expr(ctx, args[0]),
+            display_expr(ctx, after),
+        )
+        .with_before_latex(latex_expr(ctx, args[0]))
+        .with_after_latex(latex_expr(ctx, after)),
+        SubStep::new(
+            "Identificar u y du",
+            format!("u = {}", display_expr(ctx, table_match.arg)),
+            format!("du = {} dx", table_match.derivative_display),
+        )
+        .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
+        .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
+    ]
+}
+
+struct ArctanSqrtVarTableMatch {
+    arg: ExprId,
+    derivative_display: String,
+    derivative_latex: String,
+}
+
+fn arctan_sqrt_var_result_match(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<ArctanSqrtVarTableMatch> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Function(_, _) => arctan_sqrt_var_function_match(ctx, expr, var_name),
+        Expr::Neg(inner) | Expr::Hold(inner) => arctan_sqrt_var_result_match(ctx, *inner, var_name),
+        Expr::Mul(left, right) => {
+            if as_rational_const(ctx, *left, 8).is_some() {
+                arctan_sqrt_var_result_match(ctx, *right, var_name)
+            } else if as_rational_const(ctx, *right, 8).is_some() {
+                arctan_sqrt_var_result_match(ctx, *left, var_name)
+            } else {
+                None
+            }
+        }
+        Expr::Div(num, den) => {
+            if as_rational_const(ctx, *den, 8).is_some() {
+                arctan_sqrt_var_result_match(ctx, *num, var_name)
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+fn arctan_sqrt_var_function_match(
+    ctx: &Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<ArctanSqrtVarTableMatch> {
+    let (builtin, arg) = unary_builtin_arg(ctx, expr)?;
+    if !matches!(builtin, BuiltinFn::Arctan | BuiltinFn::Atan) {
+        return None;
+    }
+    let scale = arctan_sqrt_var_arg_scale(ctx, arg, var_name)?;
+    if !scale.is_positive() {
+        return None;
+    }
+    let (derivative_display, derivative_latex) =
+        scaled_sqrt_var_derivative_display_and_latex(&scale, var_name);
+    Some(ArctanSqrtVarTableMatch {
+        arg,
+        derivative_display,
+        derivative_latex,
+    })
+}
+
+fn arctan_sqrt_var_arg_scale(ctx: &Context, expr: ExprId, var_name: &str) -> Option<BigRational> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    if is_sqrt_var_arg(ctx, expr, var_name) {
+        return Some(BigRational::one());
+    }
+    match ctx.get(expr) {
+        Expr::Mul(left, right) => {
+            if let Some(coeff) = as_rational_const(ctx, *left, 8) {
+                return arctan_sqrt_var_arg_scale(ctx, *right, var_name).map(|scale| coeff * scale);
+            }
+            if let Some(coeff) = as_rational_const(ctx, *right, 8) {
+                return arctan_sqrt_var_arg_scale(ctx, *left, var_name).map(|scale| coeff * scale);
+            }
+            None
+        }
+        Expr::Div(num, den) => {
+            let coeff = as_rational_const(ctx, *den, 8)?;
+            if coeff.is_zero() {
+                return None;
+            }
+            arctan_sqrt_var_arg_scale(ctx, *num, var_name).map(|scale| scale / coeff)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            arctan_sqrt_var_arg_scale(ctx, *inner, var_name).map(|scale| -scale)
+        }
+        _ => None,
+    }
+}
+
+fn is_sqrt_var_arg(ctx: &Context, expr: ExprId, var_name: &str) -> bool {
+    let Some((sqrt_builtin, radicand)) = unary_builtin_arg(ctx, expr) else {
+        return false;
+    };
+    sqrt_builtin == BuiltinFn::Sqrt
+        && matches!(ctx.get(radicand), Expr::Variable(sym) if ctx.sym_name(*sym) == var_name)
+}
+
+fn scaled_sqrt_var_derivative_display_and_latex(
+    scale: &BigRational,
+    var_name: &str,
+) -> (String, String) {
+    let coeff = scale.clone() / BigRational::from_integer(2.into());
+    let numerator = coeff.numer().to_string();
+    let denominator = coeff.denom().to_string();
+    match (numerator.as_str(), denominator.as_str()) {
+        ("1", "1") => (
+            format!("1 / sqrt({var_name})"),
+            format!("\\frac{{1}}{{\\sqrt{{{var_name}}}}}"),
+        ),
+        ("1", denominator) => (
+            format!("1 / ({denominator}·sqrt({var_name}))"),
+            format!("\\frac{{1}}{{{denominator}\\sqrt{{{var_name}}}}}"),
+        ),
+        (numerator, "1") => (
+            format!("{numerator} / sqrt({var_name})"),
+            format!("\\frac{{{numerator}}}{{\\sqrt{{{var_name}}}}}"),
+        ),
+        (numerator, denominator) => (
+            format!("{numerator} / ({denominator}·sqrt({var_name}))"),
+            format!("\\frac{{{numerator}}}{{{denominator}\\sqrt{{{var_name}}}}}"),
+        ),
+    }
+}
+
 #[derive(Clone, Copy)]
 enum TrigQuotientTableKind {
     Tangent,
@@ -14393,11 +15471,11 @@ fn generate_trig_quotient_table_integration_substeps(ctx: &Context, step: &Step)
     substeps.push(
         SubStep::new(
             "Identificar u y du",
-            display_expr(ctx, table_match.arg),
-            table_match.derivative_display.clone(),
+            format!("u = {}", display_expr(ctx, table_match.arg)),
+            format!("du = {} dx", table_match.derivative_display),
         )
-        .with_before_latex(latex_expr(ctx, table_match.arg))
-        .with_after_latex(table_match.derivative_latex.clone()),
+        .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
+        .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
     );
     if !table_match.scale.is_one() {
         substeps.push(
@@ -14662,11 +15740,11 @@ fn generate_reciprocal_trig_derivative_product_integration_substeps(
     substeps.push(
         SubStep::new(
             "Identificar u y du",
-            display_expr(ctx, table_match.arg),
-            table_match.derivative_display.clone(),
+            format!("u = {}", display_expr(ctx, table_match.arg)),
+            format!("du = {} dx", table_match.derivative_display),
         )
-        .with_before_latex(latex_expr(ctx, table_match.arg))
-        .with_after_latex(table_match.derivative_latex.clone()),
+        .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
+        .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
     );
     if !table_match.scale.is_one() {
         substeps.push(

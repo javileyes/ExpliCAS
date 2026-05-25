@@ -171,6 +171,10 @@ Current contract:
 - accepted finite points render as `limit(expr, var, point)` when unresolved
 - expressions that do not depend on the limit variable may evaluate directly,
   preserving their own implicit domain requirements
+- expressions that do not depend on the limit variable but have a statically
+  empty real domain, such as `ln(0)`, `sqrt(-1)`, or `log(1, 2)`, may resolve
+  to `undefined`; this does not relax residual policy for variable-dependent
+  domain, branch, endpoint, or path cases
 - the identity variable limit may evaluate directly to the finite point when
   that point does not depend on the limit variable
 - polynomial expressions may evaluate at numeric rational finite points because
@@ -178,8 +182,11 @@ Current contract:
   branch, side, or domain assumption
 - rational polynomial expressions may evaluate at numeric rational finite
   points only when the denominator evaluates explicitly to a nonzero value at
-  that point; zero denominators, including removable-looking holes, remain
-  residual until a dedicated finite-point continuity/cancellation policy exists
+  that point, or when exact polynomial multiplicity checks prove a removable
+  hole by repeatedly differentiating numerator and denominator until the
+  denominator has a nonzero value at the point; finite poles and unresolved
+  zero-denominator forms remain residual until a one-sided or infinite
+  finite-point policy exists
 - `exp(p(x))`, `sin(p(x))`, `cos(p(x))`, `sinh(p(x))`, `cosh(p(x))`,
   `tanh(p(x))`, `atan(p(x))`/`arctan(p(x))`, `asinh(p(x))`, `cbrt(p(x))`,
   and `abs(p(x))` may evaluate at numeric rational finite points when `p(x)`

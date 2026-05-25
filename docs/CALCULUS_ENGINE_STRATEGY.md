@@ -1,7 +1,8 @@
 # Calculus Engine Strategy
 
-This document is part of the engine auto-improvement loop. It defines when and
-how the campaign should expand from the mature pre-calculus core into calculus.
+This document is part of the engine auto-improvement loop. It defines how the
+campaign should turn the mature pre-calculus core and the existing calculus
+verticals into a serious real-domain calculus surface.
 
 ## Position
 
@@ -18,13 +19,24 @@ That distinction matters:
 - starting calculus without discipline would bypass the same simplifier, domain,
   and explanation machinery that makes the engine trustworthy
 
-Therefore the strategy is:
+The project has now accumulated enough green `diff`, `limit`, and `integrate`
+vertical slices that the priority should move beyond adding one more narrow
+case at a time.
 
-- start calculus now
-- do it as bounded vertical slices
+Therefore the strategy is now:
+
+- generalize calculus from the supported slices already present
+- prefer shared real-domain capability over isolated new cases
+- build explicit calculus coverage matrices for `diff`, `limit`, and
+  `integrate`
 - keep improving pre-calculus in parallel
 - treat calculus failures as structured feedback for simplification,
   equivalence, domains, and didactic trace quality
+
+This is not a license to implement a universal CAS or open broad unbounded
+search. It is a shift in default ROI: when several narrow calculus cases already
+work, the next cycle should ask what shared rule, domain policy, presentation
+layer, verification path, or didactic trace would make the family general.
 
 ## Core Principle
 
@@ -53,6 +65,72 @@ Every calculus improvement should answer five questions before promotion:
 If a calculus candidate does not improve a real calculus surface or produce
 useful pressure on the pre-calculus core, it is probably not high ROI.
 
+## Current Priority: Generalize Calculus
+
+The near-term calculus campaign should optimize for generalization, not
+isolated coverage.
+
+Prefer candidates that do at least one of these:
+
+- turn several existing derivative examples into one reusable derivative family
+  with consistent domain and step behavior
+- convert repeated integration table or substitution patterns into a shared
+  recognizer, verifier, or didactic trace
+- extend finite or infinite limits by a documented policy matrix rather than by
+  a single answer shortcut
+- add a calculus coverage matrix that makes supported, residual, and rejected
+  regimes explicit
+- improve post-calculus presentation for a whole result family while preserving
+  canonical internal forms and required conditions
+- expose a reusable pre-calculus normalization or equivalence gap that blocks
+  multiple calculus results
+
+Reject or defer candidates that only add one more syntactic variant unless the
+variant reveals a new domain regime, rule interaction, didactic gap, runtime
+cliff, or public behavior class.
+
+### Family Sweep And Consolidation Policy
+
+Recent cycles showed that calculus presentation work can accidentally repeat the
+same local improvement across sibling inverse families. The loop should treat
+that repetition as evidence for a shared policy, not as a reason to keep adding
+near-duplicate variants.
+
+Before accepting a calculus presentation or derivative-family candidate, run a
+bounded sibling sweep over the nearest mathematical family cluster. This is not
+open-ended search; it is a short probe set chosen from the same rule shape.
+
+For root and scaled-root derivative families, the minimum sweep should usually
+include:
+
+- the direct family and its dual orientation, such as `arcsin/arccos` or
+  `arctan/acot`
+- the corresponding hyperbolic family when it shares the same argument parser,
+  such as `asinh/atanh/acosh`
+- positive scale, negative scale, and external constant scale
+- exact-square content under the root, for example `sqrt(4*x)/3`
+- unit and negative-unit scale cases, for example `sqrt(x)` and `-sqrt(x)`
+- required-condition preservation and ordinary calculus trace preservation
+
+If one cycle fixes a family and a later cycle finds the same structural pattern
+in a sibling family, the following cycle should prefer consolidation over
+another syntactic variant. Consolidation can mean extracting a small helper,
+documenting a shared matrix policy, or promoting one minimal support-matrix row
+that represents the family cluster.
+
+A calculus candidate should remain local only when:
+
+- the sibling sweep shows no analogous gap
+- the sibling gap has different domain or branch semantics
+- consolidation would change route ordering or broaden matcher traffic without
+  measurable value
+- the local fix is needed to keep `failed = 0` before a safer consolidation can
+  be attempted
+
+This policy is especially important for post-calculus presentation. Presentation
+helpers often encode domain and orientation assumptions indirectly, so a compact
+form must be checked against sign/orientation siblings before promotion.
+
 ## Investment Class
 
 An auto-improvement cycle may choose `calculus` as its primary investment class
@@ -61,6 +139,9 @@ when the retained value is public calculus capability:
 - `diff` / symbolic differentiation
 - `limit` / conservative limit solving
 - `integrate` / conservative table or substitution integration
+- generalization of an existing `diff`, `limit`, or `integrate` family across
+  polynomial degree, affine/polynomial arguments, orientation, sign, and
+  domain regimes when the behavior remains explainable and testable
 - post-calculus presentation for a `diff`, `limit`, or `integrate` result when
   the mathematical capability already exists but the public form is needlessly
   awkward
@@ -94,17 +175,24 @@ Useful baseline questions:
 - which limit families are intentionally conservative?
 - which CLI/API contracts already expose calculus steps?
 
-### Phase 1. Differentiation Vertical Slice
+### Phase 1. Differentiation Generalization
 
 Prioritize differentiation first because it is the safest high-ROI calculus
 surface and it feeds the simplifier constantly.
 
-Good early targets:
+The current goal is no longer just to add early derivative examples. The goal is
+to make differentiation feel systematic over the real-domain elementary
+surface.
+
+Good generalization targets:
 
 - polynomial and rational derivatives
 - product, quotient, and chain rule traces
 - `exp`, `ln`, trig, and inverse-trig derivatives where the domain policy is
   clear
+- affine and polynomial inner arguments where the chain factor is explicit
+- sign/orientation variants and reciprocal/root presentations for the same
+  mathematical family
 - simplification of derivative outputs without hiding rule applications
 - didactic substeps for nontrivial compositions
 
@@ -114,32 +202,43 @@ Retention should require both:
 - the resulting expression and steps are presentable through existing symbolic
   simplification and didactic machinery
 
-### Phase 2. Limits Vertical Slice
+### Phase 2. Limits Generalization
 
 Limits should remain conservative.
 
-Good early targets:
+Good generalization targets:
 
 - polynomial and rational limits at infinity
 - safe structural pre-simplification
-- simple finite point limits only when domain assumptions are explicit
+- finite point limits under an explicit policy matrix
+- one-sided limits only after direction and domain behavior are represented
+- asymptotic dominance families with documented residual boundaries
 - documented residuals when the engine cannot solve safely
 
 Do not relax the limits policy to chase isolated successes. Follow
 [LIMITS_POLICY.md](/Users/javiergimenezmoya/developer/math/docs/LIMITS_POLICY.md)
-for allowlist/denylist discipline.
+for allowlist/denylist discipline. If a broader limits move requires new
+continuity, cancellation, side-limit, or infinity semantics, write that policy
+first and make unsupported residuals part of the contract.
 
-### Phase 3. Integration Vertical Slice
+### Phase 3. Integration Generalization
 
-Integration should start narrower than differentiation.
+Integration should remain narrower than differentiation, but it should now
+generalize the supported table, substitution, and verification patterns instead
+of accumulating unrelated primitives.
 
-Good early targets:
+Good generalization targets:
 
 - powers of `x` excluding singular exponent cases
 - constant multiples and sums
 - direct table forms for `exp`, `sin`, `cos`, and `1/x` with domain policy
 - simple linear substitution where the substitution trace is explicit
 - verification by differentiating supported antiderivatives when safe
+- polynomial-derivative substitution families where the `u` and `du` evidence
+  can be shown to the user
+- repeated table families that can share one domain and constant policy
+- integration-by-parts families only when the residual path is bounded and the
+  primitive is verified
 
 Non-goals:
 
@@ -177,7 +276,7 @@ Policy:
   selection
 
 This policy is intentionally narrower than a universal canonical primitive
-policy. It is a guardrail for bounded integration slices, not a promise that the
+policy. It is a guardrail for integration generalization, not a promise that the
 engine will choose the same primitive family as another CAS.
 
 ### Phase 4. Post-Calculus Presentation And Didactic Quality
@@ -219,7 +318,7 @@ calculus result, preserves semantic conditions, and can be verified by
 equivalence or by differentiating an antiderivative when the source command is
 `integrate`.
 
-Good early presentation targets:
+Good presentation targets:
 
 - reciprocal fractional powers after differentiation:
   - internal acceptable form: `x^(-1/2)/(2*x + 2)`
@@ -288,16 +387,31 @@ Interpretation:
 
 ## Corpus Policy
 
-Calculus corpus work should be vertical-slice oriented.
+Calculus corpus work should now be matrix-oriented.
+
+Vertical slices remain useful as discovery and first support probes, but the
+promotion target should be a small coverage matrix that records:
+
+- command: `diff`, `limit`, or `integrate`
+- family: polynomial, rational, elementary, inverse, trig, hyperbolic, root,
+  log, product, quotient, substitution, or by-parts
+- argument regime: variable, affine, polynomial, nested elementary, or rejected
+  unsupported form
+- domain regime: unconditional, required condition, branch-sensitive,
+  infinity-sensitive, integration-constant-sensitive, or residual
+- trace regime: direct rule, product/quotient/chain rule, substitution,
+  verification by differentiation, pre-simplification, or residual explanation
+- presentation regime: canonical result, post-calculus presentation, or
+  deliberately deferred display cleanup
 
 Preferred promotion path:
 
-1. start with unit tests for the calculus family
+1. start with unit tests for the calculus family or shared helper
 2. add a CLI/API contract test if public behavior changes
 3. add a didactic/highlight test when the step trace is the point
 4. add a metamorphic or pressure case when the result stresses simplification
-5. promote a minimal representative to live guardrails only after the family is
-   stable
+5. promote a minimal representative matrix row to live guardrails only after the
+   family is stable
 
 Good calculus corpus rows are small but structurally informative:
 
@@ -372,14 +486,22 @@ user would plausibly ask `derive` to explain.
 
 ## Recommended Next Direction
 
-The highest-ROI near-term direction is a differentiation-first vertical slice:
+The highest-ROI near-term direction is calculus generalization from existing
+green slices:
 
-- broaden derivative family support conservatively
-- improve simplification of derivative outputs
-- make product/quotient/chain-rule traces visible and not magical
-- feed reusable algebraic gaps back into pre-calculus coverage
-- keep limits conservative and integration table-driven until their policies are
-  equally strong
+- build a calculus support matrix for `diff`, `limit`, and `integrate`
+- prioritize differentiation as the first generalization surface
+- make product/quotient/chain-rule traces visible and consistent
+- generalize integration only through table, substitution, by-parts, and
+  verification families with explicit domain and constant policy
+- generalize limits through policy-backed finite, infinity, side, and residual
+  regimes
+- feed reusable algebraic gaps back into pre-calculus coverage rather than
+  adding calculus-only workarounds
+- add calculus didactic audits for rule traces, highlights, residual
+  explanations, and post-calculus presentation
 
-This lets the project start building calculus now while continuing to improve
-the pre-calculus heart of the engine.
+The campaign should stop spending routine cycles on more isolated calculus
+examples unless they reveal a new reusable axis. The default calculus cycle
+should now ask: what makes this whole family coherent, explainable, domain-safe,
+and verifiable?

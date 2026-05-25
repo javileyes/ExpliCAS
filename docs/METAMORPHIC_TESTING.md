@@ -28,8 +28,8 @@ Eso implica que mejorar el engine no es solo “añadir reglas”. También cuen
 - mejorar el orquestador root/direct
 - mejorar rutas de equivalencia o shortcuts seguros
 - mejorar el planner o clasificador de `derive`
-- mejorar una vertical acotada de cálculo que presione simplificación,
-  equivalencia, dominios o pasos didácticos
+- generalizar una matriz de soporte de cálculo que presione simplificación,
+  equivalencia, dominios, presentación o pasos didácticos
 - evitar que un caso correcto semánticamente reviente por stack o tiempo
 
 La scorecard automatizada que agrupa estas señales vive en:
@@ -656,7 +656,8 @@ cargo test --release -p cas_solver --test metamorphic_simplification_tests \
 La estrategia metamórfica también debe alimentar cálculo, pero con más cuidado
 que las identidades algebraicas puras.
 
-Las mejores propiedades para cálculo son simbólicas y acotadas:
+Las mejores propiedades para cálculo son simbólicas, acotadas y organizables
+como filas reutilizables de una matriz de soporte:
 
 - linealidad de la derivada:
   `diff(f + g, x) ~ diff(f, x) + diff(g, x)`
@@ -676,7 +677,7 @@ abrir búsqueda simbólica amplia.
 
 Reglas operativas:
 
-- empieza con familias pequeñas y dominios explícitos
+- empieza con familias soportadas, dominios explícitos y ejes de matriz claros
 - usa el chequeo numérico sólo como diagnóstico, no como soporte de verdad para
   promocionar cálculo
 - si la derivada o integral es correcta pero el resultado queda en una forma

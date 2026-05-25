@@ -57,6 +57,18 @@ fn run_eval(expr: &str, format: &str) -> (bool, String) {
     (output.status.success(), stdout)
 }
 
+fn run_eval_with_steps(expr: &str) -> (bool, String) {
+    let binary = cas_cli_binary();
+
+    let output = Command::new(&binary)
+        .args(["eval", expr, "--format=json", "--steps=on"])
+        .output()
+        .unwrap_or_else(|e| panic!("Failed to run {:?}: {}", binary, e));
+
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    (output.status.success(), stdout)
+}
+
 #[test]
 fn test_limit_x_to_infinity_text() {
     let (success, stdout) = run_limit("x", "x", "infinity", "text");
@@ -238,7 +250,24 @@ fn test_eval_finite_polynomial_limit_returns_substituted_value_json() {
 }
 
 #[test]
-fn test_eval_finite_rational_polynomial_limit_requires_nonzero_denominator_at_point_json() {
+fn test_eval_limit_steps_on_emits_limit_trace_json() {
+    let (success, stdout) = run_eval_with_steps("limit(x^2 + x + 1, x, -2)");
+    assert!(success, "Command should succeed with steps enabled");
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "3");
+    assert_eq!(wire["steps_count"], 1);
+    let steps = wire["steps"].as_array().expect("steps array");
+    assert_eq!(steps[0]["rule"], "Evaluar límite finito");
+    assert!(
+        steps[0]["after"].as_str().is_some_and(|after| after == "3"),
+        "Limit trace should show the evaluated result, got: {wire:?}"
+    );
+}
+
+#[test]
+fn test_eval_finite_rational_polynomial_limit_handles_removable_holes_json() {
     let (success, stdout) = run_eval("limit((x^2+3*x+2)/(x+2), x, 0)", "json");
     assert!(
         success,
@@ -253,11 +282,38 @@ fn test_eval_finite_rational_polynomial_limit_requires_nonzero_denominator_at_po
     let (success, stdout) = run_eval("limit((x^2+3*x+2)/(x+2), x, -2)", "json");
     assert!(
         success,
-        "Command should keep singular finite rational-polynomial limit residual"
+        "Command should resolve exact removable finite rational-polynomial limit"
     );
     let wire: Value = serde_json::from_str(&stdout).expect("eval json");
     assert_eq!(wire["ok"], true);
-    assert_eq!(wire["result"], "limit((x^2 + 3·x + 2) / (x + 2), x, -2)");
+    assert_eq!(wire["result"], "-1");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!(["x ≠ -2"]));
+
+    let (success, stdout) = run_eval("limit((x^2-1)/(x-1), x, 1)", "json");
+    assert!(
+        success,
+        "Command should resolve simple exact removable finite rational-polynomial limit"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "2");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!(["x ≠ 1"]));
+
+    let (success, stdout) = run_eval("limit((x-1)/(x-1)^2, x, 1)", "json");
+    assert!(
+        success,
+        "Command should keep finite rational-polynomial poles residual"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert!(
+        wire["result"]
+            .as_str()
+            .is_some_and(|result| result.contains("limit(")),
+        "Finite rational pole should remain residual, got: {wire:?}"
+    );
     assert!(
         wire["warnings"].as_array().is_some_and(|warnings| {
             warnings.iter().any(|warning| {
@@ -313,6 +369,55 @@ fn test_eval_finite_elementary_polynomial_limit_requires_positive_argument_at_po
         }),
         "Out-of-domain finite ln limit should remain residual with warning, got: {wire:?}"
     );
+}
+
+#[test]
+fn test_eval_static_empty_real_domain_limit_returns_undefined_json() {
+    for input in [
+        "limit(log(1,2), x, 0)",
+        "limit(log(-2,2), x, 0)",
+        "limit(ln(0), x, 0)",
+        "limit(sqrt(-1), x, 0)",
+        "limit(log(1,2), x, infinity)",
+    ] {
+        let (success, stdout) = run_eval_with_steps(input);
+        assert!(
+            success,
+            "Command should resolve static empty-domain limit for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(
+            wire["result"], "undefined",
+            "static empty-domain limit should be undefined for {input}: {wire:?}"
+        );
+        assert_eq!(
+            wire["required_display"],
+            json!([]),
+            "static empty-domain limit should not add assumptions for {input}"
+        );
+        assert_eq!(
+            wire["warnings"],
+            json!([]),
+            "static empty-domain limit should not fall through to residual warning for {input}"
+        );
+        assert!(
+            wire["steps"].to_string().contains("undefined"),
+            "limit trace should expose the undefined result for {input}: {wire:?}"
+        );
+    }
+
+    for input in ["limit(log(y,2), x, 0)", "limit(sqrt(y), x, 0)"] {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(success, "Command should preserve symbolic static domains");
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert!(
+            wire["result"]
+                .as_str()
+                .is_some_and(|result| !result.contains("undefined")),
+            "symbolic static domain should remain explicit, not undefined for {input}: {wire:?}"
+        );
+    }
 }
 
 #[test]
@@ -374,6 +479,7 @@ fn test_eval_finite_partial_domain_inverse_elementary_limits_stay_residual_json(
         "limit(arcsin(x), x, 1)",
         "limit(atanh(x), x, 1)",
         "limit(acosh(x), x, 1)",
+        "limit(acosh(sqrt(x)), x, 1)",
     ] {
         let (success, stdout) = run_eval(input, "json");
         assert!(
@@ -406,7 +512,7 @@ fn test_eval_finite_partial_domain_inverse_elementary_limits_stay_residual_json(
 fn test_eval_finite_partial_domain_inverse_elementary_limits_inside_domain_json() {
     let cases = [
         ("limit(arcsin(x/2), x, 0)", "0", json!(["-2 ≤ x ≤ 2"])),
-        ("limit(atanh(x/2), x, 0)", "0", json!([])),
+        ("limit(atanh(x/2), x, 0)", "0", json!(["-2 < x < 2"])),
         ("limit(acos(x/2), x, 0)", "pi / 2", json!(["-2 ≤ x ≤ 2"])),
         (
             "limit(arcsin(x/2 + 1/2), x, 0)",
@@ -461,7 +567,90 @@ fn test_eval_finite_shifted_atanh_limit_inside_domain_json() {
     assert_eq!(wire["ok"], true);
     assert_eq!(wire["result"], "atanh(1/3)");
     assert_eq!(wire["warnings"], json!([]));
-    assert_eq!(wire["required_display"], json!([]));
+    assert_eq!(wire["required_display"], json!(["-4 < x < 2"]));
+}
+
+#[test]
+fn test_eval_finite_atanh_sqrt_limit_inside_domain_uses_radicand_domain_json() {
+    let (success, stdout) = run_eval("limit(atanh(sqrt(x)), x, 1/4)", "json");
+    assert!(
+        success,
+        "Command should resolve atanh sqrt limit inside the real domain"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "atanh(1/2)");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!(["x < 1", "x ≥ 0"]));
+}
+
+#[test]
+fn test_eval_finite_closed_inverse_sqrt_limits_use_radicand_domain_json() {
+    let cases = [
+        ("limit(arcsin(sqrt(x)), x, 1/4)", "pi / 6"),
+        ("limit(acos(sqrt(x)), x, 1/4)", "pi / 3"),
+    ];
+
+    for (input, expected) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should resolve closed inverse sqrt limit inside the real domain for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert_eq!(wire["required_display"], json!(["x ≤ 1", "x ≥ 0"]));
+    }
+}
+
+#[test]
+fn test_eval_finite_partial_inverse_sqrt_limits_accept_non_square_interior_json() {
+    let cases = [
+        (
+            "limit(atanh(sqrt(2*x+3)), x, -5/4)",
+            "atanh(sqrt(1/2))",
+            json!(["x < -1", "x ≥ -3/2"]),
+        ),
+        (
+            "limit(arcsin(sqrt(2*x+3)), x, -5/4)",
+            "pi / 4",
+            json!(["x ≤ -1", "x ≥ -3/2"]),
+        ),
+        (
+            "limit(acos(sqrt(2*x+3)), x, -5/4)",
+            "pi / 4",
+            json!(["x ≤ -1", "x ≥ -3/2"]),
+        ),
+        (
+            "limit(arcsin(sqrt(3*x+3)), x, -3/4)",
+            "pi / 3",
+            json!(["x ≤ -2/3", "x ≥ -1"]),
+        ),
+        (
+            "limit(acos(sqrt(3*x+3)), x, -3/4)",
+            "pi / 6",
+            json!(["x ≤ -2/3", "x ≥ -1"]),
+        ),
+        ("limit(arctan(sqrt(x/3)), x, 1)", "pi / 6", json!(["x ≥ 0"])),
+    ];
+
+    for (input, expected, expected_required) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should resolve inverse sqrt limit at non-square interior value for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required,
+            "input: {input}"
+        );
+    }
 }
 
 #[test]
@@ -490,6 +679,84 @@ fn test_eval_finite_negatively_scaled_acosh_limit_preserves_oriented_domain_json
     assert_eq!(wire["result"], "acosh(2)");
     assert_eq!(wire["warnings"], json!([]));
     assert_eq!(wire["required_display"], json!(["x ≤ 2"]));
+}
+
+#[test]
+fn test_eval_finite_acosh_sqrt_limit_uses_radicand_lower_bound_json() {
+    let cases = [
+        ("limit(acosh(sqrt(x)), x, 4)", "acosh(2)", json!(["x ≥ 1"])),
+        (
+            "limit(acosh(sqrt(2*x+3)), x, 1)",
+            "acosh(sqrt(5))",
+            json!(["x ≥ -1"]),
+        ),
+        (
+            "limit(acosh(sqrt(5-3*x)), x, 0)",
+            "acosh(sqrt(5))",
+            json!(["x ≤ 4/3"]),
+        ),
+        (
+            "limit(acosh((2*x+3)^(1/2)), x, 1)",
+            "acosh(sqrt(5))",
+            json!(["x ≥ -1"]),
+        ),
+    ];
+
+    for (input, expected, expected_required) in cases {
+        let (success, stdout) = run_eval(input, "json");
+        assert!(
+            success,
+            "Command should resolve acosh sqrt limit inside the real domain for {input}"
+        );
+        let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert_eq!(wire["warnings"], json!([]), "input: {input}");
+        assert_eq!(
+            wire["required_display"], expected_required,
+            "input: {input}"
+        );
+    }
+}
+
+#[test]
+fn test_eval_finite_square_root_power_limit_reuses_sqrt_policy_json() {
+    let (success, stdout) = run_eval("limit((2*x+3)^(1/2), x, 1)", "json");
+    assert!(
+        success,
+        "Command should resolve finite square-root power limit at positive radicand"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert_eq!(wire["result"], "sqrt(5)");
+    assert_eq!(wire["warnings"], json!([]));
+    assert_eq!(wire["required_display"], json!(["x ≥ -3/2"]));
+
+    let (success, stdout) = run_eval("limit(x^(1/2), x, 0)", "json");
+    assert!(
+        success,
+        "Command should keep finite square-root power endpoint residual"
+    );
+    let wire: Value = serde_json::from_str(&stdout).expect("eval json");
+    assert_eq!(wire["ok"], true);
+    assert!(
+        wire["result"]
+            .as_str()
+            .is_some_and(|result| result.contains("limit(")),
+        "square-root power endpoint must remain residual, got: {wire:?}"
+    );
+    assert!(
+        wire["warnings"].as_array().is_some_and(|warnings| {
+            warnings.iter().any(|warning| {
+                warning["rule"] == "Limit Evaluation"
+                    && warning["assumption"].as_str().is_some_and(|message| {
+                        message.contains("Finite point limits are not supported safely yet")
+                    })
+            })
+        }),
+        "square-root power endpoint should keep finite-limit warning, got: {wire:?}"
+    );
+    assert_eq!(wire["required_display"], json!(["x ≥ 0"]));
 }
 
 #[test]

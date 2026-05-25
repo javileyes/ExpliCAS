@@ -1,0 +1,986 @@
+#!/usr/bin/env python3
+"""Command-level integration policy matrix smoke.
+
+This lane complements the broad Rust integration contract. It keeps a small
+public `integrate(...)` support matrix visible at scorecard level so future
+calculus work can be selected by family, argument, domain, trace, and
+presentation regime instead of by raw test counts alone.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import pathlib
+import signal
+import subprocess
+import sys
+import time
+from dataclasses import dataclass
+from typing import Any, Literal
+
+
+SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from cas_cli_release import ensure_release_cas_cli
+
+
+ROOT = SCRIPT_DIR.parent
+DEFAULT_CAS_CLI = ROOT / "target" / "release" / "cas_cli"
+Status = Literal["pass", "slow", "fail", "timeout"]
+
+
+@dataclass(frozen=True)
+class IntegrateCommandMatrixCase:
+    name: str
+    expr: str
+    expected_result: str
+    expected_derivative_result: str | None = None
+    expected_derivative_required_display: tuple[str, ...] = ()
+    expected_required_display: tuple[str, ...] = ()
+    expected_warning_substrings: tuple[str, ...] = ()
+    expected_step_substrings: tuple[str, ...] = ()
+    family: str = "unknown"
+    argument_regime: str = "variable"
+    domain_regime: str = "unconditional"
+    outcome: str = "supported"
+    trace_regime: str = "direct"
+    presentation_regime: str = "canonical"
+
+
+DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
+    IntegrateCommandMatrixCase(
+        name="polynomial_power_direct",
+        expr="integrate(x^2, x)",
+        expected_result="1/3·x^3",
+        expected_derivative_result="x^2",
+        expected_step_substrings=("Usar regla de potencia para integrales",),
+        family="polynomial",
+        argument_regime="variable_power",
+        trace_regime="power_rule",
+        presentation_regime="compact_power",
+    ),
+    IntegrateCommandMatrixCase(
+        name="polynomial_sum_linearity",
+        expr="integrate(2*x + 3, x)",
+        expected_result="x^2 + 3·x",
+        expected_derivative_result="2·x + 3",
+        expected_step_substrings=(
+            "Usar linealidad de la integral",
+            "Integrar cada término",
+        ),
+        family="polynomial_sum",
+        argument_regime="sum",
+        trace_regime="linearity",
+        presentation_regime="polynomial_sum",
+    ),
+    IntegrateCommandMatrixCase(
+        name="affine_trig_substitution",
+        expr="integrate(sin(2*x), x)",
+        expected_result="-1/2·cos(2·x)",
+        expected_derivative_result="sin(2·x)",
+        expected_step_substrings=(
+            "Usar la regla de sin con derivada interna",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="trig_affine",
+        argument_regime="affine_argument",
+        trace_regime="linear_substitution",
+        presentation_regime="scaled_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="affine_exp_substitution",
+        expr="integrate(exp(2*x+1), x)",
+        expected_result="1/2·e^(2·x + 1)",
+        expected_derivative_result="e^(2·x + 1)",
+        expected_step_substrings=(
+            "Usar la regla de exp con derivada interna",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="exp_affine",
+        argument_regime="affine_argument",
+        trace_regime="exp_affine_substitution",
+        presentation_regime="exponential",
+    ),
+    IntegrateCommandMatrixCase(
+        name="polynomial_exp_derivative_substitution",
+        expr="integrate(2*x*exp(x^2), x)",
+        expected_result="e^(x^2)",
+        expected_derivative_result="2·x·e^(x^2)",
+        expected_step_substrings=(
+            "Usar la regla de exp(u) -> exp(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        family="exp_polynomial_derivative",
+        argument_regime="nonlinear_polynomial_derivative",
+        trace_regime="polynomial_derivative_substitution",
+        presentation_regime="exponential",
+    ),
+    IntegrateCommandMatrixCase(
+        name="reciprocal_affine_log_abs_domain",
+        expr="integrate(1/(2*x + 1), x)",
+        expected_result="1/2·ln(|2·x + 1|)",
+        expected_derivative_result="1 / (2·x + 1)",
+        expected_derivative_required_display=("x ≠ -1/2",),
+        expected_required_display=("x ≠ -1/2",),
+        expected_step_substrings=(
+            "Usar la regla de ln|u| con derivada interna",
+            "Identificar el denominador afín",
+            "Ajustar el factor constante",
+        ),
+        family="reciprocal_log",
+        argument_regime="rational_expression",
+        domain_regime="nonzero_required",
+        trace_regime="log_reciprocal_derivative",
+        presentation_regime="abs_log",
+    ),
+    IntegrateCommandMatrixCase(
+        name="reciprocal_negative_affine_log_abs_domain",
+        expr="integrate(1/(1-2*x), x)",
+        expected_result="-1/2·ln(|1 - 2·x|)",
+        expected_derivative_result="1 / (1 - 2·x)",
+        expected_derivative_required_display=("x ≠ 1/2",),
+        expected_required_display=("x ≠ 1/2",),
+        expected_step_substrings=(
+            "Usar la regla de ln|u| con derivada interna",
+            "Identificar el denominador afín",
+            "Ajustar el factor constante",
+        ),
+        family="reciprocal_log",
+        argument_regime="negative_affine_rational_expression",
+        domain_regime="nonzero_required",
+        trace_regime="log_reciprocal_derivative",
+        presentation_regime="signed_abs_log",
+    ),
+    IntegrateCommandMatrixCase(
+        name="reciprocal_negative_affine_derivative_log_abs_domain",
+        expr="integrate(-2/(1-2*x), x)",
+        expected_result="ln(|1 - 2·x|)",
+        expected_derivative_result="-2 / (1 - 2·x)",
+        expected_derivative_required_display=("x ≠ 1/2",),
+        expected_required_display=("x ≠ 1/2",),
+        expected_step_substrings=(
+            "Usar la regla de ln|u| con derivada interna",
+            "Identificar el denominador afín",
+            "Ajustar el factor constante",
+        ),
+        family="reciprocal_log",
+        argument_regime="negative_affine_derivative_rational_expression",
+        domain_regime="nonzero_required",
+        trace_regime="log_reciprocal_exact_derivative",
+        presentation_regime="abs_log_exact_derivative",
+    ),
+    IntegrateCommandMatrixCase(
+        name="log_derivative_positive_quadratic_substitution",
+        expr="integrate((2*x+2)/(x^2+2*x+2), x)",
+        expected_result="ln(x^2 + 2·x + 2)",
+        expected_derivative_result="(2·x + 2) / (x^2 + 2·x + 2)",
+        expected_step_substrings=(
+            "Usar la regla de u'/u -> ln|u|",
+            "Identificar u y du",
+            "Abs Under Positivity",
+        ),
+        family="log_derivative_polynomial",
+        argument_regime="positive_quadratic_derivative_ratio",
+        domain_regime="structurally_positive_log_argument",
+        trace_regime="log_derivative_positive_quadratic_substitution",
+        presentation_regime="positive_log_no_abs",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_table",
+        expr="integrate(1/(x^2+1), x)",
+        expected_result="arctan(x)",
+        expected_derivative_result="1 / (x^2 + 1)",
+        expected_step_substrings=("Usar la regla de arctan con derivada interna",),
+        family="inverse_trig_table",
+        argument_regime="rational_expression",
+        trace_regime="inverse_trig_table",
+        presentation_regime="inverse_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_sqrt_reciprocal_bridge",
+        expr="integrate(1/(sqrt(x)*(x+1)), x)",
+        expected_result="2·arctan(sqrt(x))",
+        expected_derivative_result="1 / ((x + 1)·sqrt(x))",
+        expected_derivative_required_display=("x > 0",),
+        expected_required_display=("x > 0",),
+        expected_step_substrings=(
+            "Usar la regla de u'/(1+u^2) -> arctan(u)",
+            "Identificar u y du",
+            "u = \\sqrt{x}",
+            "du = \\frac{1}{2\\sqrt{x}}\\,dx",
+        ),
+        family="inverse_trig_root_reciprocal",
+        argument_regime="sqrt_reciprocal_linear",
+        domain_regime="positive_required",
+        trace_regime="arctan_sqrt_reciprocal_substitution",
+        presentation_regime="scaled_inverse_trig_root",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_trig_scaled_sqrt_reciprocal_bridge",
+        expr="integrate(1/(sqrt(x)*(4*x+1)), x)",
+        expected_result="arctan(2·sqrt(x))",
+        expected_derivative_result="1 / (sqrt(x)·(4·x + 1))",
+        expected_derivative_required_display=("x > 0",),
+        expected_required_display=("x > 0",),
+        expected_step_substrings=(
+            "Usar la regla de u'/(1+u^2) -> arctan(u)",
+            "Identificar u y du",
+            "u = 2\\cdot \\sqrt{x}",
+            "du = \\frac{1}{\\sqrt{x}}\\,dx",
+        ),
+        family="inverse_trig_root_reciprocal",
+        argument_regime="scaled_sqrt_reciprocal_linear",
+        domain_regime="positive_required",
+        trace_regime="arctan_scaled_sqrt_reciprocal_substitution",
+        presentation_regime="scaled_root_argument_inverse_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_hyperbolic_rational_direct_atanh_domain",
+        expr="integrate(1/(1-x^2), x)",
+        expected_result="atanh(x)",
+        expected_derivative_result="1 / (1 - x^2)",
+        expected_derivative_required_display=("-1 < x < 1",),
+        expected_required_display=("-1 < x < 1",),
+        expected_step_substrings=("Usar la regla de atanh con derivada interna",),
+        family="inverse_hyperbolic_rational_table",
+        argument_regime="bounded_rational_expression",
+        domain_regime="rational_interval",
+        trace_regime="inverse_hyperbolic_rational_direct_table",
+        presentation_regime="inverse_hyperbolic",
+    ),
+    IntegrateCommandMatrixCase(
+        name="affine_inverse_hyperbolic_atanh_domain",
+        expr="integrate(2/(4-(2*x+1)^2), x)",
+        expected_result="1/2·atanh((2·x + 1) / 2)",
+        expected_derivative_result="2 / (3 - 4·x^2 - 4·x)",
+        expected_derivative_required_display=("-3/2 < x < 1/2",),
+        expected_required_display=("-3/2 < x < 1/2",),
+        expected_step_substrings=(
+            "Usar la regla de atanh con derivada interna",
+            "Identificar el argumento afín",
+            "Ajustar el factor constante",
+        ),
+        family="inverse_hyperbolic_rational_affine",
+        argument_regime="affine_bounded_rational",
+        domain_regime="rational_interval",
+        trace_regime="inverse_hyperbolic_rational_affine_table",
+        presentation_regime="affine_atanh",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_sqrt_direct_arcsin_domain",
+        expr="integrate(1/sqrt(1-x^2), x)",
+        expected_result="arcsin(x)",
+        expected_derivative_result="1 / sqrt(1 - x^2)",
+        expected_derivative_required_display=("-1 < x < 1",),
+        expected_required_display=("-1 < x < 1",),
+        expected_step_substrings=("Usar la regla de arcsin con derivada interna",),
+        family="inverse_sqrt_table",
+        argument_regime="bounded_variable_radical",
+        domain_regime="radical_interval",
+        trace_regime="inverse_sqrt_direct_table",
+        presentation_regime="inverse_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="inverse_sqrt_direct_asinh_unconditional",
+        expr="integrate(1/sqrt(x^2+1), x)",
+        expected_result="asinh(x)",
+        expected_derivative_result="1 / sqrt(x^2 + 1)",
+        expected_step_substrings=("Usar la regla de asinh con derivada interna",),
+        family="inverse_hyperbolic_sqrt_table",
+        argument_regime="unbounded_variable_radical",
+        trace_regime="inverse_sqrt_hyperbolic_direct_table",
+        presentation_regime="inverse_hyperbolic",
+    ),
+    IntegrateCommandMatrixCase(
+        name="affine_inverse_sqrt_arcsin_domain",
+        expr="integrate(1/sqrt(4-(x+1)^2), x)",
+        expected_result="arcsin((x + 1) / 2)",
+        expected_derivative_result="1 / sqrt(3 - x^2 - 2·x)",
+        expected_derivative_required_display=("-3 < x < 1",),
+        expected_required_display=("-3 < x < 1",),
+        expected_step_substrings=(
+            "Usar la regla de arcsin con derivada interna",
+            "Identificar el argumento afín",
+        ),
+        family="inverse_sqrt_affine",
+        argument_regime="affine_radical",
+        domain_regime="radical_interval",
+        trace_regime="inverse_sqrt_affine_table",
+        presentation_regime="affine_arcsin",
+    ),
+    IntegrateCommandMatrixCase(
+        name="polynomial_base_sqrt_substitution",
+        expr="integrate(2*x/sqrt(x^2+1), x)",
+        expected_result="2·sqrt(x^2 + 1)",
+        expected_derivative_result="2·x / sqrt(x^2 + 1)",
+        expected_step_substrings=(
+            "Usar la regla de u'/sqrt(u) -> 2*sqrt(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        family="polynomial_base",
+        argument_regime="nonlinear_polynomial_base",
+        trace_regime="polynomial_base_substitution",
+        presentation_regime="radical_power",
+    ),
+    IntegrateCommandMatrixCase(
+        name="hyperbolic_reciprocal_square_substitution",
+        expr="integrate(1/cosh(2*x + 1)^2, x)",
+        expected_result="1/2·tanh(2·x + 1)",
+        expected_derivative_result="1 / cosh(2·x + 1)^2",
+        expected_step_substrings=(
+            "Usar la regla de 1/cosh(u)^2 -> tanh(u)",
+            "Identificar u y du",
+            "Ajustar el factor constante",
+        ),
+        family="hyperbolic_reciprocal_square",
+        argument_regime="affine_hyperbolic",
+        trace_regime="hyperbolic_substitution",
+        presentation_regime="scaled_hyperbolic",
+    ),
+    IntegrateCommandMatrixCase(
+        name="by_parts_log_domain",
+        expr="integrate(x*ln(x), x)",
+        expected_result="1/4·x^2·(2·ln(x) - 1)",
+        expected_derivative_result="x·ln(x)",
+        expected_derivative_required_display=("x > 0",),
+        expected_required_display=("x > 0",),
+        expected_step_substrings=(
+            "Usar integración por partes",
+            "Elegir u y dv",
+            "Calcular du y v",
+            "Aplicar la fórmula de integración por partes",
+        ),
+        family="by_parts_log",
+        argument_regime="product",
+        domain_regime="positive_required",
+        trace_regime="by_parts_log",
+        presentation_regime="factored_by_parts",
+    ),
+    IntegrateCommandMatrixCase(
+        name="by_parts_affine_log_domain",
+        expr="integrate((2*x+1)*ln(2*x+1), x)",
+        expected_result="1/4·((2·x + 1)^2·ln(2·x + 1) - 2·x^2 - 2·x)",
+        expected_derivative_result="ln(2·x + 1)·(2·x + 1)",
+        expected_derivative_required_display=("x > -1/2",),
+        expected_required_display=("x > -1/2",),
+        expected_step_substrings=(
+            "Usar integración por partes",
+            "Elegir u y dv",
+            "Calcular du y v",
+            "Aplicar la fórmula de integración por partes",
+        ),
+        family="by_parts_affine_log",
+        argument_regime="affine_product",
+        domain_regime="positive_required",
+        trace_regime="by_parts_affine_log",
+        presentation_regime="factored_by_parts",
+    ),
+    IntegrateCommandMatrixCase(
+        name="sqrt_chain_secant_tangent_domain",
+        expr="integrate(sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)",
+        expected_result="sec(sqrt(x))",
+        expected_derivative_result="sec(sqrt(x))·tan(sqrt(x)) / (2·sqrt(x))",
+        expected_derivative_required_display=("cos(sqrt(x)) ≠ 0", "x > 0"),
+        expected_required_display=("cos(sqrt(x)) ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        family="sqrt_chain_reciprocal_trig",
+        argument_regime="sqrt_chain",
+        domain_regime="sqrt_chain_nonzero_positive",
+        trace_regime="sqrt_chain_reciprocal_trig",
+        presentation_regime="reciprocal_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="sqrt_chain_tangent_log_domain",
+        expr="integrate(tan(sqrt(x))/(2*sqrt(x)), x)",
+        expected_result="-ln(|cos(sqrt(x))|)",
+        expected_derivative_result="tan(sqrt(x)) / (2·sqrt(x))",
+        expected_derivative_required_display=("cos(sqrt(x)) ≠ 0", "x > 0"),
+        expected_required_display=("cos(sqrt(x)) ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de tan(u) -> -ln|cos(u)|",
+            "Identificar u y du",
+            "u =",
+            "du =",
+        ),
+        family="sqrt_chain_trig_log",
+        argument_regime="sqrt_chain",
+        domain_regime="sqrt_chain_nonzero_positive",
+        trace_regime="sqrt_chain_trig_log",
+        presentation_regime="abs_log_sqrt_chain",
+    ),
+    IntegrateCommandMatrixCase(
+        name="invalid_log_base_integrand_undefined",
+        expr="integrate(log(1,x), x)",
+        expected_result="undefined",
+        expected_step_substrings=("undefined",),
+        family="log_domain_policy",
+        argument_regime="invalid_base_variable_argument",
+        domain_regime="empty_real_domain",
+        outcome="undefined",
+        trace_regime="invalid_integrand_domain_policy",
+        presentation_regime="undefined",
+    ),
+    IntegrateCommandMatrixCase(
+        name="nonfinite_integrand_undefined",
+        expr="integrate(infinity, x)",
+        expected_result="undefined",
+        expected_step_substrings=(
+            "Detectar integrando no finito",
+            "undefined",
+        ),
+        family="nonfinite",
+        argument_regime="constant",
+        domain_regime="nonfinite_undefined",
+        outcome="undefined",
+        trace_regime="nonfinite_domain_policy",
+        presentation_regime="undefined",
+    ),
+    IntegrateCommandMatrixCase(
+        name="non_elementary_exp_quadratic_residual",
+        expr="integrate(exp(x^2), x)",
+        expected_result="integrate(e^(x^2), x)",
+        expected_step_substrings=("Conservar integral residual",),
+        family="non_elementary_exp_quadratic",
+        argument_regime="unsupported_core",
+        outcome="residual",
+        trace_regime="residual_policy",
+        presentation_regime="residual",
+    ),
+)
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--case",
+        action="append",
+        default=[],
+        help="Run only the named matrix case. Repeatable.",
+    )
+    parser.add_argument(
+        "--cas-cli",
+        default=str(DEFAULT_CAS_CLI),
+        help="Path to cas_cli.",
+    )
+    parser.add_argument(
+        "--ensure-release-cas-cli",
+        action="store_true",
+        help="Build target/release/cas_cli if it is missing or stale.",
+    )
+    parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=4.0,
+        help="Per-case timeout.",
+    )
+    parser.add_argument(
+        "--slow-wall-seconds",
+        type=float,
+        default=None,
+        help="Mark an otherwise passing case as slow beyond this wall time.",
+    )
+    parser.add_argument("--json", action="store_true", help="Emit JSON.")
+    parser.add_argument(
+        "--summary-json",
+        action="store_true",
+        help="When emitting JSON, omit passing case payloads.",
+    )
+    return parser.parse_args()
+
+
+def terminate_process_group(process: subprocess.Popen[str]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        process.wait(timeout=1.0)
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+
+
+def parse_json(stdout: str) -> tuple[dict[str, Any] | None, str | None]:
+    try:
+        value = json.loads(stdout)
+    except json.JSONDecodeError as exc:
+        return None, f"invalid json: {exc}"
+    if not isinstance(value, dict):
+        return None, "json output is not an object"
+    return value, None
+
+
+def extract_required_display(payload: dict[str, Any] | None) -> tuple[str, ...]:
+    if not payload:
+        return ()
+    raw = payload.get("required_display") or []
+    if not isinstance(raw, list):
+        return ()
+    return tuple(item for item in raw if isinstance(item, str))
+
+
+def extract_warning_messages(payload: dict[str, Any] | None) -> tuple[str, ...]:
+    if not payload:
+        return ()
+    raw = payload.get("warnings") or []
+    if not isinstance(raw, list):
+        return ()
+    messages: list[str] = []
+    for item in raw:
+        if isinstance(item, str):
+            messages.append(item)
+        elif isinstance(item, dict):
+            rule = item.get("rule")
+            assumption = item.get("assumption") or item.get("message") or item.get("text")
+            parts = [part for part in (rule, assumption) if isinstance(part, str)]
+            if parts:
+                messages.append(": ".join(parts))
+    return tuple(messages)
+
+
+def extract_step_text(payload: dict[str, Any] | None) -> str:
+    if not payload:
+        return ""
+    raw_steps = payload.get("steps") or []
+    if not isinstance(raw_steps, list):
+        return ""
+
+    fragments: list[str] = []
+    for step in raw_steps:
+        if not isinstance(step, dict):
+            continue
+        for key in ("rule", "title", "before", "after", "before_latex", "after_latex"):
+            value = step.get(key)
+            if isinstance(value, str):
+                fragments.append(value)
+        raw_substeps = step.get("substeps") or []
+        if not isinstance(raw_substeps, list):
+            continue
+        for substep in raw_substeps:
+            if not isinstance(substep, dict):
+                continue
+            for key in ("title", "before", "after", "before_latex", "after_latex"):
+                value = substep.get(key)
+                if isinstance(value, str):
+                    fragments.append(value)
+    return "\n".join(fragments)
+
+
+def warning_expectations_met(
+    expected_substrings: tuple[str, ...],
+    actual_warnings: tuple[str, ...],
+) -> tuple[bool, str | None]:
+    if not expected_substrings and actual_warnings:
+        return False, f"unexpected warnings {actual_warnings!r}"
+    for expected in expected_substrings:
+        if not any(expected in warning for warning in actual_warnings):
+            return False, f"missing expected warning containing {expected!r}"
+    return True, None
+
+
+def classify_error_kind(error: str | None) -> str | None:
+    if error is None:
+        return None
+    if "antiderivative verification timeout" in error:
+        return "antiderivative_verification_timeout"
+    if "antiderivative verification" in error:
+        return "antiderivative_verification_mismatch"
+    if error == "timeout":
+        return "timeout"
+    if "warning" in error:
+        return "warning_mismatch"
+    if "required_display" in error:
+        return "required_display_mismatch"
+    if "step trace" in error:
+        return "step_trace_mismatch"
+    if "result" in error:
+        return "result_mismatch"
+    if "returncode" in error:
+        return "process_error"
+    if "json" in error:
+        return "parse_error"
+    return "unknown"
+
+
+def run_case(
+    case: IntegrateCommandMatrixCase,
+    *,
+    cas_cli: str | pathlib.Path,
+    timeout_seconds: float,
+    slow_wall_seconds: float | None = None,
+) -> dict[str, Any]:
+    command = [str(cas_cli), "eval", case.expr, "--format", "json", "--steps", "on"]
+    start = time.monotonic()
+    process = subprocess.Popen(
+        command,
+        cwd=ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        start_new_session=True,
+    )
+    try:
+        stdout, stderr = process.communicate(timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        terminate_process_group(process)
+        stdout, stderr = process.communicate()
+        return {
+            "name": case.name,
+            "status": "timeout",
+            "error": "timeout",
+            "error_kind": "timeout",
+            "returncode": None,
+            "wall_elapsed_seconds": round(time.monotonic() - start, 3),
+            "stdout": stdout,
+            "stderr": stderr,
+        }
+
+    wall_elapsed = time.monotonic() - start
+    parsed, parse_error = parse_json(stdout)
+    result = parsed.get("result") if isinstance(parsed, dict) else None
+    required_display = extract_required_display(parsed)
+    warnings = extract_warning_messages(parsed)
+    step_text = extract_step_text(parsed)
+    ok = parsed.get("ok") if isinstance(parsed, dict) else None
+
+    error: str | None = None
+    if process.returncode != 0:
+        error = f"returncode={process.returncode}"
+    elif parse_error:
+        error = parse_error
+    elif ok is not True:
+        error = "ok was not true"
+    elif result != case.expected_result:
+        error = f"expected result {case.expected_result!r}, got {result!r}"
+    elif required_display != case.expected_required_display:
+        error = (
+            "expected required_display "
+            f"{case.expected_required_display!r}, got {required_display!r}"
+        )
+    else:
+        warnings_ok, warning_error = warning_expectations_met(
+            case.expected_warning_substrings,
+            warnings,
+        )
+        if not warnings_ok:
+            error = warning_error
+        else:
+            for expected in case.expected_step_substrings:
+                if expected not in step_text:
+                    error = f"missing expected step trace containing {expected!r}"
+                    break
+
+    derivative_result: str | None = None
+    derivative_required_display: tuple[str, ...] = ()
+    derivative_stderr = ""
+    if error is None and case.expected_derivative_result is not None:
+        derivative_expr = f"diff({case.expected_result}, x)"
+        derivative_command = [
+            str(cas_cli),
+            "eval",
+            derivative_expr,
+            "--format",
+            "json",
+        ]
+        derivative_process = subprocess.Popen(
+            derivative_command,
+            cwd=ROOT,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+        )
+        try:
+            derivative_stdout, derivative_stderr = derivative_process.communicate(
+                timeout=timeout_seconds
+            )
+        except subprocess.TimeoutExpired:
+            terminate_process_group(derivative_process)
+            derivative_stdout, derivative_stderr = derivative_process.communicate()
+            error = "antiderivative verification timeout"
+        else:
+            derivative_parsed, derivative_parse_error = parse_json(derivative_stdout)
+            derivative_result = (
+                derivative_parsed.get("result")
+                if isinstance(derivative_parsed, dict)
+                else None
+            )
+            derivative_required_display = extract_required_display(derivative_parsed)
+            derivative_ok = (
+                derivative_parsed.get("ok")
+                if isinstance(derivative_parsed, dict)
+                else None
+            )
+            if derivative_process.returncode != 0:
+                error = (
+                    "antiderivative verification "
+                    f"returncode={derivative_process.returncode}"
+                )
+            elif derivative_parse_error:
+                error = f"antiderivative verification {derivative_parse_error}"
+            elif derivative_ok is not True:
+                error = "antiderivative verification ok was not true"
+            elif derivative_result != case.expected_derivative_result:
+                error = (
+                    "antiderivative verification expected derivative result "
+                    f"{case.expected_derivative_result!r}, got {derivative_result!r}"
+                )
+            elif set(derivative_required_display) != set(
+                case.expected_derivative_required_display
+            ):
+                error = (
+                    "antiderivative verification expected required_display "
+                    f"{case.expected_derivative_required_display!r}, "
+                    f"got {derivative_required_display!r}"
+                )
+
+    wall_elapsed = time.monotonic() - start
+    status: Status = "pass" if error is None else "fail"
+    error_kind = classify_error_kind(error)
+    if error_kind == "antiderivative_verification_timeout":
+        status = "timeout"
+    if status == "pass" and slow_wall_seconds is not None and wall_elapsed > slow_wall_seconds:
+        status = "slow"
+        error = f"slow: {wall_elapsed:.3f}s > {slow_wall_seconds:.3f}s"
+        error_kind = "slow"
+
+    return {
+        "name": case.name,
+        "status": status,
+        "error": error,
+        "error_kind": error_kind,
+        "returncode": process.returncode,
+        "wall_elapsed_seconds": round(wall_elapsed, 3),
+        "result": result if isinstance(result, str) else None,
+        "required_display": list(required_display),
+        "warnings": list(warnings),
+        "expected_result": case.expected_result,
+        "expected_derivative_result": case.expected_derivative_result,
+        "derivative_result": derivative_result,
+        "expected_derivative_required_display": list(
+            case.expected_derivative_required_display
+        ),
+        "derivative_required_display": list(derivative_required_display),
+        "expected_required_display": list(case.expected_required_display),
+        "expected_warning_substrings": list(case.expected_warning_substrings),
+        "expected_step_substrings": list(case.expected_step_substrings),
+        "family": case.family,
+        "argument_regime": case.argument_regime,
+        "domain_regime": case.domain_regime,
+        "outcome": case.outcome,
+        "trace_regime": case.trace_regime,
+        "presentation_regime": case.presentation_regime,
+        "stderr": stderr,
+        "derivative_stderr": derivative_stderr,
+    }
+
+
+def build_cases(
+    case_filters: tuple[str, ...] = (),
+) -> tuple[IntegrateCommandMatrixCase, ...]:
+    if not case_filters:
+        return DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES
+    selected = {case.name: case for case in DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES}
+    missing = [name for name in case_filters if name not in selected]
+    if missing:
+        raise SystemExit(
+            f"unknown integrate command matrix case(s): {', '.join(missing)}"
+        )
+    return tuple(selected[name] for name in case_filters)
+
+
+def count_by(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+    attr: str,
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        value = getattr(case, attr)
+        counts[value] = counts.get(value, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def count_required_display_items(results: list[dict[str, Any]]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for result in results:
+        for item in result.get("required_display", []):
+            if not isinstance(item, str):
+                continue
+            counts[item] = counts.get(item, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def verification_regime(case: IntegrateCommandMatrixCase) -> str:
+    if case.expected_derivative_result is not None:
+        return "verified_by_diff"
+    if case.outcome == "residual":
+        return "residual_not_verified"
+    if case.outcome == "undefined":
+        return "undefined_not_verified"
+    return "verification_gap"
+
+
+def count_verification_regimes(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        regime = verification_regime(case)
+        counts[regime] = counts.get(regime, 0) + 1
+    return dict(sorted(counts.items()))
+
+
+def increment_issue_kind(issue_kind_counts: dict[str, int], error_kind: str | None) -> None:
+    if error_kind is None:
+        return
+    issue_kind_counts[error_kind] = issue_kind_counts.get(error_kind, 0) + 1
+
+
+def run_matrix(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+    *,
+    cas_cli: str | pathlib.Path,
+    timeout_seconds: float,
+    slow_wall_seconds: float | None = None,
+) -> dict[str, Any]:
+    results = [
+        run_case(
+            case,
+            cas_cli=cas_cli,
+            timeout_seconds=timeout_seconds,
+            slow_wall_seconds=slow_wall_seconds,
+        )
+        for case in cases
+    ]
+    status_counts = {"pass": 0, "slow": 0, "fail": 0, "timeout": 0}
+    issue_kind_counts: dict[str, int] = {}
+    for result in results:
+        status_counts[result["status"]] += 1
+        increment_issue_kind(issue_kind_counts, result.get("error_kind"))
+
+    if not results:
+        overall_status: Status = "fail"
+        increment_issue_kind(issue_kind_counts, "no_matching_cases")
+    elif status_counts["timeout"]:
+        overall_status = "timeout"
+    elif status_counts["fail"]:
+        overall_status = "fail"
+    elif status_counts["slow"]:
+        overall_status = "slow"
+    else:
+        overall_status = "pass"
+
+    problem_cases = [
+        result
+        for result in results
+        if result["status"] != "pass"
+    ]
+    warning_expected_cases = sum(1 for case in cases if case.expected_warning_substrings)
+    required_display_cases = sum(1 for case in cases if case.expected_required_display)
+    step_checked_cases = sum(1 for case in cases if case.expected_step_substrings)
+    antiderivative_verification_cases = sum(
+        1 for case in cases if case.expected_derivative_result is not None
+    )
+    expected_step_substrings = sum(
+        len(case.expected_step_substrings) for case in cases
+    )
+    supported_step_unchecked_cases = [
+        case.name
+        for case in cases
+        if case.outcome == "supported" and not case.expected_step_substrings
+    ]
+
+    return {
+        "status": overall_status,
+        "total": len(results),
+        "status_counts": status_counts,
+        "issue_kind_counts": dict(sorted(issue_kind_counts.items())),
+        "problem_case_count": len(problem_cases),
+        "problem_cases": problem_cases,
+        "cases": results,
+        "supported_case_count": sum(1 for case in cases if case.outcome == "supported"),
+        "residual_case_count": sum(1 for case in cases if case.outcome == "residual"),
+        "warning_expected_case_count": warning_expected_cases,
+        "required_display_case_count": required_display_cases,
+        "step_checked_case_count": step_checked_cases,
+        "supported_step_unchecked_case_count": len(supported_step_unchecked_cases),
+        "supported_step_unchecked_cases": supported_step_unchecked_cases,
+        "antiderivative_verification_case_count": antiderivative_verification_cases,
+        "expected_step_substring_count": expected_step_substrings,
+        "distinct_required_display_count": len(
+            {
+                required
+                for case in cases
+                for required in case.expected_required_display
+            }
+        ),
+        "required_display_counts": count_required_display_items(results),
+        "family_count": len({case.family for case in cases}),
+        "argument_regime_counts": count_by(cases, "argument_regime"),
+        "domain_regime_counts": count_by(cases, "domain_regime"),
+        "outcome_counts": count_by(cases, "outcome"),
+        "verification_regime_counts": count_verification_regimes(cases),
+        "trace_regime_counts": count_by(cases, "trace_regime"),
+        "presentation_regime_counts": count_by(cases, "presentation_regime"),
+        "case_filters": [case.name for case in cases],
+    }
+
+
+def summarize_matrix(matrix: dict[str, Any]) -> dict[str, Any]:
+    summary = {key: value for key, value in matrix.items() if key != "cases"}
+    problem_cases = matrix.get("problem_cases")
+    if isinstance(problem_cases, list):
+        summary["problem_cases"] = problem_cases
+    return summary
+
+
+def print_human(matrix: dict[str, Any]) -> None:
+    print(
+        f"status={matrix['status']} total={matrix['total']} "
+        f"counts={matrix['status_counts']} issue_kinds={matrix['issue_kind_counts']}"
+    )
+    for case in matrix.get("cases", []):
+        print(
+            f"- {case['name']}: {case['status']} result={case.get('result')} "
+            f"required={case.get('required_display')} warnings={len(case.get('warnings', []))}"
+        )
+        if case.get("error"):
+            print(f"  error={case['error']}")
+
+
+def main() -> int:
+    args = parse_args()
+    cas_cli = pathlib.Path(args.cas_cli)
+    if args.ensure_release_cas_cli:
+        ensure_release_cas_cli(cas_cli)
+    cases = build_cases(tuple(args.case))
+    matrix = run_matrix(
+        cases,
+        cas_cli=cas_cli,
+        timeout_seconds=args.timeout_seconds,
+        slow_wall_seconds=args.slow_wall_seconds,
+    )
+    payload = summarize_matrix(matrix) if args.summary_json else matrix
+    if args.json:
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        print_human(matrix)
+    return 0 if matrix["status"] == "pass" else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

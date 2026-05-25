@@ -135,6 +135,7 @@ DEFAULT_MATRIX_WRAPPERS = (
 NESTED_DEN_EXPECTED_RESULTS = {
     "exp_poly": "1 / ((x + 2)·(x + 3))",
     "exp_affine": "1 / ((x + 2)·(x + 3))",
+    "integrate_exp_quadratic_substitution": "1 / ((x + 2)·(x + 3))",
     "arctan_sqrt_additive_trig": "1 / ((x + 2)·(x + 3))",
     "integrate_exp_trig_sin": "1 / ((x + 2)·(x + 3))",
     "integrate_exp_trig_cos": "1 / ((x + 2)·(x + 3))",
@@ -179,6 +180,7 @@ NESTED_DEN_EXPECTED_RESULTS = {
     "shifted_arcsin_kernel": "1 / ((x + 2)·(x + 3))",
     "sqrt_reciprocal_atan_kernel": "1 / ((x + 2)·(x + 3))",
     "arctan_sqrt_unit_shift_square": "1 / ((x + 2)·(x + 3))",
+    "inverse_hyperbolic_acosh_sqrt_constant_scale": "1 / ((x + 2)·(x + 3))",
     "shifted_asinh_kernel": "1 / ((x + 2)·(x + 3))",
     "rational_atan_square": "1 / ((x + 2)·(x + 3))",
     "constant_base_log_power": "1 / ((x + 2)·(x + 3))",
@@ -209,6 +211,11 @@ CUSTOM_RESIDUAL_MATRIX_WRAPPERS = (
 DEFAULT_MATRIX_BASES = (
     ("exp_poly", "diff(integrate(x^5*exp(x),x),x)-x^5*exp(x)", ()),
     ("exp_affine", "diff(integrate(x^4*exp(2*x+1),x),x)-x^4*exp(2*x+1)", ()),
+    (
+        "integrate_exp_quadratic_substitution",
+        "diff(integrate(2*x*exp(x^2),x),x)-2*x*exp(x^2)",
+        (),
+    ),
     (
         "arctan_sqrt_additive_trig",
         (
@@ -440,6 +447,14 @@ DEFAULT_MATRIX_BASES = (
         ("x > 0",),
     ),
     (
+        "inverse_hyperbolic_acosh_sqrt_constant_scale",
+        (
+            "diff(acosh(sqrt(x+1))/sqrt(5),x)"
+            "-1/(2*sqrt(5)*sqrt(x+1)*sqrt(x))"
+        ),
+        ("x > 0",),
+    ),
+    (
         "shifted_asinh_kernel",
         "diff(integrate(1/sqrt(4+(x+1)^2),x),x)-1/sqrt(4+(x+1)^2)",
         (),
@@ -514,6 +529,7 @@ DEFAULT_MATRIX_BASES = (
 DEFAULT_DOUBLE_NESTED_DEN_BASES = (
     "exp_poly",
     "exp_affine",
+    "integrate_exp_quadratic_substitution",
     "arctan_sqrt_additive_trig",
     "inverse_trig_arctan",
     "ln_affine_by_parts",
@@ -536,6 +552,7 @@ DEFAULT_DOUBLE_NESTED_DEN_BASES = (
     "shifted_arcsin_kernel",
     "sqrt_reciprocal_atan_kernel",
     "arctan_sqrt_unit_shift_square",
+    "inverse_hyperbolic_acosh_sqrt_constant_scale",
     "shifted_asinh_kernel",
     "rational_atan_square",
     "constant_base_log_power",

@@ -1,37 +1,39 @@
 # Engine Improvement Scorecard
 
-- Generated: 2026-05-24T16:32:45.187632+00:00
+- Generated: 2026-05-25T05:06:17.668196+00:00
 - Git branch: main
-- Git commit: `58df39ec2e0b26038f155f6d4da6c0fbac215cae`
+- Git commit: `d8054a8f2291f09fb0ccb7cd5ac856107acc8069`
 - Profile: `pressure`
 
 ## Generated Discovery Ledger
 
 - Purpose: keep failed generated candidates visible without promoting them to live corpus.
-- Observe-only discoveries: total=1
-- By area: orchestrator / exact-zero additive composition:1
-- Recent 1: `orchestrator / exact-zero additive composition` - 2026-05-24 - Discovery observe-only: hyperbolic angle-sum plus telescoping residual remains slow
+- Observe-only discoveries: total=2
+- By area: calculus / limit:1, orchestrator / exact-zero additive composition:1
+- Recent 1: `calculus / limit` - 2026-05-24 - Observe-only discovery: limit command residuals cannot enter algebraic wrapper matrix
+- Recent 2: `orchestrator / exact-zero additive composition` - 2026-05-24 - Discovery observe-only: hyperbolic angle-sum plus telescoping residual remains slow
 
-## Calculus Contract Signal
+## Calculus Support Matrix Signal
 
-- Dimension: public calculus behavior, result simplification, domain conditions, and step noise.
-- Interpretation: small executable calculus vertical slices; failures should be classified before broadening pre-calculus rules.
-- `diff_exhaustive`: passed=1 failed=0 ignored=0 filtered_out=257
-- `integrate_exhaustive`: passed=1 failed=0 ignored=0 filtered_out=337
+- Dimension: public calculus behavior, support-matrix coverage, result simplification, domain conditions, trace quality, presentation, and verification residuals.
+- Interpretation: matrix-oriented calculus lanes; classify failures by command, family, argument regime, domain regime, trace regime, presentation regime, or reusable pre-calculus dependency before adding isolated cases.
+- Matrix axes: command, family, argument regime, domain regime, trace regime, presentation regime, and residual verification.
+- `diff_exhaustive`: passed=1 failed=0 ignored=0 filtered_out=259
+- `integrate_exhaustive`: passed=1 failed=0 ignored=0 filtered_out=338
 
 ## Mixed Zero Pressure
 
 - Dimension: raw engine pressure on composed zero-target expressions through the canonical eval path.
 - Interpretation: better runtime proxy than unified `proved-composed` counts for mixed additive/multiplicative workloads.
 - Harness: fixed corpus windows, not a full sweep, so pressure stays reproducible and cheap enough for routine iteration.
-- Composition hotspots: shifted_quotient total=100 failed=0 elapsed=844.33ms avg_case_ms=8.44 simplify=59.49ms avg_simplify_ms=0.59, sum total=200 failed=0 elapsed=719.85ms avg_case_ms=3.60 simplify=130.92ms avg_simplify_ms=0.65, product total=100 failed=0 elapsed=475.01ms avg_case_ms=4.75 simplify=37.78ms avg_simplify_ms=0.38, difference total=50 failed=0 elapsed=331.59ms avg_case_ms=6.63 simplify=46.28ms avg_simplify_ms=0.93
-- Engine hotspots: sum simplify=130.92ms avg_simplify_ms=0.65 wall=719.85ms, shifted_quotient simplify=59.49ms avg_simplify_ms=0.59 wall=844.33ms, difference simplify=46.28ms avg_simplify_ms=0.93 wall=331.59ms, product simplify=37.78ms avg_simplify_ms=0.38 wall=475.01ms
-- Window slices: shifted_quotient@0+100 failed=0 elapsed=844.33ms avg_case_ms=8.44 avg_simplify_ms=0.59, sum@0+100 failed=0 elapsed=510.92ms avg_case_ms=5.11 avg_simplify_ms=0.79, product@0+100 failed=0 elapsed=475.01ms avg_case_ms=4.75 avg_simplify_ms=0.38, difference@0+50 failed=0 elapsed=331.59ms avg_case_ms=6.63 avg_simplify_ms=0.93, sum@700+100 failed=0 elapsed=208.93ms avg_case_ms=2.09 avg_simplify_ms=0.52
-- Steady-state engine reruns: sum@700+100 #2865 sum runs=3 median_simplify=15.08ms median_wire=15.20ms median_wall=15.65ms, sum@0+100 #25 sum runs=3 median_simplify=3.47ms median_wire=3.51ms median_wall=5.16ms, sum@0+100 #209 sum runs=3 median_simplify=4.55ms median_wire=4.63ms median_wall=8.51ms, difference@0+50 #54 difference runs=3 median_simplify=4.72ms median_wire=4.79ms median_wall=7.74ms, sum@700+100 #3021 sum runs=3 median_simplify=6.11ms median_wire=6.16ms median_wall=6.56ms
-- Steady-state dominant expressions: sum@700+100 #2865 sum expr=(ln((x*y)^2) - ln(x^2) - ln(y^2)) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))), sum@0+100 #25 sum expr=(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + (cosh(x) + sinh(x) - e^x), sum@0+100 #209 sum expr=(1 + 1/(1 + 1/(1 + 1/x)) - (3*x + 2)/(2*x + 1)) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x)))
+- Composition hotspots: shifted_quotient total=100 failed=0 elapsed=568.99ms avg_case_ms=5.69 simplify=34.18ms avg_simplify_ms=0.34, sum total=200 failed=0 elapsed=501.36ms avg_case_ms=2.51 simplify=83.50ms avg_simplify_ms=0.42, product total=100 failed=0 elapsed=338.60ms avg_case_ms=3.39 simplify=24.59ms avg_simplify_ms=0.25, difference total=50 failed=0 elapsed=235.24ms avg_case_ms=4.70 simplify=30.39ms avg_simplify_ms=0.61
+- Engine hotspots: sum simplify=83.50ms avg_simplify_ms=0.42 wall=501.36ms, shifted_quotient simplify=34.18ms avg_simplify_ms=0.34 wall=568.99ms, difference simplify=30.39ms avg_simplify_ms=0.61 wall=235.24ms, product simplify=24.59ms avg_simplify_ms=0.25 wall=338.60ms
+- Window slices: shifted_quotient@0+100 failed=0 elapsed=568.99ms avg_case_ms=5.69 avg_simplify_ms=0.34, sum@0+100 failed=0 elapsed=357.81ms avg_case_ms=3.58 avg_simplify_ms=0.49, product@0+100 failed=0 elapsed=338.60ms avg_case_ms=3.39 avg_simplify_ms=0.25, difference@0+50 failed=0 elapsed=235.24ms avg_case_ms=4.70 avg_simplify_ms=0.61, sum@700+100 failed=0 elapsed=143.55ms avg_case_ms=1.44 avg_simplify_ms=0.35
+- Steady-state engine reruns: sum@700+100 #2865 sum runs=3 median_simplify=5.80ms median_wire=5.85ms median_wall=6.20ms, sum@0+100 #53 sum runs=3 median_simplify=4.15ms median_wire=4.20ms median_wall=5.47ms, difference@0+50 #54 difference runs=3 median_simplify=3.90ms median_wire=3.94ms median_wall=5.24ms, sum@700+100 #3021 sum runs=3 median_simplify=3.56ms median_wire=3.60ms median_wall=3.90ms, sum@0+100 #209 sum runs=3 median_simplify=3.35ms median_wire=3.41ms median_wall=5.69ms
+- Steady-state dominant expressions: sum@700+100 #2865 sum expr=(ln((x*y)^2) - ln(x^2) - ln(y^2)) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))), sum@0+100 #53 sum expr=(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) + (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x))), difference@0+50 #54 difference expr=(ln(x^3) + ln(y^2) - ln(x^3 * y^2)) - (2*sinh(2*x)*sinh(x) - (4*cosh(x)^3 - 4*cosh(x)))
 
 | Suite | Status | Elapsed | Key metrics |
 | --- | --- | --- | --- |
-| `simplify_zero_mixed` | `pass` | 2.37s | passed=450 failed=0 total=450 avg_case=5.267ms |
-| `calculus_diff_exhaustive_contract` | `pass` | 24.88s | passed=1 failed=0 |
-| `calculus_integrate_exhaustive_contract` | `pass` | 80.16s | passed=1 failed=0 |
+| `simplify_zero_mixed` | `pass` | 1.64s | passed=450 failed=0 total=450 avg_case=3.644ms |
+| `calculus_diff_exhaustive_contract` | `pass` | 2.61s | passed=1 failed=0 |
+| `calculus_integrate_exhaustive_contract` | `pass` | 18.20s | passed=1 failed=0 |

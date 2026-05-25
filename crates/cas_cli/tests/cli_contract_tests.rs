@@ -81,6 +81,77 @@ fn test_eval_emits_wire_output() {
 }
 
 #[test]
+fn test_eval_calculus_residuals_emit_conservative_steps_json() {
+    let cases = [
+        (
+            "diff(sign(x), x)",
+            "diff(sign(x), x)",
+            "Conservar derivada residual",
+        ),
+        (
+            "integrate(exp(x^2), x)",
+            "integrate(e^(x^2), x)",
+            "Conservar integral residual",
+        ),
+    ];
+
+    for (input, expected_result, expected_rule) in cases {
+        let output = cli()
+            .args(["eval", input, "--format", "json", "--steps", "on"])
+            .output()
+            .expect("Failed to run CLI");
+
+        assert!(
+            output.status.success(),
+            "input: {input}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
+        let steps = wire["steps"].as_array().expect("steps array");
+
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected_result, "input: {input}");
+        assert_eq!(wire["steps_count"], 1, "input: {input}");
+        assert_eq!(steps.len(), 1, "input: {input}");
+        assert_eq!(steps[0]["rule"], expected_rule, "input: {input}");
+    }
+}
+
+#[test]
+fn test_eval_inverse_trig_canonical_reciprocal_root_exact_values_json() {
+    let cases = [
+        ("arcsin(sqrt(2)/2)", "1/4\u{00b7}pi"),
+        ("arccos(sqrt(2)/2)", "1/4\u{00b7}pi"),
+        ("arcsin(sqrt(3)/2)", "1/3\u{00b7}pi"),
+        ("arccos(sqrt(3)/2)", "1/6\u{00b7}pi"),
+        ("arctan(3^(-1/2))", "1/6\u{00b7}pi"),
+    ];
+
+    for (input, expected) in cases {
+        let output = cli()
+            .args(["eval", input, "--format", "json"])
+            .output()
+            .expect("Failed to run CLI");
+
+        assert!(output.status.success(), "input: {input}");
+
+        let stdout = String::from_utf8(output.stdout).unwrap();
+        let wire: Value = serde_json::from_str(&stdout).expect("Invalid wire output");
+
+        assert_eq!(wire["ok"], true, "input: {input}");
+        assert_eq!(wire["result"], expected, "input: {input}");
+        assert_eq!(wire["warnings"], serde_json::json!([]), "input: {input}");
+        assert_eq!(
+            wire["required_display"],
+            serde_json::json!([]),
+            "input: {input}"
+        );
+    }
+}
+
+#[test]
 fn test_eval_wire_surfaces_blocked_diff_domain_hint() {
     let output = cli()
         .args(["eval", "diff(atanh(sqrt(x^2+2)), x)", "--format", "json"])
