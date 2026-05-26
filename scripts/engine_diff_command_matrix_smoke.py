@@ -26,6 +26,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from cas_cli_release import ensure_release_cas_cli
+from engine_command_matrix_observability import stderr_fragility_error
 
 
 ROOT = SCRIPT_DIR.parent
@@ -75,6 +76,69 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         argument_regime="product",
         domain_regime="required_condition",
         trace_regime="product_rule_log",
+    ),
+    DiffCommandMatrixCase(
+        name="product_log_root_domain_dedupe_compact",
+        expr="diff(ln(x)*sqrt(x), x)",
+        expected_result="(ln(x) + 2) / (2·sqrt(x))",
+        expected_required_display=("x > 0",),
+        expected_step_substrings=(
+            "Usar regla del producto",
+            "Derivar el primer factor",
+            "Derivar el segundo factor",
+            "Extract Common Multiplicative Factor",
+            "Sumar fracciones",
+        ),
+        family="product_log_root",
+        argument_regime="product_domain_bearing_factors",
+        domain_regime="required_condition",
+        trace_regime="product_rule_log_root",
+        presentation_regime="compact_log_root_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="log_over_sqrt_root_denominator_compact",
+        expr="diff(ln(x)/sqrt(x), x)",
+        expected_result="(2 - ln(x)) / (2·x·sqrt(x))",
+        expected_required_display=("x > 0",),
+        expected_step_substrings=(
+            "Calcular la derivada",
+            "Presentar resultado de cálculo en forma compacta",
+        ),
+        family="log_over_sqrt",
+        argument_regime="reciprocal_root_same_argument",
+        domain_regime="required_condition",
+        trace_regime="product_rule_log_root_reciprocal",
+        presentation_regime="compact_log_over_root_denominator",
+    ),
+    DiffCommandMatrixCase(
+        name="log_over_sqrt_denominator_scale_compact",
+        expr="diff(ln(x)/(2*sqrt(x)), x)",
+        expected_result="(2 - ln(x)) / (4·x·sqrt(x))",
+        expected_required_display=("x > 0",),
+        expected_step_substrings=(
+            "Calcular la derivada",
+            "Presentar resultado de cálculo en forma compacta",
+        ),
+        family="log_over_sqrt",
+        argument_regime="denominator_scaled_reciprocal_root_same_argument",
+        domain_regime="required_condition",
+        trace_regime="quotient_rule_log_root_reciprocal_denominator_scale",
+        presentation_regime="denominator_scaled_compact_log_over_root_denominator",
+    ),
+    DiffCommandMatrixCase(
+        name="log_over_sqrt_symbolic_denominator_scale_compact",
+        expr="diff(ln(x)/(a*sqrt(x)), x)",
+        expected_result="(2 - ln(x)) / (2·a·x·sqrt(x))",
+        expected_required_display=("a ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Calcular la derivada",
+            "Presentar resultado de cálculo en forma compacta",
+        ),
+        family="log_over_sqrt",
+        argument_regime="symbolic_denominator_scaled_reciprocal_root_same_argument",
+        domain_regime="required_condition",
+        trace_regime="quotient_rule_log_root_reciprocal_symbolic_denominator_scale",
+        presentation_regime="symbolic_denominator_scaled_compact_log_over_root_denominator",
     ),
     DiffCommandMatrixCase(
         name="log_quadratic_empty_positive_argument_domain_undefined",
@@ -289,6 +353,73 @@ DEFAULT_DIFF_COMMAND_MATRIX_CASES = (
         domain_regime="required_condition",
         trace_regime="quotient_rule",
         presentation_regime="compact_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="quotient_root_over_log_domain_pole_compact",
+        expr="diff(sqrt(x)/ln(x), x)",
+        expected_result="(ln(x) - 2) / (2·ln(x)^2·sqrt(x))",
+        expected_required_display=("x ≠ 1", "x > 0"),
+        expected_step_substrings=(
+            "Usar regla del cociente",
+            "Derivar el numerador",
+            "Derivar el denominador",
+            "Extract Common Multiplicative Factor",
+            "Presentar resultado de cálculo en forma compacta",
+        ),
+        family="quotient_log_root",
+        argument_regime="quotient_domain_bearing_denominator",
+        domain_regime="required_condition",
+        trace_regime="quotient_rule_log_root",
+        presentation_regime="compact_log_denominator_root_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="quotient_root_over_log_symbolic_denominator_scale_compact",
+        expr="diff(sqrt(x)/(a*ln(x)), x)",
+        expected_result="(ln(x) - 2) / (2·a·ln(x)^2·sqrt(x))",
+        expected_required_display=("a ≠ 0", "x ≠ 1", "x > 0"),
+        expected_step_substrings=(
+            "Calcular la derivada",
+            "Usar regla del cociente",
+            "Derivar el denominador",
+        ),
+        family="quotient_log_root",
+        argument_regime="symbolic_denominator_scaled_quotient_domain_bearing_denominator",
+        domain_regime="required_condition",
+        trace_regime="quotient_rule_log_root_symbolic_denominator_scale",
+        presentation_regime="symbolic_denominator_scaled_compact_log_denominator_root_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="positive_quadratic_log_arctan_polynomial_primitive_compact",
+        expr="diff(ln(x^2+2*x+2)-arctan(x+1)-x, x)",
+        expected_result="(-x^2 - 1) / (x^2 + 2·x + 2)",
+        expected_step_substrings=("Usar linealidad de la derivada",),
+        family="positive_quadratic_log_arctan_primitive",
+        argument_regime="log_arctan_polynomial_primitive",
+        domain_regime="unconditional_positive_quadratic",
+        trace_regime="positive_quadratic_log_arctan_linearity",
+        presentation_regime="compact_positive_quadratic_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="positive_quadratic_log_arctan_surd_primitive_compact",
+        expr="diff(1/2*ln(x^2+x+1)-arctan((2*x+1)/sqrt(3))/sqrt(3), x)",
+        expected_result="x / (x^2 + x + 1)",
+        expected_step_substrings=("Usar linealidad de la derivada",),
+        family="positive_quadratic_log_arctan_primitive",
+        argument_regime="surd_discriminant_log_arctan_primitive",
+        domain_regime="unconditional_positive_quadratic",
+        trace_regime="positive_quadratic_log_arctan_surd_linearity",
+        presentation_regime="compact_positive_quadratic_surd_quotient",
+    ),
+    DiffCommandMatrixCase(
+        name="positive_quadratic_log_arctan_surd_negative_orientation_compact",
+        expr="diff(1/2*ln(x^2-x+1)-arctan((2*x-1)/sqrt(3))/sqrt(3), x)",
+        expected_result="(x - 1) / (x^2 + 1 - x)",
+        expected_step_substrings=("Usar linealidad de la derivada",),
+        family="positive_quadratic_log_arctan_primitive",
+        argument_regime="negative_orientation_surd_discriminant_log_arctan_primitive",
+        domain_regime="unconditional_positive_quadratic",
+        trace_regime="positive_quadratic_log_arctan_surd_negative_orientation_linearity",
+        presentation_regime="compact_positive_quadratic_surd_negative_orientation_quotient",
     ),
     DiffCommandMatrixCase(
         name="sqrt_variable_open_domain",
@@ -835,6 +966,8 @@ def classify_error_kind(error: str | None) -> str | None:
         return None
     if error == "timeout":
         return "timeout"
+    if "fragile substring" in error:
+        return "stderr_fragility"
     if "warning" in error:
         return "warning_mismatch"
     if "blocked hint" in error:
@@ -908,11 +1041,13 @@ def run_case(
             "expected required_display "
             f"{case.expected_required_display!r}, got {required_display!r}"
         )
-    elif any(fragment in stderr for fragment in case.forbidden_stderr_substrings):
-        error = (
-            "forbidden stderr substring found: "
-            f"{case.forbidden_stderr_substrings!r}"
+    elif (
+        stderr_error := stderr_fragility_error(
+            stderr,
+            forbidden_substrings=case.forbidden_stderr_substrings,
         )
+    ) is not None:
+        error = stderr_error
     else:
         warnings_ok, warning_error = warning_expectations_met(
             case.expected_warning_substrings,

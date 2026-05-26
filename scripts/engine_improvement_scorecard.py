@@ -43,6 +43,7 @@ EMBEDDED_RUNTIME_DELTA_SECONDS_THRESHOLD = 5.0
 EMBEDDED_ORCHESTRATOR_PROFILE_LIMIT = 480
 NF_FIRST_FULL_TIMEOUT_SECONDS = 15 * 60
 COMBINED_ADDITIVE_FAMILY_TARGET_CASE_COUNT = 6
+CALCULUS_POLICY_CLUSTER_CONSOLIDATION_THRESHOLD = 6
 SIMPLIFY_ZERO_MIXED_PRESSURE_WINDOWS = (
     ("sum", 0, 100),
     ("sum", 700, 100),
@@ -2773,6 +2774,7 @@ def parse_calculus_limit_command_matrix(output: str) -> dict[str, Any]:
     for raw_key, metric_key in (
         ("point_regime_counts", "limit_point_regime_counts"),
         ("domain_regime_counts", "limit_domain_regime_counts"),
+        ("required_condition_regime_counts", "limit_required_condition_regime_counts"),
         ("outcome_counts", "limit_outcome_counts"),
         ("required_display_counts", "limit_required_display_counts"),
         ("trace_regime_counts", "limit_trace_regime_counts"),
@@ -2979,10 +2981,29 @@ def parse_calculus_integrate_command_matrix(output: str) -> dict[str, Any]:
         ("verification_regime_counts", "integrate_verification_regime_counts"),
         ("trace_regime_counts", "integrate_trace_regime_counts"),
         ("presentation_regime_counts", "integrate_presentation_regime_counts"),
+        (
+            "trig_hyperbolic_policy_cluster_counts",
+            "integrate_trig_hyperbolic_policy_cluster_counts",
+        ),
     ):
         counts = count_map(raw_key)
         if counts:
             metrics[metric_key] = counts
+    policy_cluster_counts = metrics.get(
+        "integrate_trig_hyperbolic_policy_cluster_counts"
+    )
+    if isinstance(policy_cluster_counts, dict):
+        consolidation_candidates = {
+            cluster: count
+            for cluster, count in sorted(policy_cluster_counts.items())
+            if isinstance(cluster, str)
+            and isinstance(count, int)
+            and count >= CALCULUS_POLICY_CLUSTER_CONSOLIDATION_THRESHOLD
+        }
+        if consolidation_candidates:
+            metrics["integrate_trig_hyperbolic_consolidation_candidate_counts"] = (
+                consolidation_candidates
+            )
     return metrics
 
 
@@ -3037,7 +3058,7 @@ def domain_expected_condition_fragments(
     return [f"{condition}={count}" for condition, count in rows[:limit]]
 
 
-def count_map_fragments(value: Any, limit: int = 8) -> list[str]:
+def count_map_fragments(value: Any, limit: int | None = 8) -> list[str]:
     if not isinstance(value, dict):
         return []
     rows = [
@@ -3046,7 +3067,12 @@ def count_map_fragments(value: Any, limit: int = 8) -> list[str]:
         if isinstance(name, str) and isinstance(count, int)
     ]
     rows.sort(key=lambda row: (row[0], row[1]))
-    return [f"{name}={count}" for name, count in rows[:limit]]
+    selected_rows = rows if limit is None else rows[:limit]
+    return [f"{name}={count}" for name, count in selected_rows]
+
+
+def calculus_matrix_count_map_fragments(value: Any) -> list[str]:
+    return count_map_fragments(value, limit=None)
 
 
 PARSERS = {
@@ -4482,14 +4508,14 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                 if isinstance(integrate_family_count, int):
                     line += f" families={integrate_family_count}"
                 lines.append(line)
-                argument_regimes = count_map_fragments(
+                argument_regimes = calculus_matrix_count_map_fragments(
                     metrics.get("diff_argument_regime_counts")
                 )
                 if argument_regimes:
                     lines.append(
                         f"- `{label}` argument regimes: " + ", ".join(argument_regimes)
                     )
-                diff_domain_regimes = count_map_fragments(
+                diff_domain_regimes = calculus_matrix_count_map_fragments(
                     metrics.get("diff_domain_regime_counts")
                 )
                 if diff_domain_regimes:
@@ -4497,7 +4523,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- `{label}` domain regimes: "
                         + ", ".join(diff_domain_regimes)
                     )
-                diff_required_displays = count_map_fragments(
+                diff_required_displays = calculus_matrix_count_map_fragments(
                     metrics.get("diff_required_display_counts")
                 )
                 if diff_required_displays:
@@ -4505,7 +4531,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- `{label}` required displays: "
                         + ", ".join(diff_required_displays)
                     )
-                diff_outcome_counts = count_map_fragments(
+                diff_outcome_counts = calculus_matrix_count_map_fragments(
                     metrics.get("diff_outcome_counts")
                 )
                 if diff_outcome_counts:
@@ -4516,13 +4542,15 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     ("diff_trace_regime_counts", "trace regimes"),
                     ("diff_presentation_regime_counts", "presentation regimes"),
                 ):
-                    fragments = count_map_fragments(metrics.get(metric_key))
+                    fragments = calculus_matrix_count_map_fragments(
+                        metrics.get(metric_key)
+                    )
                     if fragments:
                         lines.append(
                             f"- `{label}` {regime_label}: "
                             + ", ".join(fragments)
                         )
-                integrate_argument_regimes = count_map_fragments(
+                integrate_argument_regimes = calculus_matrix_count_map_fragments(
                     metrics.get("integrate_argument_regime_counts")
                 )
                 if integrate_argument_regimes:
@@ -4530,7 +4558,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- `{label}` argument regimes: "
                         + ", ".join(integrate_argument_regimes)
                     )
-                integrate_domain_regimes = count_map_fragments(
+                integrate_domain_regimes = calculus_matrix_count_map_fragments(
                     metrics.get("integrate_domain_regime_counts")
                 )
                 if integrate_domain_regimes:
@@ -4538,7 +4566,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- `{label}` domain regimes: "
                         + ", ".join(integrate_domain_regimes)
                     )
-                integrate_required_displays = count_map_fragments(
+                integrate_required_displays = calculus_matrix_count_map_fragments(
                     metrics.get("integrate_required_display_counts")
                 )
                 if integrate_required_displays:
@@ -4546,7 +4574,7 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- `{label}` required displays: "
                         + ", ".join(integrate_required_displays)
                     )
-                integrate_outcome_counts = count_map_fragments(
+                integrate_outcome_counts = calculus_matrix_count_map_fragments(
                     metrics.get("integrate_outcome_counts")
                 )
                 if integrate_outcome_counts:
@@ -4554,13 +4582,33 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- `{label}` outcomes: "
                         + ", ".join(integrate_outcome_counts)
                     )
-                integrate_verification_regimes = count_map_fragments(
+                integrate_verification_regimes = calculus_matrix_count_map_fragments(
                     metrics.get("integrate_verification_regime_counts")
                 )
                 if integrate_verification_regimes:
                     lines.append(
                         f"- `{label}` verification regimes: "
                         + ", ".join(integrate_verification_regimes)
+                    )
+                integrate_policy_clusters = calculus_matrix_count_map_fragments(
+                    metrics.get("integrate_trig_hyperbolic_policy_cluster_counts")
+                )
+                if integrate_policy_clusters:
+                    lines.append(
+                        f"- `{label}` trig/hyperbolic policy clusters: "
+                        + ", ".join(integrate_policy_clusters)
+                    )
+                integrate_consolidation_candidates = (
+                    calculus_matrix_count_map_fragments(
+                        metrics.get(
+                            "integrate_trig_hyperbolic_consolidation_candidate_counts"
+                        )
+                    )
+                )
+                if integrate_consolidation_candidates:
+                    lines.append(
+                        f"- `{label}` trig/hyperbolic consolidation candidates: "
+                        + ", ".join(integrate_consolidation_candidates)
                     )
                 for metric_key, regime_label in (
                     ("integrate_trace_regime_counts", "trace regimes"),
@@ -4569,27 +4617,37 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         "presentation regimes",
                     ),
                 ):
-                    fragments = count_map_fragments(metrics.get(metric_key))
+                    fragments = calculus_matrix_count_map_fragments(
+                        metrics.get(metric_key)
+                    )
                     if fragments:
                         lines.append(
                             f"- `{label}` {regime_label}: "
                             + ", ".join(fragments)
                         )
-                point_regimes = count_map_fragments(
+                point_regimes = calculus_matrix_count_map_fragments(
                     metrics.get("limit_point_regime_counts")
                 )
                 if point_regimes:
                     lines.append(
                         f"- `{label}` point regimes: " + ", ".join(point_regimes)
                     )
-                domain_regimes = count_map_fragments(
+                domain_regimes = calculus_matrix_count_map_fragments(
                     metrics.get("limit_domain_regime_counts")
                 )
                 if domain_regimes:
                     lines.append(
                         f"- `{label}` domain regimes: " + ", ".join(domain_regimes)
                     )
-                required_displays = count_map_fragments(
+                required_condition_regimes = calculus_matrix_count_map_fragments(
+                    metrics.get("limit_required_condition_regime_counts")
+                )
+                if required_condition_regimes:
+                    lines.append(
+                        f"- `{label}` required condition regimes: "
+                        + ", ".join(required_condition_regimes)
+                    )
+                required_displays = calculus_matrix_count_map_fragments(
                     metrics.get("limit_required_display_counts")
                 )
                 if required_displays:
@@ -4597,7 +4655,9 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                         f"- `{label}` required displays: "
                         + ", ".join(required_displays)
                     )
-                outcome_counts = count_map_fragments(metrics.get("limit_outcome_counts"))
+                outcome_counts = calculus_matrix_count_map_fragments(
+                    metrics.get("limit_outcome_counts")
+                )
                 if outcome_counts:
                     lines.append(
                         f"- `{label}` outcomes: " + ", ".join(outcome_counts)
@@ -4606,7 +4666,9 @@ def render_markdown(scorecard: dict[str, Any]) -> str:
                     ("limit_trace_regime_counts", "trace regimes"),
                     ("limit_presentation_regime_counts", "presentation regimes"),
                 ):
-                    fragments = count_map_fragments(metrics.get(metric_key))
+                    fragments = calculus_matrix_count_map_fragments(
+                        metrics.get(metric_key)
+                    )
                     if fragments:
                         lines.append(
                             f"- `{label}` {regime_label}: "

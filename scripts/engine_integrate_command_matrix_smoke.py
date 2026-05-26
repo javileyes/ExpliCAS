@@ -26,6 +26,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from cas_cli_release import ensure_release_cas_cli
+from engine_command_matrix_observability import stderr_fragility_error
 
 
 ROOT = SCRIPT_DIR.parent
@@ -39,6 +40,7 @@ class IntegrateCommandMatrixCase:
     expr: str
     expected_result: str
     expected_derivative_result: str | None = None
+    expected_derivative_equivalent_to: str | None = None
     expected_derivative_required_display: tuple[str, ...] = ()
     expected_required_display: tuple[str, ...] = ()
     expected_warning_substrings: tuple[str, ...] = ()
@@ -139,6 +141,38 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="exponential",
     ),
     IntegrateCommandMatrixCase(
+        name="log_power_product_substitution",
+        expr="integrate(2*x*ln(x^2+1)^2, x)",
+        expected_result="(x^2 + 1)·(ln(x^2 + 1)^2 - 2·ln(x^2 + 1) + 2)",
+        expected_derivative_result="2·x·ln(x^2 + 1)^2",
+        expected_step_substrings=(
+            "Usar la regla de u'·ln(u)^n por partes",
+            "Identificar u y du",
+        ),
+        family="log_power_product_substitution",
+        argument_regime="polynomial_log_power_product_derivative",
+        domain_regime="structurally_positive_log_argument",
+        trace_regime="log_power_product_substitution",
+        presentation_regime="log_power_by_parts_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="constant_base_log_power_product_positive_domain_substitution",
+        expr="integrate(2*x*log(2,x^2-1)^2, x)",
+        expected_result="(x^2 - 1)·(log(2, x^2 - 1)^2 + 2 / ln(2)^2 - 2·log(2, x^2 - 1) / ln(2))",
+        expected_derivative_equivalent_to="2*x*log(2,x^2-1)^2",
+        expected_derivative_required_display=("x < -1 or x > 1",),
+        expected_required_display=("x < -1 or x > 1",),
+        expected_step_substrings=(
+            "Usar la regla de u'·log_b(u)^n por partes",
+            "Identificar u y du",
+        ),
+        family="log_power_product_substitution",
+        argument_regime="constant_base_polynomial_log_power_product_derivative",
+        domain_regime="positive_log_argument_required",
+        trace_regime="constant_base_log_power_product_substitution",
+        presentation_regime="constant_base_log_power_by_parts_product",
+    ),
+    IntegrateCommandMatrixCase(
         name="reciprocal_affine_log_abs_domain",
         expr="integrate(1/(2*x + 1), x)",
         expected_result="1/2·ln(|2·x + 1|)",
@@ -207,6 +241,22 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         domain_regime="structurally_positive_log_argument",
         trace_regime="log_derivative_positive_quadratic_substitution",
         presentation_regime="positive_log_no_abs",
+    ),
+    IntegrateCommandMatrixCase(
+        name="log_derivative_positive_quadratic_negative_orientation_substitution",
+        expr="integrate((2*x-1)/(x^2-x+1), x)",
+        expected_result="ln(x^2 + 1 - x)",
+        expected_derivative_result="(2·x - 1) / (x^2 + 1 - x)",
+        expected_step_substrings=(
+            "Usar la regla de u'/u -> ln|u|",
+            "Identificar u y du",
+            "Abs Under Positivity",
+        ),
+        family="log_derivative_polynomial",
+        argument_regime="negative_orientation_positive_quadratic_derivative_ratio",
+        domain_regime="structurally_positive_log_argument",
+        trace_regime="log_derivative_positive_quadratic_negative_orientation_substitution",
+        presentation_regime="positive_log_no_abs_negative_orientation",
     ),
     IntegrateCommandMatrixCase(
         name="log_rational_positive_domain_residual",
@@ -428,6 +478,70 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="inverse_hyperbolic",
     ),
     IntegrateCommandMatrixCase(
+        name="rational_partial_fraction_two_real_linear_factors",
+        expr="integrate(1/(x^2-1), x)",
+        expected_result="1/2·ln(|(x - 1) / (x + 1)|)",
+        expected_derivative_result="1 / (x^2 - 1)",
+        expected_derivative_required_display=("x ≠ 1", "x ≠ -1"),
+        expected_required_display=("x ≠ 1", "x ≠ -1"),
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_partial_fraction",
+        argument_regime="two_real_linear_factors",
+        domain_regime="linear_poles_required",
+        trace_regime="partial_fraction_linear_factors",
+        presentation_regime="log_ratio_abs",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_improper_partial_fraction_polynomial_division",
+        expr="integrate((x^2+1)/(x^2-1), x)",
+        expected_result="ln(|x - 1|) + x - ln(|x + 1|)",
+        expected_derivative_result="2 / (x^2 - 1) + 1",
+        expected_derivative_required_display=("x ≠ -1", "x ≠ 1"),
+        expected_required_display=("x ≠ -1", "x ≠ 1"),
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_improper_partial_fraction",
+        argument_regime="polynomial_division_two_real_linear_factors",
+        domain_regime="linear_poles_required",
+        trace_regime="polynomial_division_partial_fraction",
+        presentation_regime="polynomial_plus_log_terms",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_improper_positive_quadratic_polynomial_division",
+        expr="integrate((x^2+1)/(x^2+2*x+2), x)",
+        expected_result="arctan(x + 1) + x - ln(x^2 + 2·x + 2)",
+        expected_derivative_result="(x^2 + 1) / (x^2 + 2·x + 2)",
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_improper_positive_quadratic",
+        argument_regime="polynomial_division_irreducible_positive_quadratic",
+        domain_regime="structurally_positive_denominator",
+        trace_regime="polynomial_division_positive_quadratic_decomposition",
+        presentation_regime="polynomial_plus_positive_log_and_arctan",
+    ),
+    IntegrateCommandMatrixCase(
+        name="rational_improper_positive_quadratic_negative_orientation",
+        expr="integrate((x^2+1)/(-x^2-2*x-2), x)",
+        expected_result="ln(x^2 + 2·x + 2) - arctan(x + 1) - x",
+        expected_derivative_equivalent_to="(x^2+1)/(-x^2-2*x-2)",
+        expected_step_substrings=(
+            "Descomponer en fracciones parciales",
+            "Integrar los términos simples",
+        ),
+        family="rational_improper_positive_quadratic",
+        argument_regime="negative_orientation_polynomial_division_irreducible_positive_quadratic",
+        domain_regime="structurally_nonzero_negative_quadratic_denominator",
+        trace_regime="negative_orientation_polynomial_division_positive_quadratic_decomposition",
+        presentation_regime="negative_orientation_polynomial_plus_positive_log_and_arctan",
+    ),
+    IntegrateCommandMatrixCase(
         name="affine_inverse_hyperbolic_atanh_domain",
         expr="integrate(2/(4-(2*x+1)^2), x)",
         expected_result="1/2·atanh((2·x + 1) / 2)",
@@ -536,6 +650,123 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="scaled_hyperbolic",
     ),
     IntegrateCommandMatrixCase(
+        name="hyperbolic_sine_reciprocal_square_substitution",
+        expr="integrate(1/sinh(2*x + 1)^2, x)",
+        expected_result="-1 / (2·tanh(2·x + 1))",
+        expected_derivative_result="1 / sinh(2·x + 1)^2",
+        expected_derivative_required_display=("sinh(2·x + 1) ≠ 0",),
+        expected_required_display=("sinh(2·x + 1) ≠ 0",),
+        expected_step_substrings=(
+            "Usar la regla de 1/sinh(u)^2 -> -1/tanh(u)",
+            "Identificar u y du",
+            "Ajustar el factor constante",
+        ),
+        family="hyperbolic_reciprocal_square",
+        argument_regime="affine_hyperbolic",
+        domain_regime="hyperbolic_sine_pole_required",
+        trace_regime="hyperbolic_sine_reciprocal_square_substitution",
+        presentation_regime="reciprocal_hyperbolic_tangent",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_affine_exact_hyperbolic_cosh_reciprocal_square_substitution",
+        expr="integrate(a/cosh(a*x+b)^2, x)",
+        expected_result="tanh(a·x + b)",
+        expected_derivative_result="a / cosh(a·x + b)^2",
+        expected_step_substrings=(
+            "Usar la regla de 1/cosh(u)^2 -> tanh(u)",
+            "Identificar u y du",
+            "du = a",
+        ),
+        family="hyperbolic_reciprocal_square",
+        argument_regime="symbolic_affine_exact_cofactor_hyperbolic",
+        trace_regime="symbolic_exact_hyperbolic_substitution",
+        presentation_regime="unscaled_hyperbolic_tangent",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_affine_exact_hyperbolic_sinh_reciprocal_square_substitution",
+        expr="integrate(a/sinh(a*x+b)^2, x)",
+        expected_result="-1 / tanh(a·x + b)",
+        expected_derivative_result="a / sinh(a·x + b)^2",
+        expected_derivative_required_display=("sinh(a·x + b) ≠ 0",),
+        expected_required_display=("sinh(a·x + b) ≠ 0",),
+        expected_step_substrings=(
+            "Usar la regla de 1/sinh(u)^2 -> -1/tanh(u)",
+            "Identificar u y du",
+            "du = a",
+        ),
+        family="hyperbolic_reciprocal_square",
+        argument_regime="symbolic_affine_exact_cofactor_hyperbolic",
+        domain_regime="hyperbolic_sine_pole_required",
+        trace_regime="symbolic_exact_hyperbolic_sine_reciprocal_square_substitution",
+        presentation_regime="reciprocal_hyperbolic_tangent",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_affine_exact_hyperbolic_sinh_over_cosh_square_substitution",
+        expr="integrate(a*sinh(a*x+b)/cosh(a*x+b)^2, x)",
+        expected_result="-1 / cosh(a·x + b)",
+        expected_derivative_result="a·sinh(a·x + b) / cosh(a·x + b)^2",
+        expected_step_substrings=(
+            "Usar la regla de sinh(u)/cosh(u)^2 -> -1/cosh(u)",
+            "Identificar u y du",
+            "du = a",
+        ),
+        family="hyperbolic_reciprocal_derivative_product",
+        argument_regime="symbolic_affine_exact_cofactor_hyperbolic_product",
+        trace_regime="symbolic_exact_hyperbolic_reciprocal_derivative_product",
+        presentation_regime="compact_hyperbolic_reciprocal",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_affine_exact_hyperbolic_cosh_over_sinh_square_substitution",
+        expr="integrate(a*cosh(a*x+b)/sinh(a*x+b)^2, x)",
+        expected_result="-1 / sinh(a·x + b)",
+        expected_derivative_result="a·cosh(a·x + b) / sinh(a·x + b)^2",
+        expected_derivative_required_display=("sinh(a·x + b) ≠ 0",),
+        expected_required_display=("sinh(a·x + b) ≠ 0",),
+        expected_step_substrings=(
+            "Usar la regla de cosh(u)/sinh(u)^2 -> -1/sinh(u)",
+            "Identificar u y du",
+            "du = a",
+        ),
+        family="hyperbolic_reciprocal_derivative_product",
+        argument_regime="symbolic_affine_exact_cofactor_hyperbolic_product",
+        domain_regime="hyperbolic_sine_pole_required",
+        trace_regime="symbolic_exact_hyperbolic_reciprocal_derivative_product",
+        presentation_regime="compact_hyperbolic_reciprocal",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_external_scale_hyperbolic_sinh_over_cosh_square_substitution",
+        expr="integrate(k*a*sinh(a*x+b)/cosh(a*x+b)^2, x)",
+        expected_result="-k / cosh(a·x + b)",
+        expected_derivative_result="a·k·sinh(a·x + b) / cosh(a·x + b)^2",
+        expected_step_substrings=(
+            "Usar la regla de sinh(u)/cosh(u)^2 -> -1/cosh(u)",
+            "Identificar u y du",
+            "du = a",
+        ),
+        family="hyperbolic_reciprocal_derivative_product",
+        argument_regime="symbolic_external_scale_hyperbolic_product",
+        trace_regime="symbolic_external_scale_hyperbolic_reciprocal_derivative_product",
+        presentation_regime="external_scale_compact_hyperbolic_reciprocal",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_external_scale_hyperbolic_cosh_over_sinh_square_substitution",
+        expr="integrate(k*a*cosh(a*x+b)/sinh(a*x+b)^2, x)",
+        expected_result="-k / sinh(a·x + b)",
+        expected_derivative_result="a·k·cosh(a·x + b) / sinh(a·x + b)^2",
+        expected_derivative_required_display=("sinh(a·x + b) ≠ 0",),
+        expected_required_display=("sinh(a·x + b) ≠ 0",),
+        expected_step_substrings=(
+            "Usar la regla de cosh(u)/sinh(u)^2 -> -1/sinh(u)",
+            "Identificar u y du",
+            "du = a",
+        ),
+        family="hyperbolic_reciprocal_derivative_product",
+        argument_regime="symbolic_external_scale_hyperbolic_product",
+        domain_regime="hyperbolic_sine_pole_required",
+        trace_regime="symbolic_external_scale_hyperbolic_reciprocal_derivative_product",
+        presentation_regime="external_scale_compact_hyperbolic_reciprocal",
+    ),
+    IntegrateCommandMatrixCase(
         name="by_parts_log_domain",
         expr="integrate(x*ln(x), x)",
         expected_result="1/4·x^2·(2·ln(x) - 1)",
@@ -574,6 +805,256 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="factored_by_parts",
     ),
     IntegrateCommandMatrixCase(
+        name="affine_secant_tangent_derivative_product_domain",
+        expr="integrate(sec(2*x+1)*tan(2*x+1), x)",
+        expected_result="sec(2·x + 1) / 2",
+        expected_derivative_equivalent_to="sec(2*x+1)*tan(2*x+1)",
+        expected_derivative_required_display=("cos(2·x + 1) ≠ 0",),
+        expected_required_display=("cos(2·x + 1) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir secante como recíproco de coseno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            "Identificar u y du",
+            "Ajustar el factor constante",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="affine_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_pole_required",
+        trace_regime="reciprocal_trig_derivative_product",
+        presentation_regime="scaled_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="affine_cosecant_cotangent_derivative_product_domain",
+        expr="integrate(csc(2*x+1)*cot(2*x+1), x)",
+        expected_result="-csc(2·x + 1) / 2",
+        expected_derivative_equivalent_to="csc(2*x+1)*cot(2*x+1)",
+        expected_derivative_required_display=("sin(2·x + 1) ≠ 0",),
+        expected_required_display=("sin(2·x + 1) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir cosecante como recíproco de seno",
+            "Expandir cotangente como coseno entre seno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            "Identificar u y du",
+            "Ajustar el factor constante",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="affine_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_pole_required",
+        trace_regime="reciprocal_trig_derivative_product",
+        presentation_regime="scaled_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="negative_affine_secant_tangent_derivative_product_domain",
+        expr="integrate(sec(1-2*x)*tan(1-2*x), x)",
+        expected_result="-sec(1 - 2·x) / 2",
+        expected_derivative_equivalent_to="sec(1-2*x)*tan(1-2*x)",
+        expected_derivative_required_display=("cos(1 - 2·x) ≠ 0",),
+        expected_required_display=("cos(1 - 2·x) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir secante como recíproco de coseno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            "Identificar u y du",
+            "du = -2",
+            "Ajustar el factor constante",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="negative_affine_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_pole_required",
+        trace_regime="negative_orientation_reciprocal_trig_derivative_product",
+        presentation_regime="negative_orientation_scaled_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="negative_affine_cosecant_cotangent_derivative_product_domain",
+        expr="integrate(csc(1-2*x)*cot(1-2*x), x)",
+        expected_result="csc(1 - 2·x) / 2",
+        expected_derivative_equivalent_to="csc(1-2*x)*cot(1-2*x)",
+        expected_derivative_required_display=("sin(1 - 2·x) ≠ 0",),
+        expected_required_display=("sin(1 - 2·x) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir cosecante como recíproco de seno",
+            "Expandir cotangente como coseno entre seno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            "Identificar u y du",
+            "du = -2",
+            "Ajustar el factor constante",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="negative_affine_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_pole_required",
+        trace_regime="negative_orientation_reciprocal_trig_derivative_product",
+        presentation_regime="negative_orientation_scaled_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_affine_exact_secant_tangent_derivative_product_domain",
+        expr="integrate(a*sec(a*x+b)*tan(a*x+b), x)",
+        expected_result="sec(a·x + b)",
+        expected_derivative_equivalent_to="a*sec(a*x+b)*tan(a*x+b)",
+        expected_derivative_required_display=("cos(a·x + b) ≠ 0",),
+        expected_required_display=("cos(a·x + b) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir secante como recíproco de coseno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            "Identificar u y du",
+            "du = a",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="symbolic_affine_exact_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_exact_symbolic_derivative_pole_required",
+        trace_regime="symbolic_exact_derivative_reciprocal_trig_product",
+        presentation_regime="compact_symbolic_exact_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_affine_exact_cosecant_cotangent_derivative_product_domain",
+        expr="integrate(a*csc(a*x+b)*cot(a*x+b), x)",
+        expected_result="-csc(a·x + b)",
+        expected_derivative_equivalent_to="a*csc(a*x+b)*cot(a*x+b)",
+        expected_derivative_required_display=("sin(a·x + b) ≠ 0",),
+        expected_required_display=("sin(a·x + b) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir cosecante como recíproco de seno",
+            "Expandir cotangente como coseno entre seno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            "Identificar u y du",
+            "du = a",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="symbolic_affine_exact_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_exact_symbolic_derivative_pole_required",
+        trace_regime="symbolic_exact_derivative_reciprocal_trig_product",
+        presentation_regime="compact_symbolic_exact_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_external_scale_secant_tangent_derivative_product_domain",
+        expr="integrate(k*a*sec(a*x+b)*tan(a*x+b), x)",
+        expected_result="k·sec(a·x + b)",
+        expected_derivative_equivalent_to="k*a*sec(a*x+b)*tan(a*x+b)",
+        expected_derivative_required_display=("cos(a·x + b) ≠ 0",),
+        expected_required_display=("cos(a·x + b) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir secante como recíproco de coseno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            "Identificar u y du",
+            "du = a",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="symbolic_external_scale_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_exact_symbolic_derivative_pole_required",
+        trace_regime="symbolic_external_scale_derivative_reciprocal_trig_product",
+        presentation_regime="external_scale_compact_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="symbolic_external_scale_cosecant_cotangent_derivative_product_domain",
+        expr="integrate(k*a*csc(a*x+b)*cot(a*x+b), x)",
+        expected_result="-k·csc(a·x + b)",
+        expected_derivative_equivalent_to="k*a*csc(a*x+b)*cot(a*x+b)",
+        expected_derivative_required_display=("sin(a·x + b) ≠ 0",),
+        expected_required_display=("sin(a·x + b) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir cosecante como recíproco de seno",
+            "Expandir cotangente como coseno entre seno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            "Identificar u y du",
+            "du = a",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="symbolic_external_scale_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_exact_symbolic_derivative_pole_required",
+        trace_regime="symbolic_external_scale_derivative_reciprocal_trig_product",
+        presentation_regime="external_scale_compact_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="negative_symbolic_affine_exact_secant_tangent_derivative_product_domain",
+        expr="integrate(-a*sec(b-a*x)*tan(b-a*x), x)",
+        expected_result="sec(b - a·x)",
+        expected_derivative_equivalent_to="-a*sec(b-a*x)*tan(b-a*x)",
+        expected_derivative_required_display=("cos(b - a·x) ≠ 0",),
+        expected_required_display=("cos(b - a·x) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir secante como recíproco de coseno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            "Identificar u y du",
+            "du = -a",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="negative_symbolic_affine_exact_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_exact_symbolic_derivative_pole_required",
+        trace_regime="negative_symbolic_exact_derivative_reciprocal_trig_product",
+        presentation_regime="compact_negative_symbolic_exact_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="negative_symbolic_affine_exact_cosecant_cotangent_derivative_product_domain",
+        expr="integrate(-a*csc(b-a*x)*cot(b-a*x), x)",
+        expected_result="-csc(b - a·x)",
+        expected_derivative_equivalent_to="-a*csc(b-a*x)*cot(b-a*x)",
+        expected_derivative_required_display=("sin(b - a·x) ≠ 0",),
+        expected_required_display=("sin(b - a·x) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir cosecante como recíproco de seno",
+            "Expandir cotangente como coseno entre seno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            "Identificar u y du",
+            "du = -a",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="negative_symbolic_affine_exact_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_exact_symbolic_derivative_pole_required",
+        trace_regime="negative_symbolic_exact_derivative_reciprocal_trig_product",
+        presentation_regime="compact_negative_symbolic_exact_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="negative_symbolic_external_scale_secant_tangent_derivative_product_domain",
+        expr="integrate(-k*a*sec(b-a*x)*tan(b-a*x), x)",
+        expected_result="k·sec(b - a·x)",
+        expected_derivative_equivalent_to="-k*a*sec(b-a*x)*tan(b-a*x)",
+        expected_derivative_required_display=("cos(b - a·x) ≠ 0",),
+        expected_required_display=("cos(b - a·x) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir secante como recíproco de coseno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            "Identificar u y du",
+            "du = -a",
+            "Ajustar el factor constante",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="negative_symbolic_external_scale_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_exact_symbolic_derivative_pole_required",
+        trace_regime="negative_symbolic_external_scale_derivative_reciprocal_trig_product",
+        presentation_regime="compact_negative_symbolic_external_scale_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
+        name="negative_symbolic_external_scale_cosecant_cotangent_derivative_product_domain",
+        expr="integrate(-k*a*csc(b-a*x)*cot(b-a*x), x)",
+        expected_result="-k·csc(b - a·x)",
+        expected_derivative_equivalent_to="-k*a*csc(b-a*x)*cot(b-a*x)",
+        expected_derivative_required_display=("sin(b - a·x) ≠ 0",),
+        expected_required_display=("sin(b - a·x) ≠ 0",),
+        expected_step_substrings=(
+            "Expandir cosecante como recíproco de seno",
+            "Expandir cotangente como coseno entre seno",
+            "Combinar fracciones en una multiplicación",
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            "Identificar u y du",
+            "du = -a",
+            "Ajustar el factor constante",
+        ),
+        family="reciprocal_trig_derivative_product",
+        argument_regime="negative_symbolic_external_scale_reciprocal_trig_product",
+        domain_regime="trig_reciprocal_product_exact_symbolic_derivative_pole_required",
+        trace_regime="negative_symbolic_external_scale_derivative_reciprocal_trig_product",
+        presentation_regime="compact_negative_symbolic_external_scale_reciprocal_trig_product",
+    ),
+    IntegrateCommandMatrixCase(
         name="sqrt_chain_secant_tangent_domain",
         expr="integrate(sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)",
         expected_result="sec(sqrt(x))",
@@ -591,6 +1072,138 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         domain_regime="sqrt_chain_nonzero_positive",
         trace_regime="sqrt_chain_reciprocal_trig",
         presentation_regime="reciprocal_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="external_symbolic_scale_sqrt_chain_secant_tangent_domain",
+        expr="integrate(k*sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x)), x)",
+        expected_result="sec(sqrt(x))·k",
+        expected_derivative_equivalent_to="k*sec(sqrt(x))*tan(sqrt(x))/(2*sqrt(x))",
+        expected_derivative_required_display=("cos(sqrt(x)) ≠ 0", "x > 0"),
+        expected_required_display=("cos(sqrt(x)) ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+            "Ajustar el factor constante",
+        ),
+        family="sqrt_chain_reciprocal_trig",
+        argument_regime="external_symbolic_scale_sqrt_chain",
+        domain_regime="sqrt_chain_nonzero_positive",
+        trace_regime="external_symbolic_scale_sqrt_chain_reciprocal_trig",
+        presentation_regime="external_scale_reciprocal_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="external_symbolic_scale_sqrt_chain_cosecant_cotangent_domain",
+        expr="integrate(k*csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x)), x)",
+        expected_result="-csc(sqrt(x))·k",
+        expected_derivative_equivalent_to="k*csc(sqrt(x))*cot(sqrt(x))/(2*sqrt(x))",
+        expected_derivative_required_display=("sin(sqrt(x)) ≠ 0", "x > 0"),
+        expected_required_display=("sin(sqrt(x)) ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+            "Ajustar el factor constante",
+        ),
+        family="sqrt_chain_reciprocal_trig",
+        argument_regime="external_symbolic_scale_sqrt_chain",
+        domain_regime="sqrt_chain_nonzero_positive",
+        trace_regime="external_symbolic_scale_sqrt_chain_reciprocal_trig",
+        presentation_regime="external_scale_reciprocal_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="external_symbolic_scale_shifted_sqrt_chain_secant_tangent_domain",
+        expr="integrate(-k*sec(b-sqrt(x))*tan(b-sqrt(x))/(2*sqrt(x)), x)",
+        expected_result="sec(b - sqrt(x))·k",
+        expected_derivative_equivalent_to="-k*sec(b-sqrt(x))*tan(b-sqrt(x))/(2*sqrt(x))",
+        expected_derivative_required_display=(
+            "cos(b - sqrt(x)) ≠ 0",
+            "x > 0",
+        ),
+        expected_required_display=("cos(b - sqrt(x)) ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+            "Ajustar el factor constante",
+        ),
+        family="sqrt_chain_reciprocal_trig",
+        argument_regime="external_symbolic_scale_shifted_sqrt_chain",
+        domain_regime="shifted_sqrt_chain_nonzero_positive",
+        trace_regime="external_symbolic_scale_shifted_sqrt_chain_reciprocal_trig",
+        presentation_regime="external_scale_shifted_reciprocal_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="external_symbolic_scale_shifted_sqrt_chain_cosecant_cotangent_domain",
+        expr="integrate(-k*csc(b-sqrt(x))*cot(b-sqrt(x))/(2*sqrt(x)), x)",
+        expected_result="-csc(b - sqrt(x))·k",
+        expected_derivative_equivalent_to="-k*csc(b-sqrt(x))*cot(b-sqrt(x))/(2*sqrt(x))",
+        expected_derivative_required_display=(
+            "sin(b - sqrt(x)) ≠ 0",
+            "x > 0",
+        ),
+        expected_required_display=("sin(b - sqrt(x)) ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+            "Ajustar el factor constante",
+        ),
+        family="sqrt_chain_reciprocal_trig",
+        argument_regime="external_symbolic_scale_shifted_sqrt_chain",
+        domain_regime="shifted_sqrt_chain_nonzero_positive",
+        trace_regime="external_symbolic_scale_shifted_sqrt_chain_reciprocal_trig",
+        presentation_regime="external_scale_shifted_reciprocal_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="external_symbolic_scale_sqrt_minus_symbol_chain_secant_tangent_domain",
+        expr="integrate(k*sec(sqrt(x)-b)*tan(sqrt(x)-b)/(2*sqrt(x)), x)",
+        expected_result="sec(sqrt(x) - b)·k",
+        expected_derivative_equivalent_to="k*sec(sqrt(x)-b)*tan(sqrt(x)-b)/(2*sqrt(x))",
+        expected_derivative_required_display=(
+            "cos(sqrt(x) - b) ≠ 0",
+            "x > 0",
+        ),
+        expected_required_display=("cos(sqrt(x) - b) ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de sec(u)·tan(u) -> sec(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+            "Ajustar el factor constante",
+        ),
+        family="sqrt_chain_reciprocal_trig",
+        argument_regime="external_symbolic_scale_sqrt_minus_symbol_chain",
+        domain_regime="sqrt_minus_symbol_chain_nonzero_positive",
+        trace_regime="external_symbolic_scale_sqrt_minus_symbol_chain_reciprocal_trig",
+        presentation_regime="external_scale_sqrt_minus_symbol_reciprocal_trig",
+    ),
+    IntegrateCommandMatrixCase(
+        name="external_symbolic_scale_sqrt_minus_symbol_chain_cosecant_cotangent_domain",
+        expr="integrate(k*csc(sqrt(x)-b)*cot(sqrt(x)-b)/(2*sqrt(x)), x)",
+        expected_result="-csc(sqrt(x) - b)·k",
+        expected_derivative_equivalent_to="k*csc(sqrt(x)-b)*cot(sqrt(x)-b)/(2*sqrt(x))",
+        expected_derivative_required_display=(
+            "sin(sqrt(x) - b) ≠ 0",
+            "x > 0",
+        ),
+        expected_required_display=("sin(sqrt(x) - b) ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de csc(u)·cot(u) -> -csc(u)",
+            "Identificar u y du",
+            "u =",
+            "du =",
+            "Ajustar el factor constante",
+        ),
+        family="sqrt_chain_reciprocal_trig",
+        argument_regime="external_symbolic_scale_sqrt_minus_symbol_chain",
+        domain_regime="sqrt_minus_symbol_chain_nonzero_positive",
+        trace_regime="external_symbolic_scale_sqrt_minus_symbol_chain_reciprocal_trig",
+        presentation_regime="external_scale_sqrt_minus_symbol_reciprocal_trig",
     ),
     IntegrateCommandMatrixCase(
         name="sqrt_chain_tangent_log_domain",
@@ -612,6 +1225,26 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         presentation_regime="abs_log_sqrt_chain",
     ),
     IntegrateCommandMatrixCase(
+        name="shifted_sqrt_chain_tangent_log_domain",
+        expr="integrate(tan(b-sqrt(x))/(2*sqrt(x)), x)",
+        expected_result="ln(|cos(b - sqrt(x))|)",
+        expected_derivative_equivalent_to="tan(b-sqrt(x))/(2*sqrt(x))",
+        expected_derivative_required_display=("x > 0", "cos(b - sqrt(x)) ≠ 0"),
+        expected_required_display=("cos(b - sqrt(x)) ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de tan(u) -> -ln|cos(u)|",
+            "Identificar u y du",
+            "u =",
+            "du =",
+            "Ajustar el factor constante",
+        ),
+        family="sqrt_chain_trig_log",
+        argument_regime="shifted_sqrt_chain",
+        domain_regime="shifted_sqrt_chain_nonzero_positive",
+        trace_regime="shifted_sqrt_chain_trig_log",
+        presentation_regime="abs_log_shifted_sqrt_chain",
+    ),
+    IntegrateCommandMatrixCase(
         name="sqrt_chain_hyperbolic_tangent_presimplified_condition_dedupe",
         expr="integrate(1/(2*sqrt(x+0)*tanh(sqrt(x+0))), x)",
         expected_result="ln(|sinh(sqrt(x))|)",
@@ -630,6 +1263,26 @@ DEFAULT_INTEGRATE_COMMAND_MATRIX_CASES = (
         domain_regime="sqrt_chain_hyperbolic_presimplified_condition_dedupe",
         trace_regime="sqrt_chain_hyperbolic_log",
         presentation_regime="abs_log_sqrt_chain_hyperbolic_condition_dedupe",
+    ),
+    IntegrateCommandMatrixCase(
+        name="shifted_sqrt_chain_hyperbolic_tangent_log_domain",
+        expr="integrate(1/(2*sqrt(x)*tanh(b-sqrt(x))), x)",
+        expected_result="-ln(|sinh(x^(1/2) - b)|)",
+        expected_derivative_equivalent_to="1/(2*sqrt(x)*tanh(b-sqrt(x)))",
+        expected_derivative_required_display=("sinh(b - sqrt(x)) ≠ 0", "x > 0"),
+        expected_required_display=("sinh(b - sqrt(x)) ≠ 0", "x > 0"),
+        expected_step_substrings=(
+            "Usar la regla de 1/tanh(u) -> ln|sinh(u)|",
+            "Identificar u y du",
+            "u =",
+            "du =",
+            "Ajustar el factor constante",
+        ),
+        family="sqrt_chain_hyperbolic_log",
+        argument_regime="shifted_sqrt_chain",
+        domain_regime="shifted_sqrt_chain_nonzero_positive",
+        trace_regime="shifted_sqrt_chain_hyperbolic_log",
+        presentation_regime="abs_log_shifted_sqrt_chain_hyperbolic",
     ),
     IntegrateCommandMatrixCase(
         name="invalid_log_base_integrand_undefined",
@@ -803,6 +1456,8 @@ def warning_expectations_met(
 def classify_error_kind(error: str | None) -> str | None:
     if error is None:
         return None
+    if "fragile substring" in error:
+        return "stderr_fragility"
     if "antiderivative verification timeout" in error:
         return "antiderivative_verification_timeout"
     if "antiderivative verification" in error:
@@ -879,6 +1534,8 @@ def run_case(
             "expected required_display "
             f"{case.expected_required_display!r}, got {required_display!r}"
         )
+    elif (stderr_error := stderr_fragility_error(stderr)) is not None:
+        error = stderr_error
     else:
         warnings_ok, warning_error = warning_expectations_met(
             case.expected_warning_substrings,
@@ -895,8 +1552,18 @@ def run_case(
     derivative_result: str | None = None
     derivative_required_display: tuple[str, ...] = ()
     derivative_stderr = ""
-    if error is None and case.expected_derivative_result is not None:
-        derivative_expr = f"diff({case.expected_result}, x)"
+    derivative_equivalence_result: str | None = None
+    if error is None and (
+        case.expected_derivative_result is not None
+        or case.expected_derivative_equivalent_to is not None
+    ):
+        if case.expected_derivative_equivalent_to is None:
+            derivative_expr = f"diff({case.expected_result}, x)"
+        else:
+            derivative_expr = (
+                f"diff({case.expected_result}, x) - "
+                f"({case.expected_derivative_equivalent_to})"
+            )
         derivative_command = [
             str(cas_cli),
             "eval",
@@ -927,6 +1594,8 @@ def run_case(
                 if isinstance(derivative_parsed, dict)
                 else None
             )
+            if case.expected_derivative_equivalent_to is not None:
+                derivative_equivalence_result = derivative_result
             derivative_required_display = extract_required_display(derivative_parsed)
             derivative_ok = (
                 derivative_parsed.get("ok")
@@ -942,10 +1611,21 @@ def run_case(
                 error = f"antiderivative verification {derivative_parse_error}"
             elif derivative_ok is not True:
                 error = "antiderivative verification ok was not true"
-            elif derivative_result != case.expected_derivative_result:
+            elif (
+                case.expected_derivative_equivalent_to is None
+                and derivative_result != case.expected_derivative_result
+            ):
                 error = (
                     "antiderivative verification expected derivative result "
                     f"{case.expected_derivative_result!r}, got {derivative_result!r}"
+                )
+            elif (
+                case.expected_derivative_equivalent_to is not None
+                and derivative_equivalence_result != "0"
+            ):
+                error = (
+                    "antiderivative verification expected residual result "
+                    f"'0', got {derivative_equivalence_result!r}"
                 )
             elif set(derivative_required_display) != set(
                 case.expected_derivative_required_display
@@ -955,6 +1635,13 @@ def run_case(
                     f"{case.expected_derivative_required_display!r}, "
                     f"got {derivative_required_display!r}"
                 )
+            elif (
+                derivative_stderr_error := stderr_fragility_error(
+                    derivative_stderr,
+                    label="antiderivative verification stderr",
+                )
+            ) is not None:
+                error = derivative_stderr_error
 
     wall_elapsed = time.monotonic() - start
     status: Status = "pass" if error is None else "fail"
@@ -978,7 +1665,9 @@ def run_case(
         "warnings": list(warnings),
         "expected_result": case.expected_result,
         "expected_derivative_result": case.expected_derivative_result,
+        "expected_derivative_equivalent_to": case.expected_derivative_equivalent_to,
         "derivative_result": derivative_result,
+        "derivative_equivalence_result": derivative_equivalence_result,
         "expected_derivative_required_display": list(
             case.expected_derivative_required_display
         ),
@@ -1022,6 +1711,42 @@ def count_by(
     return dict(sorted(counts.items()))
 
 
+def trig_hyperbolic_policy_cluster(
+    case: IntegrateCommandMatrixCase,
+) -> str | None:
+    if case.family == "reciprocal_trig_derivative_product":
+        return "block7_trig_reciprocal_derivative_product"
+    if case.family == "sqrt_chain_reciprocal_trig":
+        return "block7_sqrt_chain_reciprocal_trig_product"
+    if case.family == "hyperbolic_reciprocal_derivative_product":
+        return "block7_hyperbolic_reciprocal_derivative_product"
+    if case.family == "hyperbolic_reciprocal_square":
+        return "block7_hyperbolic_reciprocal_square"
+    if case.family == "explicit_reciprocal_hyperbolic_substitution":
+        return "block7_explicit_reciprocal_hyperbolic_tangent"
+    if case.family == "explicit_reciprocal_trig_substitution":
+        return "block7_explicit_reciprocal_trig_tangent"
+    if case.family == "sqrt_chain_trig_log":
+        return "block7_sqrt_chain_trig_log"
+    if case.family == "sqrt_chain_hyperbolic_log":
+        return "block7_sqrt_chain_hyperbolic_log"
+    if case.family == "explicit_reciprocal_trig_residual_domain":
+        return "block9_explicit_reciprocal_trig_residual"
+    return None
+
+
+def count_trig_hyperbolic_policy_clusters(
+    cases: tuple[IntegrateCommandMatrixCase, ...],
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for case in cases:
+        cluster = trig_hyperbolic_policy_cluster(case)
+        if cluster is None:
+            continue
+        counts[cluster] = counts.get(cluster, 0) + 1
+    return dict(sorted(counts.items()))
+
+
 def count_required_display_items(results: list[dict[str, Any]]) -> dict[str, int]:
     counts: dict[str, int] = {}
     for result in results:
@@ -1033,7 +1758,10 @@ def count_required_display_items(results: list[dict[str, Any]]) -> dict[str, int
 
 
 def verification_regime(case: IntegrateCommandMatrixCase) -> str:
-    if case.expected_derivative_result is not None:
+    if (
+        case.expected_derivative_result is not None
+        or case.expected_derivative_equivalent_to is not None
+    ):
         return "verified_by_diff"
     if case.outcome == "residual":
         return "residual_not_verified"
@@ -1101,7 +1829,12 @@ def run_matrix(
     required_display_cases = sum(1 for case in cases if case.expected_required_display)
     step_checked_cases = sum(1 for case in cases if case.expected_step_substrings)
     antiderivative_verification_cases = sum(
-        1 for case in cases if case.expected_derivative_result is not None
+        1
+        for case in cases
+        if (
+            case.expected_derivative_result is not None
+            or case.expected_derivative_equivalent_to is not None
+        )
     )
     expected_step_substrings = sum(
         len(case.expected_step_substrings) for case in cases
@@ -1144,6 +1877,9 @@ def run_matrix(
         "verification_regime_counts": count_verification_regimes(cases),
         "trace_regime_counts": count_by(cases, "trace_regime"),
         "presentation_regime_counts": count_by(cases, "presentation_regime"),
+        "trig_hyperbolic_policy_cluster_counts": (
+            count_trig_hyperbolic_policy_clusters(cases)
+        ),
         "case_filters": [case.name for case in cases],
     }
 

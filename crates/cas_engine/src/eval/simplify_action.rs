@@ -2393,6 +2393,8 @@ fn try_resolve_post_calculus_residual_before_general_simplify_core_local(
             ctx, expr,
         )
     })
+    .or_else(|| try_diff_shifted_sqrt_reciprocal_trig_residual_zero_local(ctx, expr))
+    .or_else(|| try_compact_reciprocal_trig_product_residual_zero_local(ctx, expr))
     .or_else(|| {
         crate::calculus_residual_support::try_explicit_high_log_power_product_antiderivative_residual_root_zero(
             ctx, expr,
@@ -2485,6 +2487,28 @@ fn exprs_exactly_match_ignoring_internal_holds_local(
     let left = cas_ast::hold::strip_all_holds(ctx, left);
     let right = cas_ast::hold::strip_all_holds(ctx, right);
     cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
+}
+
+fn exprs_display_match_ignoring_internal_holds_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let left = cas_ast::hold::strip_all_holds(ctx, left);
+    let right = cas_ast::hold::strip_all_holds(ctx, right);
+    format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: left
+        }
+    ) == format!(
+        "{}",
+        cas_formatter::DisplayExpr {
+            context: ctx,
+            id: right
+        }
+    )
 }
 
 fn additive_terms_contain_exact_zero_noise_in_post_calculus_context_local(
@@ -2900,6 +2924,384 @@ fn try_diff_affine_hyperbolic_odd_primitive_residual_zero_ordered_local(
     Some((ctx.num(0), Vec::new()))
 }
 
+fn try_diff_shifted_sqrt_reciprocal_trig_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = residual_difference_terms_local(ctx, expr)?;
+    try_diff_shifted_sqrt_reciprocal_trig_residual_zero_ordered_local(ctx, left, right).or_else(
+        || try_diff_shifted_sqrt_reciprocal_trig_residual_zero_ordered_local(ctx, right, left),
+    )
+}
+
+fn try_diff_shifted_sqrt_reciprocal_trig_residual_zero_ordered_local(
+    ctx: &mut cas_ast::Context,
+    diff_expr: ExprId,
+    target: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let call = crate::symbolic_calculus_call_support::try_extract_diff_call(ctx, diff_expr)?;
+    let (result, required_conditions) =
+        crate::rules::calculus::reciprocal_trig_shifted_sqrt_derivative_presentation(
+            ctx,
+            call.target,
+            &call.var_name,
+        )?;
+    if !compact_reciprocal_trig_diff_result_matches_target_local(ctx, result, target) {
+        return None;
+    }
+
+    Some((ctx.num(0), required_conditions))
+}
+
+fn compact_reciprocal_trig_diff_result_matches_target_local(
+    ctx: &mut cas_ast::Context,
+    result: ExprId,
+    target: ExprId,
+) -> bool {
+    exprs_exactly_match_ignoring_internal_holds_local(ctx, result, target)
+        || exprs_equivalent_ignoring_internal_holds_local(ctx, result, target)
+        || exprs_display_match_ignoring_internal_holds_local(ctx, result, target)
+        || negated_exprs_match_ignoring_internal_holds_local(ctx, result, target)
+        || scaled_compact_products_match_ignoring_internal_holds_local(ctx, result, target)
+        || fractions_equivalent_up_to_commutative_products_local(ctx, result, target)
+}
+
+fn negated_exprs_match_ignoring_internal_holds_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let left = cas_ast::hold::strip_all_holds(ctx, left);
+    let right = cas_ast::hold::strip_all_holds(ctx, right);
+    match (ctx.get(left).clone(), ctx.get(right).clone()) {
+        (Expr::Neg(left_inner), _) => {
+            exprs_exactly_match_ignoring_internal_holds_local(ctx, left_inner, right)
+                || exprs_display_match_ignoring_internal_holds_local(ctx, left_inner, right)
+        }
+        (_, Expr::Neg(right_inner)) => {
+            exprs_exactly_match_ignoring_internal_holds_local(ctx, left, right_inner)
+                || exprs_display_match_ignoring_internal_holds_local(ctx, left, right_inner)
+        }
+        _ => false,
+    }
+}
+
+fn scaled_compact_products_match_ignoring_internal_holds_local(
+    ctx: &mut cas_ast::Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let left = cas_ast::hold::strip_all_holds(ctx, left);
+    let right = cas_ast::hold::strip_all_holds(ctx, right);
+    let (left_scale, left_core) =
+        split_signed_numeric_scale_product_for_compact_residual_local(ctx, left);
+    let (right_scale, right_core) =
+        split_signed_numeric_scale_product_for_compact_residual_local(ctx, right);
+    left_scale == right_scale
+        && (exprs_exactly_match_ignoring_internal_holds_local(ctx, left_core, right_core)
+            || exprs_display_match_ignoring_internal_holds_local(ctx, left_core, right_core)
+            || commutative_products_equivalent_ignoring_internal_holds_local(
+                ctx, left_core, right_core,
+            )
+            || fractions_equivalent_up_to_commutative_products_local(ctx, left_core, right_core))
+}
+
+fn split_signed_numeric_scale_product_for_compact_residual_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> (num_rational::BigRational, ExprId) {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    if let Expr::Neg(inner) = ctx.get(expr).clone() {
+        let (scale, core) =
+            split_signed_numeric_scale_product_for_compact_residual_local(ctx, inner);
+        return (-scale, core);
+    }
+    if let Expr::Div(num, den) = ctx.get(expr).clone() {
+        let (num_scale, num_core) =
+            split_signed_numeric_scale_product_for_compact_residual_local(ctx, num);
+        let (den_scale, den_core) =
+            split_signed_numeric_scale_product_for_compact_residual_local(ctx, den);
+        if !den_scale.is_zero() {
+            let scale = num_scale / den_scale;
+            let one = num_rational::BigRational::from_integer(1.into());
+            let num_core_is_one = cas_ast::views::as_rational_const(ctx, num_core, 8)
+                .is_some_and(|value| value == one);
+            let den_core_is_one = cas_ast::views::as_rational_const(ctx, den_core, 8)
+                .is_some_and(|value| value == one);
+            let core = match (num_core_is_one, den_core_is_one) {
+                (_, true) => num_core,
+                (true, false) => {
+                    let one_expr = ctx.num(1);
+                    ctx.add(Expr::Div(one_expr, den_core))
+                }
+                (false, false) => ctx.add(Expr::Div(num_core, den_core)),
+            };
+            return (scale, core);
+        }
+    }
+
+    let mut scale = num_rational::BigRational::from_integer(1.into());
+    let mut non_numeric = Vec::new();
+    for factor in cas_math::expr_nary::mul_leaves(ctx, expr) {
+        let factor = cas_ast::hold::strip_all_holds(ctx, factor);
+        if let Some(value) = cas_ast::views::as_rational_const(ctx, factor, 8) {
+            scale *= value;
+            continue;
+        }
+        if let Expr::Neg(inner) = ctx.get(factor).clone() {
+            let (inner_scale, inner_core) =
+                split_signed_numeric_scale_product_for_compact_residual_local(ctx, inner);
+            scale *= -inner_scale;
+            non_numeric.push(inner_core);
+            continue;
+        }
+        non_numeric.push(factor);
+    }
+
+    let core = match non_numeric.as_slice() {
+        [] => ctx.num(1),
+        [single] => *single,
+        _ => cas_math::expr_nary::build_balanced_mul(ctx, &non_numeric),
+    };
+    (scale, core)
+}
+
+fn compact_reciprocal_trig_product_required_conditions_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<Vec<crate::ImplicitCondition>> {
+    let expr = cas_ast::hold::strip_all_holds(ctx, expr);
+    let mut primaries = Vec::new();
+    let mut companions = Vec::new();
+    let mut denominator_radicands = Vec::new();
+    collect_compact_reciprocal_trig_product_signal_local(
+        ctx,
+        expr,
+        false,
+        &mut primaries,
+        &mut companions,
+        &mut denominator_radicands,
+    );
+
+    for (primary_builtin, primary_arg) in primaries {
+        let companion_builtin = match primary_builtin {
+            BuiltinFn::Sec => BuiltinFn::Tan,
+            BuiltinFn::Csc => BuiltinFn::Cot,
+            _ => continue,
+        };
+        let has_companion = companions.iter().any(|(builtin, arg)| {
+            *builtin == companion_builtin
+                && cas_ast::ordering::compare_expr(ctx, *arg, primary_arg)
+                    == std::cmp::Ordering::Equal
+        });
+        if !has_companion {
+            continue;
+        }
+        let Some(radicand) = denominator_radicands
+            .iter()
+            .copied()
+            .find(|radicand| expr_contains_sqrt_radicand_local(ctx, primary_arg, *radicand))
+        else {
+            continue;
+        };
+        let pole_builtin = match primary_builtin {
+            BuiltinFn::Sec => BuiltinFn::Cos,
+            BuiltinFn::Csc => BuiltinFn::Sin,
+            _ => continue,
+        };
+        let pole = ctx.call_builtin(pole_builtin, vec![primary_arg]);
+        return Some(vec![
+            crate::ImplicitCondition::Positive(radicand),
+            crate::ImplicitCondition::NonZero(pole),
+        ]);
+    }
+
+    None
+}
+
+fn collect_compact_reciprocal_trig_product_signal_local(
+    ctx: &mut cas_ast::Context,
+    root: ExprId,
+    in_denominator: bool,
+    primaries: &mut Vec<(BuiltinFn, ExprId)>,
+    companions: &mut Vec<(BuiltinFn, ExprId)>,
+    denominator_radicands: &mut Vec<ExprId>,
+) {
+    let root = cas_ast::hold::strip_all_holds(ctx, root);
+    if in_denominator {
+        if let Some(radicand) = sqrt_radicand_for_compact_product_local(ctx, root) {
+            denominator_radicands.push(radicand);
+        }
+    }
+
+    match ctx.get(root).clone() {
+        Expr::Function(fn_id, args) => {
+            if args.len() == 1 {
+                match ctx.builtin_of(fn_id) {
+                    Some(BuiltinFn::Sec | BuiltinFn::Csc) => {
+                        if let Some(builtin) = ctx.builtin_of(fn_id) {
+                            primaries.push((builtin, args[0]));
+                        }
+                    }
+                    Some(BuiltinFn::Tan | BuiltinFn::Cot) => {
+                        if let Some(builtin) = ctx.builtin_of(fn_id) {
+                            companions.push((builtin, args[0]));
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            for arg in args {
+                collect_compact_reciprocal_trig_product_signal_local(
+                    ctx,
+                    arg,
+                    in_denominator,
+                    primaries,
+                    companions,
+                    denominator_radicands,
+                );
+            }
+        }
+        Expr::Div(num, den) => {
+            collect_compact_reciprocal_trig_product_signal_local(
+                ctx,
+                num,
+                in_denominator,
+                primaries,
+                companions,
+                denominator_radicands,
+            );
+            collect_compact_reciprocal_trig_product_signal_local(
+                ctx,
+                den,
+                true,
+                primaries,
+                companions,
+                denominator_radicands,
+            );
+        }
+        Expr::Add(left, right) | Expr::Sub(left, right) | Expr::Mul(left, right) => {
+            collect_compact_reciprocal_trig_product_signal_local(
+                ctx,
+                left,
+                in_denominator,
+                primaries,
+                companions,
+                denominator_radicands,
+            );
+            collect_compact_reciprocal_trig_product_signal_local(
+                ctx,
+                right,
+                in_denominator,
+                primaries,
+                companions,
+                denominator_radicands,
+            );
+        }
+        Expr::Pow(base, exp) => {
+            collect_compact_reciprocal_trig_product_signal_local(
+                ctx,
+                base,
+                in_denominator,
+                primaries,
+                companions,
+                denominator_radicands,
+            );
+            collect_compact_reciprocal_trig_product_signal_local(
+                ctx,
+                exp,
+                in_denominator,
+                primaries,
+                companions,
+                denominator_radicands,
+            );
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            collect_compact_reciprocal_trig_product_signal_local(
+                ctx,
+                inner,
+                in_denominator,
+                primaries,
+                companions,
+                denominator_radicands,
+            );
+        }
+        Expr::Matrix { data, .. } => {
+            for item in data {
+                collect_compact_reciprocal_trig_product_signal_local(
+                    ctx,
+                    item,
+                    in_denominator,
+                    primaries,
+                    companions,
+                    denominator_radicands,
+                );
+            }
+        }
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => {}
+    }
+}
+
+fn sqrt_radicand_for_compact_product_local(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() == 1 && ctx.is_builtin(*fn_id, BuiltinFn::Sqrt) {
+        Some(args[0])
+    } else {
+        None
+    }
+}
+
+fn expr_contains_sqrt_radicand_local(
+    ctx: &mut cas_ast::Context,
+    root: ExprId,
+    radicand: ExprId,
+) -> bool {
+    let root = cas_ast::hold::strip_all_holds(ctx, root);
+    if sqrt_radicand_for_compact_product_local(ctx, root).is_some_and(|inner| {
+        cas_ast::ordering::compare_expr(ctx, inner, radicand) == std::cmp::Ordering::Equal
+    }) {
+        return true;
+    }
+
+    match ctx.get(root).clone() {
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            expr_contains_sqrt_radicand_local(ctx, left, radicand)
+                || expr_contains_sqrt_radicand_local(ctx, right, radicand)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => {
+            expr_contains_sqrt_radicand_local(ctx, inner, radicand)
+        }
+        Expr::Function(_, args) => args
+            .into_iter()
+            .any(|arg| expr_contains_sqrt_radicand_local(ctx, arg, radicand)),
+        Expr::Matrix { data, .. } => data
+            .into_iter()
+            .any(|item| expr_contains_sqrt_radicand_local(ctx, item, radicand)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
+    }
+}
+
+fn try_compact_reciprocal_trig_product_residual_zero_local(
+    ctx: &mut cas_ast::Context,
+    expr: ExprId,
+) -> Option<(ExprId, Vec<crate::ImplicitCondition>)> {
+    let (left, right) = residual_difference_terms_local(ctx, expr)?;
+    if !exprs_exactly_match_ignoring_internal_holds_local(ctx, left, right)
+        && !exprs_display_match_ignoring_internal_holds_local(ctx, left, right)
+    {
+        return None;
+    }
+    let required_conditions = compact_reciprocal_trig_product_required_conditions_local(ctx, left)
+        .or_else(|| compact_reciprocal_trig_product_required_conditions_local(ctx, right))?;
+    Some((ctx.num(0), required_conditions))
+}
+
 fn try_resolve_direct_post_calculus_before_general_simplify_local(
     ctx: &mut cas_ast::Context,
     expr: ExprId,
@@ -2912,6 +3314,16 @@ fn try_resolve_direct_post_calculus_before_general_simplify_local(
     ) {
         let undefined = ctx.add(Expr::Constant(cas_ast::Constant::Undefined));
         return Some((undefined, Vec::new()));
+    }
+
+    if let Some((result, required_conditions)) =
+        crate::rules::calculus::reciprocal_trig_shifted_sqrt_derivative_presentation(
+            ctx,
+            call.target,
+            &call.var_name,
+        )
+    {
+        return Some((result, required_conditions));
     }
 
     if let Some(result) =
@@ -3697,6 +4109,40 @@ impl Engine {
                 let mut step = crate::Step::new(
                     "Post-calculus residual simplification",
                     "Resolve inverse-trig derivative residual",
+                    resolved,
+                    zero,
+                    Vec::new(),
+                    Some(&self.simplifier.context),
+                );
+                step.meta_mut()
+                    .required_conditions
+                    .extend(required_conditions.iter().cloned());
+                steps.push(step);
+            }
+
+            return Ok((
+                crate::EvalResult::Expr(zero),
+                Vec::new(),
+                steps,
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                Vec::new(),
+                required_conditions,
+            ));
+        }
+
+        if let Some((zero, required_conditions)) =
+            try_compact_reciprocal_trig_product_residual_zero_local(
+                &mut self.simplifier.context,
+                resolved,
+            )
+        {
+            let mut steps = Vec::new();
+            if effective_opts.steps_mode != crate::options::StepsMode::Off {
+                let mut step = crate::Step::new(
+                    "Post-calculus residual simplification",
+                    "Resolve matching compact reciprocal-trig product residual before general simplification",
                     resolved,
                     zero,
                     Vec::new(),
@@ -4617,6 +5063,134 @@ mod tests {
             "0"
         );
         assert_eq!(required_conditions.len(), 3);
+    }
+
+    #[test]
+    fn compact_reciprocal_trig_product_identity_residual_short_circuits() {
+        for (input, expected_pole) in [
+            (
+                "-k*sec(b-sqrt(x))*tan(b-sqrt(x))/(2*sqrt(x)) - (-k*sec(b-sqrt(x))*tan(b-sqrt(x))/(2*sqrt(x)))",
+                "cos(b - sqrt(x))",
+            ),
+            (
+                "-k*csc(b-sqrt(x))*cot(b-sqrt(x))/(2*sqrt(x)) - (-k*csc(b-sqrt(x))*cot(b-sqrt(x))/(2*sqrt(x)))",
+                "sin(b - sqrt(x))",
+            ),
+        ] {
+            let mut ctx = cas_ast::Context::new();
+            let expr = parse(input, &mut ctx).unwrap();
+            let (result, required_conditions) =
+                try_compact_reciprocal_trig_product_residual_zero_local(&mut ctx, expr)
+                    .unwrap_or_else(|| {
+                        panic!("expected compact reciprocal-trig residual route: {input}")
+                    });
+            let required_display: Vec<_> = required_conditions
+                .iter()
+                .map(|condition| match condition {
+                    crate::ImplicitCondition::NonZero(id)
+                    | crate::ImplicitCondition::Positive(id)
+                    | crate::ImplicitCondition::NonNegative(id) => format!(
+                        "{}",
+                        DisplayExpr {
+                            context: &ctx,
+                            id: *id
+                        }
+                    ),
+                    crate::ImplicitCondition::LowerBound(id, bound) => format!(
+                        "{} >= {}",
+                        DisplayExpr {
+                            context: &ctx,
+                            id: *id
+                        },
+                        bound
+                    ),
+                })
+                .collect();
+
+            assert_eq!(
+                format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &ctx,
+                        id: result
+                    }
+                ),
+                "0"
+            );
+            assert!(
+                required_display
+                    .iter()
+                    .any(|condition| condition == expected_pole),
+                "missing pole condition {expected_pole}: {required_display:?}"
+            );
+            assert!(
+                required_display.iter().any(|condition| condition == "x"),
+                "missing positive radicand condition: {required_display:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn shifted_sqrt_reciprocal_trig_diff_residual_short_circuits() {
+        for (input, expected_pole) in [
+            (
+                "diff(sec(b-sqrt(x))*k, x) - (-k*sec(b-sqrt(x))*tan(b-sqrt(x))/(2*sqrt(x)))",
+                "cos(b - sqrt(x))",
+            ),
+            (
+                "diff(-csc(b-sqrt(x))*k, x) - (-k*csc(b-sqrt(x))*cot(b-sqrt(x))/(2*sqrt(x)))",
+                "sin(b - sqrt(x))",
+            ),
+        ] {
+            let mut ctx = cas_ast::Context::new();
+            let expr = parse(input, &mut ctx).unwrap();
+            let (result, required_conditions) =
+                try_diff_shifted_sqrt_reciprocal_trig_residual_zero_local(&mut ctx, expr)
+                    .unwrap_or_else(|| panic!("expected shifted sqrt residual route: {input}"));
+            let required_display: Vec<_> = required_conditions
+                .iter()
+                .map(|condition| match condition {
+                    crate::ImplicitCondition::NonZero(id)
+                    | crate::ImplicitCondition::Positive(id)
+                    | crate::ImplicitCondition::NonNegative(id) => format!(
+                        "{}",
+                        DisplayExpr {
+                            context: &ctx,
+                            id: *id
+                        }
+                    ),
+                    crate::ImplicitCondition::LowerBound(id, bound) => format!(
+                        "{} >= {}",
+                        DisplayExpr {
+                            context: &ctx,
+                            id: *id
+                        },
+                        bound
+                    ),
+                })
+                .collect();
+
+            assert_eq!(
+                format!(
+                    "{}",
+                    DisplayExpr {
+                        context: &ctx,
+                        id: result
+                    }
+                ),
+                "0"
+            );
+            assert!(
+                required_display
+                    .iter()
+                    .any(|condition| condition == expected_pole),
+                "missing pole condition {expected_pole}: {required_display:?}"
+            );
+            assert!(
+                required_display.iter().any(|condition| condition == "x"),
+                "missing positive radicand condition: {required_display:?}"
+            );
+        }
     }
 
     #[test]

@@ -1,7 +1,12 @@
-use cas_api_models::{AssumptionDto, BlockedHintDto, RequiredConditionWire, WarningWire};
+use cas_api_models::{
+    AssumptionDto, BlockedHintDto, EvalLimitApproach, EvalSpecialCommand, RequiredConditionWire,
+    WarningWire,
+};
 use cas_ast::{BuiltinFn, Context, Expr, ExprId};
 use cas_formatter::DisplayExpr;
 use cas_solver_core::domain_normalization::normalize_and_dedupe_conditions;
+use num_rational::BigRational;
+use num_traits::{One, Signed, Zero};
 use std::collections::HashSet;
 
 use crate::eval_output_condition_filter::AssumedConditionFilter;
@@ -37,10 +42,11 @@ pub(crate) fn collect_output_required_conditions(
         ctx,
         &normalized,
         &assumed_filter,
+        raw_input,
         result_display,
     );
 
-    visible_conditions
+    let wires: Vec<_> = visible_conditions
         .iter()
         .filter(|cond| !required_condition_wire_is_redundant(ctx, cond, &visible_conditions))
         .filter(|cond| !assumed_filter.covers_required_condition(ctx, cond))
@@ -61,7 +67,8 @@ pub(crate) fn collect_output_required_conditions(
                 expr_canonical: expr_str,
             }
         })
-        .collect()
+        .collect();
+    dedupe_sqrt_half_power_condition_wires(wires)
 }
 
 fn required_condition_wire_is_redundant(
@@ -82,6 +89,9 @@ fn required_condition_wire_is_redundant(
     if calculus_nonzero_condition_is_redundant(ctx, *nonzero_expr, visible_conditions) {
         return true;
     }
+    if sqrt_like_unary_nonzero_condition_is_redundant(ctx, *nonzero_expr, visible_conditions) {
+        return true;
+    }
 
     reciprocal_trig_log_argument_condition_is_redundant(ctx, *nonzero_expr, visible_conditions)
 }
@@ -99,10 +109,11 @@ pub(crate) fn collect_output_required_display(
         ctx,
         &normalized,
         &assumed_filter,
+        raw_input,
         result_display,
     );
 
-    visible_conditions
+    let displays: Vec<_> = visible_conditions
         .iter()
         .filter(|cond| !required_condition_is_redundant(ctx, cond, &visible_conditions))
         .map(|cond| {
@@ -112,13 +123,169 @@ pub(crate) fn collect_output_required_display(
                 result_display,
             )
         })
+        .collect();
+    dedupe_sqrt_half_power_required_displays(displays)
+}
+
+fn dedupe_sqrt_half_power_condition_wires(
+    wires: Vec<RequiredConditionWire>,
+) -> Vec<RequiredConditionWire> {
+    wires
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, wire)| {
+            let key = sqrt_half_power_display_key(&wire.expr_display);
+            let zero_set_key = sqrt_half_power_zero_set_display_key(&wire.expr_display);
+            let has_prior_equivalent_half_power_display = wires.iter().take(idx).any(|other| {
+                other.kind == wire.kind && sqrt_half_power_display_key(&other.expr_display) == key
+            });
+            let has_preferred_sqrt_display = wires.iter().enumerate().any(|(other_idx, other)| {
+                other_idx != idx
+                    && other.kind == wire.kind
+                    && other.expr_display.contains("sqrt(")
+                    && (sqrt_half_power_display_key(&other.expr_display) == key
+                        || sqrt_half_power_zero_set_display_key(&other.expr_display).is_some_and(
+                            |other_key| zero_set_key.as_ref().is_some_and(|key| other_key == *key),
+                        ))
+            });
+            (!(display_contains_half_power(&wire.expr_display)
+                && (has_preferred_sqrt_display || has_prior_equivalent_half_power_display)))
+                .then_some(wire.clone())
+        })
         .collect()
+}
+
+fn dedupe_sqrt_half_power_required_displays(displays: Vec<String>) -> Vec<String> {
+    displays
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, display)| {
+            let key = sqrt_half_power_display_key(display);
+            let zero_set_key = sqrt_half_power_zero_set_display_key(display);
+            let has_prior_equivalent_half_power_display = displays
+                .iter()
+                .take(idx)
+                .any(|other| sqrt_half_power_display_key(other) == key);
+            let has_preferred_sqrt_display =
+                displays.iter().enumerate().any(|(other_idx, other)| {
+                    other_idx != idx
+                        && other.contains("sqrt(")
+                        && (sqrt_half_power_display_key(other) == key
+                            || sqrt_half_power_zero_set_display_key(other).is_some_and(
+                                |other_key| {
+                                    zero_set_key.as_ref().is_some_and(|key| other_key == *key)
+                                },
+                            ))
+                });
+            (!(display_contains_half_power(display)
+                && (has_preferred_sqrt_display || has_prior_equivalent_half_power_display)))
+                .then(|| display.clone())
+        })
+        .collect()
+}
+
+fn display_contains_half_power(display: &str) -> bool {
+    display.contains("^(1/2)") || display.contains("^(1 / 2)")
+}
+
+fn sqrt_half_power_display_key(display: &str) -> String {
+    let mut normalized = display.to_string();
+    while let Some((power_start, power_len)) = next_half_power_display(&normalized) {
+        let Some((base_start, base_text)) =
+            display_base_before_half_power(&normalized, power_start)
+        else {
+            break;
+        };
+        let replacement = format!("sqrt({base_text})");
+        normalized.replace_range(base_start..power_start + power_len, &replacement);
+    }
+    normalized
+}
+
+fn next_half_power_display(display: &str) -> Option<(usize, usize)> {
+    ["^(1/2)", "^(1 / 2)"]
+        .into_iter()
+        .filter_map(|needle| display.find(needle).map(|idx| (idx, needle.len())))
+        .min_by_key(|(idx, _)| *idx)
+}
+
+fn sqrt_half_power_zero_set_display_key(display: &str) -> Option<String> {
+    let normalized = sqrt_half_power_display_key(display);
+    for builtin in [
+        "cos", "sin", "tan", "cot", "sec", "csc", "cosh", "sinh", "tanh",
+    ] {
+        let prefix = format!("{builtin}(");
+        for suffix in [") ≠ 0", ")"] {
+            if !normalized.starts_with(&prefix) || !normalized.ends_with(suffix) {
+                continue;
+            }
+
+            let arg = &normalized[prefix.len()..normalized.len() - suffix.len()];
+            let Some((left, right)) = split_top_level_subtraction_display(arg) else {
+                continue;
+            };
+            let mut parts = [left.trim().to_string(), right.trim().to_string()];
+            parts.sort();
+            return Some(format!("{builtin}({} - {}){suffix}", parts[0], parts[1]));
+        }
+    }
+
+    None
+}
+
+fn split_top_level_subtraction_display(display: &str) -> Option<(&str, &str)> {
+    let mut depth = 0usize;
+    for (idx, ch) in display.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            '-' if depth == 0 => return Some((&display[..idx], &display[idx + ch.len_utf8()..])),
+            _ => {}
+        }
+    }
+    None
+}
+
+fn display_base_before_half_power(display: &str, power_start: usize) -> Option<(usize, String)> {
+    let prefix = &display[..power_start];
+    let trimmed_end = prefix.trim_end().len();
+    if trimmed_end == 0 {
+        return None;
+    }
+
+    if prefix[..trimmed_end].ends_with(')') {
+        let mut depth = 0usize;
+        for (idx, ch) in prefix[..trimmed_end].char_indices().rev() {
+            match ch {
+                ')' => depth += 1,
+                '(' => {
+                    depth = depth.saturating_sub(1);
+                    if depth == 0 {
+                        return Some((idx, prefix[idx + 1..trimmed_end - 1].to_string()));
+                    }
+                }
+                _ => {}
+            }
+        }
+        return None;
+    }
+
+    let mut start = trimmed_end;
+    for (idx, ch) in prefix[..trimmed_end].char_indices().rev() {
+        if ch.is_ascii_alphanumeric() || ch == '_' {
+            start = idx;
+        } else {
+            break;
+        }
+    }
+    (start < trimmed_end).then(|| (start, prefix[start..trimmed_end].to_string()))
 }
 
 fn visible_required_conditions_after_public_suppression<'a>(
     ctx: &Context,
     normalized: &'a [crate::ImplicitCondition],
     assumed_filter: &AssumedConditionFilter,
+    raw_input: &str,
     result_display: Option<&str>,
 ) -> Vec<&'a crate::ImplicitCondition> {
     if result_display.map(str::trim_start) == Some("undefined")
@@ -129,11 +296,392 @@ fn visible_required_conditions_after_public_suppression<'a>(
         return Vec::new();
     }
 
+    let infinity_tail = resolved_infinity_limit_tail(raw_input, result_display);
     normalized
         .iter()
         .filter(|cond| !assumed_filter.covers_required_condition(ctx, cond))
         .filter(|cond| !should_suppress_public_required_condition(ctx, cond, result_display))
+        .filter(|cond| {
+            !infinity_tail.as_ref().is_some_and(|tail| {
+                required_condition_is_eventually_true_on_infinity_tail(
+                    ctx,
+                    cond,
+                    &tail.var,
+                    tail.approach,
+                )
+            })
+        })
         .collect()
+}
+
+#[derive(Clone, Copy)]
+enum InfinityTailApproach {
+    Pos,
+    Neg,
+}
+
+struct InfinityLimitTail {
+    var: String,
+    approach: InfinityTailApproach,
+}
+
+fn resolved_infinity_limit_tail(
+    raw_input: &str,
+    result_display: Option<&str>,
+) -> Option<InfinityLimitTail> {
+    let result_display = result_display?.trim_start();
+    if result_display == "undefined" || result_display.starts_with("limit(") {
+        return None;
+    }
+
+    let Some(EvalSpecialCommand::Limit { var, approach, .. }) =
+        cas_api_models::parse_eval_special_command(raw_input)
+    else {
+        return None;
+    };
+    let approach = match approach {
+        EvalLimitApproach::PosInfinity => InfinityTailApproach::Pos,
+        EvalLimitApproach::NegInfinity => InfinityTailApproach::Neg,
+        EvalLimitApproach::Finite(_) => return None,
+    };
+    Some(InfinityLimitTail { var, approach })
+}
+
+fn required_condition_is_eventually_true_on_infinity_tail(
+    ctx: &Context,
+    cond: &crate::ImplicitCondition,
+    var: &str,
+    approach: InfinityTailApproach,
+) -> bool {
+    match cond {
+        crate::ImplicitCondition::Positive(expr) | crate::ImplicitCondition::NonNegative(expr) => {
+            affine_expr_tends_positive_on_tail(ctx, *expr, var, approach)
+                || polynomial_in_limit_var_tends_positive_on_tail(ctx, *expr, var, approach)
+                || rational_in_limit_var_is_eventually_positive_on_tail(ctx, *expr, var, approach)
+        }
+        crate::ImplicitCondition::LowerBound(expr, lower) => {
+            if polynomial_in_limit_var_tends_positive_on_tail(ctx, *expr, var, approach)
+                || rational_in_limit_var_tends_positive_infinity_on_tail(ctx, *expr, var, approach)
+                || rational_in_limit_var_is_eventually_above_lower_on_tail(
+                    ctx, *expr, lower, var, approach,
+                )
+            {
+                return true;
+            }
+            let Some(form) = affine_form_in_limit_var(ctx, *expr, var) else {
+                return false;
+            };
+            affine_slope_tends_positive_on_tail(&form.slope, approach)
+                || (form.slope.is_zero() && form.intercept >= *lower)
+        }
+        crate::ImplicitCondition::NonZero(expr) => {
+            affine_form_in_limit_var(ctx, *expr, var).is_some_and(|form| !form.slope.is_zero())
+                || polynomial_in_limit_var_has_eventual_nonzero_tail(ctx, *expr, var)
+                || rational_in_limit_var_has_eventual_nonzero_tail(ctx, *expr, var)
+        }
+    }
+}
+
+fn affine_expr_tends_positive_on_tail(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    approach: InfinityTailApproach,
+) -> bool {
+    affine_form_in_limit_var(ctx, expr, var)
+        .is_some_and(|form| affine_slope_tends_positive_on_tail(&form.slope, approach))
+}
+
+fn affine_slope_tends_positive_on_tail(
+    slope: &BigRational,
+    approach: InfinityTailApproach,
+) -> bool {
+    match approach {
+        InfinityTailApproach::Pos => slope.is_positive(),
+        InfinityTailApproach::Neg => slope.is_negative(),
+    }
+}
+
+fn polynomial_in_limit_var_tends_positive_on_tail(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    approach: InfinityTailApproach,
+) -> bool {
+    let Ok(poly) = cas_math::polynomial::Polynomial::from_expr(ctx, expr, var) else {
+        return false;
+    };
+    if poly.is_zero() || poly.degree() == 0 {
+        return false;
+    }
+
+    let leading_coeff = poly.leading_coeff();
+    match approach {
+        InfinityTailApproach::Pos => leading_coeff.is_positive(),
+        InfinityTailApproach::Neg if poly.degree() % 2 == 0 => leading_coeff.is_positive(),
+        InfinityTailApproach::Neg => leading_coeff.is_negative(),
+    }
+}
+
+fn polynomial_in_limit_var_has_eventual_nonzero_tail(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> bool {
+    cas_math::polynomial::Polynomial::from_expr(ctx, expr, var)
+        .ok()
+        .is_some_and(|poly| !poly.is_zero() && poly.degree() > 0)
+}
+
+#[derive(Clone)]
+struct RationalLimitVarForm {
+    numerator: cas_math::polynomial::Polynomial,
+    denominator: cas_math::polynomial::Polynomial,
+}
+
+impl RationalLimitVarForm {
+    fn from_polynomial(poly: cas_math::polynomial::Polynomial) -> Self {
+        Self {
+            denominator: cas_math::polynomial::Polynomial::one(poly.var.clone()),
+            numerator: poly,
+        }
+    }
+
+    fn neg(self) -> Self {
+        Self {
+            numerator: self.numerator.neg(),
+            denominator: self.denominator,
+        }
+    }
+
+    fn add(self, rhs: Self) -> Self {
+        Self {
+            numerator: self
+                .numerator
+                .mul(&rhs.denominator)
+                .add(&rhs.numerator.mul(&self.denominator)),
+            denominator: self.denominator.mul(&rhs.denominator),
+        }
+    }
+
+    fn sub(self, rhs: Self) -> Self {
+        self.add(rhs.neg())
+    }
+
+    fn mul(self, rhs: Self) -> Self {
+        Self {
+            numerator: self.numerator.mul(&rhs.numerator),
+            denominator: self.denominator.mul(&rhs.denominator),
+        }
+    }
+
+    fn div(self, rhs: Self) -> Option<Self> {
+        if rhs.numerator.is_zero() {
+            return None;
+        }
+        Some(Self {
+            numerator: self.numerator.mul(&rhs.denominator),
+            denominator: self.denominator.mul(&rhs.numerator),
+        })
+    }
+
+    fn sub_constant(self, value: &BigRational) -> Self {
+        let denominator = self.denominator;
+        let constant =
+            cas_math::polynomial::Polynomial::new(vec![value.clone()], denominator.var.clone());
+        let scaled_denominator = denominator.mul(&constant);
+        Self {
+            numerator: self.numerator.sub(&scaled_denominator),
+            denominator,
+        }
+    }
+}
+
+fn rational_form_in_limit_var(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<RationalLimitVarForm> {
+    if let Ok(poly) = cas_math::polynomial::Polynomial::from_expr(ctx, expr, var) {
+        return Some(RationalLimitVarForm::from_polynomial(poly));
+    }
+
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Neg(inner) => Some(rational_form_in_limit_var(ctx, *inner, var)?.neg()),
+        Expr::Add(left, right) => Some(
+            rational_form_in_limit_var(ctx, *left, var)?
+                .add(rational_form_in_limit_var(ctx, *right, var)?),
+        ),
+        Expr::Sub(left, right) => Some(
+            rational_form_in_limit_var(ctx, *left, var)?
+                .sub(rational_form_in_limit_var(ctx, *right, var)?),
+        ),
+        Expr::Mul(left, right) => Some(
+            rational_form_in_limit_var(ctx, *left, var)?
+                .mul(rational_form_in_limit_var(ctx, *right, var)?),
+        ),
+        Expr::Div(left, right) => rational_form_in_limit_var(ctx, *left, var)?
+            .div(rational_form_in_limit_var(ctx, *right, var)?),
+        Expr::Hold(inner) => rational_form_in_limit_var(ctx, *inner, var),
+        _ => None,
+    }
+}
+
+fn rational_in_limit_var_tail_sign(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    approach: InfinityTailApproach,
+) -> Option<bool> {
+    let form = rational_form_in_limit_var(ctx, expr, var)?;
+    rational_form_tail_sign(&form, approach)
+}
+
+fn rational_form_tail_sign(
+    form: &RationalLimitVarForm,
+    approach: InfinityTailApproach,
+) -> Option<bool> {
+    if form.numerator.is_zero() || form.denominator.is_zero() {
+        return None;
+    }
+
+    let leading_ratio = form.numerator.leading_coeff() / form.denominator.leading_coeff();
+    let degree_delta = form.numerator.degree().abs_diff(form.denominator.degree());
+    Some(match approach {
+        InfinityTailApproach::Pos => leading_ratio.is_positive(),
+        InfinityTailApproach::Neg if degree_delta.is_multiple_of(2) => leading_ratio.is_positive(),
+        InfinityTailApproach::Neg => leading_ratio.is_negative(),
+    })
+}
+
+fn rational_in_limit_var_is_eventually_positive_on_tail(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    approach: InfinityTailApproach,
+) -> bool {
+    rational_in_limit_var_tail_sign(ctx, expr, var, approach) == Some(true)
+}
+
+fn rational_in_limit_var_is_eventually_above_lower_on_tail(
+    ctx: &Context,
+    expr: ExprId,
+    lower: &BigRational,
+    var: &str,
+    approach: InfinityTailApproach,
+) -> bool {
+    let Some(form) = rational_form_in_limit_var(ctx, expr, var) else {
+        return false;
+    };
+    rational_form_tail_sign(&form.sub_constant(lower), approach) == Some(true)
+}
+
+fn rational_in_limit_var_tends_positive_infinity_on_tail(
+    ctx: &Context,
+    expr: ExprId,
+    var: &str,
+    approach: InfinityTailApproach,
+) -> bool {
+    let Some(form) = rational_form_in_limit_var(ctx, expr, var) else {
+        return false;
+    };
+    if form.numerator.is_zero()
+        || form.denominator.is_zero()
+        || form.numerator.degree() <= form.denominator.degree()
+    {
+        return false;
+    }
+
+    rational_in_limit_var_tail_sign(ctx, expr, var, approach) == Some(true)
+}
+
+fn rational_in_limit_var_has_eventual_nonzero_tail(ctx: &Context, expr: ExprId, var: &str) -> bool {
+    rational_form_in_limit_var(ctx, expr, var).is_some_and(|form| {
+        !form.numerator.is_zero()
+            && !form.denominator.is_zero()
+            && (form.numerator.degree() > 0 || form.denominator.degree() > 0)
+    })
+}
+
+#[derive(Clone)]
+struct LimitVarAffineForm {
+    slope: BigRational,
+    intercept: BigRational,
+}
+
+impl LimitVarAffineForm {
+    fn constant(value: BigRational) -> Self {
+        Self {
+            slope: BigRational::zero(),
+            intercept: value,
+        }
+    }
+
+    fn variable() -> Self {
+        Self {
+            slope: BigRational::one(),
+            intercept: BigRational::zero(),
+        }
+    }
+
+    fn scale(self, factor: BigRational) -> Self {
+        Self {
+            slope: self.slope * factor.clone(),
+            intercept: self.intercept * factor,
+        }
+    }
+
+    fn add(self, rhs: Self) -> Self {
+        Self {
+            slope: self.slope + rhs.slope,
+            intercept: self.intercept + rhs.intercept,
+        }
+    }
+}
+
+fn affine_form_in_limit_var(ctx: &Context, expr: ExprId, var: &str) -> Option<LimitVarAffineForm> {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Number(value) => Some(LimitVarAffineForm::constant(value.clone())),
+        Expr::Variable(symbol) if ctx.sym_name(*symbol) == var => {
+            Some(LimitVarAffineForm::variable())
+        }
+        Expr::Variable(_) | Expr::Constant(_) | Expr::Function(_, _) | Expr::Matrix { .. } => None,
+        Expr::SessionRef(_) => None,
+        Expr::Hold(inner) => affine_form_in_limit_var(ctx, *inner, var),
+        Expr::Neg(inner) => {
+            affine_form_in_limit_var(ctx, *inner, var).map(|form| form.scale(-BigRational::one()))
+        }
+        Expr::Add(left, right) => Some(
+            affine_form_in_limit_var(ctx, *left, var)?
+                .add(affine_form_in_limit_var(ctx, *right, var)?),
+        ),
+        Expr::Sub(left, right) => Some(
+            affine_form_in_limit_var(ctx, *left, var)?
+                .add(affine_form_in_limit_var(ctx, *right, var)?.scale(-BigRational::one())),
+        ),
+        Expr::Mul(left, right) => {
+            let left_form = affine_form_in_limit_var(ctx, *left, var)?;
+            let right_form = affine_form_in_limit_var(ctx, *right, var)?;
+            if left_form.slope.is_zero() {
+                Some(right_form.scale(left_form.intercept))
+            } else if right_form.slope.is_zero() {
+                Some(left_form.scale(right_form.intercept))
+            } else {
+                None
+            }
+        }
+        Expr::Div(left, right) => {
+            let numerator = affine_form_in_limit_var(ctx, *left, var)?;
+            let denominator = affine_form_in_limit_var(ctx, *right, var)?;
+            if !denominator.slope.is_zero() || denominator.intercept.is_zero() {
+                return None;
+            }
+            Some(numerator.scale(BigRational::one() / denominator.intercept))
+        }
+        Expr::Pow(_, _) => None,
+    }
 }
 
 fn required_condition_is_impossible(ctx: &Context, cond: &crate::ImplicitCondition) -> bool {
@@ -200,6 +748,9 @@ fn required_condition_is_redundant(
     }
 
     if calculus_nonzero_condition_is_redundant(ctx, *nonzero_expr, visible_conditions) {
+        return true;
+    }
+    if sqrt_like_unary_nonzero_condition_is_redundant(ctx, *nonzero_expr, visible_conditions) {
         return true;
     }
 
@@ -398,6 +949,251 @@ fn calculus_nonzero_condition_is_redundant(
                     *candidate_expr,
                 ))
     })
+}
+
+fn sqrt_like_unary_nonzero_condition_is_redundant(
+    ctx: &Context,
+    nonzero_expr: ExprId,
+    visible_conditions: &[&crate::ImplicitCondition],
+) -> bool {
+    let Some((required_builtin, arg)) = sqrt_like_unary_condition_arg(ctx, nonzero_expr) else {
+        return false;
+    };
+    if !expr_contains_positive_half_power(ctx, arg) || expr_contains_sqrt_call(ctx, arg) {
+        return false;
+    }
+
+    visible_conditions.iter().any(|candidate| {
+        let crate::ImplicitCondition::NonZero(candidate_expr) = candidate else {
+            return false;
+        };
+        if *candidate_expr == nonzero_expr {
+            return false;
+        }
+
+        let Some((candidate_builtin, candidate_arg)) =
+            sqrt_like_unary_condition_arg(ctx, *candidate_expr)
+        else {
+            return false;
+        };
+
+        candidate_builtin == required_builtin
+            && expr_contains_sqrt_call(ctx, candidate_arg)
+            && (sqrt_like_args_equivalent(ctx, candidate_arg, arg)
+                || sqrt_like_unary_zero_set_args_equivalent(
+                    ctx,
+                    required_builtin,
+                    candidate_arg,
+                    arg,
+                ))
+    })
+}
+
+fn sqrt_like_unary_zero_set_args_equivalent(
+    ctx: &Context,
+    builtin: BuiltinFn,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    if !matches!(
+        builtin,
+        BuiltinFn::Cos
+            | BuiltinFn::Sin
+            | BuiltinFn::Tan
+            | BuiltinFn::Cot
+            | BuiltinFn::Sec
+            | BuiltinFn::Csc
+            | BuiltinFn::Cosh
+            | BuiltinFn::Sinh
+            | BuiltinFn::Tanh
+    ) {
+        return false;
+    }
+
+    sqrt_like_args_are_negations(ctx, left, right)
+}
+
+fn sqrt_like_args_are_negations(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    let left = cas_ast::hold::unwrap_hold(ctx, left);
+    let right = cas_ast::hold::unwrap_hold(ctx, right);
+
+    if let Expr::Neg(left_inner) = ctx.get(left) {
+        return sqrt_like_args_equivalent(ctx, *left_inner, right);
+    }
+    if let Expr::Neg(right_inner) = ctx.get(right) {
+        return sqrt_like_args_equivalent(ctx, left, *right_inner);
+    }
+
+    match (ctx.get(left), ctx.get(right)) {
+        (Expr::Sub(left_a, left_b), Expr::Sub(right_a, right_b)) => {
+            sqrt_like_args_equivalent(ctx, *left_a, *right_b)
+                && sqrt_like_args_equivalent(ctx, *left_b, *right_a)
+        }
+        _ => false,
+    }
+}
+
+fn sqrt_like_unary_condition_arg(ctx: &Context, expr: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    for builtin in [
+        BuiltinFn::Cos,
+        BuiltinFn::Sin,
+        BuiltinFn::Tan,
+        BuiltinFn::Cot,
+        BuiltinFn::Sec,
+        BuiltinFn::Csc,
+        BuiltinFn::Cosh,
+        BuiltinFn::Sinh,
+        BuiltinFn::Tanh,
+    ] {
+        if let Some(arg) = unary_builtin_arg(ctx, expr, builtin) {
+            if expr_contains_sqrt_like_form(ctx, arg) {
+                return Some((builtin, arg));
+            }
+        }
+    }
+    None
+}
+
+fn expr_contains_sqrt_like_form(ctx: &Context, expr: ExprId) -> bool {
+    if unary_builtin_arg(ctx, expr, BuiltinFn::Sqrt).is_some() {
+        return true;
+    }
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| expr_contains_sqrt_like_form(ctx, *arg)),
+        Expr::Pow(_, exp) if is_positive_half_literal(ctx, *exp) => true,
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            expr_contains_sqrt_like_form(ctx, *left) || expr_contains_sqrt_like_form(ctx, *right)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_sqrt_like_form(ctx, *inner),
+        Expr::Matrix { data, .. } => data
+            .iter()
+            .any(|entry| expr_contains_sqrt_like_form(ctx, *entry)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
+    }
+}
+
+fn sqrt_like_args_equivalent(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    if cas_ast::ordering::compare_expr(ctx, left, right) == std::cmp::Ordering::Equal
+        || cas_math::expr_domain::exprs_equivalent(ctx, left, right)
+    {
+        return true;
+    }
+
+    let left = cas_ast::hold::unwrap_hold(ctx, left);
+    let right = cas_ast::hold::unwrap_hold(ctx, right);
+    if let (Some(left_arg), Expr::Pow(right_base, right_exp)) = (
+        unary_builtin_arg(ctx, left, BuiltinFn::Sqrt),
+        ctx.get(right),
+    ) {
+        if is_positive_half_literal(ctx, *right_exp) {
+            return sqrt_like_args_equivalent(ctx, left_arg, *right_base);
+        }
+    }
+    if let (Expr::Pow(left_base, left_exp), Some(right_arg)) = (
+        ctx.get(left),
+        unary_builtin_arg(ctx, right, BuiltinFn::Sqrt),
+    ) {
+        if is_positive_half_literal(ctx, *left_exp) {
+            return sqrt_like_args_equivalent(ctx, *left_base, right_arg);
+        }
+    }
+
+    match (ctx.get(left), ctx.get(right)) {
+        (Expr::Function(left_fn, left_args), Expr::Pow(right_base, right_exp))
+            if ctx.is_builtin(*left_fn, BuiltinFn::Sqrt)
+                && left_args.len() == 1
+                && is_positive_half_literal(ctx, *right_exp) =>
+        {
+            sqrt_like_args_equivalent(ctx, left_args[0], *right_base)
+        }
+        (Expr::Pow(left_base, left_exp), Expr::Function(right_fn, right_args))
+            if is_positive_half_literal(ctx, *left_exp)
+                && ctx.is_builtin(*right_fn, BuiltinFn::Sqrt)
+                && right_args.len() == 1 =>
+        {
+            sqrt_like_args_equivalent(ctx, *left_base, right_args[0])
+        }
+        (Expr::Function(left_fn, left_args), Expr::Function(right_fn, right_args))
+            if left_fn == right_fn && left_args.len() == right_args.len() =>
+        {
+            left_args
+                .iter()
+                .zip(right_args.iter())
+                .all(|(left_arg, right_arg)| sqrt_like_args_equivalent(ctx, *left_arg, *right_arg))
+        }
+        (Expr::Add(left_a, left_b), Expr::Add(right_a, right_b))
+        | (Expr::Sub(left_a, left_b), Expr::Sub(right_a, right_b))
+        | (Expr::Mul(left_a, left_b), Expr::Mul(right_a, right_b))
+        | (Expr::Div(left_a, left_b), Expr::Div(right_a, right_b))
+        | (Expr::Pow(left_a, left_b), Expr::Pow(right_a, right_b)) => {
+            sqrt_like_args_equivalent(ctx, *left_a, *right_a)
+                && sqrt_like_args_equivalent(ctx, *left_b, *right_b)
+        }
+        (Expr::Neg(left_inner), Expr::Neg(right_inner))
+        | (Expr::Hold(left_inner), Expr::Hold(right_inner)) => {
+            sqrt_like_args_equivalent(ctx, *left_inner, *right_inner)
+        }
+        _ => false,
+    }
+}
+
+fn expr_contains_sqrt_call(ctx: &Context, expr: ExprId) -> bool {
+    if unary_builtin_arg(ctx, expr, BuiltinFn::Sqrt).is_some() {
+        return true;
+    }
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Function(_, args) => args.iter().any(|arg| expr_contains_sqrt_call(ctx, *arg)),
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            expr_contains_sqrt_call(ctx, *left) || expr_contains_sqrt_call(ctx, *right)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_sqrt_call(ctx, *inner),
+        Expr::Matrix { data, .. } => data
+            .iter()
+            .any(|entry| expr_contains_sqrt_call(ctx, *entry)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
+    }
+}
+
+fn expr_contains_positive_half_power(ctx: &Context, expr: ExprId) -> bool {
+    let expr = cas_ast::hold::unwrap_hold(ctx, expr);
+    match ctx.get(expr) {
+        Expr::Pow(_, exp) if is_positive_half_literal(ctx, *exp) => true,
+        Expr::Function(_, args) => args
+            .iter()
+            .any(|arg| expr_contains_positive_half_power(ctx, *arg)),
+        Expr::Add(left, right)
+        | Expr::Sub(left, right)
+        | Expr::Mul(left, right)
+        | Expr::Div(left, right)
+        | Expr::Pow(left, right) => {
+            expr_contains_positive_half_power(ctx, *left)
+                || expr_contains_positive_half_power(ctx, *right)
+        }
+        Expr::Neg(inner) | Expr::Hold(inner) => expr_contains_positive_half_power(ctx, *inner),
+        Expr::Matrix { data, .. } => data
+            .iter()
+            .any(|entry| expr_contains_positive_half_power(ctx, *entry)),
+        Expr::Number(_) | Expr::Constant(_) | Expr::Variable(_) | Expr::SessionRef(_) => false,
+    }
+}
+
+fn is_positive_half_literal(ctx: &Context, expr: ExprId) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Number(value) if *value == BigRational::new(1.into(), 2.into())
+    )
 }
 
 #[derive(Clone, Copy)]

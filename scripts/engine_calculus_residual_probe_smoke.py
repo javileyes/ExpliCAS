@@ -22,6 +22,13 @@ from fractions import Fraction
 from typing import Any, Literal
 
 
+SCRIPT_DIR = pathlib.Path(__file__).resolve().parent
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+from engine_command_matrix_observability import stderr_fragility_error
+
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 DEFAULT_CAS_CLI = ROOT / "target" / "release" / "cas_cli"
 
@@ -33,6 +40,7 @@ IssueKind = Literal[
     "result_mismatch",
     "missing_required_conditions",
     "impossible_required_conditions",
+    "stderr_fragility",
     "unexpected_warnings",
     "no_matching_cases",
     "timeout",
@@ -1077,6 +1085,7 @@ def run_probe(
         impossible_required=impossible_required,
         warnings=warnings,
         forbid_warnings=forbid_warnings,
+        stderr_fragility=stderr_fragility_error(stderr),
     )
     status: Status = "pass" if error is None else "fail"
     error_kind = classify_error_kind(error)
@@ -1331,6 +1340,8 @@ def classify_error_kind(error: str | None) -> IssueKind | None:
         return "missing_required_conditions"
     if error.startswith("impossible required conditions:"):
         return "impossible_required_conditions"
+    if "fragile substring" in error:
+        return "stderr_fragility"
     if error.startswith("unexpected warnings:"):
         return "unexpected_warnings"
     return None
@@ -1458,6 +1469,7 @@ def classify_error(
     impossible_required: tuple[str, ...],
     warnings: tuple[str, ...],
     forbid_warnings: bool,
+    stderr_fragility: str | None = None,
 ) -> str | None:
     if returncode != 0:
         return f"nonzero exit: {returncode}"
@@ -1474,6 +1486,8 @@ def classify_error(
         return f"missing required conditions: {', '.join(missing)}"
     if impossible_required:
         return f"impossible required conditions: {', '.join(impossible_required)}"
+    if stderr_fragility is not None:
+        return stderr_fragility
     if forbid_warnings and warnings:
         return f"unexpected warnings: {', '.join(warnings)}"
     return None

@@ -3054,6 +3054,232 @@ fn square_root_quotient_diff_uses_compact_post_calculus_presentation() {
 }
 
 #[test]
+fn log_over_sqrt_diff_uses_compact_post_calculus_root_denominator_presentation() {
+    let cases = [
+        (
+            "diff(ln(x)/sqrt(x), x)",
+            "(2 - ln(x)) / (2 * x * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(2*ln(x)/sqrt(x), x)",
+            "(2 - ln(x)) / (x * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(ln(x)/(2*sqrt(x)), x)",
+            "(2 - ln(x)) / (4 * x * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(ln(x)/(a*sqrt(x)), x)",
+            "(2 - ln(x)) / (2 * a * x * sqrt(x))",
+            vec!["a ≠ 0".to_string(), "x > 0".to_string()],
+        ),
+        (
+            "diff((a*ln(x))/sqrt(x), x)",
+            "a * (2 - ln(x)) / (2 * x * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(-ln(x)/sqrt(x), x)",
+            "-(2 - ln(x)) / (2 * x * sqrt(x))",
+            vec!["x > 0".to_string()],
+        ),
+        (
+            "diff(ln(x+1)/sqrt(x+1), x)",
+            "(2 - ln(x + 1)) / (2 * (x + 1) * sqrt(x + 1))",
+            vec!["x > -1".to_string()],
+        ),
+        (
+            "diff(ln(x+1)/(2*sqrt(x+1)), x)",
+            "(2 - ln(x + 1)) / (4 * (x + 1) * sqrt(x + 1))",
+            vec!["x > -1".to_string()],
+        ),
+        (
+            "diff(ln(x+1)/(a*sqrt(x+1)), x)",
+            "(2 - ln(x + 1)) / (2 * a * (x + 1) * sqrt(x + 1))",
+            vec!["a ≠ 0".to_string(), "x > -1".to_string()],
+        ),
+        (
+            "diff(ln(2*x+1)/sqrt(2*x+1), x)",
+            "(2 - ln(2 * x + 1)) / ((2 * x + 1) * sqrt(2 * x + 1))",
+            vec!["x > -1/2".to_string()],
+        ),
+        (
+            "diff(ln(2*x+1)/(2*sqrt(2*x+1)), x)",
+            "(2 - ln(2 * x + 1)) / (2 * (2 * x + 1) * sqrt(2 * x + 1))",
+            vec!["x > -1/2".to_string()],
+        ),
+        (
+            "diff(ln(x^2+1)/sqrt(x^2+1), x)",
+            "x * (2 - ln(x^2 + 1)) / ((x^2 + 1) * sqrt(x^2 + 1))",
+            Vec::new(),
+        ),
+        (
+            "diff((3*ln(x^2+1))/sqrt(x^2+1), x)",
+            "3 * x * (2 - ln(x^2 + 1)) / ((x^2 + 1) * sqrt(x^2 + 1))",
+            Vec::new(),
+        ),
+    ];
+
+    for (input, expected, expected_required) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            !result.contains("^(-3/2)") && !result.contains("^(1/2)"),
+            "post-calculus presentation should avoid half-power notation: {result}"
+        );
+
+        let expected_expr =
+            parse(expected, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected_expr),
+            "post-calculus presentation must remain equivalent, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+        assert_eq!(
+            required, expected_required,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name == "Symbolic Differentiation"),
+            "expected the derivative to keep the ordinary symbolic differentiation trace"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name == "Present calculus result in compact form"),
+            "expected a visible post-calculus presentation step"
+        );
+    }
+}
+
+#[test]
+fn sqrt_over_log_symbolic_denominator_scale_diff_avoids_depth_overflow_route() {
+    let cases = [
+        (
+            "diff(sqrt(x)/(a*ln(x)), x)",
+            "(ln(x) - 2) / (2 * a * ln(x)^2 * sqrt(x))",
+            vec![
+                "a ≠ 0".to_string(),
+                "x ≠ 1".to_string(),
+                "x > 0".to_string(),
+            ],
+        ),
+        (
+            "diff(sqrt(x+1)/(a*ln(x+1)), x)",
+            "(ln(x + 1) - 2) / (2 * a * ln(x + 1)^2 * sqrt(x + 1))",
+            vec![
+                "a ≠ 0".to_string(),
+                "x ≠ 0".to_string(),
+                "x > -1".to_string(),
+            ],
+        ),
+    ];
+
+    for (input, expected, expected_required) in cases {
+        let mut engine = Engine::new();
+        let mut state = SessionState::new();
+        state.options_mut().steps_mode = StepsMode::On;
+        let parsed = parse(input, &mut engine.simplifier.context).expect("parse");
+
+        let output = engine
+            .eval(
+                &mut state,
+                EvalRequest {
+                    raw_input: input.to_string(),
+                    parsed,
+                    action: EvalAction::Simplify,
+                    auto_store: false,
+                },
+            )
+            .expect("eval failed");
+        let result_expr = match output.result {
+            EvalResult::Expr(expr) => expr,
+            other => panic!("expected expression result, got {other:?}"),
+        };
+        let result = format!(
+            "{}",
+            DisplayExpr {
+                context: &engine.simplifier.context,
+                id: result_expr,
+            }
+        );
+
+        assert_eq!(result, expected, "input: {input}");
+        assert!(
+            !result.contains("^(-1/2)") && !result.contains("^(1/2)"),
+            "symbolic denominator scale presentation should avoid half-power notation: {result}"
+        );
+
+        let expected_expr =
+            parse(expected, &mut engine.simplifier.context).expect("parse expected");
+        assert!(
+            engine.simplifier.are_equivalent(result_expr, expected_expr),
+            "post-calculus presentation must remain equivalent, got: {result}"
+        );
+
+        let required: Vec<String> = normalize_and_dedupe_conditions(
+            &mut engine.simplifier.context,
+            &output.required_conditions,
+        )
+        .iter()
+        .map(|cond| cond.display(&engine.simplifier.context))
+        .collect();
+        assert_eq!(
+            required, expected_required,
+            "unexpected required_conditions for {input}: {required:?}"
+        );
+        assert!(
+            output
+                .steps
+                .iter()
+                .any(|step| step.rule_name == "Symbolic Differentiation"),
+            "expected the derivative to keep the ordinary symbolic differentiation trace"
+        );
+    }
+}
+
+#[test]
 fn shifted_square_root_quotient_diff_residual_uses_compact_presentation() {
     let mut engine = Engine::new();
     let mut state = SessionState::new();

@@ -251,7 +251,7 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(result.impossible_required_conditions, ("NonZero(0)",))
         self.assertIn("impossible required conditions", result.error or "")
 
-    def test_run_probe_forbid_warnings_includes_stderr_warnings(self) -> None:
+    def test_run_probe_reports_fragile_stderr_even_when_result_matches(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             cas_cli = Path(temp_dir) / "cas_cli"
             cas_cli.write_text(
@@ -278,12 +278,43 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             )
 
         self.assertEqual(result.status, "fail")
-        self.assertEqual(result.error_kind, "unexpected_warnings")
-        self.assertIn("depth_overflow", result.error or "")
+        self.assertEqual(result.error_kind, "stderr_fragility")
+        self.assertIn("fragile substring", result.error or "")
         self.assertEqual(
             result.warnings,
             ("2026-05-15T05:36:56Z  WARN simplify: depth_overflow",),
         )
+
+    def test_run_probe_reports_non_warning_fragile_stderr(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cas_cli = Path(temp_dir) / "cas_cli"
+            cas_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    echo 'stack overflow while simplifying' >&2
+                    cat <<'OUT'
+                    {"result":"1 / (x + 2)","required_conditions":[{"expr_display":"x + 2"}],"warnings":[]}
+                    OUT
+                    """
+                ),
+                encoding="utf-8",
+            )
+            cas_cli.chmod(cas_cli.stat().st_mode | stat.S_IXUSR)
+
+            result = SMOKE.run_probe(
+                "ignored",
+                timeout_seconds=2.0,
+                cas_cli=cas_cli,
+                expected_result="1 / (x + 2)",
+                required_conditions=("x + 2",),
+                forbid_warnings=True,
+            )
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.error_kind, "stderr_fragility")
+        self.assertIn("stack overflow", result.error or "")
+        self.assertEqual(result.warnings, ())
 
     def test_run_probe_timeout_terminates_process_group(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

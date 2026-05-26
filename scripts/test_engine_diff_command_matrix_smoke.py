@@ -20,7 +20,7 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_diff_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 40)
+        self.assertEqual(len(cases), 49)
         names = {case.name for case in cases}
         self.assertIn(
             "log_quadratic_empty_positive_argument_domain_undefined",
@@ -31,6 +31,10 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("elementary_exp_affine_chain_trace", names)
         self.assertIn("elementary_trig_affine_chain_trace", names)
         self.assertIn("elementary_trig_tan_affine_chain_required_condition", names)
+        self.assertIn("product_log_root_domain_dedupe_compact", names)
+        self.assertIn("log_over_sqrt_root_denominator_compact", names)
+        self.assertIn("log_over_sqrt_denominator_scale_compact", names)
+        self.assertIn("log_over_sqrt_symbolic_denominator_scale_compact", names)
         self.assertIn("log_affine_chain_required_domain", names)
         self.assertIn(
             "log_affine_chain_negative_orientation_required_domain",
@@ -47,6 +51,11 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             names,
         )
         self.assertIn("nonfinite_constant_derivative_undefined", names)
+        self.assertIn("quotient_root_over_log_domain_pole_compact", names)
+        self.assertIn(
+            "quotient_root_over_log_symbolic_denominator_scale_compact",
+            names,
+        )
         self.assertIn(
             "sqrt_quadratic_empty_positive_argument_domain_undefined",
             names,
@@ -96,10 +105,22 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             "sqrt_chain_trig_log_presimplified_condition_dedupe",
             names,
         )
+        self.assertIn(
+            "positive_quadratic_log_arctan_polynomial_primitive_compact",
+            names,
+        )
+        self.assertIn(
+            "positive_quadratic_log_arctan_surd_primitive_compact",
+            names,
+        )
+        self.assertIn(
+            "positive_quadratic_log_arctan_surd_negative_orientation_compact",
+            names,
+        )
         self.assertIn("discontinuous_sign_residual_boundary", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 5, "supported": 29, "undefined": 6},
+            {"residual": 5, "supported": 38, "undefined": 6},
         )
         step_checked = {
             case.name
@@ -115,6 +136,10 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
             step_checked,
             {
                 "product_log_required_condition",
+                "product_log_root_domain_dedupe_compact",
+                "log_over_sqrt_root_denominator_compact",
+                "log_over_sqrt_denominator_scale_compact",
+                "log_over_sqrt_symbolic_denominator_scale_compact",
                 "log_quadratic_empty_positive_argument_domain_undefined",
                 "general_base_log_unit_base_domain_undefined",
                 "polynomial_power_direct",
@@ -130,6 +155,11 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "constant_base_exp_quadratic_zero_base_empty_domain_undefined",
                 "nonfinite_constant_derivative_undefined",
                 "rational_quotient_required_condition",
+                "quotient_root_over_log_domain_pole_compact",
+                "quotient_root_over_log_symbolic_denominator_scale_compact",
+                "positive_quadratic_log_arctan_polynomial_primitive_compact",
+                "positive_quadratic_log_arctan_surd_primitive_compact",
+                "positive_quadratic_log_arctan_surd_negative_orientation_compact",
                 "sqrt_variable_open_domain",
                 "sqrt_quadratic_empty_positive_argument_domain_undefined",
                 "inverse_trig_root_compact_presentation",
@@ -167,8 +197,9 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
                 "nonfinite_undefined": 1,
                 "open_interval_required": 1,
                 "positive_exponent_required": 1,
-                "required_condition": 21,
+                "required_condition": 27,
                 "unconditional": 5,
+                "unconditional_positive_quadratic": 3,
             },
         )
         self.assertGreaterEqual(len({case.family for case in cases}), 11)
@@ -282,6 +313,32 @@ class DiffCommandMatrixSmokeTests(unittest.TestCase):
         self.assertEqual(matrix["status_counts"]["fail"], 1)
         self.assertEqual(matrix["issue_kind_counts"], {"step_trace_mismatch": 1})
         self.assertEqual(matrix["problem_cases"][0]["name"], "polynomial_inner_chain_power")
+
+    def test_run_matrix_reports_fragile_stderr_even_when_result_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cas_cli = Path(temp_dir) / "cas_cli"
+            cas_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    echo 'WARN simplify: depth_overflow' >&2
+                    cat <<'OUT'
+                    {"ok":true,"result":"3·x^2","warnings":[],"required_display":[],"steps":[{"substeps":[{"title":"Usar regla de la potencia"}]}]}
+                    OUT
+                    """
+                ),
+                encoding="utf-8",
+            )
+            cas_cli.chmod(cas_cli.stat().st_mode | stat.S_IXUSR)
+
+            cases = SMOKE.build_cases(("polynomial_power_direct",))
+            matrix = SMOKE.run_matrix(cases, cas_cli=cas_cli, timeout_seconds=2.0)
+
+        self.assertEqual(matrix["status"], "fail")
+        self.assertEqual(matrix["status_counts"]["fail"], 1)
+        self.assertEqual(matrix["issue_kind_counts"], {"stderr_fragility": 1})
+        self.assertEqual(matrix["problem_cases"][0]["name"], "polynomial_power_direct")
+        self.assertIn("fragile substring", matrix["problem_cases"][0]["error"])
 
 
 if __name__ == "__main__":

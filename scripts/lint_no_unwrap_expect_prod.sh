@@ -57,8 +57,22 @@ def strip_cfg_test_modules(src: str) -> str:
 
         chunks.append(src[pos : match.start()])
         cursor = match.end()
-        while cursor < length and src[cursor].isspace():
-            cursor += 1
+        while True:
+            while cursor < length and src[cursor].isspace():
+                cursor += 1
+
+            if cursor + 1 >= length or src[cursor : cursor + 2] != "#[":
+                break
+
+            cursor += 2
+            attr_depth = 1
+            while cursor < length and attr_depth > 0:
+                char = src[cursor]
+                if char == "[":
+                    attr_depth += 1
+                elif char == "]":
+                    attr_depth -= 1
+                cursor += 1
 
         if not src.startswith("mod", cursor):
             chunks.append(src[match.start() : match.end()])

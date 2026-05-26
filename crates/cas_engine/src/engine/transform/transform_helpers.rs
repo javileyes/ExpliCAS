@@ -215,6 +215,7 @@ fn diff_target_should_preserve_raw_derivative_route(
         || diff_target_is_inverse_tangent_direct_trig_linear_arg(ctx, target, var_name)
         || diff_target_is_ln_reciprocal_trig_sqrt(ctx, target, var_name)
         || diff_target_is_ln_constant_shifted_tan_sqrt(ctx, target, var_name)
+        || diff_target_is_scaled_reciprocal_trig_shifted_sqrt(ctx, target, var_name)
         || diff_target_is_scaled_inverse_tangent_reciprocal_sqrt_product(ctx, target, var_name)
         || diff_target_is_inverse_reciprocal_trig_surd_scaled_quadratic(ctx, target, var_name)
         || diff_target_is_reciprocal_positive_shifted_sqrt(ctx, target, var_name)
@@ -711,6 +712,20 @@ mod tests {
             "ln(sec(sqrt(3*x+1))+tan(sqrt(3*x+1)))",
             "ln(csc(sqrt(3*x+1))-cot(sqrt(3*x+1)))",
         ] {
+            let target = cas_parser::parse(raw, &mut ctx).unwrap();
+            assert!(
+                diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
+                "{raw}"
+            );
+        }
+    }
+
+    #[test]
+    fn preserves_raw_diff_target_for_shifted_sqrt_reciprocal_trig_product() {
+        let mut ctx = cas_ast::Context::new();
+        let variable = cas_parser::parse("x", &mut ctx).unwrap();
+
+        for raw in ["k*sec(b-sqrt(x))", "-k*csc(b-sqrt(x))", "k*sec(sqrt(x)-b)"] {
             let target = cas_parser::parse(raw, &mut ctx).unwrap();
             assert!(
                 diff_target_should_preserve_raw_derivative_route(&ctx, target, variable),
@@ -1334,6 +1349,101 @@ fn direct_tan_arg_for_diff_target(ctx: &cas_ast::Context, expr: ExprId) -> Optio
         return None;
     };
     (args.len() == 1 && ctx.builtin_of(*fn_id) == Some(cas_ast::BuiltinFn::Tan)).then_some(args[0])
+}
+
+fn diff_target_is_scaled_reciprocal_trig_shifted_sqrt(
+    ctx: &cas_ast::Context,
+    target: ExprId,
+    var_name: &str,
+) -> bool {
+    let target = match ctx.get(target) {
+        Expr::Neg(inner) => *inner,
+        _ => target,
+    };
+
+    let mut reciprocal_trig_factor = None;
+    for factor in cas_math::expr_nary::mul_leaves(ctx, target) {
+        let factor = match ctx.get(factor) {
+            Expr::Neg(inner) => *inner,
+            _ => factor,
+        };
+        if cas_ast::views::as_rational_const(ctx, factor, 8).is_some() {
+            continue;
+        }
+        if reciprocal_trig_shifted_sqrt_radicand_for_diff_target(ctx, factor, var_name).is_some() {
+            if reciprocal_trig_factor.replace(factor).is_some() {
+                return false;
+            }
+            continue;
+        }
+        if contains_named_var(ctx, factor, var_name) {
+            return false;
+        }
+    }
+
+    reciprocal_trig_factor.is_some()
+}
+
+fn reciprocal_trig_shifted_sqrt_radicand_for_diff_target(
+    ctx: &cas_ast::Context,
+    expr: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    let Expr::Function(fn_id, args) = ctx.get(expr) else {
+        return None;
+    };
+    if args.len() != 1
+        || !matches!(
+            ctx.builtin_of(*fn_id),
+            Some(cas_ast::BuiltinFn::Sec | cas_ast::BuiltinFn::Csc)
+        )
+    {
+        return None;
+    }
+
+    let radicand = shifted_sqrt_radicand_for_diff_target(ctx, args[0], var_name)?;
+    let Ok(poly) = Polynomial::from_expr(ctx, radicand, var_name) else {
+        return None;
+    };
+    (!poly.derivative().is_zero() && poly.degree() <= 1).then_some(radicand)
+}
+
+fn shifted_sqrt_radicand_for_diff_target(
+    ctx: &cas_ast::Context,
+    arg: ExprId,
+    var_name: &str,
+) -> Option<ExprId> {
+    match ctx.get(arg) {
+        Expr::Add(left, right) => {
+            if !contains_named_var(ctx, *left, var_name) {
+                return signed_sqrt_radicand_for_diff_target(ctx, *right);
+            }
+            if !contains_named_var(ctx, *right, var_name) {
+                return signed_sqrt_radicand_for_diff_target(ctx, *left);
+            }
+            None
+        }
+        Expr::Sub(left, right) => {
+            if !contains_named_var(ctx, *left, var_name) {
+                return signed_sqrt_radicand_for_diff_target(ctx, *right);
+            }
+            if !contains_named_var(ctx, *right, var_name) {
+                return signed_sqrt_radicand_for_diff_target(ctx, *left);
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+fn signed_sqrt_radicand_for_diff_target(ctx: &cas_ast::Context, expr: ExprId) -> Option<ExprId> {
+    if let Some(radicand) = extract_square_root_base(ctx, expr) {
+        return Some(radicand);
+    }
+    if let Expr::Neg(inner) = ctx.get(expr) {
+        return extract_square_root_base(ctx, *inner);
+    }
+    None
 }
 
 fn diff_target_is_reciprocal_positive_shifted_sqrt(

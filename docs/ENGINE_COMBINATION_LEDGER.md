@@ -78,6 +78,41 @@ Good combination patterns:
 
 - `expensive fast path + cheap gate`
 - `repeated extraction + cache/reuse`
+
+## 2026-05-26 - Discovery observe-only: shifted sqrt reciprocal-trig residual verification times out
+
+- area:
+  - calculus / post-calculus residual verification / reciprocal trig shifted
+    sqrt products
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while promoting compact derivative presentation for
+    `sec(b - sqrt(x))*k` and `-csc(b - sqrt(x))*k`, a residual matrix attempt
+    using
+    `diff(result, x) - (-k*sec(b-sqrt(x))*tan(b-sqrt(x))/(2*sqrt(x)))`
+    still timed out under the 4s smoke budget
+  - the direct `diff(...)` probes were fast and produced the compact
+    `sec/csc·tan/cot` form with only the pole condition and `x > 0`, so the
+    weakness is not derivative presentation itself
+- decision:
+  - retain direct derivative presentation and matrix verification by exact
+    compact derivative result in this cycle
+  - do not force residual-equivalence promotion until a bounded residual route
+    can run before reciprocal-trig target expansion
+- retained learning:
+  - the reusable weakness is the residual verification path for already
+    compact reciprocal-trig products: parsing or simplifying the target
+    integrand can expand `sec/csc/tan/cot` into sin/cos traffic and trigger
+    `cycle_detected`/`depth_overflow` churn before exact cancellation
+  - a future candidate should add a narrow pre-general residual signature for
+    compact reciprocal-trig product equality, or teach the matrix verifier a
+    bounded structural equality mode for exact post-calculus derivative shapes
+- follow-up resolution:
+  - retained a narrow engine-side residual signature for shifted sqrt
+    reciprocal-trig derivative products; the promoted matrix rows now verify
+    by residual equality without entering the previous reciprocal-trig
+    expansion churn
 - `local win in shared helper + move to exact call-site`
 - `hotspot shift + second patch that attacks the shifted hotspot`
 
@@ -94,6 +129,58 @@ The burden of proof stays the same:
 - rerun the direct release corpus if the scorecard is good enough
 
 ## Current Entries
+
+## 2026-05-26 - Observe-only discovery: shifted sqrt-chain reciprocal trig external scale enters fragile simplification route
+
+- area:
+  - calculus / integration / sqrt-chain reciprocal trig derivative products
+- status:
+  - `discovery/observe-only`
+- observed:
+  - during the bounded sibling sweep for the retained exact sqrt-chain external
+    scale candidate, `integrate(-k*sec(b-sqrt(x))*tan(b-sqrt(x))/(2*sqrt(x)), x)`
+    timed out under a 5s CLI probe with repeated `cycle_detected` and
+    `depth_overflow` warnings
+  - the promoted representative stayed limited to `u = sqrt(x)` with an
+    x-free symbolic external scale, where the antiderivative verifies by
+    differentiation and the didactic trace is concrete
+- decision:
+  - do not promote shifted `b - sqrt(x)` orientation in this cycle
+  - do not broaden the matcher around non-polynomial affine-like offsets until
+    the route has a cheap fragility guard or a dedicated argument-normalization
+    strategy
+- retained learning:
+  - the reusable weakness is the interaction between shifted sqrt orientation,
+    reciprocal-trig expansion, and symbolic external scale, not a malformed
+    generated case
+- next candidate:
+  - isolate whether `b - sqrt(x)` should be accepted as a safe sqrt-chain
+    orientation with bounded presentation/domain handling or intentionally left
+    residual behind a fragility guard
+
+## 2026-05-26 - Observe-only discovery: reciprocal trig derivative products do not yet share symbolic external-scale handling
+
+- area:
+  - calculus / integration / reciprocal trig derivative products
+- status:
+  - `discovery/observe-only`
+- observed:
+  - during the bounded sibling sweep for the retained hyperbolic external-scale
+    integration candidate, `integrate(k*a*sec(a*x+b)*tan(a*x+b), x)` remained
+    residual as `integrate(a·k·sin(a·x + b) / cos(a·x + b)^2, x)`
+  - the cosecant/cotangent sibling
+    `integrate(k*a*csc(a*x+b)*cot(a*x+b), x)` timed out under a 4s CLI probe
+- decision:
+  - do not broaden the retained hyperbolic fix into reciprocal trig products in
+    this cycle
+  - keep the promoted rows limited to the hyperbolic family where the matcher,
+    domain policy, and didactic trace were validated
+- retained learning:
+  - the reusable weakness is a missing shared symbolic external-scale policy for
+    reciprocal derivative products, not a malformed generated case
+  - a future candidate should first isolate why the `csc/cot` branch enters the
+    slow path, then decide whether a shared cofactor-scale helper can cover trig
+    and hyperbolic products without changing route order or pole conditions
 
 ## 2026-05-25 - Observe-only discovery: inverse-tangent symbolic denominator shortcut leaves condition and external-scale gaps
 

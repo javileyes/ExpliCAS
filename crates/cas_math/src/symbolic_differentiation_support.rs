@@ -389,6 +389,33 @@ fn exact_rational_sqrt(value: &BigRational) -> Option<BigRational> {
     }
 }
 
+fn positive_rational_polynomial_content(poly: &Polynomial) -> BigRational {
+    let mut numerator_gcd: Option<num_bigint::BigInt> = None;
+    let mut denominator_lcm = num_bigint::BigInt::one();
+
+    for coeff in poly.coeffs.iter().filter(|coeff| !coeff.is_zero()) {
+        let numerator_abs = coeff.numer().abs();
+        numerator_gcd = Some(match numerator_gcd {
+            Some(gcd) => gcd.gcd(&numerator_abs),
+            None => numerator_abs,
+        });
+        denominator_lcm = denominator_lcm.lcm(coeff.denom());
+    }
+
+    numerator_gcd
+        .map(|gcd| BigRational::new(gcd, denominator_lcm))
+        .unwrap_or_else(BigRational::zero)
+}
+
+fn normalize_positive_rational_polynomial_content(poly: &Polynomial) -> Polynomial {
+    let content = positive_rational_polynomial_content(poly);
+    if content.is_positive() && !content.is_one() {
+        poly.div_scalar(&content)
+    } else {
+        poly.clone()
+    }
+}
+
 fn split_constant_scaled_single_factor(
     ctx: &Context,
     expr: ExprId,
@@ -581,6 +608,165 @@ fn arctan_affine_polynomial_cofactor_term(
     }
 
     Some((scale, arg_poly?, cofactor))
+}
+
+fn positive_quadratic_discriminant_root(denominator: &Polynomial) -> Option<BigRational> {
+    if denominator.degree() != 2 {
+        return None;
+    }
+
+    let a = denominator
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    if a <= BigRational::zero() {
+        return None;
+    }
+    let b = denominator
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let c = denominator
+        .coeffs
+        .first()
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+
+    let four = BigRational::from_integer(4.into());
+    let discriminant = four * a * c - b.clone() * b;
+    if discriminant <= BigRational::zero() {
+        return None;
+    }
+
+    exact_rational_sqrt(&discriminant)
+}
+
+fn scaled_ln_positive_quadratic_derivative_numerator(
+    ctx: &Context,
+    scale: BigRational,
+    expr: ExprId,
+    var: &str,
+) -> Option<(Polynomial, Polynomial)> {
+    let (term_scale, core) = split_constant_scaled_single_factor(ctx, expr)
+        .unwrap_or_else(|| (BigRational::one(), expr));
+    let mut arg = unary_builtin_arg(ctx, core, BuiltinFn::Ln)?;
+    if let Some(abs_arg) = unary_builtin_arg(ctx, arg, BuiltinFn::Abs) {
+        arg = abs_arg;
+    }
+
+    let denominator =
+        normalize_positive_rational_polynomial_content(&Polynomial::from_expr(ctx, arg, var).ok()?);
+    positive_quadratic_discriminant_root(&denominator)?;
+
+    let numerator = scaled_polynomial(&denominator.derivative(), scale * term_scale);
+    Some((denominator, numerator))
+}
+
+fn arctan_positive_quadratic_derivative_numerator(
+    ctx: &Context,
+    scale: BigRational,
+    expr: ExprId,
+    var: &str,
+    denominator: &Polynomial,
+) -> Option<Polynomial> {
+    let (arctan_scale, arctan_arg) = scaled_arctan_affine_term(ctx, scale, expr, var)?;
+    let discriminant_root = positive_quadratic_discriminant_root(denominator)?;
+
+    let a = denominator
+        .coeffs
+        .get(2)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let b = denominator
+        .coeffs
+        .get(1)
+        .cloned()
+        .unwrap_or_else(BigRational::zero);
+    let two = BigRational::from_integer(2.into());
+    let expected_arg = Polynomial::new(
+        vec![
+            b / discriminant_root.clone(),
+            two.clone() * a / discriminant_root.clone(),
+        ],
+        denominator.var.clone(),
+    );
+    if arctan_arg != expected_arg {
+        return None;
+    }
+
+    let numerator_constant = arctan_scale * discriminant_root / two;
+    Some(Polynomial::new(
+        vec![numerator_constant],
+        denominator.var.clone(),
+    ))
+}
+
+fn positive_quadratic_log_arctan_primitive_derivative(
+    ctx: &mut Context,
+    expr: ExprId,
+    var: &str,
+) -> Option<ExprId> {
+    let expr = cas_ast::hold::unwrap_internal_hold(ctx, expr);
+    let mut terms = Vec::new();
+    collect_scaled_add_terms(ctx, expr, BigRational::one(), &mut terms);
+    if terms.len() < 2 {
+        return None;
+    }
+
+    let mut denominator: Option<Polynomial> = None;
+    let mut fractional_numerator = Polynomial::zero(var.to_string());
+    let mut polynomial_derivative = Polynomial::zero(var.to_string());
+    let mut arctan_terms = Vec::new();
+    let mut saw_log = false;
+
+    for (scale, term) in terms {
+        if let Some((candidate_denominator, numerator)) =
+            scaled_ln_positive_quadratic_derivative_numerator(ctx, scale.clone(), term, var)
+        {
+            if let Some(existing) = &denominator {
+                if existing != &candidate_denominator {
+                    return None;
+                }
+            } else {
+                denominator = Some(candidate_denominator);
+            }
+            fractional_numerator = fractional_numerator.add(&numerator);
+            saw_log = true;
+            continue;
+        }
+
+        if scaled_arctan_affine_term(ctx, scale.clone(), term, var).is_some() {
+            arctan_terms.push((scale, term));
+            continue;
+        }
+
+        let term_poly = Polynomial::from_expr(ctx, term, var).ok()?;
+        polynomial_derivative =
+            polynomial_derivative.add(&scaled_polynomial(&term_poly.derivative(), scale));
+    }
+
+    let denominator = denominator?;
+    if !saw_log || arctan_terms.is_empty() {
+        return None;
+    }
+
+    for (scale, term) in arctan_terms {
+        let numerator =
+            arctan_positive_quadratic_derivative_numerator(ctx, scale, term, var, &denominator)?;
+        fractional_numerator = fractional_numerator.add(&numerator);
+    }
+
+    let quotient_numerator = polynomial_derivative.mul(&denominator);
+    let numerator = quotient_numerator.add(&fractional_numerator);
+    if numerator.is_zero() {
+        return Some(ctx.num(0));
+    }
+
+    let numerator_expr = numerator.to_expr(ctx);
+    let denominator_expr = denominator.to_expr(ctx);
+    Some(div_pruned(ctx, numerator_expr, denominator_expr))
 }
 
 fn positive_quadratic_square_primitive_scale(
@@ -4073,6 +4259,10 @@ pub fn differentiate_symbolic_expr(ctx: &mut Context, expr: ExprId, var: &str) -
         return Some(derivative);
     }
 
+    if let Some(derivative) = positive_quadratic_log_arctan_primitive_derivative(ctx, expr, var) {
+        return Some(derivative);
+    }
+
     if let Some(derivative) = arctan_reciprocal_affine_by_parts_derivative(ctx, expr, var) {
         return Some(derivative);
     }
@@ -4788,6 +4978,36 @@ mod tests {
             .expect("parse combined");
         let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff combined");
         assert_eq!(rendered(&ctx, out), "64 / (32 * x^2 + 8)^2");
+    }
+
+    #[test]
+    fn differentiates_positive_quadratic_log_arctan_primitives_compactly() {
+        let cases = [
+            (
+                "ln(x^2+2*x+2)-arctan(x+1)",
+                "(2 * x + 1) / (x^2 + 2 * x + 2)",
+            ),
+            (
+                "ln(x^2+2*x+2)-arctan(x+1)-x",
+                "(-x^2 - 1) / (x^2 + 2 * x + 2)",
+            ),
+            (
+                "-x+ln(x^2+2*x+2)-arctan(x+1)",
+                "(-x^2 - 1) / (x^2 + 2 * x + 2)",
+            ),
+            ("1/2*ln(2*x^2+4*x+4)-arctan(x+1)", "x / (x^2 + 2 * x + 2)"),
+            (
+                "x + 1/2*ln(x^2+2*x+2)-arctan(x+1)",
+                "(x^2 + 3 * x + 2) / (x^2 + 2 * x + 2)",
+            ),
+        ];
+
+        for (input, expected) in cases {
+            let mut ctx = Context::new();
+            let expr = parse(input, &mut ctx).expect("parse");
+            let out = differentiate_symbolic_expr(&mut ctx, expr, "x").expect("diff");
+            assert_eq!(rendered(&ctx, out), expected, "input: {input}");
+        }
     }
 
     #[test]
