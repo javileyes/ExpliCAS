@@ -149,6 +149,11 @@ The burden of proof stays the same:
   - do not broaden the matcher around non-polynomial affine-like offsets until
     the route has a cheap fragility guard or a dedicated argument-normalization
     strategy
+- resolved by:
+  - later retained shifted sqrt-chain reciprocal-trig integration rows cover
+    both `b - sqrt(x)` and `sqrt(x) - b` with symbolic external scale,
+    preserved pole/positive-domain conditions, and bounded residual
+    verification
 - retained learning:
   - the reusable weakness is the interaction between shifted sqrt orientation,
     reciprocal-trig expansion, and symbolic external scale, not a malformed
@@ -175,6 +180,10 @@ The burden of proof stays the same:
     this cycle
   - keep the promoted rows limited to the hyperbolic family where the matcher,
     domain policy, and didactic trace were validated
+- resolved by:
+  - later retained reciprocal-trig derivative product rows cover symbolic
+    external scale for both `sec(u)*tan(u)` and `csc(u)*cot(u)` with explicit
+    pole conditions and bounded antiderivative verification
 - retained learning:
   - the reusable weakness is a missing shared symbolic external-scale policy for
     reciprocal derivative products, not a malformed generated case
@@ -225,6 +234,14 @@ The burden of proof stays the same:
 - observed gaps:
   - none remaining for the promoted affine-radicand denominator condition or
     numerator-scale positive-gap/open-interval condition family
+- resolved by:
+  - the current diff matrix covers the direct and external-scale symbolic
+    rational denominator affine-radicand rows, the numerator-scale positive-gap
+    row, and the corresponding inverse-hyperbolic positive-gap/open-interval
+    representatives
+  - 2026-05-27 reprobes of the original local lane plus the numerator-scale
+    `arctan`, `asinh`, and `atanh` siblings returned compact results, no
+    warnings, and only the retained real-domain conditions
 - reusable weakness:
   - calculus shortcuts can avoid fragile derivative construction, but the
     condition layer needs explicit, narrow implication checks when a compact
@@ -256,6 +273,15 @@ The burden of proof stays the same:
     undefined ordinary function: `función [limit] no definida`
   - the default residual wrapper matrix therefore cannot directly promote
     `limit` command behavior today
+- resolved by:
+  - the command-level `limit` matrix now owns this surface explicitly and covers
+    finite removable rational cancellation as
+    `finite_removable_rational_cancellation`, with result `2`, required
+    condition `x != 1`, and no warning
+  - the algebraic residual probe now classifies `ok=false` CLI JSON as
+    `cli_error` instead of reporting a misleading `result_mismatch`, so
+    command-surface boundary failures are visible as harness/observability
+    findings rather than engine result mismatches
 - reusable weakness:
   - calculus command coverage is asymmetric: `diff` and `integrate` can be
     composed inside the expression-level residual matrix, while `limit` still
@@ -15813,6 +15839,13 @@ The burden of proof stays the same:
     telescoping fractions in this iteration
   - keep the telescoping `simplify_pipeline` regression ignored until a cheap
     telescoping-side proof or a narrower root route exists
+- resolved by:
+  - later exact-zero additive composition and telescoping-fraction routes now
+    make the direct `simplify_pipeline` regression pass in both debug and
+    release without a special broad pre-Core shortcut
+  - the previously ignored hyperbolic angle-sum plus telescoping residual test
+    has been promoted back to an active unit regression guard; sibling
+    cosh-cubic plus telescoping coverage remains active
 - retained learning:
   - the reusable weakness is not the hyperbolic angle-sum side; it is the lack
     of a cheap, promotion-ready telescoping-fraction zero proof for this
@@ -15842,9 +15875,170 @@ The burden of proof stays the same:
     a support-matrix promotion for an already generalized finite-limit family
   - treat this as a future presentation/observability candidate, not as a
     reason to broaden limit simplification policy
+- resolved by:
+  - the command-level `limit` matrix now retains both minimal residual cleanup
+    examples from the discovery: the domain-bearing endpoint case
+    `limit(sqrt(x + 0), x, 0)` and the discontinuous no-condition case
+    `limit(sign(x + 0), x, 0)`
+  - both rows keep the command residual, preserve finite-limit warning policy,
+    and require result/step presentation to agree on the structurally cleaned
+    residual form
 - retained learning:
   - the reusable weakness is result/step presentation consistency for residual
     `limit(...)` after structural cleanup, not mathematical limit evaluation
   - a future candidate should localize whether the mismatch comes from residual
     result construction, display rendering, or step rendering before changing
     public limit policy
+
+## 2026-05-27 - Discovery observe-only: broad sec/csc result holding regresses stable integration presentation
+
+- area:
+  - calculus / integration / reciprocal trig derivative product presentation
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while retaining shifted-polynomial reciprocal trig products such as
+    `integrate(2*x*sec(x^2+b)*tan(x^2+b), x)`, a broad result-side compacting
+    flag for any `sec(...)`/`csc(...)` antiderivative fixed the new local
+    presentation but changed existing promoted rows
+  - examples from the public integration matrix:
+    - `sec(2*x+1)*tan(2*x+1)` changed from `sec(2·x + 1) / 2` to
+      `1/2·sec(2·x + 1)`
+    - negative symbolic external-scale rows changed factor ordering from
+      `k·sec(b - a·x)`/`-k·csc(b - a·x)` to trailing-`k` forms
+- decision:
+  - reject broad result-based holding for reciprocal trig primitives
+  - retain the narrower source-side presentation hold only when the exact
+    integration route has to ignore an additive term independent of the
+    integration variable
+- superseded by:
+  - the command-level integration matrix now pins the stable public
+    presentation for the affected reciprocal-trig derivative-product cells,
+    including affine `sec(u)*tan(u)` and negative symbolic external-scale
+    `sec`/`csc` rows
+  - the rejected broad result-side holding remains documented as retained
+    learning, but it is no longer an open promotion candidate because the
+    narrower source-side policy and matrix representatives protect the intended
+    behavior without changing unrelated rows
+- retained learning:
+  - compactness should be attached to the specific derivative-cofactor
+    recognition path that needs it, not to every `sec`/`csc` result after the
+    integrator has already chosen a presentation
+  - future reciprocal-trig presentation work should add family-specific
+    predicates before the final simplification boundary instead of broad
+    result-shape checks
+
+## 2026-05-27 - Discovery observe-only: shifted sech-fourth primitive verification is structurally fragile
+
+- area:
+  - calculus / integration / hyperbolic reciprocal fourth verification
+- status:
+  - `discovery/observe-only`
+- observed:
+  - while probing a generalization from retained `1/cosh(u)^4` support to
+    shifted polynomial arguments with symbolic external scale, the public
+    result for `integrate(2*k*x/cosh(x^2+b)^4, x)` was computable and
+    `diff(integrate(2*k*x/cosh(x^2+b)^4, x), x) - 2*k*x/cosh(x^2+b)^4`
+    reduced to `0`
+  - verifying the explicit primitive, for example
+    `diff(1/3*(3*k*tanh(x^2+b)-k*tanh(x^2+b)^3), x) - 2*k*x/cosh(x^2+b)^4`,
+    repeatedly hit `depth_overflow` and `cycle_detected` paths before the
+    integration matrix timeout
+- decision:
+  - reject the shifted/symbolic `sech^4` capability promotion for now
+  - retain only the smaller matrix/didactic promotion for the already-supported
+    affine `1/cosh(2*x+1)^4` case
+- resolved by:
+  - the retained shifted `sech^4` symbolic cofactor follow-up added the bounded
+    `R - R*tanh(u)^2 -> R/cosh(u)^2` verification route and promoted
+    `integrate(2*k*x/cosh(x^2+b)^4, x)` as a verified matrix row
+  - the original depth/cycle failure remains useful as historical context, but
+    the reusable blocker it identified is no longer open for this exact
+    shifted symbolic-cofactor family
+- retained learning:
+  - the reusable blocker is explicit verification of
+    `tanh(u) - tanh(u)^3/3` against `1/cosh(u)^4` when `u` contains an
+    additive symbolic shift; the simplifier expands hyperbolic angle sums
+    instead of taking a bounded `1 - tanh(u)^2 -> 1/cosh(u)^2` route
+  - the retained affine matrix row is covered by the numeric-coefficient route
+    `k - k*tanh(u)^2 -> k/cosh(u)^2`; a follow-up probe still reproduced
+    depth/cycle warnings for symbolic common cofactors such as `6*k*x -
+    6*k*x*tanh(x^2+b)^2`
+  - a future candidate should first add a bounded common-cofactor route for
+    `R - R*tanh(u)^2 -> R/cosh(u)^2` without expanding shifted hyperbolic
+    sums, then retry the shifted symbolic integration generalization
+
+## 2026-05-27 - Retained follow-up: shifted sech-fourth symbolic cofactor route
+
+- area:
+  - calculus / integration / hyperbolic reciprocal fourth verification
+- status:
+  - `retained`
+- observed:
+  - the bounded common-cofactor route
+    `R - R*tanh(u)^2 -> R/cosh(u)^2` avoids shifted hyperbolic sum expansion
+    for symbolic cofactors such as `6*k*x - 6*k*x*tanh(x^2+b)^2`
+  - `integrate(2*k*x/cosh(x^2+b)^4, x)` now promotes as an explicit
+    `1/cosh(u)^4` substitution case and verifies by differentiating the
+    explicit primitive
+- retained learning:
+  - the prior blocker was the verification/simplification route, not the
+    hyperbolic reciprocal fourth integration formula
+  - symbolic external-scale `sech^4` cases should remain bounded to exact
+    derivative-cofactor substitution before broadening to more general
+    hyperbolic powers
+
+## 2026-05-27 - Discovery observe-only: csch-fourth primitive verification lacks bounded route
+
+- area:
+  - calculus / integration / hyperbolic reciprocal fourth residual verification
+- status:
+  - `discovery/observe-only`
+- observed:
+  - `integrate(1/sinh(2*x+1)^4, x)` and
+    `integrate(2*k*x/sinh(x^2+b)^4, x)` remain domain-aware residuals with
+    `sinh(...) != 0`
+  - explicit `cosh`/`sinh` primitive verification repeatedly entered
+    `depth_overflow` and `cycle_detected` routes before completion
+  - the tanh-reciprocal primitive avoids the expansion cliff but leaves a
+    residual shaped like
+    `1/(cosh(u)^2*tanh(u)^4) - 1/sinh(u)^4 - 1/sinh(u)^2`
+- decision:
+  - do not promote `csch^4` integration in this cycle
+  - retain one residual/domain matrix row so the unsupported dual of `sech^4`
+    is visible and does not silently become an unverified antiderivative
+- resolved by:
+  - the retained shifted `csch^4` symbolic cofactor follow-up promoted
+    `integrate(2*k*x/sinh(x^2+b)^4, x)` with explicit
+    `sinh(x^2 + b) != 0` domain retention and verified the antiderivative by
+    differentiation
+  - the verifier now recognizes the tanh-square denominator presentation
+    variants that originally kept the primitive in residual form
+- retained learning:
+  - the next reusable engine candidate should add a bounded verifier
+    normalization for tanh-denominator powers, or an equivalent
+    common-denominator hyperbolic reciprocal identity, before retrying the
+    antiderivative
+
+## 2026-05-27 - Retained follow-up: shifted csch-fourth symbolic cofactor route
+
+- area:
+  - calculus / integration / hyperbolic reciprocal fourth residual verification
+- status:
+  - `retained`
+- observed:
+  - promoting `integrate(2*k*x/sinh(x^2+b)^4, x)` first failed antiderivative
+    verification even though the integration result and domain were public and
+    stable
+  - the residual appeared as a bounded identity with two presentation variants:
+    `1/(cosh(u)^2*tanh(u)^2)` instead of `1/sinh(u)^2`, plus external
+    cofactor forms such as `2*(k*x/den)` after fraction cleanup
+- retained learning:
+  - the reusable blocker was not the integration formula; it was the verifier's
+    narrow term-shape matcher after normal simplification rewrites
+  - `csch^4` verification now recognizes the equivalent tanh-square
+    denominator and absorbs a single externally scaled fraction term before
+    comparing cofactors
+  - the verifier rule is targeted to additive nodes with priority above broad
+    exact-zero subset search, preventing the expensive generic route from
+    consuming the public simplification budget first

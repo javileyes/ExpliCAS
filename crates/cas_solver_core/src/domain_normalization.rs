@@ -592,6 +592,10 @@ fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId)
         return normalize_nonzero_condition_expr_for_display(ctx, compact);
     }
 
+    if let Some(sinh_expr) = tanh_nonzero_equivalent_sinh(ctx, expr) {
+        return sinh_expr;
+    }
+
     if let Some(sinh_expr) = normalize_sinh_nonzero_expr_for_display(ctx, expr) {
         return sinh_expr;
     }
@@ -607,6 +611,10 @@ fn normalize_nonzero_condition_expr_for_display(ctx: &mut Context, expr: ExprId)
     let normalized = normalize_condition_expr(ctx, expr);
     let normalized =
         primitive_nonzero_polynomial_for_display(ctx, normalized).unwrap_or(normalized);
+    if let Some(sinh_expr) = tanh_nonzero_equivalent_sinh(ctx, normalized) {
+        return sinh_expr;
+    }
+
     if let Some(sinh_expr) = normalize_sinh_nonzero_expr_for_display(ctx, normalized) {
         return sinh_expr;
     }
@@ -644,7 +652,118 @@ fn normalize_sinh_nonzero_argument_for_display(ctx: &mut Context, arg: ExprId) -
     }
 
     let normalized = normalize_condition_expr(ctx, arg);
-    normalize_sqrt_argument_preserve_sign_for_display(ctx, normalized).unwrap_or(normalized)
+    let normalized =
+        normalize_sqrt_argument_preserve_sign_for_display(ctx, normalized).unwrap_or(normalized);
+    rewrite_half_powers_as_sqrt_for_condition_display(ctx, normalized)
+}
+
+fn rewrite_half_powers_as_sqrt_for_condition_display(ctx: &mut Context, expr: ExprId) -> ExprId {
+    match ctx.get(expr).clone() {
+        Expr::Add(left, right) => {
+            let new_left = rewrite_half_powers_as_sqrt_for_condition_display(ctx, left);
+            let new_right = rewrite_half_powers_as_sqrt_for_condition_display(ctx, right);
+            if new_left == left && new_right == right {
+                expr
+            } else {
+                ctx.add(Expr::Add(new_left, new_right))
+            }
+        }
+        Expr::Sub(left, right) => {
+            let new_left = rewrite_half_powers_as_sqrt_for_condition_display(ctx, left);
+            let new_right = rewrite_half_powers_as_sqrt_for_condition_display(ctx, right);
+            if new_left == left && new_right == right {
+                expr
+            } else {
+                ctx.add(Expr::Sub(new_left, new_right))
+            }
+        }
+        Expr::Mul(left, right) => {
+            let new_left = rewrite_half_powers_as_sqrt_for_condition_display(ctx, left);
+            let new_right = rewrite_half_powers_as_sqrt_for_condition_display(ctx, right);
+            if new_left == left && new_right == right {
+                expr
+            } else {
+                ctx.add(Expr::Mul(new_left, new_right))
+            }
+        }
+        Expr::Div(left, right) => {
+            let new_left = rewrite_half_powers_as_sqrt_for_condition_display(ctx, left);
+            let new_right = rewrite_half_powers_as_sqrt_for_condition_display(ctx, right);
+            if new_left == left && new_right == right {
+                expr
+            } else {
+                ctx.add(Expr::Div(new_left, new_right))
+            }
+        }
+        Expr::Pow(base, exp)
+            if as_rational_const(ctx, exp) == Some(BigRational::new(1.into(), 2.into())) =>
+        {
+            let new_base = rewrite_half_powers_as_sqrt_for_condition_display(ctx, base);
+            ctx.call_builtin(BuiltinFn::Sqrt, vec![new_base])
+        }
+        Expr::Pow(base, exp) => {
+            let new_base = rewrite_half_powers_as_sqrt_for_condition_display(ctx, base);
+            let new_exp = rewrite_half_powers_as_sqrt_for_condition_display(ctx, exp);
+            if new_base == base && new_exp == exp {
+                expr
+            } else {
+                ctx.add(Expr::Pow(new_base, new_exp))
+            }
+        }
+        Expr::Neg(inner) => {
+            let new_inner = rewrite_half_powers_as_sqrt_for_condition_display(ctx, inner);
+            if new_inner == inner {
+                expr
+            } else {
+                ctx.add(Expr::Neg(new_inner))
+            }
+        }
+        Expr::Hold(inner) => {
+            let new_inner = rewrite_half_powers_as_sqrt_for_condition_display(ctx, inner);
+            if new_inner == inner {
+                expr
+            } else {
+                ctx.add(Expr::Hold(new_inner))
+            }
+        }
+        Expr::Function(fn_id, args) => {
+            let mut changed = false;
+            let new_args = args
+                .into_iter()
+                .map(|arg| {
+                    let new_arg = rewrite_half_powers_as_sqrt_for_condition_display(ctx, arg);
+                    changed |= new_arg != arg;
+                    new_arg
+                })
+                .collect::<Vec<_>>();
+            if changed {
+                ctx.add(Expr::Function(fn_id, new_args))
+            } else {
+                expr
+            }
+        }
+        Expr::Matrix { rows, cols, data } => {
+            let mut changed = false;
+            let new_data = data
+                .into_iter()
+                .map(|item| {
+                    let new_item = rewrite_half_powers_as_sqrt_for_condition_display(ctx, item);
+                    changed |= new_item != item;
+                    new_item
+                })
+                .collect::<Vec<_>>();
+            if changed {
+                ctx.add(Expr::Matrix {
+                    rows,
+                    cols,
+                    data: new_data,
+                })
+            } else {
+                expr
+            }
+        }
+        _ => expr,
+    }
 }
 
 fn normalize_sqrt_argument_preserve_sign_for_display(
@@ -3238,15 +3357,83 @@ fn zero_set_condition_args_equivalent_for_display(
     left: ExprId,
     right: ExprId,
 ) -> bool {
-    match (
+    if let (Some(left_radicand), Some(right_radicand)) = (
         extract_sqrt_argument_view(ctx, left),
         extract_sqrt_argument_view(ctx, right),
     ) {
-        (Some(left_radicand), Some(right_radicand)) => {
-            exprs_equivalent(ctx, left_radicand, right_radicand)
+        if exprs_equivalent(ctx, left_radicand, right_radicand) {
+            return true;
         }
-        _ => exprs_equivalent_up_to_sign(ctx, left, right),
     }
+
+    exprs_equivalent_up_to_sign(ctx, left, right)
+        || zero_set_args_opposite_subtraction_for_display(ctx, left, right)
+        || zero_set_args_equivalent_after_sqrt_half_power_normalization(ctx, left, right)
+}
+
+fn zero_set_args_opposite_subtraction_for_display(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let (Expr::Sub(left_a, left_b), Expr::Sub(right_a, right_b)) = (ctx.get(left), ctx.get(right))
+    else {
+        return false;
+    };
+
+    zero_set_arg_atoms_equivalent_for_display(ctx, *left_a, *right_b)
+        && zero_set_arg_atoms_equivalent_for_display(ctx, *left_b, *right_a)
+}
+
+fn zero_set_arg_atoms_equivalent_for_display(ctx: &Context, left: ExprId, right: ExprId) -> bool {
+    if exprs_equivalent(ctx, left, right) {
+        return true;
+    }
+
+    let mut rewrite_ctx = ctx.clone();
+    let left = normalize_condition_expr_preserve_sign(&mut rewrite_ctx, left);
+    let right = normalize_condition_expr_preserve_sign(&mut rewrite_ctx, right);
+    let left = rewrite_half_powers_as_sqrt_for_condition_display(&mut rewrite_ctx, left);
+    let right = rewrite_half_powers_as_sqrt_for_condition_display(&mut rewrite_ctx, right);
+    exprs_equivalent(&rewrite_ctx, left, right)
+        || condition_expr_display(&rewrite_ctx, left) == condition_expr_display(&rewrite_ctx, right)
+}
+
+fn zero_set_args_equivalent_after_sqrt_half_power_normalization(
+    ctx: &Context,
+    left: ExprId,
+    right: ExprId,
+) -> bool {
+    let mut rewrite_ctx = ctx.clone();
+    let left_norm = rewrite_sqrt_calls_as_half_powers_for_condition_match(&mut rewrite_ctx, left);
+    let right_norm = rewrite_sqrt_calls_as_half_powers_for_condition_match(&mut rewrite_ctx, right);
+    if exprs_equivalent_up_to_sign(&rewrite_ctx, left_norm, right_norm) {
+        return true;
+    }
+
+    let left_display_norm = normalize_condition_expr_preserve_sign(&mut rewrite_ctx, left_norm);
+    let right_display_norm = normalize_condition_expr_preserve_sign(&mut rewrite_ctx, right_norm);
+    let left_display_norm =
+        rewrite_half_powers_as_sqrt_for_condition_display(&mut rewrite_ctx, left_display_norm);
+    let right_display_norm =
+        rewrite_half_powers_as_sqrt_for_condition_display(&mut rewrite_ctx, right_display_norm);
+    exprs_equivalent_up_to_sign(&rewrite_ctx, left_display_norm, right_display_norm)
+        || zero_set_arg_displays_equal_up_to_sign(
+            &mut rewrite_ctx,
+            left_display_norm,
+            right_display_norm,
+        )
+}
+
+fn zero_set_arg_displays_equal_up_to_sign(ctx: &mut Context, left: ExprId, right: ExprId) -> bool {
+    if condition_expr_display(ctx, left) == condition_expr_display(ctx, right) {
+        return true;
+    }
+
+    let neg_right = ctx.add(Expr::Neg(right));
+    let neg_right = normalize_condition_expr_preserve_sign(ctx, neg_right);
+    let neg_right = rewrite_half_powers_as_sqrt_for_condition_display(ctx, neg_right);
+    condition_expr_display(ctx, left) == condition_expr_display(ctx, neg_right)
 }
 
 fn supported_integral_condition_exprs_equivalent_for_display(
@@ -3617,6 +3804,10 @@ fn should_prefer_compact_same_unary_zero_set_display(
 }
 
 fn condition_expr_display_len(ctx: &Context, expr: ExprId) -> usize {
+    condition_expr_display(ctx, expr).len()
+}
+
+fn condition_expr_display(ctx: &Context, expr: ExprId) -> String {
     use cas_formatter::DisplayExpr;
 
     DisplayExpr {
@@ -3624,7 +3815,6 @@ fn condition_expr_display_len(ctx: &Context, expr: ExprId) -> usize {
         id: expr,
     }
     .to_string()
-    .len()
 }
 
 fn should_prefer_inverse_trig_alias_display(
@@ -7277,6 +7467,27 @@ mod tests {
     }
 
     #[test]
+    fn nonzero_tanh_power_display_condition_normalizes_to_sinh_nonzero() {
+        let mut ctx = Context::new();
+        let tanh_power = parse("tanh(2*x + 1)^3", &mut ctx).expect("parse tanh power");
+        let sinh_expr = parse("sinh(2*x + 1)", &mut ctx).expect("parse sinh");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(tanh_power),
+                ImplicitCondition::NonZero(sinh_expr),
+            ],
+        );
+        let rendered: Vec<_> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["sinh(2 * x + 1) ≠ 0"]);
+    }
+
+    #[test]
     fn nonzero_sinh_display_condition_normalizes_sqrt_argument_before_dedupe() {
         let mut ctx = Context::new();
         let source = parse("sinh(sqrt(x + 0))", &mut ctx).expect("parse source sinh");
@@ -7295,6 +7506,80 @@ mod tests {
             .collect();
 
         assert_eq!(rendered, vec!["sinh(sqrt(x)) ≠ 0"]);
+    }
+
+    #[test]
+    fn nonzero_sinh_display_conditions_dedupe_sqrt_and_half_power_shifted_argument() {
+        let mut ctx = Context::new();
+        let source = parse("sinh(sqrt(x) - b)", &mut ctx).expect("parse source sinh");
+        let target = parse("sinh(x^(1/2) - b)", &mut ctx).expect("parse target sinh");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(source),
+                ImplicitCondition::NonZero(target),
+            ],
+        );
+        let rendered: Vec<_> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["sinh(sqrt(x) - b) ≠ 0"]);
+    }
+
+    #[test]
+    fn nonzero_tanh_display_condition_dedupes_sinh_sqrt_shifted_argument() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).expect("parse x");
+        let product_source =
+            parse("2 * sqrt(x) * sinh(sqrt(x) - b)^2", &mut ctx).expect("parse product source");
+        let tanh_target = parse("tanh(x^(1/2) - b)", &mut ctx).expect("parse target tanh");
+        let sinh_target = parse("sinh(x^(1/2) - b)", &mut ctx).expect("parse target sinh");
+        let reciprocal_tanh_target =
+            parse("1 / tanh(x^(1/2) - b)", &mut ctx).expect("parse reciprocal tanh");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(product_source),
+                ImplicitCondition::NonZero(tanh_target),
+                ImplicitCondition::NonZero(sinh_target),
+                ImplicitCondition::Positive(x),
+                ImplicitCondition::NonNegative(x),
+                ImplicitCondition::NonZero(reciprocal_tanh_target),
+            ],
+        );
+        let rendered: Vec<_> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["x > 0", "sinh(sqrt(x) - b) ≠ 0"]);
+    }
+
+    #[test]
+    fn nonzero_sinh_display_conditions_dedupe_opposite_shifted_sqrt_orientation() {
+        let mut ctx = Context::new();
+        let x = parse("x", &mut ctx).expect("parse x");
+        let source = parse("sinh(b - sqrt(x))", &mut ctx).expect("parse source sinh");
+        let target = parse("sinh(sqrt(x) - b)", &mut ctx).expect("parse target sinh");
+
+        let normalized = normalize_and_dedupe_conditions(
+            &mut ctx,
+            &[
+                ImplicitCondition::NonZero(source),
+                ImplicitCondition::Positive(x),
+                ImplicitCondition::NonZero(target),
+            ],
+        );
+        let rendered: Vec<_> = normalized
+            .iter()
+            .map(|condition| condition.display(&ctx))
+            .collect();
+
+        assert_eq!(rendered, vec!["sinh(b - sqrt(x)) ≠ 0", "x > 0"]);
     }
 
     #[test]

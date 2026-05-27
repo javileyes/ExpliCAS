@@ -53,8 +53,8 @@ pub use phase_shift_rules::SinSupplementaryAngleRule;
 // --- Half-angle and Weierstrass substitution ---
 mod half_angle_phase_rules;
 pub use half_angle_phase_rules::{
-    CotHalfAngleDifferenceRule, HyperbolicTanhPythRule, TanDifferenceRule,
-    WeierstrassContractionRule,
+    CotHalfAngleDifferenceRule, HyperbolicCschFourthVerificationRule, HyperbolicTanhPythRule,
+    TanDifferenceRule, WeierstrassContractionRule,
 };
 
 mod identity_zero_rules;

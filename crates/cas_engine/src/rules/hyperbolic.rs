@@ -990,7 +990,7 @@ impl crate::rule::Rule for HyperbolicProductTripleAngleIdentityZeroRule {
     }
 
     fn priority(&self) -> i32 {
-        200
+        520
     }
 
     fn importance(&self) -> crate::step::ImportanceLevel {
@@ -1164,7 +1164,7 @@ pub fn register(simplifier: &mut crate::engine::Simplifier) {
 mod tests {
     use super::{match_hyperbolic_product_triple_identity_zero, HyperbolicCubicZeroMatch};
     use crate::rule::Rule;
-    use cas_ast::Context;
+    use cas_ast::{target_kind::TargetKind, Context};
     use cas_formatter::DisplayExpr;
     use cas_parser::parse;
 
@@ -1256,6 +1256,41 @@ mod tests {
             matched,
             Some(HyperbolicCubicZeroMatch::ProductTriple { .. })
         ));
+    }
+
+    #[test]
+    fn hyperbolic_product_triple_identity_zero_preempts_generic_exact_zero() {
+        let rules = crate::Simplifier::with_default_rules().get_rules_clone();
+
+        for target_kind in [TargetKind::Add, TargetKind::Sub] {
+            let bucket = rules
+                .get(&target_kind)
+                .unwrap_or_else(|| panic!("expected {target_kind:?} rule bucket"));
+            let direct_pos = bucket
+                .iter()
+                .position(|rule| {
+                    rule.name() == "Hyperbolic Pythagorean Identity Cancellation Bridge Residual"
+                })
+                .unwrap_or_else(|| {
+                    panic!("expected direct hyperbolic bridge in {target_kind:?} bucket")
+                });
+            let generic_pos = bucket
+                .iter()
+                .position(|rule| rule.name() == "Collapse Exact Zero Additive Subexpression")
+                .unwrap_or_else(|| {
+                    panic!("expected generic exact-zero subset in {target_kind:?} bucket")
+                });
+
+            assert!(
+                direct_pos < generic_pos,
+                "direct hyperbolic bridge should run before broad exact-zero subset routes"
+            );
+        }
+
+        assert!(
+            super::HyperbolicProductTripleAngleIdentityZeroRule.priority() > 509,
+            "direct hyperbolic bridge should run before broad exact-zero subset routes"
+        );
     }
 
     #[test]

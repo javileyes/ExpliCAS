@@ -1368,6 +1368,16 @@ root.direct_small_zero_composition.candidate.three_core_groups
 - resolved by:
   - later retained coverage made this candidate obsolete
 
+## 2026-05-18 - Discovery observe-only: closed by follow-up resolution wording
+
+- area:
+  - generated discovery
+  - `combined_additive_zero` x `simplify`
+- status:
+  - `discovery/observe-only`
+- follow-up resolution:
+  - later retained coverage made this candidate obsolete
+
 ## 2026-05-18 - Discovery observe-only: superseded generated candidate
 
 - area:

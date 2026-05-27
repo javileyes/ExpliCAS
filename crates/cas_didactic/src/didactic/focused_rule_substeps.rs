@@ -14104,7 +14104,9 @@ fn hyperbolic_log_sqrt_chain_match_from_cofactor(
 #[allow(clippy::enum_variant_names)]
 enum HyperbolicReciprocalTableKind {
     CoshSquare,
+    CoshFourth,
     SinhSquare,
+    SinhFourth,
     SinhOverCoshSquare,
     CoshOverSinhSquare,
 }
@@ -14117,6 +14119,8 @@ struct HyperbolicReciprocalTableMatch {
     derivative_display: String,
     derivative_latex: String,
     scale: BigRational,
+    symbolic_scale_display: Option<String>,
+    symbolic_scale_latex: Option<String>,
 }
 
 fn generate_hyperbolic_reciprocal_table_integration_substeps(
@@ -14152,7 +14156,13 @@ fn generate_hyperbolic_reciprocal_table_integration_substeps(
 
     let title = match table_match.kind {
         HyperbolicReciprocalTableKind::CoshSquare => "Usar la regla de 1/cosh(u)^2 -> tanh(u)",
+        HyperbolicReciprocalTableKind::CoshFourth => {
+            "Usar la regla de 1/cosh(u)^4 -> tanh(u) - tanh(u)^3/3"
+        }
         HyperbolicReciprocalTableKind::SinhSquare => "Usar la regla de 1/sinh(u)^2 -> -1/tanh(u)",
+        HyperbolicReciprocalTableKind::SinhFourth => {
+            "Usar la regla de 1/sinh(u)^4 -> 1/tanh(u) - 1/(3*tanh(u)^3)"
+        }
         HyperbolicReciprocalTableKind::SinhOverCoshSquare => {
             "Usar la regla de sinh(u)/cosh(u)^2 -> -1/cosh(u)"
         }
@@ -14176,7 +14186,23 @@ fn generate_hyperbolic_reciprocal_table_integration_substeps(
         .with_before_latex(format!("u = {}", latex_expr(ctx, table_match.arg)))
         .with_after_latex(format!("du = {}\\,dx", table_match.derivative_latex)),
     );
-    if !table_match.scale.is_one() {
+    if let (Some(scale_display), Some(scale_latex)) = (
+        table_match.symbolic_scale_display.as_ref(),
+        table_match.symbolic_scale_latex.as_ref(),
+    ) {
+        substeps.push(
+            SubStep::new(
+                "Ajustar el factor constante",
+                table_match.cofactor_display,
+                format!("{} · {}", scale_display, table_match.derivative_display),
+            )
+            .with_before_latex(table_match.cofactor_latex)
+            .with_after_latex(format!(
+                "{}\\cdot {}",
+                scale_latex, table_match.derivative_latex
+            )),
+        );
+    } else if !table_match.scale.is_one() {
         substeps.push(
             SubStep::new(
                 "Ajustar el factor constante",
@@ -14274,6 +14300,15 @@ fn hyperbolic_reciprocal_sqrt_chain_from_factors(
         var_name,
     )
     .or_else(|| {
+        hyperbolic_reciprocal_fourth_match(
+            ctx,
+            numerator_negative,
+            numerator_factors,
+            &denominator_factors,
+            var_name,
+        )
+    })
+    .or_else(|| {
         hyperbolic_reciprocal_derivative_match(
             ctx,
             numerator_negative,
@@ -14298,6 +14333,44 @@ fn hyperbolic_reciprocal_square_match(
         let kind = match den_builtin {
             BuiltinFn::Cosh => HyperbolicReciprocalTableKind::CoshSquare,
             BuiltinFn::Sinh => HyperbolicReciprocalTableKind::SinhSquare,
+            _ => continue,
+        };
+
+        let remaining_denominator = denominator_factors
+            .iter()
+            .enumerate()
+            .filter_map(|(idx, factor)| (idx != denominator_index).then_some(*factor))
+            .collect::<Vec<_>>();
+        if let Some(table_match) = hyperbolic_reciprocal_match_from_cofactor(
+            ctx,
+            kind,
+            arg,
+            numerator_negative,
+            numerator_factors,
+            &remaining_denominator,
+            var_name,
+        ) {
+            return Some(table_match);
+        }
+    }
+
+    None
+}
+
+fn hyperbolic_reciprocal_fourth_match(
+    ctx: &Context,
+    numerator_negative: bool,
+    numerator_factors: &[ExprId],
+    denominator_factors: &[ExprId],
+    var_name: &str,
+) -> Option<HyperbolicReciprocalTableMatch> {
+    for (denominator_index, factor) in denominator_factors.iter().enumerate() {
+        let Some((den_builtin, arg)) = hyperbolic_fourth_denominator_arg(ctx, *factor) else {
+            continue;
+        };
+        let kind = match den_builtin {
+            BuiltinFn::Cosh => HyperbolicReciprocalTableKind::CoshFourth,
+            BuiltinFn::Sinh => HyperbolicReciprocalTableKind::SinhFourth,
             _ => continue,
         };
 
@@ -14414,6 +14487,35 @@ fn hyperbolic_reciprocal_match_from_cofactor(
                 derivative_display,
                 derivative_latex,
                 scale,
+                symbolic_scale_display: None,
+                symbolic_scale_latex: None,
+            });
+        }
+        if let Some((
+            derivative_display,
+            derivative_latex,
+            scale,
+            cofactor_display,
+            cofactor_latex,
+            symbolic_scale_display,
+            symbolic_scale_latex,
+        )) = polynomial_derivative_cofactor_trace_with_symbolic_scale(
+            ctx,
+            numerator_negative,
+            numerator_factors,
+            arg,
+            var_name,
+        ) {
+            return Some(HyperbolicReciprocalTableMatch {
+                kind,
+                arg,
+                cofactor_display,
+                cofactor_latex,
+                derivative_display,
+                derivative_latex,
+                scale,
+                symbolic_scale_display,
+                symbolic_scale_latex,
             });
         }
         if let Some((
@@ -14437,6 +14539,8 @@ fn hyperbolic_reciprocal_match_from_cofactor(
                 derivative_display,
                 derivative_latex,
                 scale,
+                symbolic_scale_display: None,
+                symbolic_scale_latex: None,
             });
         }
         if let Some((
@@ -14460,19 +14564,28 @@ fn hyperbolic_reciprocal_match_from_cofactor(
                 derivative_display,
                 derivative_latex,
                 scale,
+                symbolic_scale_display: None,
+                symbolic_scale_latex: None,
             });
         }
     }
 
-    let (derivative_display, derivative_latex, scale, cofactor_display, cofactor_latex) =
-        sqrt_chain_cofactor_derivative_trace(
-            ctx,
-            arg,
-            numerator_negative,
-            numerator_factors,
-            denominator_factors,
-            var_name,
-        )?;
+    let (
+        derivative_display,
+        derivative_latex,
+        scale,
+        cofactor_display,
+        cofactor_latex,
+        symbolic_scale_display,
+        symbolic_scale_latex,
+    ) = sqrt_chain_cofactor_derivative_trace_with_symbolic_scale(
+        ctx,
+        arg,
+        numerator_negative,
+        numerator_factors,
+        denominator_factors,
+        var_name,
+    )?;
 
     Some(HyperbolicReciprocalTableMatch {
         kind,
@@ -14482,6 +14595,8 @@ fn hyperbolic_reciprocal_match_from_cofactor(
         derivative_display,
         derivative_latex,
         scale,
+        symbolic_scale_display,
+        symbolic_scale_latex,
     })
 }
 
@@ -14510,6 +14625,16 @@ fn hyperbolic_square_denominator_arg(ctx: &Context, den: ExprId) -> Option<(Buil
         return Some((left_builtin, left_arg));
     }
     None
+}
+
+fn hyperbolic_fourth_denominator_arg(ctx: &Context, den: ExprId) -> Option<(BuiltinFn, ExprId)> {
+    let (base, exponent) = as_pow(ctx, den)?;
+    let exponent = as_rational_const(ctx, exponent, 8)?;
+    if exponent != BigRational::from_integer(4.into()) {
+        return None;
+    }
+    let (builtin, arg) = unary_builtin_arg(ctx, base)?;
+    matches!(builtin, BuiltinFn::Cosh | BuiltinFn::Sinh).then_some((builtin, arg))
 }
 
 struct PolynomialDerivativeTableMatch {
@@ -14671,7 +14796,7 @@ fn polynomial_derivative_cofactor_trace(
     arg: ExprId,
     var_name: &str,
 ) -> Option<(String, String, BigRational, String, String)> {
-    let arg_poly = Polynomial::from_expr(ctx, arg, var_name).ok()?;
+    let arg_poly = polynomial_trace_arg_ignoring_independent_addends(ctx, arg, var_name)?;
     if arg_poly.degree() == 0 {
         return None;
     }
@@ -14703,6 +14828,93 @@ fn polynomial_derivative_cofactor_trace(
         scale,
         display_expr(&scratch, cofactor_simplified),
         latex_expr(&scratch, cofactor_simplified),
+    ))
+}
+
+type PolynomialDerivativeCofactorTraceWithSymbolicScale = (
+    String,
+    String,
+    BigRational,
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+);
+
+fn polynomial_derivative_cofactor_trace_with_symbolic_scale(
+    ctx: &Context,
+    negative: bool,
+    cofactor_factors: &[ExprId],
+    arg: ExprId,
+    var_name: &str,
+) -> Option<PolynomialDerivativeCofactorTraceWithSymbolicScale> {
+    let arg_poly = polynomial_trace_arg_ignoring_independent_addends(ctx, arg, var_name)?;
+    if arg_poly.degree() == 0 {
+        return None;
+    }
+    let derivative_poly = arg_poly.derivative();
+    if derivative_poly.is_zero() {
+        return None;
+    }
+
+    let mut scratch = ctx.clone();
+    let mut signed_cofactor_factors = Vec::new();
+    if negative {
+        signed_cofactor_factors
+            .push(scratch.add(Expr::Number(BigRational::from_integer((-1).into()))));
+    }
+    signed_cofactor_factors.extend_from_slice(cofactor_factors);
+    let cofactor_expr = build_quotient_from_factors(&mut scratch, &signed_cofactor_factors, &[]);
+    let cofactor_simplified = simplify_expr_in_context(&mut scratch, cofactor_expr);
+
+    let mut derivative_factors = Vec::new();
+    let mut scale_factors = Vec::new();
+    for factor in &signed_cofactor_factors {
+        if contains_named_var(&scratch, *factor, var_name) {
+            derivative_factors.push(*factor);
+        } else {
+            scale_factors.push(*factor);
+        }
+    }
+    if derivative_factors.is_empty()
+        || scale_factors.is_empty()
+        || !scale_factors
+            .iter()
+            .any(|factor| as_rational_const(&scratch, *factor, 8).is_none())
+    {
+        return None;
+    }
+
+    let derivative_cofactor_expr = build_mul_expr_from_factors(&mut scratch, &derivative_factors);
+    let derivative_cofactor_poly =
+        Polynomial::from_expr(&scratch, derivative_cofactor_expr, var_name).ok()?;
+    let rational_scale = constant_polynomial_ratio(&derivative_cofactor_poly, &derivative_poly)?;
+    if rational_scale.is_zero() {
+        return None;
+    }
+
+    let symbolic_scale = build_mul_expr_from_factors(&mut scratch, &scale_factors);
+    let scaled_symbolic_scale = if rational_scale.is_one() {
+        symbolic_scale
+    } else {
+        let rational_expr = scratch.add(Expr::Number(rational_scale));
+        scratch.add(Expr::Mul(rational_expr, symbolic_scale))
+    };
+    let scaled_symbolic_scale = simplify_expr_in_context(&mut scratch, scaled_symbolic_scale);
+    if contains_named_var(&scratch, scaled_symbolic_scale, var_name) {
+        return None;
+    }
+
+    let (derivative_display, derivative_latex) =
+        polynomial_display_and_latex(ctx, &derivative_poly);
+    Some((
+        derivative_display,
+        derivative_latex,
+        BigRational::one(),
+        display_expr(&scratch, cofactor_simplified),
+        latex_expr(&scratch, cofactor_simplified),
+        Some(display_expr(&scratch, scaled_symbolic_scale)),
+        Some(latex_expr(&scratch, scaled_symbolic_scale)),
     ))
 }
 
@@ -16316,7 +16528,7 @@ fn reciprocal_trig_derivative_product_match_from_cofactor(
     cofactor_poly: Polynomial,
     var_name: &str,
 ) -> Option<ReciprocalTrigDerivativeProductMatch> {
-    let arg_poly = Polynomial::from_expr(ctx, arg, var_name).ok()?;
+    let arg_poly = polynomial_trace_arg_ignoring_independent_addends(ctx, arg, var_name)?;
     if arg_poly.degree() == 0 {
         return None;
     }
@@ -16338,6 +16550,39 @@ fn reciprocal_trig_derivative_product_match_from_cofactor(
         symbolic_scale_display: None,
         symbolic_scale_latex: None,
     })
+}
+
+fn polynomial_trace_arg_ignoring_independent_addends(
+    ctx: &Context,
+    arg: ExprId,
+    var_name: &str,
+) -> Option<Polynomial> {
+    if let Ok(poly) = Polynomial::from_expr(ctx, arg, var_name) {
+        return Some(poly);
+    }
+
+    let terms = expr_nary::add_terms_signed(ctx, arg);
+    if terms.len() <= 1 {
+        return None;
+    }
+
+    let mut removed_independent_term = false;
+    let mut saw_dependent_term = false;
+    let mut poly = Polynomial::zero(var_name.to_string());
+    for (term, sign) in terms {
+        if contains_named_var(ctx, term, var_name) {
+            let term_poly = Polynomial::from_expr(ctx, term, var_name).ok()?;
+            saw_dependent_term = true;
+            poly = match sign {
+                Sign::Pos => poly.add(&term_poly),
+                Sign::Neg => poly.sub(&term_poly),
+            };
+        } else {
+            removed_independent_term = true;
+        }
+    }
+
+    (removed_independent_term && saw_dependent_term).then_some(poly)
 }
 
 fn sqrt_chain_reciprocal_trig_derivative_product_integrand(

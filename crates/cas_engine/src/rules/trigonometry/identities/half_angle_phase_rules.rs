@@ -3,7 +3,9 @@
 use crate::define_rule;
 use crate::rule::Rewrite;
 use cas_ast::ExprId;
-use cas_math::hyperbolic_identity_support::try_rewrite_tanh_pythagorean_add_chain;
+use cas_math::hyperbolic_identity_support::{
+    try_rewrite_csch_fourth_tanh_verification_add_chain, try_rewrite_tanh_pythagorean_add_chain,
+};
 use cas_math::trig_half_angle_support::{
     try_rewrite_cot_half_angle_difference_expr, CotHalfAngleDifferenceRewriteKind,
 };
@@ -109,6 +111,26 @@ define_rule!(
     |ctx, expr| {
         let rewrite = try_rewrite_tanh_pythagorean_add_chain(ctx, expr)?;
         Some(Rewrite::new(rewrite.rewritten).desc("1 - tanh²(x) = 1/cosh²(x)"))
+    }
+);
+
+// =============================================================================
+// HyperbolicCschFourthVerificationRule:
+// 1/(cosh(u)^2*tanh(u)^4) - 1/sinh(u)^4 - 1/sinh(u)^2 → 0
+// =============================================================================
+// Bounded verifier route for csch^4 antiderivatives.
+
+define_rule!(
+    HyperbolicCschFourthVerificationRule,
+    "Hyperbolic Csch Fourth Verification",
+    Some(crate::target_kind::TargetKindSet::ADD_SUB),
+    crate::phase::PhaseMask::CORE | crate::phase::PhaseMask::POST,
+    priority: 520,
+    |ctx, expr| {
+        let rewrite = try_rewrite_csch_fourth_tanh_verification_add_chain(ctx, expr)?;
+        Some(Rewrite::new(rewrite.rewritten).desc(
+            "1/(cosh²(u)·tanh⁴(u)) = 1/sinh⁴(u) + 1/sinh²(u)",
+        ))
     }
 );
 

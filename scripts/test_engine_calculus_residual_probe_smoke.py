@@ -56,6 +56,26 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
             ("2026-05-15T05:36:56Z  WARN simplify: depth_overflow",),
         )
 
+    def test_extracts_cli_error_from_ok_false_json(self) -> None:
+        parsed, error = SMOKE.parse_json(
+            textwrap.dedent(
+                """\
+                {
+                  "ok": false,
+                  "kind": "InternalError",
+                  "code": "E_INTERNAL",
+                  "error": "función [limit] no definida"
+                }
+                """
+            )
+        )
+
+        self.assertIsNone(error)
+        self.assertEqual(
+            SMOKE.extract_cli_error(parsed),
+            "cli error E_INTERNAL: función [limit] no definida",
+        )
+
     def test_classify_error_checks_result_required_conditions_and_warnings(self) -> None:
         self.assertIsNone(
             SMOKE.classify_error(
@@ -86,6 +106,10 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(
             SMOKE.classify_error_kind("unexpected warnings: diagnostic"),
             "unexpected_warnings",
+        )
+        self.assertEqual(
+            SMOKE.classify_error_kind("cli error E_INTERNAL: función [limit] no definida"),
+            "cli_error",
         )
         self.assertEqual(SMOKE.classify_error_kind("timeout"), "timeout")
 
@@ -222,6 +246,35 @@ class CalculusResidualProbeSmokeTests(unittest.TestCase):
         self.assertEqual(result.result, "1 / (x + 2)")
         self.assertEqual(result.required_conditions, ("x + 2",))
         self.assertEqual(result.impossible_required_conditions, ())
+
+    def test_run_probe_classifies_ok_false_json_as_cli_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            cas_cli = Path(temp_dir) / "cas_cli"
+            cas_cli.write_text(
+                textwrap.dedent(
+                    """\
+                    #!/bin/sh
+                    cat <<'OUT'
+                    {"ok":false,"kind":"InternalError","code":"E_INTERNAL","error":"función [limit] no definida"}
+                    OUT
+                    """
+                ),
+                encoding="utf-8",
+            )
+            cas_cli.chmod(cas_cli.stat().st_mode | stat.S_IXUSR)
+
+            result = SMOKE.run_probe(
+                "ignored",
+                timeout_seconds=2.0,
+                cas_cli=cas_cli,
+                expected_result="1 / (x + 2)",
+            )
+
+        self.assertEqual(result.status, "fail")
+        self.assertEqual(result.error_kind, "cli_error")
+        self.assertEqual(result.returncode, 0)
+        self.assertIsNone(result.result)
+        self.assertIn("función [limit] no definida", result.error or "")
 
     def test_run_probe_fails_on_literal_impossible_nonzero_required_condition(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

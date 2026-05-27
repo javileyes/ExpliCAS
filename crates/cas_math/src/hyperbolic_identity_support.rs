@@ -1,7 +1,9 @@
-use crate::expr_predicates::{is_one_expr, is_two_expr};
+use crate::expr_predicates::is_two_expr;
 use crate::trig_roots_flatten::{extract_double_angle_arg_relaxed, extract_triple_angle_arg};
 use cas_ast::ordering::compare_expr;
 use cas_ast::{BuiltinFn, Constant, Context, Expr, ExprId};
+use num_rational::BigRational;
+use num_traits::{One, Zero};
 use std::cmp::Ordering;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,6 +62,590 @@ pub struct HyperbolicDoubleAngleRewrite {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HyperbolicTanhPythagoreanRewrite {
     pub rewritten: ExprId,
+}
+
+fn extract_coeff_tanh_pow2(ctx: &Context, term: ExprId) -> Option<(BigRational, ExprId)> {
+    let mut coeff = BigRational::one();
+    let mut working = term;
+
+    if let Expr::Neg(inner) = ctx.get(term) {
+        coeff = -coeff;
+        working = *inner;
+    }
+
+    let mut tanh_arg: Option<ExprId> = None;
+    for factor in crate::expr_nary::mul_leaves(ctx, working) {
+        if let Expr::Number(n) = ctx.get(factor) {
+            coeff *= n.clone();
+            continue;
+        }
+
+        let Expr::Pow(base, exp) = ctx.get(factor) else {
+            return None;
+        };
+        if !is_two_expr(ctx, *exp) {
+            return None;
+        }
+        let Expr::Function(fn_id, args) = ctx.get(*base) else {
+            return None;
+        };
+        if !ctx.is_builtin(*fn_id, BuiltinFn::Tanh) || args.len() != 1 || tanh_arg.is_some() {
+            return None;
+        }
+        tanh_arg = Some(args[0]);
+    }
+
+    Some((coeff, tanh_arg?))
+}
+
+fn multiply_numeric_coeff(ctx: &mut Context, coeff: &BigRational, body: ExprId) -> ExprId {
+    if coeff.is_one() {
+        return body;
+    }
+    let coeff_expr = ctx.add(Expr::Number(coeff.clone()));
+    ctx.add(Expr::Mul(coeff_expr, body))
+}
+
+struct SignedFactors {
+    negative: bool,
+    factors: Vec<ExprId>,
+}
+
+fn push_normalized_factor(
+    ctx: &mut Context,
+    mut factor: ExprId,
+    negative: &mut bool,
+    factors: &mut Vec<ExprId>,
+) -> bool {
+    loop {
+        match ctx.get(factor).clone() {
+            Expr::Neg(inner) => {
+                *negative = !*negative;
+                factor = inner;
+            }
+            Expr::Number(value) => {
+                if value.is_zero() {
+                    return false;
+                }
+                if value < BigRational::zero() {
+                    *negative = !*negative;
+                    let positive = -value;
+                    if !positive.is_one() {
+                        factors.push(ctx.add(Expr::Number(positive)));
+                    }
+                } else if !value.is_one() {
+                    factors.push(factor);
+                }
+                return true;
+            }
+            _ => {
+                factors.push(factor);
+                return true;
+            }
+        }
+    }
+}
+
+fn signed_factors_for_term(
+    ctx: &mut Context,
+    term: ExprId,
+    sign: crate::expr_nary::Sign,
+) -> Option<SignedFactors> {
+    let mut negative = sign == crate::expr_nary::Sign::Neg;
+    let mut factors = Vec::new();
+    for factor in crate::expr_nary::mul_leaves(ctx, term) {
+        if !push_normalized_factor(ctx, factor, &mut negative, &mut factors) {
+            return None;
+        }
+    }
+    Some(SignedFactors { negative, factors })
+}
+
+fn signed_factors_to_expr(ctx: &mut Context, factors: &[ExprId], negative: bool) -> ExprId {
+    let product = if factors.is_empty() {
+        ctx.num(1)
+    } else if factors.len() == 1 {
+        factors[0]
+    } else {
+        crate::expr_nary::build_balanced_mul(ctx, factors)
+    };
+
+    if negative {
+        match ctx.get(product).clone() {
+            Expr::Number(value) => ctx.add(Expr::Number(-value)),
+            Expr::Neg(inner) => inner,
+            _ => ctx.add(Expr::Neg(product)),
+        }
+    } else {
+        product
+    }
+}
+
+fn tanh_squared_arg(ctx: &Context, factor: ExprId) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(factor) else {
+        return None;
+    };
+    if !is_two_expr(ctx, *exp) {
+        return None;
+    }
+    let Expr::Function(fn_id, args) = ctx.get(*base) else {
+        return None;
+    };
+    (ctx.is_builtin(*fn_id, BuiltinFn::Tanh) && args.len() == 1).then_some(args[0])
+}
+
+fn is_integer_number(ctx: &Context, expr: ExprId, value: i64) -> bool {
+    matches!(
+        ctx.get(expr),
+        Expr::Number(n) if *n == BigRational::from_integer(value.into())
+    )
+}
+
+fn hyperbolic_power_arg(
+    ctx: &Context,
+    factor: ExprId,
+    builtin: BuiltinFn,
+    power: i64,
+) -> Option<ExprId> {
+    let Expr::Pow(base, exp) = ctx.get(factor) else {
+        return None;
+    };
+    if !is_integer_number(ctx, *exp, power) {
+        return None;
+    }
+    let Expr::Function(fn_id, args) = ctx.get(*base) else {
+        return None;
+    };
+    (ctx.is_builtin(*fn_id, builtin) && args.len() == 1).then_some(args[0])
+}
+
+fn cosh_tanh_fourth_denominator(ctx: &Context, den: ExprId) -> Option<(ExprId, BigRational)> {
+    let mut cosh_arg = None;
+    let mut tanh_arg = None;
+    let mut coefficient = BigRational::one();
+
+    for factor in crate::expr_nary::mul_leaves(ctx, den) {
+        if let Expr::Number(value) = ctx.get(factor) {
+            if value.is_zero() {
+                return None;
+            }
+            coefficient *= value.clone();
+            continue;
+        }
+        if let Some(arg) = hyperbolic_power_arg(ctx, factor, BuiltinFn::Cosh, 2) {
+            if cosh_arg.replace(arg).is_some() {
+                return None;
+            }
+            continue;
+        }
+        if let Some(arg) = hyperbolic_power_arg(ctx, factor, BuiltinFn::Tanh, 4) {
+            if tanh_arg.replace(arg).is_some() {
+                return None;
+            }
+            continue;
+        }
+        return None;
+    }
+
+    let cosh_arg = cosh_arg?;
+    let tanh_arg = tanh_arg?;
+    (compare_expr(ctx, cosh_arg, tanh_arg) == Ordering::Equal).then_some((cosh_arg, coefficient))
+}
+
+fn cosh_tanh_square_denominator(ctx: &Context, den: ExprId) -> Option<(ExprId, BigRational)> {
+    let mut cosh_arg = None;
+    let mut tanh_arg = None;
+    let mut coefficient = BigRational::one();
+
+    for factor in crate::expr_nary::mul_leaves(ctx, den) {
+        if let Expr::Number(value) = ctx.get(factor) {
+            if value.is_zero() {
+                return None;
+            }
+            coefficient *= value.clone();
+            continue;
+        }
+        if let Some(arg) = hyperbolic_power_arg(ctx, factor, BuiltinFn::Cosh, 2) {
+            if cosh_arg.replace(arg).is_some() {
+                return None;
+            }
+            continue;
+        }
+        if let Some(arg) = hyperbolic_power_arg(ctx, factor, BuiltinFn::Tanh, 2) {
+            if tanh_arg.replace(arg).is_some() {
+                return None;
+            }
+            continue;
+        }
+        return None;
+    }
+
+    let cosh_arg = cosh_arg?;
+    let tanh_arg = tanh_arg?;
+    (compare_expr(ctx, cosh_arg, tanh_arg) == Ordering::Equal).then_some((cosh_arg, coefficient))
+}
+
+fn hyperbolic_power_denominator_arg(
+    ctx: &Context,
+    den: ExprId,
+    builtin: BuiltinFn,
+    power: i64,
+) -> Option<(ExprId, BigRational)> {
+    let mut arg = None;
+    let mut coefficient = BigRational::one();
+
+    for factor in crate::expr_nary::mul_leaves(ctx, den) {
+        if let Expr::Number(value) = ctx.get(factor) {
+            if value.is_zero() {
+                return None;
+            }
+            coefficient *= value.clone();
+            continue;
+        }
+        if let Some(current_arg) = hyperbolic_power_arg(ctx, factor, builtin, power) {
+            if arg.replace(current_arg).is_some() {
+                return None;
+            }
+            continue;
+        }
+        return None;
+    }
+
+    Some((arg?, coefficient))
+}
+
+fn factor_multisets_match(ctx: &Context, left: &[ExprId], right: &[ExprId]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    let mut used = vec![false; right.len()];
+    'outer: for left_factor in left {
+        for (idx, right_factor) in right.iter().enumerate() {
+            if !used[idx] && compare_expr(ctx, *left_factor, *right_factor) == Ordering::Equal {
+                used[idx] = true;
+                continue 'outer;
+            }
+        }
+        return false;
+    }
+
+    true
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CschFourthVerificationKind {
+    CoshTanhFourth,
+    SinhSquare,
+    SinhFourth,
+}
+
+struct CschFourthVerificationTerm {
+    kind: CschFourthVerificationKind,
+    arg: ExprId,
+    negative: bool,
+    factors: Vec<ExprId>,
+}
+
+fn csch_verification_term_with_denominator_coefficient(
+    ctx: &mut Context,
+    mut signed: SignedFactors,
+    kind: CschFourthVerificationKind,
+    arg: ExprId,
+    denominator_coefficient: BigRational,
+) -> Option<CschFourthVerificationTerm> {
+    if denominator_coefficient.is_zero() {
+        return None;
+    }
+
+    let mut numerator_coefficient = BigRational::one();
+    let mut factors = Vec::new();
+    for factor in signed.factors {
+        if let Expr::Number(value) = ctx.get(factor) {
+            numerator_coefficient *= value.clone();
+        } else {
+            factors.push(factor);
+        }
+    }
+
+    let mut coefficient = numerator_coefficient / denominator_coefficient;
+    if coefficient < BigRational::zero() {
+        signed.negative = !signed.negative;
+        coefficient = -coefficient;
+    }
+    if !coefficient.is_one() {
+        let coefficient_expr = ctx.add(Expr::Number(coefficient));
+        factors.insert(0, coefficient_expr);
+    }
+
+    Some(CschFourthVerificationTerm {
+        kind,
+        arg,
+        negative: signed.negative,
+        factors,
+    })
+}
+
+fn scaled_division_factors_for_csch_verification_term(
+    ctx: &mut Context,
+    term: ExprId,
+    sign: crate::expr_nary::Sign,
+) -> Option<(SignedFactors, ExprId)> {
+    if let Expr::Div(num, den) = ctx.get(term).clone() {
+        return Some((signed_factors_for_term(ctx, num, sign)?, den));
+    }
+
+    let mut division = None;
+    let mut cofactor_factors = Vec::new();
+    for factor in crate::expr_nary::mul_leaves(ctx, term) {
+        if let Expr::Div(num, den) = ctx.get(factor).clone() {
+            if division.replace((num, den)).is_some() {
+                return None;
+            }
+            continue;
+        }
+        cofactor_factors.push(factor);
+    }
+
+    let (num, den) = division?;
+    let mut signed = signed_factors_for_term(ctx, num, sign)?;
+    for factor in cofactor_factors {
+        if !push_normalized_factor(ctx, factor, &mut signed.negative, &mut signed.factors) {
+            return None;
+        }
+    }
+
+    Some((signed, den))
+}
+
+fn extract_csch_fourth_verification_term(
+    ctx: &mut Context,
+    term: ExprId,
+    sign: crate::expr_nary::Sign,
+) -> Option<CschFourthVerificationTerm> {
+    let (signed, den) = scaled_division_factors_for_csch_verification_term(ctx, term, sign)?;
+
+    if let Some((arg, denominator_coefficient)) = cosh_tanh_fourth_denominator(ctx, den) {
+        return csch_verification_term_with_denominator_coefficient(
+            ctx,
+            signed,
+            CschFourthVerificationKind::CoshTanhFourth,
+            arg,
+            denominator_coefficient,
+        );
+    }
+    if let Some((arg, denominator_coefficient)) =
+        hyperbolic_power_denominator_arg(ctx, den, BuiltinFn::Sinh, 2)
+    {
+        return csch_verification_term_with_denominator_coefficient(
+            ctx,
+            signed,
+            CschFourthVerificationKind::SinhSquare,
+            arg,
+            denominator_coefficient,
+        );
+    }
+    if let Some((arg, denominator_coefficient)) = cosh_tanh_square_denominator(ctx, den) {
+        return csch_verification_term_with_denominator_coefficient(
+            ctx,
+            signed,
+            CschFourthVerificationKind::SinhSquare,
+            arg,
+            denominator_coefficient,
+        );
+    }
+    if let Some((arg, denominator_coefficient)) =
+        hyperbolic_power_denominator_arg(ctx, den, BuiltinFn::Sinh, 4)
+    {
+        return csch_verification_term_with_denominator_coefficient(
+            ctx,
+            signed,
+            CschFourthVerificationKind::SinhFourth,
+            arg,
+            denominator_coefficient,
+        );
+    }
+
+    None
+}
+
+fn signed_add_term_to_expr(
+    ctx: &mut Context,
+    term: ExprId,
+    sign: crate::expr_nary::Sign,
+) -> ExprId {
+    match sign {
+        crate::expr_nary::Sign::Pos => term,
+        crate::expr_nary::Sign::Neg => ctx.add(Expr::Neg(term)),
+    }
+}
+
+fn build_add_from_terms(ctx: &mut Context, terms: &[ExprId]) -> ExprId {
+    if terms.is_empty() {
+        return ctx.num(0);
+    }
+    let mut acc = terms[0];
+    for &term in terms.iter().skip(1) {
+        acc = ctx.add(Expr::Add(acc, term));
+    }
+    acc
+}
+
+/// Detects the bounded verifier residual:
+/// `1/(cosh(u)^2*tanh(u)^4) - 1/sinh(u)^4 - 1/sinh(u)^2 -> 0`.
+///
+/// The matcher also accepts a shared multiplicative cofactor and the opposite
+/// sign orientation. It avoids expanding hyperbolic sums while verifying
+/// `coth(u) - coth(u)^3/3` antiderivatives.
+pub fn try_rewrite_csch_fourth_tanh_verification_add_chain(
+    ctx: &mut Context,
+    expr: ExprId,
+) -> Option<HyperbolicTanhPythagoreanRewrite> {
+    let terms = crate::expr_nary::add_terms_signed(ctx, expr);
+    if terms.len() < 3 {
+        return None;
+    }
+
+    let parsed_terms = terms
+        .iter()
+        .map(|&(term, sign)| extract_csch_fourth_verification_term(ctx, term, sign))
+        .collect::<Vec<_>>();
+
+    for (cosh_idx, cosh_term) in parsed_terms.iter().enumerate() {
+        let Some(cosh_term) = cosh_term else {
+            continue;
+        };
+        if cosh_term.kind != CschFourthVerificationKind::CoshTanhFourth {
+            continue;
+        }
+
+        let mut sinh_square_idx = None;
+        let mut sinh_fourth_idx = None;
+        for (idx, candidate) in parsed_terms.iter().enumerate() {
+            if idx == cosh_idx {
+                continue;
+            }
+            let Some(candidate) = candidate else {
+                continue;
+            };
+            if candidate.negative == cosh_term.negative
+                || compare_expr(ctx, candidate.arg, cosh_term.arg) != Ordering::Equal
+                || !factor_multisets_match(ctx, &candidate.factors, &cosh_term.factors)
+            {
+                continue;
+            }
+            match candidate.kind {
+                CschFourthVerificationKind::SinhSquare if sinh_square_idx.is_none() => {
+                    sinh_square_idx = Some(idx);
+                }
+                CschFourthVerificationKind::SinhFourth if sinh_fourth_idx.is_none() => {
+                    sinh_fourth_idx = Some(idx);
+                }
+                _ => {}
+            }
+        }
+
+        let (Some(sinh_square_idx), Some(sinh_fourth_idx)) = (sinh_square_idx, sinh_fourth_idx)
+        else {
+            continue;
+        };
+
+        let mut remaining = Vec::new();
+        for (idx, &(term, sign)) in terms.iter().enumerate() {
+            if idx != cosh_idx && idx != sinh_square_idx && idx != sinh_fourth_idx {
+                remaining.push(signed_add_term_to_expr(ctx, term, sign));
+            }
+        }
+        let rewritten = build_add_from_terms(ctx, &remaining);
+        return Some(HyperbolicTanhPythagoreanRewrite { rewritten });
+    }
+
+    None
+}
+
+fn try_rewrite_tanh_pythagorean_common_cofactor(
+    ctx: &mut Context,
+    terms: &[(ExprId, crate::expr_nary::Sign)],
+) -> Option<HyperbolicTanhPythagoreanRewrite> {
+    let mut signed_terms = Vec::new();
+    let mut tanh_terms = Vec::new();
+
+    for (idx, &(term, sign)) in terms.iter().enumerate() {
+        let signed = signed_factors_for_term(ctx, term, sign)?;
+        let mut tanh_idx = None;
+        let mut tanh_arg = None;
+        for (factor_idx, factor) in signed.factors.iter().enumerate() {
+            if let Some(arg) = tanh_squared_arg(ctx, *factor) {
+                if tanh_idx.is_some() {
+                    tanh_idx = None;
+                    tanh_arg = None;
+                    break;
+                }
+                tanh_idx = Some(factor_idx);
+                tanh_arg = Some(arg);
+            }
+        }
+
+        if let (Some(tanh_idx), Some(arg)) = (tanh_idx, tanh_arg) {
+            let residual_factors = signed
+                .factors
+                .iter()
+                .enumerate()
+                .filter_map(|(factor_idx, factor)| (factor_idx != tanh_idx).then_some(*factor))
+                .collect::<Vec<_>>();
+            tanh_terms.push((idx, signed.negative, residual_factors, arg));
+        }
+
+        signed_terms.push(signed);
+    }
+
+    for (tanh_term_idx, tanh_negative, residual_factors, arg) in tanh_terms {
+        for (base_idx, base) in signed_terms.iter().enumerate() {
+            if base_idx == tanh_term_idx || base.negative == tanh_negative {
+                continue;
+            }
+            if !factor_multisets_match(ctx, &base.factors, &residual_factors) {
+                continue;
+            }
+
+            let cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
+            let two = ctx.num(2);
+            let cosh_squared = ctx.add(Expr::Pow(cosh, two));
+            let one = ctx.num(1);
+            let sech_squared = ctx.add(Expr::Div(one, cosh_squared));
+            let cofactor = signed_factors_to_expr(ctx, &base.factors, base.negative);
+            let replacement = if matches!(ctx.get(cofactor), Expr::Number(n) if n.is_one()) {
+                sech_squared
+            } else {
+                ctx.add(Expr::Mul(cofactor, sech_squared))
+            };
+
+            let mut new_terms: Vec<ExprId> = Vec::new();
+            for (idx, signed) in signed_terms.iter().enumerate() {
+                if idx != base_idx && idx != tanh_term_idx {
+                    new_terms.push(signed_factors_to_expr(
+                        ctx,
+                        &signed.factors,
+                        signed.negative,
+                    ));
+                }
+            }
+            new_terms.push(replacement);
+
+            let rewritten = if new_terms.len() == 1 {
+                new_terms[0]
+            } else {
+                let mut acc = new_terms[0];
+                for &term in new_terms.iter().skip(1) {
+                    acc = ctx.add(Expr::Add(acc, term));
+                }
+                acc
+            };
+            return Some(HyperbolicTanhPythagoreanRewrite { rewritten });
+        }
+    }
+
+    None
 }
 
 /// Detects hyperbolic Pythagorean subtraction forms:
@@ -361,50 +947,70 @@ pub fn try_rewrite_tanh_pythagorean_add_chain(
     ctx: &mut Context,
     expr: ExprId,
 ) -> Option<HyperbolicTanhPythagoreanRewrite> {
-    let terms = crate::expr_nary::add_leaves(ctx, expr);
+    let terms = crate::expr_nary::add_terms_signed(ctx, expr);
     if terms.len() < 2 {
         return None;
     }
 
-    let mut one_idx: Option<usize> = None;
-    let mut tanh2_idx: Option<usize> = None;
-    let mut tanh_arg: Option<ExprId> = None;
+    let mut constants: Vec<(usize, BigRational)> = Vec::new();
+    let mut tanh_terms: Vec<(usize, BigRational, ExprId)> = Vec::new();
 
-    for (i, &term) in terms.iter().enumerate() {
-        if is_one_expr(ctx, term) {
-            one_idx = Some(i);
+    for (i, &(term, sign)) in terms.iter().enumerate() {
+        let sign_coeff = BigRational::from_integer(sign.to_i32().into());
+        if let Expr::Number(n) = ctx.get(term) {
+            let coeff = n.clone() * sign_coeff;
+            if !coeff.is_zero() {
+                constants.push((i, coeff));
+            }
             continue;
         }
 
-        if let Expr::Neg(inner) = ctx.get(term) {
-            if let Expr::Pow(base, exp) = ctx.get(*inner) {
-                if is_two_expr(ctx, *exp) {
-                    if let Expr::Function(fn_id, args) = ctx.get(*base) {
-                        if ctx.is_builtin(*fn_id, BuiltinFn::Tanh) && args.len() == 1 {
-                            tanh2_idx = Some(i);
-                            tanh_arg = Some(args[0]);
-                        }
-                    }
-                }
+        if let Some((coeff, arg)) = extract_coeff_tanh_pow2(ctx, term) {
+            let coeff = coeff * sign_coeff;
+            if !coeff.is_zero() {
+                tanh_terms.push((i, coeff, arg));
             }
         }
     }
 
-    let (one_i, tanh_i, arg) = (one_idx?, tanh2_idx?, tanh_arg?);
+    let mut matched: Option<(usize, usize, BigRational, ExprId)> = None;
+    for (constant_i, constant_coeff) in &constants {
+        for (tanh_i, tanh_coeff, arg) in &tanh_terms {
+            if constant_i == tanh_i {
+                continue;
+            }
+            if tanh_coeff == &(-constant_coeff.clone()) {
+                matched = Some((*constant_i, *tanh_i, constant_coeff.clone(), *arg));
+                break;
+            }
+        }
+        if matched.is_some() {
+            break;
+        }
+    }
+
+    let Some((constant_i, tanh_i, coeff, arg)) = matched else {
+        return try_rewrite_tanh_pythagorean_common_cofactor(ctx, &terms);
+    };
 
     let cosh = ctx.call_builtin(BuiltinFn::Cosh, vec![arg]);
     let two = ctx.num(2);
     let cosh_squared = ctx.add(Expr::Pow(cosh, two));
     let one = ctx.num(1);
     let sech_squared = ctx.add(Expr::Div(one, cosh_squared));
+    let replacement = multiply_numeric_coeff(ctx, &coeff, sech_squared);
 
     let mut new_terms: Vec<ExprId> = Vec::new();
-    for (i, &term) in terms.iter().enumerate() {
-        if i != one_i && i != tanh_i {
-            new_terms.push(term);
+    for (i, &(term, sign)) in terms.iter().enumerate() {
+        if i != constant_i && i != tanh_i {
+            let signed_term = match sign {
+                crate::expr_nary::Sign::Pos => term,
+                crate::expr_nary::Sign::Neg => ctx.add(Expr::Neg(term)),
+            };
+            new_terms.push(signed_term);
         }
     }
-    new_terms.push(sech_squared);
+    new_terms.push(replacement);
 
     let rewritten = if new_terms.len() == 1 {
         new_terms[0]
@@ -850,6 +1456,7 @@ mod tests {
     use super::{
         detect_hyperbolic_pythagorean_sub, try_rewrite_cosh_sinh_to_reciprocal_tanh,
         try_rewrite_cosh_sinh_to_reciprocal_tanh_identity_expr,
+        try_rewrite_csch_fourth_tanh_verification_add_chain,
         try_rewrite_hyperbolic_double_angle_sub_chain, try_rewrite_hyperbolic_double_angle_sum,
         try_rewrite_hyperbolic_pythagorean_sub_expr, try_rewrite_hyperbolic_triple_angle,
         try_rewrite_recognize_hyperbolic_from_exp, try_rewrite_sinh_cosh_to_exp,
@@ -974,6 +1581,113 @@ mod tests {
         let expr = ctx.add(Expr::Sub(lhs, rhs));
         let rewrite = try_rewrite_hyperbolic_pythagorean_sub_expr(&mut ctx, expr).expect("rewrite");
         assert_eq!(rewrite.kind, HyperbolicIdentityRewriteKind::PythagoreanOne);
+    }
+
+    #[test]
+    fn rewrites_scaled_tanh_pythagorean_add_chain() {
+        let mut ctx = Context::new();
+        let expr = parse("6 - 6*tanh(2*x + 1)^2", &mut ctx).expect("expr");
+        let expected = parse("6 * (1 / cosh(2*x + 1)^2)", &mut ctx).expect("expected");
+
+        let rewrite = try_rewrite_tanh_pythagorean_add_chain(&mut ctx, expr).expect("rewrite");
+
+        assert!(
+            compare_expr(&ctx, rewrite.rewritten, expected) == Ordering::Equal,
+            "expected {}, got {}",
+            render_expr(&ctx, expected),
+            render_expr(&ctx, rewrite.rewritten)
+        );
+    }
+
+    #[test]
+    fn rewrites_symbolic_cofactor_tanh_pythagorean_add_chain() {
+        let mut ctx = Context::new();
+        let expr = parse("6*k*x - 6*k*x*tanh(x^2 + b)^2", &mut ctx).expect("expr");
+        let expected = parse("6*k*x * (1 / cosh(x^2 + b)^2)", &mut ctx).expect("expected");
+
+        let rewrite = try_rewrite_tanh_pythagorean_add_chain(&mut ctx, expr).expect("rewrite");
+
+        assert!(
+            compare_expr(&ctx, rewrite.rewritten, expected) == Ordering::Equal,
+            "expected {}, got {}",
+            render_expr(&ctx, expected),
+            render_expr(&ctx, rewrite.rewritten)
+        );
+    }
+
+    #[test]
+    fn rewrites_csch_fourth_tanh_verification_add_chain_for_affine_argument() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "1/(cosh(2*x+1)^2*tanh(2*x+1)^4) - 1/sinh(2*x+1)^4 - 1/sinh(2*x+1)^2",
+            &mut ctx,
+        )
+        .expect("expr");
+
+        let rewrite =
+            try_rewrite_csch_fourth_tanh_verification_add_chain(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(render_expr(&ctx, rewrite.rewritten), "0");
+    }
+
+    #[test]
+    fn rewrites_csch_fourth_tanh_verification_add_chain_with_symbolic_cofactor() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "2*k*x/(cosh(x^2+b)^2*tanh(x^2+b)^4) - 2*k*x/sinh(x^2+b)^4 - 2*k*x/sinh(x^2+b)^2",
+            &mut ctx,
+        )
+        .expect("expr");
+
+        let rewrite =
+            try_rewrite_csch_fourth_tanh_verification_add_chain(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(render_expr(&ctx, rewrite.rewritten), "0");
+    }
+
+    #[test]
+    fn rewrites_csch_fourth_tanh_verification_add_chain_with_tanh_square_denominator() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "a/(cosh(u)^2*tanh(u)^4) - a/sinh(u)^4 - a/(cosh(u)^2*tanh(u)^2)",
+            &mut ctx,
+        )
+        .expect("expr");
+
+        let rewrite =
+            try_rewrite_csch_fourth_tanh_verification_add_chain(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(render_expr(&ctx, rewrite.rewritten), "0");
+    }
+
+    #[test]
+    fn rewrites_csch_fourth_tanh_verification_add_chain_with_denominator_coefficient() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "18*k*x/(9*cosh(x^2+b)^2*tanh(x^2+b)^4) - 2*k*x/sinh(x^2+b)^4 - 2*k*x/(cosh(x^2+b)^2*tanh(x^2+b)^2)",
+            &mut ctx,
+        )
+        .expect("expr");
+
+        let rewrite =
+            try_rewrite_csch_fourth_tanh_verification_add_chain(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(render_expr(&ctx, rewrite.rewritten), "0");
+    }
+
+    #[test]
+    fn rewrites_csch_fourth_tanh_verification_add_chain_with_external_fraction_scale() {
+        let mut ctx = Context::new();
+        let expr = parse(
+            "2*(k*x/(cosh(x^2+b)^2*tanh(x^2+b)^4)) - 2*(k*x/sinh(x^2+b)^4) - 2*(k*x/(cosh(x^2+b)^2*tanh(x^2+b)^2))",
+            &mut ctx,
+        )
+        .expect("expr");
+
+        let rewrite =
+            try_rewrite_csch_fourth_tanh_verification_add_chain(&mut ctx, expr).expect("rewrite");
+
+        assert_eq!(render_expr(&ctx, rewrite.rewritten), "0");
     }
 
     #[test]

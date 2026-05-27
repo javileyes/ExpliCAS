@@ -139,6 +139,13 @@ fn dedupe_sqrt_half_power_condition_wires(
             let has_prior_equivalent_half_power_display = wires.iter().take(idx).any(|other| {
                 other.kind == wire.kind && sqrt_half_power_display_key(&other.expr_display) == key
             });
+            let has_prior_equivalent_zero_set_display = zero_set_key.as_ref().is_some_and(|key| {
+                wires.iter().take(idx).any(|other| {
+                    other.kind == wire.kind
+                        && sqrt_half_power_zero_set_display_key(&other.expr_display).as_ref()
+                            == Some(key)
+                })
+            });
             let has_preferred_sqrt_display = wires.iter().enumerate().any(|(other_idx, other)| {
                 other_idx != idx
                     && other.kind == wire.kind
@@ -148,8 +155,9 @@ fn dedupe_sqrt_half_power_condition_wires(
                             |other_key| zero_set_key.as_ref().is_some_and(|key| other_key == *key),
                         ))
             });
-            (!(display_contains_half_power(&wire.expr_display)
-                && (has_preferred_sqrt_display || has_prior_equivalent_half_power_display)))
+            (!has_prior_equivalent_zero_set_display
+                && !(display_contains_half_power(&wire.expr_display)
+                    && (has_preferred_sqrt_display || has_prior_equivalent_half_power_display)))
                 .then_some(wire.clone())
         })
         .collect()
@@ -166,6 +174,12 @@ fn dedupe_sqrt_half_power_required_displays(displays: Vec<String>) -> Vec<String
                 .iter()
                 .take(idx)
                 .any(|other| sqrt_half_power_display_key(other) == key);
+            let has_prior_equivalent_zero_set_display = zero_set_key.as_ref().is_some_and(|key| {
+                displays
+                    .iter()
+                    .take(idx)
+                    .any(|other| sqrt_half_power_zero_set_display_key(other).as_ref() == Some(key))
+            });
             let has_preferred_sqrt_display =
                 displays.iter().enumerate().any(|(other_idx, other)| {
                     other_idx != idx
@@ -177,8 +191,9 @@ fn dedupe_sqrt_half_power_required_displays(displays: Vec<String>) -> Vec<String
                                 },
                             ))
                 });
-            (!(display_contains_half_power(display)
-                && (has_preferred_sqrt_display || has_prior_equivalent_half_power_display)))
+            (!has_prior_equivalent_zero_set_display
+                && !(display_contains_half_power(display)
+                    && (has_preferred_sqrt_display || has_prior_equivalent_half_power_display)))
                 .then(|| display.clone())
         })
         .collect()
@@ -1775,4 +1790,52 @@ fn normalize_alias_lookup_text(text: &str) -> String {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dedupe_required_displays_removes_opposite_shifted_sqrt_zero_set() {
+        let displays = vec![
+            "sinh(b - sqrt(x)) ≠ 0".to_string(),
+            "x > 0".to_string(),
+            "sinh(sqrt(x) - b) ≠ 0".to_string(),
+        ];
+
+        assert_eq!(
+            dedupe_sqrt_half_power_required_displays(displays),
+            vec!["sinh(b - sqrt(x)) ≠ 0".to_string(), "x > 0".to_string()]
+        );
+    }
+
+    #[test]
+    fn dedupe_condition_wires_removes_opposite_shifted_sqrt_zero_set() {
+        let wires = vec![
+            RequiredConditionWire {
+                kind: "NonZero".to_string(),
+                expr_display: "sinh(b - sqrt(x))".to_string(),
+                expr_canonical: "sinh(b - sqrt(x))".to_string(),
+            },
+            RequiredConditionWire {
+                kind: "Positive".to_string(),
+                expr_display: "x".to_string(),
+                expr_canonical: "x".to_string(),
+            },
+            RequiredConditionWire {
+                kind: "NonZero".to_string(),
+                expr_display: "sinh(sqrt(x) - b)".to_string(),
+                expr_canonical: "sinh(sqrt(x) - b)".to_string(),
+            },
+        ];
+
+        let deduped = dedupe_sqrt_half_power_condition_wires(wires);
+        let rendered = deduped
+            .iter()
+            .map(|wire| format!("{}:{}", wire.kind, wire.expr_display))
+            .collect::<Vec<_>>();
+
+        assert_eq!(rendered, vec!["NonZero:sinh(b - sqrt(x))", "Positive:x"]);
+    }
 }

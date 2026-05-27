@@ -1068,6 +1068,9 @@ fn integrate_contract_antiderivative_verification_uses_bounded_public_residual_f
     for input in [
         "integrate(1/cosh(2*x+1)^4, x)",
         "integrate(2*x/cosh(x^2)^4, x)",
+        "integrate(1/sinh(2*x+1)^4, x)",
+        "integrate(2*x/sinh(x^2)^4, x)",
+        "integrate(2*k*x/sinh(x^2+b)^4, x)",
     ] {
         assert_eq!(
             assert_antiderivative_verifies(input),
@@ -1122,32 +1125,53 @@ fn integrate_contract_hyperbolic_reciprocal_fourth_substitution_verifies() {
             "integrate(1/cosh(x)^4, x)",
             "1/3 * (3 * tanh(x) - tanh(x)^3)",
             "diff(integrate(1/cosh(x)^4, x), x) - 1/cosh(x)^4",
+            vec![],
         ),
         (
             "integrate(1/cosh(2*x+1)^4, x)",
             "1/6 * (3 * tanh(2 * x + 1) - tanh(2 * x + 1)^3)",
             "diff(integrate(1/cosh(2*x+1)^4, x), x) - 1/cosh(2*x+1)^4",
+            vec![],
         ),
         (
             "integrate(2*x/cosh(x^2)^4, x)",
             "1/3 * (3 * tanh(x^2) - tanh(x^2)^3)",
             "diff(integrate(2*x/cosh(x^2)^4, x), x) - 2*x/cosh(x^2)^4",
+            vec![],
+        ),
+        (
+            "integrate(1/sinh(2*x+1)^4, x)",
+            "1/2 / tanh(2 * x + 1) - 1/6 / tanh(2 * x + 1)^3",
+            "diff(integrate(1/sinh(2*x+1)^4, x), x) - 1/sinh(2*x+1)^4",
+            vec!["sinh(2 * x + 1) ≠ 0"],
+        ),
+        (
+            "integrate(2*x/sinh(x^2)^4, x)",
+            "1 / tanh(x^2) - 1/3 / tanh(x^2)^3",
+            "diff(integrate(2*x/sinh(x^2)^4, x), x) - 2*x/sinh(x^2)^4",
+            vec!["sinh(x^2) ≠ 0"],
+        ),
+        (
+            "integrate(2*k*x/sinh(x^2+b)^4, x)",
+            "k / tanh(x^2 + b) - k / (3 * tanh(x^2 + b)^3)",
+            "diff(integrate(2*k*x/sinh(x^2+b)^4, x), x) - 2*k*x/sinh(x^2+b)^4",
+            vec!["sinh(x^2 + b) ≠ 0"],
         ),
     ];
 
-    for (input, expected, residual) in cases {
+    for (input, expected, residual, expected_required) in cases {
         let (result, required) = evaluated_integral_with_required_conditions(input);
         assert_eq!(result, expected, "input: {input}");
-        assert!(
-            required.is_empty(),
-            "reciprocal cosh fourth should not add domain conditions for {input}: {required:?}"
+        assert_eq!(
+            required, expected_required,
+            "unexpected required conditions for {input}: {required:?}"
         );
         let (residual_result, residual_required) =
             evaluated_integral_with_required_conditions(residual);
         assert_eq!(residual_result, "0", "residual: {residual}");
-        assert!(
-            residual_required.is_empty(),
-            "reciprocal cosh fourth residual should not add domain conditions for {input}: {residual_required:?}"
+        assert_eq!(
+            residual_required, expected_required,
+            "unexpected residual required conditions for {input}: {residual_required:?}"
         );
     }
 }
@@ -14463,7 +14487,7 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_squares_verify() {
         (
             "integrate(1/(2*sqrt(x)*sinh(sqrt(x))^2), x)",
             "-1 / tanh(sqrt(x))",
-            vec!["sinh(sqrt(x)) ≠ 0", "x > 0"],
+            vec!["x > 0", "sinh(sqrt(x)) ≠ 0"],
         ),
         (
             "integrate((2*x)^(-1/2)/cosh(sqrt(2*x))^2, x)",
@@ -14478,7 +14502,17 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_squares_verify() {
         (
             "integrate(3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x)",
             "-1 / tanh(sqrt(3 * x + 1))",
-            vec!["sinh(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
+            vec!["x > -1/3", "sinh(sqrt(3 * x + 1)) ≠ 0"],
+        ),
+        (
+            "integrate(k/(2*sqrt(x)*cosh(sqrt(x)-b)^2), x)",
+            "tanh(x^(1/2) - b) * k",
+            vec!["x > 0"],
+        ),
+        (
+            "integrate(k/(2*sqrt(x)*sinh(sqrt(x)-b)^2), x)",
+            "-k / tanh(x^(1/2) - b)",
+            vec!["x > 0", "sinh(sqrt(x) - b) ≠ 0"],
         ),
     ];
 
@@ -14502,7 +14536,7 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_squares_verify() {
         (
             "diff(integrate(3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x), x)",
             "3 / (2 * sqrt(3 * x + 1) * sinh(sqrt(3 * x + 1))^2)",
-            vec!["sinh(sqrt(3 * x + 1)) ≠ 0", "x > -1/3"],
+            vec!["x > -1/3", "sinh(sqrt(3 * x + 1)) ≠ 0"],
         ),
     ];
 
@@ -14555,7 +14589,7 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_derivatives_verify() {
         (
             "integrate(cosh(sqrt(x))/(2*sqrt(x)*sinh(sqrt(x))^2), x)",
             "-1 / sinh(sqrt(x))",
-            vec!["sinh(sqrt(x)) ≠ 0", "x > 0"],
+            vec!["x > 0", "sinh(sqrt(x)) ≠ 0"],
         ),
         (
             "integrate(sinh(sqrt(2*x))/(sqrt(2*x)*cosh(sqrt(2*x))^2), x)",
@@ -14571,6 +14605,16 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_derivatives_verify() {
             "integrate(3*cosh(sqrt(3*x+1))/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x)",
             "-1 / sinh(sqrt(3 * x + 1))",
             vec!["x > -1/3", "sinh(sqrt(3 * x + 1)) ≠ 0"],
+        ),
+        (
+            "integrate(k*sinh(sqrt(x)-b)/(2*sqrt(x)*cosh(sqrt(x)-b)^2), x)",
+            "-k / cosh(x^(1/2) - b)",
+            vec!["x > 0"],
+        ),
+        (
+            "integrate(k*cosh(sqrt(x)-b)/(2*sqrt(x)*sinh(sqrt(x)-b)^2), x)",
+            "-k / sinh(x^(1/2) - b)",
+            vec!["x > 0", "sinh(sqrt(x) - b) ≠ 0"],
         ),
     ];
 
@@ -14628,7 +14672,7 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_tables_explain_u_and_du()
         (
             "integrate(3/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x)",
             "-1 / tanh(sqrt(3·x + 1))",
-            serde_json::json!(["sinh(sqrt(3·x + 1)) ≠ 0", "x > -1/3"]),
+            serde_json::json!(["x > -1/3", "sinh(sqrt(3·x + 1)) ≠ 0"]),
             "Usar la regla de 1/sinh(u)^2 -> -1/tanh(u)",
         ),
         (
@@ -14641,6 +14685,24 @@ fn integrate_contract_sqrt_chain_hyperbolic_reciprocal_tables_explain_u_and_du()
             "integrate(3*cosh(sqrt(3*x+1))/(2*sqrt(3*x+1)*sinh(sqrt(3*x+1))^2), x)",
             "-1 / sinh(sqrt(3·x + 1))",
             serde_json::json!(["x > -1/3", "sinh(sqrt(3·x + 1)) ≠ 0"]),
+            "Usar la regla de cosh(u)/sinh(u)^2 -> -1/sinh(u)",
+        ),
+        (
+            "integrate(k/(2*sqrt(x)*sinh(sqrt(x)-b)^2), x)",
+            "-k / tanh(x^(1/2) - b)",
+            serde_json::json!(["x > 0", "sinh(sqrt(x) - b) ≠ 0"]),
+            "Usar la regla de 1/sinh(u)^2 -> -1/tanh(u)",
+        ),
+        (
+            "integrate(k*sinh(sqrt(x)-b)/(2*sqrt(x)*cosh(sqrt(x)-b)^2), x)",
+            "-k / cosh(x^(1/2) - b)",
+            serde_json::json!(["x > 0"]),
+            "Usar la regla de sinh(u)/cosh(u)^2 -> -1/cosh(u)",
+        ),
+        (
+            "integrate(k*cosh(sqrt(x)-b)/(2*sqrt(x)*sinh(sqrt(x)-b)^2), x)",
+            "-k / sinh(x^(1/2) - b)",
+            serde_json::json!(["x > 0", "sinh(sqrt(x) - b) ≠ 0"]),
             "Usar la regla de cosh(u)/sinh(u)^2 -> -1/sinh(u)",
         ),
     ] {

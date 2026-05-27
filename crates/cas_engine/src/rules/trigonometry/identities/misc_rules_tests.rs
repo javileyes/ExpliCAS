@@ -1,6 +1,6 @@
 use crate::rule::Rule;
 use crate::rules::trigonometry::identities::{
-    CotHalfAngleDifferenceRule, TrigHiddenCubicIdentityRule,
+    CotHalfAngleDifferenceRule, HyperbolicCschFourthVerificationRule, TrigHiddenCubicIdentityRule,
 };
 use cas_ast::Context;
 use cas_formatter::DisplayExpr;
@@ -63,6 +63,60 @@ fn test_cot_half_angle_no_match_third() {
         &crate::parent_context::ParentContext::root(),
     );
     assert!(rewrite.is_none(), "Should not match cot(x/3) - cot(x)");
+}
+
+#[test]
+fn test_hyperbolic_csch_fourth_verification_rule_polynomial_cofactor() {
+    let mut ctx = Context::new();
+    let rule = HyperbolicCschFourthVerificationRule;
+    let expr = parse(
+        "2*k*x/(cosh(x^2+b)^2*tanh(x^2+b)^4) - 2*k*x/sinh(x^2+b)^4 - 2*k*x/(cosh(x^2+b)^2*tanh(x^2+b)^2)",
+        &mut ctx,
+    )
+    .unwrap();
+
+    let rewrite = rule.apply(
+        &mut ctx,
+        expr,
+        &crate::parent_context::ParentContext::root(),
+    );
+    assert!(
+        rewrite.is_some(),
+        "Should match csch^4 verification residual with polynomial cofactor"
+    );
+
+    let result = rewrite.unwrap();
+    let result_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &ctx,
+            id: result.new_expr
+        }
+    );
+    assert_eq!(result_str, "0");
+}
+
+#[test]
+fn test_hyperbolic_csch_fourth_verification_simplifier_polynomial_cofactor() {
+    let mut ctx = Context::new();
+    let expr = parse(
+        "2*k*x/(cosh(x^2+b)^2*tanh(x^2+b)^4) - 2*k*x/sinh(x^2+b)^4 - 2*k*x/(cosh(x^2+b)^2*tanh(x^2+b)^2)",
+        &mut ctx,
+    )
+    .unwrap();
+
+    let mut simplifier = crate::Simplifier::with_default_rules();
+    simplifier.context = ctx;
+    let (result, _) = simplifier.simplify(expr);
+
+    let result_str = format!(
+        "{}",
+        DisplayExpr {
+            context: &simplifier.context,
+            id: result
+        }
+    );
+    assert_eq!(result_str, "0");
 }
 
 // =========================================================================

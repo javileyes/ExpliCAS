@@ -23,7 +23,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_integrate_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 73)
+        self.assertEqual(len(cases), 86)
         names = {case.name for case in cases}
         self.assertIn("reciprocal_affine_log_abs_domain", names)
         self.assertIn("reciprocal_negative_affine_log_abs_domain", names)
@@ -88,6 +88,24 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             names,
         )
         self.assertIn(
+            "symbolic_external_scale_shifted_hyperbolic_cosh_reciprocal_square_substitution",
+            names,
+        )
+        self.assertIn(
+            "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_square_substitution",
+            names,
+        )
+        self.assertIn("hyperbolic_cosh_reciprocal_fourth_substitution", names)
+        self.assertIn(
+            "symbolic_external_scale_shifted_hyperbolic_cosh_reciprocal_fourth_substitution",
+            names,
+        )
+        self.assertIn("hyperbolic_sinh_reciprocal_fourth_substitution", names)
+        self.assertIn(
+            "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution",
+            names,
+        )
+        self.assertIn(
             "symbolic_affine_exact_hyperbolic_sinh_over_cosh_square_substitution",
             names,
         )
@@ -103,6 +121,18 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             "symbolic_external_scale_hyperbolic_cosh_over_sinh_square_substitution",
             names,
         )
+        self.assertIn(
+            "polynomial_shifted_hyperbolic_sinh_over_cosh_square_substitution",
+            names,
+        )
+        self.assertIn(
+            "symbolic_external_scale_shifted_hyperbolic_sinh_over_cosh_square_substitution",
+            names,
+        )
+        self.assertIn(
+            "symbolic_external_scale_shifted_hyperbolic_cosh_over_sinh_square_substitution",
+            names,
+        )
         self.assertIn("affine_secant_tangent_derivative_product_domain", names)
         self.assertIn("affine_cosecant_cotangent_derivative_product_domain", names)
         self.assertIn(
@@ -111,6 +141,10 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
         )
         self.assertIn(
             "negative_affine_cosecant_cotangent_derivative_product_domain",
+            names,
+        )
+        self.assertIn(
+            "polynomial_shifted_secant_tangent_derivative_product_domain",
             names,
         )
         self.assertIn(
@@ -175,12 +209,20 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             names,
         )
         self.assertIn("shifted_sqrt_chain_hyperbolic_tangent_log_domain", names)
+        self.assertIn(
+            "sqrt_chain_hyperbolic_cosh_over_sinh_square_domain",
+            names,
+        )
+        self.assertIn(
+            "negative_shifted_sqrt_chain_hyperbolic_cosh_over_sinh_square_symbolic_scale_domain",
+            names,
+        )
         self.assertIn("invalid_log_base_integrand_undefined", names)
         self.assertIn("nonfinite_integrand_undefined", names)
         self.assertIn("non_elementary_exp_quadratic_residual", names)
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 9, "supported": 62, "undefined": 2},
+            {"residual": 9, "supported": 75, "undefined": 2},
         )
         self.assertEqual(
             sum(
@@ -191,14 +233,14 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                     or case.expected_derivative_equivalent_to is not None
                 )
             ),
-            62,
+            75,
         )
         self.assertEqual(
             SMOKE.count_verification_regimes(cases),
             {
                 "residual_not_verified": 9,
                 "undefined_not_verified": 2,
-                "verified_by_diff": 62,
+                "verified_by_diff": 75,
             },
         )
         step_checked = {
@@ -255,16 +297,26 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "hyperbolic_sine_reciprocal_square_substitution",
                 "symbolic_affine_exact_hyperbolic_cosh_reciprocal_square_substitution",
                 "symbolic_affine_exact_hyperbolic_sinh_reciprocal_square_substitution",
+                "symbolic_external_scale_shifted_hyperbolic_cosh_reciprocal_square_substitution",
+                "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_square_substitution",
+                "hyperbolic_cosh_reciprocal_fourth_substitution",
+                "symbolic_external_scale_shifted_hyperbolic_cosh_reciprocal_fourth_substitution",
+                "hyperbolic_sinh_reciprocal_fourth_substitution",
+                "symbolic_external_scale_shifted_hyperbolic_sinh_reciprocal_fourth_substitution",
                 "symbolic_affine_exact_hyperbolic_sinh_over_cosh_square_substitution",
                 "symbolic_affine_exact_hyperbolic_cosh_over_sinh_square_substitution",
                 "symbolic_external_scale_hyperbolic_sinh_over_cosh_square_substitution",
                 "symbolic_external_scale_hyperbolic_cosh_over_sinh_square_substitution",
+                "polynomial_shifted_hyperbolic_sinh_over_cosh_square_substitution",
+                "symbolic_external_scale_shifted_hyperbolic_sinh_over_cosh_square_substitution",
+                "symbolic_external_scale_shifted_hyperbolic_cosh_over_sinh_square_substitution",
                 "by_parts_log_domain",
                 "by_parts_affine_log_domain",
                 "affine_secant_tangent_derivative_product_domain",
                 "affine_cosecant_cotangent_derivative_product_domain",
                 "negative_affine_secant_tangent_derivative_product_domain",
                 "negative_affine_cosecant_cotangent_derivative_product_domain",
+                "polynomial_shifted_secant_tangent_derivative_product_domain",
                 "symbolic_affine_exact_secant_tangent_derivative_product_domain",
                 "symbolic_affine_exact_cosecant_cotangent_derivative_product_domain",
                 "symbolic_external_scale_secant_tangent_derivative_product_domain",
@@ -284,6 +336,9 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "shifted_sqrt_chain_tangent_log_domain",
                 "sqrt_chain_hyperbolic_tangent_presimplified_condition_dedupe",
                 "shifted_sqrt_chain_hyperbolic_tangent_log_domain",
+                "sqrt_chain_hyperbolic_cosh_over_sinh_square_domain",
+                "shifted_sqrt_chain_hyperbolic_sinh_over_cosh_square_symbolic_scale_domain",
+                "negative_shifted_sqrt_chain_hyperbolic_cosh_over_sinh_square_symbolic_scale_domain",
                 "invalid_log_base_integrand_undefined",
                 "nonfinite_integrand_undefined",
                 "non_elementary_exp_quadratic_residual",
@@ -299,7 +354,7 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "explicit_hyperbolic_tangent_denominator_verified_substitution": 1,
                 "explicit_tangent_denominator_source_condition": 1,
                 "explicit_tangent_denominator_verified_substitution": 1,
-                "hyperbolic_sine_pole_required": 4,
+                "hyperbolic_sine_pole_required": 8,
                 "linear_poles_required": 2,
                 "nonzero_required": 3,
                 "nonfinite_undefined": 1,
@@ -309,20 +364,22 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
                 "radical_interval_additive_residual": 1,
                 "radical_interval": 2,
                 "rational_interval": 2,
-                "shifted_sqrt_chain_nonzero_positive": 4,
+                "shifted_sqrt_chain_nonzero_positive": 5,
+                "shifted_sqrt_chain_positive": 1,
                 "sqrt_minus_symbol_chain_nonzero_positive": 2,
                 "sqrt_chain_nonzero_positive": 4,
                 "sqrt_chain_hyperbolic_presimplified_condition_dedupe": 1,
+                "sqrt_chain_hyperbolic_sine_pole_required": 1,
                 "structurally_nonzero_negative_quadratic_denominator": 1,
                 "structurally_positive_denominator": 1,
                 "structurally_positive_log_argument": 3,
                 "trig_pole_additive_residual": 1,
                 "trig_pole_presimplified_residual": 1,
                 "trig_pole_residual": 1,
-                "trig_reciprocal_product_pole_required": 4,
+                "trig_reciprocal_product_pole_required": 5,
                 "trig_reciprocal_product_exact_symbolic_derivative_pole_required": 8,
                 "trig_sine_pole_presimplified_residual": 1,
-                "unconditional": 14,
+                "unconditional": 19,
             },
         )
         self.assertEqual(
@@ -330,12 +387,14 @@ class IntegrateCommandMatrixSmokeTests(unittest.TestCase):
             {
                 "block7_explicit_reciprocal_hyperbolic_tangent": 2,
                 "block7_explicit_reciprocal_trig_tangent": 1,
-                "block7_hyperbolic_reciprocal_derivative_product": 4,
-                "block7_hyperbolic_reciprocal_square": 4,
+                "block7_hyperbolic_reciprocal_derivative_product": 7,
+                "block7_hyperbolic_reciprocal_fourth": 4,
+                "block7_hyperbolic_reciprocal_square": 6,
+                "block7_sqrt_chain_hyperbolic_reciprocal_derivative_product": 3,
                 "block7_sqrt_chain_hyperbolic_log": 2,
                 "block7_sqrt_chain_reciprocal_trig_product": 7,
                 "block7_sqrt_chain_trig_log": 2,
-                "block7_trig_reciprocal_derivative_product": 12,
+                "block7_trig_reciprocal_derivative_product": 13,
                 "block9_explicit_reciprocal_trig_residual": 2,
             },
         )

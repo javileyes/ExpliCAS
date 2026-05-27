@@ -37,6 +37,7 @@ IssueKind = Literal[
     "nonzero_exit",
     "invalid_json",
     "non_object_json",
+    "cli_error",
     "result_mismatch",
     "missing_required_conditions",
     "impossible_required_conditions",
@@ -1070,6 +1071,7 @@ def run_probe(
 
     wall_elapsed = time.monotonic() - start
     parsed, parse_error = parse_json(stdout)
+    cli_error = extract_cli_error(parsed)
     result = extract_result(parsed)
     actual_required = extract_required_conditions(parsed)
     impossible_required = extract_impossible_required_conditions(parsed)
@@ -1086,6 +1088,7 @@ def run_probe(
         warnings=warnings,
         forbid_warnings=forbid_warnings,
         stderr_fragility=stderr_fragility_error(stderr),
+        cli_error=cli_error,
     )
     status: Status = "pass" if error is None else "fail"
     error_kind = classify_error_kind(error)
@@ -1314,6 +1317,21 @@ def extract_warnings(parsed: dict[str, Any] | None) -> tuple[str, ...]:
     return tuple(warnings)
 
 
+def extract_cli_error(parsed: dict[str, Any] | None) -> str | None:
+    if not parsed or parsed.get("ok") is not False:
+        return None
+    message = parsed.get("error")
+    code = parsed.get("code")
+    if isinstance(message, str) and isinstance(code, str):
+        return f"cli error {code}: {message}"
+    if isinstance(message, str):
+        return f"cli error: {message}"
+    kind = parsed.get("kind")
+    if isinstance(kind, str):
+        return f"cli error: {kind}"
+    return "cli error"
+
+
 def extract_stderr_warnings(stderr: str) -> tuple[str, ...]:
     warnings: list[str] = []
     for line in stderr.splitlines():
@@ -1334,6 +1352,8 @@ def classify_error_kind(error: str | None) -> IssueKind | None:
         return "invalid_json"
     if error == "json output is not an object":
         return "non_object_json"
+    if error.startswith("cli error"):
+        return "cli_error"
     if error.startswith("expected result "):
         return "result_mismatch"
     if error.startswith("missing required conditions:"):
@@ -1470,11 +1490,14 @@ def classify_error(
     warnings: tuple[str, ...],
     forbid_warnings: bool,
     stderr_fragility: str | None = None,
+    cli_error: str | None = None,
 ) -> str | None:
     if returncode != 0:
         return f"nonzero exit: {returncode}"
     if parse_error is not None:
         return parse_error
+    if cli_error is not None:
+        return cli_error
     if expected_result is not None and result != expected_result:
         return f"expected result {expected_result!r}, got {result!r}"
     missing = [

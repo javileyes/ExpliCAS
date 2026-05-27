@@ -35031,7 +35031,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Direct simplify_pipeline is still slow for this hyperbolic-angle-sum plus telescoping residual; nested-fraction coverage remains active"]
     fn simplify_pipeline_handles_hyperbolic_sum_against_telescoping_sum_regression() {
         let mut simplifier = crate::Simplifier::with_default_rules();
         let expr = parse(

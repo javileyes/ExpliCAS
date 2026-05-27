@@ -1110,7 +1110,11 @@ def is_observe_only_discovery_section(title: str, body: str) -> bool:
 
 
 def is_closed_observe_only_discovery_section(body: str) -> bool:
-    if re.search(r"^\s*-\s+(resolved by|superseded by):", body, re.M | re.I):
+    if re.search(
+        r"^\s*-\s+(resolved by|superseded by|follow-up resolution):",
+        body,
+        re.M | re.I,
+    ):
         return True
     for status in re.findall(r"^\s*-\s+`([^`]+)`", body, re.M):
         if normalized_discovery_status(status) in {"resolved", "superseded"}:

@@ -20,7 +20,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
     def test_default_matrix_covers_limit_policy_axes(self) -> None:
         cases = SMOKE.build_cases()
 
-        self.assertEqual(len(cases), 45)
+        self.assertEqual(len(cases), 46)
         names = {case.name for case in cases}
         self.assertIn("finite_removable_rational_cancellation", names)
         self.assertIn("finite_log_root_structurally_positive_composition", names)
@@ -31,6 +31,7 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("finite_binary_log_argument_zero_boundary_residual", names)
         self.assertIn("finite_static_invalid_log_undefined", names)
         self.assertIn("finite_sqrt_endpoint_residual_presentation_cleanup", names)
+        self.assertIn("finite_discontinuous_sign_residual_presentation_cleanup", names)
         self.assertIn("finite_negative_integer_power_nonzero_root_base", names)
         self.assertIn("finite_trig_special_angle_structural_domain", names)
         self.assertIn("finite_trig_table_undefined_pole_residual", names)
@@ -64,10 +65,10 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
         self.assertIn("infinity_bounded_polynomial_exp_decay", names)
         self.assertIn("negative_infinity_bounded_over_divergent_orientation_supported", names)
         self.assertIn("infinity_bounded_over_divergent_domain_conflict_residual", names)
-        self.assertEqual(SMOKE.count_by(cases, "point_regime"), {"finite": 18, "infinity": 27})
+        self.assertEqual(SMOKE.count_by(cases, "point_regime"), {"finite": 19, "infinity": 27})
         self.assertEqual(
             SMOKE.count_by(cases, "outcome"),
-            {"residual": 9, "supported": 35, "undefined": 1},
+            {"residual": 10, "supported": 35, "undefined": 1},
         )
         self.assertEqual(
             SMOKE.count_by(cases, "required_condition_regime"),
@@ -93,12 +94,12 @@ class LimitCommandMatrixSmokeTests(unittest.TestCase):
                 "infinity_path_total_real_polynomial_tail_domain": 5,
                 "infinity_path_total_real_rational_finite_tail_domain": 1,
                 "infinity_source_definedness": 1,
-                "none": 11,
+                "none": 12,
             },
         )
         self.assertEqual(
             sum(1 for case in cases if case.expected_step_substrings),
-            45,
+            46,
         )
         self.assertEqual(
             [

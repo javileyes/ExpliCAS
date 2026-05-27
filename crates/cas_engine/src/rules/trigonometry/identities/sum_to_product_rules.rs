@@ -27,9 +27,9 @@ use super::{
     AngleIdentityRule, AngleSumFractionToTanRule, Cos2xAdditiveContractionRule,
     CosDiffSinDiffQuotientRule, CosTripleIdentityZeroRule, CotHalfAngleDifferenceRule,
     CscCotPythagoreanRule, DoubleAngleContractionRule, DoubleAngleRule, HalfAngleTangentRule,
-    HyperbolicTanhPythRule, PythagoreanIdentityRule, QuintupleAngleRule,
-    RecursiveTrigExpansionRule, SecTanPythagoreanRule, Sin4xIdentityZeroRule, SinCosIntegerPiRule,
-    SinCosQuarticSumRule, SinCosSumQuotientRule, SinSupplementaryAngleRule,
+    HyperbolicCschFourthVerificationRule, HyperbolicTanhPythRule, PythagoreanIdentityRule,
+    QuintupleAngleRule, RecursiveTrigExpansionRule, SecTanPythagoreanRule, Sin4xIdentityZeroRule,
+    SinCosIntegerPiRule, SinCosQuarticSumRule, SinCosSumQuotientRule, SinSupplementaryAngleRule,
     TanDifferenceIdentityZeroRule, TanDifferenceRule, TanDoubleAngleContractionRule,
     TanToSinCosRule, TanTripleProductRule, TrigHiddenCubicIdentityRule, TrigOddEvenParityRule,
     TrigQuotientRule, TrigSineProductTripleAngleIdentityZeroRule, TrigSumToProductRule,
@@ -269,6 +269,8 @@ pub fn register(simplifier: &mut crate::Simplifier) {
     simplifier.add_rule(Box::new(TanDifferenceRule));
     // Hyperbolic Pythagorean: 1 - tanh²(x) → 1/cosh²(x)
     simplifier.add_rule(Box::new(HyperbolicTanhPythRule));
+    // Hyperbolic csch^4 verifier: bounded coth primitive residual collapse
+    simplifier.add_rule(Box::new(HyperbolicCschFourthVerificationRule));
     // Hyperbolic half-angle: cosh²(x/2), sinh²(x/2) → cosh form
     simplifier.add_rule(Box::new(HyperbolicHalfAngleSquaresRule));
     // Trig half-angle squares: sin²(x/2) → (1-cos x)/2, cos²(x/2) → (1+cos x)/2
