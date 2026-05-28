@@ -41,6 +41,11 @@ Objetivo:
 - Si una familia vecina muestra el mismo patrón que el ciclo anterior,
   prioriza consolidación compartida antes de seguir añadiendo variantes
   locales.
+- La presión arquitectónica de cálculo es ahora una señal prioritaria: si el
+  candidato nace de helpers locales repetidos, presentación post-cálculo frágil,
+  condiciones de dominio duplicadas, verificación residual profunda o steps
+  didácticos acoplados a una ruta, evalúa primero si el mayor ROI retenible es
+  arquitectura acotada dentro del bloque 11, no otro caso de cálculo.
 
 Plan operativo de madurez de cálculo:
 - Usa la sección "Block-Based Calculus Maturity Plan" de
@@ -67,12 +72,25 @@ Plan operativo de madurez de cálculo:
 - Cada ciclo debe elegir un checkbox pequeño dentro de un bloque. Si el
   candidato no avanza un gate de bloque, trátalo como discovery pressure o
   recházalo como near-duplicate.
+- Si dos ciclos cercanos exponen la misma forma de pipeline
+  (detección/dominio/transformación/verificación/presentación/steps), el
+  siguiente ciclo debe preferir extracción, consolidación o observabilidad
+  acotada salvo que haya un fallo urgente de `failed = 0`.
 
 Optimiza en este orden:
 1. mantener failed = 0
 2. reducir timeouts, stack overflows, no terminación o rutas claramente frágiles
 3. preservar o mejorar runtime en lanes promovidos, especialmente embedded
-4. generalizar cálculo real serio desde verticales ya verdes hacia matrices de
+4. contener presión arquitectónica que ya bloquee la generalización segura de
+   cálculo:
+   - separar detección, dominio, transformación, verificación, presentación y
+     steps cuando una ruta se vuelve opaca
+   - extraer antes de abstraer
+   - preservar orden de rutas y comportamiento salvo que el cambio matemático
+     sea explícito
+   - validar como `observability`, `robustness` o `calculus` según el valor
+     retenible real
+5. generalizar cálculo real serio desde verticales ya verdes hacia matrices de
    soporte reutilizables:
    - `diff`: producto, cociente, cadena, inversas, log/root/trig/hyperbolic,
      presentación con dominio retenido
@@ -80,7 +98,7 @@ Optimiza en este orden:
      sensibles a dominio, y política lateral cuando exista
    - `integrate`: tabla, sustitución, partes acotadas, verificación por
      diferenciación, política de constante y residuales explicables
-5. expandir completitud matemática útil en dimensiones infracubiertas cuando
+6. expandir completitud matemática útil en dimensiones infracubiertas cuando
    alimente cálculo, derive o guardrails reales:
    - wrapper spread
    - shell_depth
@@ -88,12 +106,13 @@ Optimiza en este orden:
    - cross-family composition
    - sign/orientation robustness
    - semantic/domain regime cuando aplique
-6. aumentar cobertura útil, NF-convergent o bridgeability de derive sólo si es
+7. aumentar cobertura útil, NF-convergent o bridgeability de derive sólo si es
    reutilizable y no degrada 1-4
-7. mejorar reachability y calidad didáctica de derive sin abrir búsqueda ciega,
+8. mejorar reachability y calidad didáctica de derive sin abrir búsqueda ciega,
    especialmente cuando una familia ya funciona en simplify/equivalence pero
    no tiene una ruta `source -> target` explicable
-8. reducir deuda estructural sólo si mejora observabilidad, robustez o runtime medible
+9. reducir deuda estructural fuera de la presión actual de cálculo sólo si
+   mejora observabilidad, robustez o runtime medible
 
 Modelo de trabajo:
 - Usa perfiles ejecutables actuales:
@@ -146,6 +165,8 @@ Proceso obligatorio:
    - presentation_check:
    - sibling_sweep_check:
    - consolidation_check:
+   - architecture_pressure_check:
+   - extraction_or_consolidation_check:
    - didactic_trace_check:
    - verification_check:
    - residual_policy_check:
@@ -170,6 +191,9 @@ Proceso obligatorio:
    - si dos ciclos retenidos revelan el mismo patrón en familias vecinas,
      decide si el siguiente ROI debe ser consolidar helper, política o fila de
      matriz en vez de añadir otra variante local
+   - si el patrón se repite en detección, condiciones de dominio, verificación
+     residual, presentación o steps, prioriza una frontera arquitectónica
+     acotada antes de seguir ampliando la familia
    - justifica por qué no es sólo otro caso sintáctico dentro de una familia ya
      suficientemente representada
    - no introduzcas suposiciones implícitas de dominio/rama/constante
@@ -236,6 +260,12 @@ Guardrails:
 - No repitas mejoras por familia cuando el patrón ya apareció en familias
   vecinas; consolida salvo que haya un riesgo medible de dominio, rama,
   runtime, orden de rutas o guardrail.
+- No sigas añadiendo matchers locales dentro de una zona de cálculo opaca si la
+  señal dominante ya es arquitectura: primero extrae, localiza ownership,
+  documenta matriz/política o añade observabilidad.
+- No hagas una reescritura arquitectónica amplia: la prioridad es reducir la
+  fragilidad acumulada con pasos pequeños, preservando orden de rutas y
+  comportamiento público salvo que el cambio esté declarado y validado.
 - No conviertas `integrate` en búsqueda general ni `limit` en heurísticas
   especulativas: generalizar no significa abrir búsqueda no acotada.
 - Para refactors estructurales: extrae antes de abstraer, conserva orden de rutas y valida como trabajo de engine.
@@ -252,6 +282,7 @@ Criterio de decisión:
   - precalculus_reuse_value
   - domain_safety_value
   - consolidation_value
+  - architecture_pressure_value
   - bajo coste de implementación
 - En empates, prioriza el candidato que expanda una dimensión débil, cierre una ruta frágil o deje el guardrail/corpus más mantenible.
 - También en empates, prioriza el candidato que conecte una capacidad del engine
@@ -265,6 +296,9 @@ Criterio de decisión:
   gate de bloque de madurez incompleto antes que otro caso local dentro de una
   familia ya representada, salvo que el caso local cierre failed=0 o revele un
   riesgo de dominio/runtime más urgente.
+- También en empates, si el candidato local añade otra pieza a una zona ya
+  frágil de cálculo, prioriza el ciclo de arquitectura acotada que reduzca esa
+  fragilidad y haga más barata la siguiente generalización.
 
 Entregable:
 - Resume primero el candidato elegido y por qué fue el mayor ROI retenible.
@@ -280,4 +314,6 @@ Entregable:
     celda de matriz, el bloque de madurez y el gate avanzado, o el motivo para
     rechazarlo/diferirlo
   - qué sibling sweep ejecutaste y si decidiste local-fix o consolidación
+  - si había presión arquitectónica y por qué elegiste extraer/consolidar,
+    observar o diferirla
   - cuál sería la siguiente iteración recomendada

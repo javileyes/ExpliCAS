@@ -14,6 +14,13 @@ For the broader structural-cohesion policy that also covers
 see
 [ENGINE_COHESION_REFACTORING_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COHESION_REFACTORING_STRATEGY.md).
 
+For the current calculus-generalization campaign, the same observability
+principle applies to calculus route families when repeated local helpers make
+detection, domain reasoning, residual verification, post-calculus presentation,
+or didactic step ownership unclear. Use the cohesion strategy and
+[CALCULUS_ENGINE_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/CALCULUS_ENGINE_STRATEGY.md)
+for those non-orchestrator cases.
+
 It should lead an iteration only when the ROI selector chooses
 `observability` or when orchestrator observability is the cheapest way to
 unlock a higher-confidence `runtime`, `coverage`, or `combination` change.

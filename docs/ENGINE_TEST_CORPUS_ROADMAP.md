@@ -11,6 +11,12 @@ For calculus-specific coverage, read this together with
 Calculus corpora should now grow from existing bounded vertical slices into
 explicit support matrices that also pressure the pre-calculus core.
 
+Do not use corpus growth to hide calculus architecture pressure. If new
+coverage repeatedly exposes the same pipeline weakness in detection, domain
+conditions, residual verification, post-calculus presentation, or didactic
+steps, the next high-ROI move is usually an architecture/observability or
+robustness cycle, not another matrix row.
+
 This document proposes the next high-ROI test corpora to improve the
 simplification engine itself, not only the didactic layer.
 

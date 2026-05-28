@@ -48,6 +48,71 @@ After completing any item:
 - [ ] If behavior changed in simplify/equivalence/derive broadly: run `make engine-scorecard`
 - [ ] If the change touches orchestration, normalization routing, or complex composed traffic: also run `make engine-scorecard-pressure`
 
+## Current P0 Addendum: Calculus Architecture Pressure
+
+Status:
+- active
+
+Use this track when a calculus improvement cycle is blocked or made fragile by
+repeated local helpers, not when the only goal is line-count reduction.
+
+### P0.C1 Map one crowded calculus family
+
+Goal:
+- make the route boundary visible before extracting code
+
+Checklist:
+- [ ] Choose one family cluster, such as scaled-root inverse differentiation,
+      reciprocal trig/hyperbolic integration, rational integration
+      verification, or residual limit presentation
+- [ ] Record current call order and fallback behavior
+- [ ] Identify owners for detection, domain conditions, transformation,
+      verification, presentation, and didactic steps
+- [ ] List the matrix rows and contract tests that pin public behavior
+- [ ] Decide whether the next move is extraction, consolidation,
+      observability, or no change
+
+Done when:
+- a future code move can be validated against explicit route ownership instead
+  of inferred source-order knowledge
+
+### P0.C2 Extract one behavior-preserving calculus boundary
+
+Goal:
+- reduce accretion in a crowded route family without changing public behavior
+
+Checklist:
+- [ ] Extract only one boundary: detection, domain builder, verifier,
+      presentation, or didactic step builder
+- [ ] Preserve call order and route priority
+- [ ] Keep domain and branch policy unchanged unless explicitly documented
+- [ ] Keep matrix presentation stable outside the intended family
+- [ ] Run touched tests plus `make engine-fast`
+- [ ] Run `make engine-scorecard` if public calculus behavior, matrix rows, or
+      broad pre-calculus support are touched
+- [ ] Run `make engine-scorecard-pressure` if deep residual verification,
+      normal forms, or composed traffic are touched
+
+Done when:
+- the same public behavior remains green and ownership is clearer than before
+
+### P0.C3 Consolidate only after repeated extracted shapes
+
+Goal:
+- avoid replacing local accretion with premature generic machinery
+
+Checklist:
+- [ ] Confirm at least two extracted families have identical soundness policy
+- [ ] Confirm the shared helper has a cheap prefilter or bounded scope
+- [ ] Confirm it does not merge different domain, branch, sign, orientation, or
+      presentation semantics
+- [ ] Add route-specific tests or matrix rows that prove both call sites stay
+      stable
+
+Done when:
+- the helper removes real duplication without widening matcher traffic or
+  hiding priority
+
 ## Track 1: High-Value Boundary Cleanup
 
 Status:

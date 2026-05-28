@@ -8,6 +8,9 @@ feature growth now carries structural risk, especially:
 
 - [orchestrator.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/orchestrator.rs)
 - [arithmetic.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/arithmetic.rs)
+- [calculus/mod.rs](/Users/javiergimenezmoya/developer/math/crates/cas_engine/src/rules/calculus/mod.rs)
+- [symbolic_integration_support.rs](/Users/javiergimenezmoya/developer/math/crates/cas_math/src/symbolic_integration_support.rs)
+- [focused_rule_substeps.rs](/Users/javiergimenezmoya/developer/math/crates/cas_didactic/src/didactic/focused_rule_substeps.rs)
 
 The goal is not cosmetic cleanup.
 
@@ -41,6 +44,54 @@ It should usually be classified as:
 
 Do not add a new top-level investment class for refactoring.
 Refactoring is a means, not a scorecard objective.
+
+## Current High-Priority Weakness: Calculus Pipeline Accretion
+
+The calculus campaign has reached a point where continued local growth can
+create more risk than value. The repeated pattern is not simply "large files are
+large"; it is that the same calculus pipeline concerns are being solved locally
+inside adjacent families:
+
+- family detection and argument extraction
+- real-domain condition construction and display compaction
+- transformation or primitive construction
+- derivative/antiderivative residual verification
+- post-calculus presentation
+- didactic step/substep construction
+
+When these concerns stay interleaved, a narrow fix can accidentally change a
+stable matrix row, widen matcher traffic, reorder public conditions, or send
+verification into deep generic simplification.
+
+Current priority:
+
+- treat calculus architecture pressure as a valid `observability` or
+  `robustness` iteration even when the immediate symptom is a calculus feature
+  request
+- extract one route family or one pipeline boundary at a time
+- preserve behavior first; only generalize after two retained boundaries prove
+  a shared shape
+- keep source-side predicates preferred over broad result-side cleanup
+- keep domain-condition ownership close to the policy that proves the condition
+- keep post-calculus presentation local to calculus output, not the global
+  simplifier
+
+Good first extraction targets:
+
+- scaled-root inverse-family detection and domain-condition construction
+- integration derivative-cofactor recognizers versus primitive presentation
+- bounded residual-verification routes used to prove antiderivatives
+- limit residual result/step presentation cleanup
+- focused calculus step/substep builders once the route policy is stable
+
+Bad first extraction targets:
+
+- a generic calculus matcher registry that hides route priority
+- a shared inverse-family helper that merges different branch or domain
+  semantics
+- a presentation abstraction that operates only on final result shape
+- moving code only to reduce line count without making ownership or validation
+  clearer
 
 ## Core Principle
 
@@ -120,6 +171,12 @@ Prefer extraction units that already have a natural owner:
 - fraction and telescoping shortcuts
 - arithmetic cancellation helpers
 - step construction helpers shared by one route family
+- calculus route families where detection, domain, verification, presentation,
+  and steps can be separated without changing behavior
+- post-calculus presentation helpers that are already family-owned and covered
+  by command matrices
+- bounded residual-verification helpers that avoid broad simplification for a
+  verified derivative or antiderivative family
 
 The extraction should be behavior-preserving.
 
@@ -290,6 +347,9 @@ A good cadence is:
   shared helper
 - after several retained mathematical iterations in the same file, spend one
   iteration reducing structural risk
+- during the current calculus campaign, bias earlier toward this structural
+  iteration when repeated local fixes touch domain conditions, residual
+  verification, post-calculus presentation, or didactic step construction
 
 This prevents the engine from growing only by accretion while preserving the
 guardrails that make the improvement campaign trustworthy.

@@ -25,6 +25,64 @@ The previous boundary-cleanup track is complete for its intended scope:
 That means the next work should not keep pretending the same backlog is still
 open.
 
+## Current Active Track: Calculus Architecture Pressure
+
+Status:
+- active
+
+Why it matters:
+- the calculus strategy has shifted from isolated verticals to generalized
+  real-domain capability
+- recent retained/rejected cycles show that the risky part is increasingly the
+  pipeline boundary, not the formula itself
+- repeated local helpers for domain conditions, post-calculus presentation,
+  residual verification, and didactic steps can make each new `diff`, `limit`,
+  or `integrate` family more fragile
+
+Retained direction:
+- treat this as localized architecture work under
+  [ENGINE_COHESION_REFACTORING_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COHESION_REFACTORING_STRATEGY.md)
+  and
+  [CALCULUS_ENGINE_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/CALCULUS_ENGINE_STRATEGY.md)
+- classify each cycle by retained value: usually `observability` or
+  `robustness`, sometimes `calculus` when the public capability itself changes
+- extract before abstracting
+- preserve route order and public behavior by default
+
+Open bounded candidates:
+
+1. Map one crowded calculus route family before moving code.
+   - candidates: scaled-root inverse-family differentiation, reciprocal
+     trig/hyperbolic integration products, or residual limit presentation
+   - output: route owner, domain owner, presentation owner, verifier owner,
+     relevant matrix rows, and guardrails
+
+2. Extract one family-owned domain-condition builder.
+   - goal: prevent late display cleanup from owning conditions it did not prove
+   - retain only if matrix display remains stable and required conditions do
+     not become broader or reordered accidentally
+
+3. Extract one bounded antiderivative verification/residual route.
+   - goal: keep verified primitives out of deep generic simplification
+   - retain only if direct and nested residual probes stay bounded and
+     antiderivative verification remains green
+
+4. Extract one post-calculus presentation boundary.
+   - goal: separate public result readability from internal canonical matching
+   - retain only if existing matrix rows keep stable public presentation outside
+     the intended family
+
+5. Extract one didactic step/substep builder after the route policy is stable.
+   - goal: remove repeated wording/highlight construction without changing
+     mathematical routing
+   - retain only if didactic audits and command step checks stay green
+
+Stop or defer when:
+- the candidate requires broad route reordering
+- the shared helper would merge different domain or branch semantics
+- the only measurable outcome is lower line count
+- embedded or pressure lanes regress without a reusable robustness gain
+
 ## Next Candidates
 
 ### 1. Solver Event Phase 2 Design Only
@@ -122,9 +180,12 @@ Current state:
 
 ## Suggested Execution Order
 
-1. If architecture follow-up continues, open a fresh measured-runtime R&D
-   experiment only with a new benchmark-backed hypothesis.
-2. Reuse
+1. If calculus improvement cycles continue in crowded route families, choose the
+   smallest open item from "Calculus Architecture Pressure" before adding more
+   local variants.
+2. If architecture follow-up outside calculus continues, open a fresh
+   measured-runtime R&D experiment only with a new benchmark-backed hypothesis.
+3. Reuse
    `/Users/javiergimenezmoya/developer/math/docs/MEASURED_RUNTIME_RD_BACKLOG.md`
    as the execution template and experiment log.
 
@@ -135,4 +196,6 @@ Stop architecture work in this stream when:
 - the persistence strategy has an explicit decision
 - the solver-event question has an explicit stop/go decision
 - didactic rendering Phase 2 has either been completed or explicitly declined
+- calculus route families no longer require repeated local helpers for the same
+  detection/domain/verification/presentation/step pipeline shape
 - any remaining ideas require speculative redesign rather than bounded payoff

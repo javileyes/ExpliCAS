@@ -58,6 +58,20 @@
 
 ExpliCAS es un **Sistema de Álgebra Computacional (CAS)** educativo diseñado en Rust con énfasis en proporcionar explicaciones paso a paso de las transformaciones matemáticas. La arquitectura está construida siguiendo principios de modularidad y separación de responsabilidades.
 
+### Nota de Estado: Presión Arquitectónica en Cálculo
+
+La prioridad arquitectónica actual ya no es una migración amplia de crates. El
+riesgo más inmediato está en la acumulación de rutas locales de cálculo:
+detección de familias, condiciones de dominio real, verificación residual,
+presentación post-cálculo y construcción de pasos didácticos. Las siguientes
+mejoras de `diff`, `limit` e `integrate` deben preferir extracción o
+consolidación acotada cuando ese pipeline se vuelva opaco. La estrategia activa
+vive en
+[CALCULUS_ENGINE_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/CALCULUS_ENGINE_STRATEGY.md),
+[ENGINE_COHESION_REFACTORING_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/ENGINE_COHESION_REFACTORING_STRATEGY.md)
+y
+[ARCHITECTURE_FOLLOWUP_BACKLOG.md](/Users/javiergimenezmoya/developer/math/docs/ARCHITECTURE_FOLLOWUP_BACKLOG.md).
+
 ### Objetivos de Diseño
 
 - **Modularidad**: Cada componente tiene responsabilidades claras y bien definidas

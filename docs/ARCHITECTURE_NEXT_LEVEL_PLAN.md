@@ -52,6 +52,11 @@ Status update:
 - the optional didactic rendering Phase 2 cleanup is complete
 - the runtime R&D listener experiment has been closed without retention
 - no benchmark-gated runtime experiment is currently open
+- a new active architecture pressure point exists in the calculus pipeline:
+  repeated local calculus helpers now risk making future `diff`, `limit`, and
+  `integrate` generalization harder unless detection, domain reasoning,
+  verification, presentation, and didactic-step ownership are separated
+  incrementally
 
 For the concrete follow-up list, see:
 
@@ -63,19 +68,49 @@ For the runtime experiment record/template, see:
 
 ### High-priority work
 
-1. Make an explicit product decision on session persistence strategy.
-2. Decide whether solve-event work stops at Phase 1 or opens a native-emission
+1. Address calculus pipeline accretion with small, behavior-preserving
+   extraction/consolidation cycles before adding more local calculus variants
+   in crowded route families.
+2. Make an explicit product decision on session persistence strategy.
+3. Decide whether solve-event work stops at Phase 1 or opens a native-emission
    track.
 
 ### Medium-priority work
 
-3. Introduce measured AST/runtime experiments only where benchmarks justify it.
-4. Introduce zero-cost listener plumbing in hot paths only if profiling shows
+4. Introduce measured AST/runtime experiments only where benchmarks justify it.
+5. Introduce zero-cost listener plumbing in hot paths only if profiling shows
    value.
 
 ### Exploratory work
 
-5. Evaluate an E-graph track in isolation, behind a feature flag or prototype.
+6. Evaluate an E-graph track in isolation, behind a feature flag or prototype.
+
+### Current Addendum: Calculus Architecture Pressure
+
+The next architecture work is not another broad crate-boundary migration. It is
+localized cleanup inside the calculus pipeline, motivated by retained
+improvement cycles.
+
+The weakness:
+
+- formulas are often known, but presentation, domain-condition construction, or
+  residual verification is fragile
+- local helpers for adjacent families accumulate in large files and make route
+  priority harder to reason about
+- broad result-side cleanup can change stable public matrix rows
+- verification of correct primitives can fall into deep generic simplification
+
+The strategy:
+
+- extract before abstracting
+- choose one family or one pipeline boundary per PR/cycle
+- preserve call order and behavior unless the behavior change is explicitly the
+  feature under test
+- prefer source-side predicates and bounded verifier routes over broad final
+  result shape checks
+- validate with the calculus command matrix plus `engine-fast`; run guardrail
+  and pressure profiles when route ordering, normalization, or deep residuals
+  are touched
 
 ## Reality Check on the Feedback
 

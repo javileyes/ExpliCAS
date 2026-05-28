@@ -20,6 +20,8 @@ A real engine improvement may come from:
 - a better root/orchestrator shortcut
 - a better derive target classifier or planner route
 - a generalized calculus capability in differentiation, limits, or integration
+- a calculus architecture boundary that separates detection, domain reasoning,
+  transformation, verification, presentation, or didactic step construction
 - a robustness fix that prevents stack overflow / timeout on expressions the
   engine already handled semantically
 
@@ -77,6 +79,7 @@ cross_system_roi ~= engine_value
                   + calculus_value
                   + precalculus_reuse_value
                   + domain_safety_value
+                  + architecture_pressure_value
                   + corpus_reuse_value
                   + didactic_value
                   - runtime_risk
@@ -112,6 +115,10 @@ Interpretation:
 - `domain_safety_value`
   - whether assumptions around domain, branch, infinity, or integration
     constants are preserved explicitly
+- `architecture_pressure_value`
+  - whether the change reduces repeated local calculus shortcuts, clarifies
+    ownership of detection/domain/verification/presentation/steps, or makes the
+    next family generalization safer without broad behavior churn
 - `corpus_reuse_value`
   - whether one minimal case can serve both engine coverage and derive
     reachability/didactic checks
@@ -247,6 +254,42 @@ normalization, or domain gap, the next retained work should usually be
 classified as `coverage`, `robustness`, or `observability`, not as a calculus
 workaround.
 
+### Calculus Architecture Pressure
+
+The calculus campaign has reached the point where architecture is a first-class
+retention risk. Several useful local changes now fail or become fragile because
+the pipeline boundary is unclear, not because the mathematical formula is
+unknown.
+
+Treat these as priority signals:
+
+- post-calculus presentation patches change stable matrix rows outside the
+  intended family
+- antiderivative or derivative residual verification falls into deep generic
+  simplification, `depth_overflow`, `cycle_detected`, or timeouts
+- domain-condition compaction is rebuilt separately for sibling families
+- repeated helpers accumulate in large calculus, integration-support, or
+  didactic-step files
+- a proposed calculus case needs a broad result-shape check instead of a
+  source-side route predicate
+
+When those signals appear, prefer an `observability` or `robustness` iteration
+that advances calculus block 11 before adding another local calculus row. The
+retained output should be small and testable:
+
+- extract one coherent route family while preserving call order and behavior
+- isolate domain-condition construction behind the family or policy that proves
+  the condition
+- isolate post-calculus presentation from internal canonical matching
+- add a bounded residual verifier for a verified primitive family before
+  broadening the integrator
+- add a support-matrix or profiling classification when ownership is still
+  ambiguous
+
+This is not permission for a broad refactor. Architecture work has high ROI
+only when it removes a demonstrated blocker to safe calculus generalization and
+keeps the guardrails green.
+
 For calculus work, the selector should also use the block-based maturity plan in
 [CALCULUS_ENGINE_STRATEGY.md](/Users/javiergimenezmoya/developer/math/docs/CALCULUS_ENGINE_STRATEGY.md).
 Each calculus iteration should name the active maturity block and the block gate
@@ -354,6 +397,9 @@ Also allow structural cohesion to steer the class choice:
   safely continue adding shortcuts
 - prefer `robustness` when a god-file pattern creates stack, timeout, or
   harness fragility risk
+- prefer `observability` or `robustness` when calculus generalization keeps
+  adding local helpers for domain conditions, residual verification,
+  post-calculus presentation, or didactic step construction
 - prefer `runtime` only when a structural boundary removes measured hot-path
   work
 - do not classify refactoring as a separate goal; classify the retained value it
@@ -415,6 +461,8 @@ domain_safety_check:
 presentation_check:
 sibling_sweep_check:
 consolidation_check:
+architecture_pressure_check:
+extraction_or_consolidation_check:
 retain_if:
 reject_if:
 retain_or_reject_reason:
@@ -473,6 +521,14 @@ Minimum expectations:
   - for calculus work: whether this should remain local or become a shared
     helper, policy, or support-matrix representative before more variants are
     added
+- `architecture_pressure_check`
+  - whether the candidate is adding to an already crowded route/presentation/
+    verifier/domain area, and whether the safer ROI is block 11 architecture
+    work instead of another local case
+- `extraction_or_consolidation_check`
+  - when architecture pressure is present: the smallest behavior-preserving
+    extraction, support-matrix clarification, or bounded shared helper that
+    would reduce future risk
 - `retain_or_reject_reason`
   - the shortest defensible explanation after validation
 

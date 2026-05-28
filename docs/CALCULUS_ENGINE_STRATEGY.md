@@ -29,6 +29,9 @@ Therefore the strategy is now:
 - prefer shared real-domain capability over isolated new cases
 - build explicit calculus coverage matrices for `diff`, `limit`, and
   `integrate`
+- treat architecture pressure as an active calculus risk when local helpers,
+  presentation patches, domain-condition builders, and residual verifiers start
+  repeating across nearby families
 - keep improving pre-calculus in parallel
 - treat calculus failures as structured feedback for simplification,
   equivalence, domains, and didactic trace quality
@@ -88,6 +91,64 @@ Prefer candidates that do at least one of these:
 Reject or defer candidates that only add one more syntactic variant unless the
 variant reveals a new domain regime, rule interaction, didactic gap, runtime
 cliff, or public behavior class.
+
+## Current Risk: Architecture Pressure From Calculus Generalization
+
+Recent retained and rejected calculus cycles show a new primary weakness: many
+remaining failures are no longer missing formulas. They are pipeline-boundary
+failures.
+
+Signals that the next high-ROI move is architectural:
+
+- a local presentation helper fixes one calculus row but changes stable sibling
+  rows
+- antiderivative verification enters `depth_overflow`, `cycle_detected`, or
+  broad residual search even though the mathematical primitive is correct
+- domain conditions are rebuilt locally, duplicated, ordered differently, or
+  displayed through family-specific compaction paths
+- the same detection or presentation pattern appears in adjacent inverse,
+  root, trig, or hyperbolic families
+- `calculus/mod.rs`, `symbolic_integration_support.rs`, or didactic step
+  helpers absorb another route-specific shortcut without a clearer owner
+- a candidate can be described more naturally as detection, domain reasoning,
+  transformation, verification, rendering, or step construction than as a new
+  calculus rule
+
+When those signals appear, the next cycle should usually choose block 11
+(`Architecture, observability, and runtime`) even if a narrow calculus case is
+available. The goal is not a large rewrite. The retained move should be one
+small boundary improvement that makes future calculus generalization safer.
+
+Preferred architecture moves:
+
+- extract one coherent route family while preserving behavior and call order
+- isolate a family-owned domain-condition builder instead of adding another
+  display-side condition patch
+- isolate post-calculus presentation from internal canonical matching
+- isolate derivative/antiderivative residual verification routes before
+  broadening integration families
+- move repeated didactic step construction into a shared helper only after the
+  mathematical policy is identical
+- add observability or a support-matrix classification when ownership is still
+  unclear
+
+Rejected architecture moves:
+
+- broad rewrites of calculus routing without a measured blocker
+- generic registries that hide rule priority
+- abstractions that merge families with different domain, branch, sign,
+  orientation, or presentation policy
+- global simplifier changes whose only purpose is to make one calculus result
+  prettier
+
+Selection rule:
+
+- after two nearby retained or rejected cycles expose the same pipeline shape,
+  prefer extraction or consolidation before adding another local variant
+- if a candidate requires a broad result-shape check after integration or
+  differentiation, first look for a narrower source-side route boundary
+- if verification is the blocker, fix the bounded verifier/residual path before
+  promoting more primitives from the same family
 
 ## Block-Based Calculus Maturity Plan
 
@@ -185,6 +246,12 @@ Use these blocks as the active checklist:
 11. **Architecture, observability, and runtime**
     - separate detection, domain reasoning, transformation, verification, and
       rendering when a file or route family becomes too opaque to generalize
+    - prefer extraction/consolidation when repeated calculus cycles add local
+      helpers for the same pipeline shape across sibling families
+    - make post-calculus presentation and residual verification explicit
+      boundaries before broadening formulas that depend on them
+    - keep domain-condition builders owned by the family or policy that proves
+      them, not by late display cleanup
     - improve observability before broadening matchers if the next calculus move
       cannot be localized safely
     - keep embedded and pressure lanes green; calculus maturity does not justify
